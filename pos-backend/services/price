@@ -1,0 +1,209 @@
+const Menu = require("../models/menuModel");
+
+// ============================================================
+// Server-side pricing engine
+// Prices, taxes and totals are ALWAYS resolved here.
+// Never trust browser-supplied prices or totals.
+// ============================================================
+
+const TAX_RATE = 0.05; // 5% GST — matches existing QR flow
+const SERVICE_CHARGE_RATE = 0; // configurable per restaurant in future
+
+const currentTimeInMinutes = () => {
+  const now = new Date();
+  return now.getHours() * 60 + now.getMinutes();
+};
+
+const parseTime = (t) => {
+  if (!t) return null;
+  const [h, m] = (t || "").split(":").map(Number);
+  if (isNaN(h) || isNaN(m)) return null;
+  return h * 60 + m;
+};
+
+const isInSchedule = (schedule) => {
+  if (!schedule || !schedule.enabled) return true;
+  const now = currentTimeInMinutes();
+  const start = parseTime(schedule.startTime);
+  const end = parseTime(schedule.endTime);
+  if (start === null || end === null) return true;
+
+  const today = new Date().getDay();
+  const days = schedule.daysOfWeek || [];
+  if (days.length === 0 || !days.includes(today)) return false;
+
+  if (start <= end) return now >= start && now <= end;
+  return now >= start || now <= end;
+};
+
+const getActivePrice = (item) => {
+  if (!item?.priceRules?.length) return item?.price;
+  const now = currentTimeInMinutes();
+  const today = new Date().getDay();
+  const activeRule = item.priceRules.find((r) => {
+    if (!r.isActive) return false;
+    const days = r.daysOfWeek || [];
+    if (days.length === 0 || !days.includes(today)) return false;
+    const start = parseTime(r.startTime);
+    const end = parseTime(r.endTime);
+    if (start === null || end === null) return true;
+    if (start <= end) return now >= start && now <= end;
+    return now >= start || now <= end;
+  });
+  return activeRule ? activeRule.price : item?.price;
+};
+
+/**
+ * Resolve a menu item for ordering.
+ * Throws http-errors if the item is unavailable / deleted / not published.
+ */
+const resolveMenuItem = async ({ menuItemId, restaurantId, outletId }) => {
+  const menu = await Menu.findOne({
+    restaurantId,
+    isDeleted: { $ne: true },
+    published: { $ne: false },
+    "items._id": menuItemId,
+  });
+
+  if (!menu) {
+    const err = new Error("This menu item is currently unavailable.");
+    err.status = 400;
+    throw err;
+  }
+
+  const item = menu.items.find((i) => i._id.toString() === menuItemId.toString());
+  if (!item) {
+    const err = new Error("This menu item is currently unavailable.");
+    err.status = 400;
+    throw err;
+  }
+  if (item.isAvailable === false) {
+    const err = new Error(`${item.name} is currently out of stock.`);
+    err.status = 400;
+    throw err;
+  }
+  if (!isInSchedule(item.schedule)) {
+    const err = new Error(`${item.name} is not available at this time.`);
+    err.status = 400;
+    throw err;
+  }
+  // Outlet scoping: if menu has outletId, it must match
+  if (menu.outletId && outletId && menu.outletId.toString() !== outletId.toString()) {
+    const err = new Error("This menu item is not available at this outlet.");
+    err.status = 400;
+    throw err;
+  }
+
+  return { menu, item, basePrice: getActivePrice(item) };
+};
+
+/**
+ * Calculate the server-side unit price for an item including
+ * variants, add-ons and modifiers.
+ */
+const calculateUnitPrice = ({ item, variantId, addonIds = [], modifierSelections = {} }) => {
+  if (!item) return 0;
+
+  let price = getActivePrice(item);
+
+  // Variant
+  let variant = null;
+  if (item.variants?.length > 0) {
+    variant = item.variants.find((v) => v._id.toString() === variantId?.toString());
+    if (!variant) {
+      const err = new Error("Please select a valid variant.");
+      err.status = 400;
+      throw err;
+    }
+    if (variant.isAvailable === false) {
+      const err = new Error(`${variant.name} is currently unavailable.`);
+      err.status = 400;
+      throw err;
+    }
+    price = variant.price;
+  }
+
+  // Add-ons
+  const selectedAddons = (item.addons || []).filter((a) =>
+    addonIds.map(String).includes(a._id.toString())
+  );
+  for (const a of selectedAddons) {
+    if (a.isAvailable === false) {
+      const err = new Error(`${a.name} is currently unavailable.`);
+      err.status = 400;
+      throw err;
+    }
+    price += a.price || 0;
+  }
+
+  // Modifiers
+  const modifierLabels = [];
+  let modifierTotal = 0;
+  for (const group of item.modifierGroups || []) {
+    const sel = modifierSelections[group._id] || [];
+    const selStrings = sel.map(String);
+
+    // Required group validation
+    if (group.required && sel.length === 0) {
+      const err = new Error(`Please select "${group.name}".`);
+      err.status = 400;
+      throw err;
+    }
+
+    const maxSelections = group.maxSelections || 1;
+    if (sel.length > maxSelections) {
+      const err = new Error(`Maximum ${maxSelections} selection(s) for "${group.name}".`);
+      err.status = 400;
+      throw err;
+    }
+
+    for (const opt of group.options || []) {
+      if (selStrings.includes(opt._id.toString())) {
+        if (opt.isAvailable === false) {
+          const err = new Error(`${opt.name} is currently unavailable.`);
+          err.status = 400;
+          throw err;
+        }
+        modifierTotal += opt.price || 0;
+        modifierLabels.push(opt.name);
+      }
+    }
+  }
+
+  price += modifierTotal;
+
+  return {
+    unitPrice: price,
+    variant: variant ? { name: variant.name, price: variant.price } : null,
+    addons: selectedAddons.map((a) => ({ name: a.name, price: a.price || 0 })),
+    modifiers: modifierLabels,
+  };
+};
+
+/**
+ * Calculate bill totals for a list of (price, quantity) pairs.
+ */
+const calculateBill = ({ items, taxRate = TAX_RATE, discount = 0, additionalCharges = 0 }) => {
+  const subtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
+  const tax = Math.round(subtotal * taxRate * 100) / 100;
+  const charges = Math.round(additionalCharges * 100) / 100;
+  const discountedSubtotal = Math.max(0, subtotal - discount);
+  const totalWithTax = Math.round((discountedSubtotal + tax + charges) * 100) / 100;
+
+  return {
+    subtotal: Math.round(subtotal * 100) / 100,
+    tax,
+    discount: Math.round(discount * 100) / 100,
+    charges,
+    totalWithTax,
+  };
+};
+
+module.exports = {
+  TAX_RATE,
+  resolveMenuItem,
+  calculateUnitPrice,
+  calculateBill,
+  isInSchedule,
+  getActivePrice,
+};

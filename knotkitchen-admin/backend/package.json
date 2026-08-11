@@ -1,0 +1,24 @@
+{
+  "name": "knotkitchen-admin-backend",
+  "version": "1.0.0",
+  "private": true,
+  "description": "KnotKitchen Super Admin Portal - manages all registered restaurants (shares the same MongoDB as the POS)",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "cookie-parser": "^1.4.6",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "http-errors": "^2.0.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.4.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}

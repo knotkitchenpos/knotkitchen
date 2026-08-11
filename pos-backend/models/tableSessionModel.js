@@ -1,0 +1,123 @@
+const mongoose = require("mongoose");
+
+const tableSessionItemSchema = new mongoose.Schema(
+  {
+    menuItemId: { type: mongoose.Schema.Types.ObjectId, ref: "Menu", required: true },
+    name: { type: String, required: true },
+    quantity: { type: Number, required: true, default: 1 },
+    price: { type: Number, required: true }, // unit price at time of order
+    total: { type: Number, required: true },
+    modifiers: [{ name: String, price: Number }],
+    note: { type: String, default: "" },
+    status: {
+      type: String,
+      enum: ["pending", "preparing", "ready", "served", "cancelled", "refunded"],
+      default: "pending",
+    },
+    addedBy: { type: String, enum: ["POS", "QR", "SYSTEM"], default: "POS" },
+    orderId: { type: mongoose.Schema.Types.ObjectId, ref: "Order" }, // internal kitchen order if any
+    kdsItemId: { type: mongoose.Schema.Types.ObjectId }, // KDS item reference inside kitchen order
+    cancelledAt: Date,
+    cancelReason: String,
+  },
+  { _id: true }
+);
+
+const tableSessionSchema = new mongoose.Schema(
+  {
+    sessionCode: { type: String, required: true, unique: true },
+    restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: "Restaurant", required: true },
+    outletId: { type: mongoose.Schema.Types.ObjectId, ref: "Outlet", required: true },
+    tableId: { type: mongoose.Schema.Types.ObjectId, ref: "Table", required: true },
+
+    // Origin of the session: opened from POS UI or from customer QR scan
+    source: { type: String, enum: ["POS", "QR"], default: "POS" },
+
+    // Optional canonical bill once bill is requested
+    billId: { type: mongoose.Schema.Types.ObjectId, ref: "Bill" },
+
+    status: {
+      type: String,
+      enum: ["OPEN", "OCCUPIED", "PROCESSING", "BILL_REQUESTED", "PAYMENT_PENDING", "PAID", "CLOSED"],
+      default: "OPEN",
+    },
+
+    customerCount: { type: Number, default: 1 },
+    customerName: { type: String, default: "" },
+    customerPhone: { type: String, default: "" },
+    customerId: { type: mongoose.Schema.Types.ObjectId, ref: "Customer" },
+
+    items: [tableSessionItemSchema],
+    originalItemsCount: { type: Number, default: 0 }, // snapshot of count of initial items
+
+    bills: {
+      subtotal: { type: Number, default: 0 },
+      tax: { type: Number, default: 0 },
+      discount: { type: Number, default: 0 },
+      charges: { type: Number, default: 0 },
+      totalWithTax: { type: Number, default: 0 },
+    },
+
+    payment: {
+      method: { type: String, default: "" },
+      status: { type: String, enum: ["PENDING", "PARTIAL", "PAID", "FAILED", "REFUNDED"], default: "PENDING" },
+      transactionId: { type: String, default: "" },
+      paidAt: Date,
+      recordedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    },
+
+    paymentHistory: [
+      {
+        method: { type: String, default: "" },
+        amount: { type: Number, default: 0 },
+        status: { type: String, enum: ["PENDING", "PAID", "FAILED", "REFUNDED"], default: "PENDING" },
+        transactionId: { type: String, default: "" },
+        idempotencyKey: { type: String, default: "" },
+        at: { type: Date, default: Date.now },
+        recordedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+      },
+    ],
+
+    timeline: [
+      {
+        event: { type: String, required: true },
+        note: { type: String, default: "" },
+        actorType: { type: String, enum: ["POS", "QR", "SYSTEM", "ADMIN"], default: "SYSTEM" },
+        actorId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+        at: { type: Date, default: Date.now },
+      },
+    ],
+
+    openedAt: { type: Date, default: Date.now },
+    openedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    closedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    closedAt: Date,
+    billRequestedAt: Date,
+    paymentRequestedAt: Date,
+
+    isDeleted: { type: Boolean, default: false },
+  },
+  { timestamps: true }
+);
+
+// Enforce one active session per table at DB level (partial unique index)
+tableSessionSchema.index(
+  { tableId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { status: { $in: ["OPEN", "OCCUPIED", "PROCESSING", "BILL_REQUESTED", "PAYMENT_PENDING"] } },
+  }
+);
+tableSessionSchema.index({ restaurantId: 1, status: 1 });
+tableSessionSchema.index({ outletId: 1, status: 1 });
+
+// Duplicate-payment guard at DB level: one successful payment per idempotency key
+tableSessionSchema.index(
+  { "paymentHistory.idempotencyKey": 1 },
+  {
+    unique: true,
+    partialFilterExpression: { "paymentHistory.idempotencyKey": { $ne: "" }, "paymentHistory.status": "PAID" },
+  }
+);
+
+module.exports = mongoose.model("TableSession", tableSessionSchema);

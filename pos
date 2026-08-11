@@ -1,0 +1,47 @@
+const mongoose = require("mongoose");
+
+const paymentLinkSchema = new mongoose.Schema(
+  {
+    linkToken: { type: String, required: true, unique: true },
+    restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: "Restaurant", required: true },
+    outletId: { type: mongoose.Schema.Types.ObjectId, ref: "Outlet" },
+
+    // Collection order reference
+    orderId: { type: mongoose.Schema.Types.ObjectId, ref: "Order", required: true },
+    tableSessionId: { type: mongoose.Schema.Types.ObjectId, ref: "TableSession" },
+
+    customerId: { type: mongoose.Schema.Types.ObjectId, ref: "Customer" },
+    customerName: { type: String, default: "" },
+    customerPhone: { type: String, required: true },
+
+    amount: { type: Number, required: true }, // server-calculated total
+    currency: { type: String, default: "INR" },
+
+    status: {
+      type: String,
+      enum: ["PENDING", "PAID", "EXPIRED", "CANCELLED", "FAILED"],
+      default: "PENDING",
+    },
+
+    expiresAt: { type: Date, required: true },
+    paidAt: Date,
+
+    payment: {
+      provider: { type: String, default: "" },
+      transactionId: { type: String, default: "" },
+      gatewayOrderId: { type: String, default: "" },
+      method: { type: String, default: "" },
+    },
+
+    idempotencyKey: { type: String, unique: true, sparse: true },
+    createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    isDeleted: { type: Boolean, default: false },
+  },
+  { timestamps: true }
+);
+
+paymentLinkSchema.index({ restaurantId: 1, status: 1 });
+paymentLinkSchema.index({ orderId: 1 });
+paymentLinkSchema.index({ expiresAt: 1 });
+
+module.exports = mongoose.model("PaymentLink", paymentLinkSchema);
