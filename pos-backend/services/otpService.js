@@ -82,7 +82,11 @@ const createAndSendOtp = async ({ storeId, phone, purpose = "signup" }) => {
 
   await sendOtpSms(normalizedPhone, otp);
 
-  return { expiresAt, devHint: config.nodeEnv !== "production" ? "Check server logs for OTP in development." : undefined };
+  return {
+    expiresAt,
+    otp,
+    devHint: "OTP generated successfully. Check SMS or terminal logs / form hint.",
+  };
 };
 
 const verifyOtp = async ({ storeId, phone, otp, purpose = "signup" }) => {
