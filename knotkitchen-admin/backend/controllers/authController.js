@@ -10,18 +10,28 @@ const generateAdminToken = (admin) => {
   });
 };
 
-// Seed the default super admin on first run if none exists
+// Seed the default super admin on first run or reset if requested
 const seedSuperAdmin = async () => {
   try {
-    const count = await Admin.countDocuments();
-    if (count === 0) {
+    const email = (config.seedAdminEmail || "admin@knotkitchen.io").trim().toLowerCase();
+    const rawPassword = (config.seedAdminPassword || "admin123").trim();
+
+    const existingAdmin = await Admin.findOne({ email });
+
+    if (!existingAdmin) {
       await Admin.create({
         name: "Super Admin",
-        email: config.seedAdminEmail,
-        password: config.seedAdminPassword,
+        email: email,
+        password: rawPassword,
         role: "superadmin",
+        isActive: true,
       });
-      console.log(`✅ Seeded default super admin: ${config.seedAdminEmail}`);
+      console.log(`✅ Seeded default super admin: ${email}`);
+    } else if (process.env.RESET_ADMIN_PASSWORD === "true") {
+      existingAdmin.password = rawPassword;
+      existingAdmin.isActive = true;
+      await existingAdmin.save();
+      console.log(`🔄 Reset password for super admin: ${email}`);
     }
   } catch (error) {
     console.error("❌ Error seeding super admin:", error.message);
@@ -36,7 +46,10 @@ const login = async (req, res, next) => {
       return next(error);
     }
 
-    const admin = await Admin.findOne({ email: email.toLowerCase() });
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanPassword = password.trim();
+
+    const admin = await Admin.findOne({ email: cleanEmail });
     if (!admin) {
       const error = createHttpError(401, "Invalid credentials!");
       return next(error);
@@ -47,7 +60,7 @@ const login = async (req, res, next) => {
       return next(error);
     }
 
-    const isMatch = await bcrypt.compare(password, admin.password);
+    const isMatch = await bcrypt.compare(cleanPassword, admin.password);
     if (!isMatch) {
       const error = createHttpError(401, "Invalid credentials!");
       return next(error);
