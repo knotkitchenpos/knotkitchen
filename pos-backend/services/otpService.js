@@ -20,28 +20,32 @@ const generateOtp = () => {
 const normalizePhone = (phone) => String(phone || "").replace(/\D/g, "").slice(-10);
 
 const sendOtpSms = async (phone, otp) => {
-  // Production SMS integration placeholder — wire Twilio/MSG91 via env when available.
-  if (config.nodeEnv !== "production" || process.env.OTP_LOG_ONLY === "true") {
-    console.log(`[OTP] Phone ${phone}: ${otp}`);
-    return;
+  const apiKey =
+    process.env.FAST2SMS_API_KEY ||
+    "QgnBs8794ATbuRPmStZ5EXVOI2hWx3KkaUrdDiHCzfMqLy6e0JrcbSu8sThRXq7A5Zvx0nHBKdemo39I";
+
+  console.log(`[OTP] Phone ${phone}: ${otp}`);
+
+  if (apiKey) {
+    try {
+      const response = await fetch("https://www.fast2sms.com/dev/bulkV2", {
+        method: "POST",
+        headers: {
+          authorization: apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          route: "otp",
+          variables_values: String(otp),
+          numbers: String(phone),
+        }),
+      });
+      const data = await response.json();
+      console.log("[Fast2SMS Output]:", data);
+    } catch (err) {
+      console.error("[Fast2SMS Error]:", err.message);
+    }
   }
-
-  const accountSid = process.env.TWILIO_ACCOUNT_SID;
-  const authToken = process.env.TWILIO_AUTH_TOKEN;
-  const fromNumber = process.env.TWILIO_PHONE_NUMBER;
-
-  if (!accountSid || !authToken || !fromNumber) {
-    console.warn("[OTP] SMS credentials missing — OTP logged to server console only.");
-    console.log(`[OTP] Phone ${phone}: ${otp}`);
-    return;
-  }
-
-  const twilio = require("twilio")(accountSid, authToken);
-  await twilio.messages.create({
-    body: `Your KnotKitchen verification code is ${otp}. Valid for 10 minutes.`,
-    from: fromNumber,
-    to: phone.startsWith("+") ? phone : `+91${phone}`,
-  });
 };
 
 const createAndSendOtp = async ({ storeId, phone, purpose = "signup" }) => {
