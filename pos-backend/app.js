@@ -50,6 +50,7 @@ app.use("/api/table-session", require("./routes/tableSessionRoute"));
 app.use("/api/table-qr", require("./routes/tableQRRoute"));
 app.use("/api/customer", require("./routes/customerRoute"));
 app.use("/api/payment-link", require("./routes/paymentLinkRoute"));
+app.use("/api/receipts", require("./routes/receiptRoute"));
 
 // Global Error Handler
 app.use(globalErrorHandler);

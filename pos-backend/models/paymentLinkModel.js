@@ -1,22 +1,23 @@
 const mongoose = require("mongoose");
 
 /**
- * Payment links — shareable URLs that settle a bill.
- * Customers open the link, pay via Razorpay, and the
- * transaction is recorded in PaymentTransaction + Bill.
+ * Payment links — shareable URLs that settle a bill/order.
+ * Customers open the link, pay via Razorpay/Card/UPI, and the
+ * transaction is recorded in PaymentTransaction + Bill + Order.
  * Each link is scoped to a restaurant, never cross-tenant.
  */
 const paymentLinkSchema = new mongoose.Schema(
   {
     restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: "Restaurant", required: true },
     outletId: { type: mongoose.Schema.Types.ObjectId, ref: "Outlet" },
-    billId: { type: mongoose.Schema.Types.ObjectId, ref: "Bill", required: true },
+    billId: { type: mongoose.Schema.Types.ObjectId, ref: "Bill" },
     tableSessionId: { type: mongoose.Schema.Types.ObjectId, ref: "TableSession" },
     orderId: { type: mongoose.Schema.Types.ObjectId, ref: "Order" },
     customerId: { type: mongoose.Schema.Types.ObjectId, ref: "Customer" },
+    customerPhone: { type: String, default: "" },
 
     linkToken: { type: String, required: true, unique: true },
-    amount: { type: Number, required: true }, // snapshot at creation
+    amount: { type: Number, required: true }, // snapshot at creation, calculated by backend
     currency: { type: String, default: "INR" },
 
     status: {
@@ -39,6 +40,7 @@ const paymentLinkSchema = new mongoose.Schema(
 
 paymentLinkSchema.index({ restaurantId: 1, createdAt: -1 });
 paymentLinkSchema.index({ billId: 1 });
+paymentLinkSchema.index({ orderId: 1 });
 paymentLinkSchema.index({ status: 1 });
 
 module.exports = mongoose.model("PaymentLink", paymentLinkSchema);

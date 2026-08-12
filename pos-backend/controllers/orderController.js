@@ -1,6 +1,7 @@
 const createHttpError = require("http-errors");
 const Order = require("../models/orderModel");
 const Table = require("../models/tableModel");
+const Customer = require("../models/customerModel");
 const { default: mongoose } = require("mongoose");
 
 // Validate table capacity on the server.
@@ -41,7 +42,7 @@ const validateTableCapacityForOrder = async ({ tableId, guests, user }) => {
 
 const addOrder = async (req, res, next) => {
   try {
-    const { table, customerDetails } = req.body;
+    const { table, customerDetails, bills, orderType } = req.body;
 
     // Backend capacity enforcement for dine-in table orders
     if (table || customerDetails?.guests) {
@@ -52,7 +53,105 @@ const addOrder = async (req, res, next) => {
       });
     }
 
-    const order = new Order({ ...req.body, createdBy: req.user._id });
+    const name = customerDetails?.name ? String(customerDetails.name).trim() : "";
+    const phone = customerDetails?.phone ? String(customerDetails.phone).trim() : "";
+
+    let customerId = null;
+
+    if (name || phone) {
+      const restaurantId = req.user?.restaurantId || req.user?._id;
+      const outletId = req.user?.outletId;
+      const totalAmount = Number(bills?.totalWithTax || bills?.total || 0);
+
+      if (phone) {
+        let customer = await Customer.findOne({
+          restaurantId,
+          phone,
+          isDeleted: { $ne: true },
+        });
+
+        if (customer) {
+          if (name) customer.name = name;
+          customer.visitCount = (customer.visitCount || 0) + 1;
+          customer.totalSpent = (customer.totalSpent || 0) + totalAmount;
+          customer.lastVisitAt = new Date();
+          await customer.save();
+        } else {
+          try {
+            customer = await Customer.create({
+              restaurantId,
+              outletId,
+              name: name || "",
+              phone,
+              createdBy: req.user?._id,
+              visitCount: 1,
+              totalSpent: totalAmount,
+              lastVisitAt: new Date(),
+            });
+          } catch (err) {
+            if (err.code === 11000) {
+              customer = await Customer.findOne({
+                restaurantId,
+                phone,
+                isDeleted: { $ne: true },
+              });
+              if (customer) {
+                if (name) customer.name = name;
+                customer.visitCount = (customer.visitCount || 0) + 1;
+                customer.totalSpent = (customer.totalSpent || 0) + totalAmount;
+                customer.lastVisitAt = new Date();
+                await customer.save();
+              }
+            } else {
+              throw err;
+            }
+          }
+        }
+        if (customer) customerId = customer._id;
+      } else if (name) {
+        let customer = await Customer.findOne({
+          restaurantId,
+          name,
+          phone: "",
+          isDeleted: { $ne: true },
+        });
+
+        if (customer) {
+          customer.visitCount = (customer.visitCount || 0) + 1;
+          customer.totalSpent = (customer.totalSpent || 0) + totalAmount;
+          customer.lastVisitAt = new Date();
+          await customer.save();
+        } else {
+          customer = await Customer.create({
+            restaurantId,
+            outletId,
+            name,
+            phone: "",
+            createdBy: req.user?._id,
+            visitCount: 1,
+            totalSpent: totalAmount,
+            lastVisitAt: new Date(),
+          });
+        }
+        if (customer) customerId = customer._id;
+      }
+    }
+
+    const normalizedOrderType = orderType ? String(orderType).toLowerCase() : "dine-in";
+
+    const orderData = {
+      ...req.body,
+      orderType: normalizedOrderType === "table service" ? "dine-in" : normalizedOrderType,
+      customerDetails: {
+        name,
+        phone,
+        guests: customerDetails?.guests ? Number(customerDetails.guests) : 1,
+      },
+      ...(customerId ? { customerId } : {}),
+      createdBy: req.user._id,
+    };
+
+    const order = new Order(orderData);
     await order.save();
 
     // Sync table occupancy when a dine-in order is placed via the legacy path

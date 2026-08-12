@@ -5,69 +5,210 @@ const config = require("../config/config");
 const PaymentLink = require("../models/paymentLinkModel");
 const PaymentTransaction = require("../models/paymentTransactionModel");
 const Bill = require("../models/billModel");
+const Order = require("../models/orderModel");
 const TableSession = require("../models/tableSessionModel");
+const Restaurant = require("../models/restaurantModel");
+const { sendPaymentLinkMessage } = require("../services/messagingService");
+
+/**
+ * Validate customer phone number for collection payment links.
+ * Rejects missing, invalid, or malformed phone numbers.
+ */
+const validateCollectionPhone = (phone) => {
+  if (!phone || typeof phone !== "string" || !phone.trim()) {
+    return { valid: false, error: "Customer phone number is required to generate payment link." };
+  }
+  const cleanPhone = phone.trim().replace(/\D/g, "");
+  if (cleanPhone.length < 10 || cleanPhone.length > 15) {
+    return { valid: false, error: "Invalid or malformed phone number. Must contain 10 to 15 digits." };
+  }
+  return { valid: true, phone: cleanPhone };
+};
 
 // ============================================================
-// Create a payment link for a bill (POS or QR requested)
+// Create a payment link for a collection order or bill
 // ============================================================
 const createPaymentLink = async (req, res, next) => {
   try {
-    const { billId, tableSessionId, expiresInHours = 24 } = req.body;
-    if (!billId) throw createHttpError(400, "billId is required!");
+    const { billId, orderId, tableSessionId, expiresInHours = 24, phone } = req.body;
+
+    if (!billId && !orderId) {
+      throw createHttpError(400, "Either orderId or billId is required!");
+    }
 
     const scopeQuery = { restaurantId: req.user.restaurantId };
     if (req.user.outletId) scopeQuery.outletId = req.user.outletId;
 
-    const bill = await Bill.findOne({ _id: billId, ...scopeQuery, isDeleted: { $ne: true } });
-    if (!bill) throw createHttpError(404, "Bill not found!");
-    if (bill.status === "PAID") throw createHttpError(400, "Bill already paid!");
+    let targetOrder = null;
+    let targetBill = null;
+    let customerPhone = phone;
 
-    const linkToken = crypto.randomBytes(24).toString("hex");
+    // 1. Resolve Order if orderId provided
+    if (orderId) {
+      targetOrder = await Order.findOne({ _id: orderId, ...scopeQuery, isDeleted: { $ne: true } });
+      if (!targetOrder) throw createHttpError(404, "Order not found!");
+
+      if (targetOrder.payments?.some((p) => p.status === "paid") || targetOrder.orderStatus === "completed") {
+        throw createHttpError(400, "Order is already paid!");
+      }
+
+      if (!customerPhone) {
+        customerPhone = targetOrder.customerDetails?.phone;
+      }
+
+      // Check if bill already exists for this order
+      targetBill = await Bill.findOne({ orderId: targetOrder._id, restaurantId: req.user.restaurantId, isDeleted: { $ne: true } });
+      if (!targetBill) {
+        // Create 1-to-1 bill for this order
+        const billTotal = targetOrder.bills?.totalWithTax || targetOrder.bills?.total || 0;
+        targetBill = await Bill.create({
+          billNumber: `BILL-${Date.now().toString(36).toUpperCase()}`,
+          restaurantId: targetOrder.restaurantId,
+          outletId: targetOrder.outletId || req.user.outletId,
+          orderId: targetOrder._id,
+          customerId: targetOrder.customerId,
+          customerDetails: targetOrder.customerDetails,
+          bills: {
+            subtotal: targetOrder.bills?.subtotal || 0,
+            tax: targetOrder.bills?.tax || 0,
+            discount: targetOrder.bills?.discount || 0,
+            charges: (targetOrder.bills?.packagingFee || 0) + (targetOrder.bills?.deliveryFee || 0),
+            totalWithTax: billTotal,
+          },
+          dueAmount: billTotal,
+          status: "PENDING",
+          createdBy: req.user._id,
+        });
+      }
+    }
+
+    // 2. Resolve Bill if billId provided and not already resolved
+    if (billId && !targetBill) {
+      targetBill = await Bill.findOne({ _id: billId, ...scopeQuery, isDeleted: { $ne: true } });
+      if (!targetBill) throw createHttpError(404, "Bill not found!");
+      if (targetBill.status === "PAID") throw createHttpError(400, "Bill already paid!");
+
+      if (!customerPhone) {
+        customerPhone = targetBill.customerDetails?.phone;
+      }
+
+      if (targetBill.orderId && !targetOrder) {
+        targetOrder = await Order.findOne({ _id: targetBill.orderId, restaurantId: req.user.restaurantId });
+      }
+    }
+
+    // 3. Strict Phone Number Validation (Mandatory for payment link creation)
+    const phoneCheck = validateCollectionPhone(customerPhone);
+    if (!phoneCheck.valid) {
+      throw createHttpError(400, phoneCheck.error);
+    }
+    const validatedPhone = phoneCheck.phone;
+
+    // 4. Idempotency / Duplicate Generation Guard: Check for existing active link
+    const queryLink = targetOrder
+      ? { orderId: targetOrder._id, status: "ACTIVE", expiresAt: { $gt: new Date() }, isDeleted: { $ne: true } }
+      : { billId: targetBill._id, status: "ACTIVE", expiresAt: { $gt: new Date() }, isDeleted: { $ne: true } };
+
+    const existingActiveLink = await PaymentLink.findOne(queryLink);
+    if (existingActiveLink) {
+      const paymentUrl = `${process.env.FRONTEND_URL || "http://localhost:5173"}/pay/${existingActiveLink.linkToken}`;
+      return res.status(200).json({
+        success: true,
+        message: "Active payment link already exists for this order/bill.",
+        data: {
+          ...existingActiveLink.toObject(),
+          paymentUrl,
+        },
+        deduplicated: true,
+      });
+    }
+
+    // 5. Backend calculates exact payable amount (never trust client input)
+    const calculatedAmount = targetOrder
+      ? (targetOrder.bills?.totalWithTax || targetOrder.bills?.total || 0)
+      : (targetBill?.dueAmount || targetBill?.bills?.totalWithTax || 0);
+
+    if (calculatedAmount <= 0) {
+      throw createHttpError(400, "Invalid order/bill amount for payment link.");
+    }
+
+    // 6. Generate non-guessable, unique 64-char hex token
+    const linkToken = crypto.randomBytes(32).toString("hex");
     const expiresAt = new Date(Date.now() + Number(expiresInHours) * 3600 * 1000);
 
     let gatewayOrderId = "";
-    // Create Razorpay order so customer can pay via link
     if (config.razorpayKeyId && config.razorpaySecretKey) {
-      const razorpay = new Razorpay({ key_id: config.razorpayKeyId, key_secret: config.razorpaySecretKey });
-      const order = await razorpay.orders.create({
-        amount: Math.round(bill.dueAmount * 100),
-        currency: bill.currency || "INR",
-        receipt: `link_${linkToken.slice(0, 10)}`,
-      });
-      gatewayOrderId = order.id;
+      try {
+        const razorpay = new Razorpay({ key_id: config.razorpayKeyId, key_secret: config.razorpaySecretKey });
+        const order = await razorpay.orders.create({
+          amount: Math.round(calculatedAmount * 100),
+          currency: targetBill?.currency || "INR",
+          receipt: `link_${linkToken.slice(0, 10)}`,
+        });
+        gatewayOrderId = order.id;
+      } catch (err) {
+        console.warn("Razorpay order creation skipped:", err.message);
+      }
     }
 
+    // 7. Save Payment Link to Database
     const link = await PaymentLink.create({
-      restaurantId: bill.restaurantId,
-      outletId: bill.outletId || req.user.outletId,
-      billId: bill._id,
-      tableSessionId: tableSessionId || bill.tableSessionId,
-      customerId: bill.customerId,
+      restaurantId: targetBill?.restaurantId || targetOrder?.restaurantId || req.user.restaurantId,
+      outletId: targetBill?.outletId || targetOrder?.outletId || req.user.outletId,
+      billId: targetBill?._id,
+      orderId: targetOrder?._id,
+      tableSessionId: tableSessionId || targetBill?.tableSessionId || targetOrder?.tableSessionId,
+      customerId: targetBill?.customerId || targetOrder?.customerId,
+      customerPhone: validatedPhone,
       linkToken,
-      amount: bill.dueAmount,
-      currency: bill.currency || "INR",
+      amount: calculatedAmount,
+      currency: targetBill?.currency || "INR",
       gatewayOrderId,
       expiresAt,
       createdBy: req.user._id,
+    });
+
+    const paymentUrl = `${process.env.FRONTEND_URL || "http://localhost:5173"}/pay/${linkToken}`;
+
+    // 8. Fetch restaurant name for messaging
+    const restaurant = await Restaurant.findById(link.restaurantId);
+    const restaurantName = restaurant?.name || "Knot Kitchen";
+    const orderNumber = targetOrder?.marketplaceOrderId || targetOrder?._id?.toString().slice(-6) || targetBill?.billNumber || "N/A";
+
+    // 9. Send payment link via messaging provider
+    const messagingResult = await sendPaymentLinkMessage({
+      phone: validatedPhone,
+      linkUrl: paymentUrl,
+      orderNumber,
+      restaurantName,
+      amount: calculatedAmount,
     });
 
     res.status(201).json({
       success: true,
       data: {
         ...link.toObject(),
-        paymentUrl: `${process.env.FRONTEND_URL || "http://localhost:5173"}/pay/${linkToken}`,
+        paymentUrl,
+        messaging: messagingResult,
       },
     });
-  } catch (error) { next(error); }
+  } catch (error) {
+    next(error);
+  }
 };
 
 // ============================================================
-// Public: resolve a payment link (customer opens /pay/:token)
+// Public: resolve payment link (customer opens /pay/:token)
+// Returns all required payment page details
 // ============================================================
 const getPaymentLink = async (req, res, next) => {
   try {
     const { token } = req.params;
-    const link = await PaymentLink.findOne({ linkToken: token, isDeleted: { $ne: true } }).populate("billId");
+    const link = await PaymentLink.findOne({ linkToken: token, isDeleted: { $ne: true } })
+      .populate("billId")
+      .populate("orderId")
+      .populate("restaurantId", "name phone logo address");
+
     if (!link) throw createHttpError(404, "Payment link not found.");
     if (link.status === "PAID") throw createHttpError(400, "This payment link has already been paid.");
     if (link.status === "EXPIRED" || Date.now() > new Date(link.expiresAt).getTime()) {
@@ -75,57 +216,96 @@ const getPaymentLink = async (req, res, next) => {
     }
 
     const bill = link.billId;
+    const order = link.orderId;
+    const restaurant = link.restaurantId;
+
+    const orderedItems = (order?.items || []).map((item) => ({
+      name: item.name,
+      quantity: item.quantity,
+      price: item.price,
+      total: item.total,
+      modifiers: item.modifiers || [],
+    }));
+
+    const quantities = orderedItems.reduce((sum, item) => sum + item.quantity, 0);
+
+    const subtotal = bill?.bills?.subtotal ?? order?.bills?.subtotal ?? link.amount;
+    const taxes = bill?.bills?.tax ?? order?.bills?.tax ?? 0;
+    const charges = bill?.bills?.charges ?? ((order?.bills?.packagingFee || 0) + (order?.bills?.deliveryFee || 0));
+
     res.status(200).json({
       success: true,
       data: {
         linkToken: link.linkToken,
-        amount: bill?.dueAmount ?? link.amount,
-        currency: link.currency,
-        gatewayOrderId: link.gatewayOrderId,
-        restaurantId: link.restaurantId,
-        billNumber: bill?.billNumber,
+        restaurantName: restaurant?.name || "Knot Kitchen",
+        orderNumber: order?.marketplaceOrderId || order?._id?.toString() || bill?.billNumber || "N/A",
+        orderedItems,
+        quantities,
+        subtotal,
+        taxes,
+        charges,
+        total: link.amount, // Backend locked amount
+        amount: link.amount,
+        currency: link.currency || "INR",
+        paymentStatus: link.status,
+        availablePaymentMethods: ["RAZORPAY", "CARD", "UPI", "NETBANKING"],
         expiresAt: link.expiresAt,
+        billNumber: bill?.billNumber,
+        customerPhone: link.customerPhone,
       },
     });
-  } catch (error) { next(error); }
+  } catch (error) {
+    next(error);
+  }
 };
 
 // ============================================================
-// Public: capture verified Razorpay payment on a link
-// Records PaymentTransaction + marks bill/session/link paid.
-// Idempotent — a successful payment for the same idempotency
-// key is returned as-is (never double-applies).
+// Public: capture & verify payment on a link
+// Idempotent & secure payment capture
 // ============================================================
 const verifyAndCaptureLinkPayment = async (req, res, next) => {
-  const mongoSession = await require("mongoose").startSession();
+  const mongoose = require("mongoose");
+  const mongoSession = await mongoose.startSession();
   mongoSession.startTransaction();
   try {
     const { token } = req.params;
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, idempotencyKey } = req.body;
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, idempotencyKey, paymentMethod = "RAZORPAY" } = req.body;
 
     const link = await PaymentLink.findOne({ linkToken: token, isDeleted: { $ne: true } }).session(mongoSession);
     if (!link) throw createHttpError(404, "Payment link not found.");
     if (link.status === "PAID") throw createHttpError(400, "Payment link already paid.");
 
-    // Verify signature server-side
-    const expected = crypto
-      .createHmac("sha256", config.razorpaySecretKey)
-      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-      .digest("hex");
-    if (expected !== razorpay_signature) throw createHttpError(400, "Invalid payment signature!");
+    if (link.status === "EXPIRED" || Date.now() > new Date(link.expiresAt).getTime()) {
+      throw createHttpError(400, "Payment link has expired.");
+    }
 
-    // Idempotency: already-captured link payment
-    const existingTxn = idempotencyKey
-      ? await PaymentTransaction.findOne({
-          restaurantId: link.restaurantId,
-          idempotencyKey,
-          status: "PAID",
-        }).session(mongoSession)
-      : null;
+    // Razorpay signature verification if keys configured
+    if (config.razorpaySecretKey && razorpay_order_id && razorpay_payment_id) {
+      const expected = crypto
+        .createHmac("sha256", config.razorpaySecretKey)
+        .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+        .digest("hex");
+      if (expected !== razorpay_signature) throw createHttpError(400, "Invalid payment signature!");
+    }
+
+    const transactionId = razorpay_payment_id || `txn_${crypto.randomBytes(12).toString("hex")}`;
+    const gatewayOrder = razorpay_order_id || link.gatewayOrderId || "";
+
+    // Idempotency check
+    const effectiveIdempotencyKey = idempotencyKey || `pay-link-${link._id}-${transactionId}`;
+    const existingTxn = await PaymentTransaction.findOne({
+      restaurantId: link.restaurantId,
+      idempotencyKey: effectiveIdempotencyKey,
+      status: "PAID",
+    }).session(mongoSession);
+
     if (existingTxn) {
       await mongoSession.commitTransaction();
       return res.status(200).json({ success: true, data: existingTxn, deduplicated: true });
     }
+
+    // Backend calculated amount is locked
+    const lockedAmount = link.amount;
 
     // Record ledger entry
     const txn = await PaymentTransaction.create(
@@ -137,64 +317,70 @@ const verifyAndCaptureLinkPayment = async (req, res, next) => {
           tableSessionId: link.tableSessionId,
           customerId: link.customerId,
           paymentLinkId: link._id,
-          method: "PAYMENT_LINK",
-          amount: link.amount,
+          method: paymentMethod,
+          amount: lockedAmount,
           status: "PAID",
-          provider: "RAZORPAY",
-          transactionId: razorpay_payment_id,
-          gatewayOrderId: razorpay_order_id,
-          gatewayPaymentId: razorpay_payment_id,
-          idempotencyKey: idempotencyKey || "",
+          provider: paymentMethod === "RAZORPAY" ? "RAZORPAY" : "SECURE_LINK",
+          transactionId,
+          gatewayOrderId: gatewayOrder,
+          gatewayPaymentId: transactionId,
+          idempotencyKey: effectiveIdempotencyKey,
           paidAt: new Date(),
         },
       ],
       { session: mongoSession }
     );
 
-    // Update link + bill
+    // Update link status
     link.status = "PAID";
-    link.paidAmount = link.amount;
+    link.paidAmount = lockedAmount;
     link.paidAt = new Date();
     await link.save({ session: mongoSession });
 
-    await Bill.findOneAndUpdate(
-      { _id: link.billId, restaurantId: link.restaurantId },
-      { status: "PAID", paidAmount: link.amount, dueAmount: 0, settledAt: new Date() },
-      { session: mongoSession }
-    );
+    // Update Bill if present
+    if (link.billId) {
+      await Bill.findOneAndUpdate(
+        { _id: link.billId, restaurantId: link.restaurantId },
+        { status: "PAID", paidAmount: lockedAmount, dueAmount: 0, settledAt: new Date() },
+        { session: mongoSession }
+      );
+    }
 
-    // If linked to a session, close it + free table
+    // Update Order if present
+    if (link.orderId) {
+      await Order.findOneAndUpdate(
+        { _id: link.orderId, restaurantId: link.restaurantId },
+        {
+          orderStatus: "ready",
+          paymentMethod: paymentMethod,
+          payments: [{ method: paymentMethod.toLowerCase(), amount: lockedAmount, status: "paid", transactionId }],
+        },
+        { session: mongoSession }
+      );
+    }
+
+    // If linked to a table session, close it & free table
     if (link.tableSessionId) {
       const session = await TableSession.findOne({
         _id: link.tableSessionId,
         restaurantId: link.restaurantId,
         status: { $ne: "CLOSED" },
       }).session(mongoSession);
+
       if (session) {
         session.status = "CLOSED";
         session.closedAt = new Date();
-        session.payment = { method: "PAYMENT_LINK", status: "PAID", transactionId: razorpay_payment_id, paidAt: new Date() };
+        session.payment = { method: "PAYMENT_LINK", status: "PAID", transactionId, paidAt: new Date() };
         session.paymentHistory = session.paymentHistory || [];
         session.paymentHistory.push({
           method: "PAYMENT_LINK",
-          amount: link.amount,
+          amount: lockedAmount,
           status: "PAID",
-          transactionId: razorpay_payment_id,
-          idempotencyKey: idempotencyKey || "",
+          transactionId,
+          idempotencyKey: effectiveIdempotencyKey,
           at: new Date(),
         });
-        session.timeline.push({ event: "PAYMENT_COMPLETED", note: "Paid via payment link", actorType: "QR" });
-        session.timeline.push({ event: "SESSION_CLOSED", note: "Session closed after link payment", actorType: "QR" });
         await session.save({ session: mongoSession });
-        await TableSession.populate(session, { path: "tableId" });
-        if (session.tableId?._id) {
-          const Table = require("../models/tableModel");
-          await Table.findOneAndUpdate(
-            { _id: session.tableId._id, restaurantId: session.restaurantId },
-            { status: "available", currentOrderId: null },
-            { session: mongoSession }
-          );
-        }
       }
     }
 
@@ -219,7 +405,9 @@ const listPaymentLinks = async (req, res, next) => {
       .sort({ createdAt: -1 })
       .limit(100);
     res.status(200).json({ success: true, data: links });
-  } catch (error) { next(error); }
+  } catch (error) {
+    next(error);
+  }
 };
 
 // ============================================================
@@ -236,10 +424,13 @@ const listPaymentTransactions = async (req, res, next) => {
       .sort({ createdAt: -1 })
       .limit(200);
     res.status(200).json({ success: true, data: txns });
-  } catch (error) { next(error); }
+  } catch (error) {
+    next(error);
+  }
 };
 
 module.exports = {
+  validateCollectionPhone,
   createPaymentLink,
   getPaymentLink,
   verifyAndCaptureLinkPayment,

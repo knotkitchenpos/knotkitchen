@@ -291,7 +291,7 @@ const Register = () => {
               whileHover={{ scale: 1.02 }}
               whileTap={{ scale: 0.98 }}
               type="submit"
-              disabled={loading || otp.length !== 6 || !password}
+              disabled={loading || otp.trim().length !== 6}
               className="btn-primary flex-1 !py-3 text-base disabled:opacity-50"
             >
               {loading ? "Verifying..." : "Complete Signup"}

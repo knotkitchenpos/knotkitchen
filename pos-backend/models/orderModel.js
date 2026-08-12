@@ -31,13 +31,13 @@ const paymentSchema = new mongoose.Schema({
 
 const orderSchema = new mongoose.Schema({
   customerDetails: {
-    name: { type: String, required: true },
-    phone: { type: String, required: true },
+    name: { type: String, default: "" },
+    phone: { type: String, default: "" },
     guests: { type: Number, default: 1 },
   },
   orderType: {
     type: String,
-    enum: ["dine-in", "takeaway", "delivery", "online", "marketplace"],
+    enum: ["dine-in", "takeaway", "delivery", "online", "marketplace", "collection"],
     default: "dine-in",
   },
   deliveryAddress: {
