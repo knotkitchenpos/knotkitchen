@@ -29,6 +29,10 @@ export const getMeApi = () => api.get("/admin/me");
 // Stats
 export const getStatsApi = () => api.get("/admin/stats");
 
+// Stores
+export const createStoreApi = (data) => api.post("/admin/stores", data);
+export const getStoresApi = () => api.get("/admin/stores");
+
 // Restaurants
 export const getRestaurantsApi = () => api.get("/admin/restaurants");
 export const getRestaurantApi = (id) => api.get(`/admin/restaurants/${id}`);

@@ -14,6 +14,10 @@ router.get("/admin/me", isAdminVerified, getMe);
 // Global stats (dashboard)
 router.get("/admin/stats", isAdminVerified, dataController.getGlobalStats);
 
+// Stores (Onboarding)
+router.post("/admin/stores", isAdminVerified, restaurantController.createStore);
+router.get("/admin/stores", isAdminVerified, restaurantController.getAllStores);
+
 // Restaurants
 router.get("/admin/restaurants", isAdminVerified, restaurantController.getAllRestaurants);
 router.get("/admin/restaurants/:id", isAdminVerified, restaurantController.getRestaurantDetail);

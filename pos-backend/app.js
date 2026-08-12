@@ -14,7 +14,7 @@ connectDB();
 // Middlewares
 app.use(cors({
     credentials: true,
-    origin: ['http://localhost:5173']
+    origin: true
 }))
 app.use(express.json()); // parse incoming request in json format
 app.use(cookieParser())
@@ -43,6 +43,7 @@ app.use("/api/analytics", require("./routes/analyticsRoute"));
 app.use("/api/notification", require("./routes/notificationRoute"));
 app.use("/api/offline", require("./routes/offlineRoute"));
 app.use("/api/plugin", require("./routes/pluginRoute"));
+app.use("/api/public", require("./routes/publicStoreRoute"));
 
 // EPOS table session + customer + payment link routes
 app.use("/api/table-session", require("./routes/tableSessionRoute"));

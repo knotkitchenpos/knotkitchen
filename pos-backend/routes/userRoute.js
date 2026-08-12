@@ -5,9 +5,17 @@ const {
   requestPasswordReset, resetPassword,
   setupMFA, verifyMFA, disableMFA,
   getSessions, revokeSession,
+  validateStoreId, validateStoreOwner, sendStoreOtp, verifyStoreOtp, completeStoreSignup,
 } = require("../controllers/userController");
 const { isVerifiedUser } = require("../middlewares/tokenVerification");
 const router = express.Router();
+
+// Store Signup & Verification Endpoints
+router.route("/store/validate-id").post(validateStoreId);
+router.route("/store/validate-owner").post(validateStoreOwner);
+router.route("/store/send-otp").post(sendStoreOtp);
+router.route("/store/verify-otp").post(verifyStoreOtp);
+router.route("/store/complete-signup").post(completeStoreSignup);
 
 // Auth
 router.route("/register").post(register);

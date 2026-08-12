@@ -5,7 +5,7 @@ import {
   useLocation,
   Navigate,
 } from "react-router-dom";
-import { Home, Auth, Orders, Tables, Menu, Dashboard, KDS, OrderOnline, PaymentLink } from "./pages";
+import { Home, Auth, Orders, Tables, Menu, Dashboard, KDS, OrderOnline, PaymentLink, TakeawayWebsite } from "./pages";
 import Header from "./components/shared/Header";
 import Sidebar from "./components/shared/Sidebar";
 import { useState } from "react";
@@ -17,7 +17,9 @@ import MarketplaceOrderPopup from "./components/dashboard/MarketplaceOrderPopup"
 function Layout() {
   const isLoading = useLoadData();
   const location = useLocation();
+  const isTakeawayWebsite = location.pathname.startsWith("/store/");
   const hideHeaderRoutes = ["/auth", "/order", "/pay"];
+  const shouldHideHeader = hideHeaderRoutes.includes(location.pathname) || isTakeawayWebsite;
   const { isAuth } = useSelector(state => state.user);
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -77,13 +79,14 @@ function Layout() {
       <Route path="/kds" element={<ProtectedRoutes><KDS /></ProtectedRoutes>} />
       <Route path="/order" element={<OrderOnline />} />
       <Route path="/pay/:token" element={<PaymentLink />} />
+      <Route path="/store/:storeId" element={<TakeawayWebsite />} />
       <Route path="*" element={<div>Not Found</div>} />
     </Routes>
   );
 
   return (
-    <div className={`app-shell ${hideHeaderRoutes.includes(location.pathname) ? "" : "with-sidebar"}`}>
-      {!hideHeaderRoutes.includes(location.pathname) ? (
+    <div className={`app-shell ${shouldHideHeader ? "" : "with-sidebar"}`}>
+      {!shouldHideHeader ? (
         <>
           <Sidebar mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
           <div className="app-main">

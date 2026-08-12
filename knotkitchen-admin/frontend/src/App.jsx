@@ -3,6 +3,7 @@ import { useAuth } from "./context/AuthContext";
 import Layout from "./components/Layout";
 import Login from "./pages/Login";
 import Dashboard from "./pages/Dashboard";
+import Stores from "./pages/Stores";
 import Restaurants from "./pages/Restaurants";
 import RestaurantDetail from "./pages/RestaurantDetail";
 import Orders from "./pages/Orders";
@@ -39,6 +40,7 @@ export default function App() {
         }
       >
         <Route index element={<Dashboard />} />
+        <Route path="stores" element={<Stores />} />
         <Route path="restaurants" element={<Restaurants />} />
         <Route path="restaurants/:id" element={<RestaurantDetail />} />
         <Route path="orders" element={<Orders />} />

@@ -2,6 +2,8 @@ const createHttpError = require("http-errors");
 const User = require("../models/userModel");
 const ProductId = require("../models/productIdModel");
 const Restaurant = require("../models/restaurantModel");
+const Store = require("../models/storeModel");
+const otpService = require("../services/otpService");
 const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
@@ -654,6 +656,253 @@ const revokeSession = async (req, res, next) => {
   }
 };
 
+// ===== Store Signup & Phone Auth =====
+const validateStoreId = async (req, res, next) => {
+  try {
+    const { storeId } = req.body;
+    if (!storeId || !/^\d{6}$/.test(String(storeId).trim())) {
+      const error = createHttpError(400, "Store ID must be a 6-digit number.");
+      return next(error);
+    }
+
+    const store = await Store.findOne({
+      storeId: String(storeId).trim(),
+      isDeleted: { $ne: true },
+    });
+
+    if (!store) {
+      const error = createHttpError(404, "Invalid Store ID");
+      return next(error);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Store ID is valid",
+      data: {
+        storeId: store.storeId,
+        storeName: store.storeName,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const validateStoreOwner = async (req, res, next) => {
+  try {
+    const { storeId, phone } = req.body;
+    if (!storeId || !phone) {
+      const error = createHttpError(400, "Store ID and Phone Number are required.");
+      return next(error);
+    }
+
+    const store = await Store.findOne({
+      storeId: String(storeId).trim(),
+      isDeleted: { $ne: true },
+    });
+
+    if (!store) {
+      const error = createHttpError(404, "Invalid Store ID");
+      return next(error);
+    }
+
+    const cleanPhone = String(phone).replace(/\D/g, "");
+    const cleanStorePhone = String(store.ownerPhone).replace(/\D/g, "");
+
+    if (cleanPhone !== cleanStorePhone) {
+      const error = createHttpError(400, "Phone number does not match the Store ID.");
+      return next(error);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Store ID and Phone Number match successfully.",
+      data: {
+        storeId: store.storeId,
+        storeName: store.storeName,
+        ownerName: store.ownerName,
+        ownerPhone: store.ownerPhone,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const sendStoreOtp = async (req, res, next) => {
+  try {
+    const { storeId, phone } = req.body;
+    if (!storeId || !phone) {
+      const error = createHttpError(400, "Store ID and Phone Number are required.");
+      return next(error);
+    }
+
+    const store = await Store.findOne({
+      storeId: String(storeId).trim(),
+      isDeleted: { $ne: true },
+    });
+
+    if (!store) {
+      const error = createHttpError(404, "Invalid Store ID");
+      return next(error);
+    }
+
+    const cleanPhone = String(phone).replace(/\D/g, "");
+    const cleanStorePhone = String(store.ownerPhone).replace(/\D/g, "");
+
+    if (cleanPhone !== cleanStorePhone) {
+      const error = createHttpError(400, "Phone number does not match the Store ID.");
+      return next(error);
+    }
+
+    const result = await otpService.createAndSendOtp({
+      storeId: store.storeId,
+      phone: cleanPhone,
+      purpose: "signup",
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "OTP sent successfully to owner phone number.",
+      data: {
+        storeId: store.storeId,
+        phone: cleanPhone,
+        otp: result.otp,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const verifyStoreOtp = async (req, res, next) => {
+  try {
+    const { storeId, phone, otp } = req.body;
+    if (!storeId || !phone || !otp) {
+      const error = createHttpError(400, "Store ID, Phone Number, and OTP are required.");
+      return next(error);
+    }
+
+    const verifyResult = await otpService.verifyOtp({
+      storeId: String(storeId).trim(),
+      phone,
+      otp: String(otp).trim(),
+      purpose: "signup",
+    });
+
+    if (!verifyResult.valid) {
+      const error = createHttpError(400, verifyResult.message || "Invalid or expired OTP.");
+      return next(error);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "OTP verified successfully.",
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const completeStoreSignup = async (req, res, next) => {
+  try {
+    const { storeId, phone, otp, password, name, email, address } = req.body;
+
+    if (!storeId || !phone || !otp || !password) {
+      const error = createHttpError(
+        400,
+        "Store ID, Phone Number, OTP, and Password are required."
+      );
+      return next(error);
+    }
+
+    const verifyResult = await otpService.verifyOtp({
+      storeId: String(storeId).trim(),
+      phone,
+      otp: String(otp).trim(),
+      purpose: "signup",
+    });
+
+    if (!verifyResult.valid) {
+      const error = createHttpError(400, verifyResult.message || "Invalid or expired OTP.");
+      return next(error);
+    }
+
+    const store = await Store.findOne({
+      storeId: String(storeId).trim(),
+      isDeleted: { $ne: true },
+    });
+
+    if (!store) {
+      const error = createHttpError(404, "Invalid Store ID");
+      return next(error);
+    }
+
+    const cleanPhone = String(phone).replace(/\D/g, "");
+    const cleanStorePhone = String(store.ownerPhone).replace(/\D/g, "");
+
+    if (cleanPhone !== cleanStorePhone) {
+      const error = createHttpError(400, "Phone number does not match the Store ID.");
+      return next(error);
+    }
+
+    let restaurant;
+    if (store.restaurantId) {
+      restaurant = await Restaurant.findById(store.restaurantId);
+    }
+
+    if (!restaurant) {
+      restaurant = await Restaurant.create({
+        name: store.storeName,
+        storeId: store.storeId,
+        phone: cleanPhone,
+        address: address || "Default Address",
+        isVerified: true,
+        isApproved: true,
+        subscriptionStatus: "ACTIVE",
+      });
+
+      store.restaurantId = restaurant._id;
+      store.status = "active";
+      await store.save();
+    }
+
+    let user = await User.findOne({
+      phone: cleanPhone,
+      restaurantId: restaurant._id,
+    });
+
+    const hashedPassword = await bcrypt.hash(password, 10);
+
+    if (!user) {
+      user = await User.create({
+        name: name || store.ownerName,
+        phone: cleanPhone,
+        address: address || "Default Address",
+        email: email ? email.toLowerCase() : `${cleanPhone}@knotkitchen.com`,
+        password: hashedPassword,
+        role: "Owner",
+        restaurantId: restaurant._id,
+        productId: `STORE-${store.storeId}`,
+        isVerified: true,
+      });
+    } else {
+      user.password = hashedPassword;
+      await user.save();
+    }
+
+    await signTokensAndSetCookies(user, req, res);
+
+    res.status(201).json({
+      success: true,
+      message: "Restaurant signup completed successfully!",
+      data: user.toSafeJSON(),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   register,
   login,
@@ -669,4 +918,9 @@ module.exports = {
   disableMFA,
   getSessions,
   revokeSession,
+  validateStoreId,
+  validateStoreOwner,
+  sendStoreOtp,
+  verifyStoreOtp,
+  completeStoreSignup,
 };

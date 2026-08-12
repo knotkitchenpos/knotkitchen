@@ -3,7 +3,90 @@ const User = require("../models/userModel");
 const Menu = require("../models/menuModel");
 const Order = require("../models/orderModel");
 const Table = require("../models/tableModel");
+const Store = require("../models/storeModel");
 const createHttpError = require("http-errors");
+
+const generateUniqueStoreId = async () => {
+  let attempts = 0;
+  while (attempts < 100) {
+    const storeId = Math.floor(100000 + Math.random() * 900000).toString();
+    const existing = await Store.findOne({ storeId });
+    if (!existing) return storeId;
+    attempts++;
+  }
+  throw new Error("Failed to generate unique Store ID");
+};
+
+// Admin: Create Store (Onboard Restaurant after agreement)
+const createStore = async (req, res, next) => {
+  try {
+    const { storeName, ownerName, ownerPhone } = req.body;
+
+    if (!storeName || !ownerName || !ownerPhone) {
+      const error = createHttpError(400, "Store Name, Owner Name, and Owner Phone Number are required!");
+      return next(error);
+    }
+
+    const cleanPhone = String(ownerPhone).trim();
+    if (!/^\d{10}$/.test(cleanPhone)) {
+      const error = createHttpError(400, "Owner phone number must be exactly 10 digits!");
+      return next(error);
+    }
+
+    const cleanStoreName = String(storeName).trim();
+    const cleanOwnerName = String(ownerName).trim();
+
+    // Check if store already exists by store name
+    const existingStore = await Store.findOne({ storeName: cleanStoreName, isDeleted: { $ne: true } });
+    if (existingStore) {
+      const error = createHttpError(400, "A store with this name already exists!");
+      return next(error);
+    }
+
+    // Check if owner phone is already associated with another store
+    const existingPhone = await Store.findOne({ ownerPhone: cleanPhone, isDeleted: { $ne: true } });
+    if (existingPhone) {
+      const error = createHttpError(400, "This owner phone number is already associated with another store!");
+      return next(error);
+    }
+
+    // Generate unique 6-digit Store ID automatically
+    const storeId = await generateUniqueStoreId();
+
+    const newStore = await Store.create({
+      storeId,
+      storeName: cleanStoreName,
+      ownerName: cleanOwnerName,
+      ownerPhone: cleanPhone,
+      status: "pending",
+    });
+
+    res.status(201).json({
+      success: true,
+      message: "Store created successfully!",
+      data: {
+        storeId: newStore.storeId,
+        storeName: newStore.storeName,
+        ownerName: newStore.ownerName,
+        ownerPhone: newStore.ownerPhone,
+        status: newStore.status,
+        createdAt: newStore.createdAt,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Admin: Get all stores
+const getAllStores = async (req, res, next) => {
+  try {
+    const stores = await Store.find({ isDeleted: { $ne: true } }).sort({ createdAt: -1 });
+    res.status(200).json({ success: true, data: stores });
+  } catch (error) {
+    next(error);
+  }
+};
 
 // Overview: all registered restaurants with owner + key stats
 const getAllRestaurants = async (req, res, next) => {
@@ -129,4 +212,11 @@ const updateRestaurant = async (req, res, next) => {
   }
 };
 
-module.exports = { getAllRestaurants, getRestaurantDetail, toggleRestaurantStatus, updateRestaurant };
+module.exports = {
+  createStore,
+  getAllStores,
+  getAllRestaurants,
+  getRestaurantDetail,
+  toggleRestaurantStatus,
+  updateRestaurant,
+};

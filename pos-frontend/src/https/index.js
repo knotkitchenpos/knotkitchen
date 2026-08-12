@@ -8,6 +8,13 @@ export const register = (data) => axiosWrapper.post("/api/user/register", data);
 export const getUserData = () => axiosWrapper.get("/api/user");
 export const logout = () => axiosWrapper.post("/api/user/logout");
 
+// Store Phone Signup Endpoints
+export const validateStoreId = (data) => axiosWrapper.post("/api/user/store/validate-id", data);
+export const validateStoreOwner = (data) => axiosWrapper.post("/api/user/store/validate-owner", data);
+export const sendStoreOtp = (data) => axiosWrapper.post("/api/user/store/send-otp", data);
+export const verifyStoreOtp = (data) => axiosWrapper.post("/api/user/store/verify-otp", data);
+export const completeStoreSignup = (data) => axiosWrapper.post("/api/user/store/complete-signup", data);
+
 // Table Endpoints
 export const addTable = (data) => axiosWrapper.post("/api/table/", data);
 export const getTables = () => axiosWrapper.get("/api/table");
