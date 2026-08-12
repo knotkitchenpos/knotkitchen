@@ -66,3 +66,12 @@ module.exports = async (req, res) => {
   await initialize();
   return app(req, res);
 };
+
+if (require.main === module) {
+  const PORT = process.env.PORT || 5000;
+  initialize().then(() => {
+    app.listen(PORT, () => {
+      console.log(`☑️ Admin Backend listening on port ${PORT}`);
+    });
+  });
+}
