@@ -30,7 +30,7 @@ export default function KDS() {
   const orders = data?.data?.data || [];
 
   const badge = (status) => {
-    const cls = C[status] || "bg-slate-100 border-slate-300 text-slate-700";
+    const cls = C[status] || "bg-surface border-border text-content-secondary";
     return (
       <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border text-xs font-bold ${cls}`}>
         <span className="w-1.5 h-1.5 rounded-full bg-current opacity-70" />
@@ -67,7 +67,7 @@ export default function KDS() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {orders.map((o) => (
             <div key={o._id} className="bg-surface-secondary rounded-xl border border-border shadow-card overflow-hidden">
-              <div className={`px-4 py-3 border-b ${C[o.status] || "bg-slate-100/80 border-slate-200"}`}>
+              <div className={`px-4 py-3 border-b border-border ${C[o.status] || "bg-surface border-border"}`}>
                 <div className="flex items-center justify-between">
                   <span className="font-bold text-content">#{o.orderNumber || o._id.slice(-6)}</span>
                   {badge(o.status)}

@@ -10,21 +10,37 @@ const useLoadData = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
+
     const fetchUser = async () => {
       try {
-        const { data } = await getUserData();
-        const { _id, name, address, email, phone, role } = data.data;
-        dispatch(setUser({ _id, name, address, email, phone, role }));
+        const res = await getUserData();
+        if (res && res.data && res.data.data) {
+          const { _id, name, address, email, phone, role } = res.data.data;
+          dispatch(setUser({ _id, name, address, email, phone, role }));
+        }
       } catch (error) {
         dispatch(removeUser());
-        navigate("/auth");
-        console.log(error);
-      }finally{
-        setIsLoading(false);
+        if (
+          window.location.pathname !== "/auth" &&
+          !window.location.pathname.startsWith("/order") &&
+          !window.location.pathname.startsWith("/pay") &&
+          !window.location.pathname.startsWith("/store")
+        ) {
+          navigate("/auth");
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoading(false);
+        }
       }
     };
 
     fetchUser();
+
+    return () => {
+      isMounted = false;
+    };
   }, [dispatch, navigate]);
 
   return isLoading;

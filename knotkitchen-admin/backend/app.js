@@ -11,12 +11,27 @@ const globalErrorHandler = require("./middlewares/globalErrorHandler");
 const app = express();
 
 // Security / parsing middleware
+const allowedOrigins = process.env.ADMIN_FRONTEND_ORIGIN
+  ? process.env.ADMIN_FRONTEND_ORIGIN.split(",").map((url) => url.trim().replace(/\/$/, ""))
+  : ["http://localhost:5174", "http://localhost:5173"];
+
 app.use(
   cors({
-    origin:
-      config.nodeEnv === "production"
-        ? process.env.ADMIN_FRONTEND_ORIGIN
-        : "http://localhost:5173",
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      const cleanOrigin = origin.replace(/\/$/, "");
+
+      if (
+        config.nodeEnv !== "production" ||
+        allowedOrigins.includes(cleanOrigin) ||
+        allowedOrigins.length === 0 ||
+        cleanOrigin.endsWith(".vercel.app")
+      ) {
+        return callback(null, true);
+      }
+
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
+    },
     credentials: true,
   })
 );
@@ -68,7 +83,7 @@ module.exports = async (req, res) => {
 };
 
 if (require.main === module) {
-  const PORT = process.env.PORT || 5000;
+  const PORT = config.port || process.env.PORT || 4000;
   initialize().then(() => {
     app.listen(PORT, () => {
       console.log(`☑️ Admin Backend listening on port ${PORT}`);

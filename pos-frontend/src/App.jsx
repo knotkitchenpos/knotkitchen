@@ -85,7 +85,7 @@ function Layout() {
   );
 
   return (
-    <div className={`app-shell ${shouldHideHeader ? "" : "with-sidebar"}`}>
+    <div className={`app-shell ${shouldHideHeader ? "auth-shell overflow-y-auto" : "with-sidebar"}`}>
       {!shouldHideHeader ? (
         <>
           <Sidebar mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
@@ -95,7 +95,7 @@ function Layout() {
           </div>
         </>
       ) : (
-        <main>{routes}</main>
+        <main className="w-full min-h-screen flex flex-col">{routes}</main>
       )}
       {isAuth && <MarketplaceOrderPopup />}
     </div>

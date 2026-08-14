@@ -32,6 +32,9 @@ const seedSuperAdmin = async () => {
       existingAdmin.isActive = true;
       await existingAdmin.save();
       console.log(`🔄 Reset password for super admin: ${email}`);
+    } else if (!existingAdmin.isActive) {
+      existingAdmin.isActive = true;
+      await existingAdmin.save();
     }
   } catch (error) {
     console.error("❌ Error seeding super admin:", error.message);
@@ -70,11 +73,14 @@ const login = async (req, res, next) => {
     await admin.save();
 
     const token = generateAdminToken(admin);
+    const isProduction = config.nodeEnv === "production";
+    const sameSiteMode = isProduction ? (process.env.SAME_SITE_COOKIE || "none") : "lax";
+
     res.cookie("adminToken", token, {
       maxAge: 1000 * 60 * 60 * 2, // 2h
       httpOnly: true,
-      sameSite: "lax",
-      secure: config.nodeEnv === "production",
+      sameSite: sameSiteMode,
+      secure: isProduction,
     });
 
     res.status(200).json({ success: true, message: "Admin login successful!", data: admin.toSafeJSON() });
@@ -85,7 +91,14 @@ const login = async (req, res, next) => {
 
 const logout = async (req, res, next) => {
   try {
-    res.clearCookie("adminToken");
+    const isProduction = config.nodeEnv === "production";
+    const sameSiteMode = isProduction ? (process.env.SAME_SITE_COOKIE || "none") : "lax";
+
+    res.clearCookie("adminToken", {
+      httpOnly: true,
+      sameSite: sameSiteMode,
+      secure: isProduction,
+    });
     res.status(200).json({ success: true, message: "Admin logged out!" });
   } catch (error) {
     next(error);

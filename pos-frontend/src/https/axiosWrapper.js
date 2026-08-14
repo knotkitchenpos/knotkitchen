@@ -26,11 +26,14 @@ const flushQueue = (error = null) => {
 axiosWrapper.interceptors.response.use(
   (response) => response,
   async (error) => {
-    const originalRequest = error.config;
+    const originalRequest = error?.config;
+    const url = originalRequest?.url || "";
     const isAuthEndpoint =
-      originalRequest.url.includes("/api/user/login") ||
-      originalRequest.url.includes("/api/user/register") ||
-      originalRequest.url.includes("/api/user/refresh");
+      url.includes("/api/user/login") ||
+      url.includes("/api/user/register") ||
+      url.includes("/api/user/refresh") ||
+      url === "/api/user" ||
+      url.endsWith("/api/user");
 
     if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
       if (isRefreshing) {

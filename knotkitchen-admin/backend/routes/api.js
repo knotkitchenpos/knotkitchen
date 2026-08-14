@@ -15,8 +15,11 @@ router.get("/admin/me", isAdminVerified, getMe);
 router.get("/admin/stats", isAdminVerified, dataController.getGlobalStats);
 
 // Stores (Onboarding)
+router.post("/admin/stores/send-otp", isAdminVerified, restaurantController.sendStoreCreationOtp);
 router.post("/admin/stores", isAdminVerified, restaurantController.createStore);
 router.get("/admin/stores", isAdminVerified, restaurantController.getAllStores);
+router.patch("/admin/stores/:id/status", isAdminVerified, restaurantController.updateStoreStatus);
+router.delete("/admin/stores/:id", isAdminVerified, restaurantController.deleteStore);
 
 // Restaurants
 router.get("/admin/restaurants", isAdminVerified, restaurantController.getAllRestaurants);

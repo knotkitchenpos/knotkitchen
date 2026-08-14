@@ -82,6 +82,7 @@ const userSchema = new mongoose.Schema(
     sessions: [sessionSchema],
 
     // ===== RBAC / Organization =====
+    storeId: { type: String },
     restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: "Restaurant" },
     outletId: { type: mongoose.Schema.Types.ObjectId, ref: "Outlet" },
     productId: { type: mongoose.Schema.Types.ObjectId, ref: "ProductId" },
@@ -114,8 +115,12 @@ userSchema.methods.toSafeJSON = function () {
   const obj = this.toObject();
   delete obj.password;
   delete obj.sessions;
-  delete obj.mfa.secret;
-  delete obj.mfa.backupCodes;
+  delete obj.emailVerificationToken;
+  delete obj.resetPasswordToken;
+  if (obj.mfa) {
+    delete obj.mfa.secret;
+    delete obj.mfa.backupCodes;
+  }
   return obj;
 };
 

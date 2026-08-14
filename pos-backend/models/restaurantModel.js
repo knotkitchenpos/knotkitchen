@@ -36,7 +36,7 @@ const restaurantSchema = new mongoose.Schema(
     address: { type: addressSchema, default: () => ({}) },
     branding: { type: brandingSchema, default: () => ({}) },
     ownerId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-    storeId: { type: String, index: true },
+    storeId: { type: String, unique: true, index: true },
     productId: { type: mongoose.Schema.Types.ObjectId, ref: "ProductId" },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },

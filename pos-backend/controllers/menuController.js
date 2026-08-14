@@ -4,7 +4,10 @@ const mongoose = require("mongoose");
 
 const getMenus = async (req, res, next) => {
   try {
-    const menus = await Menu.find({ createdBy: req.user._id });
+    const filter = req.user?.restaurantId
+      ? { $or: [{ restaurantId: req.user.restaurantId }, { createdBy: req.user._id }] }
+      : { createdBy: req.user._id };
+    const menus = await Menu.find(filter);
     res.status(200).json({ success: true, data: menus });
   } catch (error) {
     next(error);

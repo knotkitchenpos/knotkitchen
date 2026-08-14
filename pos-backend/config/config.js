@@ -2,7 +2,7 @@ require("dotenv").config();
 
 const config = Object.freeze({
     port: process.env.PORT || 3000,
-    databaseURI: process.env.MONGODB_URI || "mongodb://localhost:27017/pos-db",
+    databaseURI: process.env.MONGODB_URI || process.env.MONGO_URI || "mongodb://127.0.0.1:27017/knotkitchen",
     nodeEnv: process.env.NODE_ENV || "development",
     accessTokenSecret: process.env.JWT_SECRET || "knotkitchen-secret-key-2024-pos-system",
     refreshTokenSecret: process.env.REFRESH_TOKEN_SECRET || "knotkitchen-refresh-secret-2024-pos-system",

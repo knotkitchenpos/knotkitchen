@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const api = axios.create({
-  baseURL: "/api",
+  baseURL: import.meta.env.VITE_API_BASE_URL || "/api",
   withCredentials: true,
 });
 
@@ -30,8 +30,11 @@ export const getMeApi = () => api.get("/admin/me");
 export const getStatsApi = () => api.get("/admin/stats");
 
 // Stores
+export const sendStoreOtpApi = (data) => api.post("/admin/stores/send-otp", data);
 export const createStoreApi = (data) => api.post("/admin/stores", data);
 export const getStoresApi = () => api.get("/admin/stores");
+export const updateStoreStatusApi = (id, data) => api.patch(`/admin/stores/${id}/status`, data);
+export const deleteStoreApi = (id) => api.delete(`/admin/stores/${id}`);
 
 // Restaurants
 export const getRestaurantsApi = () => api.get("/admin/restaurants");

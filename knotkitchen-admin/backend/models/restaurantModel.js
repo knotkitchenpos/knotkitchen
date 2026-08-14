@@ -35,7 +35,8 @@ const restaurantSchema = new mongoose.Schema(
     timezone: { type: String, default: "Asia/Kolkata" },
     address: { type: addressSchema, default: () => ({}) },
     branding: { type: brandingSchema, default: () => ({}) },
-    ownerId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true },
+    ownerId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    storeId: { type: String, unique: true, index: true },
     isActive: { type: Boolean, default: true },
     isDeleted: { type: Boolean, default: false },
     subscription: {

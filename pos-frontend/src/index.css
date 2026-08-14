@@ -4,43 +4,41 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ===== Theme Variables ===== */
+/* ===== Centralized KnotKitchen Design Tokens ===== */
 :root,
+.dark,
 .light {
-  --bg-surface: #f8fafc;
-  --bg-secondary: #ffffff;
-  --bg-tertiary: #f1f5f9;
-  --bg-input: #f8fafc;
-  --text-primary: #0f172a;
-  --text-secondary: #334155;
-  --text-muted: #64748b;
-  --border-color: #e2e8f0;
-  --shadow-card: 0 1px 3px rgba(15, 23, 42, 0.06), 0 4px 12px rgba(15, 23, 42, 0.05);
-  --shadow-hover: 0 4px 16px rgba(15, 23, 42, 0.1);
-  --glass-bg: rgba(255, 255, 255, 0.92);
+  --bg-surface: #080F1F;
+  --bg-secondary: #0D1526;
+  --bg-tertiary: #111B2E;
+  --bg-elevated: #162238;
+  --bg-input: #0D1526;
+  --text-primary: #F5F7FA;
+  --text-secondary: #AEB8CA;
+  --text-muted: #77839A;
+  --text-disabled: #556176;
+  --border-color: #26344B;
+  --border-subtle: #1D2A3D;
+  --border-focused: #FF5A00;
+  --shadow-card: 0 12px 40px rgba(0, 0, 0, 0.25);
+  --shadow-hover: 0 16px 48px rgba(0, 0, 0, 0.35);
+  --shadow-orange: 0 8px 25px rgba(255, 90, 0, 0.25);
+  --glass-bg: rgba(17, 27, 46, 0.85);
+  --accent-orange: #FF5A00;
+  --accent-bright: #FF6A00;
+  --accent-hover: #FF7A1A;
+  --accent-dark: #E94D00;
+  --accent-blue: #3B82F6;
+  --accent-green: #22C55E;
+  --accent-red: #EF4444;
+  --accent-amber: #F59E0B;
 }
 
-.dark {
-  --bg-surface: #0f172a;
-  --bg-secondary: #1e293b;
-  --bg-tertiary: #334155;
-  --bg-input: #1e293b;
-  --text-primary: #f1f5f9;
-  --text-secondary: #cbd5e1;
-  --text-muted: #94a3b8;
-  --border-color: #334155;
-  --shadow-card: 0 1px 3px rgba(0, 0, 0, 0.3), 0 4px 12px rgba(0, 0, 0, 0.25);
-  --shadow-hover: 0 4px 16px rgba(0, 0, 0, 0.4);
-  --glass-bg: rgba(30, 41, 59, 0.92);
-}
-
-/* ===== Lock Viewport - No Page Scrollbar ===== */
+/* ===== Global Reset & Smooth Transitions ===== */
 * {
-  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-/* Inputs & their wrappers must NOT inherit the global background transition —
-   it causes a visible white "flash box" around fields when typing/autofilling. */
 input,
 textarea,
 select,
@@ -52,36 +50,40 @@ select,
 html,
 body,
 #root {
-  height: 100%;
-  width: 100%;
-  overflow: hidden;
-  overscroll-behavior: none;
-}
-
-body {
-  font-family: 'Inter', sans-serif;
-  background-color: var(--bg-surface);
-  color: var(--text-primary);
   min-height: 100vh;
-  min-height: 100dvh;
-  -webkit-font-smoothing: antialiased;
-  -webkit-tap-highlight-color: transparent;
-  /* Prevent pull-to-refresh / rubber-banding on tablets */
-  position: fixed;
-  inset: 0;
-  touch-action: manipulation;
+  width: 100%;
 }
 
-/* ===== App Shell - Flex Column (Header + Content) ===== */
-.app-shell {
-  height: 100vh;
-  height: 100dvh;
-  overflow: hidden;
+#root {
   display: flex;
   flex-direction: column;
 }
 
+body {
+  font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  background-image: 
+    radial-gradient(circle at top left, rgba(255, 90, 0, 0.07), transparent 35%),
+    radial-gradient(circle at bottom right, rgba(255, 90, 0, 0.04), transparent 40%),
+    linear-gradient(135deg, #080F1F 0%, #0D1526 100%);
+}
+
+/* ===== App Shell ===== */
+.app-shell {
+  min-height: 100vh;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-surface);
+}
+
 .app-shell.with-sidebar {
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
   flex-direction: row;
 }
 
@@ -92,7 +94,7 @@ body {
   flex-direction: column;
 }
 
-.app-shell main {
+.app-shell.with-sidebar main {
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -100,10 +102,28 @@ body {
   flex-direction: column;
 }
 
-/* ===== No Scrollbar Utility (applies to any scrollable region) ===== */
+.app-shell.auth-shell {
+  height: auto;
+  min-height: 100vh;
+  overflow-y: auto;
+  display: block;
+}
+
+.app-shell.auth-shell main {
+  min-height: 100vh;
+  width: 100%;
+  overflow: visible;
+}
+
+/* ===== Typography Utilities ===== */
+.font-display {
+  font-family: 'Plus Jakarta Sans', 'Inter', sans-serif;
+}
+
+/* ===== Scrollbar Utilities ===== */
 .no-scrollbar {
-  scrollbar-width: none; /* Firefox */
-  -ms-overflow-style: none; /* IE/Edge */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
 }
 
 .no-scrollbar::-webkit-scrollbar {
@@ -112,66 +132,73 @@ body {
   height: 0;
 }
 
-.font-display {
-  font-family: 'Plus Jakarta Sans', sans-serif;
-}
-
-/* ===== Custom Scrollbar (hidden by default, used only in internal areas) ===== */
 ::-webkit-scrollbar {
-  width: 0px;
-  height: 0px;
-  display: none;
+  width: 4px;
+  height: 4px;
 }
 
 ::-webkit-scrollbar-track {
-  background: transparent;
+  background: var(--bg-surface);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: transparent;
-  border-radius: 8px;
+  background: var(--border-color);
+  border-radius: 4px;
 }
 
-/* ===== Card ===== */
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-orange);
+}
+
+/* ===== Card Styles ===== */
 .card {
-  background: var(--bg-secondary);
+  background: var(--glass-bg);
   border: 1px solid var(--border-color);
   border-radius: 1rem;
   box-shadow: var(--shadow-card);
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
 }
 
-.card:hover {
-  box-shadow: var(--shadow-hover);
+.card-hover:hover {
+  border-color: var(--border-focused);
+  box-shadow: var(--shadow-hover), 0 0 15px rgba(255, 90, 0, 0.1);
+  transform: translateY(-2px);
 }
 
-/* ===== Button Styles ===== */
+/* ===== Reusable Button System ===== */
 .btn-primary {
-  background: #059669;
-  color: white;
+  background: linear-gradient(135deg, #FF6A00 0%, #FF4D00 100%);
+  color: #FFFFFF;
   font-weight: 600;
   border-radius: 0.75rem;
   padding: 0.75rem 1.5rem;
   transition: all 0.2s ease;
-  box-shadow: 0 2px 8px rgba(5, 150, 105, 0.25);
+  box-shadow: 0 4px 16px rgba(255, 90, 0, 0.25);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
+  border: none;
+  cursor: pointer;
 }
 
 .btn-primary:hover {
-  background: #047857;
-  box-shadow: 0 4px 12px rgba(5, 150, 105, 0.3);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 25px rgba(255, 90, 0, 0.35);
+  background: linear-gradient(135deg, #FF7A1A 0%, #FF5A00 100%);
 }
 
 .btn-primary:active {
-  transform: scale(0.98);
+  transform: translateY(0) scale(0.98);
 }
 
 .btn-primary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 .btn-secondary {
@@ -180,15 +207,19 @@ body {
   font-weight: 600;
   border-radius: 0.75rem;
   padding: 0.75rem 1.5rem;
+  border: 1px solid var(--border-color);
   transition: all 0.2s ease;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
+  cursor: pointer;
 }
 
 .btn-secondary:hover {
-  background: var(--border-color);
+  background: var(--bg-elevated);
+  border-color: var(--border-focused);
+  color: #FFFFFF;
 }
 
 .btn-secondary:disabled {
@@ -196,7 +227,48 @@ body {
   cursor: not-allowed;
 }
 
-/* ===== Input Styles ===== */
+.btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  font-weight: 500;
+  border-radius: 0.75rem;
+  padding: 0.5rem 1rem;
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.btn-ghost:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-primary);
+}
+
+.btn-danger {
+  background: rgba(239, 68, 68, 0.15);
+  color: #EF4444;
+  font-weight: 600;
+  border-radius: 0.75rem;
+  padding: 0.75rem 1.5rem;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  transition: all 0.2s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.btn-danger:hover {
+  background: #EF4444;
+  color: #FFFFFF;
+  border-color: #EF4444;
+  box-shadow: 0 4px 16px rgba(239, 68, 68, 0.3);
+}
+
+/* ===== Reusable Input System ===== */
 .input-container {
   background: var(--bg-input);
   border: 1px solid var(--border-color);
@@ -206,8 +278,8 @@ body {
 }
 
 .input-container:focus-within {
-  border-color: #059669;
-  box-shadow: 0 0 0 3px rgba(5, 150, 105, 0.1);
+  border-color: var(--accent-orange);
+  box-shadow: 0 0 0 3px rgba(255, 90, 0, 0.15);
 }
 
 .input-field {
@@ -217,14 +289,13 @@ body {
   width: 100%;
   -webkit-appearance: none;
   appearance: none;
-  caret-color: var(--text-primary);
+  caret-color: var(--accent-orange);
 }
 
 .input-field::placeholder {
   color: var(--text-muted);
 }
 
-/* ===== Remove Browser Native Focus Box on Raw Inputs ===== */
 input:focus,
 textarea:focus,
 select:focus,
@@ -235,14 +306,11 @@ select:focus-visible {
   box-shadow: none;
 }
 
-/* ===== Strong "White Box" / Autofill Fix =====
-   Chrome/Safari force a white background on autofilled inputs.
-   This paints the input with the theme's surface color instead,
-   and prevents the global background transition from flashing it. */
 input,
 textarea,
 select {
   background-color: transparent;
+  color: var(--text-primary);
 }
 
 input:-webkit-autofill,
@@ -263,18 +331,7 @@ select:-webkit-autofill:active {
   background-color: var(--bg-input);
   color: var(--text-primary);
   transition: background-color 9999s ease-in-out 0s;
-  caret-color: var(--text-primary);
-}
-
-/* Fallback for inputs inside dark overlays/modals where --bg-input
-   happens to render near-white — force the transparent blend instead. */
-.input-container input:-webkit-autofill,
-.input-container input:-webkit-autofill:hover,
-.input-container input:-webkit-autofill:focus,
-.input-container input:-webkit-autofill:active {
-  -webkit-box-shadow: 0 0 0 1000px var(--bg-input) inset;
-  box-shadow: 0 0 0 1000px var(--bg-input) inset;
-  background-color: var(--bg-input);
+  caret-color: var(--accent-orange);
 }
 
 /* ===== Status Badges ===== */
@@ -291,43 +348,57 @@ select:-webkit-autofill:active {
 
 .badge-ready,
 .badge-completed,
-.badge-available {
-  background: rgba(5, 150, 105, 0.1);
-  color: #059669;
+.badge-available,
+.badge-success {
+  background: rgba(34, 197, 94, 0.12);
+  color: #22C55E;
+  border: 1px solid rgba(34, 197, 94, 0.25);
 }
 
 .badge-progress,
-.badge-booked {
+.badge-booked,
+.badge-warning,
+.badge-preparing {
   background: rgba(245, 158, 11, 0.12);
-  color: #d97706;
+  color: #F59E0B;
+  border: 1px solid rgba(245, 158, 11, 0.25);
 }
 
-.badge-pending {
-  background: rgba(59, 130, 246, 0.1);
-  color: #3b82f6;
+.badge-pending,
+.badge-info {
+  background: rgba(59, 130, 246, 0.12);
+  color: #3B82F6;
+  border: 1px solid rgba(59, 130, 246, 0.25);
 }
 
-/* ===== Gradient Backgrounds ===== */
+.badge-danger,
+.badge-cancelled {
+  background: rgba(239, 68, 68, 0.12);
+  color: #EF4444;
+  border: 1px solid rgba(239, 68, 68, 0.25);
+}
+
+/* ===== Brand Gradient Utilities ===== */
 .bg-gradient-brand {
-  background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+  background: linear-gradient(135deg, #FF6A00 0%, #FF4D00 100%);
 }
 
 .gradient-text {
-  background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+  background: linear-gradient(135deg, #FFFFFF 0%, #FF5A00 100%);
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
   color: transparent;
 }
 
-/* ===== Skeleton Loader ===== */
+/* ===== Skeleton Loading ===== */
 @keyframes shimmer {
   0% { background-position: -468px 0; }
   100% { background-position: 468px 0; }
 }
 
 .skeleton {
-  background: linear-gradient(90deg, var(--bg-tertiary) 25%, var(--bg-input) 37%, var(--bg-tertiary) 63%);
+  background: linear-gradient(90deg, #111B2E 25%, #162238 37%, #111B2E 63%);
   background-size: 400% 100%;
   animation: shimmer 1.4s ease infinite;
   border-radius: 0.5rem;
@@ -337,7 +408,7 @@ select:-webkit-autofill:active {
 .fullscreen-loader {
   position: fixed;
   inset: 0;
-  background: var(--bg-surface);
+  background: #080F1F;
   display: flex;
   justify-content: center;
   align-items: center;
@@ -354,14 +425,14 @@ select:-webkit-autofill:active {
   position: absolute;
   border-radius: 50%;
   border: 3px solid transparent;
-  border-top-color: #059669;
+  border-top-color: #FF5A00;
   width: 100%;
   height: 100%;
   animation: spin 1.2s linear infinite;
 }
 
 .loader-ring:nth-child(2) {
-  border-top-color: #10b981;
+  border-top-color: #FF7A1A;
   width: 44px;
   height: 44px;
   top: 10px;
@@ -371,7 +442,7 @@ select:-webkit-autofill:active {
 }
 
 .loader-ring:nth-child(3) {
-  border-top-color: #f59e0b;
+  border-top-color: #3B82F6;
   width: 24px;
   height: 24px;
   top: 20px;
@@ -384,15 +455,15 @@ select:-webkit-autofill:active {
   100% { transform: rotate(360deg); }
 }
 
-/* ===== Page Transitions ===== */
+/* ===== Page Entrance Animation ===== */
 .page-enter {
-  animation: page-enter 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  animation: page-enter 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 @keyframes page-enter {
   from {
     opacity: 0;
-    transform: translateY(12px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
@@ -400,46 +471,19 @@ select:-webkit-autofill:active {
   }
 }
 
-/* ===== Mobile Bottom Sheet ===== */
-.bottom-sheet {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  background: var(--bg-secondary);
-  border-radius: 1.5rem 1.5rem 0 0;
-  z-index: 100;
-  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.15);
-  max-height: 90vh;
-  overflow-y: auto;
-  scrollbar-width: none;
-  -ms-overflow-style: none;
-}
-
-.bottom-sheet::-webkit-scrollbar {
-  display: none;
-  width: 0;
-  height: 0;
-}
-
-/* ===== Glass Effect ===== */
+/* ===== Glass Overlay ===== */
 .glass {
   background: var(--glass-bg);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
-/* ===== Safe Area for Mobile ===== */
-.pb-safe {
-  padding-bottom: env(safe-area-inset-bottom);
-}
-
-/* ===== Table Item ===== */
+/* ===== Table Card ===== */
 .table-item {
   border-radius: 1rem;
   padding: 1.25rem;
   cursor: pointer;
-  background: var(--bg-secondary);
+  background: var(--bg-tertiary);
   border: 1px solid var(--border-color);
   box-shadow: var(--shadow-card);
   transition: all 0.2s ease;
@@ -448,21 +492,21 @@ select:-webkit-autofill:active {
 .table-item:hover {
   transform: translateY(-2px);
   box-shadow: var(--shadow-hover);
-  border-color: #059669;
+  border-color: var(--accent-orange);
 }
 
 .table-item:active {
   transform: scale(0.98);
 }
 
-/* ===== Menu Category Pill ===== */
+/* ===== Category Pills ===== */
 .menu-category-pill {
   padding: 0.5rem 1.25rem;
   border-radius: 9999px;
   font-size: 0.875rem;
   font-weight: 600;
   border: 1px solid var(--border-color);
-  background: var(--bg-secondary);
+  background: var(--bg-tertiary);
   color: var(--text-secondary);
   transition: all 0.2s ease;
   cursor: pointer;
@@ -470,13 +514,13 @@ select:-webkit-autofill:active {
 }
 
 .menu-category-pill:hover {
-  border-color: #059669;
-  color: #059669;
+  border-color: var(--accent-orange);
+  color: var(--accent-orange);
 }
 
 .menu-category-pill.active {
-  background: #059669;
+  background: linear-gradient(135deg, #FF6A00 0%, #FF4D00 100%);
   color: white;
-  border-color: #059669;
-  box-shadow: 0 2px 8px rgba(5, 150, 105, 0.25);
+  border-color: var(--accent-orange);
+  box-shadow: 0 4px 14px rgba(255, 90, 0, 0.3);
 }

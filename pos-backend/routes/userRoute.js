@@ -1,6 +1,6 @@
 const express = require("express");
 const {
-  register, login, refreshToken, getUserData, logout,
+  register, sendLoginOtp, login, refreshToken, getUserData, logout,
   requestEmailVerification, verifyEmail,
   requestPasswordReset, resetPassword,
   setupMFA, verifyMFA, disableMFA,
@@ -17,8 +17,14 @@ router.route("/store/send-otp").post(sendStoreOtp);
 router.route("/store/verify-otp").post(verifyStoreOtp);
 router.route("/store/complete-signup").post(completeStoreSignup);
 
+// Auth Spec Standard Endpoints
+router.route("/validate-store").post(validateStoreId);
+router.route("/request-otp").post(sendStoreOtp);
+router.route("/verify-otp").post(verifyStoreOtp);
+
 // Auth
 router.route("/register").post(register);
+router.route("/login/send-otp").post(sendLoginOtp);
 router.route("/login").post(login);
 router.route("/refresh").post(refreshToken);
 router.route("/logout").post(isVerifiedUser, logout);
