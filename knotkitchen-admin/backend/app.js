@@ -49,8 +49,9 @@ app.get("/health", (req, res) => {
   });
 });
 
-// API routes
+// API routes (supported with or without /api prefix)
 app.use("/api", apiRoutes);
+app.use("/", apiRoutes);
 
 // 404
 app.use((req, res) => {
