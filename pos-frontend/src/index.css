@@ -6,8 +6,7 @@
 
 /* ===== Centralized KnotKitchen Design Tokens ===== */
 :root,
-.dark,
-.light {
+.dark {
   --bg-surface: #080F1F;
   --bg-secondary: #0D1526;
   --bg-tertiary: #111B2E;
@@ -34,6 +33,109 @@
   --accent-amber: #F59E0B;
 }
 
+/* The header theme selector toggles .light/.dark on <html>. Keep the
+   semantic tokens here so existing components update without requiring every
+   page to replace its utility classes. */
+.light {
+  --bg-surface: #F4F7FB;
+  --bg-secondary: #FFFFFF;
+  --bg-tertiary: #EAF0F7;
+  --bg-elevated: #DDE7F2;
+  --bg-input: #FFFFFF;
+  --text-primary: #172033;
+  --text-secondary: #526176;
+  --text-muted: #718096;
+  --text-disabled: #A0AEC0;
+  --border-color: #CBD5E1;
+  --border-subtle: #E2E8F0;
+  --border-focused: #E94D00;
+  --shadow-card: 0 12px 40px rgba(31, 50, 81, 0.12);
+  --shadow-hover: 0 16px 48px rgba(31, 50, 81, 0.18);
+  --glass-bg: rgba(255, 255, 255, 0.9);
+  --accent-orange: #E94D00;
+  --accent-bright: #F05A00;
+  --accent-hover: #C94100;
+  --accent-dark: #B63A00;
+}
+
+/* A number of older POS screens still use fixed Tailwind colour utilities.
+   Override those utilities in light mode so the header selector changes the
+   complete POS shell, not just the few components using CSS tokens. */
+html.light body {
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+  background-image:
+    radial-gradient(circle at top left, rgba(255, 90, 0, 0.08), transparent 35%),
+    linear-gradient(135deg, #F4F7FB 0%, #FFFFFF 100%);
+}
+
+html.light [class*="bg-[#080F1F]"],
+html.light [class*="bg-[#0D1526]"] {
+  background-color: var(--bg-secondary) !important;
+}
+
+html.light [class*="bg-[#111B2E]"],
+html.light [class*="bg-[#162238]"] {
+  background-color: var(--bg-tertiary) !important;
+}
+
+html.light [class*="border-[#26344B]"] {
+  border-color: var(--border-color) !important;
+}
+
+html.light [class*="text-[#F5F7FA]"],
+html.light [class*="text-[#AEB8CA]"] {
+  color: var(--text-primary) !important;
+}
+
+html.light [class*="text-[#77839A]"] {
+  color: var(--text-muted) !important;
+}
+
+html.light .bg-surface,
+html.light .bg-surface-secondary,
+html.light .bg-surface-tertiary,
+html.light .bg-surface-card,
+html.light .bg-surface-elevated,
+html.light .bg-surface-input,
+html.light .bg-navy,
+html.light .bg-navy-900,
+html.light .bg-navy-800,
+html.light .bg-navy-700,
+html.light .bg-navy-600 {
+  background-color: var(--bg-secondary) !important;
+}
+
+html.light .bg-surface-tertiary,
+html.light .bg-surface-card,
+html.light .bg-navy-700,
+html.light .bg-navy-600 {
+  background-color: var(--bg-tertiary) !important;
+}
+
+html.light .text-content {
+  color: var(--text-primary) !important;
+}
+
+html.light .text-content-secondary {
+  color: var(--text-secondary) !important;
+}
+
+html.light .text-content-muted,
+html.light .text-content-disabled {
+  color: var(--text-muted) !important;
+}
+
+html.light .border-border,
+html.light .border-border-subtle,
+html.light .border-border-focused {
+  border-color: var(--border-color) !important;
+}
+
+html.light .fullscreen-loader {
+  background: var(--bg-surface);
+}
+
 /* ===== Global Reset & Smooth Transitions ===== */
 * {
   transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
@@ -51,6 +153,7 @@ html,
 body,
 #root {
   min-height: 100vh;
+  min-height: 100dvh;
   width: 100%;
 }
 
@@ -69,6 +172,60 @@ body {
     radial-gradient(circle at top left, rgba(255, 90, 0, 0.07), transparent 35%),
     radial-gradient(circle at bottom right, rgba(255, 90, 0, 0.04), transparent 40%),
     linear-gradient(135deg, #080F1F 0%, #0D1526 100%);
+  overscroll-behavior: none;
+  padding: 0;
+}
+
+button,
+[role="button"] {
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+/* Capacitor and installed PWAs can draw behind system bars. */
+.app-shell {
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@media (pointer: coarse) {
+  button,
+  [role="button"],
+  input,
+  select,
+  textarea,
+  .menu-category-pill {
+    min-height: 44px;
+  }
+}
+
+@media (max-width: 1023px) {
+  .app-shell.with-sidebar main {
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  .app-shell.with-sidebar .app-main {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 639px) {
+  .app-shell.with-sidebar .app-main > header > div > div {
+    min-height: 4rem;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    font-size: 16px;
+  }
+
+  .app-shell.with-sidebar {
+    min-height: 100dvh;
+  }
 }
 
 /* ===== App Shell ===== */
@@ -113,6 +270,12 @@ body {
   min-height: 100vh;
   width: 100%;
   overflow: visible;
+}
+
+@media (max-width: 1023px) {
+  .app-shell.with-sidebar main {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
 }
 
 /* ===== Typography Utilities ===== */

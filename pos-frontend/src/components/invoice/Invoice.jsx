@@ -1,27 +1,29 @@
-import React from "react";
+/* API receipt data is intentionally flexible; this component accepts the server payload. */
+/* eslint-disable react/prop-types */
 import { motion } from "framer-motion";
 import { FaCheck } from "react-icons/fa6";
+import { printHtmlDocument } from "../../utils/printDocument";
 
 const Invoice = ({ orderInfo, setShowInvoice }) => {
-  const handlePrint = () => {
-    const printWindow = window.open("", "_blank", "width=400,height=600");
-    if (!printWindow) {
-      return;
-    }
+  const safeOrder = orderInfo || {};
+  const safeCustomer = safeOrder.customerDetails || {};
+  const safeBills = safeOrder.bills || {};
+  const safeItems = safeOrder.items || [];
 
-    const itemsHTML = (orderInfo?.items || [])
+  const handlePrint = () => {
+    const itemsHTML = safeItems
       .map(
         (item) => `
         <tr>
           <td style="padding:6px 0;font-size:12px;">${item.name}</td>
           <td style="padding:6px 0;font-size:12px;text-align:center;">x${item.quantity}</td>
-          <td style="padding:6px 0;font-size:12px;text-align:right;">₹${item.price.toFixed(2)}</td>
+          <td style="padding:6px 0;font-size:12px;text-align:right;">₹${Number(item.price || 0).toFixed(2)}</td>
         </tr>`
       )
       .join("");
 
     const dateString = new Date(
-      orderInfo?.orderDate || Date.now()
+      safeOrder.orderDate || Date.now()
     ).toLocaleString("en-US", {
       month: "long",
       day: "2-digit",
@@ -86,19 +88,19 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
           <div class="divider"></div>
           <div class="info-row">
             <span>Order ID:</span>
-            <span><strong>#${Math.floor(new Date(orderInfo?.orderDate || Date.now()).getTime())}</strong></span>
+            <span><strong>#${Math.floor(new Date(safeOrder.orderDate || Date.now()).getTime())}</strong></span>
           </div>
           <div class="info-row">
             <span>Name:</span>
-            <span><strong>${orderInfo?.customerDetails?.name || "N/A"}</strong></span>
+            <span><strong>${safeCustomer.name || "N/A"}</strong></span>
           </div>
           <div class="info-row">
             <span>Phone:</span>
-            <span>${orderInfo?.customerDetails?.phone || "N/A"}</span>
+            <span>${safeCustomer.phone || "N/A"}</span>
           </div>
           <div class="info-row">
             <span>Guests:</span>
-            <span>${orderInfo?.customerDetails?.guests || 0}</span>
+            <span>${safeCustomer.guests || 0}</span>
           </div>
           <div class="divider"></div>
           <table class="items-table">
@@ -115,25 +117,25 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
           <div class="totals">
             <div class="total-row">
               <span>Subtotal</span>
-              <span>₹${(orderInfo?.bills?.total || 0).toFixed(2)}</span>
+            <span>₹${Number(safeBills.total || 0).toFixed(2)}</span>
             </div>
             <div class="total-row">
               <span>Tax (5.25%)</span>
-              <span>₹${(orderInfo?.bills?.tax || 0).toFixed(2)}</span>
+            <span>₹${Number(safeBills.tax || 0).toFixed(2)}</span>
             </div>
             <div class="grand-total">
               <span>Total</span>
-              <span>₹${(orderInfo?.bills?.totalWithTax || 0).toFixed(2)}</span>
+            <span>₹${Number(safeBills.totalWithTax || 0).toFixed(2)}</span>
             </div>
           </div>
           ${
-            orderInfo?.paymentMethod === "Online" && orderInfo?.paymentData
+            safeOrder.paymentMethod === "Online" && safeOrder.paymentData
               ? `
             <div class="divider"></div>
             <div class="payment-info">
-              <p>Payment Method: ${orderInfo.paymentMethod}</p>
-              <p>Razorpay Order ID: ${orderInfo.paymentData.razorpay_order_id || "N/A"}</p>
-              <p>Razorpay Payment ID: ${orderInfo.paymentData.razorpay_payment_id || "N/A"}</p>
+              <p>Payment Method: ${safeOrder.paymentMethod}</p>
+              <p>Razorpay Order ID: ${safeOrder.paymentData.razorpay_order_id || "N/A"}</p>
+              <p>Razorpay Payment ID: ${safeOrder.paymentData.razorpay_payment_id || "N/A"}</p>
             </div>`
               : ""
           }
@@ -146,13 +148,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
       </html>
     `;
 
-    printWindow.document.write(receiptHTML);
-    printWindow.document.close();
-    printWindow.focus();
-
-    setTimeout(() => {
-      printWindow.print();
-    }, 500);
+    printHtmlDocument(receiptHTML);
   };
 
   return (
@@ -186,19 +182,19 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
           <div className="mt-4 border-t border-border pt-4 text-sm text-content-secondary space-y-1">
             <p className="flex justify-between">
               <span className="text-content-muted">Order ID</span>
-              <strong>{Math.floor(new Date(orderInfo.orderDate).getTime())}</strong>
+            <strong>{Math.floor(new Date(safeOrder.orderDate || Date.now()).getTime())}</strong>
             </p>
             <p className="flex justify-between">
               <span className="text-content-muted">Name</span>
-              <strong>{orderInfo.customerDetails.name}</strong>
+              <strong>{safeCustomer.name || "N/A"}</strong>
             </p>
             <p className="flex justify-between">
               <span className="text-content-muted">Phone</span>
-              <strong>{orderInfo.customerDetails.phone}</strong>
+              <strong>{safeCustomer.phone || "N/A"}</strong>
             </p>
             <p className="flex justify-between">
               <span className="text-content-muted">Guests</span>
-              <strong>{orderInfo.customerDetails.guests}</strong>
+              <strong>{safeCustomer.guests || 0}</strong>
             </p>
           </div>
 
@@ -206,12 +202,12 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
           <div className="mt-4 border-t border-border pt-4">
             <h3 className="text-sm font-semibold text-content mb-2">Items Ordered</h3>
             <div className="space-y-1.5">
-              {orderInfo.items.map((item, index) => (
+              {safeItems.map((item, index) => (
                 <div key={index} className="flex justify-between items-center text-sm">
                   <span className="text-content-secondary">
                     {item.name} <span className="text-content-muted">x{item.quantity}</span>
                   </span>
-                  <span className="font-semibold">₹{item.price.toFixed(2)}</span>
+                  <span className="font-semibold">₹{Number(item.price || 0).toFixed(2)}</span>
                 </div>
               ))}
             </div>
@@ -221,38 +217,38 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
           <div className="mt-4 border-t border-border pt-4 text-sm text-content-secondary space-y-1">
             <p className="flex justify-between">
               <span className="text-content-muted">Subtotal</span>
-              <span>₹{orderInfo.bills.total.toFixed(2)}</span>
+              <span>₹{Number(safeBills.total || 0).toFixed(2)}</span>
             </p>
             <p className="flex justify-between">
               <span className="text-content-muted">Tax</span>
-              <span>₹{orderInfo.bills.tax.toFixed(2)}</span>
+              <span>₹{Number(safeBills.tax || 0).toFixed(2)}</span>
             </p>
             <p className="flex justify-between font-bold text-content text-base pt-1 border-t border-border">
               <span>Grand Total</span>
-              <span>₹{orderInfo.bills.totalWithTax.toFixed(2)}</span>
+              <span>₹{Number(safeBills.totalWithTax || 0).toFixed(2)}</span>
             </p>
           </div>
 
           {/* Payment Details */}
           <div className="mt-4 bg-surface-input rounded-xl p-3 text-xs text-content-secondary border border-border space-y-0.5">
-            {orderInfo.paymentMethod === "Cash" ? (
+            {safeOrder.paymentMethod === "Cash" ? (
               <p className="flex justify-between">
                 <span className="text-content-muted">Payment Method</span>
-                <strong className="badge badge-available">{orderInfo.paymentMethod}</strong>
+                <strong className="badge badge-available">{safeOrder.paymentMethod}</strong>
               </p>
             ) : (
               <>
                 <p className="flex justify-between">
                   <span className="text-content-muted">Payment Method</span>
-                  <strong className="badge badge-pending">{orderInfo.paymentMethod}</strong>
+                  <strong className="badge badge-pending">{safeOrder.paymentMethod}</strong>
                 </p>
                 <p className="truncate">
                   <span className="text-content-muted">Order ID: </span>
-                  <strong>{orderInfo.paymentData?.razorpay_order_id}</strong>
+                  <strong>{safeOrder.paymentData?.razorpay_order_id}</strong>
                 </p>
                 <p className="truncate">
                   <span className="text-content-muted">Payment ID: </span>
-                  <strong>{orderInfo.paymentData?.razorpay_payment_id}</strong>
+                  <strong>{safeOrder.paymentData?.razorpay_payment_id}</strong>
                 </p>
               </>
             )}

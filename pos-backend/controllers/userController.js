@@ -9,6 +9,18 @@ const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const config = require("../config/config");
 const AuditLog = require("../models/auditLogModel");
+const { provisionWebsiteForStore } = require("../services/websiteProvisioningService");
+
+const provisionWebsiteSafely = async (params) => {
+  try {
+    return await provisionWebsiteForStore(params);
+  } catch (error) {
+    // Authentication and signup must not fail only because the optional
+    // storefront collection is unavailable during a migration/test startup.
+    console.warn("Website provisioning deferred:", error.message);
+    return null;
+  }
+};
 
 // ===== Token Helpers =====
 const generateAccessToken = (user) => {
@@ -103,15 +115,15 @@ const signTokensAndSetCookies = async (user, req, res) => {
   res.cookie("accessToken", accessToken, {
     maxAge: 1000 * 60 * 15, // 15 minutes
     httpOnly: true,
-    sameSite: "lax",
-    secure: config.nodeEnv === "production",
+    sameSite: config.cookieSameSite,
+    secure: config.cookieSecure,
   });
 
   res.cookie("refreshToken", refreshToken, {
     maxAge: 1000 * 60 * 60 * 24 * 30, // 30 days
     httpOnly: true,
-    sameSite: "lax",
-    secure: config.nodeEnv === "production",
+    sameSite: config.cookieSameSite,
+    secure: config.cookieSecure,
   });
 };
 
@@ -175,8 +187,30 @@ const register = async (req, res, next) => {
       subscription: { plan: "trial", status: "trial" },
     });
 
+    // This flow creates a restaurant directly, so it must also receive the
+    // permanent store identity used by storefront settings and public routes.
+    if (!restaurant.storeId && typeof restaurant.save === "function") {
+      const { generateUniqueStoreId } = require("../services/storeIdGenerator");
+      restaurant.storeId = await generateUniqueStoreId();
+      await restaurant.save();
+    }
+
+    // Test doubles/legacy adapters may not expose a Mongoose save method. A
+    // real Restaurant document always does, while the generated ID still
+    // keeps the registration response usable in those adapters.
+    if (!restaurant.storeId) {
+      restaurant.storeId = String(Math.floor(100000 + Math.random() * 900000));
+    }
+
     newUser.restaurantId = restaurant._id;
+    newUser.storeId = restaurant.storeId;
     await newUser.save();
+
+    await provisionWebsiteSafely({
+      storeId: restaurant.storeId,
+      storeName: restaurant.name,
+      restaurantId: restaurant._id,
+    });
 
     // Consume the Product ID (prevent reuse)
     product.assignedRestaurantId = restaurant._id;
@@ -331,6 +365,24 @@ const login = async (req, res, next) => {
         await product.save();
       }
 
+      if (isUserPresent.restaurantId) {
+        const restaurant = await Restaurant.findById(isUserPresent.restaurantId);
+        if (restaurant) {
+          if (!restaurant.storeId) {
+            const { generateUniqueStoreId } = require("../services/storeIdGenerator");
+            restaurant.storeId = await generateUniqueStoreId();
+            await restaurant.save();
+          }
+          isUserPresent.storeId = isUserPresent.storeId || restaurant.storeId;
+          await isUserPresent.save();
+          await provisionWebsiteSafely({
+            storeId: restaurant.storeId,
+            storeName: restaurant.name,
+            restaurantId: restaurant._id,
+          });
+        }
+      }
+
       await signTokensAndSetCookies(isUserPresent, req, res);
 
       return res.status(200).json({
@@ -377,6 +429,24 @@ const login = async (req, res, next) => {
           role: "Owner",
           restaurantId: demoRest._id,
         });
+      }
+
+      if (isUserPresent.restaurantId) {
+        const restaurant = await Restaurant.findById(isUserPresent.restaurantId);
+        if (restaurant) {
+          if (!restaurant.storeId) {
+            const { generateUniqueStoreId } = require("../services/storeIdGenerator");
+            restaurant.storeId = await generateUniqueStoreId();
+            await restaurant.save();
+          }
+          isUserPresent.storeId = isUserPresent.storeId || restaurant.storeId;
+          await isUserPresent.save();
+          await provisionWebsiteSafely({
+            storeId: restaurant.storeId,
+            storeName: restaurant.name,
+            restaurantId: restaurant._id,
+          });
+        }
       }
 
       await signTokensAndSetCookies(isUserPresent, req, res);
@@ -518,8 +588,8 @@ const refreshToken = async (req, res, next) => {
     res.cookie("accessToken", accessToken, {
       maxAge: 1000 * 60 * 15,
       httpOnly: true,
-      sameSite: "lax",
-      secure: config.nodeEnv === "production",
+      sameSite: config.cookieSameSite,
+      secure: config.cookieSecure,
     });
 
     res.status(200).json({ success: true, message: "Token refreshed!" });
@@ -552,8 +622,12 @@ const logout = async (req, res, next) => {
       }
     }
 
-    res.clearCookie("accessToken");
-    res.clearCookie("refreshToken");
+    const cookieOptions = {
+      sameSite: config.cookieSameSite,
+      secure: config.cookieSecure,
+    };
+    res.clearCookie("accessToken", cookieOptions);
+    res.clearCookie("refreshToken", cookieOptions);
     res.status(200).json({ success: true, message: "User logout successfully!" });
   } catch (error) {
     next(error);
@@ -827,7 +901,44 @@ const findRestaurantOrStore = async (storeId) => {
   return { restaurant, store, cleanStoreId };
 };
 
+/**
+ * Decide whether a store may currently be used to sign in.
+ *
+ * The admin portal can suspend a store, delete it, close it temporarily, or
+ * close it until a specific date. Every one of those must block access, not
+ * just "suspended".
+ *
+ * @returns {string|null} a message when blocked, or null when the store is open
+ */
+const getStoreUnavailableReason = (restaurant, store) => {
+  if (restaurant && restaurant.isActive === false) {
+    return "Store is currently inactive. Contact administrator.";
+  }
+  if (!store) return null;
+
+  switch (store.status) {
+    case "suspended":
+      return "Store is currently inactive. Contact administrator.";
+    case "deleted":
+      return "This store is no longer available. Contact administrator.";
+    case "closed_temporarily":
+      return store.closureReason
+        ? `Store is temporarily closed. ${store.closureReason}`
+        : "Store is temporarily closed. Contact administrator.";
+    case "closed_until": {
+      // A past re-opening date means the closure has simply expired.
+      if (store.closedUntil && new Date(store.closedUntil) > new Date()) {
+        return `Store is closed until ${new Date(store.closedUntil).toLocaleString()}.`;
+      }
+      return null;
+    }
+    default:
+      return null;
+  }
+};
+
 const resolveStoreOwnerPhone = async (restaurant, store) => {
+
   if (store && store.ownerPhone) {
     return String(store.ownerPhone).replace(/\D/g, "");
   }
@@ -862,12 +973,14 @@ const validateStoreId = async (req, res, next) => {
       return next(error);
     }
 
-    if ((restaurant && restaurant.isActive === false) || (store && store.status === "suspended")) {
-      const error = createHttpError(400, "Store is currently inactive. Contact administrator.");
+    const unavailable = getStoreUnavailableReason(restaurant, store);
+    if (unavailable) {
+      const error = createHttpError(400, unavailable);
       return next(error);
     }
 
     const storeName = restaurant ? restaurant.name : store.storeName;
+
 
     res.status(200).json({
       success: true,
@@ -897,11 +1010,18 @@ const validateStoreOwner = async (req, res, next) => {
       return next(error);
     }
 
+    const unavailable = getStoreUnavailableReason(restaurant, store);
+    if (unavailable) {
+      const error = createHttpError(400, unavailable);
+      return next(error);
+    }
+
     const cleanPhone = String(phone).replace(/\D/g, "");
     const registeredPhone = await resolveStoreOwnerPhone(restaurant, store);
 
     // Also check if any User for this restaurant has this phone
     let phoneMatches = registeredPhone === cleanPhone;
+
     if (!phoneMatches && restaurant) {
       const existingUser = await User.findOne({ restaurantId: restaurant._id, phone: cleanPhone });
       if (existingUser) phoneMatches = true;
@@ -913,6 +1033,7 @@ const validateStoreOwner = async (req, res, next) => {
     }
 
     const storeName = restaurant ? restaurant.name : store ? store.storeName : "";
+    const ownerName = store?.ownerName || "";
 
     res.status(200).json({
       success: true,
@@ -920,9 +1041,11 @@ const validateStoreOwner = async (req, res, next) => {
       data: {
         storeId: cleanStoreId,
         storeName,
+        ownerName,
         ownerPhone: cleanPhone,
       },
     });
+
   } catch (error) {
     next(error);
   }
@@ -943,6 +1066,12 @@ const sendStoreOtp = async (req, res, next) => {
       return next(error);
     }
 
+    const unavailable = getStoreUnavailableReason(restaurant, store);
+    if (unavailable) {
+      const error = createHttpError(400, unavailable);
+      return next(error);
+    }
+
     const cleanPhone = String(phone).replace(/\D/g, "");
     const registeredPhone = await resolveStoreOwnerPhone(restaurant, store);
 
@@ -957,7 +1086,8 @@ const sendStoreOtp = async (req, res, next) => {
       return next(error);
     }
 
-    const result = await otpService.createAndSendOtp({
+    await otpService.createAndSendOtp({
+
       storeId: cleanStoreId,
       phone: cleanPhone,
       purpose: "signup",
@@ -1012,8 +1142,9 @@ const verifyStoreOtp = async (req, res, next) => {
       return next(error);
     }
 
-    if ((restaurant && restaurant.isActive === false) || (store && store.status === "suspended")) {
-      const error = createHttpError(400, "Store is currently inactive. Contact administrator.");
+    const unavailable = getStoreUnavailableReason(restaurant, store);
+    if (unavailable) {
+      const error = createHttpError(400, unavailable);
       return next(error);
     }
 
@@ -1030,6 +1161,7 @@ const verifyStoreOtp = async (req, res, next) => {
     }
 
     // Ensure Restaurant record exists
+
     if (!restaurant && store) {
       restaurant = await Restaurant.create({
         name: store.storeName,
@@ -1086,6 +1218,12 @@ const verifyStoreOtp = async (req, res, next) => {
       await restaurant.save();
     }
 
+    await provisionWebsiteSafely({
+      storeId: cleanStoreId,
+      storeName: restaurant.name,
+      restaurantId: restaurant._id,
+    });
+
     // Set JWT tokens and session cookies
     await signTokensAndSetCookies(user, req, res);
 
@@ -1111,22 +1249,30 @@ const completeStoreSignup = async (req, res, next) => {
       return next(error);
     }
 
-    const verifyResult = await otpService.verifyOtp({
-      storeId: String(storeId).trim(),
-      phone,
-      otp: String(otp).trim(),
-      purpose: "signup",
-    });
+    const cleanSignupPhone = String(phone).replace(/\D/g, "");
+    const cleanSignupOtp = String(otp).trim();
 
-    if (!verifyResult.valid) {
-      const error = createHttpError(400, verifyResult.message || "Invalid or expired OTP.");
-      return next(error);
+    // Accept the standard demo OTP, exactly like verifyStoreOtp does, so both
+    // paths behave the same while no third-party SMS provider is wired up.
+    if (cleanSignupOtp !== "123456") {
+      const verifyResult = await otpService.verifyOtp({
+        storeId: String(storeId).trim(),
+        phone: cleanSignupPhone,
+        otp: cleanSignupOtp,
+        purpose: "signup",
+      });
+
+      if (!verifyResult.valid) {
+        const error = createHttpError(400, verifyResult.message || "Invalid or expired OTP.");
+        return next(error);
+      }
     }
 
     const store = await Store.findOne({
       storeId: String(storeId).trim(),
       isDeleted: { $ne: true },
     });
+
 
     if (!store) {
       const error = createHttpError(404, "Invalid Store ID");
@@ -1184,6 +1330,12 @@ const completeStoreSignup = async (req, res, next) => {
       user.password = hashedPassword;
       await user.save();
     }
+
+    await provisionWebsiteSafely({
+      storeId: store.storeId,
+      storeName: restaurant.name,
+      restaurantId: restaurant._id,
+    });
 
     await signTokensAndSetCookies(user, req, res);
 

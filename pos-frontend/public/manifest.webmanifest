@@ -1,0 +1,19 @@
+{
+  "name": "KnotKitchen POS",
+  "short_name": "KnotKitchen",
+  "description": "Restaurant point-of-sale application",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#080F1F",
+  "theme_color": "#080F1F",
+  "icons": [
+    {
+      "src": "/knotkitchen-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
