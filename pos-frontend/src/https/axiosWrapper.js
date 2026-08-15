@@ -35,7 +35,7 @@ axiosWrapper.interceptors.response.use(
       url === "/api/user" ||
       url.endsWith("/api/user");
 
-    if (error.response?.status === 401 && !originalRequest._retry && !isAuthEndpoint) {
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isAuthEndpoint) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           pendingQueue.push({ resolve, reject });
