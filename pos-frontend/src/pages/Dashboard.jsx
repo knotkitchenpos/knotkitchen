@@ -128,12 +128,14 @@ const Dashboard = () => {
         </div>
 
         {/* Tabs */}
-        <div className="flex gap-2 mt-8 overflow-x-auto scrollbar-hide pb-1">
+        <div className="flex gap-2 mt-8 overflow-x-auto scrollbar-hide pb-1 border-b border-[#E2E8F0]">
           {tabs.map((tab) => (
             <button
               key={tab}
-              className={`menu-category-pill ${
-                activeTab === tab ? "active" : ""
+              className={`px-4 py-2.5 rounded-t-xl border border-b-0 text-sm font-bold transition-colors ${
+                activeTab === tab
+                  ? "bg-[#5B42F3] border-[#5B42F3] text-white"
+                  : "bg-white border-[#E2E8F0] text-[#475569] hover:border-[#5B42F3] hover:text-[#5B42F3]"
               }`}
               onClick={() => setActiveTab(tab)}
             >
@@ -148,15 +150,15 @@ const Dashboard = () => {
           {activeTab === "Orders" && <RecentOrders />}
           {activeTab === "Payments" && (
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className="card p-6">
+              <div className="rounded-xl border border-[#E2E8F0] bg-white p-6">
                 <p className="text-sm text-content-muted">Total Cash Payments</p>
                 <p className="text-3xl font-bold mt-2">₹{totalCash.toLocaleString("en-IN")}</p>
               </div>
-              <div className="card p-6">
+              <div className="rounded-xl border border-[#E2E8F0] bg-white p-6">
                 <p className="text-sm text-content-muted">Total Online Payments</p>
                 <p className="text-3xl font-bold mt-2">₹{totalOnline.toLocaleString("en-IN")}</p>
               </div>
-              <div className="card p-6 bg-gradient-brand text-white">
+              <div className="rounded-xl border border-[#4A32E0] bg-[#5B42F3] p-6 text-white">
                 <p className="text-sm text-white/80">Total Revenue</p>
                 <p className="text-3xl font-bold mt-2">
                   ₹{(totalCash + totalOnline).toLocaleString("en-IN")}
@@ -177,20 +179,20 @@ const Dashboard = () => {
 
       {/* Category Modal */}
       {isCategoryModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-surface-secondary p-6 rounded-2xl shadow-2xl w-full max-w-md border border-border">
+        <div className="fixed inset-0 bg-[#0F172A]/60 flex items-center justify-center z-[100] p-4">
+          <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-md border border-[#CBD5E1]">
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-content text-xl font-semibold font-display">Add Category</h2>
+              <h2 className="text-[#0F172A] text-xl font-extrabold font-display">Add Category</h2>
               <button
                 onClick={handleCloseCategoryModal}
-                className="text-content-muted hover:text-accent-red text-2xl leading-none p-1"
+                className="text-[#94A3B8] hover:text-[#DC2626] hover:bg-[#FEF2F2] rounded-lg text-2xl leading-none p-1"
               >
                 &times;
               </button>
             </div>
             <form onSubmit={handleAddCategory} className="space-y-6">
               <div>
-                <label className="block text-content-muted mb-2 text-sm font-medium">
+                <label className="block text-[#475569] mb-2 text-sm font-bold">
                   Category Name
                 </label>
                 <div className="input-container">
@@ -198,7 +200,7 @@ const Dashboard = () => {
                     type="text"
                     name="categoryName"
                     placeholder="e.g. Starters, Main Course"
-                    className="input-field"
+                    className="w-full h-[46px] px-3.5 rounded-xl border border-[#E2E8F0] bg-white text-[#0F172A] focus:outline-none focus:border-[#5B42F3]"
                     required
                   />
                 </div>
@@ -206,7 +208,7 @@ const Dashboard = () => {
               <button
                 type="submit"
                 disabled={addCategoryMutation.isPending}
-                className="btn-primary w-full !py-3 text-base disabled:opacity-50"
+                className="w-full h-[48px] rounded-xl bg-[#5B42F3] text-white font-bold text-base hover:bg-[#4A32E0] disabled:opacity-50"
               >
                 {addCategoryMutation.isPending ? "Adding..." : "Add Category"}
               </button>
@@ -217,20 +219,20 @@ const Dashboard = () => {
 
       {/* Dish Modal */}
       {isDishModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-surface-secondary p-6 rounded-2xl shadow-2xl w-full max-w-md border border-border">
+        <div className="fixed inset-0 bg-[#0F172A]/60 flex items-center justify-center z-[100] p-4">
+          <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-md border border-[#CBD5E1]">
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-content text-xl font-semibold font-display">Add Dish</h2>
+              <h2 className="text-[#0F172A] text-xl font-extrabold font-display">Add Dish</h2>
               <button
                 onClick={handleCloseDishModal}
-                className="text-content-muted hover:text-accent-red text-2xl leading-none p-1"
+                className="text-[#94A3B8] hover:text-[#DC2626] hover:bg-[#FEF2F2] rounded-lg text-2xl leading-none p-1"
               >
                 &times;
               </button>
             </div>
             <form onSubmit={handleAddDish} className="space-y-6">
               <div>
-                <label className="block text-content-muted mb-2 text-sm font-medium">
+                <label className="block text-[#475569] mb-2 text-sm font-bold">
                   Dish Name
                 </label>
                 <div className="input-container">
@@ -238,13 +240,13 @@ const Dashboard = () => {
                     type="text"
                     name="dishName"
                     placeholder="e.g. Butter Chicken"
-                    className="input-field"
+                    className="w-full h-[46px] px-3.5 rounded-xl border border-[#E2E8F0] bg-white text-[#0F172A] focus:outline-none focus:border-[#5B42F3]"
                     required
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-content-muted mb-2 text-sm font-medium">
+                <label className="block text-[#475569] mb-2 text-sm font-bold">
                   Price (₹)
                 </label>
                 <div className="input-container">
@@ -252,18 +254,18 @@ const Dashboard = () => {
                     type="number"
                     name="dishPrice"
                     placeholder="e.g. 250"
-                    className="input-field"
+                    className="w-full h-[46px] px-3.5 rounded-xl border border-[#E2E8F0] bg-white text-[#0F172A] focus:outline-none focus:border-[#5B42F3]"
                     required
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-content-muted mb-2 text-sm font-medium">
+                <label className="block text-[#475569] mb-2 text-sm font-bold">
                   Category
                 </label>
                 <select
                   name="dishCategory"
-                  className="w-full bg-surface-input border border-border rounded-xl p-3.5 text-content focus:outline-none focus:border-accent"
+                  className="w-full h-[46px] bg-white border border-[#E2E8F0] rounded-xl px-3.5 text-[#0F172A] focus:outline-none focus:border-[#5B42F3]"
                   defaultValue=""
                   required
                 >
@@ -273,13 +275,13 @@ const Dashboard = () => {
                   ))}
                 </select>
                 {menus.length === 0 && (
-                  <p className="text-xs text-accent-red mt-2">No categories yet. Add a category first.</p>
+                  <p className="text-xs text-[#DC2626] mt-2">No categories yet. Add a category first.</p>
                 )}
               </div>
               <button
                 type="submit"
                 disabled={addDishMutation.isPending || menus.length === 0}
-                className="btn-primary w-full !py-3 text-base disabled:opacity-50"
+                className="w-full h-[48px] rounded-xl bg-[#5B42F3] text-white font-bold text-base hover:bg-[#4A32E0] disabled:opacity-50"
               >
                 {addDishMutation.isPending ? "Adding..." : "Add Dish"}
               </button>

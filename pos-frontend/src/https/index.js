@@ -35,6 +35,12 @@ export const addOrder = (data) => axiosWrapper.post("/api/order/", data);
 export const getOrders = () => axiosWrapper.get("/api/order");
 export const updateOrderStatus = ({ orderId, orderStatus }) =>
   axiosWrapper.put(`/api/order/${orderId}`, { orderStatus });
+// Store-specific popular products (POS redesign). Backend computes this from
+// real order history and falls back to the store's own featured/default
+// products when the store doesn't have enough order history yet.
+export const getPopularItems = (params = {}) =>
+  axiosWrapper.get("/api/order/popular-items", { params });
+
 
 // Table Session Endpoints (EPOS table ordering)
 export const createTableSession = (data) =>
@@ -51,11 +57,16 @@ export const requestBillForSession = (sessionId) =>
 // Menu Endpoints
 export const getMenus = () => axiosWrapper.get("/api/menu");
 export const addCategory = (data) => axiosWrapper.post("/api/menu/category", data);
+export const deleteCategory = (menuId) => axiosWrapper.delete(`/api/menu/${menuId}`);
 export const addDish = (data) => axiosWrapper.post("/api/menu/dish", data);
 export const deleteDish = ({ menuId, itemId }) =>
   axiosWrapper.delete(`/api/menu/${menuId}/dish/${itemId}`);
 export const updateDishStatus = ({ menuId, itemId }) =>
   axiosWrapper.put(`/api/menu/${menuId}/dish/${itemId}/availability`);
+// Assign / clear a subcategory on a dish (POS redesign - optional grouping)
+export const updateDishSubcategory = ({ menuId, itemId, subcategory }) =>
+  axiosWrapper.put(`/api/menu/${menuId}/dish/${itemId}/subcategory`, { subcategory });
+
 
 // Variant Endpoints
 export const addVariant = (data) =>
@@ -99,3 +110,11 @@ export const unpublishMenu = (menuId) => axiosWrapper.put(`/api/menu/${menuId}/u
 export const getMenuVersions = (menuId) => axiosWrapper.get(`/api/menu/${menuId}/versions`);
 export const rollbackMenu = ({ menuId, version }) =>
   axiosWrapper.put(`/api/menu/${menuId}/rollback/${version}`);
+
+// Structured Text (Notepad) Menu Import Endpoints
+export const getMenuImportFormat = () => axiosWrapper.get("/api/menu/import/format");
+export const previewMenuImport = (text) => axiosWrapper.post("/api/menu/import/preview", { text });
+export const importMenuText = ({ text, mode }) =>
+  axiosWrapper.post("/api/menu/import", { text, mode });
+
+

@@ -43,7 +43,7 @@ const Modal = ({ setIsTableModalOpen }) => {
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60] p-4"
+      className="fixed inset-0 bg-[#0F172A]/60 flex items-center justify-center z-[100] p-4"
       onClick={handleCloseModal}
     >
       <motion.div
@@ -52,16 +52,16 @@ const Modal = ({ setIsTableModalOpen }) => {
         exit={{ opacity: 0, scale: 0.9, y: 10 }}
         transition={{ duration: 0.25, ease: "easeInOut" }}
         onClick={(e) => e.stopPropagation()}
-        className="bg-surface-secondary rounded-2xl shadow-2xl w-full max-w-sm mx-4 border border-border overflow-hidden"
+        className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 border border-[#CBD5E1] overflow-hidden"
       >
         {/* Modal Header */}
-        <div className="flex justify-between items-center px-6 py-4 border-b border-border">
-          <h2 className="font-display text-lg text-content font-semibold">
+        <div className="flex justify-between items-center px-6 py-4 border-b border-[#E2E8F0]">
+          <h2 className="font-display text-lg text-[#0F172A] font-extrabold">
             Add Table
           </h2>
           <button
             onClick={handleCloseModal}
-            className="p-2 rounded-lg text-content-muted hover:text-accent-red hover:bg-surface-tertiary transition-all"
+            className="p-2 rounded-lg text-[#94A3B8] hover:text-[#DC2626] hover:bg-[#FEF2F2] transition-all"
           >
             <IoMdClose size={18} />
           </button>
@@ -70,7 +70,7 @@ const Modal = ({ setIsTableModalOpen }) => {
         {/* Modal Body */}
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           <div>
-            <label className="block text-content-muted mb-2 text-sm font-medium">
+            <label className="block text-[#475569] mb-2 text-sm font-bold">
               Table Number
             </label>
             <div className="input-container">
@@ -79,13 +79,13 @@ const Modal = ({ setIsTableModalOpen }) => {
                 name="tableNo"
                 value={tableData.tableNo}
                 onChange={handleInputChange}
-                className="input-field"
+              className="w-full h-[46px] px-3.5 rounded-xl border border-[#E2E8F0] bg-white text-[#0F172A] focus:outline-none focus:border-[#5B42F3]"
                 required
               />
             </div>
           </div>
           <div>
-            <label className="block text-content-muted mb-2 text-sm font-medium">
+            <label className="block text-[#475569] mb-2 text-sm font-bold">
               Number of Seats
             </label>
             <div className="input-container">
@@ -94,13 +94,13 @@ const Modal = ({ setIsTableModalOpen }) => {
                 name="seats"
                 value={tableData.seats}
                 onChange={handleInputChange}
-                className="input-field"
+              className="w-full h-[46px] px-3.5 rounded-xl border border-[#E2E8F0] bg-white text-[#0F172A] focus:outline-none focus:border-[#5B42F3]"
                 required
               />
             </div>
           </div>
 
-          <button type="submit" className="btn-primary w-full mt-6">
+          <button type="submit" className="w-full h-[46px] mt-6 rounded-xl bg-[#5B42F3] text-white font-bold hover:bg-[#4A32E0] transition-colors">
             Add Table
           </button>
         </form>

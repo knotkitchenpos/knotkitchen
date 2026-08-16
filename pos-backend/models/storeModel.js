@@ -21,12 +21,18 @@ const storeSchema = new mongoose.Schema(
         message: "Owner phone must be a 10-digit number",
       },
     },
+    // Must stay in sync with knotkitchen-admin/backend/models/storeModel.js.
+    // The admin portal can close a store temporarily or until a date, and those
+    // values are written to this same shared collection.
     status: {
       type: String,
-      enum: ["pending", "active", "suspended"],
+      enum: ["pending", "active", "suspended", "closed_temporarily", "closed_until", "deleted"],
       default: "pending",
     },
+    closedUntil: { type: Date },
+    closureReason: { type: String, default: "" },
     restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: "Restaurant" },
+
     isDeleted: { type: Boolean, default: false },
   },
   { timestamps: true }

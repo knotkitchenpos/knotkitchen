@@ -38,8 +38,8 @@ const RecentOrders = () => {
   const orders = resData?.data?.data || [];
 
   return (
-    <div className="card p-5">
-      <h2 className="text-content text-xl font-semibold mb-4 font-display">
+    <div className="rounded-xl border border-[#E2E8F0] bg-white p-5">
+      <h2 className="text-[#0F172A] text-xl font-extrabold mb-4 font-display">
         Recent Orders
       </h2>
       {orders.length === 0 ? (

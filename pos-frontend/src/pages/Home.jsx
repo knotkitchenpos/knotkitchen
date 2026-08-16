@@ -53,40 +53,41 @@ const Home = () => {
   }, [ordersRes, tablesRes]);
 
   return (
-    <div className="flex-1 min-h-0 bg-surface overflow-y-auto no-scrollbar">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div className="relative flex-1 min-h-0 overflow-y-auto bg-[#F8FAFC] no-scrollbar">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-64 bg-[radial-gradient(circle_at_top_right,rgba(91,66,243,0.10),transparent_42%),radial-gradient(circle_at_top_left,rgba(255,106,31,0.07),transparent_36%)]" />
+      <div className="relative mx-auto max-w-7xl px-4 py-5 sm:px-6 sm:py-7 lg:px-8">
         <Greetings />
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-6">
+        <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
           <MiniCard title="Total Earnings" icon={<BsCashCoin />} number={metrics.totalRevenue} footerNum={1.6} />
           <MiniCard title="In Progress" icon={<GrInProgress />} number={metrics.inProgressCount} footerNum={3.6} />
         </div>
 
         {/* Active orders & Booked tables highlight */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-          <div className="card p-5 sm:p-6 flex items-center justify-between">
+        <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div className="card flex items-center justify-between border border-[#E2E8F0] bg-white p-5 shadow-card transition-all hover:-translate-y-0.5 hover:border-[#C7C2FF] hover:shadow-pop sm:p-6">
             <div>
               <p className="text-content-muted text-sm font-semibold">Active Orders</p>
               <p className="font-display text-3xl font-bold mt-1">{metrics.activeOrders}</p>
             </div>
-            <div className="bg-accent/10 p-3 rounded-xl text-accent">
+            <div className="rounded-2xl bg-[#EEF0FE] p-3.5 text-[#5B42F3] shadow-soft">
               <FiClipboard size={24} />
             </div>
           </div>
-          <div className="card p-5 sm:p-6 flex items-center justify-between">
+          <div className="card flex items-center justify-between border border-[#E2E8F0] bg-white p-5 shadow-card transition-all hover:-translate-y-0.5 hover:border-[#BBF7D0] hover:shadow-pop sm:p-6">
             <div>
               <p className="text-content-muted text-sm font-semibold">Booked Tables</p>
               <p className="font-display text-3xl font-bold mt-1">{metrics.bookedTables}</p>
             </div>
-            <div className="bg-accent-green/10 p-3 rounded-xl text-accent-green">
+            <div className="rounded-2xl bg-[#ECFDF5] p-3.5 text-[#16A34A] shadow-soft">
               <FiUsers size={24} />
             </div>
           </div>
         </div>
 
         {/* Main Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-5 gap-6 mt-6">
+        <div className="mt-6 grid grid-cols-1 gap-5 lg:grid-cols-5">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}

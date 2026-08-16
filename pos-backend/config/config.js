@@ -1,19 +1,71 @@
 require("dotenv").config();
 
+const path = require("path");
+const crypto = require("crypto");
+
+const nodeEnv = process.env.NODE_ENV || "development";
+const isProd = nodeEnv === "production";
+
+/**
+ * Security-critical secret loader (§15).
+ *
+ * The old code shipped hardcoded JWT/refresh/admin secret fallbacks. Anyone
+ * with source-code access could forge tokens for any tenant. This helper:
+ *   - REFUSES to start in production if a secret is missing or too short
+ *   - In development it warns loudly and generates an EPHEMERAL random secret
+ *     (so tokens invalidate every restart — safe by default, and a leaking
+ *     the source no longer leaks a working key).
+ */
+const requireSecret = (name, { minLength = 32 } = {}) => {
+  const value = process.env[name];
+  if (value && value.length >= minLength) return value;
+
+  if (isProd) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `[FATAL] Environment variable ${name} is missing or shorter than ${minLength} characters. ` +
+        "Refusing to start in production to avoid using a predictable secret."
+    );
+    process.exit(1);
+  }
+
+  const ephemeral = crypto.randomBytes(48).toString("hex");
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[SECURITY] ${name} not set (or too short). Using an ephemeral random secret for this process. ` +
+      `Set ${name} to at least ${minLength} characters in .env for stable tokens.`
+  );
+  return ephemeral;
+};
+
+const parseCsv = (str) =>
+  (str || "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
 const config = Object.freeze({
     port: process.env.PORT || 3000,
     databaseURI: process.env.MONGODB_URI || process.env.MONGO_URI || "mongodb://127.0.0.1:27017/knotkitchen",
-    nodeEnv: process.env.NODE_ENV || "development",
+    nodeEnv,
+    isProduction: isProd,
+
     // Capacitor Android uses https://localhost as its WebView origin. In
     // production, cross-origin cookie auth therefore needs SameSite=None.
-    cookieSameSite: process.env.COOKIE_SAMESITE || (process.env.NODE_ENV === "production" ? "none" : "lax"),
+    cookieSameSite: process.env.COOKIE_SAMESITE || (isProd ? "none" : "lax"),
     cookieSecure: process.env.COOKIE_SECURE
         ? process.env.COOKIE_SECURE === "true"
-        : (process.env.NODE_ENV || "development") === "production",
-    accessTokenSecret: process.env.JWT_SECRET || "knotkitchen-secret-key-2024-pos-system",
-    refreshTokenSecret: process.env.REFRESH_TOKEN_SECRET || "knotkitchen-refresh-secret-2024-pos-system",
+        : isProd,
+
+    // ==== SECRETS ====
+    // No hardcoded fallbacks. In production the process refuses to start
+    // without a strong secret. In development an ephemeral secret is used
+    // (see requireSecret above).
+    accessTokenSecret: requireSecret("JWT_SECRET"),
+    refreshTokenSecret: requireSecret("REFRESH_TOKEN_SECRET"),
     accessTokenExpiry: process.env.ACCESS_TOKEN_EXPIRY || "15m",
     refreshTokenExpiry: process.env.REFRESH_TOKEN_EXPIRY || "30d",
+
     razorpayKeyId: process.env.RAZORPAY_KEY_ID,
     razorpaySecretKey: process.env.RAZORPAY_KEY_SECRET,
     razorpyWebhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET,
@@ -28,26 +80,30 @@ const config = Object.freeze({
 
     // Realtime
     socketEnabled: process.env.SOCKET_ENABLED !== "false",
+
+    // ==== CORS / Frontend allow-list ====
+    //
+    // The old code used `origin: true` — that reflects ANY origin back with
+    // Access-Control-Allow-Origin AND allows credentials, which is a total
+    // cross-site takeover primitive. We now build a strict allow-list.
+    //
+    // Local dev defaults let the Vite dev server and Capacitor WebView origins
+    // work out of the box. In production the operator MUST configure
+    // FRONTEND_URLS (comma separated).
     frontendUrls: [
-        ...(process.env.FRONTEND_URLS || "http://localhost:5173")
-            .split(",")
-            .map((url) => url.trim())
-            .filter(Boolean),
+        ...parseCsv(process.env.FRONTEND_URLS || (isProd ? "" : "http://localhost:5173,http://127.0.0.1:5173")),
         "https://localhost",
         "capacitor://localhost",
     ],
 
     // ===== Storefront / Media =====
-    // Public base URL of the customer-facing storefront app. Used to build the
-    // shareable website link shown in POS → Settings → Website.
     storefrontBaseUrl: (process.env.STOREFRONT_BASE_URL || "http://localhost:5173").replace(/\/$/, ""),
-    // Root domain for future per-store subdomains (abc-restaurant.knotkitchen.com)
     storefrontRootDomain: process.env.STOREFRONT_ROOT_DOMAIN || "",
+    frontendUrl: (process.env.FRONTEND_URL || process.env.STOREFRONT_BASE_URL || "http://localhost:5173").replace(/\/$/, ""),
 
     // Media storage: local | cloudinary | s3 | r2
     mediaProvider: (process.env.MEDIA_STORAGE_PROVIDER || "local").toLowerCase(),
-    uploadsDir: process.env.UPLOADS_DIR || require("path").join(__dirname, "..", "uploads"),
-    // Where locally-stored files are publicly reachable from.
+    uploadsDir: process.env.UPLOADS_DIR || path.join(__dirname, "..", "uploads"),
     mediaPublicBaseUrl: (
         process.env.MEDIA_PUBLIC_BASE_URL ||
         `${process.env.BACKEND_PUBLIC_URL || "http://localhost:" + (process.env.PORT || 3000)}/uploads`
@@ -73,6 +129,24 @@ const config = Object.freeze({
     storefrontOrderRateWindowMs: parseInt(process.env.STOREFRONT_ORDER_RATE_WINDOW_MS) || 10 * 60 * 1000,
     storefrontReadRateMax: parseInt(process.env.STOREFRONT_READ_RATE_MAX) || 300,
     storefrontReadRateWindowMs: parseInt(process.env.STOREFRONT_READ_RATE_WINDOW_MS) || 60 * 1000,
+
+    // Auth-specific rate limits (§13)
+    authLoginRateMax: parseInt(process.env.AUTH_LOGIN_RATE_MAX) || 10,
+    authLoginRateWindowMs: parseInt(process.env.AUTH_LOGIN_RATE_WINDOW_MS) || 15 * 60 * 1000,
+    authOtpSendRateMax: parseInt(process.env.AUTH_OTP_SEND_RATE_MAX) || 5,
+    authOtpSendRateWindowMs: parseInt(process.env.AUTH_OTP_SEND_RATE_WINDOW_MS) || 15 * 60 * 1000,
+    authOtpVerifyRateMax: parseInt(process.env.AUTH_OTP_VERIFY_RATE_MAX) || 10,
+    authOtpVerifyRateWindowMs: parseInt(process.env.AUTH_OTP_VERIFY_RATE_WINDOW_MS) || 15 * 60 * 1000,
+
+    // Dev-only OTP bypass (§2 §4). NEVER active in production.
+    // In development mode (!isProd), demo OTP is allowed by default (OTP_DEV_CODE=123456)
+    // unless explicitly disabled with ALLOW_DEV_OTP=false.
+    allowDevOtp: !isProd && process.env.ALLOW_DEV_OTP !== "false",
+    devOtpCode: process.env.OTP_DEV_CODE || "123456",
+
+    // Dev-only Product ID auto-creation (§30). NEVER active in production.
+    allowDemoProductId: !isProd && process.env.ALLOW_DEMO_PRODUCT_ID !== "false",
+
 });
 
 

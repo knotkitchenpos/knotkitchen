@@ -2,12 +2,28 @@ const Menu = require("../models/menuModel");
 const createHttpError = require("http-errors");
 const mongoose = require("mongoose");
 
+/**
+ * Menu tenancy scope (§3).
+ *
+ * Every mutation on this file goes through menuScopeFor() so that an
+ * employee/manager can edit menus belonging to their restaurant even if the
+ * menu was originally created by a different POS user (the pre-multi-tenant
+ * "createdBy" scoping made staff invisible to owner-created menus and
+ * vice-versa — the addition of restaurantId here fixes it while remaining
+ * backwards compatible with single-user legacy installs).
+ */
+const menuScopeFor = (user) => {
+  if (user?.restaurantId) {
+    const clauses = [{ restaurantId: user.restaurantId }];
+    if (user._id) clauses.push({ createdBy: user._id });
+    return { $or: clauses };
+  }
+  return { createdBy: user?._id };
+};
+
 const getMenus = async (req, res, next) => {
   try {
-    const filter = req.user?.restaurantId
-      ? { $or: [{ restaurantId: req.user.restaurantId }, { createdBy: req.user._id }] }
-      : { createdBy: req.user._id };
-    const menus = await Menu.find(filter);
+    const menus = await Menu.find(menuScopeFor(req.user));
     res.status(200).json({ success: true, data: menus });
   } catch (error) {
     next(error);
@@ -22,13 +38,21 @@ const addCategory = async (req, res, next) => {
       return next(error);
     }
 
-    const existing = await Menu.findOne({ name, createdBy: req.user._id });
+    const existing = await Menu.findOne({ name, ...menuScopeFor(req.user) });
     if (existing) {
       const error = createHttpError(400, "Category already exists!");
       return next(error);
     }
 
-    const menu = new Menu({ name, items: [], createdBy: req.user._id });
+    const menu = new Menu({
+      name,
+      items: [],
+      createdBy: req.user._id,
+      // Denormalise the tenant identifiers so cross-restaurant queries can
+      // filter menus without a join. Storefront/publicStore both do this.
+      restaurantId: req.user?.restaurantId,
+      outletId: req.user?.outletId,
+    });
     await menu.save();
     res.status(201).json({ success: true, message: "Category added!", data: menu });
   } catch (error) {
@@ -38,25 +62,61 @@ const addCategory = async (req, res, next) => {
 
 const addDish = async (req, res, next) => {
   try {
-    const { name, price, category, menuId } = req.body;
+    const { name, price, category, menuId, subcategory } = req.body;
     if (!name || !price || !category) {
       const error = createHttpError(400, "Dish name, price and category are required!");
       return next(error);
     }
 
-    const menu = await Menu.findOne({ _id: menuId, createdBy: req.user._id });
+    const menu = await Menu.findOne({ _id: menuId, ...menuScopeFor(req.user) });
     if (!menu) {
       const error = createHttpError(404, "Category not found!");
       return next(error);
     }
 
-    menu.items.push({ name, price, category });
+    // Subcategory is optional. Trim + slice defensively to keep it short.
+    const cleanSubcategory = typeof subcategory === "string"
+      ? subcategory.trim().slice(0, 120)
+      : "";
+
+    menu.items.push({ name, price, category, subcategory: cleanSubcategory });
     await menu.save();
     res.status(201).json({ success: true, message: "Dish added!", data: menu });
   } catch (error) {
     next(error);
   }
 };
+
+/**
+ * PUT /api/menu/:menuId/dish/:itemId/subcategory
+ * Set/clear the subcategory a dish belongs to. Tenant-scoped.
+ */
+const updateDishSubcategory = async (req, res, next) => {
+  try {
+    const { menuId, itemId } = req.params;
+    const { subcategory } = req.body || {};
+
+    if (!mongoose.Types.ObjectId.isValid(menuId) || !mongoose.Types.ObjectId.isValid(itemId)) {
+      return next(createHttpError(404, "Invalid id!"));
+    }
+
+    const menu = await Menu.findOne({ _id: menuId, ...menuScopeFor(req.user) });
+    if (!menu) return next(createHttpError(404, "Category not found!"));
+
+    const item = menu.items.id(itemId);
+    if (!item) return next(createHttpError(404, "Dish not found!"));
+
+    item.subcategory = typeof subcategory === "string"
+      ? subcategory.trim().slice(0, 120)
+      : "";
+
+    await menu.save();
+    res.status(200).json({ success: true, message: "Subcategory updated!", data: menu });
+  } catch (error) {
+    next(error);
+  }
+};
+
 
 // ===== Variants =====
 const addVariant = async (req, res, next) => {
@@ -67,7 +127,7 @@ const addVariant = async (req, res, next) => {
       return next(error);
     }
 
-    const menu = await Menu.findOne({ _id: menuId, createdBy: req.user._id });
+    const menu = await Menu.findOne({ _id: menuId, ...menuScopeFor(req.user) });
     if (!menu) {
       const error = createHttpError(404, "Category not found!");
       return next(error);
@@ -91,7 +151,7 @@ const addVariant = async (req, res, next) => {
 const deleteVariant = async (req, res, next) => {
   try {
     const { menuId, itemId, variantId } = req.params;
-    const menu = await Menu.findOne({ _id: menuId, createdBy: req.user._id });
+    const menu = await Menu.findOne({ _id: menuId, ...menuScopeFor(req.user) });
     if (!menu) {
       const error = createHttpError(404, "Category not found!");
       return next(error);
@@ -120,7 +180,7 @@ const addAddon = async (req, res, next) => {
       return next(error);
     }
 
-    const menu = await Menu.findOne({ _id: menuId, createdBy: req.user._id });
+    const menu = await Menu.findOne({ _id: menuId, ...menuScopeFor(req.user) });
     if (!menu) {
       const error = createHttpError(404, "Category not found!");
       return next(error);
@@ -144,7 +204,7 @@ const addAddon = async (req, res, next) => {
 const deleteAddon = async (req, res, next) => {
   try {
     const { menuId, itemId, addonId } = req.params;
-    const menu = await Menu.findOne({ _id: menuId, createdBy: req.user._id });
+    const menu = await Menu.findOne({ _id: menuId, ...menuScopeFor(req.user) });
     if (!menu) {
       const error = createHttpError(404, "Category not found!");
       return next(error);
@@ -173,7 +233,7 @@ const addModifierGroup = async (req, res, next) => {
       return next(error);
     }
 
-    const menu = await Menu.findOne({ _id: menuId, createdBy: req.user._id });
+    const menu = await Menu.findOne({ _id: menuId, ...menuScopeFor(req.user) });
     if (!menu) {
       const error = createHttpError(404, "Category not found!");
       return next(error);
@@ -202,7 +262,7 @@ const addModifierGroup = async (req, res, next) => {
 const deleteModifierGroup = async (req, res, next) => {
   try {
     const { menuId, itemId, groupId } = req.params;
-    const menu = await Menu.findOne({ _id: menuId, createdBy: req.user._id });
+    const menu = await Menu.findOne({ _id: menuId, ...menuScopeFor(req.user) });
     if (!menu) {
       const error = createHttpError(404, "Category not found!");
       return next(error);
@@ -228,7 +288,7 @@ const toggleCombo = async (req, res, next) => {
     const { menuId, itemId } = req.params;
     const { comboDescription, comboItems } = req.body;
 
-    const menu = await Menu.findOne({ _id: menuId, createdBy: req.user._id });
+    const menu = await Menu.findOne({ _id: menuId, ...menuScopeFor(req.user) });
     if (!menu) {
       const error = createHttpError(404, "Category not found!");
       return next(error);
@@ -265,7 +325,7 @@ const addPriceRule = async (req, res, next) => {
       return next(error);
     }
 
-    const menu = await Menu.findOne({ _id: menuId, createdBy: req.user._id });
+    const menu = await Menu.findOne({ _id: menuId, ...menuScopeFor(req.user) });
     if (!menu) {
       const error = createHttpError(404, "Category not found!");
       return next(error);
@@ -295,7 +355,7 @@ const addPriceRule = async (req, res, next) => {
 const deletePriceRule = async (req, res, next) => {
   try {
     const { menuId, itemId, ruleId } = req.params;
-    const menu = await Menu.findOne({ _id: menuId, createdBy: req.user._id });
+    const menu = await Menu.findOne({ _id: menuId, ...menuScopeFor(req.user) });
     if (!menu) {
       const error = createHttpError(404, "Category not found!");
       return next(error);
@@ -321,7 +381,7 @@ const updateItemSchedule = async (req, res, next) => {
     const { menuId, itemId } = req.params;
     const { enabled, startTime, endTime, daysOfWeek } = req.body;
 
-    const menu = await Menu.findOne({ _id: menuId, createdBy: req.user._id });
+    const menu = await Menu.findOne({ _id: menuId, ...menuScopeFor(req.user) });
     if (!menu) {
       const error = createHttpError(404, "Category not found!");
       return next(error);
@@ -352,7 +412,7 @@ const updateMenuSchedule = async (req, res, next) => {
     const { menuId } = req.params;
     const { enabled, startTime, endTime, daysOfWeek } = req.body;
 
-    const menu = await Menu.findOne({ _id: menuId, createdBy: req.user._id });
+    const menu = await Menu.findOne({ _id: menuId, ...menuScopeFor(req.user) });
     if (!menu) {
       const error = createHttpError(404, "Category not found!");
       return next(error);
@@ -376,7 +436,7 @@ const publishMenu = async (req, res, next) => {
   try {
     const { menuId } = req.params;
 
-    const menu = await Menu.findOne({ _id: menuId, createdBy: req.user._id });
+    const menu = await Menu.findOne({ _id: menuId, ...menuScopeFor(req.user) });
     if (!menu) {
       const error = createHttpError(404, "Menu not found!");
       return next(error);
@@ -416,7 +476,7 @@ const unpublishMenu = async (req, res, next) => {
   try {
     const { menuId } = req.params;
 
-    const menu = await Menu.findOne({ _id: menuId, createdBy: req.user._id });
+    const menu = await Menu.findOne({ _id: menuId, ...menuScopeFor(req.user) });
     if (!menu) {
       const error = createHttpError(404, "Menu not found!");
       return next(error);
@@ -435,7 +495,7 @@ const getMenuVersions = async (req, res, next) => {
   try {
     const { menuId } = req.params;
 
-    const menu = await Menu.findOne({ _id: menuId, createdBy: req.user._id });
+    const menu = await Menu.findOne({ _id: menuId, ...menuScopeFor(req.user) });
     if (!menu) {
       const error = createHttpError(404, "Menu not found!");
       return next(error);
@@ -459,7 +519,7 @@ const rollbackMenu = async (req, res, next) => {
   try {
     const { menuId, version } = req.params;
 
-    const menu = await Menu.findOne({ _id: menuId, createdBy: req.user._id });
+    const menu = await Menu.findOne({ _id: menuId, ...menuScopeFor(req.user) });
     if (!menu) {
       const error = createHttpError(404, "Menu not found!");
       return next(error);
@@ -499,7 +559,7 @@ const deleteMenu = async (req, res, next) => {
       return next(error);
     }
 
-    const menu = await Menu.findOneAndDelete({ _id: id, createdBy: req.user._id });
+    const menu = await Menu.findOneAndDelete({ _id: id, ...menuScopeFor(req.user) });
     if (!menu) {
       const error = createHttpError(404, "Menu not found!");
       return next(error);
@@ -519,7 +579,7 @@ const deleteDish = async (req, res, next) => {
       return next(error);
     }
 
-    const menu = await Menu.findOne({ _id: menuId, createdBy: req.user._id });
+    const menu = await Menu.findOne({ _id: menuId, ...menuScopeFor(req.user) });
     if (!menu) {
       const error = createHttpError(404, "Category not found!");
       return next(error);
@@ -547,7 +607,7 @@ const toggleDishAvailability = async (req, res, next) => {
       return next(error);
     }
 
-    const menu = await Menu.findOne({ _id: menuId, createdBy: req.user._id });
+    const menu = await Menu.findOne({ _id: menuId, ...menuScopeFor(req.user) });
     if (!menu) {
       const error = createHttpError(404, "Category not found!");
       return next(error);
@@ -575,7 +635,9 @@ module.exports = {
   getMenus,
   addCategory,
   addDish,
+  updateDishSubcategory,
   deleteMenu,
+
   deleteDish,
   toggleDishAvailability,
   addVariant,

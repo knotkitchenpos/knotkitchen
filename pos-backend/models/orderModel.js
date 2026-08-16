@@ -8,6 +8,36 @@ const orderItemSchema = new mongoose.Schema({
   total: { type: Number, required: true },
   modifiers: [{ name: String, price: Number }],
   note: { type: String, default: "" },
+
+  // --- Website/storefront line detail (additive; POS lines simply omit these) ---
+  // The Menu document id (category) + the embedded item id. Together they
+  // uniquely resolve a product, which is what the server re-validates against.
+  menuId: { type: mongoose.Schema.Types.ObjectId, ref: "Menu" },
+  itemId: { type: mongoose.Schema.Types.ObjectId },
+  basePrice: { type: Number, default: 0 },   // price before modifiers, per unit
+  unitPrice: { type: Number, default: 0 },   // base + modifiers, per unit
+  variant: {
+    variantId: { type: mongoose.Schema.Types.ObjectId, default: null },
+    name: { type: String, default: "" },
+    price: { type: Number, default: 0 },
+  },
+  addons: {
+    type: [{ addonId: mongoose.Schema.Types.ObjectId, name: String, price: Number, _id: false }],
+    default: [],
+  },
+  modifierSelections: {
+    type: [{
+      groupId: mongoose.Schema.Types.ObjectId,
+      groupName: String,
+      optionId: mongoose.Schema.Types.ObjectId,
+      optionName: String,
+      price: Number,
+      _id: false,
+    }],
+    default: [],
+  },
+  imageUrl: { type: String, default: "" },
+
   status: {
     type: String,
     enum: ["pending", "preparing", "ready", "served", "cancelled", "refunded"],
@@ -63,6 +93,35 @@ const orderSchema = new mongoose.Schema({
   requestId: { type: String, default: "" },
   restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: "Restaurant" },
   outletId: { type: mongoose.Schema.Types.ObjectId, ref: "Outlet" },
+
+  /**
+   * --- Online/website ordering (additive) ---
+   * source distinguishes how the order entered the system. Existing POS code
+   * paths default to "POS" so nothing changes for them.
+   */
+  source: {
+    type: String,
+    enum: ["POS", "WEBSITE", "QR", "MARKETPLACE", "PHONE"],
+    default: "POS",
+    index: true,
+  },
+  // Permanent public store identifier, denormalized onto the order so the POS
+  // and future analytics can filter website orders without a join.
+  storeId: { type: String, default: "", index: true },
+  // Human-friendly reference shown to the customer, e.g. "W-482193-0007".
+  orderNumber: { type: String, default: "" },
+  // Idempotency key for online checkout (§32 double-click protection).
+  idempotencyKey: { type: String, default: "" },
+  // Scheduled/pre-orders (§21). Null = ASAP.
+  scheduledFor: { type: Date, default: null },
+  // Structured analytics context (§28) — no PII beyond what the order holds.
+  channelMeta: {
+    slug: { type: String, default: "" },
+    themeKey: { type: String, default: "" },
+    userAgent: { type: String, default: "" },
+    placedAt: { type: Date },
+  },
+
   customerId: { type: mongoose.Schema.Types.ObjectId, ref: "Customer" },
   couponCode: { type: String, default: "" },
   tips: { type: Number, default: 0 },
@@ -108,5 +167,20 @@ orderSchema.index(
   { unique: true, partialFilterExpression: { requestId: { $ne: "" } } }
 );
 orderSchema.index({ tableSessionId: 1 });
+
+// --- Website order indexes ---
+// POS "new online orders" query + analytics rollups.
+orderSchema.index({ storeId: 1, source: 1, createdAt: -1 });
+orderSchema.index({ restaurantId: 1, source: 1, orderStatus: 1, createdAt: -1 });
+/**
+ * Idempotency guard (§32): a repeated checkout POST carrying the same
+ * idempotencyKey can never create a second order for the same restaurant.
+ * Partial index so the millions of POS orders with an empty key are exempt.
+ */
+orderSchema.index(
+  { restaurantId: 1, idempotencyKey: 1 },
+  { unique: true, partialFilterExpression: { idempotencyKey: { $gt: "" } } }
+);
+
 
 module.exports = mongoose.model("Order", orderSchema);

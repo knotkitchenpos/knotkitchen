@@ -16,8 +16,9 @@ const useLoadData = () => {
       try {
         const res = await getUserData();
         if (res && res.data && res.data.data) {
-          const { _id, name, address, email, phone, role } = res.data.data;
-          dispatch(setUser({ _id, name, address, email, phone, role }));
+          const { _id, name, address, email, phone, role, restaurantId, storeId } = res.data.data;
+          dispatch(setUser({ _id, name, address, email, phone, role, restaurantId, storeId }));
+
         }
       } catch (error) {
         dispatch(removeUser());

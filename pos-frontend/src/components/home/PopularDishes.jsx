@@ -47,12 +47,12 @@ const PopularDishes = () => {
     .slice(0, 5);
 
   return (
-    <div className="card p-4 sm:p-6">
+    <div className="card border border-[#E2E8F0] bg-white p-4 shadow-card sm:p-6">
       <div className="flex justify-between items-center mb-4">
-        <h1 className="font-display text-lg font-semibold">Popular Dishes</h1>
+          <h1 className="font-display text-lg font-semibold text-[#0F172A]">Popular Dishes</h1>
         <button
           onClick={() => navigate("/menu")}
-          className="flex items-center gap-2 text-accent-blue text-sm font-semibold hover:gap-3 transition-all"
+          className="flex items-center gap-2 text-sm font-semibold text-[#2563EB] transition-all hover:gap-3"
         >
           View all <FiArrowRight />
         </button>
@@ -72,7 +72,7 @@ const PopularDishes = () => {
               className="flex items-center gap-4 p-3 rounded-xl bg-surface-input border border-border hover:border-accent/40 hover:shadow-md transition-all group cursor-pointer"
             >
               <span className="font-bold text-lg text-content-muted w-7">{String(index + 1).padStart(2, "0")}</span>
-              <div className="w-12 h-12 rounded-full bg-gradient-brand flex items-center justify-center text-white font-bold text-lg group-hover:scale-110 transition-transform">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-[#5B42F3] to-[#7C3AED] text-lg font-bold text-white transition-transform group-hover:scale-110">
                 {dish.name?.[0]?.toUpperCase() || "D"}
               </div>
               <div className="flex-1">

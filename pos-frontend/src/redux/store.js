@@ -6,11 +6,12 @@ import cartSlice from "./slices/cartSlice";
 import userSlice from "./slices/userSlice";
 import themeSlice from "./slices/themeSlice";
 import orderTypeSlice from "./slices/orderTypeSlice";
+import heldOrdersSlice from "./slices/heldOrdersSlice";
 
 const persistConfig = {
     key: "root",
     storage,
-    whitelist: ["user"]
+    whitelist: ["user", "heldOrders"]
 };
 
 const rootReducer = combineReducers({
@@ -18,7 +19,8 @@ const rootReducer = combineReducers({
     cart : cartSlice,
     user : userSlice,
     theme: themeSlice,
-    orderType: orderTypeSlice
+    orderType: orderTypeSlice,
+    heldOrders: heldOrdersSlice
 });
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);

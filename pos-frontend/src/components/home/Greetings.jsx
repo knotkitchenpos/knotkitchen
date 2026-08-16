@@ -32,28 +32,28 @@ const Greetings = () => {
     <motion.div
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-6"
+      className="relative mt-0 flex flex-col justify-between gap-5 overflow-hidden rounded-2xl border border-[#E2E8F0] bg-white px-5 py-5 shadow-card sm:flex-row sm:items-center sm:px-6"
     >
       <div>
-        <h1 className="font-display text-2xl sm:text-3xl font-bold tracking-tight">
+        <h1 className="font-display text-2xl font-bold tracking-tight text-[#0F172A] sm:text-3xl">
           {greeting}, <span className="text-accent">{userData.name || "Guest"}</span>
         </h1>
-        <p className="text-content-muted text-sm mt-1">
+        <p className="mt-1 text-sm text-[#64748B]">
           Here's what's happening at your restaurant today.
         </p>
       </div>
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-4 rounded-2xl bg-[#F8FAFC] px-3 py-2.5 sm:px-4">
         <div className="text-right">
           <div className="flex items-center justify-end gap-2">
             <FiClock className="text-content-muted" size={16} />
-            <p className="font-display text-2xl font-bold tabular-nums">{formatTime(dateTime)}</p>
+            <p className="font-display text-2xl font-bold tabular-nums text-[#0F172A]">{formatTime(dateTime)}</p>
           </div>
           <div className="flex items-center justify-end gap-1.5 mt-1 text-content-muted text-xs">
             <FiCalendar size={12} />
             <p>{formatDate(dateTime)}</p>
           </div>
         </div>
-        <div className="hidden sm:block w-12 h-12 rounded-2xl bg-gradient-brand flex items-center justify-center text-2xl">
+        <div className="hidden h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-[#5B42F3] to-[#7C3AED] text-2xl shadow-purple sm:flex">
           <FiClock className="text-white" size={24} />
         </div>
       </div>

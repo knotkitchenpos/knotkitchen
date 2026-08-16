@@ -1,60 +1,51 @@
 /** @type {import('tailwindcss').Config} */
 export default {
-  darkMode: "class",
-  content: [
-    "./index.html",
-    "./src/**/*.{js,ts,jsx,tsx}",
-  ],
+  content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
     extend: {
       colors: {
-        navy: {
-          DEFAULT: "#080F1F",
-          900: "#080F1F",
-          800: "#0D1526",
-          700: "#111B2E",
-          600: "#162238",
+        // Exact reference design tokens
+        sidebar: "#0B1120",
+        "sidebar-hover": "#1A2237",
+        purple: {
+          DEFAULT: "#5B42F3",
+          hover: "#4A32E0",
+          light: "#EEF0FE",
         },
-        surface: {
-          DEFAULT: "#080F1F",
-          secondary: "#0D1526",
-          tertiary: "#111B2E",
-          card: "#111B2E",
-          elevated: "#162238",
-          input: "#0D1526",
-        },
-        content: {
-          DEFAULT: "#F5F7FA",
-          secondary: "#AEB8CA",
-          muted: "#77839A",
-          disabled: "#556176",
-        },
-        border: {
-          DEFAULT: "#26344B",
-          subtle: "#1D2A3D",
-          focused: "#FF5A00",
-        },
-        accent: {
-          DEFAULT: "#FF5A00",
-          orange: "#FF5A00",
-          bright: "#FF6A00",
-          hover: "#FF7A1A",
-          dark: "#E94D00",
-          blue: "#3B82F6",
-          green: "#22C55E",
+        surface: "#FFFFFF",
+        canvas: "#F8FAFC",
+        ink: "#0F172A",
+        "ink-2": "#475569",
+        "ink-3": "#94A3B8",
+        line: "#E2E8F0",
+        "line-2": "#F1F5F9",
+        // Category tile colors from reference
+        cat: {
+          orange: "#F97316",
+          "orange-2": "#FB6514",
           red: "#EF4444",
+          blue: "#2563EB",
           amber: "#F59E0B",
+          green: "#16A34A",
+          violet: "#6D28D9",
+          indigo: "#4F46E5",
         },
       },
+      fontFamily: {
+        sans: ["Plus Jakarta Sans", "Inter", "system-ui", "sans-serif"],
+        display: ["Plus Jakarta Sans", "sans-serif"],
+      },
       boxShadow: {
-        card: "0 12px 40px rgba(0, 0, 0, 0.25)",
-        hover: "0 16px 48px rgba(0, 0, 0, 0.35)",
-        orange: "0 8px 25px rgba(255, 90, 0, 0.25)",
-        glow: "0 0 20px rgba(255, 90, 0, 0.15)",
+        soft: "0 1px 2px 0 rgba(15,23,42,0.04)",
+        card: "0 1px 3px 0 rgba(15,23,42,0.06), 0 1px 2px -1px rgba(15,23,42,0.06)",
+        pop: "0 10px 30px -6px rgba(15,23,42,0.12)",
+        purple: "0 8px 20px -6px rgba(91,66,243,0.45)",
+      },
+      borderRadius: {
+        xl: "0.75rem",
+        "2xl": "1rem",
       },
     },
   },
-  plugins: [
-    require('tailwind-scrollbar-hide')
-  ],
-}
+  plugins: [],
+};

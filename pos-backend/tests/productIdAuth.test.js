@@ -11,8 +11,8 @@ const products = {
   "KK-TEST-002": { _id: "p5", productId: "KK-TEST-002", status: "ACTIVE", isActive: true, allowsRegistration: true, save: saveSig, toObject: () => ({}) },
 };
 const users = {
-  "a@test.com": { _id: "u1", name: "A", email: "a@test.com", phone: "1111111111", password: "h", restaurantId: "r1", productId: "p1", isActive: true, isDeleted: false, sessions: [], save: async function () { return this; }, toSafeJSON: () => ({ _id: "u1" }) },
-  "b@test.com": { _id: "u2", name: "B", email: "b@test.com", phone: "2222222222", password: "h", restaurantId: "r2", productId: "p5", isActive: true, isDeleted: false, sessions: [], save: async function () { return this; }, toSafeJSON: () => ({ _id: "u2" }) },
+  "a@test.com": { _id: "u1", name: "A", email: "a@test.com", phone: "1111111111", password: "pass1234", restaurantId: "r1", productId: "p1", isActive: true, isDeleted: false, sessions: [], save: async function () { return this; }, toSafeJSON: () => ({ _id: "u1" }) },
+  "b@test.com": { _id: "u2", name: "B", email: "b@test.com", phone: "2222222222", password: "pass1234", restaurantId: "r2", productId: "p5", isActive: true, isDeleted: false, sessions: [], save: async function () { return this; }, toSafeJSON: () => ({ _id: "u2" }) },
 };
 
 const UserMock = (d) => ({ ...d, _id: "uNew", save: async function () { return this; }, toSafeJSON: () => ({ _id: "uNew" }) });
@@ -53,45 +53,45 @@ const call = async (fn, body, extra) => { const r = res(); let err = null; await
 
 // SIGNUP
 test("signup without Product ID -> 400", async () => {
-  const { err } = await call(uc.register, { name: "T", address: "A", phone: "9999999999", password: "x" });
+  const { err } = await call(uc.register, { name: "T", address: "A", phone: "9999999999", password: "pass1234" });
   assert.equal(err.status, 400); assert.match(err.message, /Product ID is required/i);
 });
 test("invalid Product ID -> 400", async () => {
-  const { err } = await call(uc.register, { name: "T", address: "A", phone: "9999999999", password: "x", productId: "KK-NOPE" });
+  const { err } = await call(uc.register, { name: "T", address: "A", phone: "9999999999", password: "pass1234", productId: "KK-NOPE" });
   assert.equal(err.status, 400); assert.match(err.message, /Invalid Product ID/i);
 });
 test("inactive Product ID -> 400", async () => {
-  const { err } = await call(uc.register, { name: "T", address: "A", phone: "9999999999", password: "x", productId: "KK-INACTIVE" });
+  const { err } = await call(uc.register, { name: "T", address: "A", phone: "9999999999", password: "pass1234", productId: "KK-INACTIVE" });
   assert.equal(err.status, 400); assert.match(err.message, /inactive/i);
 });
 test("Product ID without registration -> 400", async () => {
-  const { err } = await call(uc.register, { name: "T", address: "A", phone: "9999999999", password: "x", productId: "KK-NOREG" });
+  const { err } = await call(uc.register, { name: "T", address: "A", phone: "9999999999", password: "pass1234", productId: "KK-NOREG" });
   assert.equal(err.status, 400); assert.match(err.message, /does not permit registration/i);
 });
 test("already-assigned Product ID -> 400", async () => {
-  const { err } = await call(uc.register, { name: "T", address: "A", phone: "9999999999", password: "x", productId: "KK-USED" });
+  const { err } = await call(uc.register, { name: "T", address: "A", phone: "9999999999", password: "pass1234", productId: "KK-USED" });
   assert.equal(err.status, 400); assert.match(err.message, /already been assigned/i);
 });
 test("valid Product ID -> 201", async () => {
-  const { r, err } = await call(uc.register, { name: "T", address: "A", phone: "8888888888", email: "z@t.com", password: "x", productId: "KK-TEST-001", restaurantName: "R" });
+  const { r, err } = await call(uc.register, { name: "T", address: "A", phone: "8888888888", email: "z@t.com", password: "pass1234", productId: "KK-TEST-001", restaurantName: "R" });
   assert.ifError(err); assert.equal(r.statusCode, 201); assert.equal(r._j.success, true);
 });
 
 // LOGIN
 test("login without Product ID -> 400", async () => {
-  const { err } = await call(uc.login, { email: "a@test.com", password: "h" });
+  const { err } = await call(uc.login, { email: "a@test.com", password: "pass1234" });
   assert.equal(err.status, 400); assert.match(err.message, /Product ID is required/i);
 });
 test("invalid Product ID at login -> 400", async () => {
-  const { err } = await call(uc.login, { email: "a@test.com", password: "h", productId: "KK-NOPE" });
+  const { err } = await call(uc.login, { email: "a@test.com", password: "pass1234", productId: "KK-NOPE" });
   assert.equal(err.status, 400); assert.match(err.message, /Invalid Product ID/i);
 });
 test("user A cannot login with Product ID B -> 401", async () => {
-  const { err } = await call(uc.login, { email: "a@test.com", password: "h", productId: "KK-TEST-002" });
+  const { err } = await call(uc.login, { email: "a@test.com", password: "pass1234", productId: "KK-TEST-002" });
   assert.equal(err.status, 401); assert.match(err.message, /Invalid Credentials for this Product ID/i);
 });
 test("valid login with correct Product ID -> 200", async () => {
-  const { r, err } = await call(uc.login, { email: "a@test.com", password: "h", productId: "KK-TEST-001" });
+  const { r, err } = await call(uc.login, { email: "a@test.com", password: "pass1234", productId: "KK-TEST-001" });
   assert.ifError(err); assert.equal(r.statusCode, 200); assert.equal(r._j.success, true);
 });
 

@@ -3,9 +3,11 @@ const {
   getMenus,
   addCategory,
   addDish,
+  updateDishSubcategory,
   deleteMenu,
   deleteDish,
   toggleDishAvailability,
+
   addVariant,
   deleteVariant,
   addAddon,
@@ -22,12 +24,26 @@ const {
   getMenuVersions,
   rollbackMenu,
 } = require("../controllers/menuController");
+const {
+  downloadTemplate,
+  getFormatDocs,
+  previewImport,
+  importMenu,
+} = require("../controllers/menuImportController");
 const { isVerifiedUser } = require("../middlewares/tokenVerification");
 const router = express.Router();
 
 router.route("/").get(isVerifiedUser, getMenus);
 router.route("/category").post(isVerifiedUser, addCategory);
 router.route("/dish").post(isVerifiedUser, addDish);
+
+// Structured Text (Notepad) Menu Import
+// Declared before "/:menuId/..." routes so "import" is never read as a menuId.
+router.route("/import/template").get(isVerifiedUser, downloadTemplate);
+router.route("/import/format").get(isVerifiedUser, getFormatDocs);
+router.route("/import/preview").post(isVerifiedUser, previewImport);
+router.route("/import").post(isVerifiedUser, importMenu);
+
 
 // Variants
 router.route("/:menuId/dish/:itemId/variant").post(isVerifiedUser, addVariant);
@@ -60,9 +76,13 @@ router.route("/:menuId/unpublish").put(isVerifiedUser, unpublishMenu);
 router.route("/:menuId/versions").get(isVerifiedUser, getMenuVersions);
 router.route("/:menuId/rollback/:version").put(isVerifiedUser, rollbackMenu);
 
+// Subcategory (POS redesign - optional grouping inside a category)
+router.route("/:menuId/dish/:itemId/subcategory").put(isVerifiedUser, updateDishSubcategory);
+
 // Existing
 router.route("/:menuId/dish/:itemId").delete(isVerifiedUser, deleteDish);
 router.route("/:menuId/dish/:itemId/availability").put(isVerifiedUser, toggleDishAvailability);
 router.route("/:id").delete(isVerifiedUser, deleteMenu);
+
 
 module.exports = router;

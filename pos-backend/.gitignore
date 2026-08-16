@@ -1,2 +1,13 @@
 node_modules
 .env
+.env.local
+.env.*.local
+
+# Log files (may contain OTPs, phone numbers, request bodies).
+# See middlewares/globalErrorHandler + services/otpService — logging is
+# deliberately reduced but backup log files must never be committed.
+*.log
+
+# Locally-stored media library files (MEDIA_STORAGE_PROVIDER=local).
+# Production uses object storage, so these must never be committed.
+uploads/

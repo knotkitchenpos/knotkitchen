@@ -9,9 +9,13 @@ const modifierOptionSchema = new mongoose.Schema({
 const modifierGroupSchema = new mongoose.Schema({
     name: { type: String, required: true },
     required: { type: Boolean, default: false },
+    minSelections: { type: Number, default: 0 },
     maxSelections: { type: Number, default: 1 },
+    // "addon" = optional extras group, "choice" = pick-one/pick-many group.
+    groupType: { type: String, enum: ["addon", "choice"], default: "addon" },
     options: [modifierOptionSchema],
 });
+
 
 const variantSchema = new mongoose.Schema({
     name: { type: String, required: true }, // e.g. Small, Medium, Large
@@ -45,9 +49,36 @@ const menuItemSchema = new mongoose.Schema({
     name: { type: String, required: true },
     price: { type: Number, required: true },
     category: { type: String, required: true },
+    /**
+     * Optional subcategory grouping inside a category (§POS redesign).
+     * Empty string means the item lives directly under the category with no
+     * subcategory. This is additive — existing items keep working unchanged.
+     */
+    subcategory: { type: String, default: "" },
     isAvailable: { type: Boolean, default: true },
     description: { type: String, default: "" },
+
+    // Legacy free-form image URL. Kept for backwards compatibility with all
+    // existing menus/imports — the storefront falls back to it when no
+    // media library asset is linked.
     image: { type: String, default: "" },
+
+    /**
+     * Media library reference (§7). Products point at a MediaAsset instead of
+     * duplicating an upload. imageUrl/imageThumbnailUrl are denormalized
+     * copies so the storefront can render without populating every asset.
+     */
+    imageId: { type: mongoose.Schema.Types.ObjectId, ref: "MediaAsset", default: null },
+    imageUrl: { type: String, default: "" },
+    imageThumbnailUrl: { type: String, default: "" },
+    imageAlt: { type: String, default: "" },
+
+    // Storefront merchandising
+    discountPrice: { type: Number, default: null }, // strike-through pricing
+    isFeatured: { type: Boolean, default: false },
+    showOnWebsite: { type: Boolean, default: true },
+    sortOrder: { type: Number, default: 0 },
+
 
     // Variants (size-based pricing)
     variants: { type: [variantSchema], default: [] },

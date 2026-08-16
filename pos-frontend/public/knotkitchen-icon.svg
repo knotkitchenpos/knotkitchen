@@ -1,10 +1,21 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 200">
   <defs>
-    <linearGradient id="orange" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#FF7A1A"/>
-      <stop offset="1" stop-color="#E94D00"/>
+    <linearGradient id="ribbon" x1="30" y1="140" x2="200" y2="45" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1B2440"/>
+      <stop offset="0.38" stop-color="#26304F"/>
+      <stop offset="0.62" stop-color="#8A4620"/>
+      <stop offset="0.82" stop-color="#F4600F"/>
+      <stop offset="1" stop-color="#FF6A1F"/>
+    </linearGradient>
+    <linearGradient id="bar" x1="0" y1="40" x2="0" y2="180" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FF6A1F"/>
+      <stop offset="0.42" stop-color="#F4600F"/>
+      <stop offset="0.7" stop-color="#4A3A47"/>
+      <stop offset="1" stop-color="#16203A"/>
     </linearGradient>
   </defs>
-  <rect width="128" height="128" rx="28" fill="#080F1F"/>
-  <path d="M35 27h18v27l25-27h22L71 63l30 38H79L57 73l-4 5v23H35z" fill="url(#orange)"/>
+  <rect width="220" height="200" rx="34" fill="#080F1F"/>
+  <path d="M100 42h26v138h-26z" fill="url(#bar)"/>
+  <path d="M126 118 149 96l56 84h-36z" fill="#FF6A1F"/>
+  <path d="M203 40C168 74 137 102 112 120 88 138 55 136 44 116 33 96 52 72 78 78c26 6 44 32 60 58" stroke="url(#ribbon)" stroke-width="27" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
 </svg>

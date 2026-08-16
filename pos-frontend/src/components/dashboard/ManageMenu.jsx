@@ -10,7 +10,9 @@ import {
   FiGift,
   FiMoreHorizontal,
   FiPercent,
+  FiFileText,
 } from "react-icons/fi";
+
 import {
   MdOutlineSchedule,
 } from "react-icons/md";
@@ -18,6 +20,7 @@ import { BiLayer } from "react-icons/bi";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getMenus,
+  deleteCategory,
   deleteDish,
   updateDishStatus,
   deleteVariant,
@@ -28,6 +31,9 @@ import {
 import { enqueueSnackbar } from "notistack";
 import MenuFeatureModal from "./MenuFeatureModal";
 import MenuPublishModal from "./MenuPublishModal";
+import MenuTextImportModal from "./MenuTextImportModal";
+import DeleteCategoryModal from "../pos/DeleteCategoryModal";
+
 
 const itemActions = [
   { key: "variant", label: "Add Variant", icon: <FiLayers size={14} /> },
@@ -49,6 +55,9 @@ const ManageMenu = () => {
   const [featureModal, setFeatureModal] = useState(null); // { type, menuId, itemId }
   const [publishModalMenu, setPublishModalMenu] = useState(null);
   const [openItemMenu, setOpenItemMenu] = useState(null); // menuId-itemId
+  const [showTextImport, setShowTextImport] = useState(false);
+  const [categoryToDelete, setCategoryToDelete] = useState(null);
+
 
   const { data: menusRes } = useQuery({
     queryKey: ["menus"],
@@ -58,6 +67,19 @@ const ManageMenu = () => {
   const menus = menusRes?.data?.data || [];
 
   const invalidateMenus = () => queryClient.invalidateQueries({ queryKey: ["menus"] });
+
+  const deleteCategoryMutation = useMutation({
+    mutationFn: deleteCategory,
+    onSuccess: (res) => {
+      enqueueSnackbar(res?.data?.message || "Category deleted successfully!", { variant: "success" });
+      invalidateMenus();
+      queryClient.invalidateQueries({ queryKey: ["popular-items"] });
+      setCategoryToDelete(null);
+    },
+    onError: (error) => {
+      enqueueSnackbar(error.response?.data?.message || "Failed to delete category.", { variant: "error" });
+    },
+  });
 
   const deleteDishMutation = useMutation({
     mutationFn: deleteDish,
@@ -153,20 +175,43 @@ const ManageMenu = () => {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="font-semibold text-content text-xl font-display">Manage Menu</h2>
-        <p className="text-sm text-content-muted">
-          Manage dishes, variants, add-ons, modifier groups, combos, pricing rules, scheduling, and publishing.
-        </p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h2 className="font-semibold text-content text-xl font-display">Manage Menu</h2>
+          <p className="text-sm text-content-muted">
+            Manage dishes, variants, add-ons, modifier groups, combos, pricing rules, scheduling, and publishing.
+          </p>
+        </div>
+
+        <button
+          onClick={() => setShowTextImport(true)}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-accent text-white text-sm font-medium hover:opacity-90 transition-opacity shrink-0"
+        >
+          <FiFileText size={16} />
+          Import Menu
+        </button>
       </div>
 
       {menus.length === 0 ? (
-        <div className="card p-10 text-center text-content-muted">
-          No menu categories yet. Add a category and dishes to get started.
+        <div className="card p-10 text-center">
+          <p className="text-content-muted">
+            No menu categories yet. Add a category and dishes to get started.
+          </p>
+          <p className="text-sm text-content-muted mt-2">
+            Have the menu written down? Use{" "}
+            <button
+              onClick={() => setShowTextImport(true)}
+              className="text-accent hover:underline font-medium"
+            >
+              Import Menu
+            </button>{" "}
+            to build it from a Notepad file.
+          </p>
         </div>
       ) : (
+
         menus.map((menu) => (
-          <div key={menu._id} className="card overflow-hidden">
+          <div key={menu._id} className="rounded-xl border border-[#E2E8F0] bg-white overflow-hidden">
             {/* Category Header */}
             <div className="px-5 py-4 bg-surface-tertiary border-b border-border flex items-center justify-between gap-3 flex-wrap">
               <div className="flex items-center gap-3">
@@ -192,7 +237,7 @@ const ManageMenu = () => {
               </div>
 
               {/* Menu-level actions */}
-              <div className="flex items-center gap-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap justify-end">
                 {menuActions.map(({ key, label, icon }) => (
                   <button
                     key={key}
@@ -203,6 +248,14 @@ const ManageMenu = () => {
                     {label}
                   </button>
                 ))}
+                <button
+                  onClick={() => setCategoryToDelete(menu)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#FECACA] text-xs font-bold text-[#DC2626] hover:bg-[#FEF2F2] transition-colors"
+                  title={`Delete ${menu.name}`}
+                >
+                  <FiTrash2 size={14} />
+                  Delete Category
+                </button>
               </div>
             </div>
 
@@ -502,7 +555,22 @@ const ManageMenu = () => {
           onClose={() => setPublishModalMenu(null)}
         />
       )}
+
+      {/* Structured Text (Notepad) Import Modal */}
+      {showTextImport && (
+        <MenuTextImportModal onClose={() => setShowTextImport(false)} />
+      )}
+
+      {categoryToDelete && (
+        <DeleteCategoryModal
+          category={categoryToDelete}
+          submitting={deleteCategoryMutation.isPending}
+          onClose={() => setCategoryToDelete(null)}
+          onConfirm={() => deleteCategoryMutation.mutate(categoryToDelete._id)}
+        />
+      )}
     </div>
+
   );
 };
 

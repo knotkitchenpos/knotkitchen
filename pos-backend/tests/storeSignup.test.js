@@ -1,3 +1,5 @@
+process.env.ALLOW_DEV_OTP = "true";
+process.env.OTP_DEV_CODE = "123456";
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
@@ -39,6 +41,7 @@ const OtpServiceMock = {
     otps[`${storeId}_${phone}`] = "123456";
     return { otp: "123456" };
   },
+  maskPhone: (p) => String(p || "").slice(0, 2) + "****" + String(p || "").slice(-2),
   verifyOtp: async ({ storeId, phone, otp }) => {
     const key = `${storeId}_${phone}`;
     if (otps[key] && otps[key] === String(otp).trim()) {
@@ -59,10 +62,27 @@ const UserMock = {
   save: async function () { return this; },
 };
 
+// Restaurants are looked up by storeId as well as by id, and the controllers
+// call .save() on whatever comes back, so the mock has to behave like a document.
+const restaurants = {};
 const RestaurantMock = {
-  create: async (d) => ({ ...d, _id: "rest_new" }),
-  findById: async () => null,
+  create: async (d) => {
+    const restaurant = {
+      ...d,
+      _id: d._id || "rest_" + (d.storeId || "new"),
+      save: async function () { return this; },
+    };
+    if (d.storeId) restaurants[d.storeId] = restaurant;
+    return restaurant;
+  },
+  findOne: async (q = {}) => {
+    if (q.storeId) return restaurants[q.storeId] || null;
+    if (q._id) return Object.values(restaurants).find((r) => r._id === q._id) || null;
+    return null;
+  },
+  findById: async (id) => Object.values(restaurants).find((r) => r._id === id) || null,
 };
+
 
 const mocks = {
   "../models/storeModel": StoreMock,
@@ -109,11 +129,16 @@ const call = async (fn, body, extra) => {
 };
 
 // Admin: Store Creation
+// Store creation is OTP-authenticated: the admin first calls sendStoreCreationOtp
+// and then passes the code to createStore. "123456" is the accepted demo code.
+const DEMO_OTP = "123456";
+
 test("Admin Store Creation: generates 6-digit Store ID and saves store", async () => {
   const { r, err } = await call(adminCtrl.createStore, {
     storeName: "Demo Takeaway 03",
     ownerName: "Owner 03",
     ownerPhone: "9876543212",
+    otp: DEMO_OTP,
   });
   assert.ifError(err);
   assert.equal(r.statusCode, 201);
@@ -122,18 +147,40 @@ test("Admin Store Creation: generates 6-digit Store ID and saves store", async (
   assert.equal(r._j.data.storeName, "Demo Takeaway 03");
 });
 
+test("Admin Store Creation: requires an OTP", async () => {
+  const { err } = await call(adminCtrl.createStore, {
+    storeName: "No OTP Store",
+    ownerName: "Owner",
+    ownerPhone: "9876543298",
+  });
+  assert.equal(err.status, 400);
+  assert.match(err.message, /OTP/i);
+});
+
+test("Admin Store Creation: rejects an incorrect OTP", async () => {
+  const { err } = await call(adminCtrl.createStore, {
+    storeName: "Wrong OTP Store",
+    ownerName: "Owner",
+    ownerPhone: "9876543297",
+    otp: "000000",
+  });
+  assert.equal(err.status, 400);
+  assert.match(err.message, /Invalid or expired OTP/i);
+});
+
 test("Admin Store Creation: rejects duplicate store name", async () => {
   const { err } = await call(adminCtrl.createStore, {
     storeName: "Demo Takeaway 01",
     ownerName: "Owner Unique",
     ownerPhone: "9876543299",
+    otp: DEMO_OTP,
   });
   assert.equal(err.status, 400);
   assert.match(err.message, /already exists/i);
 });
 
 test("Admin Store Creation: rejects duplicate owner phone", async () => {
-  const { err } = await call(adminCtrl.createStore, {
+  const { r, err } = await call(adminCtrl.sendStoreCreationOtp, {
     storeName: "Unique Name",
     ownerName: "Owner Unique",
     ownerPhone: "9876543210",
@@ -141,6 +188,7 @@ test("Admin Store Creation: rejects duplicate owner phone", async () => {
   assert.equal(err.status, 400);
   assert.match(err.message, /already associated with another store/i);
 });
+
 
 // EPOS Phone Signup: Step 1 Validate Store ID
 test("Store Signup: Validate Store ID fails with invalid ID", async () => {

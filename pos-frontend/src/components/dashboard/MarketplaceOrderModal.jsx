@@ -75,13 +75,13 @@ const MarketplaceOrderModal = ({ menus = [], onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-surface-secondary p-6 rounded-2xl shadow-2xl w-full max-w-lg border border-border max-h-[90vh] overflow-y-auto no-scrollbar">
+    <div className="fixed inset-0 bg-[#0F172A]/60 flex items-center justify-center z-[100] p-4">
+      <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-lg border border-[#CBD5E1] max-h-[90vh] overflow-y-auto no-scrollbar">
         <div className="flex justify-between items-center mb-6">
-          <h2 className="text-content text-xl font-semibold font-display">Add Marketplace Order</h2>
+          <h2 className="text-[#0F172A] text-xl font-extrabold font-display">Add Marketplace Order</h2>
           <button
             onClick={onClose}
-            className="text-content-muted hover:text-accent-red text-2xl leading-none p-1"
+            className="text-[#94A3B8] hover:text-[#DC2626] hover:bg-[#FEF2F2] rounded-lg text-2xl leading-none p-1"
           >
             &times;
           </button>
@@ -89,38 +89,38 @@ const MarketplaceOrderModal = ({ menus = [], onClose }) => {
         <form onSubmit={handleSubmit} className="space-y-5">
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-content-muted mb-2 text-sm font-medium">Platform</label>
-              <select name="marketplace" className="w-full bg-surface-input border border-border rounded-xl p-3 text-content focus:outline-none focus:border-accent" defaultValue="Swiggy" required>
+              <label className="block text-[#475569] mb-2 text-sm font-bold">Platform</label>
+              <select name="marketplace" className="w-full h-[46px] bg-white border border-[#E2E8F0] rounded-xl px-3 text-[#0F172A] focus:outline-none focus:border-[#5B42F3]" defaultValue="Swiggy" required>
                 <option value="Swiggy">Swiggy</option>
                 <option value="Zomato">Zomato</option>
                 <option value="Manual">Manual</option>
               </select>
             </div>
             <div>
-              <label className="block text-content-muted mb-2 text-sm font-medium">Order ID</label>
-              <input name="orderId" placeholder="Optional" className="w-full bg-surface-input border border-border rounded-xl p-3 text-content focus:outline-none focus:border-accent" />
+              <label className="block text-[#475569] mb-2 text-sm font-bold">Order ID</label>
+              <input name="orderId" placeholder="Optional" className="w-full h-[46px] bg-white border border-[#E2E8F0] rounded-xl px-3 text-[#0F172A] focus:outline-none focus:border-[#5B42F3]" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-content-muted mb-2 text-sm font-medium">Customer Name</label>
-              <input name="customerName" placeholder="e.g. Rahul" className="w-full bg-surface-input border border-border rounded-xl p-3 text-content focus:outline-none focus:border-accent" required />
+              <label className="block text-[#475569] mb-2 text-sm font-bold">Customer Name</label>
+              <input name="customerName" placeholder="e.g. Rahul" className="w-full h-[46px] bg-white border border-[#E2E8F0] rounded-xl px-3 text-[#0F172A] focus:outline-none focus:border-[#5B42F3]" required />
             </div>
             <div>
-              <label className="block text-content-muted mb-2 text-sm font-medium">Phone</label>
-              <input name="customerPhone" placeholder="Optional" className="w-full bg-surface-input border border-border rounded-xl p-3 text-content focus:outline-none focus:border-accent" />
+              <label className="block text-[#475569] mb-2 text-sm font-bold">Phone</label>
+              <input name="customerPhone" placeholder="Optional" className="w-full h-[46px] bg-white border border-[#E2E8F0] rounded-xl px-3 text-[#0F172A] focus:outline-none focus:border-[#5B42F3]" />
             </div>
           </div>
           {allDishes.length > 0 && (
             <div>
-              <label className="block text-content-muted mb-2 text-sm font-medium">
+              <label className="block text-[#475569] mb-2 text-sm font-bold">
                 Add from Menu
               </label>
               <div className="flex gap-2">
                 <select
                   value={selectedMenuDish}
                   onChange={(e) => setSelectedMenuDish(e.target.value)}
-                  className="flex-1 bg-surface-input border border-border rounded-xl p-3 text-sm text-content focus:outline-none focus:border-accent"
+                  className="flex-1 h-[46px] bg-white border border-[#E2E8F0] rounded-xl px-3 text-sm text-[#0F172A] focus:outline-none focus:border-[#5B42F3]"
                 >
                   <option value="">Select a dish...</option>
                   {allDishes.map((dish) => (
@@ -133,7 +133,7 @@ const MarketplaceOrderModal = ({ menus = [], onClose }) => {
                   type="button"
                   onClick={handleAddFromMenu}
                   disabled={!selectedMenuDish}
-                  className="btn-secondary !py-2.5 !px-4 text-sm disabled:opacity-50"
+                  className="h-[46px] px-4 rounded-xl border border-[#5B42F3] text-[#5B42F3] font-bold text-sm disabled:opacity-50"
                 >
                   Add
                 </button>
@@ -142,8 +142,8 @@ const MarketplaceOrderModal = ({ menus = [], onClose }) => {
           )}
           <div>
             <div className="flex justify-between items-center mb-2">
-              <label className="text-content-muted text-sm font-medium">Items</label>
-              <button type="button" onClick={addItemRow} className="text-accent text-sm font-semibold hover:text-accent-green">
+              <label className="text-[#475569] text-sm font-bold">Items</label>
+              <button type="button" onClick={addItemRow} className="text-[#5B42F3] text-sm font-bold hover:underline">
                 + Add Item
               </button>
             </div>
@@ -154,14 +154,14 @@ const MarketplaceOrderModal = ({ menus = [], onClose }) => {
                     value={item.name}
                     onChange={(e) => updateItem(idx, "name", e.target.value)}
                     placeholder="Item name"
-                    className="bg-surface-input border border-border rounded-xl p-2.5 text-sm text-content focus:outline-none focus:border-accent"
+                    className="h-[42px] bg-white border border-[#E2E8F0] rounded-xl px-2.5 text-sm text-[#0F172A] focus:outline-none focus:border-[#5B42F3]"
                   />
                   <input
                     value={item.price}
                     onChange={(e) => updateItem(idx, "price", e.target.value)}
                     placeholder="Price"
                     type="number"
-                    className="bg-surface-input border border-border rounded-xl p-2.5 text-sm text-content focus:outline-none focus:border-accent"
+                    className="h-[42px] bg-white border border-[#E2E8F0] rounded-xl px-2.5 text-sm text-[#0F172A] focus:outline-none focus:border-[#5B42F3]"
                   />
                   <input
                     value={item.quantity}
@@ -169,7 +169,7 @@ const MarketplaceOrderModal = ({ menus = [], onClose }) => {
                     placeholder="Qty"
                     type="number"
                     min="1"
-                    className="bg-surface-input border border-border rounded-xl p-2.5 text-sm text-content focus:outline-none focus:border-accent"
+                    className="h-[42px] bg-white border border-[#E2E8F0] rounded-xl px-2.5 text-sm text-[#0F172A] focus:outline-none focus:border-[#5B42F3]"
                   />
                   <button type="button" onClick={() => removeItemRow(idx)} className="text-accent-red hover:opacity-70 text-lg">
                     &times;
@@ -178,7 +178,7 @@ const MarketplaceOrderModal = ({ menus = [], onClose }) => {
               ))}
             </div>
           </div>
-          <button type="submit" disabled={mutation.isPending} className="btn-primary w-full !py-3 text-base disabled:opacity-50">
+          <button type="submit" disabled={mutation.isPending} className="w-full h-[48px] rounded-xl bg-[#5B42F3] text-white font-bold text-base hover:bg-[#4A32E0] disabled:opacity-50">
             {mutation.isPending ? "Adding..." : "Add Marketplace Order"}
           </button>
         </form>

@@ -18,17 +18,17 @@ const RecentOrders = () => {
   const orders = ordersRes?.data?.data || [];
 
   return (
-    <div className="card p-4 sm:p-6">
+    <div className="card border border-[#E2E8F0] bg-white p-4 shadow-card sm:p-6">
       <div className="flex justify-between items-center mb-4">
         <div>
-          <h1 className="font-display text-lg font-semibold">Recent Orders</h1>
-          <p className="text-xs text-content-muted mt-0.5">
+          <h1 className="font-display text-lg font-semibold text-[#0F172A]">Recent Orders</h1>
+          <p className="mt-0.5 text-xs text-[#94A3B8]">
             {orders.length} total orders
           </p>
         </div>
         <button
           onClick={() => navigate("/orders")}
-          className="flex items-center gap-2 text-accent text-sm font-semibold hover:gap-3 transition-all"
+          className="flex items-center gap-2 text-sm font-semibold text-[#5B42F3] transition-all hover:gap-3"
         >
           View all <FiArrowRight />
         </button>

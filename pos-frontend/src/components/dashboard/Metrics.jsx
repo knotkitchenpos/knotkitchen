@@ -121,7 +121,7 @@ const Metrics = () => {
   }, [menus, orders]);
 
   return (
-    <div className="px-1">
+    <div className="rounded-xl border border-[#E2E8F0] bg-white px-1">
       <div className="flex justify-between items-center">
         <div>
           <h2 className="font-semibold text-content text-xl font-display">
@@ -134,7 +134,7 @@ const Metrics = () => {
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-            className="flex items-center gap-1 px-4 py-2 rounded-xl text-content bg-surface-secondary border border-border hover:border-accent transition-colors"
+            className="flex items-center gap-1 px-4 py-2 rounded-xl text-[#0F172A] bg-white border border-[#E2E8F0] hover:border-[#5B42F3] transition-colors"
           >
             {selectedRange}
             <svg
@@ -149,7 +149,7 @@ const Metrics = () => {
             </svg>
           </button>
           {isDropdownOpen && (
-            <div className="absolute right-0 mt-2 w-48 bg-surface-secondary rounded-xl shadow-card border border-border overflow-hidden z-50">
+            <div className="absolute right-0 mt-2 w-48 rounded-xl bg-white border border-[#CBD5E1] shadow-[0_12px_30px_rgba(15,23,42,0.16)] overflow-hidden z-[120]">
               {dateRanges.map((range) => (
                 <button
                   key={range.days}
@@ -157,10 +157,10 @@ const Metrics = () => {
                     setSelectedRange(range.label);
                     setIsDropdownOpen(false);
                   }}
-                  className={`w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium hover:bg-surface-tertiary transition-colors ${
+                  className={`w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium bg-white hover:bg-[#F8FAFC] transition-colors ${
                     selectedRange === range.label
-                      ? "text-accent"
-                      : "text-content"
+                      ? "text-[#5B42F3]"
+                      : "text-[#334155]"
                   }`}
                 >
                   {range.label}

@@ -7,21 +7,29 @@ const initialState = {
     email : "",
     phone: "",
     role: "",
+    // Tenant identifiers — needed to subscribe to this restaurant's realtime
+    // room. They are display/routing hints only: the backend always re-derives
+    // the tenant from the session and never trusts these values.
+    restaurantId: "",
+    storeId: "",
     isAuth: false
 }
+
 
 const userSlice = createSlice({
     name: "user",
     initialState,
     reducers: {
         setUser: (state, action) => {
-            const { _id, name, address, phone, email, role  } = action.payload;
+            const { _id, name, address, phone, email, role, restaurantId, storeId } = action.payload;
             state._id = _id;
             state.name = name;
             state.address = address;
             state.phone = phone;
             state.email = email;
             state.role = role;
+            state.restaurantId = restaurantId || "";
+            state.storeId = storeId || "";
             state.isAuth = true;
         },
 
@@ -32,8 +40,11 @@ const userSlice = createSlice({
             state.name = "";
             state.phone = "";
             state.role = "";
+            state.restaurantId = "";
+            state.storeId = "";
             state.isAuth = false;
         }
+
     }
 })
 

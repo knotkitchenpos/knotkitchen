@@ -1,80 +1,109 @@
-import React from "react";
+import React, { useId } from "react";
 
-const KnotLogo = ({ size = "md", showSubtitle = false, className = "" }) => {
-  const iconSizes = {
-    sm: "w-8 h-8",
-    md: "w-10 h-10",
-    lg: "w-20 h-20",
-    xl: "w-28 h-28",
-  };
-
-  const textSizes = {
-    sm: "text-lg",
-    md: "text-xl",
-    lg: "text-3xl sm:text-4xl",
-    xl: "text-4xl sm:text-5xl",
-  };
+/**
+ * KnotKitchen brand mark.
+ *
+ * Recreates the official logo: a navy infinity-knot loop that sweeps up and
+ * to the right, turning orange as it forms the arm of a stylised "K", with the
+ * K's vertical bar (orange top → navy bottom) and orange lower leg.
+ *
+ * Props:
+ *   size         – pixel size, or xs/sm/md/lg/xl
+ *   withWordmark – render the official stacked wordmark below the mark
+ *   showSubtitle – backwards-compatible alias used by the Auth screen
+ *   dark         – use light text for the "Knot" half on dark surfaces
+ */
+const KnotLogo = ({
+  size = 36,
+  className = "",
+  withWordmark = false,
+  showSubtitle = false,
+  dark = false,
+}) => {
+  const sizeMap = { xs: 24, sm: 32, md: 42, lg: 76, xl: 126 };
+  const markSize = typeof size === "number" ? size : sizeMap[size] || sizeMap.md;
+  const uid = useId().replace(/:/g, "");
+  const gRibbon = `kk-ribbon-${uid}`;
+  const gBar = `kk-bar-${uid}`;
+  const gLeg = `kk-leg-${uid}`;
 
   return (
-    <div className={`flex flex-col items-center justify-center ${className}`}>
-      {/* SVG Icon matching reference logo */}
-      <div className={`relative ${iconSizes[size]} mb-3`}>
-        <svg viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg" className="w-full h-full drop-shadow-[0_8px_20px_rgba(255,90,0,0.25)]">
-          <defs>
-            <linearGradient id="orangeGrad" x1="20" y1="100" x2="100" y2="20" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stopColor="#FF4D00" />
-              <stop offset="50%" stopColor="#FF5A00" />
-              <stop offset="100%" stopColor="#FF7A1A" />
-            </linearGradient>
-            <linearGradient id="navyGrad" x1="0" y1="0" x2="60" y2="100" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stopColor="#1E2A40" />
-              <stop offset="100%" stopColor="#0B1324" />
-            </linearGradient>
-            <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="4" result="blur" />
-              <feComposite in="SourceGraphic" in2="blur" operator="over" />
-            </filter>
-          </defs>
-          
-          {/* Left Navy Loop */}
-          <path
-            d="M45 40 C 25 40, 15 55, 15 70 C 15 85, 30 95, 45 95 C 65 95, 75 75, 85 60 L 55 25"
-            stroke="url(#navyGrad)"
-            strokeWidth="14"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
+    <span className={`inline-flex flex-col items-center ${className}`}>
+      <svg
+        width={markSize}
+        height={markSize}
+        viewBox="0 0 220 200"
+        fill="none"
+        xmlns="http://www.w3.org/2000/svg"
+        aria-label="KnotKitchen"
+      >
+        <defs>
+          {/* Navy (left / loop) → orange (right / K arm) */}
+          <linearGradient id={gRibbon} x1="30" y1="140" x2="200" y2="45" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="#1B2440" />
+            <stop offset="38%" stopColor="#26304F" />
+            <stop offset="62%" stopColor="#8A4620" />
+            <stop offset="82%" stopColor="#F4600F" />
+            <stop offset="100%" stopColor="#FF6A1F" />
+          </linearGradient>
 
-          {/* Right Knot / Diagonal Orange Loop Forming 'K' */}
-          <path
-            d="M35 80 C 45 65, 55 45, 75 25 C 85 15, 100 25, 95 40 C 90 55, 75 70, 50 85 C 35 94, 25 75, 45 50 L 95 95"
-            stroke="url(#orangeGrad)"
-            strokeWidth="14"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            filter="url(#glow)"
-          />
-        </svg>
-      </div>
+          {/* K vertical bar: orange at the top, navy at the bottom */}
+          <linearGradient id={gBar} x1="0" y1="40" x2="0" y2="180" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="#FF6A1F" />
+            <stop offset="42%" stopColor="#F4600F" />
+            <stop offset="70%" stopColor="#4A3A47" />
+            <stop offset="100%" stopColor="#16203A" />
+          </linearGradient>
 
-      {/* Brand Text */}
-      <div className={`font-display font-bold tracking-tight ${textSizes[size]}`}>
-        <span className="text-white">Knot</span>
-        <span className="text-accent">Kitchen</span>
-      </div>
+          {/* Lower-right leg */}
+          <linearGradient id={gLeg} x1="120" y1="115" x2="205" y2="180" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stopColor="#FF6A1F" />
+            <stop offset="100%" stopColor="#F4600F" />
+          </linearGradient>
+        </defs>
 
-      {/* Subtitles */}
-      {showSubtitle && (
-        <div className="text-center mt-2 space-y-1">
-          <p className="text-content-secondary font-medium text-sm sm:text-base tracking-wide">
-            Restaurant POS System
-          </p>
-          <p className="text-content-muted text-xs sm:text-sm">
-            Manage your restaurant efficiently
-          </p>
-        </div>
+        {/* K vertical bar (sits behind the ribbon crossing) */}
+        <path d="M100 42h26v138h-26z" fill={`url(#${gBar})`} />
+
+        {/* K lower-right leg */}
+        <path d="M126 118 149 96l56 84h-36z" fill={`url(#${gLeg})`} />
+
+        {/* The knot ribbon: loops on the left, rises into the K's upper arm */}
+        <path
+          d="M203 40
+             C168 74, 137 102, 112 120
+             C88 138, 55 136, 44 116
+             C33 96, 52 72, 78 78
+             C104 84, 122 110, 138 136"
+          stroke={`url(#${gRibbon})`}
+          strokeWidth="27"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          fill="none"
+        />
+      </svg>
+
+      {(withWordmark || showSubtitle) && (
+        <span
+          className="font-extrabold tracking-tight leading-none mt-1"
+          style={{ fontSize: markSize * 0.42 }}
+        >
+          <span style={{ color: dark ? "#FFFFFF" : "#16203A" }}>Knot</span>
+          <span style={{ color: "#FF6A1F" }}>Kitchen</span>
+        </span>
       )}
-    </div>
+
+      {showSubtitle && (
+        <>
+          <span
+            className="font-bold tracking-[0.18em] leading-none mt-1"
+            style={{ fontSize: markSize * 0.13, color: dark ? "#FF8A43" : "#5B42F3" }}
+          >
+            POS
+          </span>
+        </>
+      )}
+    </span>
   );
 };
 

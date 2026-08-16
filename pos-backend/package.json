@@ -6,8 +6,18 @@
     "dev": "nodemon app.js",
     "start": "node app.js",
     "test": "node --test tests/*.test.js",
-    "migrate": "node migrations/001-add-current-occupancy.js"
+    "migrate": "node migrations/001-add-current-occupancy.js",
+    "merge-stores": "node scripts/mergeStoreDatabases.js",
+    "verify-stores": "node scripts/verifyStoreLookup.js",
+    "test:all": "node scripts/runAllTests.js",
+    "test:menu-import": "node scripts/liveMenuImportTest.js",
+    "backfill-websites": "node scripts/backfillWebsiteSettings.js",
+    "backfill-websites:dry": "node scripts/backfillWebsiteSettings.js --dry-run"
+
   },
+
+
+
   "keywords": [
     "restaurant",
     "pos",

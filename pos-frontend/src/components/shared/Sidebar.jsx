@@ -1,205 +1,234 @@
-import React, { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import {
-  FiHome, FiClipboard, FiGrid, FiCoffee, FiLayout, FiMonitor,
-  FiX, FiLogOut, FiChevronLeft, FiChevronRight
-} from "react-icons/fi";
-import { useDispatch, useSelector } from "react-redux";
+import React, { useEffect, useRef, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import { useDispatch } from "react-redux";
 import { useMutation } from "@tanstack/react-query";
 import { logout } from "../../https";
 import { removeUser } from "../../redux/slices/userSlice";
-import { useLocation, useNavigate } from "react-router-dom";
 import KnotLogo from "./KnotLogo";
 
-const navItems = [
-  { path: "/menu", label: "Menu", icon: <FiCoffee size={18} /> },
-  { path: "/home", label: "Dashboard", icon: <FiHome size={18} /> },
-  { path: "/orders", label: "Orders", icon: <FiClipboard size={18} /> },
-  { path: "/tables", label: "Tables", icon: <FiGrid size={18} /> },
-  { path: "/kds", label: "Kitchen Display (KDS)", icon: <FiMonitor size={18} /> },
+/* Reference icons — drawn inline so they match the screenshot exactly */
+const IconBag = ({ active }) => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.9} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" />
+    <path d="M3 6h18" />
+    <path d="M16 10a4 4 0 0 1-8 0" />
+  </svg>
+);
+const IconClipboard = ({ active }) => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.9} strokeLinecap="round" strokeLinejoin="round">
+    <rect x="8" y="2" width="8" height="4" rx="1" />
+    <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+    <path d="M9 12h6M9 16h4" />
+  </svg>
+);
+const IconChart = ({ active }) => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.9} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 3v18h18" />
+    <path d="M7 15v3M12 10v8M17 6v12" />
+  </svg>
+);
+const IconGear = ({ active }) => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.9} strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="3" />
+    <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z" />
+  </svg>
+);
+const IconHeadset = ({ active }) => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.9} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
+    <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3ZM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3Z" />
+  </svg>
+);
+const IconDots = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
+    <circle cx="5" cy="12" r="1.8" />
+    <circle cx="12" cy="12" r="1.8" />
+    <circle cx="19" cy="12" r="1.8" />
+  </svg>
+);
+const IconArrowLeft = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M19 12H5M12 19l-7-7 7-7" />
+  </svg>
+);
+const IconArrowRight = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M5 12h14M12 5l7 7-7 7" />
+  </svg>
+);
+
+const NAV = [
+  { path: "/menu", label: "Product", Icon: IconBag },
+  { path: "/orders", label: "Orders", Icon: IconClipboard },
+  { path: "/reports", label: "Reports", Icon: IconChart },
+  { path: "/dashboard", label: "Dashboard", Icon: IconGear },
+  { path: "/home", label: "Help & Support", Icon: IconHeadset },
 ];
 
-const SidebarContent = ({ collapsed, onToggleCollapse, onNavigate }) => {
-  const userData = useSelector((s) => s.user);
-  const dispatch = useDispatch();
+const Sidebar = ({ mobileOpen = false, onMobileClose }) => {
+  const [collapsed, setCollapsed] = useState(true);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const moreRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const [confirmLogout, setConfirmLogout] = useState(false);
+  const dispatch = useDispatch();
+
+  useEffect(() => {
+    if (!moreOpen) return undefined;
+
+    const closeOnOutsideClick = (event) => {
+      if (!moreRef.current?.contains(event.target)) {
+        setMoreOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", closeOnOutsideClick);
+    return () => document.removeEventListener("mousedown", closeOnOutsideClick);
+  }, [moreOpen]);
 
   const logoutMutation = useMutation({
     mutationFn: () => logout(),
-    onSuccess: () => { dispatch(removeUser()); navigate("/auth"); },
+    onSuccess: () => {
+      dispatch(removeUser());
+      navigate("/auth");
+    },
   });
 
-  const isActive = (path) => {
-    if (path === "/menu") return location.pathname === "/menu" || location.pathname === "/";
-    return location.pathname === path;
+  const isActive = (path) =>
+    path === "/menu"
+      ? location.pathname === "/menu" || location.pathname === "/"
+      : location.pathname === path;
+
+  const go = (path) => {
+    navigate(path);
+    onMobileClose?.();
   };
 
-  const allNavItems = [
-    ...navItems,
-    ...((userData.role === "Admin" || userData.role === "Owner")
-      ? [{ path: "/dashboard", label: "Admin", icon: <FiLayout size={18} /> }]
-      : []),
-  ];
-
-  return (
-    <div className="flex flex-col h-full bg-[#0D1526]">
-      {/* Sidebar Header / Logo */}
-      <div className={`flex items-center h-20 border-b border-[#26344B] shrink-0 ${collapsed ? "justify-center px-2" : "justify-between px-5"}`}>
-        <button
-          onClick={() => { onNavigate?.(); navigate("/"); }}
-          className="flex items-center gap-2 cursor-pointer overflow-hidden group text-left"
-          title="KnotKitchen"
-        >
-          {collapsed ? (
-            <div className="w-10 h-10 rounded-xl bg-gradient-brand flex items-center justify-center text-white font-bold font-display text-xl shadow-orange">
-              K
+  const Panel = ({ isCollapsed }) => (
+    <div className="flex flex-col h-full bg-[#0B1120]">
+      {/* Brand */}
+      <div className={`flex items-center h-[76px] shrink-0 ${isCollapsed ? "justify-center px-2" : "px-6"}`}>
+        <button onClick={() => go("/")} className="flex items-center gap-2.5" title="KnotKitchen POS">
+          <KnotLogo size={34} />
+          {!isCollapsed && (
+            <div className="text-left leading-none">
+              <div className="text-[19px] font-extrabold tracking-tight">
+                <span className="text-white">Knot</span><span className="text-[#FF6A1F]">Kitchen</span>
+              </div>
+              <div className="text-[11px] font-bold text-[#8B93A8] tracking-[0.14em] mt-1">POS</div>
             </div>
-          ) : (
-            <KnotLogo size="md" />
-          )}
-        </button>
-        {!collapsed && (
-          <button onClick={onNavigate} className="lg:hidden p-2 rounded-xl hover:bg-[#162238] text-[#AEB8CA]">
-            <FiX size={20} />
-          </button>
-        )}
-      </div>
-
-      {/* Collapse Toggle Control */}
-      <div className="px-3 pt-3 shrink-0">
-        <button
-          onClick={onToggleCollapse}
-          className={`w-full flex items-center gap-3 px-3 py-2 rounded-xl text-xs font-semibold uppercase tracking-wider transition-all text-[#77839A] hover:bg-[#162238] hover:text-[#F5F7FA] ${
-            collapsed ? "justify-center px-2" : ""
-          }`}
-          title={collapsed ? "Expand Sidebar" : "Collapse Sidebar"}
-        >
-          {collapsed ? <FiChevronRight size={18} /> : (
-            <>
-              <FiChevronLeft size={18} />
-              <span>Collapse Menu</span>
-            </>
           )}
         </button>
       </div>
 
-      {/* User Info Bar */}
-      <div className={`pt-4 shrink-0 ${collapsed ? "px-3 flex justify-center" : "px-5"}`}>
-        <div className={`flex items-center gap-3 p-2.5 rounded-xl bg-[#111B2E] border border-[#26344B] ${collapsed ? "flex-col gap-1 p-2" : ""}`}>
-          <div className="w-9 h-9 rounded-lg bg-gradient-brand flex items-center justify-center text-white font-bold shadow-orange shrink-0">
-            {userData.name?.[0]?.toUpperCase() || "U"}
-          </div>
-          {!collapsed && (
-            <div className="min-w-0 flex-1">
-              <p className="font-semibold text-xs text-[#F5F7FA] truncate">{userData.name || "Operator"}</p>
-              <p className="text-[11px] text-[#77839A] truncate">{userData.role || "POS User"}</p>
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Navigation List */}
-      <nav className="flex-1 px-3 py-4 space-y-1.5 overflow-y-auto no-scrollbar">
-        {!collapsed && (
-          <p className="px-3 pb-2 text-[10px] font-bold text-[#77839A] uppercase tracking-wider">
-            Menu Navigation
-          </p>
-        )}
-        {allNavItems.map((item) => {
-          const active = isActive(item.path);
+      {/* Nav */}
+      <nav className={`flex-1 overflow-y-auto no-scrollbar space-y-1.5 ${isCollapsed ? "px-2" : "px-4"}`}>
+        {NAV.map(({ path, label, Icon }) => {
+          const active = isActive(path);
           return (
             <button
-              key={item.path}
-              onClick={() => { onNavigate?.(); navigate(item.path); }}
-              className={`relative w-full flex items-center gap-3.5 px-3.5 py-3 rounded-xl text-sm font-semibold transition-all duration-200 ${
-                collapsed ? "justify-center px-2" : ""
+              key={path}
+              onClick={() => go(path)}
+              title={isCollapsed ? label : undefined}
+              className={`w-full flex items-center rounded-xl transition-colors duration-150 ${
+                isCollapsed ? "justify-center py-3.5" : "gap-4 px-4 py-3.5"
               } ${
                 active
-                  ? "bg-accent/10 text-accent border border-accent/20 shadow-sm"
-                  : "text-[#AEB8CA] hover:bg-[#162238] hover:text-[#F5F7FA]"
+                  ? "bg-[#5B42F3] text-white font-bold"
+                  : "text-[#9AA3B8] hover:bg-[#161C33] hover:text-white font-semibold"
               }`}
-              title={collapsed ? item.label : ""}
             >
-              {active && (
-                <motion.div
-                  layoutId="sidebar-active-indicator"
-                  className="absolute left-0 top-2 bottom-2 w-1 bg-accent rounded-r-full"
-                  transition={{ type: "spring", stiffness: 400, damping: 30 }}
-                />
-              )}
-              <span className={active ? "text-accent" : "text-[#77839A]"}>
-                {item.icon}
-              </span>
-              {!collapsed && <span className="whitespace-nowrap">{item.label}</span>}
+              <Icon active={active} />
+              {!isCollapsed && <span className="text-[15px] whitespace-nowrap">{label}</span>}
             </button>
           );
         })}
       </nav>
 
-      {/* Logout Action */}
-      <div className={`pb-5 shrink-0 ${collapsed ? "px-3" : "px-5"}`}>
-        {confirmLogout ? (
-          <div className={`flex items-center gap-2 ${collapsed ? "flex-col" : ""}`}>
-            <button onClick={() => logoutMutation.mutate()} className="flex-1 py-2.5 rounded-xl bg-accent-red text-white font-semibold text-xs">Confirm</button>
-            <button onClick={() => setConfirmLogout(false)} className="flex-1 py-2.5 rounded-xl bg-[#162238] text-[#AEB8CA] font-semibold text-xs">Cancel</button>
+      {/* Footer: More + Collapse */}
+      <div ref={moreRef} className={`relative shrink-0 pb-5 space-y-2 ${isCollapsed ? "px-2" : "px-4"}`}>
+        {moreOpen && (
+          <div className={`rounded-xl bg-[#161C33] border border-white/10 p-2 space-y-1 z-50 ${
+            isCollapsed ? "absolute bottom-[76px] left-[76px] w-[210px] shadow-2xl" : ""
+          }`}>
+            <button
+              onClick={() => { setMoreOpen(false); go("/tables"); }}
+              className="w-full text-left px-3 py-2 rounded-lg text-[13px] font-semibold text-[#9AA3B8] hover:bg-white/5 hover:text-white"
+            >
+              Tables
+            </button>
+            <button
+              onClick={() => { setMoreOpen(false); go("/kds"); }}
+              className="w-full text-left px-3 py-2 rounded-lg text-[13px] font-semibold text-[#9AA3B8] hover:bg-white/5 hover:text-white"
+            >
+              Kitchen Display
+            </button>
+            <button
+              onClick={() => { setMoreOpen(false); go("/online-orders"); }}
+              className="w-full text-left px-3 py-2 rounded-lg text-[13px] font-semibold text-[#9AA3B8] hover:bg-white/5 hover:text-white"
+            >
+              Online Orders
+            </button>
+            <button
+              onClick={() => { setMoreOpen(false); go("/website"); }}
+              className="w-full text-left px-3 py-2 rounded-lg text-[13px] font-semibold text-[#9AA3B8] hover:bg-white/5 hover:text-white"
+            >
+              Website
+            </button>
+            <button
+              onClick={() => { setMoreOpen(false); logoutMutation.mutate(); }}
+              className="w-full text-left px-3 py-2 rounded-lg text-[13px] font-bold text-red-400 hover:bg-red-500/10"
+            >
+              Logout
+            </button>
           </div>
-        ) : (
-          <button
-            onClick={() => setConfirmLogout(true)}
-            className={`w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-accent-red/10 border border-accent-red/20 text-accent-red font-semibold text-xs hover:bg-accent-red/20 transition-all ${
-              collapsed ? "px-2" : ""
-            }`}
-            title="Logout"
-          >
-            <FiLogOut size={16} />
-            {!collapsed && <span>Logout Operator</span>}
-          </button>
         )}
+
+        <button
+          onClick={() => setMoreOpen((v) => !v)}
+          title={isCollapsed ? "More" : undefined}
+          className={`w-full flex items-center rounded-xl border border-white/10 bg-[#111729] text-[#9AA3B8] hover:text-white hover:bg-[#161C33] transition-colors ${
+            isCollapsed ? "justify-center py-3.5" : "gap-4 px-4 py-3.5"
+          }`}
+        >
+          <IconDots />
+          {!isCollapsed && <span className="text-[15px] font-semibold">More</span>}
+        </button>
+
+        <button
+          onClick={() => setCollapsed((c) => !c)}
+          title={isCollapsed ? "Expand" : "Collapse"}
+          className={`w-full flex items-center rounded-xl text-[#9AA3B8] hover:text-white hover:bg-[#161C33] transition-colors ${
+            isCollapsed ? "justify-center py-3.5" : "gap-4 px-4 py-3.5"
+          }`}
+        >
+          {isCollapsed ? <IconArrowRight /> : <IconArrowLeft />}
+          {!isCollapsed && <span className="text-[15px] font-semibold">Collapse</span>}
+        </button>
       </div>
     </div>
   );
-};
-
-const Sidebar = ({ mobileOpen = false, onMobileClose }) => {
-  const [collapsed, setCollapsed] = useState(false);
 
   return (
     <>
-      <aside className={`hidden lg:flex flex-col shrink-0 h-full border-r border-[#26344B] bg-[#0D1526] transition-all duration-300 ${collapsed ? "w-[76px]" : "w-64"}`}>
-        <SidebarContent
-          collapsed={collapsed}
-          onToggleCollapse={() => setCollapsed((c) => !c)}
-        />
+      {/* Desktop */}
+      <aside
+        className={`hidden lg:block shrink-0 h-full transition-[width] duration-200 ${
+          collapsed ? "w-[84px]" : "w-[236px]"
+        }`}
+      >
+        <Panel isCollapsed={collapsed} />
       </aside>
 
-      <AnimatePresence>
-        {mobileOpen && (
-          <>
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              onClick={onMobileClose}
-              className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm lg:hidden"
-            />
-            <motion.aside
-              initial={{ x: -280 }}
-              animate={{ x: 0 }}
-              exit={{ x: -280 }}
-              transition={{ type: "tween", duration: 0.25 }}
-              className="fixed top-0 left-0 bottom-0 w-72 z-[60] bg-[#0D1526] border-r border-[#26344B] lg:hidden"
-            >
-              <SidebarContent
-                collapsed={false}
-                onToggleCollapse={() => {}}
-                onNavigate={onMobileClose}
-              />
-            </motion.aside>
-          </>
-        )}
-      </AnimatePresence>
+      {/* Mobile drawer */}
+      {mobileOpen && (
+        <div className="lg:hidden">
+          <div onClick={onMobileClose} className="fixed inset-0 z-40 bg-black/60" />
+          <aside className="fixed top-0 left-0 bottom-0 w-[260px] z-50">
+            <Panel isCollapsed={false} />
+          </aside>
+        </div>
+      )}
     </>
   );
 };

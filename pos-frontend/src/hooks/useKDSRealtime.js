@@ -9,7 +9,10 @@ export function useKDSRealtime(restaurantId) {
 
   useEffect(() => {
     if (!restaurantId) return undefined;
-    const socket = io(BACKEND_URL, { withCredentials: false, transports: ["websocket", "polling"] });
+    const socket = io(BACKEND_URL, {
+      withCredentials: true,
+      transports: ["websocket", "polling"],
+    });
 
     const onNewOrder = (data) => setNewOrder({ ...data, _at: Date.now() });
     const onWaiterCall = (data) => setWaiterCall({ ...data, _at: Date.now() });
