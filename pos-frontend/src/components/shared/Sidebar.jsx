@@ -1,12 +1,8 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { useDispatch } from "react-redux";
-import { useMutation } from "@tanstack/react-query";
-import { logout } from "../../https";
-import { removeUser } from "../../redux/slices/userSlice";
 import KnotLogo from "./KnotLogo";
 
-/* Reference icons — drawn inline so they match the screenshot exactly */
+/* Reference icons — drawn inline to match design exactly */
 const IconBag = ({ active }) => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.9} strokeLinecap="round" strokeLinejoin="round">
     <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z" />
@@ -39,11 +35,10 @@ const IconHeadset = ({ active }) => (
     <path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3ZM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3Z" />
   </svg>
 );
-const IconDots = () => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor">
-    <circle cx="5" cy="12" r="1.8" />
-    <circle cx="12" cy="12" r="1.8" />
-    <circle cx="19" cy="12" r="1.8" />
+const IconSettingsGear = ({ active }) => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.9} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+    <circle cx="12" cy="12" r="3" />
   </svg>
 );
 const IconArrowLeft = () => (
@@ -67,37 +62,13 @@ const NAV = [
 
 const Sidebar = ({ mobileOpen = false, onMobileClose }) => {
   const [collapsed, setCollapsed] = useState(true);
-  const [moreOpen, setMoreOpen] = useState(false);
-  const moreRef = useRef(null);
   const navigate = useNavigate();
   const location = useLocation();
-  const dispatch = useDispatch();
-
-  useEffect(() => {
-    if (!moreOpen) return undefined;
-
-    const closeOnOutsideClick = (event) => {
-      if (!moreRef.current?.contains(event.target)) {
-        setMoreOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", closeOnOutsideClick);
-    return () => document.removeEventListener("mousedown", closeOnOutsideClick);
-  }, [moreOpen]);
-
-  const logoutMutation = useMutation({
-    mutationFn: () => logout(),
-    onSuccess: () => {
-      dispatch(removeUser());
-      navigate("/auth");
-    },
-  });
 
   const isActive = (path) =>
     path === "/menu"
       ? location.pathname === "/menu" || location.pathname === "/"
-      : location.pathname === path;
+      : location.pathname.startsWith(path);
 
   const go = (path) => {
     navigate(path);
@@ -145,54 +116,19 @@ const Sidebar = ({ mobileOpen = false, onMobileClose }) => {
         })}
       </nav>
 
-      {/* Footer: More + Collapse */}
-      <div ref={moreRef} className={`relative shrink-0 pb-5 space-y-2 ${isCollapsed ? "px-2" : "px-4"}`}>
-        {moreOpen && (
-          <div className={`rounded-xl bg-[#161C33] border border-white/10 p-2 space-y-1 z-50 ${
-            isCollapsed ? "absolute bottom-[76px] left-[76px] w-[210px] shadow-2xl" : ""
-          }`}>
-            <button
-              onClick={() => { setMoreOpen(false); go("/tables"); }}
-              className="w-full text-left px-3 py-2 rounded-lg text-[13px] font-semibold text-[#9AA3B8] hover:bg-white/5 hover:text-white"
-            >
-              Tables
-            </button>
-            <button
-              onClick={() => { setMoreOpen(false); go("/kds"); }}
-              className="w-full text-left px-3 py-2 rounded-lg text-[13px] font-semibold text-[#9AA3B8] hover:bg-white/5 hover:text-white"
-            >
-              Kitchen Display
-            </button>
-            <button
-              onClick={() => { setMoreOpen(false); go("/online-orders"); }}
-              className="w-full text-left px-3 py-2 rounded-lg text-[13px] font-semibold text-[#9AA3B8] hover:bg-white/5 hover:text-white"
-            >
-              Online Orders
-            </button>
-            <button
-              onClick={() => { setMoreOpen(false); go("/website"); }}
-              className="w-full text-left px-3 py-2 rounded-lg text-[13px] font-semibold text-[#9AA3B8] hover:bg-white/5 hover:text-white"
-            >
-              Website
-            </button>
-            <button
-              onClick={() => { setMoreOpen(false); logoutMutation.mutate(); }}
-              className="w-full text-left px-3 py-2 rounded-lg text-[13px] font-bold text-red-400 hover:bg-red-500/10"
-            >
-              Logout
-            </button>
-          </div>
-        )}
-
+      {/* Footer: Module 6 §1 Settings Icon + Collapse */}
+      <div className={`relative shrink-0 pb-5 space-y-2 ${isCollapsed ? "px-2" : "px-4"}`}>
         <button
-          onClick={() => setMoreOpen((v) => !v)}
-          title={isCollapsed ? "More" : undefined}
-          className={`w-full flex items-center rounded-xl border border-white/10 bg-[#111729] text-[#9AA3B8] hover:text-white hover:bg-[#161C33] transition-colors ${
+          onClick={() => go("/settings")}
+          title={isCollapsed ? "Settings" : undefined}
+          className={`w-full flex items-center rounded-xl border border-white/10 ${
+            isActive("/settings") ? "bg-[#5B42F3] text-white font-bold" : "bg-[#111729] text-[#9AA3B8] hover:text-white hover:bg-[#161C33]"
+          } transition-colors ${
             isCollapsed ? "justify-center py-3.5" : "gap-4 px-4 py-3.5"
           }`}
         >
-          <IconDots />
-          {!isCollapsed && <span className="text-[15px] font-semibold">More</span>}
+          <IconSettingsGear active={isActive("/settings")} />
+          {!isCollapsed && <span className="text-[15px] font-semibold">Settings</span>}
         </button>
 
         <button

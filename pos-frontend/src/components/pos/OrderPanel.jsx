@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
@@ -19,10 +19,30 @@ import {
 } from "../../redux/slices/customerSlice";
 import { setOrderType } from "../../redux/slices/orderTypeSlice";
 import { addHeldOrder, removeHeldOrder } from "../../redux/slices/heldOrdersSlice";
-import { addOrder, createTableSession, getTables, updateTable } from "../../https";
+import {
+  clearDiscount,
+  computeDiscountAmount,
+  formatDiscountLabel,
+  setFixedDiscount,
+  setPercentDiscount,
+} from "../../redux/slices/discountSlice";
+import {
+  addOrder,
+  createPaymentLink,
+  createTableSession,
+  getStoreProperties,
+  getTables,
+  updateTable,
+} from "../../https";
+
+import { getMyRestaurant } from "../../https/newModules";
+import { getWebsiteSettings } from "../../https/storefrontApi";
 import Invoice from "../invoice/Invoice";
 import CollectionModal from "./CollectionModal";
 import DeliveryModal from "./DeliveryModal";
+import DiscountModal from "./DiscountModal";
+import PaymentMethodModal from "./PaymentMethodModal";
+import PaymentLinkResultModal from "./PaymentLinkResultModal";
 import TableModal from "./TableModal";
 
 /* ---------- Icons (drawn to match the reference) ---------- */
@@ -66,12 +86,20 @@ const IconArrowRight = () => (
     <path d="M5 12h14M12 5l7 7-7 7" />
   </svg>
 );
+const IconTag = () => (
+  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20.59 13.41 12 22l-9-9V3h10z" />
+    <circle cx="7" cy="7" r="1.5" />
+  </svg>
+);
 
 const ORDER_TYPES = [
   { key: "Collection", label: "Collection", Icon: IconBag },
   { key: "Delivery", label: "Delivery", Icon: IconScooter },
   { key: "Table Service", label: "Table", Icon: IconTable },
 ];
+
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 const OrderPanel = () => {
   const dispatch = useDispatch();
@@ -81,20 +109,20 @@ const OrderPanel = () => {
   const customer = useSelector((s) => s.customer);
   const orderType = useSelector((s) => s.orderType.orderType);
   const heldOrders = useSelector((s) => s.heldOrders);
+  const discount = useSelector((s) => s.discount);
   const subtotal = useSelector(getTotalPrice);
-
-  const discount = 0;
-  const taxRate = 5.25;
-  const tax = (subtotal * taxRate) / 100;
-  const total = subtotal - discount + tax;
 
   const [clock, setClock] = useState(new Date());
   const [noteFor, setNoteFor] = useState(null);
   const [noteText, setNoteText] = useState("");
+  const [showDiscount, setShowDiscount] = useState(false);
+  const [showPaymentMethod, setShowPaymentMethod] = useState(false);
+  const [pendingMethod, setPendingMethod] = useState(null); // "cash" | "qr" | "link"
   const [showCollection, setShowCollection] = useState(false);
   const [showDelivery, setShowDelivery] = useState(false);
   const [showTable, setShowTable] = useState(false);
   const [invoice, setInvoice] = useState(null);
+  const [paymentLinkResult, setPaymentLinkResult] = useState(null);
   const [showHeldOrders, setShowHeldOrders] = useState(false);
 
   useEffect(() => {
@@ -103,6 +131,7 @@ const OrderPanel = () => {
   }, []);
 
   const isTable = orderType === "Table Service";
+  const isDelivery = orderType === "Delivery";
 
   const { data: tablesRes } = useQuery({
     queryKey: ["tables"],
@@ -111,28 +140,209 @@ const OrderPanel = () => {
   });
   const tables = tablesRes?.data?.data || [];
 
+  /*
+   * Restaurant branding + ordering configuration.
+   *
+   * We reuse two authenticated tenant endpoints already exposed elsewhere:
+   *
+   *   1. /api/restaurant/me → restaurant.logo + restaurant.name.
+   *   2. /api/website/settings → the *authoritative* source for pricing
+   *      config (taxPercent, taxInclusive, packagingFee, deliveryFee,
+   *      freeDeliveryAbove, minOrderValue, currency…). We use the SAME
+   *      config that the server-side orderPricingService uses so the POS
+   *      preview matches whatever the backend will ultimately charge.
+   *
+   * If either endpoint fails we fall back to safe defaults (no tax, no
+   * charges, keep going). The BACKEND is still the source of truth: it
+   * re-sanitises `bills.*` on every addOrder call (see sanitizeBills in
+   * orderController). That means even if a bad tax rate leaks through the
+   * client, no persistence-level damage can occur.
+   */
+  const { data: restaurantRes } = useQuery({
+    queryKey: ["restaurant", "me"],
+    queryFn: getMyRestaurant,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const { data: websiteRes } = useQuery({
+    queryKey: ["website", "settings"],
+    queryFn: getWebsiteSettings,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const { data: propsRes } = useQuery({
+    queryKey: ["store-properties"],
+    queryFn: getStoreProperties,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const orderTypeToggles = propsRes?.data?.data?.orderTypeToggles || { collection: true, delivery: true, table: true };
+
+  const restaurant = restaurantRes?.data?.data;
+
+  const websiteSettings = websiteRes?.data?.data?.settings;
+  const ordering = websiteSettings?.ordering || {};
+  const restaurantLogo =
+    websiteSettings?.branding?.logo?.url || restaurant?.logo || "";
+  const restaurantName =
+    user.name || restaurant?.name || websiteSettings?.branding?.storeName || "";
+  const displayName = restaurantName || "KnotKitchen Store";
+  const displayInitial = (displayName.trim()[0] || "K").toUpperCase();
+
+  /*
+   * ===== Live bill calculation (Module 2 §6) =====
+   *
+   * Order of operations mirrors the backend orderPricingService exactly so
+   * the "Total payable" number the biller sees matches the number the
+   * server will save:
+   *
+   *   1. subtotal       = Σ line.price  (already qty × unit)
+   *   2. discountAmount = clamped percent/fixed against subtotal
+   *   3. taxableBase    = (subtotal − discount) + packagingFee
+   *   4. tax            = taxableBase × taxPercent  (or extracted if inclusive)
+   *   5. deliveryFee    = configured fee, waived above freeDeliveryAbove
+   *   6. totalWithTax   = subtotal − discount + packagingFee + deliveryFee
+   *                       + (taxInclusive ? 0 : tax)
+   *
+   * Backend fallback rate: if the tenant has never configured
+   * ordering.taxPercent we apply 0 % (not the legacy 5.25 %). Any store
+   * that wants a specific GST must set it via WebsiteSettings → ordering.
+   * This is intentional — silently applying a 5.25 % rate to a store that
+   * never asked for it is a real-world compliance risk. The old hardcoded
+   * rate was OK for a demo but has to go once real merchants exist.
+   */
+  const taxPercent = Math.max(0, Math.min(100, Number(ordering.taxPercent) || 0));
+  const taxInclusive = !!ordering.taxInclusive;
+  const packagingFee = Math.max(0, Number(ordering.packagingFee) || 0);
+  const minOrderValue = Math.max(0, Number(ordering.minOrderValue) || 0);
+  const currencySymbol = ordering.currencySymbol || "₹";
+
+  const discountAmount = useMemo(
+    () => computeDiscountAmount(discount, subtotal),
+    [discount, subtotal],
+  );
+
+  const postDiscount = Math.max(0, round2(subtotal - discountAmount));
+
+  const deliveryFee = useMemo(() => {
+    if (!isDelivery) return 0;
+    const fee = Math.max(0, Number(ordering.deliveryFee) || 0);
+    const freeAbove = Math.max(0, Number(ordering.freeDeliveryAbove) || 0);
+    if (freeAbove > 0 && postDiscount >= freeAbove) return 0;
+    return fee;
+  }, [isDelivery, ordering.deliveryFee, ordering.freeDeliveryAbove, postDiscount]);
+
+  const taxableBase = round2(postDiscount + packagingFee);
+  const tax = useMemo(() => {
+    if (taxPercent <= 0) return 0;
+    if (taxInclusive) {
+      return round2(taxableBase - taxableBase / (1 + taxPercent / 100));
+    }
+    return round2((taxableBase * taxPercent) / 100);
+  }, [taxableBase, taxPercent, taxInclusive]);
+
+  const totalWithTax = round2(
+    postDiscount + packagingFee + deliveryFee + (taxInclusive ? 0 : tax),
+  );
+
+  const billsForOrder = useMemo(
+    () => ({
+      subtotal: round2(subtotal),
+      total: round2(postDiscount),
+      tax,
+      totalWithTax,
+      discount: round2(discountAmount),
+      deliveryFee,
+      packagingFee,
+    }),
+    [subtotal, postDiscount, tax, totalWithTax, discountAmount, deliveryFee, packagingFee],
+  );
+
+  // Clear stale discount when the cart empties so a fresh customer doesn't
+  // inherit the previous order's discount. Persistence is already disabled
+  // for the discount slice, but the in-memory state survives cart mutations.
+  useEffect(() => {
+    if (cart.length === 0 && discount.mode !== "none") {
+      dispatch(clearDiscount());
+    }
+  }, [cart.length, discount.mode, dispatch]);
+
   const tableUpdate = useMutation({ mutationFn: (d) => updateTable(d) });
 
+  const paymentLinkMutation = useMutation({
+    mutationFn: createPaymentLink,
+  });
+
+  /*
+   * The single order-create mutation. `variables` carries the chosen
+   * paymentMethod so we can decide whether to (a) close the order + open
+   * the invoice (cash/qr) or (b) chain a payment-link creation and leave
+   * the order pending (link). This is where §5 "do not immediately
+   * finalize a Pay by Link order as paid" is enforced on the client.
+   */
   const orderMutation = useMutation({
     mutationFn: (d) => addOrder(d),
-    onSuccess: (res) => {
+    onSuccess: async (res, variables) => {
       const data = res.data?.data;
-      setInvoice(data);
       if (data?.table) {
         setTimeout(
           () => tableUpdate.mutate({ status: "occupied", orderId: data._id, tableId: data.table }),
-          800
+          800,
         );
       }
-      enqueueSnackbar("Order completed!", { variant: "success" });
       qc.invalidateQueries({ queryKey: ["orders"] });
       qc.invalidateQueries({ queryKey: ["popular-items"] });
       qc.invalidateQueries({ queryKey: ["tables"] });
+
+      // "Pay via Link" — create the payment link but DO NOT show the invoice
+      // and DO NOT clear the cart until the link is generated (so if link
+      // creation fails, the operator can retry without re-entering the order).
+      if (variables?.paymentMethod === "link") {
+        try {
+          const linkRes = await paymentLinkMutation.mutateAsync({
+            orderId: data._id,
+            phone: data.customerDetails?.phone || variables?._phone || "",
+            expiresInHours: 24,
+          });
+          setPaymentLinkResult(linkRes.data?.data);
+          setShowPaymentMethod(false);
+          setShowCollection(false);
+          setShowDelivery(false);
+          dispatch(removeAllItems());
+          dispatch(removeCustomer());
+          dispatch(clearDiscount());
+          enqueueSnackbar(
+            "Order created. Share the payment link — the order will finalise once the customer pays.",
+            { variant: "success" },
+          );
+        } catch (e) {
+          enqueueSnackbar(
+            e.response?.data?.message ||
+              "Order was created but the payment link could not be generated. Please retry from Orders.",
+            { variant: "error" },
+          );
+          // Even on link failure, the order exists — clear the cart so the
+          // biller doesn't re-submit and end up with a duplicate.
+          setShowPaymentMethod(false);
+          setShowCollection(false);
+          setShowDelivery(false);
+          dispatch(removeAllItems());
+          dispatch(removeCustomer());
+          dispatch(clearDiscount());
+        }
+        return;
+      }
+
+      // Cash / QR — show the invoice + close the modals.
+      enqueueSnackbar("Order completed!", { variant: "success" });
+      setInvoice(data);
+      setShowPaymentMethod(false);
       setShowCollection(false);
       setShowDelivery(false);
       setShowTable(false);
       dispatch(removeAllItems());
       dispatch(removeCustomer());
+      dispatch(clearDiscount());
     },
     onError: (e) =>
       enqueueSnackbar(e.response?.data?.message || "Failed to complete order.", { variant: "error" }),
@@ -149,27 +359,93 @@ const OrderPanel = () => {
       setShowTable(false);
       dispatch(removeAllItems());
       dispatch(removeCustomer());
+      dispatch(clearDiscount());
     },
     onError: (e) =>
       enqueueSnackbar(e.response?.data?.message || "Failed to attach order to table.", { variant: "error" }),
   });
 
-  const busy = orderMutation.isPending || sessionMutation.isPending;
+  const busy =
+    orderMutation.isPending || sessionMutation.isPending || paymentLinkMutation.isPending;
   const count = cart.reduce((n, i) => n + (i.quantity || 1), 0);
 
-  const base = ({ name, phone, deliveryAddress, apiType, table }) => ({
-    customerDetails: { name, phone, guests: 1 },
-    orderType: apiType,
-    bills: { subtotal, total: subtotal, tax, totalWithTax: total, discount },
-    items: cart,
-    paymentMethod: "Cash",
-    ...(deliveryAddress ? { deliveryAddress } : {}),
-    ...(table ? { table } : {}),
-  });
+  /**
+   * Build the order payload. `guests` is intentionally omitted for
+   * collection/delivery so the backend uses its schema default of 1 without
+   * us pretending we captured a real guest count (Module 2 §4). Table
+   * Service still supplies guests via TableModal because table capacity is
+   * a real constraint there.
+   */
+  const buildOrderPayload = ({
+    name,
+    phone,
+    // Module 4 §5 — structured extra customer fields (optional). They flow
+    // into customerDetails so the Orders → Order Details view can render
+    // Address / City / PIN Code / Delivery Note without a second lookup.
+    address,
+    city,
+    pinCode,
+    deliveryNote,
+    deliveryAddress,
+    apiType,
+    table,
+    paymentMethod,
+  }) => {
+    const customerDetails = {};
+    if (name) customerDetails.name = name;
+    if (phone) customerDetails.phone = phone;
+    if (address) customerDetails.address = address;
+    if (city) customerDetails.city = city;
+    if (pinCode) customerDetails.pinCode = pinCode;
+    if (deliveryNote) customerDetails.deliveryNote = deliveryNote;
+    return {
+      customerDetails,
+      orderType: apiType,
 
+      bills: billsForOrder,
+      items: cart,
+      // paymentMethod tells the backend which channel the order came from,
+      // but the actual "paid" vs "pending" state lives in `payments[]` and
+      // for Pay-by-Link is only set to paid by verifyAndCaptureLinkPayment.
+      paymentMethod:
+        paymentMethod === "cash"
+          ? "Cash"
+          : paymentMethod === "qr"
+          ? "UPI"
+          : paymentMethod === "link"
+          ? "PaymentLink"
+          : "Cash",
+      ...(deliveryAddress ? { deliveryAddress } : {}),
+      ...(table ? { table } : {}),
+    };
+  };
+
+  /**
+   * Client-side pre-submit validation (Module 2 §7).
+   *
+   * The backend re-runs all of these + a lot more (tenant scoping, table
+   * capacity, order-type enum, price sanitisation). This is only here to
+   * surface obvious problems immediately so the biller doesn't waste time
+   * on a doomed round-trip.
+   */
   const guard = () => {
     if (cart.length === 0) {
       enqueueSnackbar("Cart is empty — add products first.", { variant: "warning" });
+      return false;
+    }
+    if (totalWithTax <= 0) {
+      enqueueSnackbar("Order total must be greater than zero.", { variant: "warning" });
+      return false;
+    }
+    if (minOrderValue > 0 && postDiscount < minOrderValue) {
+      enqueueSnackbar(
+        `Minimum order value is ${currencySymbol}${minOrderValue.toFixed(2)}.`,
+        { variant: "warning" },
+      );
+      return false;
+    }
+    if (isDelivery && ordering.deliveryEnabled === false) {
+      enqueueSnackbar("Delivery is disabled in your store settings.", { variant: "warning" });
       return false;
     }
     return true;
@@ -177,20 +453,82 @@ const OrderPanel = () => {
 
   const finish = () => {
     if (!guard()) return;
-    if (orderType === "Delivery") return setShowDelivery(true);
+    // Table Service has its own dedicated flow (session-based); it does not
+    // go through the payment-method chooser because payment for a dine-in
+    // table is captured later (via /pay/:token or at the till when the
+    // session is closed).
     if (isTable) return setShowTable(true);
+    setShowPaymentMethod(true);
+  };
+
+  // Payment method chosen inside PaymentMethodModal → route to the correct
+  // customer-details modal (or straight to submit if we already have the
+  // minimum required details).
+  const onPickPaymentMethod = (method) => {
+    setPendingMethod(method);
+    if (isDelivery) {
+      setShowCollection(false);
+      setShowDelivery(true);
+      return;
+    }
+    // Collection — for Pay-by-Link we need a phone number, otherwise the
+    // customer has nowhere to receive the link. All other methods accept
+    // fully-empty customer details (Module 2 §3).
     setShowCollection(true);
   };
 
-  const doCollection = ({ name, phone }) => {
-    dispatch(setCustomer({ name, phone, guests: 1 }));
-    orderMutation.mutate(base({ name, phone, apiType: "collection" }));
+  const doCollection = ({ name, phone, address, city, pinCode, deliveryNote }) => {
+    if (pendingMethod === "link" && !phone) {
+      enqueueSnackbar("A phone number is required to send the payment link.", { variant: "warning" });
+      return;
+    }
+    if (name || phone) dispatch(setCustomer({ name, phone, guests: 0 }));
+    orderMutation.mutate(
+      buildOrderPayload({
+        name,
+        phone,
+        address,
+        city,
+        pinCode,
+        deliveryNote,
+        apiType: "collection",
+        paymentMethod: pendingMethod,
+      }),
+      { onSettled: () => {} },
+    );
   };
 
-  const doDelivery = ({ name, phone, deliveryAddress }) => {
-    dispatch(setCustomer({ name, phone, guests: 1 }));
-    orderMutation.mutate(base({ name, phone, deliveryAddress, apiType: "delivery" }));
+  const doDelivery = ({
+    name,
+    phone,
+    // Module 4 §5 — DeliveryModal now also passes the structured customer
+    // fields so they end up on customerDetails alongside deliveryAddress.
+    address,
+    city,
+    pinCode,
+    deliveryNote,
+    deliveryAddress,
+  }) => {
+    if (pendingMethod === "link" && !phone) {
+      enqueueSnackbar("A phone number is required to send the payment link.", { variant: "warning" });
+      return;
+    }
+    dispatch(setCustomer({ name, phone, guests: 0 }));
+    orderMutation.mutate(
+      buildOrderPayload({
+        name,
+        phone,
+        address,
+        city,
+        pinCode,
+        deliveryNote,
+        deliveryAddress,
+        apiType: "delivery",
+        paymentMethod: pendingMethod,
+      }),
+    );
   };
+
 
   const doTable = ({ table, guests }) => {
     dispatch(updateTableAction({ table }));
@@ -224,10 +562,14 @@ const OrderPanel = () => {
         sessionId: customer.sessionId,
       },
       orderType,
+      // Persist the discount snapshot too so a resumed order keeps its
+      // agreed pricing rather than silently reverting to full price.
+      discount: { mode: discount.mode, value: discount.value },
       createdAt: new Date().toISOString(),
     }));
     dispatch(removeAllItems());
     dispatch(removeCustomer());
+    dispatch(clearDiscount());
     dispatch(setOrderType("Collection"));
     setShowHeldOrders(false);
     enqueueSnackbar("Order held. The cart is ready for the next customer.", { variant: "success" });
@@ -250,6 +592,16 @@ const OrderPanel = () => {
     if (savedCustomer.table) dispatch(updateTableAction({ table: savedCustomer.table }));
     if (savedCustomer.sessionId) dispatch(setSessionId(savedCustomer.sessionId));
     dispatch(setOrderType(heldOrder.orderType || "Collection"));
+
+    // Re-apply the held discount snapshot, if any.
+    if (heldOrder.discount?.mode === "percent") {
+      dispatch(setPercentDiscount(heldOrder.discount.value));
+    } else if (heldOrder.discount?.mode === "fixed") {
+      dispatch(setFixedDiscount(heldOrder.discount.value));
+    } else {
+      dispatch(clearDiscount());
+    }
+
     dispatch(removeHeldOrder(heldOrder.id));
     setShowHeldOrders(false);
     enqueueSnackbar("Held order resumed.", { variant: "success" });
@@ -261,18 +613,49 @@ const OrderPanel = () => {
     }
   };
 
-  const money = (n) => `₹${Number(n || 0).toFixed(2)}`;
+  const money = (n) => `${currencySymbol}${Number(n || 0).toFixed(2)}`;
+  const discountLabel = formatDiscountLabel(discount);
 
   return (
     <aside className="w-[380px] shrink-0 h-full bg-white border-l border-[#E2E8F0] flex flex-col">
       {/* ===== Store header ===== */}
       <div className="px-4 py-3.5 flex items-center gap-3 border-b border-[#E2E8F0] shrink-0">
-        <div className="w-[42px] h-[42px] rounded-full bg-[#0B1120] flex items-center justify-center shrink-0">
-          <KnotLogo size={26} />
+        <div
+          className={`w-[42px] h-[42px] rounded-full flex items-center justify-center shrink-0 overflow-hidden ${
+            restaurantLogo ? "bg-white border border-[#E2E8F0]" : "bg-[#0B1120]"
+          }`}
+          title={displayName}
+        >
+          {restaurantLogo ? (
+            <img
+              src={restaurantLogo}
+              alt={`${displayName} logo`}
+              className="w-full h-full object-contain"
+              onError={(e) => {
+                e.currentTarget.style.display = "none";
+                e.currentTarget.parentElement?.classList.add("bg-[#0B1120]");
+                const initial = e.currentTarget.parentElement?.querySelector(
+                  "[data-logo-fallback]",
+                );
+                if (initial) initial.removeAttribute("hidden");
+              }}
+            />
+          ) : (
+            <KnotLogo size={26} />
+          )}
+          {restaurantLogo && (
+            <span
+              hidden
+              data-logo-fallback
+              className="text-white font-extrabold text-[16px]"
+            >
+              {displayInitial}
+            </span>
+          )}
         </div>
         <div className="min-w-0 flex-1">
           <p className="text-[15px] font-extrabold text-[#0F172A] truncate leading-tight">
-            {user.name || "KnotKitchen Store"}
+            {displayName}
           </p>
           <p className="text-[11.5px] text-[#94A3B8] truncate">
             Store ID: {user.storeId || "—"}
@@ -294,15 +677,18 @@ const OrderPanel = () => {
         </div>
       </div>
 
-      {/* ===== Order type tabs ===== */}
-      <div className="px-4 py-3 shrink-0 grid grid-cols-3 gap-2">
-        {ORDER_TYPES.map(({ key, label, Icon }) => {
+      {/* ===== Order type tabs (Module 7 §4: Filtered by Order Type Toggles) ===== */}
+      <div className="px-4 py-3 shrink-0 flex flex-wrap gap-2">
+        {ORDER_TYPES.filter(({ key }) => {
+          const k = key === "Table Service" ? "table" : key.toLowerCase();
+          return orderTypeToggles[k] !== false;
+        }).map(({ key, label, Icon }) => {
           const on = orderType === key;
           return (
             <button
               key={key}
               onClick={() => dispatch(setOrderType(key))}
-              className={`h-[46px] rounded-xl flex items-center justify-center gap-2 text-[13.5px] font-bold border transition-all ${
+              className={`flex-1 min-w-[90px] h-[46px] rounded-xl flex items-center justify-center gap-2 text-[13.5px] font-bold border transition-all ${
                 on
                   ? "bg-[#5B42F3] text-white border-[#5B42F3] shadow-[0_6px_16px_-6px_rgba(91,66,243,0.6)]"
                   : "bg-white text-[#334155] border-[#E2E8F0] hover:border-[#CBD5E1]"
@@ -314,6 +700,7 @@ const OrderPanel = () => {
           );
         })}
       </div>
+
 
       {/* ===== Cart header ===== */}
       <div className="px-4 pb-2 shrink-0 flex items-center justify-between border-b border-[#E2E8F0] pt-1">
@@ -329,9 +716,7 @@ const OrderPanel = () => {
           )}
           {cart.length > 0 && (
             <button
-              onClick={() => {
-                dispatch(removeAllItems());
-              }}
+              onClick={() => dispatch(removeAllItems())}
               className="text-[12.5px] font-bold text-[#EF4444] flex items-center gap-1 hover:text-[#DC2626]"
             >
               <IconTrash /> Clear Cart
@@ -340,7 +725,7 @@ const OrderPanel = () => {
         </div>
       </div>
 
-      {/* ===== Cart items — NO IMAGES ===== */}
+      {/* ===== Cart items ===== */}
       <div className="flex-1 min-h-0 overflow-y-auto px-4 py-3">
         {cart.length === 0 ? (
           <div className="text-center py-14">
@@ -354,7 +739,6 @@ const OrderPanel = () => {
           <div className="space-y-3">
             {cart.map((item) => (
               <div key={item.id} className="flex items-center gap-2.5">
-                {/* Name + variant */}
                 <div className="min-w-0 flex-1">
                   <p className="text-[14px] font-bold text-[#0F172A] truncate leading-tight">
                     {item.name}
@@ -369,7 +753,6 @@ const OrderPanel = () => {
                   )}
                 </div>
 
-                {/* Qty stepper */}
                 <div className="flex items-center gap-2 rounded-lg border border-[#E2E8F0] px-1.5 h-[30px] shrink-0">
                   <button
                     onClick={() =>
@@ -392,16 +775,12 @@ const OrderPanel = () => {
                   </button>
                 </div>
 
-                {/* Price */}
                 <span className="text-[14px] font-extrabold text-[#0F172A] w-[62px] text-right shrink-0">
                   {money(item.price)}
                 </span>
 
-                {/* Remove */}
                 <button
-                  onClick={() => {
-                    dispatch(removeItem(item.id));
-                  }}
+                  onClick={() => dispatch(removeItem(item.id))}
                   className="text-[#CBD5E1] hover:text-[#EF4444] text-[18px] leading-none shrink-0 w-4"
                   title="Remove item"
                 >
@@ -435,18 +814,65 @@ const OrderPanel = () => {
           <span className="text-[#475569]">Subtotal</span>
           <span className="font-bold text-[#0F172A]">{money(subtotal)}</span>
         </div>
-        <div className="flex items-center justify-between text-[13.5px]">
-          <span className="text-[#475569]">Discount</span>
-          <span className="font-bold text-[#16A34A]">- {money(discount)}</span>
-        </div>
-        <div className="flex items-center justify-between text-[13.5px]">
-          <span className="text-[#475569]">Tax</span>
-          <span className="font-bold text-[#0F172A]">{money(tax)}</span>
-        </div>
+
+        {/* Discount row — CLICKABLE (Module 2 §1). Shows current label if
+            a discount is applied so the biller can see it at a glance. */}
+        <button
+          type="button"
+          onClick={() => setShowDiscount(true)}
+          className="w-full flex items-center justify-between text-[13.5px] rounded-lg -mx-1 px-1 py-1 hover:bg-[#F8FAFC] transition-colors"
+          disabled={cart.length === 0}
+        >
+          <span className="flex items-center gap-1.5 text-[#475569]">
+            <IconTag />
+            <span className="font-semibold">Discount</span>
+            {discountLabel && (
+              <span className="px-1.5 py-0.5 rounded-md bg-[#EEF0FE] text-[#5B42F3] text-[11px] font-extrabold">
+                {discountLabel}
+              </span>
+            )}
+          </span>
+          <span
+            className={`font-bold ${
+              discountAmount > 0 ? "text-[#16A34A]" : "text-[#94A3B8]"
+            }`}
+          >
+            {discountAmount > 0 ? `− ${money(discountAmount)}` : "Add"}
+          </span>
+        </button>
+
+        {packagingFee > 0 && (
+          <div className="flex items-center justify-between text-[13.5px]">
+            <span className="text-[#475569]">Packing charge</span>
+            <span className="font-bold text-[#0F172A]">{money(packagingFee)}</span>
+          </div>
+        )}
+        {isDelivery && (
+          <div className="flex items-center justify-between text-[13.5px]">
+            <span className="text-[#475569]">Delivery charge</span>
+            <span className="font-bold text-[#0F172A]">
+              {deliveryFee > 0 ? money(deliveryFee) : "Free"}
+            </span>
+          </div>
+        )}
+        {tax > 0 && (
+          <div className="flex items-center justify-between text-[13.5px]">
+            <span className="text-[#475569]">
+              GST {taxInclusive ? `(incl. ${taxPercent}%)` : `(${taxPercent}%)`}
+            </span>
+            <span className="font-bold text-[#0F172A]">{money(tax)}</span>
+          </div>
+        )}
+
         <div className="flex items-center justify-between pt-2 border-t border-[#E2E8F0]">
           <span className="text-[17px] font-extrabold text-[#0F172A]">Total</span>
-          <span className="text-[22px] font-extrabold text-[#5B42F3]">{money(total)}</span>
+          <span className="text-[22px] font-extrabold text-[#5B42F3]">{money(totalWithTax)}</span>
         </div>
+        {minOrderValue > 0 && postDiscount < minOrderValue && cart.length > 0 && (
+          <p className="text-[11px] font-semibold text-[#EF4444]">
+            Below minimum order value of {money(minOrderValue)}.
+          </p>
+        )}
       </div>
 
       {/* ===== Actions ===== */}
@@ -459,8 +885,8 @@ const OrderPanel = () => {
         </button>
         <button
           onClick={finish}
-          disabled={busy}
-          className="h-[50px] rounded-xl bg-[#5B42F3] text-white text-[14.5px] font-bold flex items-center justify-center gap-2 shadow-[0_8px_20px_-8px_rgba(91,66,243,0.7)] hover:bg-[#4A32E0] disabled:opacity-50 transition-colors"
+          disabled={busy || cart.length === 0}
+          className="h-[50px] rounded-xl bg-[#5B42F3] text-white text-[14.5px] font-bold flex items-center justify-center gap-2 shadow-[0_8px_20px_-8px_rgba(91,66,243,0.7)] hover:bg-[#4A32E0] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {busy ? "Processing…" : "Finish Order"} {!busy && <IconArrowRight />}
         </button>
@@ -502,12 +928,45 @@ const OrderPanel = () => {
         </div>
       )}
 
-      {/* ===== Finish-order modals ===== */}
+      {/* ===== Discount modal ===== */}
+      {showDiscount && (
+        <DiscountModal
+          subtotal={subtotal}
+          initialMode={discount.mode}
+          initialValue={discount.value}
+          onClose={() => setShowDiscount(false)}
+          onApply={({ mode, value }) => {
+            if (mode === "percent") dispatch(setPercentDiscount(value));
+            else if (mode === "fixed") dispatch(setFixedDiscount(value));
+            else dispatch(clearDiscount());
+            setShowDiscount(false);
+            enqueueSnackbar("Discount updated.", { variant: "success" });
+          }}
+          onClear={() => {
+            dispatch(clearDiscount());
+            setShowDiscount(false);
+            enqueueSnackbar("Discount removed.", { variant: "info" });
+          }}
+        />
+      )}
+
+      {/* ===== Payment method chooser ===== */}
+      {showPaymentMethod && (
+        <PaymentMethodModal
+          orderType={orderType}
+          bills={billsForOrder}
+          busy={busy}
+          onClose={() => setShowPaymentMethod(false)}
+          onSelect={onPickPaymentMethod}
+        />
+      )}
+
+      {/* ===== Customer detail capture (routed by method) ===== */}
       {showCollection && (
         <CollectionModal
           initialName={customer.customerName}
           initialPhone={customer.customerPhone}
-          total={total}
+          total={totalWithTax}
           busy={busy}
           onClose={() => setShowCollection(false)}
           onConfirm={doCollection}
@@ -517,7 +976,7 @@ const OrderPanel = () => {
         <DeliveryModal
           initialName={customer.customerName}
           initialPhone={customer.customerPhone}
-          total={total}
+          total={totalWithTax}
           busy={busy}
           onClose={() => setShowDelivery(false)}
           onConfirm={doDelivery}
@@ -532,7 +991,35 @@ const OrderPanel = () => {
         />
       )}
 
-      {invoice && <Invoice orderInfo={invoice} setShowInvoice={() => setInvoice(null)} />}
+      {invoice && (
+        <Invoice
+          orderInfo={invoice}
+          setShowInvoice={() => setInvoice(null)}
+          // Module 3 §5 — the invoice/receipt header must show the
+          // authenticated restaurant's branding, never a hardcoded
+          // "KnotKitchen". These come from the same react-query caches
+          // that drive the store header at the top of the OrderPanel.
+          restaurantName={displayName}
+          restaurantLogo={restaurantLogo}
+          restaurantPhone={
+            restaurant?.phone ||
+            websiteSettings?.contact?.phone ||
+            ""
+          }
+          restaurantAddress={
+            restaurant?.address?.line1 ||
+            websiteSettings?.contact?.address ||
+            ""
+          }
+        />
+      )}
+
+      {paymentLinkResult && (
+        <PaymentLinkResultModal
+          result={paymentLinkResult}
+          onClose={() => setPaymentLinkResult(null)}
+        />
+      )}
 
       {showHeldOrders && (
         <div className="fixed inset-0 z-[95] bg-[#0F172A]/55 flex items-center justify-center p-4">

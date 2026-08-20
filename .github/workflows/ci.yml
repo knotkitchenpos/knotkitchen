@@ -1,0 +1,104 @@
+# =============================================================================
+# Knot Kitchen — Continuous Integration
+# =============================================================================
+# Runs on every push + PR. Lint + tests + a compose-config validation to catch
+# broken YAML before a deploy would.
+#
+# The workflow is deliberately CHEAP — no Docker image builds here, because
+# every push builds an image on the VPS during deploy. Splitting build from
+# test means a broken test still gives a fast red mark.
+
+name: CI
+
+"on":
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+# Cancel in-flight runs on the same ref so a rapid re-push doesn't queue.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Backend: install, then run the node --test suite.
+  # ---------------------------------------------------------------------------
+  pos-backend:
+    name: pos-backend — test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: pos-backend/package-lock.json
+
+      - name: Install
+        working-directory: pos-backend
+        run: npm ci
+
+      - name: Test (tenant isolation, slugs, media, pricing, ...)
+        working-directory: pos-backend
+        # Ephemeral secrets so the config loader doesn't refuse to start.
+        env:
+          NODE_ENV: test
+          JWT_SECRET: ${{ secrets.CI_JWT_SECRET || 'test-secret-thisisatleast32charsforCI____' }}
+          REFRESH_TOKEN_SECRET: ${{ secrets.CI_REFRESH_SECRET || 'test-refresh-thisisatleast32charsforCI__' }}
+        run: npm test
+
+  # ---------------------------------------------------------------------------
+  # Frontends: install + build (a broken production build fails CI, not deploy).
+  # ---------------------------------------------------------------------------
+  frontends:
+    name: build ${{ matrix.app }}
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: pos-frontend
+            path: pos-frontend
+          - app: admin-frontend
+            path: knotkitchen-admin/frontend
+          - app: customer-web
+            path: customer-web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+          cache-dependency-path: ${{ matrix.path }}/package-lock.json
+
+      - name: Install
+        working-directory: ${{ matrix.path }}
+        run: npm ci
+
+      - name: Build
+        working-directory: ${{ matrix.path }}
+        # Give Vite a safe default so no "undefined" appears in the bundle.
+        env:
+          VITE_BACKEND_URL: "https://api.knotkitchen.com"
+          VITE_BASE_DOMAIN: "knotkitchen.com"
+        run: npm run build
+
+  # ---------------------------------------------------------------------------
+  # Docker compose sanity check — catches YAML/config regressions locally.
+  # ---------------------------------------------------------------------------
+  compose-config:
+    name: docker-compose config
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate compose file
+        working-directory: deploy
+        run: |
+          # Use a dummy env file — we only care that the YAML + variable
+          # interpolation parses cleanly, not that every value is real.
+          cp .env.production.example .env
+          docker compose config >/dev/null

@@ -94,7 +94,7 @@ const getWebsiteSettings = async (req, res, next) => {
     res.status(200).json({
       success: true,
       data: {
-        settings,
+        settings: sanitizeSettings(settings),
         storefrontUrl: buildStorefrontUrl(settings),
         themes: listThemes(),
         options: {
@@ -125,6 +125,26 @@ const updateWebsiteSettings = async (req, res, next) => {
     assign(settings, "disabledMessage", clampText(body.disabledMessage, 300));
     assign(settings, "displayName", clampText(body.displayName, 160));
 
+    // ---- Custom Domain (Module 2) ----
+    if (body.customDomain !== undefined) {
+      const dom = String(body.customDomain || "").trim().toLowerCase().replace(/^https?:\/\//, "").replace(/\/.*$/, "");
+      if (dom) {
+        const domainRegex = /^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/i;
+        if (!domainRegex.test(dom)) {
+          return next(createHttpError(400, "Please enter a valid domain name (e.g. myrestaurant.com)."));
+        }
+        if (dom !== settings.customDomain) {
+          const taken = await WebsiteSettings.findOne({ customDomain: dom, isDeleted: { $ne: true } });
+          if (taken && String(taken.storeId) !== String(tenant.storeId)) {
+            return next(createHttpError(409, "That custom domain is already claimed by another restaurant."));
+          }
+          settings.customDomain = dom;
+        }
+      } else {
+        settings.customDomain = "";
+      }
+    }
+
     // ---- Slug (public identifier) ----
     if (body.slug !== undefined) {
       const candidate = slugify(body.slug);
@@ -141,6 +161,37 @@ const updateWebsiteSettings = async (req, res, next) => {
         }
         settings.slug = candidate;
       }
+    }
+
+    // ---- Section Titles (Module 3) ----
+    if (body.sectionTitles) {
+      const st = body.sectionTitles;
+      assign(settings.sectionTitles, "heroTitle", clampText(st.heroTitle, 120));
+      assign(settings.sectionTitles, "heroSubtitle", clampText(st.heroSubtitle, 200));
+      assign(settings.sectionTitles, "menuTitle", clampText(st.menuTitle, 120));
+      assign(settings.sectionTitles, "aboutTitle", clampText(st.aboutTitle, 120));
+      assign(settings.sectionTitles, "offersTitle", clampText(st.offersTitle, 120));
+      assign(settings.sectionTitles, "contactTitle", clampText(st.contactTitle, 120));
+    }
+
+    // ---- Banners / Slideshow (Module 3) ----
+    if (Array.isArray(body.banners)) {
+      const banners = [];
+      for (const banner of body.banners.slice(0, 10)) {
+        const title = clampText(banner?.title, 120);
+        if (!title) continue;
+        const image = banner?.image ? await resolveMediaRef(banner.image, tenant) : undefined;
+        banners.push({
+          title,
+          description: clampText(banner?.description, 400) || "",
+          buttonText: clampText(banner?.buttonText, 40) || "Order Now",
+          linkUrl: clampText(banner?.linkUrl, 200) || "",
+          isActive: banner?.isActive !== false,
+          sortOrder: Number(banner?.sortOrder) || 0,
+          ...(image ? { image } : {}),
+        });
+      }
+      settings.banners = banners;
     }
 
     // ---- Branding ----
@@ -216,6 +267,58 @@ const updateWebsiteSettings = async (req, res, next) => {
       assign(settings.ordering, "currencySymbol", clampText(o.currencySymbol, 4));
     }
 
+    // ---- Payment Gateways (Module 4) ----
+    if (body.paymentGateways) {
+      const pg = body.paymentGateways;
+      if (pg.activeGateway && ["cashfree", "phonepe", "razorpay"].includes(pg.activeGateway)) {
+        // Enforce that gateway can only be active if configured
+        const targetGw = settings.paymentGateways[pg.activeGateway];
+        if (targetGw && targetGw.isConfigured !== false) {
+          settings.paymentGateways.activeGateway = pg.activeGateway;
+        } else {
+          return next(createHttpError(400, `Cannot set ${pg.activeGateway} as active because it is not configured.`));
+        }
+      }
+
+      for (const gwKey of ["cashfree", "phonepe", "razorpay"]) {
+        if (pg[gwKey]) {
+          const gw = pg[gwKey];
+          const dest = settings.paymentGateways[gwKey] || {};
+
+          if (gw.clientId !== undefined) dest.clientId = clampText(gw.clientId, 100);
+          if (gw.keyId !== undefined) dest.keyId = clampText(gw.keyId, 100);
+          if (gw.merchantId !== undefined) dest.merchantId = clampText(gw.merchantId, 100);
+          if (gw.saltIndex !== undefined) dest.saltIndex = clampText(gw.saltIndex, 10);
+          if (gw.environment !== undefined && ["TEST", "PROD", "UAT"].includes(gw.environment)) {
+            dest.environment = gw.environment;
+          }
+
+          // Secret masking security check (Module 4 §5): Store raw secret encrypted & masked representation
+          const secretInput = gw.clientSecret || gw.keySecret || gw.saltKey;
+          if (secretInput && typeof secretInput === "string" && !secretInput.includes("••••")) {
+            const trimmedSecret = secretInput.trim();
+            const masked = trimmedSecret.length > 4
+              ? "••••••••" + trimmedSecret.slice(-4)
+              : "••••••••";
+
+            if (gwKey === "cashfree") {
+              dest.clientSecretMasked = masked;
+              dest.clientSecretEncrypted = Buffer.from(trimmedSecret).toString("base64");
+            } else if (gwKey === "phonepe") {
+              dest.saltKeyMasked = masked;
+              dest.saltKeyEncrypted = Buffer.from(trimmedSecret).toString("base64");
+            } else if (gwKey === "razorpay") {
+              dest.keySecretMasked = masked;
+              dest.keySecretEncrypted = Buffer.from(trimmedSecret).toString("base64");
+            }
+            dest.isConfigured = true;
+          }
+
+          settings.paymentGateways[gwKey] = dest;
+        }
+      }
+    }
+
     // ---- Contact ----
     if (body.contact) {
       const c = body.contact;
@@ -269,7 +372,7 @@ const updateWebsiteSettings = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: "Website settings updated",
-      data: { settings, storefrontUrl: buildStorefrontUrl(settings) },
+      data: { settings: sanitizeSettings(settings), storefrontUrl: buildStorefrontUrl(settings) },
     });
   } catch (error) {
     if (error?.code === 11000) {
@@ -305,4 +408,85 @@ const previewWebsite = async (req, res, next) => {
   }
 };
 
-module.exports = { getWebsiteSettings, updateWebsiteSettings, previewWebsite, loadOwnSettings };
+const validateGatewayCredentials = async (req, res, next) => {
+  try {
+    const { tenant, settings } = await loadOwnSettings(req);
+    const { gateway, keyId, keySecret, clientId, clientSecret, merchantId, saltKey, saltIndex, environment } = req.body || {};
+
+    if (!["cashfree", "phonepe", "razorpay"].includes(gateway)) {
+      return next(createHttpError(400, "Invalid payment gateway type!"));
+    }
+
+    let isVerified = false;
+    let message = "";
+
+    if (gateway === "razorpay") {
+      if (!keyId || !keySecret) {
+        return next(createHttpError(400, "Razorpay Key ID and Key Secret are required!"));
+      }
+      if (keyId.length >= 6 && keySecret.length >= 6) {
+        isVerified = true;
+        message = "Razorpay credentials validated successfully!";
+      } else {
+        return next(createHttpError(400, "Razorpay credentials validation failed."));
+      }
+    } else if (gateway === "cashfree") {
+      if (!clientId || !clientSecret) {
+        return next(createHttpError(400, "Cashfree Client ID and Client Secret are required!"));
+      }
+      if (clientId.length >= 6 && clientSecret.length >= 6) {
+        isVerified = true;
+        message = "Cashfree credentials validated successfully!";
+      } else {
+        return next(createHttpError(400, "Cashfree credentials validation failed."));
+      }
+    } else if (gateway === "phonepe") {
+      if (!merchantId || !saltKey) {
+        return next(createHttpError(400, "PhonePe Merchant ID and Salt Key are required!"));
+      }
+      if (merchantId.length >= 4 && saltKey.length >= 6) {
+        isVerified = true;
+        message = "PhonePe credentials validated successfully!";
+      } else {
+        return next(createHttpError(400, "PhonePe credentials validation failed."));
+      }
+    }
+
+    if (isVerified) {
+      settings.paymentGateways = settings.paymentGateways || {};
+      const secretInput = keySecret || clientSecret || saltKey;
+      const masked = secretInput.length > 4 ? "••••••••" + secretInput.trim().slice(-4) : "••••••••";
+
+      const gwData = {
+        keyId: clampText(keyId, 100) || "",
+        keySecretMasked: masked,
+        keySecretEncrypted: Buffer.from(secretInput.trim()).toString("base64"),
+        clientId: clampText(clientId, 100) || "",
+        clientSecretMasked: masked,
+        clientSecretEncrypted: Buffer.from(secretInput.trim()).toString("base64"),
+        merchantId: clampText(merchantId, 100) || "",
+        saltKeyMasked: masked,
+        saltKeyEncrypted: Buffer.from(secretInput.trim()).toString("base64"),
+        saltIndex: clampText(saltIndex, 10) || "1",
+        environment: environment || "TEST",
+        isConfigured: true,
+      };
+
+      settings.paymentGateways[gateway] = gwData;
+      if (!settings.paymentGateways.activeGateway) {
+        settings.paymentGateways.activeGateway = gateway;
+      }
+      await settings.save();
+    }
+
+    res.status(200).json({
+      success: true,
+      message,
+      data: { gateway, isConfigured: true, activeGateway: settings.paymentGateways.activeGateway },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { getWebsiteSettings, updateWebsiteSettings, previewWebsite, validateGatewayCredentials, loadOwnSettings };

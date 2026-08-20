@@ -30,7 +30,7 @@ const restaurantSchema = new mongoose.Schema(
     name: { type: String, required: true },
     legalName: { type: String, default: "" },
     registrationNumber: { type: String, default: "" },
-    taxId: { type: String, default: "" }, // GST/VAT
+    taxId: { type: String, default: "" }, // GST Number (optional)
     currency: { type: String, default: "INR" },
     timezone: { type: String, default: "Asia/Kolkata" },
     address: { type: addressSchema, default: () => ({}) },
@@ -46,9 +46,37 @@ const restaurantSchema = new mongoose.Schema(
       trialEndsAt: { type: Date },
       currentPeriodEndsAt: { type: Date },
     },
+
+    // Module 7 §1 — Extended Store Properties
+    ownerName: { type: String, default: "" },
+    ownerPhone: { type: String, default: "" },
+    contactPersonPhone: { type: String, default: "" },
+    ownerEmail: { type: String, default: "" },
+    fssaiNumber: { type: String, default: "" },
+    mapsLink: { type: String, default: "" },
+
+    // Module 7 §2 — Hashed Protection PIN (Default "8796")
+    // Stored as bcrypt hash, never plaintext!
+    securityPin: { type: String, default: "" },
+
+    // Module 7 §3 — POS Settings & Receipt/Bill Customization
+    posSettings: {
+      autoPrintReceipt: { type: Boolean, default: true },
+      autoEBill: { type: Boolean, default: false },
+      customMessage: { type: String, default: "Thank you for visiting us!" },
+      websiteLink: { type: String, default: "" },
+    },
+
+    // Module 7 §4 — Order Type Toggles
+    orderTypeToggles: {
+      collection: { type: Boolean, default: true },
+      delivery: { type: Boolean, default: true },
+      table: { type: Boolean, default: true },
+    },
   },
   { timestamps: true }
 );
+
 
 restaurantSchema.index({ ownerId: 1 });
 restaurantSchema.index({ productId: 1 });

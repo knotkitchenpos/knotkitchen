@@ -8,6 +8,9 @@ const { isStoreOpen, isItemAvailableNow, getEffectivePrice } = require("../servi
 const { calculateOrderTotals, PricingError } = require("../services/orderPricingService");
 const { getTheme } = require("../services/themeRegistry");
 const { emitOrderCreated } = require("../services/socket");
+const { generateOrderNumberSafe } = require("../services/orderNumberService");
+const { computeReadyDueAt } = require("../services/autoReadyService");
+
 
 /**
  * Public storefront API (§16, §30).
@@ -94,18 +97,24 @@ const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezon
     const menuActive = !menu.schedule?.enabled || isItemAvailableNow({ isAvailable: true, schedule: menu.schedule }, timezone);
     if (!menuActive) continue;
 
-    const products = (menu.items || [])
-      .filter((item) => item.showOnWebsite !== false)
+    // Module 9 §3 — Storefront reads Website Published Menu snapshot
+    const activeItems = menu.hasPublishedToWebsite && menu.websiteSnapshot?.items
+      ? menu.websiteSnapshot.items
+      : menu.items || [];
+    const activeName = menu.hasPublishedToWebsite && menu.websiteSnapshot?.name
+      ? menu.websiteSnapshot.name
+      : menu.name;
+
+    const products = activeItems
+      .filter((item) => item.showOnWebsite !== false && item.displayTarget !== "system")
       .map((item) => toPublicProduct(item, menu, timezone))
-      // Keep out-of-stock products visible so customers understand why they
-      // cannot order them; the cart/order service still rejects them.
       .sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
 
     if (!products.length) continue;
 
     categories.push({
       id: menu._id,
-      name: menu.name,
+      name: activeName,
       icon: menu.icon || "",
       bgColor: menu.bgColor || "",
       isActive: menuActive,
@@ -113,9 +122,21 @@ const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezon
     });
   }
 
+
+  const now = new Date();
+  const activeHoliday = (settings?.holidays || []).find((h) => {
+    const start = new Date(h.startDate);
+    const end = new Date(h.endDate);
+    end.setHours(23, 59, 59, 999);
+    return now >= start && now <= end;
+  });
+
   const openState = preview
     ? { isOpen: true, reason: "", nextOpen: null }
+    : activeHoliday
+    ? { isOpen: false, reason: `Store is Closed (${activeHoliday.reason || "Holiday"})`, nextOpen: activeHoliday.endDate }
     : isStoreOpen(settings, timezone);
+
 
   const theme = getTheme(settings.theme?.themeKey) || getTheme("default-restaurant");
 
@@ -270,6 +291,18 @@ const createStorefrontOrder = async (req, res, next) => {
       return next(createHttpError(400, "Invalid order type."));
     }
 
+    // ---- Module 7 §7: Holiday calendar gate ----
+    const now = new Date();
+    const activeHoliday = (settings?.holidays || []).find((h) => {
+      const start = new Date(h.startDate);
+      const end = new Date(h.endDate);
+      end.setHours(23, 59, 59, 999);
+      return now >= start && now <= end;
+    });
+    if (activeHoliday) {
+      return next(createHttpError(409, `Store is Closed: ${activeHoliday.reason || "Holiday"}`));
+    }
+
     // ---- Business hours / pre-order gate ----
     const openState = isStoreOpen(settings, timezone);
     if (!openState.isOpen && !settings.ordering?.acceptPreOrders) {
@@ -282,6 +315,7 @@ const createStorefrontOrder = async (req, res, next) => {
     if (requestedType === "delivery" && settings.ordering?.deliveryEnabled !== true) {
       return next(createHttpError(409, "This restaurant does not offer delivery."));
     }
+
 
     // ---- Customer details ----
     const name = String(body.customer?.name || "").trim().slice(0, 120);
@@ -337,12 +371,17 @@ const createStorefrontOrder = async (req, res, next) => {
         menus,
         settings,
         orderType: requestedType,
+        source: "WEBSITE",
+        customerAddress: deliveryAddress,
+        storeAddress: ctx.restaurant?.address,
+        couponCode: body.couponCode,
         timezone,
       });
     } catch (err) {
       if (err instanceof PricingError) return next(createHttpError(err.status || 400, err.message));
       throw err;
     }
+
 
     // ---- Scheduled / pre-order time ----
     let scheduledFor = null;
@@ -354,14 +393,39 @@ const createStorefrontOrder = async (req, res, next) => {
       }
     }
 
-    const orderNumber = `W-${storeId}-${Date.now().toString().slice(-6)}`;
+    // Globally-unique, atomic per-tenant order number (Module 3 §4).
+    // Replaces the earlier `W-{storeId}-{Date.now().slice(-6)}` which
+    // could collide during a burst of concurrent website orders because
+    // Date.now() is millisecond-resolution and Node can serve many
+    // requests in the same millisecond. `Safe` variant falls back to a
+    // random-suffix format if the counter collection is temporarily
+    // unavailable, keeping the checkout flow resilient.
+    const orderNumber = await generateOrderNumberSafe({
+      source: "WEBSITE",
+      restaurantId,
+    });
+
+    // Module 4 §4 — website orders enter the kitchen queue as "Preparing"
+    // (renamed from "Pending") and get a server-authoritative auto-ready
+    // deadline based on the tenant's configured minutes. Scheduled orders
+    // deliberately skip auto-ready — the deadline for a pre-order should
+    // be based on scheduledFor, not on createdAt.
+    const orderTypeForOrder =
+      requestedType === "delivery" ? "delivery" : "takeaway";
+    const readyDueAt = scheduledFor
+      ? null
+      : await computeReadyDueAt({
+          restaurantId,
+          storeId,
+          orderType: orderTypeForOrder,
+        });
 
     const order = new Order({
       customerDetails: { name, phone, guests: 1 },
       // Map to the POS's existing vocabulary so downstream reports keep working.
-      orderType: requestedType === "delivery" ? "delivery" : "takeaway",
+      orderType: orderTypeForOrder,
       ...(deliveryAddress ? { deliveryAddress } : {}),
-      orderStatus: "Pending",
+      orderStatus: "Preparing",
       items: priced.items,
       bills: priced.bills,
       restaurantId,
@@ -371,6 +435,7 @@ const createStorefrontOrder = async (req, res, next) => {
       orderNumber,
       idempotencyKey,
       scheduledFor,
+      ...(readyDueAt ? { readyDueAt } : {}),
       channelMeta: {
         slug: settings.slug,
         themeKey: settings.theme?.themeKey || "",
@@ -383,9 +448,10 @@ const createStorefrontOrder = async (req, res, next) => {
         amount: priced.bills.totalWithTax,
         status: "pending",
       }],
-      timeline: [{ status: "Pending", timestamp: new Date(), user: "Website" }],
+      timeline: [{ status: "Preparing", timestamp: new Date(), user: "Website" }],
       createdBy: null, // customer-placed, no POS user
     });
+
 
     try {
       await order.save();

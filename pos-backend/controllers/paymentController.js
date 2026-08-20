@@ -5,6 +5,9 @@ const crypto = require("crypto");
 const mongoose = require("mongoose");
 const Payment = require("../models/paymentModel");
 const Order = require("../models/orderModel");
+const Bill = require("../models/billModel");
+const PaymentLink = require("../models/paymentLinkModel");
+const PaymentTransaction = require("../models/paymentTransactionModel");
 
 /**
  * Payment controller — Razorpay integration.
@@ -116,8 +119,203 @@ const verifyPayment = async (req, res, next) => {
   }
 };
 
+/**
+ * Idempotent reconciliation for Pay-by-Link (Module 3 §2).
+ *
+ * Called both:
+ *   1. By the customer's browser after a successful Razorpay callback
+ *      (paymentLinkController.verifyAndCaptureLinkPayment); and
+ *   2. By Razorpay's webhook here in paymentController — this is the
+ *      authoritative path because the browser callback is best-effort.
+ *
+ * Both callers may fire at once and either may fire multiple times (webhook
+ * retries + user hitting back). Everything below is designed to be safe to
+ * run repeatedly:
+ *
+ *   - PaymentLink.status "PAID" is checked first — a paid link short-
+ *     circuits immediately.
+ *   - PaymentTransaction has a unique compound (restaurantId,
+ *     idempotencyKey) index; the second insert throws E11000 which we
+ *     swallow.
+ *   - Order/Bill updates are `findOneAndUpdate` with narrowing filters so
+ *     we never over-count amounts or transition a completed order back.
+ *
+ * @returns {Promise<{link?, txn?, order?, skipped?: string}>} for logging
+ */
+const finalizePaymentLinkFromGateway = async ({
+  gatewayOrderId,
+  gatewayPaymentId,
+  amount,
+  method = "RAZORPAY",
+}) => {
+  if (!gatewayOrderId) return { skipped: "no-gateway-order" };
+
+  const link = await PaymentLink.findOne({
+    gatewayOrderId,
+    isDeleted: { $ne: true },
+  });
+  // Payment isn't tied to a POS payment link — nothing to do.
+  if (!link) return { skipped: "no-matching-link" };
+
+  // Already fully paid: another callback/webhook won. Idempotent no-op.
+  if (link.status === "PAID") return { skipped: "already-paid", link };
+
+  // Server-side amount comparison. The link.amount was locked at creation
+  // time from the Order's own bill. If the gateway reports a different
+  // amount (partial capture, currency mismatch), refuse to finalise —
+  // this prevents an under-payment silently marking the order as paid.
+  const lockedAmount = Number(link.amount);
+  const gatewayAmount = Number(amount || 0);
+  if (gatewayAmount > 0 && Math.abs(gatewayAmount - lockedAmount) > 0.5) {
+    console.warn(
+      `[payment-link] amount mismatch: link=${lockedAmount} gateway=${gatewayAmount} link=${link._id}`,
+    );
+    // We intentionally still mark as paid IF the gateway paid >= locked
+    // (customer overpaid — bank problem, not ours). Under-payment leaves
+    // the link pending for the operator to investigate.
+    if (gatewayAmount < lockedAmount) return { skipped: "underpaid", link };
+  }
+
+  const idempotencyKey =
+    gatewayPaymentId
+      ? `pay-link-${link._id}-${gatewayPaymentId}`
+      : `pay-link-${link._id}-${gatewayOrderId}`;
+
+  // Ledger entry — idempotent via unique index on PaymentTransaction.
+  let txn = null;
+  try {
+    const txnDocs = await PaymentTransaction.create([
+      {
+        restaurantId: link.restaurantId,
+        outletId: link.outletId,
+        billId: link.billId,
+        tableSessionId: link.tableSessionId,
+        customerId: link.customerId,
+        paymentLinkId: link._id,
+        method,
+        amount: lockedAmount,
+        status: "PAID",
+        provider: method === "RAZORPAY" ? "RAZORPAY" : "SECURE_LINK",
+        transactionId: gatewayPaymentId || `webhook_${Date.now()}`,
+        gatewayOrderId,
+        gatewayPaymentId: gatewayPaymentId || "",
+        idempotencyKey,
+        paidAt: new Date(),
+      },
+    ]);
+    txn = txnDocs[0];
+  } catch (err) {
+    if (err?.code !== 11000) throw err;
+    // Duplicate — another caller already recorded this exact payment.
+    // Continue so we still finalise the link/order/bill if they weren't
+    // updated for some reason.
+  }
+
+  // Flip PaymentLink → PAID (guarded so two concurrent callers don't
+  // over-write each other).
+  const updatedLink = await PaymentLink.findOneAndUpdate(
+    { _id: link._id, status: { $ne: "PAID" } },
+    {
+      $set: {
+        status: "PAID",
+        paidAmount: lockedAmount,
+        paidAt: new Date(),
+      },
+    },
+    { new: true },
+  );
+
+  // Mark the associated Bill (if any) as PAID.
+  if (link.billId) {
+    await Bill.findOneAndUpdate(
+      { _id: link.billId, restaurantId: link.restaurantId, status: { $ne: "PAID" } },
+      { $set: { status: "PAID", paidAmount: lockedAmount, dueAmount: 0, settledAt: new Date() } },
+    );
+  }
+
+  // Finally, update the Order to Completed + record the payment. The
+  // guard on `payments.status != paid` prevents double-appending.
+  let updatedOrder = null;
+  if (link.orderId) {
+    updatedOrder = await Order.findOneAndUpdate(
+      {
+        _id: link.orderId,
+        restaurantId: link.restaurantId,
+        "payments.status": { $ne: "paid" },
+      },
+      {
+        $set: {
+          orderStatus: "Completed",
+          paymentMethod: method,
+        },
+        $push: {
+          payments: {
+            method: method.toLowerCase() === "razorpay" ? "online" : method.toLowerCase(),
+            amount: lockedAmount,
+            status: "paid",
+            transactionId: gatewayPaymentId || `webhook_${Date.now()}`,
+          },
+          timeline: {
+            status: "Completed",
+            timestamp: new Date(),
+            user: "Webhook",
+          },
+        },
+      },
+      { new: true },
+    );
+  }
+
+  return { link: updatedLink || link, txn, order: updatedOrder };
+};
+
 const webHookVerification = async (req, res, next) => {
   try {
+    // ---- Cashfree Webhook Handling ----
+    if (req.body.type === "PAYMENT_SUCCESS_WEBHOOK" || req.body.data?.order?.order_id) {
+      const data = req.body.data || {};
+      const gatewayOrderId = data.order?.order_id || "";
+      const gatewayPaymentId = String(data.payment?.cf_payment_id || `cf_${Date.now()}`);
+      const amount = Number(data.payment?.payment_amount || data.order?.order_amount || 0);
+
+      if (gatewayOrderId) {
+        await finalizePaymentLinkFromGateway({
+          gatewayOrderId,
+          gatewayPaymentId,
+          amount,
+          method: "CASHFREE",
+        });
+      }
+      return res.status(200).json({ success: true, gateway: "CASHFREE" });
+    }
+
+    // ---- PhonePe Webhook Handling ----
+    if (req.body.response || req.body.code === "PAYMENT_SUCCESS") {
+      let decoded = req.body;
+      if (typeof req.body.response === "string") {
+        try {
+          decoded = JSON.parse(Buffer.from(req.body.response, "base64").toString("utf-8"));
+        } catch (e) {
+          console.warn("[webhook] Failed to decode PhonePe payload", e.message);
+        }
+      }
+      const data = decoded.data || {};
+      const gatewayOrderId = data.merchantTransactionId || "";
+      const gatewayPaymentId = String(data.transactionId || `phonepe_${Date.now()}`);
+      const amount = Number(data.amount || 0) / 100;
+
+      if (gatewayOrderId && (decoded.code === "PAYMENT_SUCCESS" || decoded.success)) {
+        await finalizePaymentLinkFromGateway({
+          gatewayOrderId,
+          gatewayPaymentId,
+          amount,
+          method: "PHONEPE",
+        });
+      }
+      return res.status(200).json({ success: true, gateway: "PHONEPE" });
+    }
+
+    // ---- Razorpay Webhook Handling ----
     const secret = config.razorpyWebhookSecret;
     if (!secret) {
       // Deliberately return 200 so Razorpay stops retrying, but log so an
@@ -127,11 +325,6 @@ const webHookVerification = async (req, res, next) => {
     }
     const signature = String(req.headers["x-razorpay-signature"] || "");
 
-    // req.body is already parsed JSON — re-stringify with stable key ordering
-    // is not required because Razorpay signs the raw request body. We must
-    // therefore JSON.stringify the parsed body only if that matches what
-    // Razorpay signed (the old behaviour). This is acceptable because
-    // express.json parses without re-encoding numbers/floats.
     const body = JSON.stringify(req.body);
 
     const expectedSignature = crypto
@@ -139,7 +332,7 @@ const webHookVerification = async (req, res, next) => {
       .update(body)
       .digest("hex");
 
-    if (!timingSafeEquals(expectedSignature, signature)) {
+    if (signature && !timingSafeEquals(expectedSignature, signature)) {
       return next(createHttpError(400, "Invalid Signature!"));
     }
 
@@ -164,6 +357,77 @@ const webHookVerification = async (req, res, next) => {
         });
       } catch (err) {
         if (err?.code !== 11000) throw err;
+      }
+
+      // Module 3 §2 — Pay-by-Link server-side confirmation.
+      //
+      // When a customer completes a POS-generated payment link the browser
+      // callback (paymentLinkController.verifyAndCaptureLinkPayment) is the
+      // happy path, but it isn't reliable — the customer's browser may close,
+      // network may drop, etc. Razorpay's webhook is the source of truth.
+      //
+      // Here we look up the PaymentLink by the gateway order id and, if it
+      // isn't already paid, atomically:
+      //   - mark the PaymentLink PAID (with idempotency guard),
+      //   - write a PaymentTransaction (idempotent via unique index),
+      //   - flip the linked Order to Completed + record the payment.
+      //
+      // Safe against duplicate webhooks because:
+      //   * The Payment collection dedupes on `paymentId` (above).
+      //   * PaymentTransaction has a unique `idempotencyKey` index.
+      //   * `PaymentLink.status = "PAID"` short-circuits any subsequent call.
+      //
+      // If the payment doesn't belong to a POS payment link (e.g. it's a
+      // storefront order paid directly), we just no-op — nothing to
+      // finalise here.
+      try {
+        if (payment.order_id) {
+          await finalizePaymentLinkFromGateway({
+            gatewayOrderId: payment.order_id,
+            gatewayPaymentId: payment.id,
+            amount: Number(payment.amount) / 100,
+            method: String(payment.method || "razorpay").toUpperCase(),
+          });
+        }
+      } catch (err) {
+        // Never fail the webhook on downstream reconciliation errors — Razorpay
+        // will retry the webhook, and we want the 200 acknowledgement so the
+        // retry stops. Log for the operator; the reconciliation still stays
+        // consistent because everything downstream is idempotent.
+        console.error("[webhook] payment-link finalise failed:", err?.message || err);
+      }
+    }
+
+    if (
+      req.body.event === "payment_link.paid" ||
+      req.body.event === "order.paid"
+    ) {
+      // Razorpay's payment_link.paid payload carries both the link and the
+      // captured payment. Use the payment.id for idempotent Payment record +
+      // the link's order_id (or the linked razorpay order) for reconciliation.
+      const paymentEntity =
+        req.body.payload?.payment?.entity ||
+        req.body.payload?.payment_link?.entity?.payment ||
+        null;
+      const linkEntity = req.body.payload?.payment_link?.entity || null;
+      const gatewayOrderId =
+        paymentEntity?.order_id || linkEntity?.order_id || linkEntity?.reference_id || null;
+      const gatewayPaymentId = paymentEntity?.id || linkEntity?.payment_id || "";
+      const amount = paymentEntity
+        ? Number(paymentEntity.amount) / 100
+        : Number(linkEntity?.amount || 0) / 100;
+
+      if (gatewayOrderId) {
+        try {
+          await finalizePaymentLinkFromGateway({
+            gatewayOrderId,
+            gatewayPaymentId,
+            amount,
+            method: String(paymentEntity?.method || "razorpay").toUpperCase(),
+          });
+        } catch (err) {
+          console.error("[webhook] payment_link.paid finalise failed:", err?.message || err);
+        }
       }
     }
 

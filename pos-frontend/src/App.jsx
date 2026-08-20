@@ -9,8 +9,10 @@ import { useState } from "react";
 import { useSelector } from "react-redux";
 import {
   Home, Auth, Orders, Tables, Menu, Dashboard, KDS, OrderOnline, PaymentLink,
-  Storefront, WebsiteSettings, OnlineOrders, Reports,
+  Storefront, WebsiteSettings, OnlineOrders, Reports, Settings, ManageMenuPage,
+
 } from "./pages";
+
 import Sidebar from "./components/shared/Sidebar";
 import useLoadData from "./hooks/useLoadData";
 import FullScreenLoader from "./components/shared/FullScreenLoader";
@@ -46,7 +48,11 @@ function Layout() {
       <Route path="/dashboard" element={<ProtectedRoutes><Dashboard /></ProtectedRoutes>} />
       <Route path="/kds" element={<ProtectedRoutes><KDS /></ProtectedRoutes>} />
       <Route path="/online-orders" element={<ProtectedRoutes><OnlineOrders /></ProtectedRoutes>} />
+      <Route path="/settings" element={<ProtectedRoutes><Settings /></ProtectedRoutes>} />
+      <Route path="/manage-menu" element={<ProtectedRoutes><ManageMenuPage /></ProtectedRoutes>} />
+
       <Route path="/website" element={<ProtectedRoutes><WebsiteSettings /></ProtectedRoutes>} />
+
       <Route path="/website/preview" element={<ProtectedRoutes><Storefront preview /></ProtectedRoutes>} />
       <Route path="/order" element={<OrderOnline />} />
       <Route path="/pay/:token" element={<PaymentLink />} />

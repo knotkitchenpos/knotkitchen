@@ -3,22 +3,8 @@ const mongoose = require("mongoose");
 /**
  * WebsiteSettings — one document per Store. This is the "storefront config"
  * that powers the public customer website.
- *
- * Why a separate collection instead of embedding into Store?
- *  - models/storeModel.js is a SHARED collection kept in sync with
- *    knotkitchen-admin/backend/models/storeModel.js. Adding storefront fields
- *    there would force both codebases to stay in lockstep.
- *  - Storefront config is read on every public page load; keeping it isolated
- *    lets us index/cache it independently of the admin store records.
- *
- * Identity model (see §17 of the spec):
- *    storeId      = permanent internal identifier (never changes)
- *    slug         = public identifier (human readable, may change)
- *    subdomain    = future: abc-restaurant.knotkitchen.com
- *    customDomain = future: www.abcrestaurant.com
  */
 
-// Only these fonts may ever be selected. Prevents arbitrary CSS/font injection.
 const SAFE_FONTS = [
   "Inter",
   "Poppins",
@@ -32,8 +18,6 @@ const SAFE_FONTS = [
   "system-ui",
 ];
 
-// Layout options are enums, never free-form strings, so a restaurant user can
-// never inject markup/styles through the settings API.
 const HERO_STYLES = ["classic", "split", "minimal", "fullbleed"];
 const CARD_STYLES = ["grid", "list", "compact", "showcase"];
 const HEADER_STYLES = ["standard", "centered", "transparent"];
@@ -52,14 +36,66 @@ const hexColor = (defaultValue) => ({
   },
 });
 
-// A media pointer: we store the MediaAsset id AND a denormalized url so the
-// storefront can render without an extra population round-trip.
 const mediaRefSchema = new mongoose.Schema(
   {
     mediaId: { type: mongoose.Schema.Types.ObjectId, ref: "MediaAsset", default: null },
     url: { type: String, default: "" },
     thumbnailUrl: { type: String, default: "" },
     alt: { type: String, default: "" },
+  },
+  { _id: false }
+);
+
+const gatewayCredentialsSchema = new mongoose.Schema(
+  {
+    keyId: { type: String, default: "", trim: true },
+    keySecretMasked: { type: String, default: "", trim: true },
+    keySecretEncrypted: { type: String, default: "" },
+    environment: { type: String, enum: ["TEST", "PROD", "UAT"], default: "TEST" },
+    isConfigured: { type: Boolean, default: false },
+
+    // PhonePe specific fields
+    merchantId: { type: String, default: "", trim: true },
+    saltKeyMasked: { type: String, default: "", trim: true },
+    saltKeyEncrypted: { type: String, default: "" },
+    saltIndex: { type: String, default: "1", trim: true },
+
+    // Cashfree specific fields
+    clientId: { type: String, default: "", trim: true },
+    clientSecretMasked: { type: String, default: "", trim: true },
+    clientSecretEncrypted: { type: String, default: "" },
+  },
+  { _id: false }
+);
+
+const paymentGatewaysSchema = new mongoose.Schema(
+  {
+    activeGateway: { type: String, enum: ["cashfree", "phonepe", "razorpay"], default: "razorpay" },
+    cashfree: { type: gatewayCredentialsSchema, default: () => ({}) },
+    phonepe: { type: gatewayCredentialsSchema, default: () => ({}) },
+    razorpay: { type: gatewayCredentialsSchema, default: () => ({}) },
+  },
+  { _id: false }
+);
+
+const bannerSchema = new mongoose.Schema({
+  title: { type: String, required: true, maxlength: 120 },
+  description: { type: String, default: "", maxlength: 400 },
+  buttonText: { type: String, default: "Order Now", maxlength: 40 },
+  linkUrl: { type: String, default: "", maxlength: 200 },
+  image: { type: mediaRefSchema, default: () => ({}) },
+  isActive: { type: Boolean, default: true },
+  sortOrder: { type: Number, default: 0 },
+});
+
+const sectionTitlesSchema = new mongoose.Schema(
+  {
+    heroTitle: { type: String, default: "Welcome to Our Restaurant", maxlength: 120 },
+    heroSubtitle: { type: String, default: "Delicious Food Delivered to Your Door", maxlength: 200 },
+    menuTitle: { type: String, default: "Our Menu", maxlength: 120 },
+    aboutTitle: { type: String, default: "About Us", maxlength: 120 },
+    offersTitle: { type: String, default: "Special Offers", maxlength: 120 },
+    contactTitle: { type: String, default: "Contact Us", maxlength: 120 },
   },
   { _id: false }
 );
@@ -89,9 +125,6 @@ const brandingSchema = new mongoose.Schema(
 
 const themeSettingsSchema = new mongoose.Schema(
   {
-    // Theme key — only "default-restaurant" ships today, but the storefront
-    // renderer resolves the theme by key so new themes can be added later
-    // without touching the ordering/cart/checkout engine.
     themeKey: { type: String, default: "default-restaurant" },
     colors: {
       primary: hexColor("#e2571e"),
@@ -129,11 +162,95 @@ const themeSettingsSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const distanceSlabSchema = new mongoose.Schema(
+  {
+    minKm: { type: Number, required: true, min: 0 },
+    maxKm: { type: Number, required: true, min: 0 },
+    fee: { type: Number, required: true, min: 0 },
+  },
+  { _id: false }
+);
+
+const minOrderChannelSchema = new mongoose.Schema(
+  {
+    enabled: { type: Boolean, default: false },
+    amount: { type: Number, default: 0, min: 0 },
+    applyTo: { type: String, enum: ["system", "website", "both"], default: "both" },
+  },
+  { _id: false }
+);
+
+const discountRuleSchema = new mongoose.Schema(
+  {
+    title: { type: String, required: true, maxlength: 120 },
+    type: { type: String, enum: ["percent", "fixed"], default: "percent" },
+    value: { type: Number, required: true, min: 0 },
+    validFrom: { type: Date, default: null },
+    validUntil: { type: Date, default: null },
+    minOrderAmount: { type: Number, default: 0, min: 0 },
+    channels: {
+      collection: { type: Boolean, default: true },
+      delivery: { type: Boolean, default: true },
+      table: { type: Boolean, default: true },
+    },
+    applyTo: { type: String, enum: ["system", "website", "both"], default: "both" },
+    daysOfWeek: { type: [Number], default: [0, 1, 2, 3, 4, 5, 6] },
+    startTime: { type: String, default: "00:00" },
+    endTime: { type: String, default: "23:59" },
+    isActive: { type: Boolean, default: true },
+  },
+  { _id: true }
+);
+
+const couponRuleSchema = new mongoose.Schema(
+  {
+    code: { type: String, required: true, uppercase: true, trim: true },
+    type: { type: String, enum: ["percent", "fixed"], default: "percent" },
+    value: { type: Number, required: true, min: 0 },
+    validFrom: { type: Date, default: null },
+    validUntil: { type: Date, default: null },
+    quantityTotal: { type: Number, default: 100 },
+    quantityUsed: { type: Number, default: 0 },
+    usageLimitPerPhone: { type: Number, default: 1 },
+    minOrderAmount: { type: Number, default: 0, min: 0 },
+    channels: {
+      collection: { type: Boolean, default: true },
+      delivery: { type: Boolean, default: true },
+      table: { type: Boolean, default: true },
+    },
+    daysOfWeek: { type: [Number], default: [0, 1, 2, 3, 4, 5, 6] },
+    startTime: { type: String, default: "00:00" },
+    endTime: { type: String, default: "23:59" },
+    isActive: { type: Boolean, default: true },
+  },
+  { _id: true }
+);
+
+const freeItemRuleSchema = new mongoose.Schema(
+  {
+    menuItemId: { type: mongoose.Schema.Types.ObjectId, ref: "Menu" },
+    itemName: { type: String, required: true },
+    minOrderAmount: { type: Number, default: 0, min: 0 },
+    channels: {
+      collection: { type: Boolean, default: true },
+      delivery: { type: Boolean, default: true },
+      table: { type: Boolean, default: true },
+    },
+    applyTo: { type: String, enum: ["system", "website", "both"], default: "both" },
+    daysOfWeek: { type: [Number], default: [0, 1, 2, 3, 4, 5, 6] },
+    startTime: { type: String, default: "00:00" },
+    endTime: { type: String, default: "23:59" },
+    validFrom: { type: Date, default: null },
+    validUntil: { type: Date, default: null },
+    isActive: { type: Boolean, default: true },
+  },
+  { _id: true }
+);
+
 const orderingSchema = new mongoose.Schema(
   {
     pickupEnabled: { type: Boolean, default: true },
     deliveryEnabled: { type: Boolean, default: false },
-    // All monetary config lives server-side; the client never supplies these.
     minOrderValue: { type: Number, default: 0, min: 0 },
     deliveryFee: { type: Number, default: 0, min: 0 },
     freeDeliveryAbove: { type: Number, default: 0, min: 0 },
@@ -145,9 +262,32 @@ const orderingSchema = new mongoose.Schema(
     acceptPreOrders: { type: Boolean, default: true },
     prepTimeMinutes: { type: Number, default: 30, min: 0 },
     specialInstructionsEnabled: { type: Boolean, default: true },
+    autoReadyMinutes: {
+      collection: { type: Number, default: 20, min: 0, max: 24 * 60 },
+      delivery: { type: Number, default: 45, min: 0, max: 24 * 60 },
+      table: { type: Number, default: 20, min: 0, max: 24 * 60 },
+    },
+
+    // Module 8 §1 — Minimum order per channel & applicability
+    minOrderConfig: {
+      collection: { type: minOrderChannelSchema, default: () => ({}) },
+      delivery: { type: minOrderChannelSchema, default: () => ({}) },
+      table: { type: minOrderChannelSchema, default: () => ({}) },
+    },
+
+    // Module 8 §2 — Delivery distance slabs & max distance
+    deliverySlabsConfig: {
+      maxDistanceKm: { type: Number, default: 7, min: 0 },
+      slabs: { type: [distanceSlabSchema], default: () => [] },
+    },
+
+    // Module 8 §3 — GST & Packing applicability
+    gstApplyTo: { type: String, enum: ["system", "website", "both"], default: "both" },
+    packingApplyTo: { type: String, enum: ["system", "website", "both"], default: "both" },
   },
   { _id: false }
 );
+
 
 const contactSchema = new mongoose.Schema(
   {
@@ -175,41 +315,68 @@ const offerSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true },
 });
 
+const channelScheduleSchema = new mongoose.Schema(
+  {
+    sameTimingAllDays: { type: Boolean, default: true },
+    sameTiming: { openTime: { type: String, default: "09:00" }, closeTime: { type: String, default: "22:00" } },
+    weekly: { type: [openingHourSchema], default: () => [] },
+  },
+  { _id: false }
+);
+
+const holidaySchema = new mongoose.Schema(
+  {
+    startDate: { type: Date, required: true },
+    endDate: { type: Date, required: true },
+    reason: { type: String, default: "Store Closed for Holiday" },
+  },
+  { _id: false }
+);
+
 const websiteSettingsSchema = new mongoose.Schema(
   {
-    // --- Ownership / tenancy ---
     storeId: { type: String, required: true, unique: true, index: true },
     restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: "Restaurant", index: true },
     outletId: { type: mongoose.Schema.Types.ObjectId, ref: "Outlet", default: null },
-
-    // --- Public identity / routing ---
     slug: { type: String, required: true, unique: true, lowercase: true, trim: true, index: true },
     subdomain: { type: String, default: "", lowercase: true, trim: true },
     customDomain: { type: String, default: "", lowercase: true, trim: true },
-
-    // --- Master switch (§20) ---
     enabled: { type: Boolean, default: true },
     disabledMessage: {
       type: String,
       default: "Online ordering is currently unavailable. Please try again later.",
       maxlength: 300,
     },
-
     displayName: { type: String, default: "", maxlength: 160 },
     branding: { type: brandingSchema, default: () => ({}) },
+    sectionTitles: { type: sectionTitlesSchema, default: () => ({}) },
+    banners: { type: [bannerSchema], default: [] },
     theme: { type: themeSettingsSchema, default: () => ({}) },
     ordering: { type: orderingSchema, default: () => ({}) },
     contact: { type: contactSchema, default: () => ({}) },
     offers: { type: [offerSchema], default: [] },
     openingHours: { type: [openingHourSchema], default: [] },
-    // Empty array => fall back to "always open"; business hour evaluation is
-    // centralised in services/businessHours.js so POS + storefront agree.
     useBusinessHours: { type: Boolean, default: false },
 
-    // --- Publishing model (§27) ---
-    // Today we publish automatically on save. `draft` holds an optional
-    // pending copy so a Draft/Publish workflow can be layered on later
-    // without a migration.
+    channelHours: {
+      collection: { type: channelScheduleSchema, default: () => ({}) },
+      delivery: { type: channelScheduleSchema, default: () => ({}) },
+      table: { type: channelScheduleSchema, default: () => ({}) },
+    },
+
+    holidays: { type: [holidaySchema], default: [] },
+    paymentGateways: { type: paymentGatewaysSchema, default: () => ({}) },
+
+    // Module 8 §4 — Discounts
+    discountsConfig: { type: [discountRuleSchema], default: [] },
+
+    // Module 8 §5 — Coupons (Website-only)
+    couponsConfig: { type: [couponRuleSchema], default: [] },
+
+    // Module 8 §6 — Free Item promotions
+    freeItemConfig: { type: [freeItemRuleSchema], default: [] },
+
+
     status: { type: String, enum: ["draft", "published"], default: "published" },
     draft: { type: mongoose.Schema.Types.Mixed, default: null },
     publishedAt: { type: Date, default: Date.now },

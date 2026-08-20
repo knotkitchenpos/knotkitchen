@@ -3,6 +3,7 @@ const bcrypt = require("bcrypt");
 const createHttpError = require("http-errors");
 const config = require("../config/config");
 const OtpVerification = require("../models/otpModel");
+const { sendOtp: sendFast2SmsOtp, Fast2SmsError } = require("./fast2smsProvider");
 
 const OTP_EXPIRY_MS = parseInt(process.env.OTP_EXPIRY_MS) || 10 * 60 * 1000;
 const OTP_RATE_LIMIT_MS = parseInt(process.env.OTP_RATE_LIMIT_MS) || 60 * 1000;
@@ -41,45 +42,78 @@ const maskPhone = (phone) => {
   return `${digits.slice(0, 2)}${"*".repeat(Math.max(0, digits.length - 4))}${digits.slice(-2)}`;
 };
 
+/**
+ * Send the OTP via Fast2SMS (§production-spec — Fast2SMS is the sole SMS
+ * transport; there is no legacy "GetOTP" or console-only path in production).
+ *
+ * Behaviour matrix:
+ *
+ *   Env                | Behaviour
+ *   -------------------+-----------------------------------------------------
+ *   production         | MUST send via Fast2SMS. Throws 502 on any Fast2SMS
+ *                      | error so the client sees "OTP could not be sent"
+ *                      | instead of silently succeeding.
+ *   dev + no API key   | Prints the OTP to stdout (masked phone) so the
+ *                      | developer can finish the login flow without an SMS
+ *                      | provider. Does NOT contact Fast2SMS.
+ *   dev + API key      | Real send via Fast2SMS (so you can test the wire
+ *                      | contract with a burner number). Also echoes the OTP
+ *                      | to stdout in case the SMS is delayed.
+ *
+ * The Fast2SMS API key is NEVER logged, and the OTP text is never logged in
+ * production.
+ */
 const sendOtpSms = async (phone, otp) => {
-  // Never dump the full OTP into logs (§22). Operators with access to shared
-  // log stores could otherwise authenticate as any user.
-  //
-  // In development we deliberately show the OTP on stdout so the developer can
-  // finish the login flow without an SMS provider being configured.
-  if (!config.isProduction) {
-    // eslint-disable-next-line no-console
-    console.log(`[OTP:dev] ${maskPhone(phone)}: ${otp}`);
-  } else {
-    // eslint-disable-next-line no-console
-    console.log(`[OTP] Sent to ${maskPhone(phone)}`);
+  const apiKey = process.env.FAST2SMS_API_KEY;
+  const route = process.env.FAST2SMS_ROUTE || "otp";
+
+  if (config.isProduction) {
+    if (!apiKey) {
+      // Fail loud — a production instance without a configured provider must
+      // NOT silently accept OTP requests.
+      throw createHttpError(
+        502,
+        "SMS provider is not configured. Please contact support."
+      );
+    }
+    try {
+      const { requestId } = await sendFast2SmsOtp({ phone, otp, apiKey, route });
+      // eslint-disable-next-line no-console
+      console.log(`[OTP] Fast2SMS OK phone=${maskPhone(phone)} requestId=${requestId}`);
+      return { ok: true, requestId };
+    } catch (err) {
+      if (err instanceof Fast2SmsError) {
+        // eslint-disable-next-line no-console
+        console.error(
+          `[OTP] Fast2SMS failed phone=${maskPhone(phone)} status=${err.status || "-"} ` +
+            `providerCode=${err.providerStatusCode || "-"} msg=${err.message}`
+        );
+        // Bubble up a client-friendly 502 without leaking Fast2SMS body/keys.
+        throw createHttpError(502, "We couldn't send the OTP right now. Please try again.");
+      }
+      throw err;
+    }
   }
 
-  const apiKey = process.env.FAST2SMS_API_KEY;
-  // The old code shipped a hardcoded Fast2SMS API key as a fallback. That is a
-  // committed live credential and has been removed — the provider is now only
-  // called when the operator explicitly configures one.
-  if (!apiKey) return;
+  // ----- Development / staging convenience path -----
+  // eslint-disable-next-line no-console
+  console.log(`[OTP:dev] ${maskPhone(phone)}: ${otp}`);
+
+  if (!apiKey) return { ok: true, dev: true };
 
   try {
-    const response = await fetch("https://www.fast2sms.com/dev/bulkV2", {
-      method: "POST",
-      headers: {
-        authorization: apiKey,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        route: "otp",
-        variables_values: String(otp),
-        numbers: String(phone),
-      }),
-    });
-    const data = await response.json().catch(() => ({}));
-    // Only log the transport status; never echo variables_values back.
+    const { requestId } = await sendFast2SmsOtp({ phone, otp, apiKey, route });
     // eslint-disable-next-line no-console
-    console.log(`[Fast2SMS] status_code=${data?.status_code || "unknown"}`);
+    console.log(`[OTP:dev] Fast2SMS OK phone=${maskPhone(phone)} requestId=${requestId}`);
+    return { ok: true, requestId };
   } catch (err) {
-    console.error("[Fast2SMS Error]:", err.message);
+    // In dev we deliberately do NOT throw — the OTP was already printed to
+    // stdout, so the developer can still complete the login flow.
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[OTP:dev] Fast2SMS failed (${err.message}) — proceeding with printed OTP.`
+    );
+    return { ok: true, dev: true, providerError: err.message };
   }
 };
 
@@ -115,6 +149,10 @@ const createAndSendOtp = async ({ storeId, phone, purpose = "signup" }) => {
     maxAttempts: OTP_MAX_ATTEMPTS,
   });
 
+  // sendOtpSms may throw a 502 in production if Fast2SMS fails — we let that
+  // propagate up so the caller returns the error to the client. The stored
+  // OTP row is left in place; a real user can just tap "Resend" a moment later
+  // and (thanks to the 60s rate limit) they can only do that once per minute.
   await sendOtpSms(normalizedPhone, otp);
 
   // Callers must NEVER include `otp` in an API response. It's returned here so

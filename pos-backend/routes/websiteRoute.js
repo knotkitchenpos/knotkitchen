@@ -6,6 +6,7 @@ const {
   getWebsiteSettings,
   updateWebsiteSettings,
   previewWebsite,
+  validateGatewayCredentials,
 } = require("../controllers/websiteSettingsController");
 
 /**
@@ -18,5 +19,6 @@ router.route("/settings")
   .put(isVerifiedUser, requirePermission("SETTINGS_MANAGE"), updateWebsiteSettings);
 
 router.route("/preview").get(isVerifiedUser, requirePermission("SETTINGS_VIEW"), previewWebsite);
+router.route("/validate-gateway").post(isVerifiedUser, requirePermission("SETTINGS_MANAGE"), validateGatewayCredentials);
 
 module.exports = router;

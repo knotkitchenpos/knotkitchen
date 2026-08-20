@@ -96,6 +96,24 @@ const config = Object.freeze({
         "capacitor://localhost",
     ],
 
+    // ==== Wildcard base domain for customer websites ====
+    //
+    // A customer website is served from <slug>.knotkitchen.com. Enumerating
+    // every possible subdomain in FRONTEND_URLS is impossible, so instead we
+    // list the base domains here (comma separated, no leading dot) and CORS
+    // accepts any Origin that ends with `.<base>` over https.
+    //
+    // Example: CORS_WILDCARD_DOMAINS=knotkitchen.com,knot.local
+    // Accepts: https://burger-house.knotkitchen.com, https://cafe.knotkitchen.com
+    // Rejects: https://knotkitchen.com.evil.com, http://x.knotkitchen.com in prod
+    corsWildcardDomains: parseCsv(process.env.CORS_WILDCARD_DOMAINS || ""),
+
+    // Base domain the platform is served under, used by the storefront
+    // provisioner to construct subdomain URLs and by the frontend hostname
+    // resolver to know which host segment is the store slug.
+    baseDomain: (process.env.BASE_DOMAIN || "").toLowerCase().replace(/^\.+/, ""),
+
+
     // ===== Storefront / Media =====
     storefrontBaseUrl: (process.env.STOREFRONT_BASE_URL || "http://localhost:5173").replace(/\/$/, ""),
     storefrontRootDomain: process.env.STOREFRONT_ROOT_DOMAIN || "",

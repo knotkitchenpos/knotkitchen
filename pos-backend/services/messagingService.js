@@ -147,7 +147,102 @@ const sendEBillMessage = async ({ phone, orderNumber, restaurantName, total, ite
   };
 };
 
+/**
+ * Module 4 §3 — "Order is Ready" SMS.
+ *
+ * Delivered via the SAME Fast2SMS provider used for payment links and
+ * e-bills so tenants don't need any new configuration. Refuses to send
+ * when the customer phone is missing so we never attempt to notify
+ * walk-in / anonymous collection orders.
+ *
+ * Duplicate suppression is enforced by the CALLER (orderController /
+ * autoReadyService) via the readyNotifiedAt timestamp on the order —
+ * this function is a pure send primitive and reports the outcome only.
+ */
+const sendOrderReadyMessage = async ({ phone, orderNumber, restaurantName, orderType }) => {
+  const normalizedPhone = String(phone || "").replace(/\D/g, "");
+
+  if (!normalizedPhone || normalizedPhone.length < 10) {
+    return {
+      success: false,
+      sent: false,
+      deliveryStatus: "SKIPPED",
+      error: "No customer phone number on file — notification skipped.",
+    };
+  }
+
+  const typeLabel =
+    String(orderType || "").toLowerCase() === "delivery"
+      ? "is on the way"
+      : "is ready for collection";
+
+  const messageText = `Good news! Your order #${orderNumber || ""} at ${restaurantName || "KnotKitchen"} ${typeLabel}. Thank you for ordering with us.`;
+
+  const apiKey = process.env.FAST2SMS_API_KEY || process.env.SMS_API_KEY;
+
+  if (apiKey) {
+    try {
+      const response = await fetch("https://www.fast2sms.com/dev/bulkV2", {
+        method: "POST",
+        headers: {
+          authorization: apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          route: "v3",
+          sender_id: "TXTIND",
+          message: messageText,
+          language: "english",
+          numbers: normalizedPhone,
+        }),
+      });
+
+      const data = await response.json();
+      if (data && (data.return === true || data.status_code === 200)) {
+        return {
+          success: true,
+          sent: true,
+          deliveryStatus: "DELIVERED",
+          provider: "Fast2SMS",
+          messageId: data.request_id || `msg_${Date.now()}`,
+        };
+      }
+      return {
+        success: false,
+        sent: false,
+        deliveryStatus: "FAILED",
+        provider: "Fast2SMS",
+        error: data?.message || "Order-ready SMS delivery failed from provider.",
+      };
+    } catch (err) {
+      return {
+        success: false,
+        sent: false,
+        deliveryStatus: "FAILED",
+        provider: "Fast2SMS",
+        error: err.message,
+      };
+    }
+  }
+
+  // Dev / unconfigured — log the intended message so QA can verify wording.
+  console.log(
+    `[Messaging Provider] (Dev/No API Key OrderReady) To: ${normalizedPhone} | Content: ${messageText}`
+  );
+  return {
+    success: false,
+    sent: false,
+    deliveryStatus: "FAILED",
+    provider: "Console/Unconfigured",
+    error: "SMS provider API key not configured.",
+    devMessage: messageText,
+  };
+};
+
 module.exports = {
   sendPaymentLinkMessage,
   sendEBillMessage,
+  sendOrderReadyMessage,
 };
+
+

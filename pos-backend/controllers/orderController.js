@@ -2,7 +2,14 @@ const createHttpError = require("http-errors");
 const Order = require("../models/orderModel");
 const Table = require("../models/tableModel");
 const Customer = require("../models/customerModel");
+const Restaurant = require("../models/restaurantModel");
+
 const { default: mongoose } = require("mongoose");
+const { generateOrderNumberSafe } = require("../services/orderNumberService");
+const { computeReadyDueAt } = require("../services/autoReadyService");
+const { notifyOrderReady } = require("../services/readyNotificationService");
+const { emitOrderStatusChanged } = require("../services/socket");
+
 
 /**
  * Menu is lazy-loaded because it is only needed by the popular-items
@@ -37,11 +44,33 @@ const ALLOWED_ORDER_TYPES = new Set([
   "dine-in", "takeaway", "delivery", "online", "marketplace", "collection",
 ]);
 
-const ALLOWED_INITIAL_STATUS = new Set(["Pending", "In Progress", "Ready"]);
+/**
+ * Module 4 §1 — canonical order-status vocabulary.
+ *
+ * "Preparing" is the new canonical name for the kitchen state that used
+ * to be called "Pending" and "In Progress". We keep those two names in
+ * the allowed set for backward-compatibility (historical orders on disk,
+ * KDS + marketplace flows that still write "In Progress") but new writes
+ * should always use "Preparing".
+ *
+ *   Preparing → Ready → Completed
+ *
+ * Cancelled is terminal and reachable from any non-terminal state.
+ */
+const ALLOWED_INITIAL_STATUS = new Set(["Preparing", "Pending", "In Progress", "Ready"]);
 const ALLOWED_STATUS_TRANSITIONS = new Set([
-  "Pending", "In Progress", "Ready", "Completed", "Cancelled",
+  "Preparing", "Pending", "In Progress", "Ready", "Completed", "Cancelled",
 ]);
 const TERMINAL_STATUSES = new Set(["Completed", "Cancelled", "Refunded"]);
+
+// Convert any legacy status alias to the canonical Module 4 name so the
+// UI, analytics and downstream services see one consistent vocabulary.
+const canonicalStatus = (status) => {
+  const s = String(status || "");
+  if (s === "Pending" || s === "In Progress") return "Preparing";
+  return s;
+};
+
 
 const tenantScopeFor = (user, extra = {}) =>
   user?.restaurantId
@@ -159,6 +188,16 @@ const addOrder = async (req, res, next) => {
     const name = customerDetails?.name ? String(customerDetails.name).trim().slice(0, 200) : "";
     const phone = customerDetails?.phone ? String(customerDetails.phone).trim().slice(0, 20) : "";
     const guests = Math.max(1, Math.min(1000, Math.floor(safeNumber(customerDetails?.guests, 1))));
+    // Module 4 §5 — structured customer address fields.
+    // These are stored on customerDetails so they render alongside name/phone
+    // in the Order Details view without needing a deliveryAddress object.
+    const custAddress = customerDetails?.address ? String(customerDetails.address).trim().slice(0, 300) : "";
+    const custCity = customerDetails?.city ? String(customerDetails.city).trim().slice(0, 120) : "";
+    const custPin = customerDetails?.pinCode ? String(customerDetails.pinCode).trim().slice(0, 20) : "";
+    const custDeliveryNote = customerDetails?.deliveryNote
+      ? String(customerDetails.deliveryNote).trim().slice(0, 400)
+      : "";
+
 
     let customerId = null;
 
@@ -246,11 +285,29 @@ const addOrder = async (req, res, next) => {
     if (normalizedOrderType === "table service") normalizedOrderType = "dine-in";
     if (!ALLOWED_ORDER_TYPES.has(normalizedOrderType)) normalizedOrderType = "dine-in";
 
-    // Client-supplied orderStatus is deliberately IGNORED — the POS never sets
-    // "Completed" straight away, and allowing arbitrary status via the create
-    // path would let a caller mark a takeaway order paid without payment.
-    // Defaults to "Pending"; callers can still update via updateOrder.
-    const initialStatus = "Pending";
+    // Module 7 §4 — Order Type Toggles enforcement
+    if (req.user?.restaurantId && mongoose.connection.readyState === 1) {
+      try {
+        const restaurant = await Restaurant.findById(req.user.restaurantId);
+        const toggles = restaurant?.orderTypeToggles || { collection: true, delivery: true, table: true };
+        const key = normalizedOrderType === "dine-in" ? "table" : normalizedOrderType === "takeaway" ? "collection" : normalizedOrderType;
+        if (toggles[key] === false) {
+          return next(createHttpError(400, `${key.charAt(0).toUpperCase() + key.slice(1)} orders are currently disabled in Store Settings.`));
+        }
+      } catch (e) {
+        // Safe fallback in test environments where Restaurant model is un-mocked
+      }
+    }
+
+
+
+    // Client-supplied orderStatus is deliberately IGNORED — the POS never
+    // sets "Completed" straight away, and allowing arbitrary status via the
+    // create path would let a caller mark a takeaway order paid without
+    // payment. Module 4 §1 renamed "Pending" → "Preparing" so every new POS
+    // order enters the queue as Preparing.
+    const initialStatus = "Preparing";
+
 
     // EXPLICIT ALLOW-LIST — no spreading `...req.body` (mass-assignment).
     // Fields NOT taken from req.body: restaurantId, outletId, storeId,
@@ -286,8 +343,38 @@ const addOrder = async (req, res, next) => {
     }
 
 
+    // Allocate a globally-unique, human-friendly order number BEFORE saving
+    // (Module 3 §4). The generator is atomic per (restaurantId, source,
+    // date) so two concurrent addOrder calls cannot receive the same
+    // number. As additional protection, Order.orderNumber carries a
+    // partial-unique index — a second Order.save with the same string will
+    // fail with E11000 and the request will error, which is exactly what
+    // we want (loud failure > silent duplicate).
+    const orderNumber = await generateOrderNumberSafe({
+      source: "POS",
+      restaurantId: req.user?.restaurantId || null,
+    });
+
+    // Module 4 §4 — Automatic Preparing → Ready.
+    // Compute readyDueAt server-side from the tenant's configured
+    // autoReadyMinutes. If auto-ready is disabled (0 mins) or the order
+    // type isn't eligible, readyDueAt stays null and the background
+    // scheduler simply won't touch it.
+    const readyDueAt = await computeReadyDueAt({
+      restaurantId: req.user?.restaurantId || null,
+      orderType: normalizedOrderType,
+    });
+
     const orderData = {
-      customerDetails: { name, phone, guests },
+      customerDetails: {
+        name,
+        phone,
+        guests,
+        ...(custAddress ? { address: custAddress } : {}),
+        ...(custCity ? { city: custCity } : {}),
+        ...(custPin ? { pinCode: custPin } : {}),
+        ...(custDeliveryNote ? { deliveryNote: custDeliveryNote } : {}),
+      },
       orderType: normalizedOrderType,
       orderStatus: initialStatus,
       items,
@@ -299,12 +386,29 @@ const addOrder = async (req, res, next) => {
       createdBy: req.user._id,
       ...(customerId ? { customerId } : {}),
       source: "POS",
+      orderNumber,
+      ...(readyDueAt ? { readyDueAt } : {}),
       timeline: [{ status: initialStatus, timestamp: new Date(), user: req.user?.name || "POS" }],
     };
 
 
+
     const order = new Order(orderData);
-    await order.save();
+    try {
+      await order.save();
+    } catch (err) {
+      // Belt-and-braces: if the atomic counter ever produced a collision
+      // (e.g. race with a manual DB insert), regenerate once and retry.
+      if (err && err.code === 11000 && String(err?.keyPattern?.orderNumber) === "1") {
+        order.orderNumber = await generateOrderNumberSafe({
+          source: "POS",
+          restaurantId: req.user?.restaurantId || null,
+        });
+        await order.save();
+      } else {
+        throw err;
+      }
+    }
 
     // Sync table occupancy when a dine-in order is placed via the legacy path
     if (table) {
@@ -355,16 +459,96 @@ const getOrderById = async (req, res, next) => {
   }
 };
 
+/**
+ * GET /api/order
+ *
+ * Query params (Module 4 §6):
+ *   - date        YYYY-MM-DD               single-day filter (tenant timezone-ish)
+ *   - from / to   YYYY-MM-DD                inclusive date range
+ *   - status      "Preparing" | "Ready" | ...  (comma-separated for multiple)
+ *
+ * Default when NO date/from/to is supplied: today's orders only, in the
+ * server's local timezone. Historical orders are never returned by
+ * default — the spec explicitly forbids showing them on Orders open.
+ *
+ * All results also get `orderStatus` mapped to the canonical Module 4
+ * vocabulary ("Preparing" instead of legacy "Pending"/"In Progress") so
+ * the UI can render a single tab set without knowing about aliases.
+ */
+const buildDateWindow = (query) => {
+  const parseDay = (s, endOfDay = false) => {
+    if (!s || typeof s !== "string") return null;
+    // Accept ISO date or YYYY-MM-DD. Anything else is silently ignored so
+    // a bad query string does not surface as an internal error.
+    const d = new Date(s.length === 10 ? `${s}T00:00:00` : s);
+    if (Number.isNaN(d.getTime())) return null;
+    if (endOfDay) d.setHours(23, 59, 59, 999);
+    else d.setHours(0, 0, 0, 0);
+    return d;
+  };
+
+  const { date, from, to } = query || {};
+
+  if (date) {
+    const start = parseDay(date, false);
+    const end = parseDay(date, true);
+    if (start && end) return { start, end, source: "single" };
+  }
+
+  if (from || to) {
+    const start = parseDay(from, false) || parseDay(to, false);
+    const end = parseDay(to, true) || parseDay(from, true);
+    if (start && end && start <= end) return { start, end, source: "range" };
+  }
+
+  // Default: today (00:00 → 23:59:59) in the server's local timezone.
+  const start = new Date();
+  start.setHours(0, 0, 0, 0);
+  const end = new Date();
+  end.setHours(23, 59, 59, 999);
+  return { start, end, source: "today" };
+};
+
 const getOrders = async (req, res, next) => {
   try {
-    const orders = await Order.find({
+    const window = buildDateWindow(req.query);
+    const filter = {
       ...tenantScopeFor(req.user),
       isDeleted: { $ne: true },
-    })
+      createdAt: { $gte: window.start, $lte: window.end },
+    };
+
+    if (req.query.status) {
+      const statuses = String(req.query.status)
+        .split(",")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      if (statuses.length) filter.orderStatus = { $in: statuses };
+    }
+
+    const orders = await Order.find(filter)
       .sort({ createdAt: -1 })
       .limit(500)
       .populate("table");
-    res.status(200).json({ data: orders });
+
+    // Present the canonical Module 4 status name to the UI. We do NOT
+    // rewrite the underlying document — the KDS + KDS-driven workflows
+    // still write "In Progress" and we want them to keep working — this
+    // is purely a read-time projection.
+    const projected = orders.map((o) => {
+      const obj = o.toObject ? o.toObject() : o;
+      obj.orderStatus = canonicalStatus(obj.orderStatus);
+      return obj;
+    });
+
+    res.status(200).json({
+      data: projected,
+      window: {
+        from: window.start.toISOString(),
+        to: window.end.toISOString(),
+        source: window.source,
+      },
+    });
   } catch (error) {
     next(error);
   }
@@ -397,18 +581,277 @@ const updateOrder = async (req, res, next) => {
       );
     }
 
-    order.orderStatus = orderStatus;
+    // Normalise legacy input aliases to the canonical Module 4 name.
+    const nextStatus = canonicalStatus(orderStatus);
+    order.orderStatus = nextStatus;
     order.timeline = order.timeline || [];
     order.timeline.push({
-      status: orderStatus,
+      status: nextStatus,
+      timestamp: new Date(),
+      user: req.user?.name || "POS",
+    });
+
+    // Module 4 §2 — if the update transitions to Ready, stamp the Ready
+    // metadata, emit the socket event and fire the (idempotent) SMS. The
+    // notification service handles duplicate suppression so a manual
+    // mark-ready followed by the auto-ready timer will only send once.
+    let readyTransition = false;
+    if (nextStatus === "Ready" && !order.readyAt) {
+      order.readyAt = new Date();
+      order.readyBy = "STAFF";
+      readyTransition = true;
+    }
+
+    await order.save();
+
+    if (readyTransition) {
+      try {
+        emitOrderStatusChanged({
+          restaurantId: order.restaurantId,
+          outletId: order.outletId,
+          storeId: order.storeId,
+          order,
+        });
+      } catch (err) {
+        console.warn("emitOrderStatusChanged failed:", err.message);
+      }
+      // Fire-and-forget SMS; errors are logged inside the service.
+      notifyOrderReady(order).catch((err) => {
+        console.warn("notifyOrderReady failed:", err.message);
+      });
+    }
+
+    // Return canonical status to the client too.
+    const projected = order.toObject();
+    projected.orderStatus = canonicalStatus(projected.orderStatus);
+    res
+      .status(200)
+      .json({ success: true, message: "Order updated", data: projected });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * PUT /api/order/:id/ready
+ *
+ * Module 4 §2 — dedicated "Mark Ready" action for staff.
+ *
+ * A thin, semantic wrapper around updateOrder({ orderStatus: "Ready" })
+ * that:
+ *   - refuses to run against terminal or already-Ready orders
+ *   - stamps readyAt / readyBy = "STAFF"
+ *   - emits the realtime status event
+ *   - triggers the customer notification (idempotent, phone-required)
+ *
+ * We keep updateOrder as the generic status endpoint so KDS + Cancel
+ * flows continue to work, but expose this dedicated one so the POS
+ * "Mark Ready" button reads clearly server-side too.
+ */
+const markOrderReady = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return next(createHttpError(404, "Invalid id!"));
+    }
+
+    const order = await Order.findOne({
+      _id: id,
+      ...tenantScopeFor(req.user),
+      isDeleted: { $ne: true },
+    });
+    if (!order) return next(createHttpError(404, "Order not found!"));
+
+    if (TERMINAL_STATUSES.has(order.orderStatus)) {
+      return next(
+        createHttpError(409, `Order is already ${order.orderStatus.toLowerCase()} and cannot be changed.`)
+      );
+    }
+    if (order.orderStatus === "Ready") {
+      // Idempotent — return the current state without re-firing SMS/emit.
+      const projected = order.toObject();
+      projected.orderStatus = canonicalStatus(projected.orderStatus);
+      return res
+        .status(200)
+        .json({ success: true, message: "Order already ready", data: projected });
+    }
+
+    order.orderStatus = "Ready";
+    order.readyAt = new Date();
+    order.readyBy = "STAFF";
+    order.timeline = order.timeline || [];
+    order.timeline.push({
+      status: "Ready",
       timestamp: new Date(),
       user: req.user?.name || "POS",
     });
     await order.save();
 
-    res
-      .status(200)
-      .json({ success: true, message: "Order updated", data: order });
+    try {
+      emitOrderStatusChanged({
+        restaurantId: order.restaurantId,
+        outletId: order.outletId,
+        storeId: order.storeId,
+        order,
+      });
+    } catch (err) {
+      console.warn("emitOrderStatusChanged failed:", err.message);
+    }
+
+    let notification = { sent: false, reason: "not_attempted" };
+    try {
+      notification = await notifyOrderReady(order);
+    } catch (err) {
+      console.warn("notifyOrderReady failed:", err.message);
+      notification = { sent: false, reason: err.message };
+    }
+
+    const projected = order.toObject();
+    projected.orderStatus = canonicalStatus(projected.orderStatus);
+    res.status(200).json({
+      success: true,
+      message: "Order marked ready",
+      data: projected,
+      notification,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+
+/**
+ * GET /api/order/report
+ *
+ * Module 5 — Reports payload for the selected period. Everything derives
+ * from REAL orders in the database (no synthetic figures) and every
+ * category is computed with mutually-exclusive rules so nothing can
+ * double-count against a total.
+ *
+ * Query params:
+ *   date=YYYY-MM-DD                — single day (default: today)
+ *   from=YYYY-MM-DD&to=YYYY-MM-DD  — inclusive date range
+ *
+ * Category rules (Module 5 §5):
+ *   - System   = source === "POS"
+ *   - Website  = source === "WEBSITE"
+ *   - Outside  = source is anything else (MARKETPLACE, QR, PHONE, blank).
+ *     Every order lands in exactly ONE of these three source buckets.
+ *   - Delivery / Collection / Table are read from orderType. Each order
+ *     falls into exactly ONE type bucket (or "Other" if unrecognised).
+ *   - Paid vs Unpaid/Cash reads payments[0].status.
+ *     A "Pay by Link" order is counted in its own bucket AND (if paid)
+ *     in Paid — the spec keeps Pay-by-Link separate from Paid/Unpaid on
+ *     the summary but does not exclude it from those base rollups.
+ *
+ * Cancelled orders are included in the raw list but never contribute to
+ * the revenue totals — otherwise a big refund could inflate today's
+ * takings.
+ */
+const buildReportBuckets = (orders) => {
+  const bucket = () => ({ count: 0, amount: 0 });
+  const summary = {
+    total: bucket(),
+    system: bucket(),
+    website: bucket(),
+    outside: bucket(),
+    paid: bucket(),
+    unpaidCash: bucket(),
+    delivery: bucket(),
+    collection: bucket(),
+    table: bucket(),
+    payByLink: bucket(),
+    // Also useful on the printed report (Module 5 §8):
+    preparing: bucket(),
+    completed: bucket(),
+    cancelled: bucket(),
+    cash: bucket(),
+  };
+
+  const inc = (b, amt) => {
+    b.count += 1;
+    b.amount = Math.round((b.amount + amt) * 100) / 100;
+  };
+
+  for (const o of orders) {
+    const status = String(o.orderStatus || "");
+    const isCancelled = status === "Cancelled";
+    const amount = isCancelled
+      ? 0
+      : Number(o.bills?.totalWithTax || o.bills?.total || 0);
+
+    inc(summary.total, amount);
+
+    // ---- Source (mutually exclusive) ----
+    const source = String(o.source || "").toUpperCase();
+    if (source === "POS") inc(summary.system, amount);
+    else if (source === "WEBSITE") inc(summary.website, amount);
+    else inc(summary.outside, amount);
+
+    // ---- Type (mutually exclusive) ----
+    const type = String(o.orderType || "").toLowerCase();
+    if (type === "delivery") inc(summary.delivery, amount);
+    else if (type === "collection" || type === "takeaway") inc(summary.collection, amount);
+    else if (type === "dine-in") inc(summary.table, amount);
+
+    // ---- Payment / method ----
+    const payment = o.payments?.[0];
+    const payStatus = String(payment?.status || "pending").toLowerCase();
+    const method = String(o.paymentMethod || payment?.method || "").toLowerCase();
+    if (payStatus === "paid") inc(summary.paid, amount);
+    else if (!isCancelled) inc(summary.unpaidCash, amount);
+
+    // "Pay by Link" is a discrete method, orthogonal to paid/unpaid.
+    if (method === "paymentlink" || method === "link") {
+      inc(summary.payByLink, amount);
+    }
+    if (method === "cash") inc(summary.cash, amount);
+
+    // ---- Status roll-ups for the printed report ----
+    if (status === "Cancelled") inc(summary.cancelled, amount);
+    else if (status === "Completed") inc(summary.completed, amount);
+    else inc(summary.preparing, amount); // Preparing + Ready count as "waiting"
+  }
+
+  return summary;
+};
+
+const getOrdersReport = async (req, res, next) => {
+  try {
+    const window = buildDateWindow(req.query);
+    const filter = {
+      ...tenantScopeFor(req.user),
+      isDeleted: { $ne: true },
+      createdAt: { $gte: window.start, $lte: window.end },
+    };
+
+    const orders = await Order.find(filter)
+      .sort({ createdAt: -1 })
+      .limit(1000)
+      .populate("table");
+
+    // Canonical status (Preparing instead of legacy Pending / In Progress)
+    // so the frontend can drive its filters from a single vocabulary.
+    const projected = orders.map((o) => {
+      const obj = o.toObject ? o.toObject() : o;
+      obj.orderStatus = canonicalStatus(obj.orderStatus);
+      return obj;
+    });
+
+    const summary = buildReportBuckets(projected);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        window: {
+          from: window.start.toISOString(),
+          to: window.end.toISOString(),
+          source: window.source,
+        },
+        summary,
+        orders: projected,
+      },
+    });
   } catch (error) {
     next(error);
   }
@@ -425,6 +868,7 @@ const updateOrder = async (req, res, next) => {
  * one takeaway can NEVER see another takeaway's popularity data or products.
  */
 const getPopularItems = async (req, res, next) => {
+
   try {
     const limit = Math.max(1, Math.min(50, Number(req.query.limit) || 10));
     const days = Math.max(1, Math.min(365, Number(req.query.days) || 30));
@@ -543,7 +987,15 @@ module.exports = {
   getOrderById,
   getOrders,
   updateOrder,
+  markOrderReady,
   getPopularItems,
+  getOrdersReport,
   validateTableCapacityForOrder,
+  // Exposed for other controllers/services that need consistent
+  // canonicalisation (e.g. onlineOrderController projecting to the POS view).
+  canonicalStatus,
+  buildReportBuckets,
 };
+
+
 

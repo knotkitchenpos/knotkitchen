@@ -136,10 +136,41 @@ const createPaymentLink = async (req, res, next) => {
     const linkToken = crypto.randomBytes(32).toString("hex");
     const expiresAt = new Date(Date.now() + Number(expiresInHours) * 3600 * 1000);
 
+    // Module 5 §1 — Active Payment Gateway Resolution
+    const WebsiteSettings = require("../models/websiteSettingsModel");
+    const settings = await WebsiteSettings.findOne({
+      $or: [{ restaurantId: req.user.restaurantId }, { storeId: req.user.storeId }],
+    });
+
+    const activeGw = (settings?.paymentGateways?.activeGateway || "razorpay").toLowerCase();
+    const gwConfig = settings?.paymentGateways?.[activeGw];
+
     let gatewayOrderId = "";
-    if (config.razorpayKeyId && config.razorpaySecretKey) {
+    let gatewayKeyId = config.razorpayKeyId;
+    let gatewaySecret = config.razorpaySecretKey;
+
+    if (gwConfig && gwConfig.isConfigured) {
+      if (activeGw === "razorpay" && gwConfig.keyId) {
+        gatewayKeyId = gwConfig.keyId;
+        if (gwConfig.keySecretEncrypted) {
+          gatewaySecret = Buffer.from(gwConfig.keySecretEncrypted, "base64").toString("utf-8");
+        }
+      } else if (activeGw === "cashfree" && gwConfig.clientId) {
+        gatewayKeyId = gwConfig.clientId;
+        if (gwConfig.clientSecretEncrypted) {
+          gatewaySecret = Buffer.from(gwConfig.clientSecretEncrypted, "base64").toString("utf-8");
+        }
+      } else if (activeGw === "phonepe" && gwConfig.merchantId) {
+        gatewayKeyId = gwConfig.merchantId;
+        if (gwConfig.saltKeyEncrypted) {
+          gatewaySecret = Buffer.from(gwConfig.saltKeyEncrypted, "base64").toString("utf-8");
+        }
+      }
+    }
+
+    if (activeGw === "razorpay" && gatewayKeyId && gatewaySecret) {
       try {
-        const razorpay = new Razorpay({ key_id: config.razorpayKeyId, key_secret: config.razorpaySecretKey });
+        const razorpay = new Razorpay({ key_id: gatewayKeyId, key_secret: gatewaySecret });
         const order = await razorpay.orders.create({
           amount: Math.round(calculatedAmount * 100),
           currency: targetBill?.currency || "INR",
@@ -149,9 +180,11 @@ const createPaymentLink = async (req, res, next) => {
       } catch (err) {
         console.warn("Razorpay order creation skipped:", err.message);
       }
+    } else if (activeGw === "cashfree" || activeGw === "phonepe") {
+      gatewayOrderId = `${activeGw.toUpperCase()}_LINK_${Date.now().toString(36)}`;
     }
 
-    // 7. Save Payment Link to Database
+    // 7. Save Payment Link to Database with Active Gateway Association (Module 5 §6)
     const link = await PaymentLink.create({
       restaurantId: targetBill?.restaurantId || targetOrder?.restaurantId || req.user.restaurantId,
       outletId: targetBill?.outletId || targetOrder?.outletId || req.user.outletId,
@@ -163,6 +196,7 @@ const createPaymentLink = async (req, res, next) => {
       linkToken,
       amount: calculatedAmount,
       currency: targetBill?.currency || "INR",
+      gatewayName: activeGw.toUpperCase(),
       gatewayOrderId,
       expiresAt,
       createdBy: req.user._id,
@@ -320,7 +354,7 @@ const verifyAndCaptureLinkPayment = async (req, res, next) => {
           method: paymentMethod,
           amount: lockedAmount,
           status: "PAID",
-          provider: paymentMethod === "RAZORPAY" ? "RAZORPAY" : "SECURE_LINK",
+          provider: link.gatewayName || (paymentMethod === "RAZORPAY" ? "RAZORPAY" : "SECURE_LINK"),
           transactionId,
           gatewayOrderId: gatewayOrder,
           gatewayPaymentId: transactionId,

@@ -1,4 +1,6 @@
 const { isItemAvailableNow, getEffectivePrice } = require("./businessHours");
+const { calculateDistanceKm, computeDeliveryFeeFromSlabs } = require("./distanceService");
+
 
 /**
  * Authoritative order pricing (§9, §24).
@@ -56,6 +58,10 @@ const priceLine = (line, itemIndex, timezone) => {
   if (item.showOnWebsite === false) {
     throw new PricingError(`${item.name} is not available for online ordering.`);
   }
+  if (item.displayTarget === "system") {
+    throw new PricingError(`${item.name} is not available for online ordering.`);
+  }
+
   if (!isItemAvailableNow(item, timezone)) {
     throw new PricingError(`${item.name} is currently unavailable.`);
   }
@@ -206,7 +212,67 @@ const buildItemIndex = (menus) => {
  *   timezone  {string}
  * @returns {{ items, bills }}
  */
-const calculateOrderTotals = ({ items, menus, settings, orderType, timezone }) => {
+/**
+ * Helper to check if a promotion rule is active for current channel, environment, time & day
+ */
+const isRuleEligible = ({ rule, channel, environment, date = new Date(), subtotal = 0 }) => {
+  if (!rule || rule.isActive === false) return false;
+
+  // Environment match: "system", "website", "both"
+  if (rule.applyTo && rule.applyTo !== "both" && rule.applyTo !== environment) {
+    return false;
+  }
+
+  // Channel match: collection, delivery, table
+  const chanKey = channel === "pickup" ? "collection" : channel === "takeaway" ? "collection" : channel === "dine-in" ? "table" : channel;
+  if (rule.channels && rule.channels[chanKey] === false) {
+    return false;
+  }
+
+  // Min order amount
+  if (rule.minOrderAmount > 0 && subtotal < rule.minOrderAmount) {
+    return false;
+  }
+
+  // Date range
+  if (rule.validFrom && new Date(rule.validFrom) > date) return false;
+  if (rule.validUntil) {
+    const until = new Date(rule.validUntil);
+    until.setHours(23, 59, 59, 999);
+    if (until < date) return false;
+  }
+
+  // Day of week (0 = Sunday)
+  if (Array.isArray(rule.daysOfWeek) && rule.daysOfWeek.length > 0) {
+    const currentDay = date.getDay();
+    if (!rule.daysOfWeek.includes(currentDay)) return false;
+  }
+
+  // Time range HH:mm
+  if (rule.startTime && rule.endTime) {
+    const curMinutes = date.getHours() * 60 + date.getMinutes();
+    const [sh, sm] = (rule.startTime || "00:00").split(":").map(Number);
+    const [eh, em] = (rule.endTime || "23:59").split(":").map(Number);
+    const startMinutes = (sh || 0) * 60 + (sm || 0);
+    const endMinutes = (eh || 23) * 60 + (em || 59);
+    if (curMinutes < startMinutes || curMinutes > endMinutes) return false;
+  }
+
+  return true;
+};
+
+const calculateOrderTotals = ({
+  items,
+  menus,
+  settings,
+  orderType = "pickup",
+  source = "WEBSITE",
+  customerAddress,
+  storeAddress,
+  couponCode,
+  manualDiscount,
+  timezone,
+}) => {
   if (!Array.isArray(items) || items.length === 0) {
     throw new PricingError("Your cart is empty.");
   }
@@ -214,59 +280,159 @@ const calculateOrderTotals = ({ items, menus, settings, orderType, timezone }) =
     throw new PricingError("Too many items in the cart.");
   }
 
+  const environment = String(source || "WEBSITE").toUpperCase() === "POS" ? "system" : "website";
+  const channel = String(orderType || "pickup").toLowerCase() === "delivery"
+    ? "delivery"
+    : String(orderType || "pickup").toLowerCase() === "table" || String(orderType || "pickup").toLowerCase() === "dine-in"
+    ? "table"
+    : "collection";
+
   const itemIndex = buildItemIndex(menus);
   const pricedItems = items.map((line) => priceLine(line, itemIndex, timezone));
 
-  const subtotal = round2(pricedItems.reduce((sum, i) => sum + i.total, 0));
+  let subtotal = round2(pricedItems.reduce((sum, i) => sum + i.total, 0));
 
   const ordering = settings?.ordering || {};
-  const isDelivery = orderType === "delivery";
+  const isDelivery = channel === "delivery";
 
-  if (isDelivery && !ordering.deliveryEnabled) {
+  if (isDelivery && ordering.deliveryEnabled === false) {
     throw new PricingError("This restaurant does not offer delivery.");
   }
-  if (!isDelivery && ordering.pickupEnabled === false) {
+  if (!isDelivery && channel === "collection" && ordering.pickupEnabled === false) {
     throw new PricingError("This restaurant does not offer pickup.");
   }
 
-  const minOrderValue = Number(ordering.minOrderValue) || 0;
-  if (minOrderValue > 0 && subtotal < minOrderValue) {
+  // ---- Module 8 §6: Free Item Auto-Injection ----
+  const freeRules = settings?.freeItemConfig || [];
+  const eligibleFreeRule = freeRules.find((rule) =>
+    isRuleEligible({ rule, channel, environment, subtotal })
+  );
+  if (eligibleFreeRule && eligibleFreeRule.itemName) {
+    pricedItems.push({
+      menuItemId: eligibleFreeRule.menuItemId || null,
+      name: `[FREE] ${eligibleFreeRule.itemName}`,
+      quantity: 1,
+      price: 0,
+      total: 0,
+      modifiers: [],
+      note: "PROMOTION FREE ITEM",
+      basePrice: 0,
+      unitPrice: 0,
+      status: "free_item",
+    });
+  }
+
+  // ---- Module 8 §1: Minimum Order Enforcement ----
+  const minConfig = ordering.minOrderConfig?.[channel] || {};
+  const channelMin = minConfig.enabled && (minConfig.applyTo === "both" || minConfig.applyTo === environment)
+    ? Number(minConfig.amount || 0)
+    : Number(ordering.minOrderValue || 0);
+
+  if (channelMin > 0 && subtotal < channelMin) {
     throw new PricingError(
-      `Minimum order value is ${ordering.currencySymbol || ""}${minOrderValue}.`
+      `Minimum order value for ${channel} is ${ordering.currencySymbol || "₹"}${channelMin}.`
     );
   }
 
-  // ---- Delivery fee (waived above the configured threshold) ----
+  // ---- Module 8 §4 & §5: Discounts & Coupon Processing ----
+  let computedDiscount = 0;
+
+  // 1. Coupon (Website-only)
+  if (couponCode && environment === "website") {
+    const cleanCode = String(couponCode).trim().toUpperCase();
+    const couponRule = (settings?.couponsConfig || []).find((c) => c.code === cleanCode);
+    if (!couponRule) {
+      throw new PricingError(`Invalid coupon code "${cleanCode}".`);
+    }
+    if (!isRuleEligible({ rule: couponRule, channel, environment, subtotal })) {
+      throw new PricingError(`Coupon "${cleanCode}" is not applicable to this order.`);
+    }
+    if (couponRule.quantityTotal > 0 && couponRule.quantityUsed >= couponRule.quantityTotal) {
+      throw new PricingError(`Coupon "${cleanCode}" has reached its maximum usage limit.`);
+    }
+
+    if (couponRule.type === "percent") {
+      computedDiscount = round2((subtotal * couponRule.value) / 100);
+    } else {
+      computedDiscount = round2(Number(couponRule.value) || 0);
+    }
+  }
+  // 2. Automated Discount Rules
+  else {
+    const discountRules = settings?.discountsConfig || [];
+    const activeRule = discountRules.find((rule) =>
+      isRuleEligible({ rule, channel, environment, subtotal })
+    );
+    if (activeRule) {
+      if (activeRule.type === "percent") {
+        computedDiscount = round2((subtotal * activeRule.value) / 100);
+      } else {
+        computedDiscount = round2(Number(activeRule.value) || 0);
+      }
+    } else if (manualDiscount && typeof manualDiscount === "object") {
+      // Manual POS discount fallback
+      if (manualDiscount.mode === "percent") {
+        computedDiscount = round2((subtotal * (Number(manualDiscount.value) || 0)) / 100);
+      } else if (manualDiscount.mode === "fixed") {
+        computedDiscount = round2(Number(manualDiscount.value) || 0);
+      }
+    }
+  }
+
+  // Clamp discount so subtotal cannot go negative!
+  const discount = Math.min(subtotal, Math.max(0, computedDiscount));
+
+  // ---- Module 8 §2: Delivery Distance Slabs & Maximum Distance ----
   let deliveryFee = 0;
   if (isDelivery) {
-    deliveryFee = Number(ordering.deliveryFee) || 0;
+    const distanceKm = calculateDistanceKm({ storeAddress, customerAddress });
+    try {
+      deliveryFee = computeDeliveryFeeFromSlabs({
+        distanceKm,
+        slabsConfig: ordering.deliverySlabsConfig,
+        defaultFee: Number(ordering.deliveryFee) || 0,
+      });
+    } catch (err) {
+      throw new PricingError(err.message);
+    }
+
     const freeAbove = Number(ordering.freeDeliveryAbove) || 0;
     if (freeAbove > 0 && subtotal >= freeAbove) deliveryFee = 0;
   }
 
-  const packagingFee = Number(ordering.packagingFee) || 0;
-
-  // ---- Tax ----
-  const taxPercent = Number(ordering.taxPercent) || 0;
-  const taxableBase = round2(subtotal + packagingFee);
-  let tax = 0;
-  if (taxPercent > 0) {
-    tax = ordering.taxInclusive
-      // Price already contains tax: extract the tax component for the receipt.
-      ? round2(taxableBase - taxableBase / (1 + taxPercent / 100))
-      : round2((taxableBase * taxPercent) / 100);
+  // ---- Module 8 §3: Packaging Fee Applicability ----
+  let packagingFee = 0;
+  const packingApply = ordering.packingApplyTo || "both";
+  if (packingApply === "both" || packingApply === environment) {
+    packagingFee = Number(ordering.packagingFee) || 0;
   }
 
-  const discount = 0; // coupons are a future extension; never client-supplied
-  const totalWithTax = round2(
-    subtotal + packagingFee + deliveryFee + (ordering.taxInclusive ? 0 : tax) - discount
+  // ---- Module 8 §3: Tax / GST Applicability ----
+  let tax = 0;
+  const gstApply = ordering.gstApplyTo || "both";
+  if (gstApply === "both" || gstApply === environment) {
+    const taxPercent = Number(ordering.taxPercent) || 0;
+    const postDiscount = Math.max(0, round2(subtotal - discount));
+    const taxableBase = round2(postDiscount + packagingFee);
+    if (taxPercent > 0) {
+      tax = ordering.taxInclusive
+        ? round2(taxableBase - taxableBase / (1 + taxPercent / 100))
+        : round2((taxableBase * taxPercent) / 100);
+    }
+  }
+
+  // Module 8 §7: Deterministic Total calculation preventing negative totals
+  const postDiscount = Math.max(0, round2(subtotal - discount));
+  const totalWithTax = Math.max(
+    0,
+    round2(postDiscount + packagingFee + deliveryFee + (ordering.taxInclusive ? 0 : tax))
   );
 
   return {
     items: pricedItems,
     bills: {
       subtotal,
-      total: subtotal,        // matches existing POS semantics (pre-tax)
+      total: subtotal,
       tax,
       totalWithTax,
       discount,
@@ -275,6 +441,7 @@ const calculateOrderTotals = ({ items, menus, settings, orderType, timezone }) =
     },
   };
 };
+
 
 module.exports = {
   calculateOrderTotals,

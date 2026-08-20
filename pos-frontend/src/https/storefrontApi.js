@@ -28,6 +28,7 @@ export const trackStorefrontOrder = (slug, orderId, phone) =>
 export const getWebsiteSettings = () => axiosWrapper.get("/api/website/settings");
 export const updateWebsiteSettings = (data) => axiosWrapper.put("/api/website/settings", data);
 export const previewWebsite = () => axiosWrapper.get("/api/website/preview");
+export const validateGatewayCredentials = (data) => axiosWrapper.post("/api/website/validate-gateway", data);
 
 // ---------- Authenticated: media library ----------
 export const listMedia = (params) => axiosWrapper.get("/api/media", { params });

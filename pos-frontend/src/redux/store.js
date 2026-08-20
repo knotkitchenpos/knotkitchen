@@ -7,10 +7,15 @@ import userSlice from "./slices/userSlice";
 import themeSlice from "./slices/themeSlice";
 import orderTypeSlice from "./slices/orderTypeSlice";
 import heldOrdersSlice from "./slices/heldOrdersSlice";
+import discountSlice from "./slices/discountSlice";
 
 const persistConfig = {
     key: "root",
     storage,
+    // `discount` is deliberately NOT persisted: a cart-level discount is
+    // scoped to the customer currently at the till and must reset when the
+    // POS reloads (otherwise a refresh mid-shift could silently reapply an
+    // old 40% discount to the next customer).
     whitelist: ["user", "heldOrders"]
 };
 
@@ -20,7 +25,8 @@ const rootReducer = combineReducers({
     user : userSlice,
     theme: themeSlice,
     orderType: orderTypeSlice,
-    heldOrders: heldOrdersSlice
+    heldOrders: heldOrdersSlice,
+    discount: discountSlice,
 });
 
 const persistedReducer = persistReducer(persistConfig, rootReducer);

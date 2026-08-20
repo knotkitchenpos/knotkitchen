@@ -1,0 +1,189 @@
+# =============================================================================
+# Knot Kitchen — production docker-compose
+# =============================================================================
+# One VPS. Six services. All application containers are on an internal Docker
+# network and only reachable through Caddy on the host's 80/443 ports.
+#
+# Usage on the VPS:
+#   cd /srv/knot
+#   cp deploy/.env.production.example deploy/.env   # fill in real values
+#   docker compose -f deploy/docker-compose.yml --env-file deploy/.env pull
+#   docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --build
+#
+# Never publish anything but 80/443 to the host — the backend/frontend ports
+# are internal only. All authentication, tenancy and rate limiting is enforced
+# behind the proxy.
+
+name: knotkitchen
+
+networks:
+  knot:
+    driver: bridge
+
+volumes:
+  caddy_data:      # ACME certs, OCSP staples — MUST persist across restarts
+  caddy_config:
+  backend_uploads: # only used when MEDIA_STORAGE_PROVIDER=local (dev/small deploys)
+
+services:
+  # ---------------------------------------------------------------------------
+  # POS backend  →  api.knotkitchen.com
+  # ---------------------------------------------------------------------------
+  pos-api:
+    build:
+      context: ../pos-backend
+      dockerfile: Dockerfile
+    image: knotkitchen/pos-api:latest
+    restart: unless-stopped
+    networks: [knot]
+    environment:
+      NODE_ENV: production
+      PORT: "8000"
+
+      # === Secrets ===
+      MONGODB_URI: ${MONGODB_URI}
+      JWT_SECRET: ${JWT_SECRET}
+      REFRESH_TOKEN_SECRET: ${REFRESH_TOKEN_SECRET}
+      ACCESS_TOKEN_EXPIRY: ${ACCESS_TOKEN_EXPIRY:-15m}
+      REFRESH_TOKEN_EXPIRY: ${REFRESH_TOKEN_EXPIRY:-30d}
+
+      # === CORS ===
+      # Explicit hosts + wildcard base for *.knotkitchen.com customer sites.
+      FRONTEND_URLS: >-
+        https://admin.${BASE_DOMAIN},https://pos.${BASE_DOMAIN},https://app.${BASE_DOMAIN},https://${BASE_DOMAIN}
+      CORS_WILDCARD_DOMAINS: ${BASE_DOMAIN}
+      BASE_DOMAIN: ${BASE_DOMAIN}
+      COOKIE_SAMESITE: none
+      COOKIE_SECURE: "true"
+
+      # === Storefront ===
+      STOREFRONT_BASE_URL: https://${BASE_DOMAIN}
+      STOREFRONT_ROOT_DOMAIN: ${BASE_DOMAIN}
+      FRONTEND_URL: https://pos.${BASE_DOMAIN}
+      BACKEND_PUBLIC_URL: https://api.${BASE_DOMAIN}
+
+      # === Media (object storage) ===
+      MEDIA_STORAGE_PROVIDER: ${MEDIA_STORAGE_PROVIDER:-r2}
+      MEDIA_PUBLIC_BASE_URL: ${MEDIA_PUBLIC_BASE_URL}
+      S3_BUCKET: ${S3_BUCKET}
+      S3_REGION: ${S3_REGION:-auto}
+      S3_ENDPOINT: ${S3_ENDPOINT}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
+      S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL}
+
+      # === Payments / SMS ===
+      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
+      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+      FAST2SMS_API_KEY: ${FAST2SMS_API_KEY:-}
+
+      # Realtime
+      SOCKET_ENABLED: "true"
+
+    # Local uploads dir — only used if MEDIA_STORAGE_PROVIDER=local. Cloud
+    # providers write to R2/S3 and this volume stays empty.
+    volumes:
+      - backend_uploads:/app/uploads
+
+  # ---------------------------------------------------------------------------
+  # Admin backend  →  admin-api.knotkitchen.com
+  # ---------------------------------------------------------------------------
+  admin-api:
+    build:
+      context: ../knotkitchen-admin/backend
+      dockerfile: Dockerfile
+    image: knotkitchen/admin-api:latest
+    restart: unless-stopped
+    networks: [knot]
+    environment:
+      NODE_ENV: production
+      PORT: "4000"
+      MONGODB_URI: ${MONGODB_URI}
+      # Different secret from the POS! This ensures a compromised admin
+      # session key cannot forge tokens accepted by the POS backend.
+      JWT_SECRET: ${ADMIN_JWT_SECRET}
+      SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL}
+      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD}
+      ADMIN_FRONTEND_ORIGIN: https://admin.${BASE_DOMAIN}
+      COOKIE_SAMESITE: none
+      COOKIE_SECURE: "true"
+      # Where the admin backend should tell newly-created stores their public
+      # website will live. Consumed by services/websiteProvisioningService.js.
+      STOREFRONT_ROOT_DOMAIN: ${BASE_DOMAIN}
+
+  # ---------------------------------------------------------------------------
+  # POS SPA  →  pos.knotkitchen.com
+  # ---------------------------------------------------------------------------
+  pos-web:
+    build:
+      context: ../pos-frontend
+      dockerfile: Dockerfile
+      args:
+        # Vite bakes these into the JS bundle at build time.
+        VITE_BACKEND_URL: https://api.${BASE_DOMAIN}
+        VITE_RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
+    image: knotkitchen/pos-web:latest
+    restart: unless-stopped
+    networks: [knot]
+
+  # ---------------------------------------------------------------------------
+  # Admin SPA  →  admin.knotkitchen.com
+  # ---------------------------------------------------------------------------
+  admin-web:
+    build:
+      context: ../knotkitchen-admin/frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_BACKEND_URL: https://admin-api.${BASE_DOMAIN}
+    image: knotkitchen/admin-web:latest
+    restart: unless-stopped
+    networks: [knot]
+
+  # ---------------------------------------------------------------------------
+  # Customer website  →  <slug>.knotkitchen.com  (wildcard)
+  # ---------------------------------------------------------------------------
+  customer-web:
+    build:
+      context: ../customer-web
+      dockerfile: Dockerfile
+      args:
+        VITE_BACKEND_URL: https://api.${BASE_DOMAIN}
+        VITE_BASE_DOMAIN: ${BASE_DOMAIN}
+        VITE_FALLBACK_SLUG: ${VITE_FALLBACK_SLUG:-}
+    image: knotkitchen/customer-web:latest
+    restart: unless-stopped
+    networks: [knot]
+
+  # ---------------------------------------------------------------------------
+  # Caddy reverse proxy — the only container that publishes host ports.
+  # Custom image (see deploy/caddy/Dockerfile) so it includes the Cloudflare
+  # DNS module needed for the wildcard *.knotkitchen.com certificate.
+  # ---------------------------------------------------------------------------
+  caddy:
+    build:
+      context: ./caddy
+      dockerfile: Dockerfile
+    image: knotkitchen/caddy:latest
+    restart: unless-stopped
+    networks: [knot]
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Consumed by the Caddyfile via env placeholders.
+      BASE_DOMAIN: ${BASE_DOMAIN}
+      # DNS-01 wildcard cert requires a Cloudflare API token scoped to the
+      # zone's DNS:Edit. See DEPLOYMENT.md.
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN}
+      ACME_EMAIL: ${ACME_EMAIL}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - pos-api
+      - admin-api
+      - pos-web
+      - admin-web
+      - customer-web

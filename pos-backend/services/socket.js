@@ -48,6 +48,9 @@ const authenticateSocket = async (socket, next) => {
 };
 
 const initSocket = (server, { corsOrigin = ["http://localhost:5173"] } = {}) => {
+  // corsOrigin may be an array (legacy), a string, or a function(origin, cb)
+  // implementing the same allow-list logic as the HTTP CORS layer. Socket.IO
+  // passes it straight through to its underlying `cors` middleware.
   io = new Server(server, {
     cors: { origin: corsOrigin, credentials: true },
   });

@@ -28,6 +28,7 @@ const paymentLinkSchema = new mongoose.Schema(
     paidAmount: { type: Number, default: 0 },
 
     // Gateway
+    gatewayName: { type: String, default: "RAZORPAY" },
     gatewayOrderId: { type: String, default: "" },
 
     expiresAt: { type: Date, required: true },

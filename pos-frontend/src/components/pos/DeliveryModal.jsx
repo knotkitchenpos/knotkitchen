@@ -28,6 +28,13 @@ const DeliveryModal = ({ initialName = "", initialPhone = "", total = 0, busy, o
     onConfirm({
       name: name.trim(),
       phone: phone.trim(),
+      // Module 4 §5 — also mirror the structured address into
+      // customerDetails so the Orders → Order Details view has a single
+      // source of truth for name / phone / address / city / PIN / note.
+      address: line1.trim(),
+      city: city.trim() || undefined,
+      pinCode: pin.trim(),
+      deliveryNote: note.trim() || undefined,
       deliveryAddress: {
         line1: line1.trim(),
         line2: "",
@@ -36,6 +43,7 @@ const DeliveryModal = ({ initialName = "", initialPhone = "", total = 0, busy, o
         instructions: note.trim(),
       },
     });
+
   };
 
   return (
@@ -62,7 +70,7 @@ const DeliveryModal = ({ initialName = "", initialPhone = "", total = 0, busy, o
               type="tel"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
-              placeholder="e.g. +44 7700 900123"
+              placeholder="e.g. +91 0000000000"
               maxLength={20}
               className={inputCls(err.phone)}
             />

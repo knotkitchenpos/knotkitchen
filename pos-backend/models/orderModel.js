@@ -64,6 +64,13 @@ const orderSchema = new mongoose.Schema({
     name: { type: String, default: "" },
     phone: { type: String, default: "" },
     guests: { type: Number, default: 1 },
+    // Optional structured customer address captured on the POS for
+    // collection/delivery flows (Module 4 §5). Kept flat so the
+    // existing name/phone fields on customerDetails remain untouched.
+    address: { type: String, default: "" },
+    city: { type: String, default: "" },
+    pinCode: { type: String, default: "" },
+    deliveryNote: { type: String, default: "" },
   },
   orderType: {
     type: String,
@@ -74,6 +81,21 @@ const orderSchema = new mongoose.Schema({
     line1: String, line2: String, city: String, postalCode: String,
     instructions: String,
   },
+  /**
+   * Module 4 §2/§3/§4 — Ready state tracking.
+   *
+   * `readyAt`         when the order was marked/became Ready
+   * `readyBy`         "STAFF" | "AUTO" | "KDS" | "SYSTEM"
+   * `readyDueAt`      when the server-side automatic-ready timer should fire
+   *                   (server is authoritative — never trust browser timers)
+   * `readyNotifiedAt` when the "Order is Ready" SMS was sent — used to
+   *                   prevent duplicate notifications on retries/restarts
+   */
+  readyAt: { type: Date, default: null },
+  readyBy: { type: String, enum: ["STAFF", "AUTO", "KDS", "SYSTEM", ""], default: "" },
+  readyDueAt: { type: Date, default: null, index: true },
+  readyNotifiedAt: { type: Date, default: null },
+
   orderStatus: { type: String, required: true },
   marketplace: { type: String, enum: ["Swiggy", "Zomato", "Manual", ""] },
   marketplaceOrderId: { type: String, default: "" },
@@ -180,6 +202,22 @@ orderSchema.index({ restaurantId: 1, source: 1, orderStatus: 1, createdAt: -1 })
 orderSchema.index(
   { restaurantId: 1, idempotencyKey: 1 },
   { unique: true, partialFilterExpression: { idempotencyKey: { $gt: "" } } }
+);
+
+/**
+ * GLOBALLY UNIQUE order number (Module 3 §4).
+ *
+ * The application layer allocates `orderNumber` via the atomic
+ * services/orderNumberService.js generator, but this partial unique index
+ * is the ultimate safety net at the persistence layer: even if a bug
+ * elsewhere in the codebase tried to save a duplicate, MongoDB would
+ * refuse the second write with E11000. The `partialFilterExpression` on
+ * non-empty strings is essential — historical POS orders with `""` as the
+ * default must not all collide against each other.
+ */
+orderSchema.index(
+  { orderNumber: 1 },
+  { unique: true, partialFilterExpression: { orderNumber: { $gt: "" } } }
 );
 
 

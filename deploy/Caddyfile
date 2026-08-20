@@ -1,0 +1,180 @@
+# =============================================================================
+# Knot Kitchen — Caddy reverse proxy
+# =============================================================================
+# Cloudflare terminates TLS at the edge, but we also want *real* TLS between
+# Cloudflare and origin ("Full (strict)" mode), so Caddy obtains a wildcard
+# cert via DNS-01 with the Cloudflare API token.
+#
+# Every internal upstream is addressed by its Docker service name on the `knot`
+# network — Docker's embedded DNS resolves the correct container. Ports are
+# the container-internal ports (never the host ports).
+
+{
+	# The email address ACME will use to send expiration warnings.
+	email {$ACME_EMAIL}
+	# Automatic HTTPS + HTTP->HTTPS redirect are Caddy defaults; nothing to opt
+	# in to. Just keep the default behaviour explicit here for auditors.
+	auto_https disable_redirects
+}
+
+# -----------------------------------------------------------------------------
+# Wildcard certificate — obtained ONCE, reused by every subdomain block below.
+# -----------------------------------------------------------------------------
+(wildcard_cert) {
+	tls {
+		dns cloudflare {$CLOUDFLARE_API_TOKEN}
+	}
+}
+
+# -----------------------------------------------------------------------------
+# Shared security headers.
+# We intentionally do NOT set a global CSP — the customer sites load images
+# from tenant object storage, and a strict CSP requires per-app tuning.
+# -----------------------------------------------------------------------------
+(security_headers) {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options    "nosniff"
+		Referrer-Policy           "strict-origin-when-cross-origin"
+		Permissions-Policy        "camera=(), microphone=(), geolocation=(), payment=()"
+		# Remove server identification.
+		-Server
+		-X-Powered-By
+	}
+}
+
+# -----------------------------------------------------------------------------
+# Common HTTP -> HTTPS redirect (Cloudflare will normally do this, but if
+# someone hits the VPS IP directly on :80 we still want the upgrade).
+# -----------------------------------------------------------------------------
+http://* {
+	redir https://{host}{uri} permanent
+}
+
+# =============================================================================
+# api.knotkitchen.com — POS backend
+# =============================================================================
+api.{$BASE_DOMAIN} {
+	import wildcard_cert
+	import security_headers
+
+	# Cap request bodies at 12 MB (menu import + base64 payloads fit, arbitrary
+	# uploads do not). The backend also enforces this with express.json limit.
+	request_body {
+		max_size 12MB
+	}
+
+	# WebSocket upgrade for Socket.IO. Caddy handles Upgrade/Connection headers
+	# automatically as long as we pass them through — reverse_proxy does.
+	reverse_proxy pos-api:8000 {
+		# Cloudflare -> Caddy -> upstream: preserve the real client IP so the
+		# backend's rate limiter / audit logs see the actual visitor.
+		header_up X-Real-IP           {remote_host}
+		header_up X-Forwarded-For     {remote_host}
+		header_up X-Forwarded-Proto   {scheme}
+		header_up X-Forwarded-Host    {host}
+
+		# Health check the upstream container itself.
+		health_uri     /health
+		health_interval 15s
+		health_timeout  5s
+
+		transport http {
+			read_timeout  60s
+			write_timeout 60s
+		}
+	}
+}
+
+# =============================================================================
+# admin-api.knotkitchen.com — Super-admin backend
+# =============================================================================
+admin-api.{$BASE_DOMAIN} {
+	import wildcard_cert
+	import security_headers
+
+	request_body {
+		max_size 2MB
+	}
+
+	reverse_proxy admin-api:4000 {
+		header_up X-Real-IP           {remote_host}
+		header_up X-Forwarded-For     {remote_host}
+		header_up X-Forwarded-Proto   {scheme}
+		header_up X-Forwarded-Host    {host}
+
+		health_uri     /health
+		health_interval 15s
+	}
+}
+
+# =============================================================================
+# admin.knotkitchen.com — Super-admin SPA
+# =============================================================================
+admin.{$BASE_DOMAIN} {
+	import wildcard_cert
+	import security_headers
+
+	encode zstd gzip
+	reverse_proxy admin-web:80 {
+		header_up Host {host}
+	}
+}
+
+# =============================================================================
+# pos.knotkitchen.com — POS SPA
+# =============================================================================
+pos.{$BASE_DOMAIN} {
+	import wildcard_cert
+	import security_headers
+
+	encode zstd gzip
+	reverse_proxy pos-web:80 {
+		header_up Host {host}
+	}
+}
+
+# =============================================================================
+# app.knotkitchen.com — same as POS (reserved for a future main-app SPA).
+# =============================================================================
+app.{$BASE_DOMAIN} {
+	import wildcard_cert
+	import security_headers
+
+	encode zstd gzip
+	reverse_proxy pos-web:80 {
+		header_up Host {host}
+	}
+}
+
+# =============================================================================
+# knotkitchen.com — bare apex, sends visitors to the customer-web fallback
+# =============================================================================
+{$BASE_DOMAIN} {
+	import wildcard_cert
+	import security_headers
+
+	encode zstd gzip
+	reverse_proxy customer-web:80 {
+		header_up Host {host}
+	}
+}
+
+# =============================================================================
+# *.knotkitchen.com — every restaurant customer website (wildcard catch-all)
+# -----------------------------------------------------------------------------
+# This block MUST come after the specific subdomains above, or a store slug
+# named "api" would shadow api.knotkitchen.com. It matches everything that
+# hasn't already been handled — the customer-web resolves the slug at runtime.
+# =============================================================================
+*.{$BASE_DOMAIN} {
+	import wildcard_cert
+	import security_headers
+
+	encode zstd gzip
+	reverse_proxy customer-web:80 {
+		# Preserve the original Host header so the SPA sees the real hostname
+		# in window.location.hostname (that's how it resolves the tenant).
+		header_up Host {host}
+	}
+}

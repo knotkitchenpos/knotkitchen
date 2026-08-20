@@ -6,27 +6,12 @@ import { enqueueSnackbar } from "notistack";
 import { getMenus, getPopularItems } from "../../https";
 import { addItems } from "../../redux/slices/cartSlice";
 
-/* ---------- Reference tile palette (exact colors from the screenshot) ---------- */
+/* ---------- Reference tile palette ---------- */
 const TILE_COLORS = [
-  "#F97316", // orange
-  "#F97316",
-  "#F97316",
-  "#F4511E", // deep orange
-  "#EF4444", // red
-  "#2563EB", // blue
-  "#2563EB",
-  "#2563EB",
-  "#2563EB",
-  "#2563EB",
-  "#F0A020", // amber
-  "#F0A020",
-  "#16A34A", // green
-  "#16A34A",
-  "#16A34A",
-  "#5B21B6", // violet
-  "#5B21B6",
-  "#5B21B6",
-  "#5B21B6",
+  "#F97316", "#F97316", "#F97316", "#F4511E", "#EF4444",
+  "#2563EB", "#2563EB", "#2563EB", "#2563EB", "#2563EB",
+  "#F0A020", "#F0A020", "#16A34A", "#16A34A", "#16A34A",
+  "#5B21B6", "#5B21B6", "#5B21B6", "#5B21B6",
 ];
 
 /* ---------- Schedule + pricing helpers (business logic preserved) ---------- */
@@ -95,21 +80,38 @@ const IconChevron = () => (
   </svg>
 );
 
-/* ---------- Veg / Non-veg square marker (exact reference style) ---------- */
+/* ---------- Veg / Non-veg square marker ---------- */
 const DietMark = ({ veg }) => (
   <span
-    className="absolute top-2 right-2 w-[15px] h-[15px] rounded-[3px] bg-white border-[1.5px] flex items-center justify-center"
+    className="absolute top-1.5 left-1.5 w-[14px] h-[14px] rounded-[3px] bg-white border-[1.5px] flex items-center justify-center shadow-sm"
     style={{ borderColor: veg ? "#16A34A" : "#DC2626" }}
     title={veg ? "Vegetarian" : "Non-Vegetarian"}
   >
     <span
-      className="w-[7px] h-[7px] rounded-full"
+      className="w-[6px] h-[6px] rounded-full"
       style={{ background: veg ? "#16A34A" : "#DC2626" }}
     />
   </span>
 );
 
-const ProductPanel = ({ onAddCategory, onAddProduct, onDeleteCategory }) => {
+/**
+ * POS main ordering surface (§1, §3).
+ *
+ * Design contract enforced by this file — do not casually break these:
+ *   - No "Products" H1 header (§1)
+ *   - Top toolbar shows ONLY: Search, Add Category, Add Product, view toggle (§1)
+ *   - Category chips do NOT expose a delete button (§1). Menu editing lives
+ *     under Settings → Manage Menu.
+ *   - Product cards show ONLY veg-mark, image, name, price (§3). No plus
+ *     button, no metadata, no controls.
+ *   - The ENTIRE product card is a click target for add-to-cart (§3).
+ *   - Products with required variants/modifiers still go through the existing
+ *     required-selection flow — we surface a snackbar prompting the operator
+ *     to open the item to complete the mandatory choices. (The full modifier
+ *     modal lives in AddProductModal; this panel intentionally does not
+ *     re-implement it.)
+ */
+const ProductPanel = ({ onAddCategory, onAddProduct }) => {
   const dispatch = useDispatch();
   const location = useLocation();
   const cart = useSelector((s) => s.cart);
@@ -118,9 +120,12 @@ const ProductPanel = ({ onAddCategory, onAddProduct, onDeleteCategory }) => {
   const [q, setQ] = useState("");
   const [catId, setCatId] = useState(null);
   const [subcat, setSubcat] = useState(null);
-  const [variantPick, setVariantPick] = useState({});
 
-  const { data: menusRes, isLoading } = useQuery({ queryKey: ["menus"], queryFn: getMenus });
+  const { data: menusRes, isLoading } = useQuery({
+    queryKey: ["menus", "system"],
+    queryFn: () => getMenus({ source: "system" }),
+  });
+
 
   const menus = useMemo(() => {
     const all = menusRes?.data?.data || [];
@@ -207,6 +212,16 @@ const ProductPanel = ({ onAddCategory, onAddProduct, onDeleteCategory }) => {
 
   const products = searching ? searchResults : showPopular ? popular : catProducts;
 
+  /**
+   * Click-to-add (§3).
+   *
+   * If the product declares required modifier groups OR multiple variants,
+   * the operator must open the full product modal to make the mandatory
+   * choice (we surface a snackbar directing them to do that, so a cheapest-
+   * variant-picked-silently bug can't happen at the counter).
+   *
+   * Simple products with no required choices go straight into the cart.
+   */
   const add = (item) => {
     if (item.isAvailable === false) {
       enqueueSnackbar(`${item.name} is out of stock`, { variant: "error" });
@@ -214,16 +229,23 @@ const ProductPanel = ({ onAddCategory, onAddProduct, onDeleteCategory }) => {
     }
     for (const g of item.modifierGroups || []) {
       if (g.required) {
-        enqueueSnackbar(`Select "${g.name}" for ${item.name}`, { variant: "warning" });
+        enqueueSnackbar(`${item.name} requires "${g.name}" — open the product to select it.`, { variant: "warning" });
         return;
       }
     }
+    // Multi-variant products need an explicit selection to avoid silently
+    // charging the wrong price. Single-variant products fall through to the
+    // default (variants[0]) which is unambiguous.
+    if ((item.variants || []).length > 1) {
+      enqueueSnackbar(`${item.name} has multiple sizes — open the product to choose one.`, { variant: "warning" });
+      return;
+    }
+
     let price = activePrice(item);
     let label = "";
     let variant = null;
-    if (item.variants?.length) {
-      const vid = variantPick[item._id] || item.variants[0]._id;
-      variant = item.variants.find((v) => v._id === vid) || item.variants[0];
+    if ((item.variants || []).length === 1) {
+      variant = item.variants[0];
       price = variant.price;
       label = ` (${variant.name})`;
     }
@@ -258,13 +280,14 @@ const ProductPanel = ({ onAddCategory, onAddProduct, onDeleteCategory }) => {
 
   return (
     <div className="flex-1 min-w-0 h-full flex flex-col bg-white">
-      {/* ===== Page title ===== */}
-      <div className="px-7 pt-6 pb-3 shrink-0">
-        <h1 className="text-[28px] font-extrabold text-[#0F172A] tracking-tight">Products</h1>
-      </div>
-
-      {/* ===== Toolbar: search + add category + view toggle ===== */}
-      <div className="px-7 pb-4 shrink-0 flex items-center gap-3">
+      {/*
+        §1: Top toolbar only. NO "Products" heading. Only:
+          - Search
+          - Add Category
+          - Add Product
+          - Grid / List toggle
+      */}
+      <div className="px-5 pt-4 pb-3 shrink-0 flex items-center gap-2.5">
         <div className="relative flex-1 max-w-[440px]">
           <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#94A3B8]">
             <IconSearch />
@@ -273,7 +296,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct, onDeleteCategory }) => {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search product or category..."
-            className="w-full h-[42px] pl-10 pr-16 rounded-xl border border-[#E2E8F0] bg-white text-[14px] text-[#0F172A] placeholder:text-[#94A3B8] focus:border-[#5B42F3]"
+            className="w-full h-[40px] pl-10 pr-9 rounded-xl border border-[#E2E8F0] bg-white text-[13.5px] text-[#0F172A] placeholder:text-[#94A3B8] focus:border-[#5B42F3]"
           />
           {q && (
             <button
@@ -287,22 +310,22 @@ const ProductPanel = ({ onAddCategory, onAddProduct, onDeleteCategory }) => {
 
         <button
           onClick={onAddCategory}
-          className="h-[42px] px-4 rounded-xl border border-[#5B42F3] text-[#5B42F3] bg-white text-[14px] font-bold flex items-center gap-2 hover:bg-[#EEF0FE] transition-colors"
+          className="h-[40px] px-3.5 rounded-xl border border-[#5B42F3] text-[#5B42F3] bg-white text-[13px] font-bold flex items-center gap-1.5 hover:bg-[#EEF0FE] transition-colors"
         >
-          <IconPlus /> Add Category
+          <IconPlus size={14} /> Add Category
         </button>
 
         <button
           onClick={onAddProduct}
-          className="h-[42px] px-4 rounded-xl bg-[#5B42F3] text-white text-[14px] font-bold flex items-center gap-2 hover:bg-[#4A32E0] transition-colors"
+          className="h-[40px] px-3.5 rounded-xl bg-[#5B42F3] text-white text-[13px] font-bold flex items-center gap-1.5 hover:bg-[#4A32E0] transition-colors"
         >
-          <IconPlus /> Add Product
+          <IconPlus size={14} /> Add Product
         </button>
 
-        <div className="ml-auto flex items-center rounded-xl border border-[#E2E8F0] overflow-hidden h-[42px]">
+        <div className="ml-auto flex items-center rounded-xl border border-[#E2E8F0] overflow-hidden h-[40px]">
           <button
             onClick={() => setView("grid")}
-            className={`w-[42px] h-full flex items-center justify-center transition-colors ${
+            className={`w-[40px] h-full flex items-center justify-center transition-colors ${
               view === "grid" ? "bg-[#5B42F3] text-white" : "bg-white text-[#94A3B8] hover:text-[#0F172A]"
             }`}
             title="Grid view"
@@ -311,7 +334,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct, onDeleteCategory }) => {
           </button>
           <button
             onClick={() => setView("list")}
-            className={`w-[42px] h-full flex items-center justify-center border-l border-[#E2E8F0] transition-colors ${
+            className={`w-[40px] h-full flex items-center justify-center border-l border-[#E2E8F0] transition-colors ${
               view === "list" ? "bg-[#5B42F3] text-white" : "bg-white text-[#94A3B8] hover:text-[#0F172A]"
             }`}
             title="List view"
@@ -321,54 +344,42 @@ const ProductPanel = ({ onAddCategory, onAddProduct, onDeleteCategory }) => {
         </div>
       </div>
 
-      {/* ===== Category tiles — COMPACT, NO ICONS (fixed at top) ===== */}
+      {/*
+        §1: Category chips.
+        - NO delete "×" button.
+        - Add-Category tile at the end remains so the operator has a fast
+          in-context add.
+      */}
       {!searching && (
-        <div className="px-7 pb-4 shrink-0">
-          <div className="flex flex-wrap gap-2 max-h-[152px] overflow-y-auto no-scrollbar">
+        <div className="px-5 pb-3 shrink-0">
+          <div className="flex flex-wrap gap-1.5 max-h-[132px] overflow-y-auto no-scrollbar">
             {menus.map((m, i) => {
               const on = category?._id === m._id;
               return (
-                <div
+                <button
                   key={m._id}
+                  onClick={() => setCatId(on ? null : m._id)}
                   style={{ background: TILE_COLORS[i % TILE_COLORS.length] }}
-                  className={`h-[44px] pl-4 pr-1 rounded-lg text-white text-[13px] font-bold leading-tight max-w-[240px] flex items-center gap-1 transition-all ${
+                  className={`h-[38px] px-3.5 rounded-lg text-white text-[12.5px] font-bold leading-tight max-w-[220px] truncate transition-all ${
                     on ? "ring-[3px] ring-[#0F172A]/25 shadow-md scale-[1.02]" : "hover:brightness-110"
                   }`}
+                  title={m.name}
                 >
-                  <button
-                    onClick={() => setCatId(on ? null : m._id)}
-                    className="min-w-0 flex-1 text-left truncate h-full"
-                    title={m.name}
-                  >
-                    {m.name}
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDeleteCategory?.(m);
-                    }}
-                    className="w-7 h-7 rounded-md flex items-center justify-center text-white/75 hover:bg-black/20 hover:text-white text-[18px] leading-none shrink-0"
-                    title={`Delete ${m.name}`}
-                    aria-label={`Delete ${m.name}`}
-                  >
-                    ×
-                  </button>
-                </div>
+                  {m.name}
+                </button>
               );
             })}
 
-            {/* Add Category tile */}
             <button
               onClick={onAddCategory}
-              className="h-[44px] px-4 rounded-lg border border-dashed border-[#CBD5E1] bg-[#F8FAFC] text-[#475569] text-[13px] font-bold flex items-center gap-1.5 hover:border-[#5B42F3] hover:text-[#5B42F3] transition-colors"
+              className="h-[38px] px-3.5 rounded-lg border border-dashed border-[#CBD5E1] bg-[#F8FAFC] text-[#475569] text-[12.5px] font-bold flex items-center gap-1 hover:border-[#5B42F3] hover:text-[#5B42F3] transition-colors"
             >
-              <IconPlus size={14} /> Add Category
+              <IconPlus size={13} /> Add Category
             </button>
           </div>
 
-          {/* Breadcrumb inside a category */}
           {category && (
-            <div className="mt-3 flex items-center gap-1.5 text-[12.5px]">
+            <div className="mt-2.5 flex items-center gap-1.5 text-[12px]">
               <button onClick={() => setCatId(null)} className="text-[#94A3B8] font-semibold hover:text-[#5B42F3]">
                 All Categories
               </button>
@@ -390,13 +401,13 @@ const ProductPanel = ({ onAddCategory, onAddProduct, onDeleteCategory }) => {
         </div>
       )}
 
-      {/* ===== Section heading ===== */}
-      <div className="px-7 pb-3 shrink-0 flex items-center justify-between">
-        <h2 className="text-[19px] font-extrabold text-[#0F172A]">{heading}</h2>
+      {/* Section heading (the ONLY heading on this screen). */}
+      <div className="px-5 pb-2 shrink-0 flex items-center justify-between">
+        <h2 className="text-[16px] font-extrabold text-[#0F172A]">{heading}</h2>
         {showPopular && menus.length > 0 && (
           <button
             onClick={() => setCatId(menus[0]._id)}
-            className="text-[13px] font-bold text-[#5B42F3] underline underline-offset-2"
+            className="text-[12.5px] font-bold text-[#5B42F3] underline underline-offset-2"
           >
             View All
           </button>
@@ -404,15 +415,15 @@ const ProductPanel = ({ onAddCategory, onAddProduct, onDeleteCategory }) => {
         {subcat && (
           <button
             onClick={() => setSubcat(null)}
-            className="text-[13px] font-bold text-[#5B42F3] underline underline-offset-2"
+            className="text-[12.5px] font-bold text-[#5B42F3] underline underline-offset-2"
           >
             Back to {category.name}
           </button>
         )}
       </div>
 
-      {/* ===== Scrollable content ===== */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-7 pb-7">
+      {/* Scrollable content */}
+      <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-5">
         {isLoading ? (
           <div className="flex justify-center py-20">
             <div className="w-9 h-9 rounded-full border-[3px] border-[#5B42F3] border-t-transparent animate-spin" />
@@ -425,8 +436,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct, onDeleteCategory }) => {
               Add Category
             </button>
           </div>
-        ) : /* --- Subcategory selection screen --- */
-        !searching && category && hasSubcats && !subcat ? (
+        ) : !searching && category && hasSubcats && !subcat ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3">
             {subcats.map((s) => {
               const n = categoryItems.filter(
@@ -457,138 +467,106 @@ const ProductPanel = ({ onAddCategory, onAddProduct, onDeleteCategory }) => {
               : "No products in this section."}
           </div>
         ) : view === "grid" ? (
-          /* ===== PRODUCT GRID (exact reference card) ===== */
-          <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4">
+          /*
+            §3 + §46: Compact product grid.
+            - MORE columns on wider screens (up to 7) so more products are visible.
+            - Card content: veg-mark + image + name + price ONLY.
+            - Whole card is a click target (button element).
+            - Touch target height stays >= 128px which is comfortable on 10"
+              touchscreen POS displays (§47).
+          */
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-2.5">
             {products.map((item) => {
               const img = item.imageThumbnailUrl || item.imageUrl || item.image;
               const price = item.variants?.length
-                ? (item.variants.find((v) => v._id === variantPick[item._id]) || item.variants[0]).price
+                ? item.variants[0].price
                 : activePrice(item);
               const inCart = cart.find((c) => c.menuItemId === item._id);
               const off = item.isAvailable === false;
               return (
-                <div
+                <button
                   key={item._id}
-                  className={`rounded-xl border border-[#E2E8F0] bg-white overflow-hidden hover:shadow-md transition-shadow ${
-                    off ? "opacity-55" : ""
+                  type="button"
+                  onClick={() => add(item)}
+                  disabled={off}
+                  aria-label={`Add ${item.name} to cart`}
+                  className={`group text-left rounded-xl border border-[#E2E8F0] bg-white overflow-hidden transition-all ${
+                    off
+                      ? "opacity-55 cursor-not-allowed"
+                      : "hover:border-[#5B42F3] hover:shadow-md active:scale-[0.98]"
                   }`}
                 >
-                  {/* Image */}
-                  <div className="relative w-full h-[118px] bg-[#F1F5F9] p-2">
-                    <div className="relative w-full h-full rounded-lg overflow-hidden bg-[#E2E8F0] flex items-center justify-center">
-                      {img ? (
-                        <img src={img} alt={item.name} loading="lazy" className="w-full h-full object-cover" />
-                      ) : (
-                        <span className="text-3xl">🍽️</span>
-                      )}
-                    </div>
-                    <DietMark veg={item.isVegetarian !== false} />
-                  </div>
-
-                  {/* Body */}
-                  <div className="px-3 pb-3 pt-1">
-                    <p className="text-[13.5px] font-bold text-[#0F172A] leading-snug line-clamp-2 min-h-[36px]">
-                      {item.name}
-                    </p>
-
-                    {/* Variant chips */}
-                    {item.variants?.length > 0 && (
-                      <div className="flex flex-wrap gap-1 mt-1.5">
-                        {item.variants.slice(0, 3).map((v) => {
-                          const sel = (variantPick[item._id] || item.variants[0]._id) === v._id;
-                          return (
-                            <button
-                              key={v._id}
-                              onClick={() => setVariantPick((p) => ({ ...p, [item._id]: v._id }))}
-                              className={`px-2 py-[3px] rounded-md text-[10.5px] font-bold border transition-colors ${
-                                sel
-                                  ? "bg-[#5B42F3] text-white border-[#5B42F3]"
-                                  : "bg-white text-[#475569] border-[#E2E8F0] hover:border-[#5B42F3]"
-                              }`}
-                            >
-                              {v.name}
-                            </button>
-                          );
-                        })}
-                      </div>
+                  {/* Image with veg mark overlay (top-left) */}
+                  <div className="relative w-full aspect-[4/3] bg-[#F1F5F9]">
+                    {img ? (
+                      <img src={img} alt={item.name} loading="lazy" className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="w-full h-full flex items-center justify-center text-2xl">🍽️</span>
                     )}
-
-                    {off && (
-                      <span className="inline-block mt-1.5 px-2 py-0.5 rounded-md bg-[#FEF2F2] text-[#DC2626] text-[10px] font-bold">
-                        Out of Stock
+                    <DietMark veg={item.isVegetarian !== false} />
+                    {inCart && (
+                      <span className="absolute top-1.5 right-1.5 min-w-[20px] h-[20px] px-1.5 rounded-full bg-[#16A34A] text-white text-[10.5px] font-extrabold flex items-center justify-center shadow">
+                        {inCart.quantity}
                       </span>
                     )}
+                  </div>
 
-                    <div className="flex items-center justify-between mt-2">
-                      <span className="text-[16px] font-extrabold text-[#0F172A]">₹{price}</span>
-                      <button
-                        onClick={() => add(item)}
-                        disabled={off}
-                        className={`w-[30px] h-[30px] rounded-lg flex items-center justify-center transition-all ${
-                          off
-                            ? "bg-[#E2E8F0] text-[#94A3B8]"
-                            : "bg-[#5B42F3] text-white hover:bg-[#4A32E0] active:scale-95"
-                        }`}
-                        title={off ? "Out of stock" : "Add to cart"}
-                      >
-                        <IconPlus size={16} w={3} />
-                      </button>
-                    </div>
-
-                    {inCart && (
-                      <p className="text-[10.5px] font-bold text-[#16A34A] mt-1 text-right">
-                        In cart: {inCart.quantity}
-                      </p>
+                  {/* Name + price */}
+                  <div className="px-2.5 py-2">
+                    <p className="text-[12.5px] font-bold text-[#0F172A] leading-tight line-clamp-2 min-h-[32px]">
+                      {item.name}
+                    </p>
+                    <p className="text-[14px] font-extrabold text-[#0F172A] mt-1">
+                      ₹{Number(price || 0).toFixed(0)}
+                    </p>
+                    {off && (
+                      <p className="text-[10px] font-bold text-[#DC2626] mt-0.5">Out of stock</p>
                     )}
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
         ) : (
-          /* ===== PRODUCT LIST VIEW ===== */
+          /* List view — same click-to-add contract as grid */
           <div className="space-y-2">
             {products.map((item) => {
               const img = item.imageThumbnailUrl || item.imageUrl || item.image;
               const price = item.variants?.length ? item.variants[0].price : activePrice(item);
               const off = item.isAvailable === false;
+              const inCart = cart.find((c) => c.menuItemId === item._id);
               return (
-                <div
+                <button
                   key={item._id}
-                  className={`flex items-center gap-3 p-3 rounded-xl border border-[#E2E8F0] bg-white hover:border-[#CBD5E1] ${
-                    off ? "opacity-55" : ""
+                  type="button"
+                  onClick={() => add(item)}
+                  disabled={off}
+                  className={`w-full text-left flex items-center gap-3 p-2.5 rounded-xl border border-[#E2E8F0] bg-white transition-all ${
+                    off
+                      ? "opacity-55 cursor-not-allowed"
+                      : "hover:border-[#5B42F3] hover:shadow-sm active:scale-[0.99]"
                   }`}
                 >
                   <div className="relative w-11 h-11 rounded-lg overflow-hidden bg-[#F1F5F9] shrink-0 flex items-center justify-center">
                     {img ? <img src={img} alt={item.name} className="w-full h-full object-cover" /> : "🍽️"}
+                    <DietMark veg={item.isVegetarian !== false} />
                   </div>
-                  <span
-                    className="w-[13px] h-[13px] rounded-[3px] border-[1.5px] flex items-center justify-center shrink-0"
-                    style={{ borderColor: item.isVegetarian !== false ? "#16A34A" : "#DC2626" }}
-                  >
-                    <span
-                      className="w-[6px] h-[6px] rounded-full"
-                      style={{ background: item.isVegetarian !== false ? "#16A34A" : "#DC2626" }}
-                    />
-                  </span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-[14px] font-bold text-[#0F172A] truncate">{item.name}</p>
-                    <p className="text-[12px] text-[#94A3B8] truncate">
+                    <p className="text-[13.5px] font-bold text-[#0F172A] truncate">{item.name}</p>
+                    <p className="text-[11.5px] text-[#94A3B8] truncate">
                       {item.categoryName || item.category}
                       {item.subcategory ? ` · ${item.subcategory}` : ""}
                     </p>
                   </div>
-                  <span className="text-[15px] font-extrabold text-[#0F172A]">₹{price}</span>
-                  <button
-                    onClick={() => add(item)}
-                    disabled={off}
-                    className={`w-[30px] h-[30px] rounded-lg flex items-center justify-center shrink-0 ${
-                      off ? "bg-[#E2E8F0] text-[#94A3B8]" : "bg-[#5B42F3] text-white hover:bg-[#4A32E0]"
-                    }`}
-                  >
-                    <IconPlus size={16} w={3} />
-                  </button>
-                </div>
+                  <span className="text-[14px] font-extrabold text-[#0F172A] shrink-0">
+                    ₹{Number(price || 0).toFixed(0)}
+                  </span>
+                  {inCart && (
+                    <span className="min-w-[22px] h-[22px] px-2 rounded-full bg-[#16A34A] text-white text-[11px] font-extrabold flex items-center justify-center shrink-0">
+                      {inCart.quantity}
+                    </span>
+                  )}
+                </button>
               );
             })}
           </div>

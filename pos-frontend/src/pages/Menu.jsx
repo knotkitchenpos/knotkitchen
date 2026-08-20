@@ -5,13 +5,22 @@ import ProductPanel from "../components/pos/ProductPanel";
 import OrderPanel from "../components/pos/OrderPanel";
 import AddCategoryModal from "../components/pos/AddCategoryModal";
 import AddProductModal from "../components/pos/AddProductModal";
-import DeleteCategoryModal from "../components/pos/DeleteCategoryModal";
-import { addCategory, addDish, deleteCategory, getMenus } from "../https";
+import { addCategory, addDish, getMenus } from "../https";
 
 /**
- * Products screen — exact reference layout.
+ * POS Products screen — main ordering surface.
  *
- *   [ Sidebar ]  [ Products panel (flex-1) ]  [ Order panel (fixed 380px) ]
+ *   [ Sidebar (compact) ]  [ ProductPanel (flex-1) ]  [ OrderPanel (380px) ]
+ *
+ * MODULE 1 redesign contract (see ProductPanel.jsx for card-level rules):
+ *   - No "Products" H1. Only the toolbar (search + Add Category + Add Product
+ *     + view toggle) is visible above the products grid.
+ *   - No menu-management controls on the ordering page: no category delete,
+ *     no cross buttons, no "Import Menu". Those live in the Dashboard /
+ *     Settings → Manage Menu screens so the counter operator can't
+ *     accidentally destroy the menu mid-service.
+ *   - Category creation and product creation still open here — those are the
+ *     only two menu-management actions the operator needs during service.
  */
 const Menu = () => {
   useEffect(() => {
@@ -21,7 +30,6 @@ const Menu = () => {
   const queryClient = useQueryClient();
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [showAddProduct, setShowAddProduct] = useState(false);
-  const [categoryToDelete, setCategoryToDelete] = useState(null);
 
   const { data: menusRes } = useQuery({ queryKey: ["menus"], queryFn: getMenus });
   const menus = menusRes?.data?.data || [];
@@ -49,25 +57,12 @@ const Menu = () => {
       enqueueSnackbar(e.response?.data?.message || "Failed to add product.", { variant: "error" }),
   });
 
-  const deleteCategoryMutation = useMutation({
-    mutationFn: deleteCategory,
-    onSuccess: (res) => {
-      enqueueSnackbar(res?.data?.message || "Category deleted!", { variant: "success" });
-      queryClient.invalidateQueries({ queryKey: ["menus"] });
-      queryClient.invalidateQueries({ queryKey: ["popular-items"] });
-      setCategoryToDelete(null);
-    },
-    onError: (e) =>
-      enqueueSnackbar(e.response?.data?.message || "Failed to delete category.", { variant: "error" }),
-  });
-
   return (
     <div className="flex h-full w-full overflow-hidden">
       {/* Middle: Products */}
       <ProductPanel
         onAddCategory={() => setShowAddCategory(true)}
         onAddProduct={() => setShowAddProduct(true)}
-        onDeleteCategory={(category) => setCategoryToDelete(category)}
       />
 
       {/* Right: Order cart */}
@@ -87,15 +82,6 @@ const Menu = () => {
           submitting={addProductMutation.isPending}
           onClose={() => setShowAddProduct(false)}
           onSubmit={(payload) => addProductMutation.mutate(payload)}
-        />
-      )}
-
-      {categoryToDelete && (
-        <DeleteCategoryModal
-          category={categoryToDelete}
-          submitting={deleteCategoryMutation.isPending}
-          onClose={() => setCategoryToDelete(null)}
-          onConfirm={() => deleteCategoryMutation.mutate(categoryToDelete._id)}
         />
       )}
     </div>

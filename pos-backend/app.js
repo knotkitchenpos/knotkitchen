@@ -1,6 +1,7 @@
 const express = require("express");
 const http = require("http");
 const path = require("path");
+const mongoose = require("mongoose");
 const connectDB = require("./config/database");
 const config = require("./config/config");
 const globalErrorHandler = require("./middlewares/globalErrorHandler");
@@ -27,11 +28,36 @@ app.set("trust proxy", 1);
 //
 // Now: allow-list only. Same-origin (no `Origin` header) is always permitted
 // because that covers server-to-server, Capacitor file:// and health checks.
+//
+// Wildcard support (production): CORS_WILDCARD_DOMAINS=knotkitchen.com lets any
+// https://<slug>.knotkitchen.com origin call the API. This is the ONLY way to
+// support customer websites without listing every store's subdomain explicitly.
+// The comparison is a strict host-suffix check (a.knotkitchen.com but never
+// knotkitchen.com.evil.tld).
 const allowedOrigins = new Set(
     (config.frontendUrls || [])
         .map((u) => (u || "").replace(/\/$/, ""))
         .filter(Boolean)
 );
+
+const wildcardBases = (config.corsWildcardDomains || []).map((d) => d.toLowerCase());
+
+const isWildcardMatch = (origin) => {
+    if (!wildcardBases.length) return false;
+    let url;
+    try {
+        url = new URL(origin);
+    } catch {
+        return false;
+    }
+    // In production only accept HTTPS wildcard origins; localhost dev of the
+    // customer-web is served on http and covered by FRONTEND_URLS instead.
+    if (config.isProduction && url.protocol !== "https:") return false;
+    const host = url.hostname.toLowerCase();
+    return wildcardBases.some(
+        (base) => host === base || host.endsWith(`.${base}`)
+    );
+};
 
 app.use(
     cors({
@@ -40,6 +66,7 @@ app.use(
             if (!origin) return callback(null, true); // same-origin / native app
             const clean = origin.replace(/\/$/, "");
             if (allowedOrigins.has(clean)) return callback(null, true);
+            if (isWildcardMatch(clean)) return callback(null, true);
             // Do NOT set a permissive header for unknown origins; browsers will
             // then correctly block the response. We still return null so the
             // route runs (and returns whatever data) without leaking cookies.
@@ -99,6 +126,41 @@ app.get("/", (req,res) => {
     res.json({message : "Hello from POS Server!"});
 })
 
+/**
+ * Liveness probe (§14).
+ *
+ * Always returns 200 as long as the event loop is responsive. Deliberately
+ * does NOT touch MongoDB — a temporarily-unavailable DB should not cause
+ * container restarts (that would just widen the outage).
+ */
+app.get("/health", (req, res) => {
+    res.status(200).json({
+        success: true,
+        status: "ok",
+        service: "knotkitchen-pos-backend",
+        uptime: Math.round(process.uptime()),
+        timestamp: new Date().toISOString(),
+    });
+});
+
+/**
+ * Readiness probe (§14).
+ *
+ * Returns 200 only when the app is ready to serve traffic (Mongo connected).
+ * Used by the deploy script to decide when to route traffic to a new
+ * container. Never leaks connection strings, hostnames, or version info.
+ */
+app.get("/ready", (req, res) => {
+    const dbState = mongoose.connection?.readyState;
+    // 1 = connected, 2 = connecting. Anything else = not ready.
+    const dbReady = dbState === 1;
+    res.status(dbReady ? 200 : 503).json({
+        success: dbReady,
+        status: dbReady ? "ready" : "not_ready",
+        checks: { database: dbReady ? "ok" : "unavailable" },
+    });
+});
+
 // Other Endpoints
 app.use("/api/auth", require("./routes/userRoute"));
 app.use("/api/user", require("./routes/userRoute"));
@@ -142,16 +204,109 @@ app.use(globalErrorHandler);
 
 // HTTP server + optional Socket.IO realtime
 const server = http.createServer(app);
+let ioInstance = null;
 if (config.socketEnabled !== false) {
   try {
     const { initSocket } = require("./services/socket");
-    initSocket(server, { corsOrigin: config.frontendUrls });
+    ioInstance = initSocket(server, {
+      corsOrigin: (origin, callback) => {
+        // Same allow-list logic as HTTP CORS above, so Socket.IO cannot be
+        // handshake-attacked from an unlisted origin.
+        if (!origin) return callback(null, true);
+        const clean = origin.replace(/\/$/, "");
+        if (allowedOrigins.has(clean)) return callback(null, true);
+        if (isWildcardMatch(clean)) return callback(null, true);
+        return callback(null, false);
+      },
+    });
   } catch (err) {
     console.warn("Socket.IO disabled:", err.message);
   }
+}
+
+/**
+ * Module 4 §4 — Automatic Preparing → Ready scheduler.
+ *
+ * The scheduler is the SERVER-AUTHORITATIVE timer that promotes eligible
+ * orders to "Ready" after their configured auto-ready duration. Started
+ * here so it lives for the whole server lifetime; skipped in NODE_ENV=test
+ * so unit-test runs don't leak interval handles.
+ *
+ * We pass the socket's emitOrderStatusChanged into the scheduler so any
+ * auto-promotion pushes a realtime update to the POS + customer tracking
+ * without the scheduler having to import the socket module directly
+ * (avoids a circular require chain).
+ */
+try {
+    const { startAutoReadyScheduler } = require("./services/autoReadyService");
+    const { emitOrderStatusChanged } = require("./services/socket");
+    startAutoReadyScheduler({ onOrderReady: emitOrderStatusChanged });
+} catch (err) {
+    console.warn("Auto-ready scheduler failed to start:", err.message);
 }
 
 // Server
 server.listen(PORT, () => {
     console.log(`☑️  POS Server is listening on port ${PORT}`);
 })
+
+
+/**
+ * Graceful shutdown (§14).
+ *
+ * Docker / Kubernetes send SIGTERM to ask the container to exit. We:
+ *   1. Stop accepting new HTTP connections (`server.close`).
+ *   2. Tell Socket.IO to disconnect its clients cleanly.
+ *   3. Close the MongoDB connection.
+ *   4. Exit cleanly.
+ *
+ * A 25-second watchdog force-exits if any step hangs — long enough for
+ * in-flight requests to finish, short enough to fit inside Docker's default
+ * 30s stop timeout so the runtime doesn't SIGKILL us.
+ */
+let shuttingDown = false;
+const shutdown = (signal) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`[shutdown] ${signal} received, closing gracefully...`);
+
+    const forceExit = setTimeout(() => {
+        console.error("[shutdown] Timeout exceeded, forcing exit.");
+        process.exit(1);
+    }, 25_000);
+    forceExit.unref();
+
+    server.close(async () => {
+        try {
+            if (ioInstance) {
+                await new Promise((resolve) => ioInstance.close(resolve));
+            }
+        } catch (err) {
+            console.warn("[shutdown] Socket.IO close error:", err.message);
+        }
+
+        try {
+            await mongoose.connection.close(false);
+        } catch (err) {
+            console.warn("[shutdown] MongoDB close error:", err.message);
+        }
+
+        console.log("[shutdown] Complete.");
+        process.exit(0);
+    });
+};
+
+process.on("SIGTERM", () => shutdown("SIGTERM"));
+process.on("SIGINT", () => shutdown("SIGINT"));
+
+// Do NOT crash the process on unhandled rejections in production — log and
+// continue so a single bad request never takes the whole POS offline.
+process.on("unhandledRejection", (reason) => {
+    console.error("[unhandledRejection]", reason);
+});
+process.on("uncaughtException", (err) => {
+    console.error("[uncaughtException]", err);
+    // uncaughtException leaves the process in an undefined state — safest to
+    // trigger a graceful shutdown so the orchestrator restarts a clean copy.
+    shutdown("uncaughtException");
+});

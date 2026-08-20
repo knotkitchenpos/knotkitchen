@@ -120,8 +120,47 @@ module.exports = async (req, res) => {
 if (require.main === module) {
   const PORT = config.port || process.env.PORT || 4000;
   initialize().then(() => {
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, () => {
       console.log(`☑️ Admin Backend listening on port ${PORT}`);
+    });
+
+    /**
+     * Graceful shutdown for the admin backend (§14).
+     *
+     * Mirrors pos-backend/app.js. When docker sends SIGTERM we stop accepting
+     * new HTTP connections, close Mongoose, and exit — no in-flight admin
+     * request is dropped mid-write. A 25 s watchdog fits inside Docker's
+     * default 30 s stop timeout.
+     */
+    const mongoose = require("mongoose");
+    let shuttingDown = false;
+    const shutdown = (signal) => {
+      if (shuttingDown) return;
+      shuttingDown = true;
+      console.log(`[admin-backend] ${signal} received, closing gracefully...`);
+      const forceExit = setTimeout(() => {
+        console.error("[admin-backend] shutdown timeout, forcing exit.");
+        process.exit(1);
+      }, 25_000);
+      forceExit.unref();
+      server.close(async () => {
+        try {
+          await mongoose.connection.close(false);
+        } catch (err) {
+          console.warn("[admin-backend] mongo close error:", err.message);
+        }
+        console.log("[admin-backend] shutdown complete.");
+        process.exit(0);
+      });
+    };
+    process.on("SIGTERM", () => shutdown("SIGTERM"));
+    process.on("SIGINT", () => shutdown("SIGINT"));
+    process.on("unhandledRejection", (reason) => {
+      console.error("[admin-backend unhandledRejection]", reason);
+    });
+    process.on("uncaughtException", (err) => {
+      console.error("[admin-backend uncaughtException]", err);
+      shutdown("uncaughtException");
     });
   });
 }

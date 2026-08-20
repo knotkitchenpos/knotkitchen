@@ -32,14 +32,50 @@ export const verifyPaymentRazorpay = (data) =>
 
 // Order Endpoints
 export const addOrder = (data) => axiosWrapper.post("/api/order/", data);
-export const getOrders = () => axiosWrapper.get("/api/order");
+// Module 4 §6 — Orders list accepts an optional filter object.
+// The backend defaults to today when no date/from/to is provided so calling
+// getOrders() with no args still returns "today only", matching the
+// spec-mandated default.
+//
+//   getOrders()                                → today's orders
+//   getOrders({ date: "2026-08-19" })          → single-day filter
+//   getOrders({ from: "2026-08-01", to: … })   → inclusive date range
+export const getOrders = (params) =>
+  axiosWrapper.get("/api/order", params ? { params } : undefined);
 export const updateOrderStatus = ({ orderId, orderStatus }) =>
   axiosWrapper.put(`/api/order/${orderId}`, { orderStatus });
+/**
+ * Module 4 §2 — dedicated "Mark Ready" action.
+ *
+ * Kept separate from updateOrderStatus so the intent is explicit at the
+ * call-site (the button semantically means "customer's order is ready to
+ * collect") and so the backend can fire the customer notification without
+ * having to sniff the payload of a generic status change.
+ */
+export const markOrderReady = (orderId) =>
+  axiosWrapper.put(`/api/order/${orderId}/ready`);
+
 // Store-specific popular products (POS redesign). Backend computes this from
 // real order history and falls back to the store's own featured/default
 // products when the store doesn't have enough order history yet.
 export const getPopularItems = (params = {}) =>
   axiosWrapper.get("/api/order/popular-items", { params });
+
+/**
+ * Module 5 — Reports payload.
+ *
+ * The backend returns a fully-computed summary object (with mutually-
+ * exclusive Source / Type / Payment buckets so nothing double-counts) plus
+ * the raw orders for the selected window. Passing no params defaults to
+ * TODAY on the server, matching Module 5 §4.
+ *
+ *   getOrdersReport()                              → today's report
+ *   getOrdersReport({ date: "2026-08-19" })        → single day
+ *   getOrdersReport({ from: "…", to: "…" })        → inclusive range
+ */
+export const getOrdersReport = (params) =>
+  axiosWrapper.get("/api/order/report", params ? { params } : undefined);
+
 
 
 // Table Session Endpoints (EPOS table ordering)
@@ -55,8 +91,10 @@ export const requestBillForSession = (sessionId) =>
   axiosWrapper.post(`/api/table-session/${sessionId}/request-bill`);
 
 // Menu Endpoints
-export const getMenus = () => axiosWrapper.get("/api/menu");
+export const getMenus = (params) => axiosWrapper.get("/api/menu", params ? { params } : undefined);
+
 export const addCategory = (data) => axiosWrapper.post("/api/menu/category", data);
+export const addSubcategory = (data) => axiosWrapper.post("/api/menu/subcategory", data);
 export const deleteCategory = (menuId) => axiosWrapper.delete(`/api/menu/${menuId}`);
 export const addDish = (data) => axiosWrapper.post("/api/menu/dish", data);
 export const deleteDish = ({ menuId, itemId }) =>
@@ -66,6 +104,8 @@ export const updateDishStatus = ({ menuId, itemId }) =>
 // Assign / clear a subcategory on a dish (POS redesign - optional grouping)
 export const updateDishSubcategory = ({ menuId, itemId, subcategory }) =>
   axiosWrapper.put(`/api/menu/${menuId}/dish/${itemId}/subcategory`, { subcategory });
+export const reorderDishes = ({ menuId, itemIds }) =>
+  axiosWrapper.put(`/api/menu/${menuId}/reorder`, { itemIds });
 
 
 // Variant Endpoints
@@ -83,6 +123,12 @@ export const deleteAddon = ({ menuId, itemId, addonId }) =>
 // Modifier Group Endpoints
 export const addModifierGroup = (data) =>
   axiosWrapper.post(`/api/menu/${data.menuId}/dish/${data.itemId}/modifier-group`, data);
+export const saveGroupToDishes = (data) =>
+  axiosWrapper.post("/api/menu/group", data);
+export const bulkAddGroup = (data) =>
+  axiosWrapper.post("/api/menu/group/bulk-add", data);
+export const bulkRemoveGroup = (data) =>
+  axiosWrapper.post("/api/menu/group/bulk-remove", data);
 export const deleteModifierGroup = ({ menuId, itemId, groupId }) =>
   axiosWrapper.delete(`/api/menu/${menuId}/dish/${itemId}/modifier-group/${groupId}`);
 
@@ -111,10 +157,70 @@ export const getMenuVersions = (menuId) => axiosWrapper.get(`/api/menu/${menuId}
 export const rollbackMenu = ({ menuId, version }) =>
   axiosWrapper.put(`/api/menu/${menuId}/rollback/${version}`);
 
+/**
+ * Module 6 §4 — Manage Cache.
+ *
+ * Bulk-publish every menu in this tenant to the requested target so the
+ * new prices / items appear in the POS ("system") or the customer
+ * website. Backend increments each menu's version and stamps
+ * lastPublishedToSystemAt / lastPublishedToWebsiteAt.
+ */
+export const publishSystemCache = () =>
+  axiosWrapper.post("/api/menu/publish/system");
+export const publishWebsiteCache = () =>
+  axiosWrapper.post("/api/menu/publish/website");
+
+// Module 7 — Store Properties, Protection PIN, POS Settings & Staff
+export const getStoreProperties = () => axiosWrapper.get("/api/restaurant/properties");
+export const updateStoreProperties = (data) => axiosWrapper.put("/api/restaurant/properties", data);
+export const verifyPin = (pin) => axiosWrapper.post("/api/restaurant/verify-pin", { pin });
+export const changePin = (data) => axiosWrapper.put("/api/restaurant/change-pin", data);
+export const updatePosSettings = (data) => axiosWrapper.put("/api/restaurant/pos-settings", data);
+export const updateOrderToggles = (data) => axiosWrapper.put("/api/restaurant/order-toggles", data);
+export const updateChannelTimings = (data) => axiosWrapper.put("/api/restaurant/timings", data);
+export const updateHolidays = (data) => axiosWrapper.put("/api/restaurant/holidays", data);
+
+export const addStaffMember = (data) => axiosWrapper.post("/api/restaurant/staff", data);
+export const getStaffMembers = () => axiosWrapper.get("/api/restaurant/staff");
+export const deleteStaffMember = (staffId) => axiosWrapper.delete(`/api/restaurant/staff/${staffId}`);
+
+
+
 // Structured Text (Notepad) Menu Import Endpoints
 export const getMenuImportFormat = () => axiosWrapper.get("/api/menu/import/format");
 export const previewMenuImport = (text) => axiosWrapper.post("/api/menu/import/preview", { text });
 export const importMenuText = ({ text, mode }) =>
   axiosWrapper.post("/api/menu/import", { text, mode });
+
+// CSV Import / Export (Module 5)
+export const exportMenuCsv = () => axiosWrapper.get("/api/menu/csv/export", { responseType: "blob" });
+export const previewMenuCsv = (csvText) => axiosWrapper.post("/api/menu/csv/preview", { csvText });
+export const importMenuCsv = (csvText) => axiosWrapper.post("/api/menu/csv/import", { csvText });
+
+// Media Upload (Module 7)
+export const uploadMediaAsset = (formData) =>
+  axiosWrapper.post("/api/media", formData, {
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+
+// Payment Link Endpoints (POS "Pay via Link" flow — Module 2 §5)
+// The backend controller (paymentLinkController.createPaymentLink) generates
+// a secure hex token, creates a Razorpay order (if configured), records a
+// Bill + PaymentLink and — critically — leaves the underlying Order in
+// "Pending" until the customer actually pays via /pay/:token. We NEVER mark
+// the order as paid at creation time.
+export const createPaymentLink = (data) => axiosWrapper.post("/api/payment-link", data);
+
+// Receipt & E-Bill endpoints (Module 3 §5, §7)
+// The backend (receiptController) builds a structured receipt from the
+// order + bill + restaurant, and the E-Bill endpoint delivers it via the
+// tenant's configured SMS provider. The frontend E-Bill button is only
+// enabled when a customer phone exists — but this endpoint also refuses
+// to send if the phone is missing (defence in depth).
+export const getReceiptForOrder = (orderId) =>
+  axiosWrapper.get(`/api/receipts/order/${orderId}`);
+export const sendEBill = (data) => axiosWrapper.post("/api/receipts/send-ebill", data);
+
+
 
 

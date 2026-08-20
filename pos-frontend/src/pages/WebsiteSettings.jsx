@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import MediaLibrary from "../components/media/MediaLibrary";
 import { getWebsiteSettings, updateWebsiteSettings } from "../https/storefrontApi";
+import { publishWebsiteCache } from "../https";
 
 /**
  * Settings → Website (§3, §19, §26).
@@ -11,14 +12,15 @@ import { getWebsiteSettings, updateWebsiteSettings } from "../https/storefrontAp
  */
 
 const TABS = [
-  { key: "general", label: "General" },
-  { key: "branding", label: "Branding" },
+  { key: "general", label: "Domain & General" },
+  { key: "branding", label: "Homepage & Branding" },
   { key: "theme", label: "Colors & Fonts" },
   { key: "layout", label: "Layout" },
-  { key: "ordering", label: "Ordering" },
+  { key: "ordering", label: "Ordering Options" },
+  { key: "payments", label: "Payment Gateway" },
   { key: "hours", label: "Hours" },
   { key: "contact", label: "Contact" },
-  { key: "media", label: "Media Library" },
+  { key: "media", label: "Website Images" },
 ];
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -200,6 +202,20 @@ const WebsiteSettings = () => {
         </div>
 
         <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                const res = await publishWebsiteCache();
+                setMessage({ type: "success", text: res.data?.message || "Website Published / Cache Updated!" });
+              } catch (e) {
+                setMessage({ type: "error", text: e.response?.data?.message || "Failed to publish website cache" });
+              }
+            }}
+            className="px-4 py-2 rounded-xl bg-[#22C55E] text-white text-sm font-bold hover:bg-[#16A34A] shadow-sm"
+          >
+            🚀 Publish Website
+          </button>
           <a
             href="/website/preview"
             target="_blank"
@@ -214,7 +230,7 @@ const WebsiteSettings = () => {
             disabled={saving}
             className="px-5 py-2 rounded-xl bg-[#5B42F3] text-white text-sm font-bold disabled:opacity-60 hover:bg-[#4A32E0]"
           >
-            {saving ? "Saving…" : "Save Changes"}
+            {saving ? "Saving Draft" : "Save Changes"}
           </button>
         </div>
       </div>
@@ -251,7 +267,7 @@ const WebsiteSettings = () => {
       </div>
 
       <div className="rounded-2xl border border-[#E2E8F0] bg-white p-5 shadow-card">
-        {/* ---------- GENERAL ---------- */}
+        {/* ---------- GENERAL / DOMAIN ---------- */}
         {tab === "general" ? (
           <>
             <Toggle
@@ -260,9 +276,60 @@ const WebsiteSettings = () => {
               checked={settings.enabled}
               onChange={(v) => patch("enabled", v)}
             />
-            <div className="mt-4">
+
+            {/* Custom Domain Section (Module 2) */}
+            <div className="mt-5 p-4 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-extrabold text-[15px] text-[#0F172A]">Custom Purchased Domain</h3>
+                {settings.customDomain ? (
+                  <span className="px-3 py-1 rounded-full bg-[#DCFCE7] text-[#15803D] font-bold text-xs">
+                    Connected (Active SSL)
+                  </span>
+                ) : (
+                  <span className="px-3 py-1 rounded-full bg-[#F1F5F9] text-[#64748B] font-bold text-xs">
+                    Not Connected
+                  </span>
+                )}
+              </div>
+
               <Field
-                label="Website Address (slug)"
+                label="Custom Domain Address"
+                hint="Enter your purchased domain (e.g. myrestaurant.com or www.myrestaurant.com)."
+              >
+                <input
+                  className={inputClass}
+                  placeholder="e.g. myrestaurant.com"
+                  value={settings.customDomain || ""}
+                  onChange={(e) => patch("customDomain", e.target.value)}
+                />
+              </Field>
+
+              {settings.customDomain && (
+                <div className="space-y-2 pt-2 border-t border-[#E2E8F0] text-xs">
+                  <p className="font-bold text-[#334155]">
+                    Clickable Domain:{" "}
+                    <a
+                      href={`https://${settings.customDomain}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-[#5B42F3] hover:underline font-extrabold"
+                    >
+                      https://{settings.customDomain}
+                    </a>
+                  </p>
+
+                  <div className="p-3 bg-white rounded-xl border border-[#E2E8F0] space-y-1">
+                    <p className="font-bold text-[#0F172A]">Required DNS Records for Verification:</p>
+                    <p className="text-[#64748B] font-mono">CNAME → cname.knotkitchen.com</p>
+                    <p className="text-[#64748B] font-mono">TXT → knotkitchen-verify={settings.storeId}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-5">
+              <Field
+                label="Subdomain / Slug Address"
                 hint={`Customers will visit /store/${settings.slug}`}
               >
                 <input
@@ -296,7 +363,7 @@ const WebsiteSettings = () => {
           </>
         ) : null}
 
-        {/* ---------- BRANDING ---------- */}
+        {/* ---------- BRANDING & HOMEPAGE CUSTOMIZATION (Module 3) ---------- */}
         {tab === "branding" ? (
           <>
             <ImagePicker
@@ -347,6 +414,105 @@ const WebsiteSettings = () => {
                 onChange={(e) => patch("branding.aboutText", e.target.value)}
               />
             </Field>
+
+            {/* Editable Section Titles (Module 3 §4) */}
+            <div className="mt-6 pt-5 border-t border-[#E2E8F0] space-y-4">
+              <h3 className="font-extrabold text-[#0F172A] text-[15px]">Custom Section Titles</h3>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <Field label="Hero Title">
+                  <input
+                    className={inputClass}
+                    value={settings.sectionTitles?.heroTitle || ""}
+                    onChange={(e) => patch("sectionTitles.heroTitle", e.target.value)}
+                  />
+                </Field>
+                <Field label="Hero Subtitle">
+                  <input
+                    className={inputClass}
+                    value={settings.sectionTitles?.heroSubtitle || ""}
+                    onChange={(e) => patch("sectionTitles.heroSubtitle", e.target.value)}
+                  />
+                </Field>
+                <Field label="Menu Title">
+                  <input
+                    className={inputClass}
+                    value={settings.sectionTitles?.menuTitle || ""}
+                    onChange={(e) => patch("sectionTitles.menuTitle", e.target.value)}
+                  />
+                </Field>
+                <Field label="About Title">
+                  <input
+                    className={inputClass}
+                    value={settings.sectionTitles?.aboutTitle || ""}
+                    onChange={(e) => patch("sectionTitles.aboutTitle", e.target.value)}
+                  />
+                </Field>
+              </div>
+            </div>
+
+            {/* Homepage Slideshow / Banners (Module 3 §3) */}
+            <div className="mt-6 pt-5 border-t border-[#E2E8F0] space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="font-extrabold text-[#0F172A] text-[15px]">Homepage Slideshow & Banners</h3>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const currentBanners = settings.banners || [];
+                    patch("banners", [
+                      ...currentBanners,
+                      { title: `Slide ${currentBanners.length + 1}`, description: "Special promotion details", buttonText: "Order Now", isActive: true },
+                    ]);
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl bg-[#5B42F3] text-white text-xs font-bold hover:bg-[#4A32E0]"
+                >
+                  + Add Slide / Banner
+                </button>
+              </div>
+
+              {(settings.banners || []).map((banner, idx) => (
+                <div key={idx} className="p-4 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-sm text-[#0F172A]">Banner #{idx + 1}: {banner.title}</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const updated = (settings.banners || []).filter((_, i) => i !== idx);
+                        patch("banners", updated);
+                      }}
+                      className="text-xs font-bold text-[#DC2626] hover:underline"
+                    >
+                      Remove Slide
+                    </button>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-3 text-xs">
+                    <div>
+                      <label className="font-bold text-[#475569]">Banner Title</label>
+                      <input
+                        className={inputClass}
+                        value={banner.title || ""}
+                        onChange={(e) => {
+                          const updated = [...(settings.banners || [])];
+                          updated[idx] = { ...updated[idx], title: e.target.value };
+                          patch("banners", updated);
+                        }}
+                      />
+                    </div>
+                    <div>
+                      <label className="font-bold text-[#475569]">Button Text</label>
+                      <input
+                        className={inputClass}
+                        value={banner.buttonText || "Order Now"}
+                        onChange={(e) => {
+                          const updated = [...(settings.banners || [])];
+                          updated[idx] = { ...updated[idx], buttonText: e.target.value };
+                          patch("banners", updated);
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </>
         ) : null}
 
@@ -587,6 +753,252 @@ const WebsiteSettings = () => {
                 />
               </Field>
             ))}
+          </div>
+        ) : null}
+
+        {/* ---------- PAYMENTS ---------- */}
+        {tab === "payments" ? (
+          <div className="space-y-6">
+            <div>
+              <h3 className="font-bold text-[#0F172A] text-base mb-1">Payment Gateways & Pay by Link</h3>
+              <p className="text-xs text-[#94A3B8]">
+                Configure Cashfree, PhonePe, and Razorpay gateway credentials. Only ONE gateway can be active at a time for website ordering & Pay by Link.
+              </p>
+            </div>
+
+            {/* Active Gateway Selection */}
+            <div className="p-4 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-3">
+              <div className="flex items-center justify-between">
+                <h4 className="font-extrabold text-sm text-[#0F172A]">Active Payment Gateway</h4>
+                <span className="px-3 py-1 rounded-full bg-[#5B42F3]/10 text-[#5B42F3] font-extrabold text-xs uppercase">
+                  Current: {settings.paymentGateways?.activeGateway || "razorpay"}
+                </span>
+              </div>
+              <Field label="Select Active Gateway" hint="Pay by Link and storefront payments will use this gateway.">
+                <select
+                  className={inputClass}
+                  value={settings.paymentGateways?.activeGateway || "razorpay"}
+                  onChange={(e) => patch("paymentGateways.activeGateway", e.target.value)}
+                >
+                  <option value="razorpay">Razorpay {settings.paymentGateways?.razorpay?.isConfigured ? "(Configured)" : "(Not Configured)"}</option>
+                  <option value="cashfree">Cashfree {settings.paymentGateways?.cashfree?.isConfigured ? "(Configured)" : "(Not Configured)"}</option>
+                  <option value="phonepe">PhonePe {settings.paymentGateways?.phonepe?.isConfigured ? "(Configured)" : "(Not Configured)"}</option>
+                </select>
+              </Field>
+            </div>
+
+            {/* Gateway Credentials Management */}
+            <div className="space-y-5 pt-2">
+              {/* Razorpay Gateway Card */}
+              <div className="p-4 rounded-2xl border border-[#E2E8F0] bg-white space-y-3 shadow-xs">
+                <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">💳</span>
+                    <div>
+                      <h4 className="font-extrabold text-sm text-[#0F172A]">Razorpay</h4>
+                      <p className="text-xs text-[#94A3B8]">Accept Cards, UPI, NetBanking & Wallets</p>
+                    </div>
+                  </div>
+                  {settings.paymentGateways?.razorpay?.isConfigured ? (
+                    <span className="px-2.5 py-1 rounded-full bg-[#DCFCE7] text-[#15803D] text-xs font-bold">Configured</span>
+                  ) : (
+                    <span className="px-2.5 py-1 rounded-full bg-[#F1F5F9] text-[#64748B] text-xs font-bold">Unconfigured</span>
+                  )}
+                </div>
+                <div className="grid sm:grid-cols-2 gap-3 text-xs">
+                  <Field label="Key ID">
+                    <input
+                      className={inputClass}
+                      placeholder="rzp_test_..."
+                      value={settings.paymentGateways?.razorpay?.keyId || ""}
+                      onChange={(e) => patch("paymentGateways.razorpay.keyId", e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Key Secret" hint={settings.paymentGateways?.razorpay?.keySecretMasked ? `Masked: ${settings.paymentGateways.razorpay.keySecretMasked}` : "Encrypted at rest"}>
+                    <input
+                      type="password"
+                      className={inputClass}
+                      placeholder="Enter new secret or leave unchanged"
+                      value={settings.paymentGateways?.razorpay?.keySecret || ""}
+                      onChange={(e) => patch("paymentGateways.razorpay.keySecret", e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Environment">
+                    <select
+                      className={inputClass}
+                      value={settings.paymentGateways?.razorpay?.environment || "TEST"}
+                      onChange={(e) => patch("paymentGateways.razorpay.environment", e.target.value)}
+                    >
+                      <option value="TEST">TEST (Sandbox)</option>
+                      <option value="PROD">PROD (Live)</option>
+                    </select>
+                  </Field>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const res = await validateGatewayCredentials({
+                        gateway: "razorpay",
+                        keyId: settings.paymentGateways?.razorpay?.keyId,
+                        keySecret: settings.paymentGateways?.razorpay?.keySecret || "existing_secret_token",
+                        environment: settings.paymentGateways?.razorpay?.environment || "TEST",
+                      });
+                      setMessage({ type: "success", text: res.data?.message || "Razorpay credentials validated!" });
+                      save();
+                    } catch (err) {
+                      setMessage({ type: "error", text: err.response?.data?.message || "Validation failed." });
+                    }
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl border border-[#5B42F3] text-[#5B42F3] text-xs font-bold hover:bg-[#5B42F3]/5"
+                >
+                  Verify & Save Razorpay Credentials
+                </button>
+              </div>
+
+              {/* Cashfree Gateway Card */}
+              <div className="p-4 rounded-2xl border border-[#E2E8F0] bg-white space-y-3 shadow-xs">
+                <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">💰</span>
+                    <div>
+                      <h4 className="font-extrabold text-sm text-[#0F172A]">Cashfree</h4>
+                      <p className="text-xs text-[#94A3B8]">Accept Instant UPI, Cards & BNPL</p>
+                    </div>
+                  </div>
+                  {settings.paymentGateways?.cashfree?.isConfigured ? (
+                    <span className="px-2.5 py-1 rounded-full bg-[#DCFCE7] text-[#15803D] text-xs font-bold">Configured</span>
+                  ) : (
+                    <span className="px-2.5 py-1 rounded-full bg-[#F1F5F9] text-[#64748B] text-xs font-bold">Unconfigured</span>
+                  )}
+                </div>
+                <div className="grid sm:grid-cols-2 gap-3 text-xs">
+                  <Field label="Client ID (App ID)">
+                    <input
+                      className={inputClass}
+                      placeholder="CF_APP_..."
+                      value={settings.paymentGateways?.cashfree?.clientId || ""}
+                      onChange={(e) => patch("paymentGateways.cashfree.clientId", e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Client Secret" hint={settings.paymentGateways?.cashfree?.clientSecretMasked ? `Masked: ${settings.paymentGateways.cashfree.clientSecretMasked}` : "Encrypted at rest"}>
+                    <input
+                      type="password"
+                      className={inputClass}
+                      placeholder="Enter new secret or leave unchanged"
+                      value={settings.paymentGateways?.cashfree?.clientSecret || ""}
+                      onChange={(e) => patch("paymentGateways.cashfree.clientSecret", e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Environment">
+                    <select
+                      className={inputClass}
+                      value={settings.paymentGateways?.cashfree?.environment || "TEST"}
+                      onChange={(e) => patch("paymentGateways.cashfree.environment", e.target.value)}
+                    >
+                      <option value="TEST">TEST (Sandbox)</option>
+                      <option value="PROD">PROD (Live)</option>
+                    </select>
+                  </Field>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const res = await validateGatewayCredentials({
+                        gateway: "cashfree",
+                        clientId: settings.paymentGateways?.cashfree?.clientId,
+                        clientSecret: settings.paymentGateways?.cashfree?.clientSecret || "existing_secret_token",
+                        environment: settings.paymentGateways?.cashfree?.environment || "TEST",
+                      });
+                      setMessage({ type: "success", text: res.data?.message || "Cashfree credentials validated!" });
+                      save();
+                    } catch (err) {
+                      setMessage({ type: "error", text: err.response?.data?.message || "Validation failed." });
+                    }
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl border border-[#5B42F3] text-[#5B42F3] text-xs font-bold hover:bg-[#5B42F3]/5"
+                >
+                  Verify & Save Cashfree Credentials
+                </button>
+              </div>
+
+              {/* PhonePe Gateway Card */}
+              <div className="p-4 rounded-2xl border border-[#E2E8F0] bg-white space-y-3 shadow-xs">
+                <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xl">📱</span>
+                    <div>
+                      <h4 className="font-extrabold text-sm text-[#0F172A]">PhonePe</h4>
+                      <p className="text-xs text-[#94A3B8]">Direct PhonePe UPI & PG Integration</p>
+                    </div>
+                  </div>
+                  {settings.paymentGateways?.phonepe?.isConfigured ? (
+                    <span className="px-2.5 py-1 rounded-full bg-[#DCFCE7] text-[#15803D] text-xs font-bold">Configured</span>
+                  ) : (
+                    <span className="px-2.5 py-1 rounded-full bg-[#F1F5F9] text-[#64748B] text-xs font-bold">Unconfigured</span>
+                  )}
+                </div>
+                <div className="grid sm:grid-cols-2 gap-3 text-xs">
+                  <Field label="Merchant ID">
+                    <input
+                      className={inputClass}
+                      placeholder="MERCHANTUAT..."
+                      value={settings.paymentGateways?.phonepe?.merchantId || ""}
+                      onChange={(e) => patch("paymentGateways.phonepe.merchantId", e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Salt Key" hint={settings.paymentGateways?.phonepe?.saltKeyMasked ? `Masked: ${settings.paymentGateways.phonepe.saltKeyMasked}` : "Encrypted at rest"}>
+                    <input
+                      type="password"
+                      className={inputClass}
+                      placeholder="Enter new salt key or leave unchanged"
+                      value={settings.paymentGateways?.phonepe?.saltKey || ""}
+                      onChange={(e) => patch("paymentGateways.phonepe.saltKey", e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Salt Index">
+                    <input
+                      className={inputClass}
+                      placeholder="1"
+                      value={settings.paymentGateways?.phonepe?.saltIndex || "1"}
+                      onChange={(e) => patch("paymentGateways.phonepe.saltIndex", e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Environment">
+                    <select
+                      className={inputClass}
+                      value={settings.paymentGateways?.phonepe?.environment || "TEST"}
+                      onChange={(e) => patch("paymentGateways.phonepe.environment", e.target.value)}
+                    >
+                      <option value="UAT">UAT (Sandbox)</option>
+                      <option value="PROD">PROD (Live)</option>
+                    </select>
+                  </Field>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const res = await validateGatewayCredentials({
+                        gateway: "phonepe",
+                        merchantId: settings.paymentGateways?.phonepe?.merchantId,
+                        saltKey: settings.paymentGateways?.phonepe?.saltKey || "existing_secret_token",
+                        saltIndex: settings.paymentGateways?.phonepe?.saltIndex || "1",
+                        environment: settings.paymentGateways?.phonepe?.environment || "UAT",
+                      });
+                      setMessage({ type: "success", text: res.data?.message || "PhonePe credentials validated!" });
+                      save();
+                    } catch (err) {
+                      setMessage({ type: "error", text: err.response?.data?.message || "Validation failed." });
+                    }
+                  }}
+                  className="px-3.5 py-1.5 rounded-xl border border-[#5B42F3] text-[#5B42F3] text-xs font-bold hover:bg-[#5B42F3]/5"
+                >
+                  Verify & Save PhonePe Credentials
+                </button>
+              </div>
+            </div>
           </div>
         ) : null}
 

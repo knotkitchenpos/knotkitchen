@@ -12,3 +12,7 @@ export { default as Storefront } from "./Storefront.jsx"
 export { default as WebsiteSettings } from "./WebsiteSettings.jsx"
 export { default as OnlineOrders } from "./OnlineOrders.jsx"
 export { default as Reports } from "./Reports.jsx"
+export { default as Settings } from "./Settings.jsx"
+export { default as ManageMenuPage } from "./ManageMenuPage.jsx"
+
+

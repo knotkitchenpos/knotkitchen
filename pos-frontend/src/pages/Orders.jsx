@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSelector } from "react-redux";
 import { enqueueSnackbar } from "notistack";
 import KnotLogo from "../components/shared/KnotLogo";
-import { getOrders, updateOrderStatus } from "../https";
+import { getOrders, markOrderReady, updateOrderStatus } from "../https";
 import { printReceipt } from "../utils/printReceipt";
 
 /* ---------- Icons ---------- */
@@ -60,6 +60,9 @@ const I = {
   refresh: () => (
     <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M21 12a9 9 0 0 1-15 6.7L3 16M3 21v-5h5" /></svg>
   ),
+  calendar: () => (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" /></svg>
+  ),
 };
 
 /* ---------- Helpers ---------- */
@@ -75,13 +78,44 @@ const typeMeta = (t) => {
   return { label: "Collection", Icon: I.bag, bg: "#F5F3FF", fg: "#5B42F3" };
 };
 
+/**
+ * Module 4 §1 — canonical status tabs.
+ *
+ * "Preparing" is the new canonical name (formerly "Pending" / "In Progress").
+ * The backend now returns canonical strings, but we still include the legacy
+ * aliases here as a defence-in-depth measure so orders written by pre-Module 4
+ * code paths (KDS, marketplace, historical data) still show up under Preparing.
+ *
+ * Tabs order matches the lifecycle:  Preparing → Ready → Completed → Cancelled
+ */
 const TABS = [
   { key: "All", statuses: null },
-  { key: "New", statuses: ["Pending"] },
-  { key: "Cooking", statuses: ["In Progress"] },
+  { key: "Preparing", statuses: ["Preparing", "Pending", "In Progress"] },
   { key: "Ready", statuses: ["Ready"] },
   { key: "Completed", statuses: ["Completed"] },
   { key: "Cancelled", statuses: ["Cancelled"] },
+];
+
+const isPreparing = (s) => ["Preparing", "Pending", "In Progress"].includes(s);
+const isFinished = (s) => ["Completed", "Cancelled"].includes(s);
+
+/**
+ * Convert a Date → YYYY-MM-DD in the LOCAL timezone.
+ * `.toISOString()` is UTC and would silently shift the picker for anyone
+ * east/west of Greenwich, so we build the string manually.
+ */
+const localDateInput = (d = new Date()) => {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+};
+
+/* ---------- Module 4 §6 — Date filter modes ---------- */
+const DATE_MODES = [
+  { key: "today", label: "Today" },
+  { key: "single", label: "Date" },
+  { key: "range", label: "Date Range" },
 ];
 
 const Orders = () => {
@@ -97,16 +131,64 @@ const Orders = () => {
   const [selectedId, setSelectedId] = useState(null);
   const [clock, setClock] = useState(new Date());
 
+  /**
+   * Date filter state (Module 4 §6).
+   *
+   * We deliberately reset this to "today" on every mount of the Orders
+   * page — the spec says "When reopening Orders, default back to Today".
+   * If we persisted the range in Redux / localStorage the user would land
+   * on last week's data after coming back from Menu / POS.
+   */
+  const [dateMode, setDateMode] = useState("today");
+  const [singleDate, setSingleDate] = useState(localDateInput());
+  const [fromDate, setFromDate] = useState(localDateInput());
+  const [toDate, setToDate] = useState(localDateInput());
+
   useEffect(() => {
     const t = setInterval(() => setClock(new Date()), 30_000);
     return () => clearInterval(t);
   }, []);
 
+  // Build the exact params object the backend expects.
+  // - today mode omits date/from/to so the server picks its own "today"
+  //   window (guaranteed to line up with server-side auto-ready timers).
+  // - single date mode uses `date`.
+  // - range mode uses `from` / `to`.
+  const orderParams = useMemo(() => {
+    if (dateMode === "single" && singleDate) return { date: singleDate };
+    if (dateMode === "range" && fromDate && toDate) return { from: fromDate, to: toDate };
+    return undefined;
+  }, [dateMode, singleDate, fromDate, toDate]);
+
   const { data, isLoading, refetch, isFetching } = useQuery({
-    queryKey: ["orders"],
-    queryFn: getOrders,
+    queryKey: ["orders", orderParams],
+    queryFn: () => getOrders(orderParams),
+    // Refetch when the window regains focus so a Ready that fired via the
+    // server-side auto-ready timer (Module 4 §4) surfaces without needing
+    // a manual click.
+    refetchOnWindowFocus: true,
   });
   const orders = data?.data?.data || [];
+  const responseWindow = data?.data?.window;
+
+  const readyMutation = useMutation({
+    mutationFn: (orderId) => markOrderReady(orderId),
+    onSuccess: (res) => {
+      const notif = res?.data?.notification;
+      if (notif?.sent) {
+        enqueueSnackbar("Order marked Ready. Customer notified via SMS.", { variant: "success" });
+      } else if (notif?.reason === "no_phone") {
+        enqueueSnackbar("Order marked Ready. No phone on file — SMS skipped.", { variant: "info" });
+      } else if (notif?.reason === "duplicate") {
+        enqueueSnackbar("Order already marked Ready. Customer was previously notified.", { variant: "info" });
+      } else {
+        enqueueSnackbar("Order marked Ready.", { variant: "success" });
+      }
+      qc.invalidateQueries({ queryKey: ["orders"] });
+    },
+    onError: (e) =>
+      enqueueSnackbar(e.response?.data?.message || "Failed to mark ready", { variant: "error" }),
+  });
 
   const statusMutation = useMutation({
     mutationFn: (d) => updateOrderStatus(d),
@@ -119,21 +201,21 @@ const Orders = () => {
   });
 
   /* ---------- Stats ---------- */
+  // Note: "today" numbers on the stat cards are computed from the CURRENT
+  // window's orders. When the user filters by an older date the cards
+  // naturally reflect that day's totals, which is what an operator would
+  // expect ("show me what happened on Monday").
   const stats = useMemo(() => {
-    const start = new Date();
-    start.setHours(0, 0, 0, 0);
-    let today = 0, revenue = 0, ongoing = 0, done = 0, cancelled = 0;
+    let count = 0, revenue = 0, ongoing = 0, done = 0, cancelled = 0;
     orders.forEach((o) => {
       const amt = Number(o.bills?.totalWithTax || o.bills?.total || 0);
-      if (new Date(o.createdAt) >= start) {
-        today += 1;
-        if (o.orderStatus !== "Cancelled") revenue += amt;
-      }
+      count += 1;
+      if (o.orderStatus !== "Cancelled") revenue += amt;
       if (o.orderStatus === "Completed") done += 1;
       else if (o.orderStatus === "Cancelled") cancelled += 1;
       else ongoing += 1;
     });
-    return { today, revenue, ongoing, done, cancelled };
+    return { count, revenue, ongoing, done, cancelled };
   }, [orders]);
 
   const counts = useMemo(() => {
@@ -154,6 +236,7 @@ const Orders = () => {
       if (!s) return true;
       return (
         o._id?.toLowerCase().includes(s) ||
+        o.orderNumber?.toLowerCase().includes(s) ||
         o.customerDetails?.name?.toLowerCase().includes(s) ||
         o.customerDetails?.phone?.includes(s) ||
         o.deliveryAddress?.line1?.toLowerCase().includes(s)
@@ -168,7 +251,7 @@ const Orders = () => {
 
   const orderTitle = (o) => {
     const t = String(o.orderType).toLowerCase();
-    if (t === "delivery") return o.deliveryAddress?.line1 || o.customerDetails?.name || "Delivery Order";
+    if (t === "delivery") return o.customerDetails?.name || o.deliveryAddress?.line1 || "Delivery Order";
     if (t === "dine-in") return o.table ? `Table ${o.table.tableNumber ?? ""}`.trim() : "Table Order";
     return o.customerDetails?.name || "Walk-in Customer";
   };
@@ -185,6 +268,21 @@ const Orders = () => {
     </div>
   );
 
+  // Human-friendly window label under the search bar so the biller can
+  // see AT A GLANCE which day/range they're looking at. Server's window
+  // (returned in `responseWindow`) is authoritative — we use it rather
+  // than re-derive locally so timezone edge cases (midnight rollover
+  // while the page is open) stay consistent with what actually matched.
+  const windowLabel = useMemo(() => {
+    if (!responseWindow) return "";
+    const fromDay = new Date(responseWindow.from);
+    const toDay = new Date(responseWindow.to);
+    const fmt = (d) => d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+    if (responseWindow.source === "today") return `Today · ${fmt(fromDay)}`;
+    if (responseWindow.source === "single") return fmt(fromDay);
+    return `${fmt(fromDay)} → ${fmt(toDay)}`;
+  }, [responseWindow]);
+
   return (
     <div className="flex h-full w-full overflow-hidden">
       {/* ===== Center: Orders list ===== */}
@@ -195,11 +293,11 @@ const Orders = () => {
 
         {/* Stat cards */}
         <div className="px-7 pb-4 shrink-0 flex flex-wrap gap-3">
-          <StatCard label="Today's Orders" value={stats.today} Icon={I.bag} fg="#5B42F3" bg="#F5F3FF" />
-          <StatCard label="Ongoing" value={stats.ongoing} Icon={I.clock} fg="#EA580C" bg="#FFF7ED" />
+          <StatCard label="Orders in window" value={stats.count} Icon={I.bag} fg="#5B42F3" bg="#F5F3FF" />
+          <StatCard label="Preparing" value={stats.ongoing} Icon={I.clock} fg="#EA580C" bg="#FFF7ED" />
           <StatCard label="Completed" value={stats.done} Icon={I.check} fg="#16A34A" bg="#F0FDF4" />
           <StatCard label="Cancelled" value={stats.cancelled} Icon={I.x} fg="#DC2626" bg="#FEF2F2" />
-          <StatCard label="Today's Revenue" value={money(stats.revenue)} Icon={I.wallet} fg="#5B42F3" bg="#F5F3FF" />
+          <StatCard label="Revenue" value={money(stats.revenue)} Icon={I.wallet} fg="#5B42F3" bg="#F5F3FF" />
         </div>
 
         {/* Tabs */}
@@ -224,6 +322,60 @@ const Orders = () => {
           })}
         </div>
 
+        {/* Date filter (Module 4 §6) */}
+        <div className="px-7 pb-3 shrink-0 flex flex-wrap items-center gap-2">
+          <span className="text-[12.5px] font-bold text-[#94A3B8] flex items-center gap-1.5">
+            <I.calendar /> Filter:
+          </span>
+          {DATE_MODES.map((m) => (
+            <button
+              key={m.key}
+              onClick={() => setDateMode(m.key)}
+              className={`h-[32px] px-3 rounded-lg text-[12.5px] font-bold border ${
+                dateMode === m.key
+                  ? "bg-[#5B42F3] text-white border-[#5B42F3]"
+                  : "bg-white text-[#475569] border-[#E2E8F0] hover:border-[#CBD5E1]"
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
+          {dateMode === "single" && (
+            <input
+              type="date"
+              value={singleDate}
+              max={localDateInput()}
+              onChange={(e) => setSingleDate(e.target.value)}
+              className="h-[32px] px-2 rounded-lg border border-[#E2E8F0] text-[12.5px] font-semibold text-[#334155] focus:border-[#5B42F3]"
+            />
+          )}
+          {dateMode === "range" && (
+            <>
+              <input
+                type="date"
+                value={fromDate}
+                max={toDate || localDateInput()}
+                onChange={(e) => setFromDate(e.target.value)}
+                className="h-[32px] px-2 rounded-lg border border-[#E2E8F0] text-[12.5px] font-semibold text-[#334155] focus:border-[#5B42F3]"
+              />
+              <span className="text-[12.5px] text-[#94A3B8]">to</span>
+              <input
+                type="date"
+                value={toDate}
+                min={fromDate}
+                max={localDateInput()}
+                onChange={(e) => setToDate(e.target.value)}
+                className="h-[32px] px-2 rounded-lg border border-[#E2E8F0] text-[12.5px] font-semibold text-[#334155] focus:border-[#5B42F3]"
+              />
+            </>
+          )}
+          {windowLabel && (
+            <span className="text-[11.5px] font-semibold text-[#64748B] ml-auto">
+              Showing: <span className="text-[#334155]">{windowLabel}</span>
+            </span>
+          )}
+        </div>
+
         {/* Search + filters */}
         <div className="px-7 pb-3 shrink-0 flex items-center gap-2">
           <div className="relative flex-1 max-w-[420px]">
@@ -242,6 +394,7 @@ const Orders = () => {
           >
             <option value="all">Order Type</option>
             <option value="collection">Collection</option>
+            <option value="takeaway">Takeaway</option>
             <option value="delivery">Delivery</option>
             <option value="dine-in">Table</option>
           </select>
@@ -261,7 +414,7 @@ const Orders = () => {
               <div className="w-9 h-9 rounded-full border-[3px] border-[#5B42F3] border-t-transparent animate-spin" />
             </div>
           ) : list.length === 0 ? (
-            <p className="text-center text-[14px] text-[#94A3B8] py-20">No orders found.</p>
+            <p className="text-center text-[14px] text-[#94A3B8] py-20">No orders found for the selected period.</p>
           ) : (
             <div className="space-y-2">
               {list.map((o) => {
@@ -270,6 +423,8 @@ const Orders = () => {
                 const mins = minsAgo(o.createdAt);
                 const ring = mins < 10 ? "#16A34A" : mins < 20 ? "#F59E0B" : "#EF4444";
                 const cancelled = o.orderStatus === "Cancelled";
+                const preparingBadge = isPreparing(o.orderStatus);
+                const readyBadge = o.orderStatus === "Ready";
                 return (
                   <button
                     key={o._id}
@@ -291,9 +446,9 @@ const Orders = () => {
                     </div>
 
                     {/* ID + time */}
-                    <div className="shrink-0 w-[92px]">
+                    <div className="shrink-0 w-[110px]">
                       <p className="text-[13px] font-extrabold text-[#0F172A]">
-                        #{o._id.slice(-6).toUpperCase()}
+                        #{o.orderNumber || o._id.slice(-6).toUpperCase()}
                       </p>
                       <p className="text-[11.5px] text-[#94A3B8]">{timeOf(o.createdAt)}</p>
                     </div>
@@ -325,10 +480,16 @@ const Orders = () => {
                     {/* Status + amount */}
                     <span
                       className={`px-2 py-[3px] rounded-md text-[11px] font-bold shrink-0 ${
-                        cancelled ? "bg-[#FEF2F2] text-[#DC2626]" : "bg-[#F0FDF4] text-[#15803D]"
+                        cancelled
+                          ? "bg-[#FEF2F2] text-[#DC2626]"
+                          : readyBadge
+                          ? "bg-[#DCFCE7] text-[#15803D]"
+                          : preparingBadge
+                          ? "bg-[#FFEDD5] text-[#C2410C]"
+                          : "bg-[#F0FDF4] text-[#15803D]"
                       }`}
                     >
-                      {cancelled ? "Cancelled" : o.orderStatus}
+                      {cancelled ? "Cancelled" : (preparingBadge ? "Preparing" : o.orderStatus)}
                     </span>
                     <span className="text-[14.5px] font-extrabold text-[#0F172A] w-[80px] text-right shrink-0">
                       {money(o.bills?.totalWithTax || o.bills?.total)}
@@ -352,7 +513,7 @@ const Orders = () => {
 
         <div className="px-7 py-3 border-t border-[#E2E8F0] shrink-0">
           <p className="text-[12.5px] text-[#94A3B8]">
-            Showing {list.length} of {orders.length} orders
+            Showing {list.length} of {orders.length} orders {windowLabel && `— ${windowLabel}`}
           </p>
         </div>
       </div>
@@ -392,12 +553,12 @@ const Orders = () => {
         ) : (
           <>
             <div className="flex-1 min-h-0 overflow-y-auto">
-              {/* Order header */}
+              {/* Order header — Module 4 §7 renders the FULL detail set below. */}
               <div className="px-4 py-3.5 border-b border-[#E2E8F0]">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <h2 className="text-[18px] font-extrabold text-[#0F172A]">
-                      Order #{selected._id.slice(-6).toUpperCase()}
+                      #{selected.orderNumber || selected._id.slice(-6).toUpperCase()}
                     </h2>
                     <span
                       className="px-2 py-[2px] rounded-md text-[10.5px] font-bold"
@@ -422,27 +583,52 @@ const Orders = () => {
                       {selected.customerDetails.phone}
                     </p>
                   )}
-                  {selected.deliveryAddress?.line1 && (
+                  {(selected.customerDetails?.address ||
+                    selected.deliveryAddress?.line1) && (
                     <p className="text-[12.5px] text-[#64748B] leading-snug">
-                      {selected.deliveryAddress.line1}
-                      {selected.deliveryAddress.city ? `, ${selected.deliveryAddress.city}` : ""}
-                      {selected.deliveryAddress.postalCode ? ` — ${selected.deliveryAddress.postalCode}` : ""}
+                      {selected.customerDetails?.address ||
+                        selected.deliveryAddress?.line1}
+                      {(selected.customerDetails?.city ||
+                        selected.deliveryAddress?.city) &&
+                        `, ${selected.customerDetails?.city || selected.deliveryAddress?.city}`}
+                      {(selected.customerDetails?.pinCode ||
+                        selected.deliveryAddress?.postalCode) &&
+                        ` — ${selected.customerDetails?.pinCode || selected.deliveryAddress?.postalCode}`}
+                    </p>
+                  )}
+                  {(selected.customerDetails?.deliveryNote ||
+                    selected.deliveryAddress?.instructions) && (
+                    <p className="text-[11.5px] italic text-[#5B42F3] leading-snug">
+                      Note: {selected.customerDetails?.deliveryNote || selected.deliveryAddress?.instructions}
                     </p>
                   )}
                 </div>
               </div>
 
-              {/* Items */}
+              {/* Items — includes variant, add-ons and options (Module 4 §7). */}
               <div className="px-4 py-3.5 border-b border-[#E2E8F0]">
                 <p className="text-[13.5px] font-extrabold text-[#0F172A] mb-2.5">
                   Order Items ({selected.items?.length || 0})
                 </p>
                 <div className="space-y-2.5">
                   {(selected.items || []).map((it, i) => (
-                    <div key={i} className="flex items-center gap-3">
+                    <div key={i} className="flex items-start gap-3">
                       <div className="min-w-0 flex-1">
-                        <p className="text-[13.5px] font-bold text-[#0F172A] truncate">{it.name}</p>
-                        {it.note && <p className="text-[11px] text-[#94A3B8] truncate">{it.note}</p>}
+                        <p className="text-[13.5px] font-bold text-[#0F172A] truncate">
+                          {it.name}
+                          {it.variant?.name ? ` (${it.variant.name})` : ""}
+                        </p>
+                        {Array.isArray(it.addons) && it.addons.length > 0 && (
+                          <p className="text-[11px] text-[#64748B] truncate">
+                            + {it.addons.map((a) => a.name).join(", ")}
+                          </p>
+                        )}
+                        {Array.isArray(it.modifierSelections) && it.modifierSelections.length > 0 && (
+                          <p className="text-[11px] text-[#64748B] truncate">
+                            {it.modifierSelections.map((m) => m.optionName).join(", ")}
+                          </p>
+                        )}
+                        {it.note && <p className="text-[11px] text-[#5B42F3] truncate">Note: {it.note}</p>}
                       </div>
                       <span className="px-2.5 py-[3px] rounded-md border border-[#E2E8F0] text-[12px] font-bold text-[#334155] shrink-0">
                         x {it.quantity}
@@ -461,12 +647,28 @@ const Orders = () => {
                 <div className="space-y-1.5 text-[13px]">
                   <div className="flex justify-between">
                     <span className="text-[#475569]">Subtotal</span>
-                    <span className="font-bold text-[#0F172A]">{money(selected.bills?.total)}</span>
+                    <span className="font-bold text-[#0F172A]">
+                      {money(selected.bills?.subtotal || selected.bills?.total)}
+                    </span>
                   </div>
-                  <div className="flex justify-between">
-                    <span className="text-[#475569]">Discount</span>
-                    <span className="font-bold text-[#16A34A]">- {money(selected.bills?.discount)}</span>
-                  </div>
+                  {Number(selected.bills?.discount) > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-[#475569]">Discount</span>
+                      <span className="font-bold text-[#16A34A]">− {money(selected.bills?.discount)}</span>
+                    </div>
+                  )}
+                  {Number(selected.bills?.packagingFee) > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-[#475569]">Packaging</span>
+                      <span className="font-bold text-[#0F172A]">{money(selected.bills?.packagingFee)}</span>
+                    </div>
+                  )}
+                  {Number(selected.bills?.deliveryFee) > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-[#475569]">Delivery</span>
+                      <span className="font-bold text-[#0F172A]">{money(selected.bills?.deliveryFee)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <span className="text-[#475569]">Tax</span>
                     <span className="font-bold text-[#0F172A]">{money(selected.bills?.tax)}</span>
@@ -480,20 +682,20 @@ const Orders = () => {
                 </div>
               </div>
 
-              {/* Info */}
+              {/* Info — every field required by Module 4 §7. */}
               <div className="px-4 py-3.5">
                 <p className="text-[13.5px] font-extrabold text-[#0F172A] mb-2.5">Order Information</p>
                 <div className="grid grid-cols-2 gap-y-2.5 gap-x-3 text-[12.5px]">
                   <div>
-                    <p className="text-[#94A3B8]">Order Source</p>
-                    <p className="font-bold text-[#0F172A] mt-0.5">
-                      {selected.source === "WEBSITE" ? "Website" : "POS"}
+                    <p className="text-[#94A3B8]">Order ID</p>
+                    <p className="font-bold text-[#0F172A] mt-0.5 break-all">
+                      {selected.orderNumber || selected._id.slice(-8).toUpperCase()}
                     </p>
                   </div>
                   <div>
-                    <p className="text-[#94A3B8]">Payment Method</p>
-                    <p className="font-bold text-[#0F172A] mt-0.5 capitalize">
-                      {selected.paymentMethod || "Cash"}
+                    <p className="text-[#94A3B8]">Source</p>
+                    <p className="font-bold text-[#0F172A] mt-0.5">
+                      {selected.source === "WEBSITE" ? "Website" : "POS"}
                     </p>
                   </div>
                   <div>
@@ -502,8 +704,30 @@ const Orders = () => {
                   </div>
                   <div>
                     <p className="text-[#94A3B8]">Status</p>
-                    <p className="font-bold text-[#0F172A] mt-0.5">{selected.orderStatus}</p>
+                    <p className="font-bold text-[#0F172A] mt-0.5">
+                      {isPreparing(selected.orderStatus) ? "Preparing" : selected.orderStatus}
+                    </p>
                   </div>
+                  <div>
+                    <p className="text-[#94A3B8]">Payment Method</p>
+                    <p className="font-bold text-[#0F172A] mt-0.5 capitalize">
+                      {selected.paymentMethod || selected.payments?.[0]?.method || "Cash"}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-[#94A3B8]">Payment Status</p>
+                    <p className="font-bold text-[#0F172A] mt-0.5 capitalize">
+                      {selected.payments?.[0]?.status || "pending"}
+                    </p>
+                  </div>
+                  {selected.payments?.[0]?.transactionId && (
+                    <div className="col-span-2">
+                      <p className="text-[#94A3B8]">Payment ID</p>
+                      <p className="font-bold text-[#0F172A] mt-0.5 break-all">
+                        {selected.payments[0].transactionId}
+                      </p>
+                    </div>
+                  )}
                   <div className="col-span-2">
                     <p className="text-[#94A3B8]">Order Time</p>
                     <p className="font-bold text-[#0F172A] mt-0.5">
@@ -513,6 +737,29 @@ const Orders = () => {
                       })}
                     </p>
                   </div>
+                  {selected.readyAt && (
+                    <div className="col-span-2">
+                      <p className="text-[#94A3B8]">Marked Ready</p>
+                      <p className="font-bold text-[#0F172A] mt-0.5">
+                        {new Date(selected.readyAt).toLocaleString("en-GB", {
+                          day: "numeric", month: "short",
+                          hour: "2-digit", minute: "2-digit",
+                        })}
+                        {selected.readyBy ? ` · by ${selected.readyBy}` : ""}
+                      </p>
+                    </div>
+                  )}
+                  {selected.readyDueAt && !selected.readyAt && (
+                    <div className="col-span-2">
+                      <p className="text-[#94A3B8]">Auto-ready at</p>
+                      <p className="font-bold text-[#0F172A] mt-0.5">
+                        {new Date(selected.readyDueAt).toLocaleString("en-GB", {
+                          day: "numeric", month: "short",
+                          hour: "2-digit", minute: "2-digit",
+                        })}
+                      </p>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -537,22 +784,41 @@ const Orders = () => {
                 <I.print /> Print
               </button>
 
-              <button
-                disabled={["Completed", "Cancelled"].includes(selected.orderStatus) || statusMutation.isPending}
-                onClick={() =>
-                  statusMutation.mutate({
-                    orderId: selected._id,
-                    orderStatus: selected.orderStatus === "Ready" ? "Completed" : "Ready",
-                  })
-                }
-                className="h-[46px] rounded-xl bg-[#5B42F3] text-white text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#4A32E0] disabled:opacity-40"
-              >
-                <I.check s={16} />
-                {selected.orderStatus === "Ready" ? "Complete" : "Mark Ready"}
-              </button>
+              {/* Module 4 §2 — Mark Ready. Uses the dedicated endpoint so the
+                  backend fires the SMS notification through the shared
+                  ready-notification service. */}
+              {isPreparing(selected.orderStatus) ? (
+                <button
+                  disabled={readyMutation.isPending}
+                  onClick={() => readyMutation.mutate(selected._id)}
+                  className="h-[46px] rounded-xl bg-[#5B42F3] text-white text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#4A32E0] disabled:opacity-40"
+                >
+                  <I.check s={16} />
+                  Mark Ready
+                </button>
+              ) : selected.orderStatus === "Ready" ? (
+                <button
+                  disabled={statusMutation.isPending}
+                  onClick={() =>
+                    statusMutation.mutate({ orderId: selected._id, orderStatus: "Completed" })
+                  }
+                  className="h-[46px] rounded-xl bg-[#16A34A] text-white text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#15803D] disabled:opacity-40"
+                >
+                  <I.check s={16} />
+                  Complete
+                </button>
+              ) : (
+                <button
+                  disabled
+                  className="h-[46px] rounded-xl bg-[#F1F5F9] text-[#94A3B8] text-[12.5px] font-bold flex items-center justify-center gap-1.5"
+                >
+                  <I.check s={16} />
+                  {selected.orderStatus}
+                </button>
+              )}
 
               <button
-                disabled={["Completed", "Cancelled"].includes(selected.orderStatus) || statusMutation.isPending}
+                disabled={isFinished(selected.orderStatus) || statusMutation.isPending}
                 onClick={() => statusMutation.mutate({ orderId: selected._id, orderStatus: "Cancelled" })}
                 className="h-[46px] rounded-xl border border-[#FCA5A5] text-[#DC2626] text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#FEF2F2] disabled:opacity-40"
               >
