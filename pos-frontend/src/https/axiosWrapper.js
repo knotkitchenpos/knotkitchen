@@ -11,6 +11,22 @@ export const axiosWrapper = axios.create({
   headers: { ...defaultHeader },
 });
 
+// Attach short-lived Staff Security PIN authorization token if active
+axiosWrapper.interceptors.request.use(
+  (config) => {
+    const pinToken = sessionStorage.getItem("staffPinToken");
+    const pinExpiry = sessionStorage.getItem("staffPinTokenExpiry");
+    if (pinToken && pinExpiry && Number(pinExpiry) > Date.now()) {
+      config.headers["x-staff-pin-token"] = pinToken;
+    } else {
+      sessionStorage.removeItem("staffPinToken");
+      sessionStorage.removeItem("staffPinTokenExpiry");
+    }
+    return config;
+  },
+  (error) => Promise.reject(error)
+);
+
 // ===== Auto Token Refresh =====
 let isRefreshing = false;
 let pendingQueue = [];

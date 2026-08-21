@@ -11,6 +11,7 @@ const {
   SAFE_FONTS, HERO_STYLES, CARD_STYLES, HEADER_STYLES,
   FOOTER_STYLES, NAV_STYLES, IMAGE_POSITIONS, BUTTON_STYLES,
 } = require("../models/websiteSettingsModel");
+const { logActivity } = require("../services/auditService");
 
 /**
  * Website customization API (§3, §19, §26).
@@ -35,6 +36,33 @@ const pickHex = (value) => (typeof value === "string" && HEX.test(value.trim()) 
 
 const assign = (target, key, value) => {
   if (value !== undefined) target[key] = value;
+};
+
+/**
+ * Strips sensitive encrypted gateway secrets before sending settings to frontend (§19, §26).
+ */
+const sanitizeSettings = (doc) => {
+  if (!doc) return doc;
+  const obj = typeof doc.toObject === "function" ? doc.toObject() : JSON.parse(JSON.stringify(doc));
+  if (obj.paymentGateways) {
+    for (const gwKey of ["cashfree", "phonepe", "razorpay"]) {
+      if (obj.paymentGateways[gwKey]) {
+        delete obj.paymentGateways[gwKey].keySecretEncrypted;
+        delete obj.paymentGateways[gwKey].clientSecretEncrypted;
+        delete obj.paymentGateways[gwKey].saltKeyEncrypted;
+      }
+    }
+  }
+  if (obj.draft && obj.draft.paymentGateways) {
+    for (const gwKey of ["cashfree", "phonepe", "razorpay"]) {
+      if (obj.draft.paymentGateways[gwKey]) {
+        delete obj.draft.paymentGateways[gwKey].keySecretEncrypted;
+        delete obj.draft.paymentGateways[gwKey].clientSecretEncrypted;
+        delete obj.draft.paymentGateways[gwKey].saltKeyEncrypted;
+      }
+    }
+  }
+  return obj;
 };
 
 /**
@@ -118,6 +146,7 @@ const getWebsiteSettings = async (req, res, next) => {
 const updateWebsiteSettings = async (req, res, next) => {
   try {
     const { tenant, settings } = await loadOwnSettings(req);
+    const prevSnapshot = sanitizeSettings(settings);
     const body = req.body || {};
 
     // ---- Master switch & display ----
@@ -269,6 +298,9 @@ const updateWebsiteSettings = async (req, res, next) => {
 
     // ---- Payment Gateways (Module 4) ----
     if (body.paymentGateways) {
+      if (req.user?.role !== "Owner" && req.user?.role !== "owner" && req.user?.role !== "superadmin") {
+        return next(createHttpError(403, "Only the Store Owner can configure payment gateways."));
+      }
       const pg = body.paymentGateways;
       if (pg.activeGateway && ["cashfree", "phonepe", "razorpay"].includes(pg.activeGateway)) {
         // Enforce that gateway can only be active if configured
@@ -365,9 +397,65 @@ const updateWebsiteSettings = async (req, res, next) => {
       settings.offers = offers;
     }
 
+    const domainChanged = body.customDomain !== undefined && body.customDomain !== prevSnapshot.customDomain;
+    const activeGatewayChanged = body.paymentGateways?.activeGateway && body.paymentGateways.activeGateway !== prevSnapshot.paymentGateways?.activeGateway;
+    const gatewayUpdated = Boolean(body.paymentGateways?.cashfree || body.paymentGateways?.phonepe || body.paymentGateways?.razorpay);
+    const homepageChanged = Boolean(body.banners || body.sectionTitles || body.branding);
+
     settings.version += 1;
     settings.publishedAt = new Date();
     await settings.save();
+
+    if (domainChanged) {
+      await logActivity({
+        req,
+        action: "Domain Changed",
+        resource: "Domain Configuration",
+        previousValue: prevSnapshot.customDomain || "(none)",
+        newValue: settings.customDomain || "(none)",
+        description: `Custom domain changed from '${prevSnapshot.customDomain || "none"}' to '${settings.customDomain || "none"}'`,
+      });
+    }
+
+    if (activeGatewayChanged) {
+      await logActivity({
+        req,
+        action: "Active Payment Gateway Changed",
+        resource: "Payment Gateway",
+        previousValue: prevSnapshot.paymentGateways?.activeGateway || "razorpay",
+        newValue: settings.paymentGateways?.activeGateway,
+        description: `Active payment gateway changed from '${prevSnapshot.paymentGateways?.activeGateway || "razorpay"}' to '${settings.paymentGateways?.activeGateway}'`,
+      });
+    }
+
+    if (gatewayUpdated && !activeGatewayChanged) {
+      await logActivity({
+        req,
+        action: "Payment Gateway Credentials Updated",
+        resource: "Payment Gateway",
+        description: "Payment gateway credentials updated",
+      });
+    }
+
+    if (homepageChanged) {
+      await logActivity({
+        req,
+        action: "Homepage Content Changed",
+        resource: "Website Homepage",
+        description: "Homepage layout/branding/banners updated",
+      });
+    }
+
+    if (!domainChanged && !activeGatewayChanged && !gatewayUpdated && !homepageChanged) {
+      await logActivity({
+        req,
+        action: "Website Configuration Changed",
+        resource: "Website Settings",
+        previousValue: prevSnapshot,
+        newValue: sanitizeSettings(settings),
+        description: "Website settings updated",
+      });
+    }
 
     res.status(200).json({
       success: true,
@@ -477,6 +565,15 @@ const validateGatewayCredentials = async (req, res, next) => {
         settings.paymentGateways.activeGateway = gateway;
       }
       await settings.save();
+
+      await logActivity({
+        req,
+        action: "Configured Payment Gateway",
+        resource: "Payment Gateway",
+        entityType: gateway,
+        newValue: `${gateway.toUpperCase()} credentials validated & saved (${environment})`,
+        description: `Configured payment gateway: ${gateway}`,
+      });
     }
 
     res.status(200).json({

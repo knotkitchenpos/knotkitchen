@@ -36,13 +36,28 @@ const findSettingsByHost = async (host) => {
   if (!host) return null;
   const hostname = String(host).split(":")[0].toLowerCase();
 
+  // 1. Match customDomain (e.g. www.restaurant.com -> restaurant.com)
   const byCustomDomain = await WebsiteSettings.findOne({
     customDomain: hostname.replace(/^www\./, ""),
     isDeleted: { $ne: true },
   });
   if (byCustomDomain) return byCustomDomain;
 
-  return WebsiteSettings.findOne({ subdomain: hostname, isDeleted: { $ne: true } });
+  // 2. Match exact subdomain field
+  const bySubdomain = await WebsiteSettings.findOne({ subdomain: hostname, isDeleted: { $ne: true } });
+  if (bySubdomain) return bySubdomain;
+
+  // 3. Match StoreID.knotkitchen.in or <slug>.knotkitchen.in
+  const subMatch = hostname.match(/^([a-z0-9-]+)\.(?:knotkitchen\.in|knotkitchen\.com|localhost)$/i);
+  if (subMatch) {
+    const sub = subMatch[1];
+    if (/^\d{6}$/.test(sub)) {
+      return WebsiteSettings.findOne({ storeId: sub, isDeleted: { $ne: true } });
+    }
+    return WebsiteSettings.findOne({ slug: sub, isDeleted: { $ne: true } });
+  }
+
+  return null;
 };
 
 /**

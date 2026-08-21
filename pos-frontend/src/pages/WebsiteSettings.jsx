@@ -1,5 +1,8 @@
 import React, { useEffect, useState } from "react";
+import { useSelector } from "react-redux";
 import MediaLibrary from "../components/media/MediaLibrary";
+import SecurityPinModal from "../components/common/SecurityPinModal";
+import { isOwner, checkActionAuthorization } from "../utils/security";
 import { getWebsiteSettings, updateWebsiteSettings } from "../https/storefrontApi";
 import { publishWebsiteCache } from "../https";
 
@@ -115,6 +118,7 @@ const ImagePicker = ({ label, value, onPick, folder }) => {
 };
 
 const WebsiteSettings = () => {
+  const user = useSelector((state) => state.user);
   const [settings, setSettings] = useState(null);
   const [options, setOptions] = useState(null);
   const [themes, setThemes] = useState([]);
@@ -123,6 +127,9 @@ const WebsiteSettings = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
+
+  const [pinModalOpen, setPinModalOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null);
 
   useEffect(() => {
     (async () => {
@@ -155,20 +162,36 @@ const WebsiteSettings = () => {
     });
   };
 
-  const save = async () => {
-    try {
-      setSaving(true);
-      setMessage(null);
-      const res = await updateWebsiteSettings(settings);
-      setSettings(res.data.data.settings);
-      setStorefrontUrl(res.data.data.storefrontUrl);
-      setMessage({ type: "success", text: "Website settings saved." });
-    } catch (err) {
-      setMessage({ type: "error", text: err.response?.data?.message || "Couldn't save settings." });
-    } finally {
-      setSaving(false);
-      setTimeout(() => setMessage(null), 4000);
+  const executeWithSecurity = (actionFn, isOwnerOnly = false) => {
+    const auth = checkActionAuthorization(user, { isOwnerOnly });
+    if (auth.status === "DENIED_OWNER_ONLY") {
+      setMessage({ type: "error", text: auth.message });
+      return;
     }
+    if (auth.status === "REQUIRE_PIN") {
+      setPendingAction(() => actionFn);
+      setPinModalOpen(true);
+      return;
+    }
+    actionFn();
+  };
+
+  const save = async () => {
+    executeWithSecurity(async () => {
+      try {
+        setSaving(true);
+        setMessage(null);
+        const res = await updateWebsiteSettings(settings);
+        setSettings(res.data.data.settings);
+        setStorefrontUrl(res.data.data.storefrontUrl);
+        setMessage({ type: "success", text: "Website settings saved." });
+      } catch (err) {
+        setMessage({ type: "error", text: err.response?.data?.message || "Couldn't save settings." });
+      } finally {
+        setSaving(false);
+        setTimeout(() => setMessage(null), 4000);
+      }
+    });
   };
 
   if (loading) {
@@ -759,6 +782,11 @@ const WebsiteSettings = () => {
         {/* ---------- PAYMENTS ---------- */}
         {tab === "payments" ? (
           <div className="space-y-6">
+            {!isOwner(user) && (
+              <div className="p-4 rounded-2xl bg-[#FEF2F2] border border-[#FECACA] text-xs font-bold text-[#DC2626]">
+                🔒 Payment Gateway Configuration is restricted to the Store Owner only. Staff members cannot view or edit secrets.
+              </div>
+            )}
             <div>
               <h3 className="font-bold text-[#0F172A] text-base mb-1">Payment Gateways & Pay by Link</h3>
               <p className="text-xs text-[#94A3B8]">
@@ -1006,6 +1034,19 @@ const WebsiteSettings = () => {
         {tab === "media" ? <MediaLibrary /> : null}
       </div>
       </div>
+
+      <SecurityPinModal
+        isOpen={pinModalOpen}
+        onClose={() => {
+          setPinModalOpen(false);
+          setPendingAction(null);
+        }}
+        onSuccess={() => {
+          setPinModalOpen(false);
+          if (pendingAction) pendingAction();
+          setPendingAction(null);
+        }}
+      />
     </div>
   );
 };

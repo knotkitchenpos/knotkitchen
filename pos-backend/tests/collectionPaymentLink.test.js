@@ -65,6 +65,7 @@ test("createPaymentLink requires valid phone number for collection order", async
     if (r === "../models/billModel") return BillMock;
     if (r === "../models/paymentLinkModel") return PaymentLinkMock;
     if (r === "../models/restaurantModel") return RestaurantMock;
+    if (r === "../models/websiteSettingsModel") return { findOne: async () => null };
     if (r === "../models/paymentTransactionModel") return {};
     if (r === "../models/tableSessionModel") return {};
     return orig.apply(this, arguments);
@@ -72,8 +73,8 @@ test("createPaymentLink requires valid phone number for collection order", async
 
   delete require.cache[require.resolve("../controllers/paymentLinkController")];
   const { createPaymentLink } = require("../controllers/paymentLinkController");
-  Module._load = orig;
 
+  try {
   // Test 1: Missing phone -> Expect 400 Bad Request
   let errorCaught = null;
   const reqNoPhone = {
@@ -124,6 +125,9 @@ test("createPaymentLink requires valid phone number for collection order", async
   assert.equal(createdLink.customerPhone, "9876543210");
   assert.equal(createdLink.amount, 250);
   assert.equal(createdLink.linkToken.length, 64); // Non-guessable 64-char hex token
+  } finally {
+    Module._load = orig;
+  }
 });
 
 test("createPaymentLink is idempotent: returns existing active link for same order without duplicating", async () => {
@@ -166,6 +170,7 @@ test("createPaymentLink is idempotent: returns existing active link for same ord
     if (r === "../models/billModel") return BillMock;
     if (r === "../models/paymentLinkModel") return PaymentLinkMock;
     if (r === "../models/restaurantModel") return { findById: async () => ({ name: "Test" }) };
+    if (r === "../models/websiteSettingsModel") return { findOne: async () => null };
     if (r === "../models/paymentTransactionModel") return {};
     if (r === "../models/tableSessionModel") return {};
     return orig.apply(this, arguments);
@@ -173,7 +178,6 @@ test("createPaymentLink is idempotent: returns existing active link for same ord
 
   delete require.cache[require.resolve("../controllers/paymentLinkController")];
   const { createPaymentLink } = require("../controllers/paymentLinkController");
-  Module._load = orig;
 
   let resData = null;
   const res = {
@@ -191,11 +195,15 @@ test("createPaymentLink is idempotent: returns existing active link for same ord
     user: { _id: USER_ID, restaurantId: RESTAURANT_ID },
   };
 
-  await createPaymentLink(req, res, () => {});
+  try {
+    await createPaymentLink(req, res, () => {});
 
-  assert.ok(resData);
-  assert.equal(resData.deduplicated, true);
-  assert.equal(resData.data.linkToken, existingActiveToken);
+    assert.ok(resData);
+    assert.equal(resData.deduplicated, true);
+    assert.equal(resData.data.linkToken, existingActiveToken);
+  } finally {
+    Module._load = orig;
+  }
 });
 
 test("getPaymentLink returns all 10 required payment page fields and rejects expired links", async () => {

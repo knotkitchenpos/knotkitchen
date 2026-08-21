@@ -296,13 +296,13 @@ const priceMock = {
   },
 };
 
+const realMongoose = require("mongoose");
 /** mongoose mock */
 const mongooseMock = {
-  Types: {
-    ObjectId: {
-      isValid: (id) => typeof id === "string" && /^[0-9a-fA-F]{24}$/.test(id),
-    },
-  },
+  Schema: realMongoose.Schema,
+  Types: realMongoose.Types,
+  model: realMongoose.model.bind(realMongoose),
+  models: realMongoose.models,
   async startSession() {
     return { ...fakeMongoSession, startTransaction() {} };
   },

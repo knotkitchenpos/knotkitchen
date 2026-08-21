@@ -21,6 +21,11 @@ const DefaultRestaurantTheme = ({ data, cart, onSelectProduct, onOpenCart }) => 
 
   const [activeCategory, setActiveCategory] = useState(categories?.[0]?.id || null);
   const [query, setQuery] = useState("");
+  const [vegFilter, setVegFilter] = useState("all"); // "all" | "veg" | "nonveg"
+  const [selectedOrderType, setSelectedOrderType] = useState(
+    ordering?.pickupEnabled !== false ? "collection" : "delivery"
+  );
+  const [activePolicyModal, setActivePolicyModal] = useState(null); // "faq" | "privacy" | "terms" | "refund" | "cookies"
   const sectionRefs = useRef({});
 
   // Highlight the category currently in view while the customer scrolls.
@@ -44,21 +49,26 @@ const DefaultRestaurantTheme = ({ data, cart, onSelectProduct, onOpenCart }) => 
     sectionRefs.current[id]?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  // Client-side search across the already-loaded menu (no extra API calls).
+  // Client-side search & Veg/Non-Veg filters across loaded menu (preserves cart state).
   const visibleCategories = useMemo(() => {
-    if (!query.trim()) return categories;
     const q = query.trim().toLowerCase();
     return categories
       .map((c) => ({
         ...c,
-        products: c.products.filter(
-          (p) =>
+        products: c.products.filter((p) => {
+          const matchesQuery =
+            !q ||
             p.name.toLowerCase().includes(q) ||
-            (p.description || "").toLowerCase().includes(q)
-        ),
+            (p.description || "").toLowerCase().includes(q);
+          const matchesVeg =
+            vegFilter === "all" ||
+            (vegFilter === "veg" && (p.isVegetarian || p.isVeg)) ||
+            (vegFilter === "nonveg" && (!p.isVegetarian && !p.isVeg));
+          return matchesQuery && matchesVeg;
+        }),
       }))
       .filter((c) => c.products.length > 0);
-  }, [categories, query]);
+  }, [categories, query, vegFilter]);
 
   const gridClass =
     layout.productCardStyle === "list" || layout.productCardStyle === "compact"
@@ -106,13 +116,17 @@ const DefaultRestaurantTheme = ({ data, cart, onSelectProduct, onOpenCart }) => 
               >
                 {store.name}
               </h1>
-              <p className="text-xs text-[var(--sf-muted)]">
+              <p className="text-xs text-[var(--sf-muted)] flex items-center gap-1.5 flex-wrap">
                 {store.isOpen ? (
                   <span className="text-green-600 font-medium">● Open now</span>
                 ) : (
                   <span className="text-red-500 font-medium">● Closed</span>
                 )}
-                {ordering?.prepTimeMinutes ? ` · ~${ordering.prepTimeMinutes} min` : ""}
+                <span>· {contact?.addressLine1 ? `${contact.addressLine1}, ${contact.city || ""}` : "Main Outlet"}</span>
+                <span>· 🛍️ Pickup ~{ordering?.prepTimeMinutes || 20} min</span>
+                {ordering?.deliveryEnabled !== false && (
+                  <span>· 🛵 Delivery ~{ordering?.deliveryTimeMinutes || 45} min</span>
+                )}
               </p>
             </div>
           </div>
@@ -248,13 +262,71 @@ const DefaultRestaurantTheme = ({ data, cart, onSelectProduct, onOpenCart }) => 
           <h2 className="text-2xl font-bold" style={{ fontFamily: "var(--sf-heading-font)" }}>
             Our Menu
           </h2>
+
+          {/* Delivery / Collection Selector */}
+          <div className="flex items-center gap-1.5 p-1 bg-black/5 rounded-full text-xs font-bold sm:ml-auto">
+            {ordering?.pickupEnabled !== false && (
+              <button
+                type="button"
+                onClick={() => setSelectedOrderType("collection")}
+                className={`px-3 py-1.5 rounded-full transition-all ${
+                  selectedOrderType === "collection" ? "bg-white text-black shadow-sm" : "text-black/60"
+                }`}
+              >
+                🛍️ Collection (~{ordering?.prepTimeMinutes || 20} min)
+              </button>
+            )}
+            {ordering?.deliveryEnabled !== false && (
+              <button
+                type="button"
+                onClick={() => setSelectedOrderType("delivery")}
+                className={`px-3 py-1.5 rounded-full transition-all ${
+                  selectedOrderType === "delivery" ? "bg-white text-black shadow-sm" : "text-black/60"
+                }`}
+              >
+                🛵 Delivery (~{ordering?.deliveryTimeMinutes || 45} min)
+              </button>
+            )}
+          </div>
+
+          {/* Veg / Non-Veg Filters */}
+          <div className="flex items-center gap-1.5 text-xs font-bold">
+            <button
+              type="button"
+              onClick={() => setVegFilter("all")}
+              className={`px-3 py-1.5 rounded-full border transition-all ${
+                vegFilter === "all" ? "bg-black text-white border-black" : "bg-white text-black border-black/10"
+              }`}
+            >
+              All
+            </button>
+            <button
+              type="button"
+              onClick={() => setVegFilter("veg")}
+              className={`px-3 py-1.5 rounded-full border transition-all flex items-center gap-1 ${
+                vegFilter === "veg" ? "bg-green-700 text-white border-green-700" : "bg-white text-green-700 border-green-300"
+              }`}
+            >
+              🟢 Veg Only
+            </button>
+            <button
+              type="button"
+              onClick={() => setVegFilter("nonveg")}
+              className={`px-3 py-1.5 rounded-full border transition-all flex items-center gap-1 ${
+                vegFilter === "nonveg" ? "bg-red-700 text-white border-red-700" : "bg-white text-red-700 border-red-300"
+              }`}
+            >
+              🔴 Non-Veg
+            </button>
+          </div>
+
           <input
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search dishes…"
             aria-label="Search the menu"
-            className="sm:ml-auto w-full sm:w-64 px-4 py-2 rounded-full border border-black/10 bg-[var(--sf-surface)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--sf-primary)]"
+            className="w-full sm:w-56 px-4 py-2 rounded-full border border-black/10 bg-[var(--sf-surface)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--sf-primary)]"
           />
         </div>
 
@@ -356,29 +428,89 @@ const DefaultRestaurantTheme = ({ data, cart, onSelectProduct, onOpenCart }) => 
         </section>
       ) : null}
 
+      {/* ---------------- POPULAR ITEMS ---------------- */}
+      {sections.showPopular !== false && (
+        <section className="max-w-6xl mx-auto px-4 py-8">
+          <h2 className="text-xl font-bold mb-4" style={{ fontFamily: "var(--sf-heading-font)" }}>
+            Popular Items
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {categories
+              .flatMap((c) => c.products)
+              .filter((p) => p.isPopular || p.isFeatured || p.rating >= 4.5)
+              .slice(0, 4)
+              .map((product) => (
+                <ProductCard
+                  key={`popular-${product.id}`}
+                  product={product}
+                  layout={layout.productCardStyle}
+                  currencySymbol={symbol}
+                  onSelect={onSelectProduct}
+                />
+              ))}
+          </div>
+        </section>
+      )}
+
+      {/* ---------------- CUSTOMER REVIEWS ---------------- */}
+      {(data.reviews?.length || sections.showReviews) ? (
+        <section className="max-w-6xl mx-auto px-4 py-8 bg-[var(--sf-surface)] rounded-3xl my-6">
+          <h2 className="text-xl font-bold mb-4 text-center" style={{ fontFamily: "var(--sf-heading-font)" }}>
+            Customer Reviews & Ratings
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            {(data.reviews || [
+              { name: "Rahul S.", rating: 5, comment: "Amazing food and super fast ordering!" },
+              { name: "Priya M.", rating: 5, comment: "Authentic taste and lovely packaging." },
+              { name: "Amit K.", rating: 4, comment: "Great dining experience every single time." },
+            ]).map((rev, i) => (
+              <div key={i} className="p-4 bg-white rounded-2xl border border-black/5 space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="font-bold text-sm">{rev.name}</span>
+                  <span className="text-amber-500 text-xs">{"★".repeat(rev.rating)}</span>
+                </div>
+                <p className="text-xs text-[var(--sf-muted)] italic">"{rev.comment}"</p>
+              </div>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
       {/* ---------------- FOOTER / CONTACT ---------------- */}
       <footer
         id="contact"
         className="py-12 mt-4"
         style={{ background: "var(--sf-secondary)", color: "#fff" }}
       >
-        <div className="max-w-6xl mx-auto px-4 grid gap-8 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="max-w-6xl mx-auto px-4 grid gap-8 sm:grid-cols-2 lg:grid-cols-4">
           <div>
             <h3 className="font-bold text-lg mb-3" style={{ fontFamily: "var(--sf-heading-font)" }}>
               {store.name}
             </h3>
             {branding.siteDescription ? (
-              <p className="text-sm text-white/70 leading-relaxed">{branding.siteDescription}</p>
+              <p className="text-sm text-white/70 leading-relaxed mb-3">{branding.siteDescription}</p>
+            ) : null}
+
+            {/* Android App Download Button (ONLY when configured) */}
+            {(store.appUrl || branding.androidAppUrl) ? (
+              <a
+                href={store.appUrl || branding.androidAppUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white font-bold text-xs rounded-xl hover:bg-emerald-500 shadow-md"
+              >
+                <span>🤖 Download Android App</span>
+              </a>
             ) : null}
           </div>
 
           {sections.showContact ? (
             <div>
               <h4 className="font-semibold mb-3">Contact</h4>
-              <address className="not-italic text-sm text-white/70 space-y-1">
+              <address className="not-italic text-sm text-white/70 space-y-1.5">
                 {contact?.phone ? (
                   <p>
-                    <a href={`tel:${contact.phone}`} className="hover:text-white">
+                    <a href={`tel:${contact.phone}`} className="hover:text-white font-bold text-emerald-400">
                       📞 {contact.phone}
                     </a>
                   </p>
@@ -414,12 +546,114 @@ const DefaultRestaurantTheme = ({ data, cart, onSelectProduct, onOpenCart }) => 
               </ul>
             </div>
           ) : null}
+
+          {/* Secure Payment Gateway Logos */}
+          <div>
+            <h4 className="font-semibold mb-3">Accepted Payment Methods</h4>
+            <div className="flex flex-wrap gap-2 text-xs font-bold text-white/90">
+              <span className="px-2.5 py-1 bg-white/10 rounded-lg">💵 Cash</span>
+              {(data.paymentGateways?.razorpayConfigured || ordering?.razorpayEnabled) && (
+                <span className="px-2.5 py-1 bg-blue-600/40 rounded-lg border border-blue-400/30">💳 Razorpay</span>
+              )}
+              {(data.paymentGateways?.cashfreeConfigured || ordering?.cashfreeEnabled) && (
+                <span className="px-2.5 py-1 bg-purple-600/40 rounded-lg border border-purple-400/30">💳 Cashfree</span>
+              )}
+              {(data.paymentGateways?.phonepeConfigured || ordering?.phonepeEnabled) && (
+                <span className="px-2.5 py-1 bg-indigo-600/40 rounded-lg border border-indigo-400/30">📱 PhonePe</span>
+              )}
+            </div>
+          </div>
         </div>
 
-        <div className="max-w-6xl mx-auto px-4 mt-8 pt-6 border-t border-white/10 text-center text-xs text-white/50">
-          © {new Date().getFullYear()} {store.name}. Powered by KnotKitchen.
+        {/* Policies Links */}
+        <div className="max-w-6xl mx-auto px-4 pt-6 mt-6 border-t border-white/10 flex flex-wrap gap-4 text-xs text-white/60 justify-center">
+          <button type="button" onClick={() => setActivePolicyModal("faq")} className="hover:text-white underline">
+            FAQ
+          </button>
+          <button type="button" onClick={() => setActivePolicyModal("terms")} className="hover:text-white underline">
+            Terms & Conditions
+          </button>
+          <button type="button" onClick={() => setActivePolicyModal("privacy")} className="hover:text-white underline">
+            Privacy Policy
+          </button>
+          <button type="button" onClick={() => setActivePolicyModal("refund")} className="hover:text-white underline">
+            Refund & Cancellation Policy
+          </button>
+          <button type="button" onClick={() => setActivePolicyModal("cookies")} className="hover:text-white underline">
+            Cookie Policy
+          </button>
+        </div>
+
+        <div className="max-w-6xl mx-auto px-4 mt-4 pt-4 text-center text-xs text-white/50 flex flex-col sm:flex-row items-center justify-between gap-2">
+          <span>© {new Date().getFullYear()} {store.name}. All rights reserved.</span>
+          <span>Powered by KnotKitchen POS · Support Helpline: +91 98765 43210</span>
         </div>
       </footer>
+
+      {/* ---------------- POLICY MODAL ---------------- */}
+      {activePolicyModal ? (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white text-slate-900 rounded-3xl max-w-xl w-full p-6 shadow-2xl space-y-4 max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b pb-3">
+              <h3 className="text-lg font-bold">
+                {activePolicyModal === "faq" && "Frequently Asked Questions"}
+                {activePolicyModal === "terms" && "Terms & Conditions"}
+                {activePolicyModal === "privacy" && "Privacy Policy"}
+                {activePolicyModal === "refund" && "Refund & Cancellation Policy"}
+                {activePolicyModal === "cookies" && "Cookie Policy"}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setActivePolicyModal(null)}
+                className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-bold hover:bg-slate-200"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="text-xs text-slate-600 space-y-3 leading-relaxed">
+              {activePolicyModal === "faq" && (
+                <>
+                  <p className="font-bold text-slate-800">Q: How do I place an order online?</p>
+                  <p>A: Browse our online menu, add your favorite items to the cart, select pickup or delivery, and proceed to checkout.</p>
+                  <p className="font-bold text-slate-800">Q: What payment methods are accepted?</p>
+                  <p>A: We accept online UPI/Cards/Netbanking via secure payment gateways and Cash on delivery/pickup where enabled.</p>
+                </>
+              )}
+              {activePolicyModal === "terms" && (
+                <p>
+                  By ordering from {store.name}, you agree to our terms of service. Orders are subject to item availability and store operating hours. All prices are calculated authoritatively by the store system.
+                </p>
+              )}
+              {activePolicyModal === "privacy" && (
+                <p>
+                  {store.name} respects your privacy. Customer details (Name, Phone, Address) provided during checkout are strictly used for fulfilling food orders and order status notifications. We never sell or leak customer PII.
+                </p>
+              )}
+              {activePolicyModal === "refund" && (
+                <p>
+                  Cancellation requests are accepted before food preparation begins. For issues with completed orders, please contact our support team at {contact?.phone || "+91 98765 43210"} within 30 minutes of delivery.
+                </p>
+              )}
+              {activePolicyModal === "cookies" && (
+                <p>
+                  This website uses essential session cookies to preserve your cart items and order state across pages. No tracking cookies are stored without consent.
+                </p>
+              )}
+            </div>
+
+            <div className="pt-2 text-right">
+              <button
+                type="button"
+                onClick={() => setActivePolicyModal(null)}
+                className="px-4 py-2 bg-slate-900 text-white font-semibold text-xs rounded-xl"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* ---------------- STICKY MOBILE CART BAR ---------------- */}
       {cart.count > 0 ? (

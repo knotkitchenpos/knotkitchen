@@ -21,6 +21,9 @@ import {
 } from "../https";
 import { getWebsiteSettings, updateWebsiteSettings } from "../https/storefrontApi";
 import { removeUser } from "../redux/slices/userSlice";
+import SecurityPinModal from "../components/common/SecurityPinModal";
+import { isOwner, checkActionAuthorization } from "../utils/security";
+import ActivityLogView from "../components/dashboard/ActivityLogView";
 
 /* ---------- Icons ---------- */
 const I = {
@@ -907,7 +910,7 @@ const ManageStaffView = () => {
   if (!isOwner) {
     return (
       <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 text-[13px] text-[#DC2626] font-bold">
-        Only the Store Owner can manage staff members and permissions.
+        🔒 Action Restricted: Only the Store Owner can manage staff members and permissions. Staff PIN verification is not sufficient for this operation.
       </div>
     );
   }
@@ -1109,8 +1112,9 @@ const MENU_ITEMS = [
   { id: "reports", title: "10. Reports", desc: "Sales, revenue and order breakdowns.", Icon: I.chart, path: "/reports" },
 
   { id: "website", title: "10. Manage Website", desc: "Storefront theme, branding and ordering options.", Icon: I.globe, path: "/website" },
-  { id: "support", title: "11. Help & Support", desc: "Get help or report an issue.", Icon: I.headset, path: "/home" },
-  { id: "logout", title: "12. Logout", desc: "Securely sign out of the POS system.", Icon: I.logout, action: "logout" },
+  { id: "activity", title: "11. Activity Log & Audit Trail", desc: "View append-only audit log of all store and security changes.", Icon: I.fileText, mode: "view" },
+  { id: "support", title: "12. Help & Support", desc: "Get help or report an issue.", Icon: I.headset, path: "/home" },
+  { id: "logout", title: "13. Logout", desc: "Securely sign out of the POS system.", Icon: I.logout, action: "logout" },
 ];
 
 const Settings = () => {
@@ -1185,6 +1189,8 @@ const Settings = () => {
           <ManageStaffView />
         ) : activeSubView === "rules" ? (
           <RulesChargesView />
+        ) : activeSubView === "activity" ? (
+          <ActivityLogView />
         ) : (
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">

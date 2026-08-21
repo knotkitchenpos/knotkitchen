@@ -1,46 +1,91 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import TableCard from "../components/tables/TableCard";
 import GuestCountModal from "../components/tables/GuestCountModal";
 import SessionDetailModal from "../components/tables/SessionDetailModal";
+import SecurityPinModal from "../components/common/SecurityPinModal";
+import PrintTableQRModal from "../components/tables/PrintTableQRModal";
+import { checkActionAuthorization } from "../utils/security";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getTables, addTable, deleteTable, getTableById, getTableSessionById } from "../https";
+import { getTables, addTable, updateTable, deleteTable, getTableById, getTableSessionById, regenerateQr } from "../https";
 import { enqueueSnackbar } from "notistack";
-import { FiGrid, FiPlus, FiTrash2 } from "react-icons/fi";
+import { FiGrid, FiPlus, FiTrash2, FiEdit2, FiQrCode, FiLayers, FiCheckCircle } from "react-icons/fi";
 import { setOrderType } from "../redux/slices/orderTypeSlice";
 import { updateTable as updateTableAction, setSessionId } from "../redux/slices/customerSlice";
+
+const DEFAULT_AREAS = ["Ground Floor", "First Floor", "Rooftop", "Garden", "Terrace", "VIP Area", "Outdoor"];
 
 const Tables = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
   const queryClient = useQueryClient();
+  const user = useSelector((s) => s.user);
+
+  const [selectedArea, setSelectedArea] = useState("all");
+  const [customAreas, setCustomAreas] = useState([]);
   const [status, setStatus] = useState("all");
+
+  // Modals
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [tableNo, setTableNo] = useState("");
-  const [seats, setSeats] = useState(4);
+  const [editingTable, setEditingTable] = useState(null);
+  const [qrModalTable, setQrModalTable] = useState(null);
+  const [printModalTable, setPrintModalTable] = useState(null);
+  const [isAreaModalOpen, setIsAreaModalOpen] = useState(false);
+  const [newAreaInput, setNewAreaInput] = useState("");
+
+  // Add/Edit Form State
+  const [displayId, setDisplayId] = useState("");
+  const [area, setArea] = useState("Ground Floor");
+  const [capacity, setCapacity] = useState(4);
+  const [isEnabled, setIsEnabled] = useState(true);
+
+  // Flow / Session Modals
   const [guestCountTable, setGuestCountTable] = useState(null);
   const [sessionTable, setSessionTable] = useState(null);
   const [sessionData, setSessionData] = useState(null);
   const [sessionLoading, setSessionLoading] = useState(false);
 
+  // Security PIN Modal
+  const [pinModalOpen, setPinModalOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null);
+
   useEffect(() => {
-    document.title = "KnotKitchen | Tables";
+    document.title = "KnotKitchen | Manage Tables";
   }, []);
 
   const { data: resData, isError } = useQuery({
     queryKey: ["tables"],
-    queryFn: async () => {
-      return await getTables();
-    },
+    queryFn: async () => await getTables(),
     placeholderData: keepPreviousData,
     refetchOnMount: "always",
     refetchOnWindowFocus: true,
   });
 
   if (isError) {
-    enqueueSnackbar("Something went wrong!", { variant: "error" });
+    enqueueSnackbar("Failed to load tables!", { variant: "error" });
   }
+
+  const tables = resData?.data?.data || [];
+
+  // Derive unique floor/area names from server tables + custom created areas
+  const allAreas = Array.from(
+    new Set([
+      ...DEFAULT_AREAS,
+      ...customAreas,
+      ...tables.map((t) => t.area || t.floor || t.zone).filter(Boolean),
+    ])
+  );
+
+  const executeProtected = (actionFn) => {
+    const auth = checkActionAuthorization(user, { isOwnerOnly: false });
+    if (auth.status === "REQUIRE_PIN") {
+      setPendingAction(() => actionFn);
+      setPinModalOpen(true);
+      return;
+    }
+    actionFn();
+  };
 
   const addTableMutation = useMutation({
     mutationFn: addTable,
@@ -48,11 +93,23 @@ const Tables = () => {
       enqueueSnackbar(res?.data?.message || "Table added successfully!", { variant: "success" });
       queryClient.invalidateQueries({ queryKey: ["tables"] });
       setIsAddModalOpen(false);
-      setTableNo("");
-      setSeats(4);
+      resetForm();
     },
     onError: (error) => {
       enqueueSnackbar(error.response?.data?.message || "Failed to add table.", { variant: "error" });
+    },
+  });
+
+  const updateTableMutation = useMutation({
+    mutationFn: updateTable,
+    onSuccess: (res) => {
+      enqueueSnackbar(res?.data?.message || "Table updated!", { variant: "success" });
+      queryClient.invalidateQueries({ queryKey: ["tables"] });
+      setEditingTable(null);
+      resetForm();
+    },
+    onError: (error) => {
+      enqueueSnackbar(error.response?.data?.message || "Failed to update table.", { variant: "error" });
     },
   });
 
@@ -63,33 +120,79 @@ const Tables = () => {
       queryClient.invalidateQueries({ queryKey: ["tables"] });
     },
     onError: (error) => {
-      enqueueSnackbar(error.response?.data?.message || "Failed to delete table.", { variant: "error" });
+      enqueueSnackbar(error.response?.data?.message || "Cannot delete table with active session.", { variant: "error" });
     },
   });
 
-  const handleAddTable = (e) => {
+  const resetForm = () => {
+    setDisplayId("");
+    setArea(allAreas[0] || "Ground Floor");
+    setCapacity(4);
+    setIsEnabled(true);
+  };
+
+  const handleAddSubmit = (e) => {
     e.preventDefault();
-    if (!tableNo.trim()) {
-      enqueueSnackbar("Please enter a table number!", { variant: "warning" });
+    if (!displayId.trim()) {
+      enqueueSnackbar("Please enter a Display Table ID (e.g. GF-T1)!", { variant: "warning" });
       return;
     }
-    addTableMutation.mutate({ tableNo: Number(tableNo), seats: Number(seats) || 4 });
+    executeProtected(() => {
+      addTableMutation.mutate({
+        displayId: displayId.trim(),
+        tableName: displayId.trim(),
+        area,
+        floor: area,
+        capacity: Number(capacity) || 4,
+        isEnabled,
+      });
+    });
   };
 
-  const handleDeleteTable = (id, name) => {
-    if (window.confirm(`Are you sure you want to remove Table ${name}?`)) {
-      deleteTableMutation.mutate(id);
+  const handleEditSubmit = (e) => {
+    e.preventDefault();
+    if (!editingTable) return;
+    executeProtected(() => {
+      updateTableMutation.mutate({
+        tableId: editingTable._id,
+        displayId: displayId.trim(),
+        tableName: displayId.trim(),
+        area,
+        floor: area,
+        capacity: Number(capacity) || 4,
+        isEnabled,
+      });
+    });
+  };
+
+  const handleDeleteTable = (table) => {
+    const isOccupied = ["Booked", "occupied", "OCCUPIED", "Processing"].includes(table.status) || table.session;
+    if (isOccupied) {
+      enqueueSnackbar(`Cannot delete Table ${table.displayId || table.tableNumber}: Table has an active order/session!`, { variant: "error" });
+      return;
+    }
+
+    if (window.confirm(`Are you sure you want to remove Table ${table.displayId || table.tableNumber}?`)) {
+      executeProtected(() => {
+        deleteTableMutation.mutate(table._id);
+      });
     }
   };
 
-  const getSessionIdFromTable = (table) =>
-    table?.session?._id || table?.activeSessionId || null;
+  const openEditModal = (table) => {
+    setEditingTable(table);
+    setDisplayId(table.displayId || table.tableName || `Table-${table.tableNumber}`);
+    setArea(table.area || table.floor || "Ground Floor");
+    setCapacity(table.capacity || 4);
+    setIsEnabled(table.isEnabled !== false);
+  };
+
+  const getSessionIdFromTable = (table) => table?.session?._id || table?.activeSessionId || null;
 
   const isOccupied = (table) =>
     ["Booked", "occupied", "OCCUPIED", "Processing"].includes(table.status) ||
     (Number(table.currentOccupancy) > 0 &&
-      (Boolean(getSessionIdFromTable(table)) ||
-        Number(table.currentOccupancy) >= Number(table.capacity)));
+      (Boolean(getSessionIdFromTable(table)) || Number(table.currentOccupancy) >= Number(table.capacity)));
 
   const openSessionDetail = async (table) => {
     setSessionLoading(true);
@@ -118,11 +221,15 @@ const Tables = () => {
   };
 
   const handleTableClick = (table) => {
+    if (table.isEnabled === false) {
+      enqueueSnackbar("This table is currently disabled.", { variant: "warning" });
+      return;
+    }
     const shaped = {
       ...table,
       id: table._id,
-      name: table.tableNumber,
-      capacity: Number(table.capacity) || Number(table.seats) || 4,
+      name: table.displayId || table.tableName || table.tableNumber,
+      capacity: Number(table.capacity) || 4,
       currentOccupancy: Number(table.currentOccupancy) || 0,
     };
     if (isOccupied(table)) {
@@ -136,15 +243,15 @@ const Tables = () => {
     try {
       const res = await getTableById(table._id);
       const fullTable = res?.data?.data || table;
-      const capacity = Number(fullTable.capacity) || Number(fullTable.seats) || 4;
-      if (Number(guests) > capacity) {
+      const cap = Number(fullTable.capacity) || 4;
+      if (Number(guests) > cap) {
         enqueueSnackbar(
-          `Table ${fullTable.tableNumber} has a maximum capacity of ${capacity} customers.`,
+          `Table ${fullTable.displayId || fullTable.tableNumber} has a maximum capacity of ${cap} customers.`,
           { variant: "error" }
         );
         return;
       }
-      dispatch(updateTableAction({ table: { ...fullTable, tableId: fullTable._id, tableNo: fullTable.tableNumber } }));
+      dispatch(updateTableAction({ table: { ...fullTable, tableId: fullTable._id, tableNo: fullTable.displayId || fullTable.tableNumber } }));
       dispatch(setOrderType("Table Service"));
       setGuestCountTable(null);
       navigate("/menu");
@@ -153,79 +260,156 @@ const Tables = () => {
     }
   };
 
-  const tables = resData?.data?.data || [];
-  const isBookedStatus = (t) =>
-    ["Booked", "occupied", "OCCUPIED"].includes(t.status) ||
-    (Number(t.currentOccupancy) > 0 && Number(t.currentOccupancy) >= Number(t.capacity));
-  const availableCount = tables.filter((t) => !isBookedStatus(t)).length;
-  const bookedCount = tables.filter((t) => isBookedStatus(t)).length;
+  // Filters
+  const filteredTables = tables.filter((t) => {
+    const areaMatch = selectedArea === "all" || (t.area || t.floor || t.zone) === selectedArea;
+    const isBooked = isOccupied(t);
+    const statusMatch = status === "all" || (status === "booked" ? isBooked : !isBooked);
+    return areaMatch && statusMatch;
+  });
 
-  const filteredTables = tables.filter(
-    (table) => status === "all" || isBookedStatus(table)
-  );
+  const availableCount = tables.filter((t) => !isOccupied(t) && t.isEnabled !== false).length;
+  const bookedCount = tables.filter((t) => isOccupied(t)).length;
 
   return (
     <div className="flex-1 min-h-0 bg-surface overflow-y-auto no-scrollbar">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col min-h-full">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex flex-col min-h-full space-y-6">
+
         {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mt-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mt-2">
           <div>
-            <h1 className="font-display text-2xl font-bold">Tables</h1>
-            <p className="text-content-muted text-sm">
-              Tap an available table to start an order
+            <h1 className="font-display text-2xl font-extrabold text-[#0F172A]">Manage Tables</h1>
+            <p className="text-[#64748B] text-sm">
+              Organize tables by floor/area, customize IDs (e.g. GF-T1), set capacity & generate QR codes.
             </p>
           </div>
 
           <div className="flex items-center gap-3">
-            {/* Stats */}
-            <div className="px-4 py-2 rounded-xl bg-accent-green/10 text-accent-green text-sm font-semibold">
+            <div className="px-3.5 py-2 rounded-xl bg-[#DCFCE7] text-[#15803D] text-xs font-bold">
               {availableCount} Available
             </div>
-            <div className="px-4 py-2 rounded-xl bg-accent-amber/10 text-accent-amber text-sm font-semibold">
+            <div className="px-3.5 py-2 rounded-xl bg-[#FEF3C7] text-[#B45309] text-xs font-bold">
               {bookedCount} Booked
             </div>
-            {/* Add Table */}
             <button
-              onClick={() => setIsAddModalOpen(true)}
-              className="btn-primary !py-2.5 !px-4 text-sm flex items-center gap-2"
+              onClick={() => {
+                resetForm();
+                setIsAddModalOpen(true);
+              }}
+              className="px-4 py-2.5 rounded-xl bg-[#5B42F3] text-white text-xs font-bold hover:bg-[#4A32E0] flex items-center gap-2"
             >
               <FiPlus size={16} /> Add Table
             </button>
           </div>
         </div>
 
-        {/* Status Tabs */}
-        <div className="flex gap-2 mt-6">
+        {/* Floor / Area Tabs */}
+        <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs font-bold text-[#475569]">
+              <FiLayers size={16} className="text-[#5B42F3]" />
+              <span>Floors & Areas</span>
+            </div>
+            <button
+              onClick={() => setIsAreaModalOpen(true)}
+              className="text-xs font-bold text-[#5B42F3] hover:underline flex items-center gap-1"
+            >
+              + Add Custom Area
+            </button>
+          </div>
+
+          <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">
+            <button
+              onClick={() => setSelectedArea("all")}
+              className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-colors shrink-0 ${
+                selectedArea === "all"
+                  ? "bg-[#5B42F3] text-white shadow-sm"
+                  : "bg-[#F8FAFC] border border-[#E2E8F0] text-[#64748B] hover:text-[#0F172A]"
+              }`}
+            >
+              All Floors & Areas ({tables.length})
+            </button>
+            {allAreas.map((a) => {
+              const count = tables.filter((t) => (t.area || t.floor || t.zone) === a).length;
+              return (
+                <button
+                  key={a}
+                  onClick={() => setSelectedArea(a)}
+                  className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-colors shrink-0 ${
+                    selectedArea === a
+                      ? "bg-[#5B42F3] text-white shadow-sm"
+                      : "bg-[#F8FAFC] border border-[#E2E8F0] text-[#64748B] hover:text-[#0F172A]"
+                  }`}
+                >
+                  {a} ({count})
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Status Filter Tabs */}
+        <div className="flex gap-2 text-xs font-bold">
           <button
             onClick={() => setStatus("all")}
-            className={`menu-category-pill ${status === "all" ? "active" : ""}`}
+            className={`px-4 py-2 rounded-xl transition-colors ${
+              status === "all" ? "bg-[#0F172A] text-white" : "bg-white border border-[#E2E8F0] text-[#64748B]"
+            }`}
           >
-            All Tables
+            All Statuses
           </button>
           <button
             onClick={() => setStatus("booked")}
-            className={`menu-category-pill ${status === "booked" ? "active" : ""}`}
+            className={`px-4 py-2 rounded-xl transition-colors ${
+              status === "booked" ? "bg-[#0F172A] text-white" : "bg-white border border-[#E2E8F0] text-[#64748B]"
+            }`}
           >
-            Booked
+            Booked / Occupied ({bookedCount})
           </button>
         </div>
 
         {/* Tables Grid */}
         {filteredTables.length > 0 ? (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4 mt-6">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
             {filteredTables.map((table) => (
               <div key={table._id} className="relative group">
-                <button
-                  onClick={() => handleDeleteTable(table._id, table.tableNumber)}
-                  disabled={deleteTableMutation.isPending}
-                  className="absolute -top-2 -right-2 z-10 p-2 rounded-full bg-accent-red text-white shadow-lg opacity-0 group-hover:opacity-100 transition-opacity hover:scale-110 disabled:opacity-50"
-                  title={`Delete Table ${table.tableNumber}`}
-                >
-                  <FiTrash2 size={14} />
-                </button>
+                {/* Table Control Overlays */}
+                <div className="absolute top-2 right-2 z-20 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setQrModalTable(table);
+                    }}
+                    className="p-1.5 rounded-lg bg-white border border-[#E2E8F0] text-[#5B42F3] shadow-md hover:scale-105"
+                    title="View QR Code"
+                  >
+                    <FiQrCode size={13} />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      openEditModal(table);
+                    }}
+                    className="p-1.5 rounded-lg bg-white border border-[#E2E8F0] text-[#0F172A] shadow-md hover:scale-105"
+                    title="Edit Table"
+                  >
+                    <FiEdit2 size={13} />
+                  </button>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeleteTable(table);
+                    }}
+                    className="p-1.5 rounded-lg bg-[#DC2626] text-white shadow-md hover:scale-105"
+                    title="Delete Table"
+                  >
+                    <FiTrash2 size={13} />
+                  </button>
+                </div>
+
                 <TableCard
                   id={table._id}
-                  name={table.tableNumber}
+                  name={table.displayId || table.tableName || `Table-${table.tableNumber}`}
                   status={table.status}
                   initials={table?.currentOrderId?.customerDetails?.name}
                   seats={table.capacity}
@@ -238,17 +422,21 @@ const Tables = () => {
             ))}
           </div>
         ) : (
-          <div className="text-center py-16">
-            <div className="w-16 h-16 mx-auto bg-surface-tertiary rounded-2xl flex items-center justify-center mb-4">
-              <FiGrid size={28} className="text-content-muted" />
+          <div className="text-center py-16 bg-white rounded-2xl border border-[#E2E8F0]">
+            <div className="w-14 h-14 mx-auto bg-[#F1F5F9] rounded-2xl flex items-center justify-center mb-3 text-[#94A3B8]">
+              <FiGrid size={24} />
             </div>
-            <p className="text-content-muted font-semibold">No tables found</p>
-            <p className="text-content-muted text-sm mt-1">Add a table to get started</p>
+            <p className="text-[#0F172A] font-bold text-sm">No tables found</p>
+            <p className="text-[#94A3B8] text-xs mt-1">Add a table for area: <strong>{selectedArea}</strong></p>
             <button
-              onClick={() => setIsAddModalOpen(true)}
-              className="btn-primary mt-4 !py-2.5 !px-4 text-sm"
+              onClick={() => {
+                resetForm();
+                if (selectedArea !== "all") setArea(selectedArea);
+                setIsAddModalOpen(true);
+              }}
+              className="mt-4 px-4 py-2 rounded-xl bg-[#5B42F3] text-white text-xs font-bold hover:bg-[#4A32E0]"
             >
-              <FiPlus size={16} /> Add Table
+              + Add Table
             </button>
           </div>
         )}
@@ -278,7 +466,7 @@ const Tables = () => {
               table: {
                 ...sessionTable,
                 tableId: sessionTable._id || sessionTable.id,
-                tableNo: sessionTable.tableNumber || sessionTable.name,
+                tableNo: sessionTable.displayId || sessionTable.tableNumber || sessionTable.name,
                 occupancy: sessionTable.currentOccupancy || sessionData?.customerCount || 0,
                 activeSessionId,
               },
@@ -292,59 +480,221 @@ const Tables = () => {
         />
       )}
 
-      {/* Add Table Modal */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-surface-secondary p-6 rounded-2xl shadow-2xl w-full max-w-md border border-border">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-content text-xl font-semibold font-display">Add Table</h2>
+      {/* Add / Edit Table Modal */}
+      {(isAddModalOpen || editingTable) && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-md border border-[#E2E8F0] space-y-4">
+            <div className="flex justify-between items-center border-b border-[#E2E8F0] pb-3">
+              <h3 className="text-[#0F172A] text-base font-extrabold">
+                {editingTable ? `Edit Table ${editingTable.displayId || editingTable.tableNumber}` : "Add New Table"}
+              </h3>
               <button
-                onClick={() => setIsAddModalOpen(false)}
-                className="text-content-muted hover:text-accent-red text-2xl leading-none p-1"
+                onClick={() => {
+                  setIsAddModalOpen(false);
+                  setEditingTable(null);
+                }}
+                className="text-[#94A3B8] hover:text-[#475569] text-xl font-bold"
               >
-                &times;
+                ×
               </button>
             </div>
-            <form onSubmit={handleAddTable} className="space-y-6">
+
+            <form onSubmit={editingTable ? handleEditSubmit : handleAddSubmit} className="space-y-4 text-xs">
               <div>
-                <label className="block text-content-muted mb-2 text-sm font-medium">
-                  Table Number
+                <label className="block font-bold text-[#475569] mb-1">
+                  Display Table ID / Name (e.g. GF-T1, VIP-01, Garden-3)
+                </label>
+                <input
+                  type="text"
+                  value={displayId}
+                  onChange={(e) => setDisplayId(e.target.value)}
+                  placeholder="e.g. GF-T1"
+                  className="w-full h-11 px-3 rounded-xl border border-[#E2E8F0] font-bold text-sm text-[#0F172A] focus:outline-none focus:border-[#5B42F3]"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-[#475569] mb-1">
+                  Floor / Area
+                </label>
+                <select
+                  value={area}
+                  onChange={(e) => setArea(e.target.value)}
+                  className="w-full h-11 px-3 rounded-xl border border-[#E2E8F0] font-bold text-sm text-[#0F172A] focus:outline-none focus:border-[#5B42F3]"
+                >
+                  {allAreas.map((a) => (
+                    <option key={a} value={a}>{a}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="block font-bold text-[#475569] mb-1">
+                  Seating Capacity (Max Customers)
                 </label>
                 <input
                   type="number"
                   min="1"
-                  value={tableNo}
-                  onChange={(e) => setTableNo(e.target.value)}
-                  placeholder="e.g. 5"
-                  className="w-full bg-surface-input border border-border rounded-xl p-3.5 text-content focus:outline-none focus:border-accent"
+                  max="100"
+                  value={capacity}
+                  onChange={(e) => setCapacity(e.target.value)}
+                  className="w-full h-11 px-3 rounded-xl border border-[#E2E8F0] font-bold text-sm text-[#0F172A] focus:outline-none focus:border-[#5B42F3]"
                   required
                 />
               </div>
-              <div>
-                <label className="block text-content-muted mb-2 text-sm font-medium">
-                  Seats
-                </label>
+
+              <div className="flex items-center justify-between pt-2 border-t border-[#E2E8F0]">
+                <span className="font-bold text-[#475569]">Enable Table for Ordering</span>
                 <input
-                  type="number"
-                  min="1"
-                  max="50"
-                  value={seats}
-                  onChange={(e) => setSeats(e.target.value)}
-                  className="w-full bg-surface-input border border-border rounded-xl p-3.5 text-content focus:outline-none focus:border-accent"
-                  required
+                  type="checkbox"
+                  checked={isEnabled}
+                  onChange={(e) => setIsEnabled(e.target.checked)}
+                  className="w-5 h-5 accent-[#5B42F3]"
                 />
               </div>
-              <button
-                type="submit"
-                disabled={addTableMutation.isPending}
-                className="btn-primary w-full !py-3 text-base disabled:opacity-50"
-              >
-                {addTableMutation.isPending ? "Adding..." : "Add Table"}
-              </button>
+
+              <div className="flex gap-2 justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAddModalOpen(false);
+                    setEditingTable(null);
+                  }}
+                  className="px-4 py-2.5 rounded-xl border border-[#E2E8F0] font-bold text-[#475569]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={addTableMutation.isPending || updateTableMutation.isPending}
+                  className="px-5 py-2.5 rounded-xl bg-[#5B42F3] text-white font-bold hover:bg-[#4A32E0] disabled:opacity-50"
+                >
+                  {editingTable ? "Save Changes" : "Create Table"}
+                </button>
+              </div>
             </form>
           </div>
         </div>
       )}
+
+      {/* Add Custom Area Modal */}
+      {isAreaModalOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-sm border border-[#E2E8F0] space-y-4">
+            <div className="flex justify-between items-center border-b border-[#E2E8F0] pb-3">
+              <h3 className="text-[#0F172A] text-base font-extrabold">Add Custom Floor / Area</h3>
+              <button
+                onClick={() => setIsAreaModalOpen(false)}
+                className="text-[#94A3B8] text-xl font-bold"
+              >
+                ×
+              </button>
+            </div>
+            <div className="space-y-3 text-xs">
+              <label className="block font-bold text-[#475569]">Floor/Area Name</label>
+              <input
+                type="text"
+                value={newAreaInput}
+                onChange={(e) => setNewAreaInput(e.target.value)}
+                placeholder="e.g. Executive Lounge"
+                className="w-full h-11 px-3 rounded-xl border border-[#E2E8F0] font-bold text-sm"
+              />
+              <div className="flex gap-2 justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsAreaModalOpen(false)}
+                  className="px-4 py-2 rounded-xl border border-[#E2E8F0] font-bold text-[#475569]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (newAreaInput.trim()) {
+                      setCustomAreas([...customAreas, newAreaInput.trim()]);
+                      setSelectedArea(newAreaInput.trim());
+                      setNewAreaInput("");
+                      setIsAreaModalOpen(false);
+                      enqueueSnackbar(`Area "${newAreaInput.trim()}" created!`, { variant: "success" });
+                    }
+                  }}
+                  className="px-4 py-2 rounded-xl bg-[#5B42F3] text-white font-bold"
+                >
+                  Add Area
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* QR Code Modal */}
+      {qrModalTable && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-fade-in">
+          <div className="bg-white p-6 rounded-2xl shadow-2xl w-full max-w-sm border border-[#E2E8F0] text-center space-y-4">
+            <div className="flex justify-between items-center border-b border-[#E2E8F0] pb-2">
+              <h3 className="text-[#0F172A] text-base font-extrabold">
+                Table QR — {qrModalTable.displayId || qrModalTable.tableName || qrModalTable.tableNumber}
+              </h3>
+              <button
+                onClick={() => setQrModalTable(null)}
+                className="text-[#94A3B8] text-xl font-bold"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="p-4 bg-[#F8FAFC] rounded-2xl border border-[#E2E8F0] space-y-2">
+              <p className="text-xs font-bold text-[#475569]">Area: {qrModalTable.area || qrModalTable.floor}</p>
+              <p className="text-xs text-[#94A3B8]">Token: <code className="font-mono text-[#5B42F3]">{qrModalTable.qrToken ? qrModalTable.qrToken.slice(0, 16) + "…" : "N/A"}</code></p>
+              <div className="p-3 bg-white rounded-xl border border-[#E2E8F0] break-all text-[11px] font-mono text-[#334155]">
+                {qrModalTable.qrCode || `${window.location.origin}/order?table=${qrModalTable.qrToken}`}
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(qrModalTable.qrCode || `${window.location.origin}/t/${qrModalTable.qrToken}`);
+                  enqueueSnackbar("QR Link copied to clipboard!", { variant: "success" });
+                }}
+                className="flex-1 py-2.5 rounded-xl border border-[#5B42F3] text-[#5B42F3] text-xs font-bold"
+              >
+                Copy Link
+              </button>
+              <button
+                onClick={() => {
+                  setPrintModalTable(qrModalTable);
+                  setQrModalTable(null);
+                }}
+                className="flex-1 py-2.5 rounded-xl bg-[#5B42F3] text-white text-xs font-bold"
+              >
+                🖨️ Print QR Card
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <PrintTableQRModal
+        isOpen={Boolean(printModalTable)}
+        onClose={() => setPrintModalTable(null)}
+        table={printModalTable}
+      />
+
+      <SecurityPinModal
+        isOpen={pinModalOpen}
+        onClose={() => {
+          setPinModalOpen(false);
+          setPendingAction(null);
+        }}
+        onSuccess={() => {
+          setPinModalOpen(false);
+          if (pendingAction) pendingAction();
+          setPendingAction(null);
+        }}
+      />
     </div>
   );
 };

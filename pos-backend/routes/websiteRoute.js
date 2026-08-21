@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { isVerifiedUser } = require("../middlewares/tokenVerification");
-const { requirePermission } = require("../middlewares/requirePermission");
+const { requirePermission, requireOwnerOnly, requireProtectedAction } = require("../middlewares/requirePermission");
 const {
   getWebsiteSettings,
   updateWebsiteSettings,
@@ -15,10 +15,10 @@ const {
  * so there is no storeId path/body parameter to tamper with.
  */
 router.route("/settings")
-  .get(isVerifiedUser, requirePermission("SETTINGS_VIEW"), getWebsiteSettings)
-  .put(isVerifiedUser, requirePermission("SETTINGS_MANAGE"), updateWebsiteSettings);
+  .get(isVerifiedUser, getWebsiteSettings)
+  .put(isVerifiedUser, requireProtectedAction, updateWebsiteSettings);
 
-router.route("/preview").get(isVerifiedUser, requirePermission("SETTINGS_VIEW"), previewWebsite);
-router.route("/validate-gateway").post(isVerifiedUser, requirePermission("SETTINGS_MANAGE"), validateGatewayCredentials);
+router.route("/preview").get(isVerifiedUser, previewWebsite);
+router.route("/validate-gateway").post(isVerifiedUser, requireOwnerOnly, validateGatewayCredentials);
 
 module.exports = router;

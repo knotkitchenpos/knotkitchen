@@ -32,7 +32,7 @@ function Layout() {
 
   const isStorefront =
     location.pathname.startsWith("/store/") || location.pathname === "/website/preview";
-  const bare = ["/auth", "/order", "/pay"].includes(location.pathname) || isStorefront;
+  const bare = ["/auth", "/order", "/pay"].includes(location.pathname) || location.pathname.startsWith("/t/") || isStorefront;
 
   if (isLoading) return <FullScreenLoader />;
 
@@ -55,6 +55,7 @@ function Layout() {
 
       <Route path="/website/preview" element={<ProtectedRoutes><Storefront preview /></ProtectedRoutes>} />
       <Route path="/order" element={<OrderOnline />} />
+      <Route path="/t/:token" element={<OrderOnline />} />
       <Route path="/pay/:token" element={<PaymentLink />} />
       <Route path="/store/:slug" element={<Storefront />} />
       <Route path="*" element={<div className="p-8">Not Found</div>} />

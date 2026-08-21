@@ -260,6 +260,7 @@ const getFranchiseOverview = async (req, res, next) => {
 
 const bcrypt = require("bcrypt");
 const WebsiteSettings = require("../models/websiteSettingsModel");
+const { logActivity } = require("../services/auditService");
 
 const DEFAULT_PIN = "8796";
 
@@ -323,9 +324,22 @@ const verifyPin = async (req, res, next) => {
     if (!restaurant) return next(createHttpError(404, "Restaurant not found!"));
 
     const ok = await verifyPinHelper(restaurant, pin);
-    if (!ok) return next(createHttpError(401, "Invalid PIN. Default PIN is 8796."));
+    if (!ok) return next(createHttpError(401, "Invalid Security PIN. Default PIN is 8796."));
 
-    res.status(200).json({ success: true, message: "PIN verified successfully!" });
+    const jwt = require("jsonwebtoken");
+    const config = require("../config/config");
+    const pinToken = jwt.sign(
+      { userId: req.user._id, restaurantId: restaurant._id, elevated: true },
+      config.accessTokenSecret,
+      { expiresIn: "15m" }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: "PIN verified successfully!",
+      pinToken,
+      expiresAt: Date.now() + 15 * 60 * 1000,
+    });
   } catch (error) {
     next(error);
   }
@@ -356,6 +370,15 @@ const changePin = async (req, res, next) => {
     restaurant.securityPin = await bcrypt.hash(String(newPin).trim(), salt);
     await restaurant.save();
 
+    await logActivity({
+      req,
+      action: "Changed Protection PIN",
+      resource: "Security PIN",
+      previousValue: "Previous PIN Hash",
+      newValue: "New PIN Hash updated",
+      description: `Protection PIN changed by ${req.user.name || req.user.phone}`,
+    });
+
     res.status(200).json({ success: true, message: "Protection PIN updated successfully!" });
   } catch (error) {
     next(error);
@@ -375,6 +398,21 @@ const updateStoreProperties = async (req, res, next) => {
 
     const ok = await verifyPinHelper(restaurant, pin);
     if (!ok) return next(createHttpError(401, "PIN verification required to update Store Properties."));
+
+    // Owner-Only Action check: changing owner contact details
+    if (
+      (props.ownerName !== undefined || props.ownerPhone !== undefined || props.ownerEmail !== undefined) &&
+      req.user.role !== "Owner" && req.user.role !== "owner" && req.user.role !== "superadmin"
+    ) {
+      return next(createHttpError(403, "Only the Store Owner can modify owner contact information."));
+    }
+
+    const oldProps = {
+      storeName: restaurant.name,
+      ownerName: restaurant.ownerName,
+      ownerPhone: restaurant.ownerPhone,
+      address: restaurant.address,
+    };
 
     if (props.storeName) restaurant.name = String(props.storeName).trim();
     if (props.ownerName !== undefined) restaurant.ownerName = String(props.ownerName).trim();
@@ -398,6 +436,20 @@ const updateStoreProperties = async (req, res, next) => {
     if (props.longitude !== undefined) restaurant.address.lng = Number(props.longitude) || null;
 
     await restaurant.save();
+
+    await logActivity({
+      req,
+      action: "Updated Store Properties",
+      resource: "Store Details",
+      previousValue: oldProps,
+      newValue: {
+        storeName: restaurant.name,
+        ownerName: restaurant.ownerName,
+        ownerPhone: restaurant.ownerPhone,
+        address: restaurant.address,
+      },
+      description: "Store Properties updated",
+    });
 
     res.status(200).json({ success: true, message: "Store Properties updated!", data: restaurant });
   } catch (error) {
@@ -543,6 +595,16 @@ const addStaffMember = async (req, res, next) => {
       permissions: ["orders.read", "orders.write"], // Basic non-privileged permissions
     });
 
+    await logActivity({
+      req,
+      action: "Staff Member Created",
+      resource: "Staff",
+      entityType: "User",
+      entityId: staff._id,
+      newValue: { name: staff.name, phone: staff.phone, role: staff.role },
+      description: `Staff member created: ${name} (${phone})`,
+    });
+
     res.status(201).json({ success: true, message: "Staff member added successfully!", data: staff.toSafeJSON() });
   } catch (error) {
     next(error);
@@ -573,7 +635,55 @@ const deleteStaffMember = async (req, res, next) => {
     );
     if (!staff) return next(createHttpError(404, "Staff member not found."));
 
+    await logActivity({
+      req,
+      action: "Staff Member Deleted",
+      resource: "Staff",
+      entityType: "User",
+      entityId: staff._id,
+      previousValue: { name: staff.name, phone: staff.phone, role: staff.role },
+      description: `Staff member deleted: ${staff.name} (${staff.phone})`,
+    });
+
     res.status(200).json({ success: true, message: "Staff member deleted!" });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const getActivityLogs = async (req, res, next) => {
+  try {
+    const restaurantId = req.user.restaurantId || req.user._id;
+    const { page = 1, limit = 50, date, phone, action, resource } = req.query;
+
+    const filter = {
+      $or: [{ restaurantId }, { storeId: req.user.storeId }],
+    };
+
+    if (phone) filter.phone = new RegExp(String(phone).trim(), "i");
+    if (action) filter.action = new RegExp(String(action).trim(), "i");
+    if (resource) filter.resource = new RegExp(String(resource).trim(), "i");
+    if (date) {
+      const start = new Date(date);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(date);
+      end.setHours(23, 59, 59, 999);
+      filter.createdAt = { $gte: start, $lte: end };
+    }
+
+    const p = Math.max(1, parseInt(page, 10));
+    const l = Math.min(100, Math.max(1, parseInt(limit, 10)));
+
+    const [logs, total] = await Promise.all([
+      AuditLog.find(filter).sort({ createdAt: -1 }).skip((p - 1) * l).limit(l),
+      AuditLog.countDocuments(filter),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      data: logs,
+      pagination: { total, page: p, pages: Math.ceil(total / l), limit: l },
+    });
   } catch (error) {
     next(error);
   }
@@ -599,6 +709,7 @@ module.exports = {
   addStaffMember,
   getStaffMembers,
   deleteStaffMember,
+  getActivityLogs,
   verifyPinHelper,
 };
 

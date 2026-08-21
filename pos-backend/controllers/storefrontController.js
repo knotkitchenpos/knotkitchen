@@ -383,14 +383,33 @@ const createStorefrontOrder = async (req, res, next) => {
     }
 
 
-    // ---- Scheduled / pre-order time ----
+    // ---- Scheduled / pre-order time (Website Module 6: Collection Order Scheduling) ----
     let scheduledFor = null;
     if (body.scheduledFor) {
       const when = new Date(body.scheduledFor);
-      const maxAhead = Date.now() + 14 * 24 * 60 * 60 * 1000;
-      if (!Number.isNaN(when.getTime()) && when.getTime() > Date.now() && when.getTime() < maxAhead) {
-        scheduledFor = when;
+      if (Number.isNaN(when.getTime())) {
+        return next(createHttpError(400, "Invalid scheduled pickup time."));
       }
+
+      const nowTime = Date.now();
+      const pickupWindowHours = Number(settings?.ordering?.pickupWindowHours) || 5; // Default 5 hours, configurable 5-6 hours
+      const maxAhead = nowTime + pickupWindowHours * 60 * 60 * 1000;
+
+      const isPast = when.getTime() < nowTime - 60000;
+      const isDifferentDay = when.toDateString() !== new Date(nowTime).toDateString();
+      const isTooFarAhead = when.getTime() > maxAhead;
+
+      if (isPast) {
+        return next(createHttpError(400, "Collection pickup time cannot be in the past."));
+      }
+      if (isDifferentDay) {
+        return next(createHttpError(400, "Collection orders may only be scheduled within the current business day."));
+      }
+      if (isTooFarAhead) {
+        return next(createHttpError(400, `Collection pickup time must be within ${pickupWindowHours} hours.`));
+      }
+
+      scheduledFor = when;
     }
 
     // Globally-unique, atomic per-tenant order number (Module 3 §4).

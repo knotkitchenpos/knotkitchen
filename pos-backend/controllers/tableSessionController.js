@@ -6,6 +6,7 @@ const AuditLog = require("../models/auditLogModel");
 const PaymentTransaction = require("../models/paymentTransactionModel");
 const Bill = require("../models/billModel");
 const priceService = require("../services/price");
+const { emitOrderCreated, emitOrderStatusChanged } = require("../services/socket");
 
 const createHttpError = require("http-errors");
 
@@ -325,6 +326,16 @@ const addItemsToSession = async (req, res, next) => {
 
       return { session, kitchenOrder: kitchenOrder[0], validatedItems };
     }));
+
+    try {
+      emitOrderCreated({
+        restaurantId: result.session.restaurantId,
+        outletId: result.session.outletId,
+        order: result.kitchenOrder,
+      });
+    } catch (socketErr) {
+      console.warn("[tableSession] socket emit failed:", socketErr.message);
+    }
   } catch (error) {
     return next(error);
   }
@@ -455,6 +466,16 @@ const addItemsToExistingSession = async (req, res, next) => {
 
       return { session, kitchenOrder: kitchenOrder[0], validatedItems };
     }));
+
+    try {
+      emitOrderCreated({
+        restaurantId: result.session.restaurantId,
+        outletId: result.session.outletId,
+        order: result.kitchenOrder,
+      });
+    } catch (socketErr) {
+      console.warn("[tableSession] socket emit failed:", socketErr.message);
+    }
   } catch (error) {
     return next(error);
   }

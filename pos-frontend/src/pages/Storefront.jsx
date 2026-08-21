@@ -52,26 +52,36 @@ const useDocumentMeta = (data) => {
   useEffect(() => {
     if (!data) return undefined;
     const previousTitle = document.title;
-    document.title = data.branding?.siteTitle || data.store?.name || "Order Online";
+    const siteTitle = data.branding?.siteTitle || data.name || data.store?.name || "Order Online";
+    document.title = siteTitle;
 
-    const setMeta = (name, content) => {
+    const setMeta = (nameOrProperty, content, isProperty = false) => {
       if (!content) return null;
-      let tag = document.querySelector(`meta[name="${name}"]`);
+      const selector = isProperty ? `meta[property="${nameOrProperty}"]` : `meta[name="${nameOrProperty}"]`;
+      let tag = document.querySelector(selector);
       if (!tag) {
         tag = document.createElement("meta");
-        tag.name = name;
+        if (isProperty) tag.setAttribute("property", nameOrProperty);
+        else tag.name = nameOrProperty;
         document.head.appendChild(tag);
       }
       tag.content = content;
       return tag;
     };
+
     setMeta("description", data.branding?.siteDescription);
+    setMeta("og:title", siteTitle, true);
+    setMeta("og:description", data.branding?.siteDescription || data.branding?.tagline, true);
+    setMeta("og:image", data.coverImageUrl || data.logoUrl || data.branding?.coverImage || data.branding?.logo, true);
+    setMeta("og:type", "website", true);
+    setMeta("og:site_name", data.name || data.store?.name, true);
 
     let favicon;
-    if (data.branding?.favicon) {
+    const fav = data.faviconUrl || data.branding?.favicon;
+    if (fav) {
       favicon = document.querySelector("link[rel='icon']") || document.createElement("link");
       favicon.rel = "icon";
-      favicon.href = data.branding.favicon;
+      favicon.href = fav;
       document.head.appendChild(favicon);
     }
 

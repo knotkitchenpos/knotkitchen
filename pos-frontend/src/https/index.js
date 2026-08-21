@@ -23,6 +23,8 @@ export const updateTable = ({ tableId, ...tableData }) =>
   axiosWrapper.put(`/api/table/${tableId}`, tableData);
 export const deleteTable = (tableId) =>
   axiosWrapper.delete(`/api/table/${tableId}`);
+export const regenerateQr = (tableId) =>
+  axiosWrapper.put(`/api/table/${tableId}/qr/regenerate`);
 
 // Payment Endpoints
 export const createOrderRazorpay = (data) =>
@@ -183,6 +185,7 @@ export const updateHolidays = (data) => axiosWrapper.put("/api/restaurant/holida
 export const addStaffMember = (data) => axiosWrapper.post("/api/restaurant/staff", data);
 export const getStaffMembers = () => axiosWrapper.get("/api/restaurant/staff");
 export const deleteStaffMember = (staffId) => axiosWrapper.delete(`/api/restaurant/staff/${staffId}`);
+export const getActivityLogs = (params) => axiosWrapper.get("/api/restaurant/activity-logs", params ? { params } : undefined);
 
 
 

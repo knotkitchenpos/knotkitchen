@@ -3,17 +3,31 @@ const TableSession = require("../models/tableSessionModel");
 const createHttpError = require("http-errors");
 const crypto = require("crypto");
 const mongoose = require("mongoose");
+const { logActivity } = require("../services/auditService");
 
 const addTable = async (req, res, next) => {
   try {
-    const { tableNo, seats, zone } = req.body;
-    if (!tableNo) {
-      const error = createHttpError(400, "Please provide table No!");
-      return next(error);
+    const { tableNo, tableName, displayId, seats, capacity: capInput, area, floor, zone, isEnabled } = req.body;
+    
+    // Derive displayId or tableNo
+    const finalDisplayId = String(displayId || tableName || (tableNo ? `Table-${tableNo}` : "")).trim();
+    let tableNumber = Number(tableNo);
+
+    // Scope query
+    const scopeQuery = req.user?.restaurantId
+      ? {
+          restaurantId: req.user.restaurantId,
+          ...(req.user.outletId ? { outletId: req.user.outletId } : {}),
+        }
+      : { createdBy: req.user._id };
+
+    if (!Number.isInteger(tableNumber) || tableNumber < 1) {
+      // Auto-generate numeric tableNumber if non-numeric displayId was given
+      const maxTable = await Table.findOne({ ...scopeQuery, isDeleted: { $ne: true } }).sort({ tableNumber: -1 });
+      tableNumber = (maxTable?.tableNumber || 0) + 1;
     }
 
-    const tableNumber = Number(tableNo);
-    const capacity = Number(seats) || 4;
+    const capacity = Number(capInput || seats) || 4;
     if (!Number.isInteger(capacity) || capacity < 1) {
       const error = createHttpError(400, "Capacity must be at least 1 customer!");
       return next(error);
@@ -23,32 +37,29 @@ const addTable = async (req, res, next) => {
       return next(error);
     }
 
-    // Scope: prefer restaurantId (multi-tenant), fall back to createdBy for legacy users
-    const scopeQuery = req.user?.restaurantId
-      ? {
-          restaurantId: req.user.restaurantId,
-          ...(req.user.outletId ? { outletId: req.user.outletId } : {}),
-        }
-      : { createdBy: req.user._id };
-
     const isTablePresent = await Table.findOne({
       ...scopeQuery,
-      tableNumber,
+      $or: [{ tableNumber }, ...(finalDisplayId ? [{ displayId: finalDisplayId }] : [])],
       isDeleted: { $ne: true },
     });
 
     if (isTablePresent) {
-      const error = createHttpError(400, "Table already exist!");
+      const error = createHttpError(400, "Table with this identifier already exists!");
       return next(error);
     }
 
-    // Generate a secure non-guessable QR token
     const qrToken = crypto.randomBytes(24).toString("hex");
+    const chosenArea = String(area || floor || zone || "Ground Floor").trim();
 
     const newTable = new Table({
       tableNumber,
+      tableName: finalDisplayId || `Table-${tableNumber}`,
+      displayId: finalDisplayId || `Table-${tableNumber}`,
+      area: chosenArea,
+      floor: chosenArea,
+      zone: chosenArea,
       capacity,
-      zone,
+      isEnabled: isEnabled !== false,
       restaurantId: req.user?.restaurantId,
       outletId: req.user?.outletId,
       createdBy: req.user._id,
@@ -58,9 +69,18 @@ const addTable = async (req, res, next) => {
       status: "available",
     });
     await newTable.save();
-    res
-      .status(201)
-      .json({ success: true, message: "Table added!", data: newTable });
+
+    await logActivity({
+      req,
+      action: "Table Added",
+      resource: "Table",
+      entityType: "Table",
+      entityId: newTable._id,
+      newValue: { displayId: newTable.displayId, area: newTable.area, capacity: newTable.capacity },
+      description: `Table added: ${newTable.displayId} (${newTable.area}, Capacity ${newTable.capacity})`,
+    });
+
+    res.status(201).json({ success: true, message: "Table added!", data: newTable });
   } catch (error) {
     next(error);
   }
@@ -153,7 +173,7 @@ const getTableById = async (req, res, next) => {
 
 const updateTable = async (req, res, next) => {
   try {
-    const { status, orderId, capacity, zone } = req.body;
+    const { status, orderId, capacity, zone, area, floor, displayId, tableName, isEnabled } = req.body;
     const { id } = req.params;
 
     if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -168,10 +188,22 @@ const updateTable = async (req, res, next) => {
         }
       : { createdBy: req.user._id };
 
-    // Reject client-supplied currentOccupancy: occupancy is server-managed
     if (req.body.currentOccupancy !== undefined && req.body.currentOccupancy !== null) {
       throw createHttpError(400, "Current occupancy is managed by the system and cannot be set directly!");
     }
+
+    const table = await Table.findOne({ _id: id, ...scopeQuery, isDeleted: { $ne: true } });
+    if (!table) {
+      const error = createHttpError(404, "Table not found!");
+      return next(error);
+    }
+
+    const prevVal = {
+      displayId: table.displayId,
+      area: table.area,
+      capacity: table.capacity,
+      isEnabled: table.isEnabled,
+    };
 
     const updateFields = {};
     if (status) {
@@ -185,21 +217,30 @@ const updateTable = async (req, res, next) => {
       if (cap < 1 || cap > 100) throw createHttpError(400, "Capacity must be between 1 and 100!");
       updateFields.capacity = cap;
     }
-    if (zone) updateFields.zone = zone;
-
-    const table = await Table.findOne({ _id: id, ...scopeQuery, isDeleted: { $ne: true } });
-    if (!table) {
-      const error = createHttpError(404, "Table not found!");
-      return next(error);
+    const chosenArea = area || floor || zone;
+    if (chosenArea) {
+      updateFields.area = String(chosenArea).trim();
+      updateFields.floor = String(chosenArea).trim();
+      updateFields.zone = String(chosenArea).trim();
     }
 
-    // Backend enforcement: a table's capacity can never be lowered below its current occupancy
+    const newDisp = displayId || tableName;
+    if (newDisp) {
+      updateFields.displayId = String(newDisp).trim();
+      updateFields.tableName = String(newDisp).trim();
+    }
+
+    if (typeof isEnabled === "boolean") {
+      updateFields.isEnabled = isEnabled;
+    }
+
+    // Backend enforcement: capacity cannot be lowered below current occupancy
     if (updateFields.capacity !== undefined) {
       const currentOccupancy = table.currentOccupancy || 0;
       if (updateFields.capacity < currentOccupancy) {
         throw createHttpError(
           400,
-          `Cannot reduce capacity below current occupancy of ${currentOccupancy} customer(s) on Table ${table.tableNumber}.`
+          `Cannot reduce capacity below current occupancy of ${currentOccupancy} customer(s) on Table ${table.displayId || table.tableNumber}.`
         );
       }
     }
@@ -210,10 +251,21 @@ const updateTable = async (req, res, next) => {
       { new: true }
     );
 
-    if (!updatedTable) {
-      const error = createHttpError(404, "Table not found!");
-      return next(error);
-    }
+    await logActivity({
+      req,
+      action: "Table Updated",
+      resource: "Table",
+      entityType: "Table",
+      entityId: id,
+      previousValue: prevVal,
+      newValue: {
+        displayId: updatedTable.displayId,
+        area: updatedTable.area,
+        capacity: updatedTable.capacity,
+        isEnabled: updatedTable.isEnabled,
+      },
+      description: `Table updated: ${updatedTable.displayId}`,
+    });
 
     res.status(200).json({ success: true, message: "Table updated!", data: updatedTable });
   } catch (error) {
@@ -246,11 +298,25 @@ const deleteTable = async (req, res, next) => {
       return next(error);
     }
 
-    const table = await Table.findOneAndDelete({ _id: id, ...scopeQuery });
+    const table = await Table.findOne({ _id: id, ...scopeQuery, isDeleted: { $ne: true } });
     if (!table) {
       const error = createHttpError(404, "Table not found!");
       return next(error);
     }
+
+    table.isDeleted = true;
+    await table.save();
+
+    await logActivity({
+      req,
+      action: "Table Deleted",
+      resource: "Table",
+      entityType: "Table",
+      entityId: id,
+      previousValue: { displayId: table.displayId, area: table.area },
+      description: `Table deleted: ${table.displayId || table.tableNumber}`,
+    });
+
     res.status(200).json({ success: true, message: "Table deleted!", data: table });
   } catch (error) {
     next(error);

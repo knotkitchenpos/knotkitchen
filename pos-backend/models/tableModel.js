@@ -7,6 +7,30 @@ const tableSchema = new mongoose.Schema(
       required: true,
       min: [1, "Table number must be at least 1"],
     },
+    tableName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    displayId: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    area: {
+      type: String,
+      default: "Ground Floor",
+      trim: true,
+    },
+    floor: {
+      type: String,
+      default: "Ground Floor",
+      trim: true,
+    },
+    isEnabled: {
+      type: Boolean,
+      default: true,
+    },
     capacity: {
       type: Number,
       default: 4,

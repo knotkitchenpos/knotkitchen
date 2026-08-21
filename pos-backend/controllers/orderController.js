@@ -3,6 +3,7 @@ const Order = require("../models/orderModel");
 const Table = require("../models/tableModel");
 const Customer = require("../models/customerModel");
 const Restaurant = require("../models/restaurantModel");
+const { logActivity } = require("../services/auditService");
 
 const { default: mongoose } = require("mongoose");
 const { generateOrderNumberSafe } = require("../services/orderNumberService");
@@ -839,6 +840,13 @@ const getOrdersReport = async (req, res, next) => {
     });
 
     const summary = buildReportBuckets(projected);
+
+    await logActivity({
+      req,
+      action: "Accessed Reports",
+      resource: "Reports",
+      description: `Accessed order & financial report for window: ${window.start.toISOString().slice(0, 10)} to ${window.end.toISOString().slice(0, 10)}`,
+    });
 
     res.status(200).json({
       success: true,

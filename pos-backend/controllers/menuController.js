@@ -1,6 +1,7 @@
 const Menu = require("../models/menuModel");
 const createHttpError = require("http-errors");
 const mongoose = require("mongoose");
+const { logActivity } = require("../services/auditService");
 
 /**
  * Menu tenancy scope (§3).
@@ -927,15 +928,25 @@ const publishToTarget = async (req, res, target) => {
   }
 
 
-  return res.status(200).json({
-    success: true,
-    message: `${target === "website" ? "Website" : "System"} cache refreshed. ${updated} menu(s) republished.`,
-    data: {
-      target,
-      count: updated,
-      publishedAt: now,
-    },
-  });
+    if (target === "website") {
+      await logActivity({
+        req,
+        action: "Website Published",
+        resource: "Website Cache",
+        newValue: `${updated} menu(s) published to customer website`,
+        description: "Website cache published to live customer site",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `${target === "website" ? "Website" : "System"} cache refreshed. ${updated} menu(s) republished.`,
+      data: {
+        target,
+        count: updated,
+        publishedAt: now,
+      },
+    });
 };
 
 const publishSystemCache = (req, res, next) =>

@@ -103,10 +103,10 @@ export function useOnlineOrders(restaurantId) {
     };
   }, [restaurantId, fetchOrders]);
 
-  // Fallback poll only while disconnected — never competes with the socket.
+  // Fallback poll every 12 seconds when disconnected or idle to detect missed website orders (§15s polling window)
   useEffect(() => {
-    if (connected) return undefined;
-    const id = setInterval(() => fetchOrders({ since: lastSyncRef.current }), 60000);
+    const pollInterval = connected ? 15000 : 12000;
+    const id = setInterval(() => fetchOrders({ since: lastSyncRef.current }), pollInterval);
     return () => clearInterval(id);
   }, [connected, fetchOrders]);
 
