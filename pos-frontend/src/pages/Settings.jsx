@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -538,7 +538,7 @@ const StorePropertiesView = () => {
       </div>
 
       {/* Owner PIN Management */}
-      {(user.role === "Owner" || user.role === "owner") && (
+      {(user?.role === "Owner" || user?.role === "owner") && (
         <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-3">
           <div className="flex items-center justify-between">
             <div>
@@ -879,7 +879,7 @@ const TimingsHolidaysView = () => {
 const ManageStaffView = () => {
   const qc = useQueryClient();
   const user = useSelector((s) => s.user);
-  const isOwner = user.role === "Owner" || user.role === "owner";
+  const isOwner = user?.role === "Owner" || user?.role === "owner";
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");

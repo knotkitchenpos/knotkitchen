@@ -41,8 +41,8 @@ const Dashboard = () => {
     queryFn: getOrders,
   });
 
-  const menus = menusRes?.data?.data || [];
-  const orders = ordersRes?.data?.data || [];
+  const menus = Array.isArray(menusRes?.data?.data) ? menusRes.data.data : [];
+  const orders = Array.isArray(ordersRes?.data?.data) ? ordersRes.data.data : [];
 
   const addCategoryMutation = useMutation({
     mutationFn: addCategory,

@@ -465,8 +465,6 @@ const Reports = () => {
     document.title = "KnotKitchen | Reports";
   }, []);
 
-  const user = useSelector((s) => s.user);
-
   // --- Filter state (defaults to TODAY every mount — Module 5 §4) ---
   const today = localDay();
   const [mode, setMode] = useState("single"); // "single" | "range"
@@ -512,10 +510,18 @@ const Reports = () => {
   });
   const restaurant = restaurantRes?.data?.data;
   const websiteSettings = websiteRes?.data?.data?.settings;
+  /*
+   * Report header MUST show the RESTAURANT/STORE name — never the
+   * logged-in user's name. Previously this fell through to `user.name`
+   * which surfaced staff/owner names ("raja") in place of the store
+   * name on both the on-screen report AND the printed report (see
+   * BUG 3 & BUG 6 in the QA report). `restaurant?.name` is
+   * authoritative and tenant-scoped by /api/restaurant/me.
+   */
   const restaurantName =
-    user.name ||
     restaurant?.name ||
     websiteSettings?.branding?.siteTitle ||
+    websiteSettings?.branding?.storeName ||
     "KnotKitchen Store";
   const restaurantAddress = useMemo(() => {
     const parts = [

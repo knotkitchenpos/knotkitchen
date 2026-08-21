@@ -487,7 +487,20 @@ const createStorefrontOrder = async (req, res, next) => {
           });
         }
       }
-      throw err;
+      // Unique index race on orderNumber: astronomically unlikely with
+      // 6-digit random IDs, but the partial-unique index in orderModel
+      // is the ultimate safety net. Regenerate and retry once — the new
+      // generator's pre-flight `exists()` check makes a second collision
+      // vanishingly rare.
+      if (err?.code === 11000 && String(err?.keyPattern?.orderNumber) === "1") {
+        order.orderNumber = await generateOrderNumberSafe({
+          source: "WEBSITE",
+          restaurantId,
+        });
+        await order.save();
+      } else {
+        throw err;
+      }
     }
 
     // ---- CRM: upsert the customer record (best-effort) ----

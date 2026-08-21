@@ -10,9 +10,33 @@ import { checkActionAuthorization } from "../utils/security";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getTables, addTable, updateTable, deleteTable, getTableById, getTableSessionById, regenerateQr } from "../https";
 import { enqueueSnackbar } from "notistack";
-import { FiGrid, FiPlus, FiTrash2, FiEdit2, FiQrCode, FiLayers, FiCheckCircle } from "react-icons/fi";
+// NOTE: `FiQrCode` does not exist in the `react-icons/fi` set — it was a
+// bad copy-paste (probably meant `FaQrcode` from `fa`). Rather than pull
+// in another icon package for a single glyph we render a small inline
+// QR-style SVG locally (`IconQr` below) — this keeps the bundle lean
+// and the previous unrelated build failure resolved.
+import { FiGrid, FiPlus, FiTrash2, FiEdit2, FiLayers, FiCheckCircle } from "react-icons/fi";
 import { setOrderType } from "../redux/slices/orderTypeSlice";
 import { updateTable as updateTableAction, setSessionId } from "../redux/slices/customerSlice";
+
+const IconQr = ({ size = 13 }) => (
+  <svg
+    width={size}
+    height={size}
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="1.9"
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden="true"
+  >
+    <rect x="3" y="3" width="7" height="7" rx="1" />
+    <rect x="14" y="3" width="7" height="7" rx="1" />
+    <rect x="3" y="14" width="7" height="7" rx="1" />
+    <path d="M14 14h3v3M20 14v3M14 20h3M20 20v-3" />
+  </svg>
+);
 
 const DEFAULT_AREAS = ["Ground Floor", "First Floor", "Rooftop", "Garden", "Terrace", "VIP Area", "Outdoor"];
 
@@ -383,7 +407,7 @@ const Tables = () => {
                     className="p-1.5 rounded-lg bg-white border border-[#E2E8F0] text-[#5B42F3] shadow-md hover:scale-105"
                     title="View QR Code"
                   >
-                    <FiQrCode size={13} />
+                    <IconQr size={13} />
                   </button>
                   <button
                     onClick={(e) => {

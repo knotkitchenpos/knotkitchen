@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
 import {
@@ -14,10 +14,10 @@ import {
   importMenuCsv,
   previewMenuCsv,
   saveGroupToDishes,
-  toggleDishAvailability,
   unpublishMenu,
   publishMenu,
   uploadMediaAsset,
+  updateDishStatus,
 } from "../../https";
 
 /* ---------- Icons ---------- */
@@ -125,15 +125,20 @@ const ManageMenu = () => {
   // Extract all groups across all dishes (Module 4 §4)
   const allGroupsMap = useMemo(() => {
     const map = new Map();
-    menus.forEach((menu) => {
+    const safeMenus = Array.isArray(menus) ? menus : [];
+    safeMenus.forEach((menu) => {
+      if (!menu) return;
       (menu.items || []).forEach((item) => {
+        if (!item) return;
         (item.modifierGroups || []).forEach((group) => {
+          if (!group || !group.name) return;
+          const options = Array.isArray(group.options) ? group.options : [];
           if (!map.has(group.name)) {
             map.set(group.name, {
               name: group.name,
               required: Boolean(group.required),
               maxSelections: group.maxSelections || 1,
-              options: group.options || [],
+              options: options,
               dishIds: new Set([String(item._id)]),
             });
           } else {
@@ -217,6 +222,40 @@ const ManageMenu = () => {
     onSuccess: () => invalidate(),
   });
 
+  const bulkAddGroupMut = useMutation({
+    mutationFn: bulkAddGroup,
+    onSuccess: () => {
+      enqueueSnackbar("Group added to selected items!", { variant: "success" });
+      invalidate();
+      setSelectedIds(new Set());
+      setShowBulkMenu(false);
+    },
+    onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to add group to selected items", { variant: "error" }),
+  });
+
+  const bulkRemoveGroupMut = useMutation({
+    mutationFn: bulkRemoveGroup,
+    onSuccess: () => {
+      enqueueSnackbar("Group removed from selected items!", { variant: "success" });
+      invalidate();
+      setSelectedIds(new Set());
+      setShowBulkMenu(false);
+    },
+    onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to remove group from selected items", { variant: "error" }),
+  });
+
+  const handleBulkAddGroup = () => {
+    const name = prompt("Enter Group Name to attach to selected items:");
+    if (!name || !name.trim()) return;
+    bulkAddGroupMut.mutate({ groupName: name.trim(), dishIds: Array.from(selectedIds) });
+  };
+
+  const handleBulkRemoveGroup = () => {
+    const name = prompt("Enter Group Name to remove from selected items:");
+    if (!name || !name.trim()) return;
+    bulkRemoveGroupMut.mutate({ groupName: name.trim(), dishIds: Array.from(selectedIds) });
+  };
+
   const resetCategoryForm = () => {
     setCatName("");
     setCatDesc("");
@@ -252,7 +291,8 @@ const ManageMenu = () => {
 
 
   // Selection handlers
-  const currentItems = activeCategory ? (activeCategory.items || []) : menus;
+  const safeMenus = Array.isArray(menus) ? menus : [];
+  const currentItems = activeCategory ? (Array.isArray(activeCategory.items) ? activeCategory.items : []) : safeMenus;
 
   const toggleSelectAll = () => {
     if (selectedIds.size === currentItems.length) {
@@ -575,7 +615,7 @@ const ManageMenu = () => {
                         {group.name}
                       </p>
                       <p className="text-[11.5px] font-bold text-[#64748B] truncate">
-                        {group.options.length} Extra(s) · {group.dishIds.size} Product(s) attached
+                        {(group.options || []).length} Extra(s) · {group.dishIds?.size || 0} Product(s) attached
                       </p>
                     </div>
                   </div>
@@ -586,7 +626,7 @@ const ManageMenu = () => {
                         setGroupName(group.name);
                         setGroupRequired(group.required);
                         setGroupMax(String(group.maxSelections || 1));
-                        setExtrasList(group.options.map((o) => ({ name: o.name, price: String(o.price) })));
+                        setExtrasList((group.options || []).map((o) => ({ name: o?.name || "", price: String(o?.price ?? "0") })));
                         setAssignedDishIds(new Set(group.dishIds));
                         setShowManageGroup(true);
                       }}
@@ -1036,25 +1076,28 @@ const ManageMenu = () => {
               <div className="pt-2 border-t border-[#E2E8F0] space-y-2">
                 <h4 className="font-extrabold text-[13px] text-[#0F172A]">Assign to Products</h4>
                 <div className="max-h-[160px] overflow-y-auto space-y-1.5 p-2 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
-                  {menus.flatMap((m) => m.items || []).map((item) => {
-                    const assigned = assignedDishIds.has(String(item._id));
-                    return (
-                      <label key={item._id} className="flex items-center gap-2 p-1.5 hover:bg-white rounded-lg cursor-pointer text-[12.5px] font-bold text-[#334155]">
-                        <input
-                          type="checkbox"
-                          checked={assigned}
-                          onChange={() => {
-                            const next = new Set(assignedDishIds);
-                            if (next.has(String(item._id))) next.delete(String(item._id));
-                            else next.add(String(item._id));
-                            setAssignedDishIds(next);
-                          }}
-                          className="w-4 h-4 accent-[#5B42F3]"
-                        />
-                        <span>{item.name}</span>
-                      </label>
-                    );
-                  })}
+                  {(Array.isArray(menus) ? menus : [])
+                    .flatMap((m) => (Array.isArray(m?.items) ? m.items : []))
+                    .map((item) => {
+                      if (!item || !item._id) return null;
+                      const assigned = assignedDishIds.has(String(item._id));
+                      return (
+                        <label key={item._id} className="flex items-center gap-2 p-1.5 hover:bg-white rounded-lg cursor-pointer text-[12.5px] font-bold text-[#334155]">
+                          <input
+                            type="checkbox"
+                            checked={assigned}
+                            onChange={() => {
+                              const next = new Set(assignedDishIds);
+                              if (next.has(String(item._id))) next.delete(String(item._id));
+                              else next.add(String(item._id));
+                              setAssignedDishIds(next);
+                            }}
+                            className="w-4 h-4 accent-[#5B42F3]"
+                          />
+                          <span>{item.name}</span>
+                        </label>
+                      );
+                    })}
                 </div>
               </div>
             </div>

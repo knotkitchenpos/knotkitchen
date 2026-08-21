@@ -3,35 +3,81 @@ const mongoose = require("mongoose");
 const OrderCounter = require("../models/orderCounterModel");
 
 /**
- * Globally-unique order-number generator (Module 3 §4).
+ * Customer-facing Order-number generator.
  *
- * Produces order numbers in the form:
+ * === What the customer sees ===
  *
- *     <SOURCE>-<YYYYMMDD>-<SEQ6>
+ * Every generated number is a purely-numeric, date-independent string of
+ * 6 digits (leading digit >= 1 so it's never printed as "0xxxxx"):
  *
- * e.g.  POS-20260819-000042   /   WEB-20260819-000018
+ *     583721        904315        712048
  *
- * The number is:
- *   1. Atomic per (restaurantId, source, date) via MongoDB's
- *      findOneAndUpdate({...}, {$inc}, {upsert:true, new:true}).
- *      Two concurrent order creations get sequential seq values, never the
- *      same one, because the driver serialises the write on a single
- *      unique key.
- *   2. Enforced globally-unique on Order.orderNumber via a partial unique
- *      index defined in orderModel.js. If a caller manages to bypass this
- *      service and inject a duplicate string, the second Order.save() will
- *      throw E11000 and the request will fail — no silent duplicate slips
- *      into the database.
- *   3. Never reused: the date segment guarantees no wrap-around, and the
- *      seq only increments within a day. A day can hold 999,999 orders per
- *      (restaurant, source) which is more than enough for real merchants.
+ * That is what appears on:
+ *   - POS order cards
+ *   - Website order confirmations
+ *   - Printed / e-mailed receipts
+ *   - Reports
  *
- * Sources are compacted to short prefixes so the number stays short on
- * thermal receipts:
- *     POS → POS   WEBSITE → WEB   QR → QR
- *     MARKETPLACE → MKT   PHONE → PHN   * → EXT
+ * The old SOURCE-DATE-SEQ format ("POS-20260821-000001") is intentionally
+ * abandoned per QA BUG 4 — it leaked the date, the source and the daily
+ * sequence to the customer.
+ *
+ * === What stays internal ===
+ *
+ * We are ONLY changing the value stored in `Order.orderNumber` (the
+ * human-facing identifier). We deliberately do NOT touch:
+ *   - `Order._id`               (internal Mongo primary key, still ObjectId)
+ *   - `Bill.orderId`, `Payment.orderId`, `PaymentLink.orderId`, etc.
+ *     — all continue to reference `Order._id`, so all existing DB
+ *     relationships keep working.
+ *   - `paymentData.razorpay_*`  (gateway identifiers)
+ *   - The Order.orderNumber unique partial index in orderModel.js — a
+ *     duplicate would still fail with E11000, giving us defence-in-depth
+ *     collision protection.
+ *
+ * === Uniqueness strategy ===
+ *
+ * A 6-digit random number has 900,000 possible values. For real-world
+ * merchants (< a few thousand orders per day) that is more than enough to
+ * make natural collisions vanishingly rare. We still enforce global
+ * uniqueness through two layers:
+ *
+ *   1. This generator retries up to `maxRetries` times, expanding the
+ *      candidate space to 7 and then 8 digits if the 6-digit space keeps
+ *      colliding — which effectively never happens.
+ *   2. `Order.orderNumber` carries a partial-unique index in orderModel.
+ *      A duplicate insert would throw E11000, so even if this generator
+ *      somehow produced a duplicate the DB would reject it and the
+ *      caller's retry loop (see orderController.addOrder /
+ *      storefrontController.createOnlineOrder) would try again.
+ *   3. Optionally the caller can pass `checkExisting = true` to run a
+ *      pre-flight `Order.exists()` check against the candidate number.
+ *      This is enabled by default in `generateOrderNumberSafe`, and
+ *      short-circuits any DB churn from the E11000 retry path.
+ *
+ * === Multi-store isolation ===
+ *
+ * Numbers are drawn from a single global pool, but stores never see each
+ * other's numbers because every read path is tenant-scoped by
+ * `restaurantId`. Two different tenants COULD theoretically be assigned
+ * the same 6-digit number, and that is fine — the number is scoped by
+ * tenant when you look it up. The unique index is kept as a global
+ * safety net because operationally you never want to accept two rows
+ * with the same public identifier even across tenants (it makes support
+ * tickets ambiguous). If a global collision does happen, the DB rejects
+ * the second write and the caller retries with a fresh number.
+ *
+ * === Backwards compatibility ===
+ *
+ * The exported name and signature are unchanged, so every existing
+ * caller (orderController.addOrder, storefrontController, retry paths,
+ * tests) keeps working. `SOURCE_PREFIX` and `_yyyymmdd` are still
+ * exported so a rare test-time consumer that referenced them doesn't
+ * break — but this generator no longer uses them.
  */
 
+// --- Legacy exports (kept for backward compatibility with older code
+//     paths and tests) ---
 const SOURCE_PREFIX = {
     POS: "POS",
     WEBSITE: "WEB",
@@ -47,39 +93,57 @@ const yyyymmdd = (d = new Date()) => {
     return `${y}${m}${day}`;
 };
 
-const pad6 = (n) => String(n).padStart(6, "0");
+/**
+ * Produce a random numeric string of `digits` length whose FIRST digit
+ * is 1-9. That guarantees the printed value never renders as a shorter
+ * padded string (e.g. "058371" would confuse a customer reading it out
+ * to support). Uses `crypto.randomInt` so the distribution is
+ * cryptographically uniform — no Math.random() bias.
+ */
+const randomNumericId = (digits = 6) => {
+    if (digits < 2) throw new Error("digits must be >= 2");
+    const first = crypto.randomInt(1, 10); // 1..9 inclusive
+    let rest = "";
+    for (let i = 1; i < digits; i += 1) {
+        rest += String(crypto.randomInt(0, 10));
+    }
+    return `${first}${rest}`;
+};
 
 /**
+ * Core generator.
+ *
  * @param {object} opts
- * @param {string} opts.source        one of the Order.source enum values
- * @param {string|ObjectId} [opts.restaurantId]  tenant scope; falls back to
- *                                     "_global" when the caller has no
- *                                     tenant (legacy single-user installs)
- * @param {Date}   [opts.date]         override for testing
- * @param {number} [opts.maxRetries]   defence-in-depth if a race ever produces
- *                                     a duplicate at the Order layer
- * @returns {Promise<string>}          the generated order number
+ * @param {string} [opts.source]         Order.source value (informational only).
+ * @param {string|ObjectId} [opts.restaurantId]
+ * @param {Date}   [opts.date]           (ignored — kept for backward compat)
+ * @param {number} [opts.digits=6]       initial candidate length; retries auto-grow.
+ * @param {number} [opts.maxRetries=8]   retry cap before giving up.
+ * @param {boolean}[opts.checkExisting=false]
+ *                                       when true, we look up Order.exists({orderNumber})
+ *                                       before returning so downstream inserts don't
+ *                                       need to retry on E11000. Enabled by
+ *                                       generateOrderNumberSafe.
+ * @returns {Promise<string>}            e.g. "583721"
  */
 const generateOrderNumber = async ({
     source = "POS",
     restaurantId = null,
     date = new Date(),
-    maxRetries = 3,
+    digits = 6,
+    maxRetries = 8,
+    checkExisting = false,
 } = {}) => {
-    const upperSource = String(source || "POS").toUpperCase();
-    const prefix = SOURCE_PREFIX[upperSource] || "EXT";
-    const dateStr = yyyymmdd(date);
-    const tenantKey = restaurantId ? String(restaurantId) : "_global";
-    const key = `${tenantKey}:${upperSource}:${dateStr}`;
-
-    // MongoDB atomically increments and returns the new value. `upsert:true`
-    // creates the counter document on the very first order of the day for
-    // this tenant/source, without any read-then-write race.
-    let attempt = 0;
-    let lastError = null;
-    while (attempt < Math.max(1, maxRetries)) {
+    // Historic side-effect: the OrderCounter document is still bumped so
+    // any downstream reporting that grouped by tenant/source/date keeps
+    // working. We do NOT use its value in the returned string.
+    if (mongoose.connection?.readyState === 1) {
         try {
-            const doc = await OrderCounter.findOneAndUpdate(
+            const upperSource = String(source || "POS").toUpperCase();
+            const dateStr = yyyymmdd(date);
+            const tenantKey = restaurantId ? String(restaurantId) : "_global";
+            const key = `${tenantKey}:${upperSource}:${dateStr}`;
+            await OrderCounter.findOneAndUpdate(
                 { key },
                 {
                     $inc: { seq: 1 },
@@ -90,67 +154,89 @@ const generateOrderNumber = async ({
                     },
                 },
                 { new: true, upsert: true, setDefaultsOnInsert: true },
-            );
-            return `${prefix}-${dateStr}-${pad6(doc.seq)}`;
-        } catch (err) {
-            lastError = err;
-            // Duplicate key on the counter's own `key` unique index means
-            // two upserts raced during a brand-new key. Retry — the second
-            // attempt will hit the incremented document instead of trying
-            // to insert.
-            if (err && err.code === 11000) {
-                attempt += 1;
-                continue;
-            }
-            throw err;
+            ).catch(() => null);
+        } catch (_e) {
+            // Non-fatal — counter is analytics-only in the new scheme.
         }
     }
-    throw lastError || new Error("Failed to allocate order number after retries.");
+
+    // Model is loaded lazily so the older unit tests that use
+    // Module._load to swap Order don't need to also stub this service.
+    let OrderModel = null;
+    if (checkExisting) {
+        try {
+            OrderModel = require("../models/orderModel");
+        } catch (_e) {
+            OrderModel = null;
+        }
+    }
+
+    let currentDigits = Math.max(6, Math.min(10, digits));
+    for (let attempt = 0; attempt < maxRetries; attempt += 1) {
+        // Expand the candidate space after a few collisions. In practice
+        // this branch never fires — 6 digits gives ~900k values.
+        if (attempt === Math.floor(maxRetries / 2)) currentDigits = Math.min(currentDigits + 1, 10);
+        if (attempt === maxRetries - 1) currentDigits = Math.min(currentDigits + 1, 10);
+
+        const candidate = randomNumericId(currentDigits);
+
+        if (checkExisting && OrderModel && mongoose.connection?.readyState === 1) {
+            try {
+                // exists() returns the doc id if a match is found, null otherwise.
+                const clash = await OrderModel.exists({ orderNumber: candidate });
+                if (clash) continue;
+            } catch (_e) {
+                // If the pre-flight check itself blows up, fall through and
+                // let the DB partial-unique index be the safety net.
+            }
+        }
+        return candidate;
+    }
+
+    // Extremely unlikely: 8 draws from 900k+ pool all collided. Give up
+    // and return one last candidate; the DB partial-unique index will
+    // still reject a genuine dup and the caller's retry loop kicks in.
+    return randomNumericId(Math.min(10, currentDigits + 1));
 };
 
 /**
- * Best-effort wrapper for callers that would rather NOT fail the order
- * over a numbering hiccup. Falls back to a locally-unique random suffix
- * (`<PREFIX>-<YYYYMMDD>-Xxxxxxxx`) which is still globally-unique thanks
- * to 40 bits of entropy from crypto.randomBytes AND the partial-unique
- * index on Order.orderNumber (a duplicate would be rejected by the DB
- * with E11000 which the caller can retry).
+ * Best-effort wrapper — the historically-used entry point.
  *
- * Used in orderController.addOrder so an in-memory / mocked Model in the
- * legacy unit tests doesn't fail — the tests never assert on the exact
- * order-number format, only that the order is created and returned.
+ * Ensures we never fail an order over an ID-generation issue: if the
+ * primary path throws, we fall back to an even-lower-friction crypto
+ * draw. The DB partial-unique index on Order.orderNumber remains the
+ * ultimate guarantee that no two persisted orders share the same
+ * customer-facing number.
  */
 const generateOrderNumberSafe = async (opts = {}) => {
-    // Fast-path fallback: if mongoose isn't connected (unit-test or startup
-    // race), don't wait 10s for a buffered write to time out — return a
-    // random-suffix number immediately. The partial-unique index on
-    // Order.orderNumber still guarantees no duplicate can land in the DB.
+    const merged = {
+        checkExisting: true, // enable pre-flight uniqueness check
+        ...opts,
+    };
+
+    // Fast-path fallback: if mongoose isn't connected (unit-test or
+    // startup race), don't wait 10s for a buffered write/read to time
+    // out — return a random candidate immediately. The partial-unique
+    // index still guarantees no duplicate can land in the DB at runtime.
     const connState = mongoose.connection?.readyState;
     if (connState !== undefined && connState !== 1) {
-        const upperSource = String(opts.source || "POS").toUpperCase();
-        const prefix = SOURCE_PREFIX[upperSource] || "EXT";
-        const dateStr = yyyymmdd(opts.date || new Date());
-        const rnd = crypto.randomBytes(5).toString("hex").toUpperCase().slice(0, 10);
-        return `${prefix}-${dateStr}-X${rnd}`;
+        return randomNumericId(merged.digits || 6);
     }
 
     try {
-        return await generateOrderNumber(opts);
+        return await generateOrderNumber(merged);
     } catch (err) {
-        const upperSource = String(opts.source || "POS").toUpperCase();
-        const prefix = SOURCE_PREFIX[upperSource] || "EXT";
-        const dateStr = yyyymmdd(opts.date || new Date());
-        const rnd = crypto.randomBytes(5).toString("hex").toUpperCase().slice(0, 10);
         console.warn(
-            `[order-number] atomic counter unavailable, using fallback: ${err?.message || err}`,
+            `[order-number] generator failed, using fallback: ${err?.message || err}`,
         );
-        return `${prefix}-${dateStr}-X${rnd}`;
+        return randomNumericId(merged.digits || 6);
     }
 };
 
 module.exports = {
     generateOrderNumber,
     generateOrderNumberSafe,
-    _yyyymmdd: yyyymmdd, // exported for tests
+    _yyyymmdd: yyyymmdd,        // exported for backwards-compat with tests
     _SOURCE_PREFIX: SOURCE_PREFIX,
+    _randomNumericId: randomNumericId, // exposed for tests
 };

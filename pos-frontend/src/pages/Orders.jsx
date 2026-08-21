@@ -3,7 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSelector } from "react-redux";
 import { enqueueSnackbar } from "notistack";
 import KnotLogo from "../components/shared/KnotLogo";
-import { getOrders, markOrderReady, updateOrderStatus } from "../https";
+import { getOrders, getStoreProperties, markOrderReady, updateOrderStatus } from "../https";
+import { getMyRestaurant } from "../https/newModules";
 import { printReceipt } from "../utils/printReceipt";
 
 /* ---------- Icons ---------- */
@@ -125,6 +126,41 @@ const Orders = () => {
 
   const qc = useQueryClient();
   const user = useSelector((s) => s.user);
+
+  /*
+   * Store-branding queries — reused from OrderPanel so the Orders page
+   * side header shows the same RESTAURANT/STORE name and logo the POS
+   * uses. Previously this header fell back to `user.name` which surfaced
+   * the logged-in staff/owner ("raja") in place of the store name — see
+   * BUG 3 in the QA report.
+   *
+   * All three sources are tenant-scoped by the backend, so a staff user
+   * from Store A can never see Store B's branding here.
+   */
+  const { data: restaurantRes } = useQuery({
+    queryKey: ["restaurant", "me"],
+    queryFn: getMyRestaurant,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const { data: storePropsRes } = useQuery({
+    queryKey: ["store-properties"],
+    queryFn: getStoreProperties,
+    staleTime: 5 * 60_000,
+    retry: false,
+  });
+  const storeProps = storePropsRes?.data?.data || {};
+  const restaurant = restaurantRes?.data?.data;
+  const storeDisplayName =
+    storeProps.storeName ||
+    restaurant?.name ||
+    "KnotKitchen Store";
+  const storeDisplayLogo =
+    storeProps.restaurantLogo ||
+    restaurant?.branding?.logo ||
+    restaurant?.logo ||
+    "";
+
   const [tab, setTab] = useState("All");
   const [q, setQ] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
@@ -520,16 +556,37 @@ const Orders = () => {
 
       {/* ===== Right: Order detail ===== */}
       <aside className="w-[400px] shrink-0 h-full bg-white border-l border-[#E2E8F0] flex flex-col">
-        {/* Store header */}
+        {/*
+          Store header — MUST show the RESTAURANT/STORE name and logo,
+          not the logged-in user. Previously this fell back to
+          `user.name` which surfaced staff/owner names like "raja" in
+          place of the restaurant name (see BUG 3 in the QA report).
+        */}
         <div className="px-4 py-3.5 flex items-center gap-3 border-b border-[#E2E8F0] shrink-0">
-          <div className="w-[42px] h-[42px] rounded-full bg-[#0B1120] flex items-center justify-center shrink-0">
-            <KnotLogo size={26} />
+          <div
+            className={`w-[42px] h-[42px] rounded-full flex items-center justify-center shrink-0 overflow-hidden ${
+              storeDisplayLogo ? "bg-white border border-[#E2E8F0]" : "bg-[#0B1120]"
+            }`}
+            title={storeDisplayName}
+          >
+            {storeDisplayLogo ? (
+              <img
+                src={storeDisplayLogo}
+                alt={`${storeDisplayName} logo`}
+                className="w-full h-full object-contain"
+                onError={(e) => {
+                  e.currentTarget.style.display = "none";
+                }}
+              />
+            ) : (
+              <KnotLogo size={26} />
+            )}
           </div>
           <div className="min-w-0 flex-1">
             <p className="text-[15px] font-extrabold text-[#0F172A] truncate leading-tight">
-              {user.name || "KnotKitchen Store"}
+              {storeDisplayName}
             </p>
-            <p className="text-[11.5px] text-[#94A3B8] truncate">Store ID: {user.storeId || "—"}</p>
+            <p className="text-[11.5px] text-[#94A3B8] truncate">Store ID: {user?.storeId || "—"}</p>
           </div>
           <span className="px-2 py-[3px] rounded-full bg-[#DCFCE7] text-[#15803D] text-[10.5px] font-bold flex items-center gap-1 shrink-0">
             <span className="w-[5px] h-[5px] rounded-full bg-[#22C55E]" /> Online
@@ -773,10 +830,35 @@ const Orders = () => {
                     customerData: {
                       customerName: selected.customerDetails?.name,
                       customerPhone: selected.customerDetails?.phone,
+                      // Show the customer-facing Order ID on the printed
+                      // receipt — matches the panel's "#…" label.
+                      orderId:
+                        selected.orderNumber ||
+                        selected._id?.slice(-6).toUpperCase() ||
+                        "",
                     },
                     total: selected.bills?.total || 0,
                     tax: selected.bills?.tax || 0,
                     totalPriceWithTax: selected.bills?.totalWithTax || 0,
+                    // Store branding — MUST be the restaurant's own
+                    // name/address, never "KnotKitchen" or the
+                    // logged-in user's name (see BUG 6 in the QA
+                    // report).
+                    restaurantName: storeDisplayName,
+                    restaurantAddress:
+                      storeProps.fullAddress ||
+                      [
+                        restaurant?.address?.line1,
+                        restaurant?.address?.city,
+                        restaurant?.address?.postalCode,
+                      ]
+                        .filter(Boolean)
+                        .join(", "),
+                    restaurantPhone:
+                      storeProps.ownerPhone ||
+                      storeProps.contactPersonPhone ||
+                      restaurant?.phone ||
+                      "",
                   })
                 }
                 className="h-[46px] rounded-xl border border-[#E2E8F0] text-[#334155] text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#F8FAFC]"

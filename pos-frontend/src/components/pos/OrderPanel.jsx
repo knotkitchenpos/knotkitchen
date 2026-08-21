@@ -176,16 +176,38 @@ const OrderPanel = () => {
     staleTime: 5 * 60_000,
     retry: false,
   });
-  const orderTypeToggles = propsRes?.data?.data?.orderTypeToggles || { collection: true, delivery: true, table: true };
+  const storeProps = propsRes?.data?.data || {};
+  const orderTypeToggles = storeProps.orderTypeToggles || { collection: true, delivery: true, table: true };
 
   const restaurant = restaurantRes?.data?.data;
 
   const websiteSettings = websiteRes?.data?.data?.settings;
   const ordering = websiteSettings?.ordering || {};
   const restaurantLogo =
-    websiteSettings?.branding?.logo?.url || restaurant?.logo || "";
+    storeProps.restaurantLogo ||
+    websiteSettings?.branding?.logo?.url ||
+    restaurant?.branding?.logo ||
+    restaurant?.logo ||
+    "";
+  /*
+   * Header MUST show the RESTAURANT / STORE name, never the logged-in
+   * user's name. We deliberately do NOT fall back to `user.name` any
+   * more — that was the bug that surfaced "raja" (staff/owner name)
+   * where the restaurant name should be.
+   *
+   * Resolution order (all tenant-scoped, multi-store safe):
+   *   1. Store Properties API (`storeName` — the canonical Module 7
+   *      value the operator edits under Settings → Store Properties).
+   *   2. /api/restaurant/me `restaurant.name`.
+   *   3. Website Settings branding `storeName`.
+   *   4. Generic "KnotKitchen Store" placeholder only if none of the
+   *      tenant-scoped sources have populated yet (initial page load).
+   */
   const restaurantName =
-    user.name || restaurant?.name || websiteSettings?.branding?.storeName || "";
+    storeProps.storeName ||
+    restaurant?.name ||
+    websiteSettings?.branding?.storeName ||
+    "";
   const displayName = restaurantName || "KnotKitchen Store";
   const displayInitial = (displayName.trim()[0] || "K").toUpperCase();
 
@@ -658,7 +680,7 @@ const OrderPanel = () => {
             {displayName}
           </p>
           <p className="text-[11.5px] text-[#94A3B8] truncate">
-            Store ID: {user.storeId || "—"}
+            Store ID: {user?.storeId || "—"}
           </p>
         </div>
         <span className="px-2 py-[3px] rounded-full bg-[#DCFCE7] text-[#15803D] text-[10.5px] font-bold flex items-center gap-1 shrink-0">

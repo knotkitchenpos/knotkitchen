@@ -1,4 +1,4 @@
-import { StrictMode } from "react";
+import React, { StrictMode, Component } from "react";
 import { createRoot } from "react-dom/client";
 import "./index.css";
 import App from "./App.jsx";
@@ -8,27 +8,73 @@ import { PersistGate } from "redux-persist/integration/react";
 import { SnackbarProvider } from "notistack";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { registerServiceWorker } from "./pwa/registerServiceWorker";
+import FullScreenLoader from "./components/shared/FullScreenLoader";
+
+class ErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error("Uncaught error in POS Application:", error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#080F1F] p-4 text-white">
+          <div className="max-w-md w-full rounded-2xl bg-[#111B2E] border border-[#26344B] p-6 shadow-2xl text-center space-y-4">
+            <div className="w-12 h-12 rounded-full bg-red-500/20 text-red-400 flex items-center justify-center mx-auto text-xl font-bold">
+              ⚠️
+            </div>
+            <h2 className="text-xl font-bold text-white">Application Error</h2>
+            <p className="text-sm text-[#AEB8CA]">
+              An unexpected error occurred while running KnotKitchen POS.
+            </p>
+            <div className="p-3 rounded-xl bg-[#0D1526] border border-[#26344B] text-left text-xs font-mono text-red-300 overflow-x-auto max-h-32">
+              {this.state.error?.toString() || "Unknown error"}
+            </div>
+            <button
+              onClick={() => window.location.reload()}
+              className="w-full py-3 px-4 rounded-xl bg-gradient-to-r from-[#FF6A00] to-[#FF4D00] text-white font-semibold shadow-lg hover:opacity-90 transition-opacity"
+            >
+              Reload Application
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
-      staleTime : 30000,
-    }
-  }
-})
+      staleTime: 30000,
+    },
+  },
+});
 
 registerServiceWorker();
 
 createRoot(document.getElementById("root")).render(
   <StrictMode>
-    <Provider store={store}>
-      <PersistGate loading={null} persistor={persistor}>
-        <SnackbarProvider autoHideDuration={3000}>
-          <QueryClientProvider client={queryClient} >
-            <App />
-          </QueryClientProvider>
-        </SnackbarProvider>
-      </PersistGate>
-    </Provider>
+    <ErrorBoundary>
+      <Provider store={store}>
+        <PersistGate loading={<FullScreenLoader />} persistor={persistor}>
+          <SnackbarProvider autoHideDuration={3000}>
+            <QueryClientProvider client={queryClient}>
+              <App />
+            </QueryClientProvider>
+          </SnackbarProvider>
+        </PersistGate>
+      </Provider>
+    </ErrorBoundary>
   </StrictMode>
 );

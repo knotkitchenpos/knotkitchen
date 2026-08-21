@@ -52,12 +52,26 @@ const IconArrowRight = () => (
   </svg>
 );
 
+/**
+ * Main-area navigation.
+ *
+ * Per the redesign requirement:
+ *   - Settings must NOT appear here (it lives in the bottom pinned
+ *     footer, using the gear icon).
+ *   - Help & Support must NOT appear here (it lives inside
+ *     Settings → Help & Support). The `/home` route is still
+ *     reachable via that Settings entry — we're only removing the
+ *     duplicate top-level button so the sidebar has a single
+ *     canonical access path.
+ *
+ * DO NOT re-add "/home" or "/settings" to this array — that would
+ * re-introduce the duplicate buttons the QA screenshot flagged.
+ */
 const NAV = [
   { path: "/menu", label: "Product", Icon: IconBag },
   { path: "/orders", label: "Orders", Icon: IconClipboard },
   { path: "/reports", label: "Reports", Icon: IconChart },
   { path: "/dashboard", label: "Dashboard", Icon: IconGear },
-  { path: "/home", label: "Help & Support", Icon: IconHeadset },
 ];
 
 const Sidebar = ({ mobileOpen = false, onMobileClose }) => {
