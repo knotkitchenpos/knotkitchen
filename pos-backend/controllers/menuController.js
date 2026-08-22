@@ -76,6 +76,43 @@ const addCategory = async (req, res, next) => {
   }
 };
 
+const updateCategory = async (req, res, next) => {
+  try {
+    const { menuId, name, description, dispatchType, published, bgColor, textColor } = req.body;
+    if (!menuId || !name) {
+      return next(createHttpError(400, "Menu ID and Category name are required!"));
+    }
+
+    const menu = await Menu.findOne({ _id: menuId, ...menuScopeFor(req.user) });
+    if (!menu) return next(createHttpError(404, "Category not found!"));
+
+    const oldName = menu.name;
+    const newName = String(name).trim();
+
+    menu.name = newName;
+    if (description !== undefined) menu.description = String(description).trim();
+    if (dispatchType !== undefined) menu.dispatchType = dispatchType;
+    if (published !== undefined) {
+      menu.published = Boolean(published);
+      menu.isPublished = Boolean(published);
+    }
+    if (bgColor !== undefined) menu.bgColor = bgColor;
+    if (textColor !== undefined) menu.textColor = textColor;
+
+    // If category name changed, update items
+    if (oldName !== newName && Array.isArray(menu.items)) {
+      menu.items.forEach((item) => {
+        item.category = newName;
+      });
+    }
+
+    await menu.save();
+    res.status(200).json({ success: true, message: "Category updated!", data: menu });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const addSubcategory = async (req, res, next) => {
   try {
     const { menuId, name, description, dispatchType, bgColor, textColor } = req.body;
@@ -96,6 +133,63 @@ const addSubcategory = async (req, res, next) => {
     });
     await menu.save();
     res.status(201).json({ success: true, message: "Subcategory added!", data: menu });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const updateSubcategory = async (req, res, next) => {
+  try {
+    const { menuId, subcategoryId, name, oldName, description, dispatchType, published, bgColor, textColor } = req.body;
+    if (!menuId || (!subcategoryId && !oldName)) {
+      return next(createHttpError(400, "Category ID and Subcategory ID/name are required!"));
+    }
+
+    const menu = await Menu.findOne({ _id: menuId, ...menuScopeFor(req.user) });
+    if (!menu) return next(createHttpError(404, "Category not found!"));
+
+    menu.subcategories = menu.subcategories || [];
+    let subcat = subcategoryId ? menu.subcategories.id(subcategoryId) : null;
+    if (!subcat && oldName) {
+      subcat = menu.subcategories.find((s) => s.name === oldName);
+    }
+
+    const newName = name ? String(name).trim() : (subcat ? subcat.name : oldName);
+    const previousName = subcat ? subcat.name : oldName;
+
+    if (subcat) {
+      if (name) subcat.name = newName;
+      if (description !== undefined) subcat.description = String(description).trim();
+      if (dispatchType !== undefined) subcat.dispatchType = dispatchType;
+      if (published !== undefined) {
+        subcat.published = Boolean(published);
+        subcat.isPublished = Boolean(published);
+      }
+      if (bgColor !== undefined) subcat.bgColor = bgColor;
+      if (textColor !== undefined) subcat.textColor = textColor;
+    } else {
+      menu.subcategories.push({
+        name: newName,
+        description: String(description || "").trim(),
+        dispatchType: dispatchType || { collection: true, delivery: true, table: true },
+        published: published !== false,
+        isPublished: published !== false,
+        bgColor: bgColor || "#0249fd",
+        textColor: textColor || "#ffffff",
+      });
+    }
+
+    // If subcategory name changed, update items matching previousName
+    if (previousName && newName && previousName !== newName && Array.isArray(menu.items)) {
+      menu.items.forEach((item) => {
+        if (item.subcategory === previousName) {
+          item.subcategory = newName;
+        }
+      });
+    }
+
+    await menu.save();
+    res.status(200).json({ success: true, message: "Subcategory updated!", data: menu });
   } catch (error) {
     next(error);
   }
@@ -167,6 +261,76 @@ const addDish = async (req, res, next) => {
     });
     await menu.save();
     res.status(201).json({ success: true, message: "Dish added!", data: menu });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const updateDish = async (req, res, next) => {
+  try {
+    const { menuId, itemId } = req.params;
+    const {
+      name,
+      price,
+      description,
+      dispatchType,
+      bgColor,
+      textColor,
+      samePrice,
+      channelPrices,
+      isVegetarian,
+      displayTarget,
+      imageUrl,
+      isAvailable,
+      schedule,
+      modifierGroups,
+    } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(menuId) || !mongoose.Types.ObjectId.isValid(itemId)) {
+      return next(createHttpError(404, "Invalid id!"));
+    }
+
+    const menu = await Menu.findOne({ _id: menuId, ...menuScopeFor(req.user) });
+    if (!menu) return next(createHttpError(404, "Category not found!"));
+
+    const item = menu.items.id(itemId);
+    if (!item) return next(createHttpError(404, "Dish not found!"));
+
+    if (name !== undefined) item.name = String(name).trim();
+    if (price !== undefined) {
+      const numPrice = Number(price);
+      if (Number.isFinite(numPrice) && numPrice >= 0) item.price = numPrice;
+    }
+    if (description !== undefined) item.description = String(description).trim();
+    if (dispatchType !== undefined) item.dispatchType = dispatchType;
+    if (bgColor !== undefined) item.bgColor = bgColor;
+    if (textColor !== undefined) item.textColor = textColor;
+    if (samePrice !== undefined) item.samePrice = Boolean(samePrice);
+    if (channelPrices !== undefined) {
+      item.channelPrices = {
+        posCollection: Math.max(0, Number(channelPrices?.posCollection || item.price)),
+        posDelivery: Math.max(0, Number(channelPrices?.posDelivery || item.price)),
+        posTable: Math.max(0, Number(channelPrices?.posTable || item.price)),
+        websiteCollection: Math.max(0, Number(channelPrices?.websiteCollection || item.price)),
+        websiteDelivery: Math.max(0, Number(channelPrices?.websiteDelivery || item.price)),
+        websiteTable: Math.max(0, Number(channelPrices?.websiteTable || item.price)),
+      };
+    }
+    if (isVegetarian !== undefined) item.isVegetarian = Boolean(isVegetarian);
+    if (displayTarget !== undefined && ["both", "system", "website"].includes(displayTarget)) {
+      item.displayTarget = displayTarget;
+    }
+    if (imageUrl !== undefined) {
+      item.imageUrl = imageUrl;
+      item.imageThumbnailUrl = imageUrl;
+      item.image = imageUrl;
+    }
+    if (isAvailable !== undefined) item.isAvailable = Boolean(isAvailable);
+    if (schedule !== undefined) item.schedule = schedule;
+    if (Array.isArray(modifierGroups)) item.modifierGroups = modifierGroups;
+
+    await menu.save();
+    res.status(200).json({ success: true, message: "Product updated!", data: menu });
   } catch (error) {
     next(error);
   }
@@ -385,14 +549,20 @@ const bulkRemoveGroupFromDishes = async (req, res, next) => {
 const saveModifierGroupToDishes = async (req, res, next) => {
   try {
     const { groupName, required, maxSelections, options, dishIds } = req.body;
-    if (!groupName || !Array.isArray(options)) {
-      return next(createHttpError(400, "Group name and options array are required!"));
+    if (!groupName || !String(groupName).trim()) {
+      return next(createHttpError(400, "Group Name is required!"));
+    }
+    if (!Array.isArray(options)) {
+      return next(createHttpError(400, "Components options array is required!"));
     }
 
     const validatedOptions = options.map((o) => {
+      if (!o.name || !String(o.name).trim()) {
+        throw createHttpError(400, "Component name is required!");
+      }
       const p = Number(o.price);
       if (!Number.isFinite(p) || p < 0) {
-        throw createHttpError(400, `Price for extra "${o.name}" cannot be negative!`);
+        throw createHttpError(400, `Price for component "${o.name}" must be numeric and cannot be negative!`);
       }
       return { name: String(o.name).trim(), price: p };
     });
@@ -426,6 +596,133 @@ const saveModifierGroupToDishes = async (req, res, next) => {
     }
 
     res.status(200).json({ success: true, message: `Group "${groupName}" saved!`, count: updatedCount });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const deleteGroupFromDishes = async (req, res, next) => {
+  try {
+    const { groupName } = req.body;
+    if (!groupName || !String(groupName).trim()) {
+      return next(createHttpError(400, "Group Name is required!"));
+    }
+
+    const menus = await Menu.find(menuScopeFor(req.user));
+    let count = 0;
+
+    for (const menu of menus) {
+      let modified = false;
+      for (const item of menu.items) {
+        if (item.modifierGroups && item.modifierGroups.length > 0) {
+          const initialLen = item.modifierGroups.length;
+          item.modifierGroups = item.modifierGroups.filter((g) => g.name !== groupName.trim());
+          if (item.modifierGroups.length < initialLen) {
+            count++;
+            modified = true;
+          }
+        }
+      }
+      if (modified) await menu.save();
+    }
+
+    res.status(200).json({ success: true, message: `Group "${groupName}" deleted successfully!`, count });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const renameGroupInDishes = async (req, res, next) => {
+  try {
+    const { oldGroupName, newGroupName } = req.body;
+    if (!oldGroupName || !newGroupName || !String(newGroupName).trim()) {
+      return next(createHttpError(400, "Old Group Name and New Group Name are required!"));
+    }
+
+    const menus = await Menu.find(menuScopeFor(req.user));
+    let count = 0;
+
+    for (const menu of menus) {
+      let modified = false;
+      for (const item of menu.items) {
+        if (item.modifierGroups && item.modifierGroups.length > 0) {
+          for (const g of item.modifierGroups) {
+            if (g.name === oldGroupName.trim()) {
+              g.name = newGroupName.trim();
+              modified = true;
+              count++;
+            }
+          }
+        }
+      }
+      if (modified) await menu.save();
+    }
+
+    res.status(200).json({ success: true, message: `Group renamed to "${newGroupName.trim()}"!`, count });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const toggleGroupActiveInDishes = async (req, res, next) => {
+  try {
+    const { groupName, isActive } = req.body;
+    if (!groupName || !String(groupName).trim()) {
+      return next(createHttpError(400, "Group Name is required!"));
+    }
+
+    const menus = await Menu.find(menuScopeFor(req.user));
+    let count = 0;
+
+    for (const menu of menus) {
+      let modified = false;
+      for (const item of menu.items) {
+        if (item.modifierGroups && item.modifierGroups.length > 0) {
+          for (const g of item.modifierGroups) {
+            if (g.name === groupName.trim()) {
+              g.isActive = Boolean(isActive);
+              modified = true;
+              count++;
+            }
+          }
+        }
+      }
+      if (modified) await menu.save();
+    }
+
+    res.status(200).json({ success: true, message: `Group "${groupName}" status updated!`, count });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const reorderGroupsInDishes = async (req, res, next) => {
+  try {
+    const { groupOrder } = req.body;
+    if (!Array.isArray(groupOrder)) {
+      return next(createHttpError(400, "groupOrder array is required!"));
+    }
+
+    const orderMap = new Map(groupOrder.map((name, idx) => [String(name).trim(), idx]));
+
+    const menus = await Menu.find(menuScopeFor(req.user));
+    for (const menu of menus) {
+      let modified = false;
+      for (const item of menu.items) {
+        if (item.modifierGroups && item.modifierGroups.length > 0) {
+          item.modifierGroups.forEach((g) => {
+            if (orderMap.has(g.name)) {
+              g.sortOrder = orderMap.get(g.name);
+              modified = true;
+            }
+          });
+          item.modifierGroups.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
+        }
+      }
+      if (modified) await menu.save();
+    }
+
+    res.status(200).json({ success: true, message: "Groups reordered successfully!" });
   } catch (error) {
     next(error);
   }
@@ -883,16 +1180,13 @@ const toggleDishAvailability = async (req, res, next) => {
  * Returns { count, publishedAt, version } so the UI can show "Website
  * refreshed · 5 categories updated".
  */
-const publishToTarget = async (req, res, target) => {
+const publishAllMenusForUser = async (user, target) => {
   const now = new Date();
   const timestampField =
     target === "website" ? "lastPublishedToWebsiteAt" : "lastPublishedToSystemAt";
 
-  // findMany + save (over a raw bulk update) so we run the same
-  // mongoose middleware / defaults every other write does. In practice a
-  // store has <200 menus so this is cheap.
   const menus = await Menu.find({
-    ...menuScopeFor(req.user),
+    ...menuScopeFor(user),
     isDeleted: { $ne: true },
   });
 
@@ -927,26 +1221,31 @@ const publishToTarget = async (req, res, target) => {
     }
   }
 
+  return { updated, now };
+};
 
-    if (target === "website") {
-      await logActivity({
-        req,
-        action: "Website Published",
-        resource: "Website Cache",
-        newValue: `${updated} menu(s) published to customer website`,
-        description: "Website cache published to live customer site",
-      });
-    }
+const publishToTarget = async (req, res, target) => {
+  const { updated, now } = await publishAllMenusForUser(req.user, target);
 
-    return res.status(200).json({
-      success: true,
-      message: `${target === "website" ? "Website" : "System"} cache refreshed. ${updated} menu(s) republished.`,
-      data: {
-        target,
-        count: updated,
-        publishedAt: now,
-      },
+  if (target === "website") {
+    await logActivity({
+      req,
+      action: "Website Published",
+      resource: "Website Cache",
+      newValue: `${updated} menu(s) published to customer website`,
+      description: "Website cache published to live customer site",
     });
+  }
+
+  return res.status(200).json({
+    success: true,
+    message: `${target === "website" ? "Website" : "System"} cache refreshed. ${updated} menu(s) republished.`,
+    data: {
+      target,
+      count: updated,
+      publishedAt: now,
+    },
+  });
 };
 
 const publishSystemCache = (req, res, next) =>
@@ -958,8 +1257,11 @@ const publishWebsiteCache = (req, res, next) =>
 module.exports = {
   getMenus,
   addCategory,
+  updateCategory,
   addSubcategory,
+  updateSubcategory,
   addDish,
+  updateDish,
   updateDishSubcategory,
 
   deleteMenu,
@@ -973,6 +1275,10 @@ module.exports = {
   deleteAddon,
   addModifierGroup,
   saveModifierGroupToDishes,
+  deleteGroupFromDishes,
+  renameGroupInDishes,
+  toggleGroupActiveInDishes,
+  reorderGroupsInDishes,
   bulkAddGroupToDishes,
   bulkRemoveGroupFromDishes,
   deleteModifierGroup,
@@ -985,6 +1291,7 @@ module.exports = {
   unpublishMenu,
   getMenuVersions,
   rollbackMenu,
+  publishAllMenusForUser,
   publishSystemCache,
   publishWebsiteCache,
 };

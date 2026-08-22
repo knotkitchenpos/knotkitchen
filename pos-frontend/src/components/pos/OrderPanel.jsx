@@ -555,9 +555,9 @@ const OrderPanel = () => {
   const doTable = ({ table, guests }) => {
     dispatch(updateTableAction({ table }));
     sessionMutation.mutate({
-      tableId: table.tableId,
+      tableId: table.tableId || table._id,
       items: cart.map((i) => ({
-        menuItemId: i.menuItemId,
+        menuItemId: i.menuItemId || i._id,
         quantity: i.quantity,
         variantId: i.variantId || null,
         addonIds: i.addonIds || [],

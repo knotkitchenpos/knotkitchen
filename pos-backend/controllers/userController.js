@@ -176,12 +176,32 @@ const signTokensAndSetCookies = async (user, req, res) => {
 // ==============================================================
 const findRestaurantOrStore = async (storeId) => {
   const cleanStoreId = toSafeString(storeId).trim();
-  const restaurant = await Restaurant.findOne({ storeId: cleanStoreId, isDeleted: { $ne: true } });
+  if (!cleanStoreId) return { restaurant: null, store: null, cleanStoreId: "" };
+
+  let restaurant = await Restaurant.findOne({ storeId: cleanStoreId, isDeleted: { $ne: true } });
   let store = await Store.findOne({ storeId: cleanStoreId, isDeleted: { $ne: true } });
+
+  const numStoreId = Number(cleanStoreId);
+  if (!restaurant && !store && !Number.isNaN(numStoreId)) {
+    restaurant = await Restaurant.findOne({ storeId: numStoreId, isDeleted: { $ne: true } });
+    store = await Store.findOne({ storeId: numStoreId, isDeleted: { $ne: true } });
+  }
+
+  const isValidObjectId = (id) => typeof id === "string" && /^[a-fA-F0-9]{24}$/.test(id);
+  if (!restaurant && isValidObjectId(cleanStoreId)) {
+    restaurant = await Restaurant.findOne({ _id: cleanStoreId, isDeleted: { $ne: true } });
+  }
+  if (!store && isValidObjectId(cleanStoreId)) {
+    store = await Store.findOne({ _id: cleanStoreId, isDeleted: { $ne: true } });
+  }
 
   let resolvedRestaurant = restaurant;
   if (!resolvedRestaurant && store && store.restaurantId) {
     resolvedRestaurant = await Restaurant.findOne({ _id: store.restaurantId, isDeleted: { $ne: true } });
+  }
+
+  if (!store && resolvedRestaurant) {
+    store = await Store.findOne({ restaurantId: resolvedRestaurant._id, isDeleted: { $ne: true } });
   }
 
   return { restaurant: resolvedRestaurant, store, cleanStoreId };

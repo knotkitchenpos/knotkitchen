@@ -9,7 +9,7 @@ import { useState } from "react";
 import { useSelector } from "react-redux";
 import {
   Home, Auth, Orders, Tables, Menu, Dashboard, KDS, OrderOnline, PaymentLink,
-  Storefront, WebsiteSettings, OnlineOrders, Reports, Settings, ManageMenuPage,
+  Storefront, WebsiteSettings, OnlineOrders, Reports, Settings, ManageMenuPage, Support,
 
 } from "./pages";
 
@@ -49,6 +49,7 @@ function Layout() {
       <Route path="/kds" element={<ProtectedRoutes><KDS /></ProtectedRoutes>} />
       <Route path="/online-orders" element={<ProtectedRoutes><OnlineOrders /></ProtectedRoutes>} />
       <Route path="/settings" element={<ProtectedRoutes><Settings /></ProtectedRoutes>} />
+      <Route path="/support" element={<ProtectedRoutes><Support /></ProtectedRoutes>} />
       <Route path="/manage-menu" element={<ProtectedRoutes><ManageMenuPage /></ProtectedRoutes>} />
 
       <Route path="/website" element={<ProtectedRoutes><WebsiteSettings /></ProtectedRoutes>} />

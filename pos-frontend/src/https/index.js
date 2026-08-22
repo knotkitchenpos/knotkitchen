@@ -96,9 +96,13 @@ export const requestBillForSession = (sessionId) =>
 export const getMenus = (params) => axiosWrapper.get("/api/menu", params ? { params } : undefined);
 
 export const addCategory = (data) => axiosWrapper.post("/api/menu/category", data);
+export const updateCategory = (data) => axiosWrapper.put("/api/menu/category", data);
 export const addSubcategory = (data) => axiosWrapper.post("/api/menu/subcategory", data);
+export const updateSubcategory = (data) => axiosWrapper.put("/api/menu/subcategory", data);
 export const deleteCategory = (menuId) => axiosWrapper.delete(`/api/menu/${menuId}`);
 export const addDish = (data) => axiosWrapper.post("/api/menu/dish", data);
+export const updateDish = ({ menuId, itemId, ...data }) =>
+  axiosWrapper.put(`/api/menu/${menuId}/dish/${itemId}`, data);
 export const deleteDish = ({ menuId, itemId }) =>
   axiosWrapper.delete(`/api/menu/${menuId}/dish/${itemId}`);
 export const updateDishStatus = ({ menuId, itemId }) =>
@@ -127,6 +131,14 @@ export const addModifierGroup = (data) =>
   axiosWrapper.post(`/api/menu/${data.menuId}/dish/${data.itemId}/modifier-group`, data);
 export const saveGroupToDishes = (data) =>
   axiosWrapper.post("/api/menu/group", data);
+export const deleteGroupFromDishes = (data) =>
+  axiosWrapper.post("/api/menu/group/delete", data);
+export const renameGroupInDishes = (data) =>
+  axiosWrapper.put("/api/menu/group/rename", data);
+export const toggleGroupActive = (data) =>
+  axiosWrapper.post("/api/menu/group/toggle-active", data);
+export const reorderGroups = (data) =>
+  axiosWrapper.put("/api/menu/group/reorder", data);
 export const bulkAddGroup = (data) =>
   axiosWrapper.post("/api/menu/group/bulk-add", data);
 export const bulkRemoveGroup = (data) =>
@@ -196,6 +208,7 @@ export const importMenuText = ({ text, mode }) =>
   axiosWrapper.post("/api/menu/import", { text, mode });
 
 // CSV Import / Export (Module 5)
+export const downloadMenuCsvTemplate = () => axiosWrapper.get("/api/menu/csv/template", { responseType: "blob" });
 export const exportMenuCsv = () => axiosWrapper.get("/api/menu/csv/export", { responseType: "blob" });
 export const previewMenuCsv = (csvText) => axiosWrapper.post("/api/menu/csv/preview", { csvText });
 export const importMenuCsv = (csvText) => axiosWrapper.post("/api/menu/csv/import", { csvText });

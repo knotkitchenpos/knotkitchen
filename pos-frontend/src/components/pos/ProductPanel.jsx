@@ -5,6 +5,7 @@ import { useLocation } from "react-router-dom";
 import { enqueueSnackbar } from "notistack";
 import { getMenus, getPopularItems } from "../../https";
 import { addItems } from "../../redux/slices/cartSlice";
+import { ModalShell } from "./ModalShell";
 
 /* ---------- Reference tile palette ---------- */
 const TILE_COLORS = [
@@ -121,6 +122,11 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
   const [catId, setCatId] = useState(null);
   const [subcat, setSubcat] = useState(null);
 
+  // POS Product Customization Modal (Module 8)
+  const [customizingItem, setCustomizingItem] = useState(null);
+  const [selectedVariantId, setSelectedVariantId] = useState(null);
+  const [selectedModifiers, setSelectedModifiers] = useState({});
+
   const { data: menusRes, isLoading } = useQuery({
     queryKey: ["menus", "system"],
     queryFn: () => getMenus({ source: "system" }),
@@ -222,22 +228,117 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
    *
    * Simple products with no required choices go straight into the cart.
    */
+  const openCustomization = (item) => {
+    setCustomizingItem(item);
+    if (item.variants?.length) setSelectedVariantId(item.variants[0]._id || item.variants[0].id || item.variants[0].name);
+    else setSelectedVariantId(null);
+    setSelectedModifiers({});
+  };
+
+  const togglePosModifier = (group, optionId) => {
+    setSelectedModifiers((prev) => {
+      const chosen = prev[group.name] || [];
+      const max = group.maxSelections || 1;
+
+      if (chosen.includes(optionId)) {
+        return { ...prev, [group.name]: chosen.filter((o) => o !== optionId) };
+      }
+      if (max === 1) return { ...prev, [group.name]: [optionId] };
+      if (chosen.length >= max) return prev;
+      return { ...prev, [group.name]: [...chosen, optionId] };
+    });
+  };
+
+  const calculatedPosUnitPrice = useMemo(() => {
+    if (!customizingItem) return 0;
+    let basePrice = activePrice(customizingItem);
+    if (customizingItem.variants?.length) {
+      const v = customizingItem.variants.find((v) => String(v._id || v.id || v.name) === selectedVariantId);
+      if (v) basePrice = v.price;
+    }
+    let extras = 0;
+    for (const group of customizingItem.modifierGroups || []) {
+      const chosenIds = selectedModifiers[group.name] || [];
+      (group.options || []).forEach((opt) => {
+        const optId = String(opt._id || opt.id || opt.name);
+        if (chosenIds.includes(optId)) {
+          extras += Number(opt.price || 0);
+        }
+      });
+    }
+    return basePrice + extras;
+  }, [customizingItem, selectedVariantId, selectedModifiers]);
+
+  const handlePosCustomizedAdd = () => {
+    if (!customizingItem) return;
+    for (const group of customizingItem.modifierGroups || []) {
+      const chosen = selectedModifiers[group.name] || [];
+      if (group.required && chosen.length === 0) {
+        enqueueSnackbar(`Please select an option for "${group.name}".`, { variant: "warning" });
+        return;
+      }
+    }
+
+    let basePrice = activePrice(customizingItem);
+    let variantObj = null;
+    if (customizingItem.variants?.length) {
+      variantObj = customizingItem.variants.find((v) => String(v._id || v.id || v.name) === selectedVariantId) || customizingItem.variants[0];
+      basePrice = variantObj.price;
+    }
+
+    const selectedList = [];
+    let extraCost = 0;
+
+    for (const group of customizingItem.modifierGroups || []) {
+      const chosenIds = selectedModifiers[group.name] || [];
+      (group.options || []).forEach((opt) => {
+        const optId = String(opt._id || opt.id || opt.name);
+        if (chosenIds.includes(optId)) {
+          extraCost += Number(opt.price || 0);
+          selectedList.push({
+            groupId: group._id,
+            groupName: group.name,
+            optionId: opt._id,
+            optionName: opt.name,
+            price: Number(opt.price || 0),
+          });
+        }
+      });
+    }
+
+    const finalUnitPrice = basePrice + extraCost;
+    const optionNamesStr = selectedList.map((s) => s.optionName).join(", ");
+    const displayName = `${customizingItem.name}${variantObj ? ` (${variantObj.name})` : ""}${optionNamesStr ? ` (+ ${optionNamesStr})` : ""}`;
+
+    dispatch(
+      addItems({
+        id: Date.now() + Math.random(),
+        menuItemId: customizingItem._id,
+        variantId: variantObj?._id || null,
+        addonIds: [],
+        modifierSelections: selectedList,
+        name: displayName,
+        pricePerQuantity: Number(finalUnitPrice),
+        quantity: 1,
+        price: Number(finalUnitPrice),
+        addons: [],
+        modifiers: selectedList,
+        variant: variantObj ? { name: variantObj.name, price: variantObj.price } : null,
+        isCombo: customizingItem.isCombo || false,
+      })
+    );
+
+    enqueueSnackbar(`Added ${displayName} to order`, { variant: "success" });
+    setCustomizingItem(null);
+  };
+
   const add = (item) => {
     if (item.isAvailable === false) {
       enqueueSnackbar(`${item.name} is out of stock`, { variant: "error" });
       return;
     }
-    for (const g of item.modifierGroups || []) {
-      if (g.required) {
-        enqueueSnackbar(`${item.name} requires "${g.name}" — open the product to select it.`, { variant: "warning" });
-        return;
-      }
-    }
-    // Multi-variant products need an explicit selection to avoid silently
-    // charging the wrong price. Single-variant products fall through to the
-    // default (variants[0]) which is unambiguous.
-    if ((item.variants || []).length > 1) {
-      enqueueSnackbar(`${item.name} has multiple sizes — open the product to choose one.`, { variant: "warning" });
+    if ((item.modifierGroups || []).length > 0 || (item.variants || []).length > 1) {
+      openCustomization(item);
       return;
     }
 
@@ -572,6 +673,96 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
           </div>
         )}
       </div>
+
+      {/* POS Product Customization Modal (Module 8) */}
+      {customizingItem && (
+        <ModalShell
+          title={`Customize ${customizingItem.name}`}
+          onClose={() => setCustomizingItem(null)}
+          width={480}
+        >
+          <div className="space-y-4 text-[#0F172A]">
+            {/* Variants selection */}
+            {customizingItem.variants?.length > 1 && (
+              <div className="space-y-2">
+                <label className="text-[12px] font-extrabold text-[#334155]">Select Size / Variant</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {customizingItem.variants.map((v) => (
+                    <button
+                      key={v._id || v.id || v.name}
+                      type="button"
+                      onClick={() => setSelectedVariantId(v._id || v.id || v.name)}
+                      className={`p-2.5 rounded-xl border text-[12.5px] font-bold text-left transition-all ${
+                        selectedVariantId === (v._id || v.id || v.name)
+                          ? "border-[#5B42F3] bg-[#EEF0FE] text-[#5B42F3]"
+                          : "border-[#E2E8F0] hover:bg-[#F8FAFC]"
+                      }`}
+                    >
+                      <div>{v.name}</div>
+                      <div className="text-[13px] font-extrabold">₹{v.price}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Modifier Groups / Components selection */}
+            {(customizingItem.modifierGroups || []).map((group) => (
+              <div key={group._id || group.name} className="space-y-2 pt-2 border-t border-[#E2E8F0]">
+                <div className="flex items-center justify-between">
+                  <span className="text-[13px] font-extrabold text-[#0F172A]">{group.name}</span>
+                  <span className="text-[11px] font-bold text-[#64748B]">
+                    {group.required ? "(Required)" : "(Optional)"}
+                  </span>
+                </div>
+
+                <div className="space-y-1.5">
+                  {(group.options || []).map((opt) => {
+                    const optId = String(opt._id || opt.id || opt.name);
+                    const chosen = (selectedModifiers[group.name] || []).includes(optId);
+
+                    return (
+                      <label
+                        key={optId}
+                        className={`flex items-center justify-between p-2.5 rounded-xl border cursor-pointer text-[12.5px] font-bold transition-all ${
+                          chosen ? "border-[#5B42F3] bg-[#EEF0FE]/40" : "border-[#E2E8F0] hover:bg-[#F8FAFC]"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <input
+                            type={group.maxSelections === 1 ? "radio" : "checkbox"}
+                            name={`group-${group.name}`}
+                            checked={chosen}
+                            onChange={() => togglePosModifier(group, optId)}
+                            className="w-4 h-4 accent-[#5B42F3]"
+                          />
+                          <span>{opt.name}</span>
+                        </div>
+                        <span className="font-extrabold text-[#5B42F3]">₹{opt.price}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+
+            {/* Total calculation & Add to Cart button */}
+            <div className="pt-4 border-t border-[#E2E8F0] flex items-center justify-between">
+              <div>
+                <span className="text-[11px] font-bold text-[#64748B]">Unit Price</span>
+                <p className="text-[18px] font-extrabold text-[#0F172A]">₹{calculatedPosUnitPrice}</p>
+              </div>
+              <button
+                type="button"
+                onClick={handlePosCustomizedAdd}
+                className="h-[42px] px-6 rounded-xl bg-[#5B42F3] text-white text-[13.5px] font-extrabold shadow-md hover:bg-[#4A32E0]"
+              >
+                Add to Cart
+              </button>
+            </div>
+          </div>
+        </ModalShell>
+      )}
     </div>
   );
 };

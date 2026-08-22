@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useSearchParams, useParams } from "react-router-dom";
 import {
   qrGetTable,
   qrGetSession,
@@ -19,8 +19,9 @@ const ITEM_STATUS_LABEL = {
 };
 
 export default function OrderOnline() {
+  const { token: routeToken } = useParams();
   const [params] = useSearchParams();
-  const token = params.get("table") || "";
+  const token = routeToken || params.get("table") || "";
 
   const [table, setTable] = useState(null);
   const [restaurant, setRestaurant] = useState(null);

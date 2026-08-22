@@ -12,7 +12,7 @@ const generateSecureToken = () => crypto.randomBytes(32).toString("hex");
 
 const FRONTEND_URL = () => process.env.FRONTEND_URL || "http://localhost:5173";
 
-const buildQrUrl = (token) => `${FRONTEND_URL()}/order?table=${token}`;
+const buildQrUrl = (token) => `${FRONTEND_URL()}/t/${token}`;
 
 /**
  * Resolve the restaurant/outlet scope from the authenticated user.

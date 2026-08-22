@@ -756,17 +756,66 @@ const OrderTypesAutoReadyView = () => {
   );
 };
 
-/* ---------- Module 7 §6: Store Timings & §7 Holidays ---------- */
+/* ---------- Store Timings UI Redesign & Holidays Calendar ---------- */
 const TimingsHolidaysView = () => {
   const qc = useQueryClient();
-  const { data: webRes } = useQuery({ queryKey: ["website", "settings"], queryFn: getWebsiteSettings });
+  const { data: webRes, isLoading } = useQuery({ queryKey: ["website", "settings"], queryFn: getWebsiteSettings });
   const settings = webRes?.data?.data?.settings || {};
 
+  // Active channel tab: "collection", "delivery", or "table"
+  const [activeChannel, setActiveChannel] = useState("delivery");
+
+  // Holidays state
   const existingHolidays = settings.holidays || [];
   const [holidays, setHolidays] = useState(existingHolidays);
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [reason, setReason] = useState("Store Closed for Holiday");
+
+  React.useEffect(() => {
+    if (settings.holidays) setHolidays(settings.holidays);
+  }, [settings.holidays]);
+
+  // Days list Monday to Sunday
+  const DAYS = [
+    { key: "monday", label: "Monday", dayIndex: 1 },
+    { key: "tuesday", label: "Tuesday", dayIndex: 2 },
+    { key: "wednesday", label: "Wednesday", dayIndex: 3 },
+    { key: "thursday", label: "Thursday", dayIndex: 4 },
+    { key: "friday", label: "Friday", dayIndex: 5 },
+    { key: "saturday", label: "Saturday", dayIndex: 6 },
+    { key: "sunday", label: "Sunday", dayIndex: 0 },
+  ];
+
+  // Store timings schedule for current channel
+  const channelData = settings.channelHours?.[activeChannel] || {};
+  const [sameTimingAllDays, setSameTimingAllDays] = useState(Boolean(channelData.sameTimingAllDays));
+  const [weeklySchedule, setWeeklySchedule] = useState({});
+
+  React.useEffect(() => {
+    const rawData = settings.channelHours?.[activeChannel] || {};
+    setSameTimingAllDays(Boolean(rawData.sameTimingAllDays));
+    const map = {};
+    DAYS.forEach(({ key, dayIndex }) => {
+      const found = (rawData.weekly || []).find((w) => Number(w.day) === dayIndex);
+      map[key] = {
+        isOpen: found ? Boolean(found.isOpen) : true,
+        openTime: found?.openTime || "16:00",
+        closeTime: found?.closeTime || "23:50",
+        periods: Array.isArray(found?.periods) ? found.periods : [],
+      };
+    });
+    setWeeklySchedule(map);
+  }, [activeChannel, settings]);
+
+  const timingMutation = useMutation({
+    mutationFn: updateChannelTimings,
+    onSuccess: () => {
+      enqueueSnackbar("Store timings updated successfully!", { variant: "success" });
+      qc.invalidateQueries({ queryKey: ["website", "settings"] });
+    },
+    onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to update timings", { variant: "error" }),
+  });
 
   const holidayMutation = useMutation({
     mutationFn: updateHolidays,
@@ -774,30 +823,290 @@ const TimingsHolidaysView = () => {
       enqueueSnackbar("Holidays updated successfully!", { variant: "success" });
       qc.invalidateQueries({ queryKey: ["website", "settings"] });
     },
-    onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to update", { variant: "error" }),
+    onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to update holidays", { variant: "error" }),
   });
 
-  const addHoliday = () => {
-    if (!startDate || !endDate) {
-      enqueueSnackbar("Start date and end date are required.", { variant: "warning" });
-      return;
-    }
-    const updated = [...holidays, { startDate, endDate, reason }];
-    setHolidays(updated);
-    holidayMutation.mutate({ holidays: updated });
-    setStartDate("");
-    setEndDate("");
-    setReason("Store Closed for Holiday");
+  const format12H = (hhmm) => {
+    if (!hhmm) return "04:00 PM";
+    const [h, m] = String(hhmm).split(":").map(Number);
+    if (Number.isNaN(h) || Number.isNaN(m)) return hhmm;
+    const period = h >= 12 ? "PM" : "AM";
+    const h12 = h % 12 === 0 ? 12 : h % 12;
+    return `${String(h12).padStart(2, "0")}:${String(m).padStart(2, "0")} ${period}`;
   };
 
-  const removeHoliday = (idx) => {
-    const updated = holidays.filter((_, i) => i !== idx);
-    setHolidays(updated);
-    holidayMutation.mutate({ holidays: updated });
+  const isOvernight = (openT, closeT) => {
+    if (!openT || !closeT) return false;
+    const [oh, om] = openT.split(":").map(Number);
+    const [ch, cm] = closeT.split(":").map(Number);
+    return ch * 60 + cm < oh * 60 + om;
   };
+
+  const getNextDayName = (dayName) => {
+    const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    const idx = days.indexOf(dayName);
+    return days[(idx + 1) % 7];
+  };
+
+  const handleToggleDay = (dayKey) => {
+    setWeeklySchedule((prev) => ({
+      ...prev,
+      [dayKey]: {
+        ...prev[dayKey],
+        isOpen: !prev[dayKey]?.isOpen,
+      },
+    }));
+  };
+
+  const handleTimeChange = (dayKey, field, val, periodIdx = null) => {
+    setWeeklySchedule((prev) => {
+      const current = prev[dayKey] || { isOpen: true, openTime: "16:00", closeTime: "23:50", periods: [] };
+      if (periodIdx !== null) {
+        const copyPeriods = [...(current.periods || [])];
+        copyPeriods[periodIdx] = { ...copyPeriods[periodIdx], [field]: val };
+        return { ...prev, [dayKey]: { ...current, periods: copyPeriods } };
+      }
+      const updated = { ...current, [field]: val };
+      if (sameTimingAllDays) {
+        const syncAll = {};
+        DAYS.forEach(({ key }) => {
+          syncAll[key] = { ...prev[key], [field]: val };
+        });
+        return syncAll;
+      }
+      return { ...prev, [dayKey]: updated };
+    });
+  };
+
+  const handleAddHour = (dayKey) => {
+    setWeeklySchedule((prev) => {
+      const current = prev[dayKey] || { isOpen: true, openTime: "16:00", closeTime: "23:50", periods: [] };
+      const copyPeriods = [...(current.periods || []), { openTime: "21:00", closeTime: "23:50" }];
+      return { ...prev, [dayKey]: { ...current, periods: copyPeriods } };
+    });
+  };
+
+  const handleRemovePeriod = (dayKey, periodIdx) => {
+    setWeeklySchedule((prev) => {
+      const current = prev[dayKey];
+      const copyPeriods = (current.periods || []).filter((_, i) => i !== periodIdx);
+      return { ...prev, [dayKey]: { ...current, periods: copyPeriods } };
+    });
+  };
+
+  const handleSubmitDay = (dayKey) => {
+    const weekly = DAYS.map(({ key, dayIndex }) => {
+      const dayData = weeklySchedule[key] || { isOpen: true, openTime: "16:00", closeTime: "23:50", periods: [] };
+      return {
+        day: dayIndex,
+        isOpen: dayData.isOpen,
+        openTime: dayData.openTime,
+        closeTime: dayData.closeTime,
+        periods: dayData.periods || [],
+      };
+    });
+
+    timingMutation.mutate({
+      channel: activeChannel,
+      data: {
+        sameTimingAllDays,
+        weekly,
+      },
+    });
+  };
+
+  const channelTitle =
+    activeChannel === "delivery"
+      ? "Shop Delivery Hours"
+      : activeChannel === "collection"
+      ? "Shop Collection Hours"
+      : "Shop Restaurant Hours";
+
+  if (isLoading) return <div className="p-8 text-center text-[#94A3B8]">Loading Store Timings…</div>;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-6 text-[#0F172A]">
+
+      {/* Main Workspace Card */}
+      <div className="bg-white border border-[#E2E8F0] rounded-2xl p-6 shadow-sm space-y-6">
+
+        {/* Top Horizontal Tabs */}
+        <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
+          <h3 className="text-[20px] font-extrabold tracking-tight text-[#0F172A]">{channelTitle}</h3>
+
+          <div className="flex items-center gap-8 text-[14px]">
+            {[
+              { key: "collection", label: "Collection Time" },
+              { key: "delivery", label: "Delivery Time" },
+              { key: "table", label: "Restaurant Time" },
+            ].map((tab) => {
+              const active = activeChannel === tab.key;
+              return (
+                <button
+                  key={tab.key}
+                  type="button"
+                  onClick={() => setActiveChannel(tab.key)}
+                  className={`pb-2 transition-all cursor-pointer whitespace-nowrap ${
+                    active
+                      ? "text-[#1E293B] font-extrabold border-b-2 border-[#5B42F3]"
+                      : "text-[#64748B] font-semibold hover:text-[#0F172A]"
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Same timing for all days option */}
+        <div className="flex items-center gap-2 select-none text-[13px] font-bold text-[#475569]">
+          <input
+            type="checkbox"
+            id="sameTiming"
+            checked={sameTimingAllDays}
+            onChange={(e) => setSameTimingAllDays(e.target.checked)}
+            className="w-4 h-4 accent-[#5B42F3] cursor-pointer"
+          />
+          <label htmlFor="sameTiming" className="cursor-pointer">Same timing for all days</label>
+        </div>
+
+        {/* Day-by-Day Timings List */}
+        <div className="divide-y divide-[#F1F5F9]">
+          {DAYS.map(({ key, label }) => {
+            const dayData = weeklySchedule[key] || { isOpen: true, openTime: "16:00", closeTime: "23:50", periods: [] };
+            const isOpen = dayData.isOpen;
+            const overnight = isOpen && isOvernight(dayData.openTime, dayData.closeTime);
+
+            return (
+              <div key={key} className="py-4 space-y-3">
+                <div className="flex items-center gap-4 text-[13.5px]">
+                  {/* ON/OFF Switch */}
+                  <div className="flex items-center gap-2.5 w-[90px] shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleDay(key)}
+                      className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${
+                        isOpen ? "bg-[#22C55E]" : "bg-[#CBD5E1]"
+                      }`}
+                    >
+                      <span
+                        className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                          isOpen ? "right-1" : "left-1"
+                        }`}
+                      />
+                    </button>
+                    <span className={`font-bold text-[13px] ${isOpen ? "text-[#16A34A]" : "text-[#94A3B8]"}`}>
+                      {isOpen ? "Open" : "Closed"}
+                    </span>
+                  </div>
+
+                  {/* Day Name */}
+                  <span className="font-extrabold text-[14.5px] text-[#334155] w-[110px] shrink-0">
+                    {label}
+                  </span>
+
+                  {/* Primary Operating Time Inputs */}
+                  {isOpen ? (
+                    <div className="flex items-center gap-3 flex-1">
+                      {/* Opening Time Input */}
+                      <div className="relative">
+                        <input
+                          type="time"
+                          value={dayData.openTime}
+                          onChange={(e) => handleTimeChange(key, "openTime", e.target.value)}
+                          className="h-[38px] px-3 rounded-lg border border-[#E2E8F0] font-semibold text-[13.5px] text-[#334155] bg-white focus:border-[#5B42F3]"
+                        />
+                        <span className="ml-2 text-[12.5px] font-bold text-[#64748B]">
+                          {format12H(dayData.openTime)}
+                        </span>
+                      </div>
+
+                      <span className="text-[#94A3B8] font-bold px-1">—</span>
+
+                      {/* Closing Time Input */}
+                      <div className="flex items-center gap-2">
+                        {overnight && (
+                          <span className="px-2.5 py-1 rounded-md bg-[#E0F2FE] text-[#0284C7] text-[11.5px] font-extrabold shrink-0">
+                            {getNextDayName(label)}
+                          </span>
+                        )}
+                        <input
+                          type="time"
+                          value={dayData.closeTime}
+                          onChange={(e) => handleTimeChange(key, "closeTime", e.target.value)}
+                          className="h-[38px] px-3 rounded-lg border border-[#E2E8F0] font-semibold text-[13.5px] text-[#334155] bg-white focus:border-[#5B42F3]"
+                        />
+                        <span className="ml-2 text-[12.5px] font-bold text-[#64748B]">
+                          {format12H(dayData.closeTime)}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex-1 text-[13px] font-bold text-[#94A3B8] italic">
+                      Closed all day
+                    </div>
+                  )}
+
+                  {/* Actions: Add Hour & Submit */}
+                  <div className="flex items-center gap-2 shrink-0 ml-auto">
+                    {isOpen && (
+                      <button
+                        type="button"
+                        onClick={() => handleAddHour(key)}
+                        className="h-[34px] px-3.5 rounded-lg bg-[#E0F2FE] text-[#0284C7] font-bold text-[12px] hover:bg-[#BAE6FD] transition-colors"
+                      >
+                        Add Hour
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleSubmitDay(key)}
+                      disabled={timingMutation.isPending}
+                      className="h-[34px] px-4 rounded-lg bg-[#DCFCE7] text-[#15803D] font-bold text-[12px] hover:bg-[#BBF7D0] transition-colors disabled:opacity-50"
+                    >
+                      {timingMutation.isPending ? "Saving…" : "Submit"}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Additional Operating Periods */}
+                {isOpen && (dayData.periods || []).map((period, pIdx) => (
+                  <div key={pIdx} className="pl-[204px] flex items-center gap-3 text-[13px]">
+                    <span className="text-[11px] font-extrabold text-[#94A3B8] uppercase">Slot {pIdx + 2}:</span>
+                    <input
+                      type="time"
+                      value={period.openTime}
+                      onChange={(e) => handleTimeChange(key, "openTime", e.target.value, pIdx)}
+                      className="h-[34px] px-2.5 rounded-lg border border-[#E2E8F0] font-semibold text-[12.5px]"
+                    />
+                    <span className="text-[12px] font-bold text-[#64748B]">{format12H(period.openTime)}</span>
+
+                    <span className="text-[#94A3B8] font-bold px-1">—</span>
+
+                    <input
+                      type="time"
+                      value={period.closeTime}
+                      onChange={(e) => handleTimeChange(key, "closeTime", e.target.value, pIdx)}
+                      className="h-[34px] px-2.5 rounded-lg border border-[#E2E8F0] font-semibold text-[12.5px]"
+                    />
+                    <span className="text-[12px] font-bold text-[#64748B]">{format12H(period.closeTime)}</span>
+
+                    <button
+                      type="button"
+                      onClick={() => handleRemovePeriod(key, pIdx)}
+                      className="text-[#DC2626] font-bold text-[11.5px] hover:underline ml-2"
+                    >
+                      Remove Slot
+                    </button>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Module 7 §7: Holidays Calendar */}
       <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
         <div>
@@ -837,7 +1146,18 @@ const TimingsHolidaysView = () => {
 
         <div className="flex justify-end">
           <button
-            onClick={addHoliday}
+            onClick={() => {
+              if (!startDate || !endDate) {
+                enqueueSnackbar("Start date and end date are required.", { variant: "warning" });
+                return;
+              }
+              const updated = [...holidays, { startDate, endDate, reason }];
+              setHolidays(updated);
+              holidayMutation.mutate({ holidays: updated });
+              setStartDate("");
+              setEndDate("");
+              setReason("Store Closed for Holiday");
+            }}
             disabled={holidayMutation.isPending}
             className="h-[38px] px-4 rounded-xl bg-[#5B42F3] text-white text-[13px] font-bold hover:bg-[#4A32E0] disabled:opacity-50"
           >
@@ -860,7 +1180,11 @@ const TimingsHolidaysView = () => {
                     </p>
                   </div>
                   <button
-                    onClick={() => removeHoliday(i)}
+                    onClick={() => {
+                      const updated = holidays.filter((_, idx) => idx !== i);
+                      setHolidays(updated);
+                      holidayMutation.mutate({ holidays: updated });
+                    }}
                     className="h-8 px-3 rounded-lg border border-[#FECACA] text-[#DC2626] font-bold text-[12px] hover:bg-[#FEF2F2]"
                   >
                     Remove
@@ -1113,7 +1437,7 @@ const MENU_ITEMS = [
 
   { id: "website", title: "10. Manage Website", desc: "Storefront theme, branding and ordering options.", Icon: I.globe, path: "/website" },
   { id: "activity", title: "11. Activity Log & Audit Trail", desc: "View append-only audit log of all store and security changes.", Icon: I.fileText, mode: "view" },
-  { id: "support", title: "12. Help & Support", desc: "Get help or report an issue.", Icon: I.headset, path: "/home" },
+  { id: "support", title: "12. Help & Support", desc: "Get help or report an issue.", Icon: I.headset, path: "/support" },
   { id: "logout", title: "13. Logout", desc: "Securely sign out of the POS system.", Icon: I.logout, action: "logout" },
 ];
 

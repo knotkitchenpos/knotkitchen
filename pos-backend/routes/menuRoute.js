@@ -4,6 +4,7 @@ const {
   addCategory,
   addSubcategory,
   addDish,
+  updateDish,
   updateDishSubcategory,
   deleteMenu,
   deleteDish,
@@ -16,6 +17,10 @@ const {
   deleteAddon,
   addModifierGroup,
   saveModifierGroupToDishes,
+  deleteGroupFromDishes,
+  renameGroupInDishes,
+  toggleGroupActiveInDishes,
+  reorderGroupsInDishes,
   bulkAddGroupToDishes,
   bulkRemoveGroupFromDishes,
   deleteModifierGroup,
@@ -41,6 +46,7 @@ const {
 } = require("../controllers/menuImportController");
 
 const {
+  downloadCsvTemplate,
   exportCsv,
   previewCsvImport,
   confirmCsvImport,
@@ -51,13 +57,20 @@ const router = express.Router();
 
 router.route("/").get(isVerifiedUser, getMenus);
 router.route("/category").post(isVerifiedUser, requireProtectedAction, addCategory);
+router.route("/category").put(isVerifiedUser, requireProtectedAction, updateCategory);
 router.route("/subcategory").post(isVerifiedUser, requireProtectedAction, addSubcategory);
+router.route("/subcategory").put(isVerifiedUser, requireProtectedAction, updateSubcategory);
 router.route("/dish").post(isVerifiedUser, requireProtectedAction, addDish);
 router.route("/group").post(isVerifiedUser, requireProtectedAction, saveModifierGroupToDishes);
+router.route("/group/delete").post(isVerifiedUser, requireProtectedAction, deleteGroupFromDishes);
+router.route("/group/rename").put(isVerifiedUser, requireProtectedAction, renameGroupInDishes);
+router.route("/group/toggle-active").post(isVerifiedUser, requireProtectedAction, toggleGroupActiveInDishes);
+router.route("/group/reorder").put(isVerifiedUser, requireProtectedAction, reorderGroupsInDishes);
 router.route("/group/bulk-add").post(isVerifiedUser, requireProtectedAction, bulkAddGroupToDishes);
 router.route("/group/bulk-remove").post(isVerifiedUser, requireProtectedAction, bulkRemoveGroupFromDishes);
 
 // CSV Import / Export (Module 5)
+router.route("/csv/template").get(isVerifiedUser, downloadCsvTemplate);
 router.route("/csv/export").get(isVerifiedUser, exportCsv);
 router.route("/csv/preview").post(isVerifiedUser, requireProtectedAction, previewCsvImport);
 router.route("/csv/import").post(isVerifiedUser, requireProtectedAction, confirmCsvImport);
@@ -112,6 +125,7 @@ router.route("/:menuId/dish/:itemId/subcategory").put(isVerifiedUser, requirePro
 
 // Existing
 router.route("/:menuId/reorder").put(isVerifiedUser, requireProtectedAction, reorderItems);
+router.route("/:menuId/dish/:itemId").put(isVerifiedUser, requireProtectedAction, updateDish);
 router.route("/:menuId/dish/:itemId").delete(isVerifiedUser, requireProtectedAction, deleteDish);
 router.route("/:menuId/dish/:itemId/availability").put(isVerifiedUser, toggleDishAvailability);
 router.route("/:id").delete(isVerifiedUser, requireProtectedAction, deleteMenu);

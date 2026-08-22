@@ -142,6 +142,8 @@ const versionSnapshotSchema = new mongoose.Schema({
 
 const menuSchema = new mongoose.Schema({
     name: { type: String, required: true },
+    description: { type: String, default: "" },
+    dispatchType: { type: dispatchTypeSchema, default: () => ({ collection: true, delivery: true, table: true }) },
     bgColor: { type: String, default: "#5b45b0" },
     icon: { type: String, default: "🍽️" },
     items: [menuItemSchema],

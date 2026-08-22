@@ -520,12 +520,19 @@ const updateOrderToggles = async (req, res, next) => {
 // Module 7 §6 — Timings Management
 const updateChannelTimings = async (req, res, next) => {
   try {
-    const { channelHours } = req.body || {};
+    const { channel, data, channelHours } = req.body || {};
     const restaurantId = req.user.restaurantId || req.user._id;
+
+    let update = {};
+    if (channel && ["collection", "delivery", "table"].includes(channel)) {
+      update[`channelHours.${channel}`] = data;
+    } else if (channelHours) {
+      update.channelHours = channelHours;
+    }
 
     const settings = await WebsiteSettings.findOneAndUpdate(
       { restaurantId, isDeleted: false },
-      { $set: { channelHours } },
+      { $set: update },
       { new: true, upsert: false }
     );
 
