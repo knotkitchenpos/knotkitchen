@@ -145,9 +145,44 @@ const ManageMenu = () => {
   const { data: menusRes, isLoading } = useQuery({ queryKey: ["menus"], queryFn: getMenus });
   const menus = menusRes?.data?.data || [];
 
-  // Extract all groups across all dishes (Module 4 §4)
+  // Persisted registry of created groups so newly-created groups show up
+  // in the "Assign Groups / Components" list immediately, even before they
+  // are attached to any product.
+  const [customCreatedGroups, setCustomCreatedGroups] = useState(() => {
+    try {
+      const raw = localStorage.getItem("kk_custom_groups");
+      const parsed = raw ? JSON.parse(raw) : {};
+      return typeof parsed === "object" && parsed !== null ? parsed : {};
+    } catch {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem("kk_custom_groups", JSON.stringify(customCreatedGroups));
+    } catch {
+      /* ignore storage quota / private mode */
+    }
+  }, [customCreatedGroups]);
+
+  // Extract all groups across all dishes + registered custom groups (Module 4 §4)
   const allGroupsMap = useMemo(() => {
     const map = new Map();
+
+    // 1. Seed with custom created groups so unattached groups are visible
+    Object.values(customCreatedGroups).forEach((g) => {
+      if (!g || !g.name) return;
+      map.set(g.name, {
+        name: g.name,
+        required: Boolean(g.required),
+        maxSelections: g.maxSelections || 1,
+        options: Array.isArray(g.options) ? g.options : [],
+        dishIds: new Set(),
+      });
+    });
+
+    // 2. Merge groups from all dishes across all menus
     const safeMenus = Array.isArray(menus) ? menus : [];
     safeMenus.forEach((menu) => {
       if (!menu) return;
@@ -165,20 +200,35 @@ const ManageMenu = () => {
               dishIds: new Set([String(item._id)]),
             });
           } else {
-            map.get(group.name).dishIds.add(String(item._id));
+            const entry = map.get(group.name);
+            entry.dishIds.add(String(item._id));
+            if (options.length) entry.options = options;
+            entry.required = Boolean(group.required);
+            entry.maxSelections = group.maxSelections || entry.maxSelections;
           }
         });
       });
     });
     return map;
-  }, [menus]);
+  }, [menus, customCreatedGroups]);
 
   const groupsList = Array.from(allGroupsMap.values());
 
   const saveGroupMut = useMutation({
     mutationFn: saveGroupToDishes,
-    onSuccess: (res) => {
+    onSuccess: (res, variables) => {
       enqueueSnackbar(res?.data?.message || "Group saved!", { variant: "success" });
+      if (variables?.groupName) {
+        setCustomCreatedGroups((prev) => ({
+          ...prev,
+          [variables.groupName]: {
+            name: variables.groupName,
+            required: Boolean(variables.required),
+            maxSelections: Number(variables.maxSelections) || 1,
+            options: Array.isArray(variables.options) ? variables.options : [],
+          },
+        }));
+      }
       invalidate();
       setShowManageGroup(false);
       setEditingGroup(null);
@@ -188,8 +238,15 @@ const ManageMenu = () => {
 
   const deleteGroupMut = useMutation({
     mutationFn: deleteGroupFromDishes,
-    onSuccess: (res) => {
+    onSuccess: (res, variables) => {
       enqueueSnackbar(res?.data?.message || "Group deleted!", { variant: "success" });
+      if (variables?.groupName) {
+        setCustomCreatedGroups((prev) => {
+          const next = { ...prev };
+          delete next[variables.groupName];
+          return next;
+        });
+      }
       invalidate();
       setShowManageGroup(false);
       setActiveGroup(null);
@@ -1419,6 +1476,19 @@ const ManageMenu = () => {
                             {item.subcategory}
                           </p>
                         )}
+                        {/* Display assigned groups / components summary badges directly on the product row */}
+                        {Array.isArray(item.modifierGroups) && item.modifierGroups.length > 0 && (
+                          <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                            {item.modifierGroups.map((g) => (
+                              <span
+                                key={g.name}
+                                className="px-2 py-0.5 rounded-md bg-[#EEF0FE] text-[#5B42F3] text-[10.5px] font-extrabold"
+                              >
+                                🧩 {g.name} ({(g.options || []).length})
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -2152,6 +2222,34 @@ const ManageMenu = () => {
                   </p>
                 </div>
               </div>
+
+              {/* Assigned Groups & Components details */}
+              {Array.isArray(viewingProduct.modifierGroups) && viewingProduct.modifierGroups.length > 0 ? (
+                <div className="p-3 rounded-xl bg-[#F8FAFC] border space-y-2 text-[12px]">
+                  <p className="font-extrabold text-[#0F172A]">Assigned Groups & Components ({viewingProduct.modifierGroups.length})</p>
+                  <div className="space-y-1.5">
+                    {viewingProduct.modifierGroups.map((g) => (
+                      <div key={g.name} className="p-2.5 rounded-lg bg-white border border-[#E2E8F0]">
+                        <div className="flex items-center justify-between font-extrabold text-[#0F172A]">
+                          <span>🧩 {g.name}</span>
+                          <span className="text-[10.5px] font-bold text-[#5B42F3] bg-[#EEF0FE] px-2 py-0.5 rounded-md">
+                            {g.required ? "Required" : "Optional"} · max {g.maxSelections || 1}
+                          </span>
+                        </div>
+                        {Array.isArray(g.options) && g.options.length > 0 && (
+                          <p className="text-[11.5px] font-semibold text-[#475569] mt-1">
+                            {g.options.map((o) => `${o.name} (₹${o.price})`).join(", ")}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 rounded-xl bg-[#F8FAFC] border text-[12px] text-[#94A3B8]">
+                  No groups or components assigned to this product yet.
+                </div>
+              )}
 
               {viewingProduct.samePrice === false && viewingProduct.channelPrices && (
                 <div className="p-3 rounded-xl bg-[#F8FAFC] border space-y-1.5 text-[11.5px]">
