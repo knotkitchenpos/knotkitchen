@@ -24,7 +24,13 @@ const tableQRSchema = new mongoose.Schema(
     outletId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Outlet",
-      required: true,
+      // Optional: single-outlet installs (and legacy users created before
+      // multi-outlet was introduced) don't carry an outletId on the user
+      // document, and tables inherit the same behaviour. Requiring it
+      // caused `TableQR validation failed: Path 'outletId' is required.`
+      // on every getOrCreateQr call for those tenants. Tenant isolation
+      // stays intact via `restaurantId` (which IS required).
+      default: null,
     },
     tableId: {
       type: mongoose.Schema.Types.ObjectId,
