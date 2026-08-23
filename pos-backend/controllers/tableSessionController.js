@@ -120,9 +120,7 @@ const recalculateSessionBill = async (session) => {
 
 const getScopeQuery = (req) => {
   if (req.user?.restaurantId) {
-    const q = { restaurantId: req.user.restaurantId };
-    if (req.user?.outletId) q.outletId = req.user.outletId;
-    return q;
+    return { restaurantId: req.user.restaurantId };
   }
   return { createdBy: req.user._id };
 };

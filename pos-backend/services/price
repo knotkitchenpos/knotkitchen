@@ -140,32 +140,87 @@ const calculateUnitPrice = ({ item, variantId, addonIds = [], modifierSelections
   const modifierLabels = [];
   let modifierTotal = 0;
   for (const group of item.modifierGroups || []) {
-    const sel = modifierSelections[group._id] || [];
-    const selStrings = sel.map(String);
+    const groupObjIdStr = group._id ? String(group._id) : "";
+    const groupNameStr = group.name ? String(group.name).toLowerCase() : "";
+
+    // Extract selected option entries for this group
+    let selOptions = []; // Array of { id, name, quantity }
+
+    if (Array.isArray(modifierSelections)) {
+      // Format: Array of objects [{ groupId, groupName, optionId, optionName, quantity, price }]
+      selOptions = modifierSelections
+        .filter((m) => {
+          if (!m) return false;
+          const gIdMatch = m.groupId && String(m.groupId) === groupObjIdStr;
+          const gNameMatch = m.groupName && String(m.groupName).toLowerCase() === groupNameStr;
+          if (gIdMatch || gNameMatch) return true;
+          if (!m.groupId && !m.groupName && (m.optionId || m.optionName)) return true;
+          return false;
+        })
+        .map((m) => ({
+          id: m.optionId ? String(m.optionId) : typeof m === "string" ? m : null,
+          name: m.optionName ? String(m.optionName) : typeof m === "string" ? m : null,
+          quantity: Number(m.quantity) || 1,
+        }));
+    } else if (modifierSelections && typeof modifierSelections === "object") {
+      // Format: Object keyed by group._id or group.name
+      const rawVal =
+        (groupObjIdStr && modifierSelections[groupObjIdStr]) ||
+        (group.name && modifierSelections[group.name]) ||
+        [];
+      if (Array.isArray(rawVal)) {
+        selOptions = rawVal.map((opt) => ({
+          id: typeof opt === "object" ? String(opt._id || opt.id || opt.optionId) : String(opt),
+          name: typeof opt === "object" ? opt.name || opt.optionName : null,
+          quantity: typeof opt === "object" ? Number(opt.quantity) || 1 : 1,
+        }));
+      } else if (rawVal && typeof rawVal === "object") {
+        // Map of optionId -> quantity
+        selOptions = Object.entries(rawVal).map(([optId, qty]) => ({
+          id: optId,
+          name: null,
+          quantity: Number(qty) || 1,
+        }));
+      }
+    }
+
+    const totalSelectedQty = selOptions.reduce((s, o) => s + (Number(o.quantity) || 1), 0);
 
     // Required group validation
-    if (group.required && sel.length === 0) {
+    if (group.required && totalSelectedQty === 0) {
       const err = new Error(`Please select "${group.name}".`);
       err.status = 400;
       throw err;
     }
 
-    const maxSelections = group.maxSelections || 1;
-    if (sel.length > maxSelections) {
+    const maxSelections = Math.max(1, Number(group.maxSelections) || 1);
+    if (totalSelectedQty > maxSelections) {
       const err = new Error(`Maximum ${maxSelections} selection(s) for "${group.name}".`);
       err.status = 400;
       throw err;
     }
 
     for (const opt of group.options || []) {
-      if (selStrings.includes(opt._id.toString())) {
+      const optIdStr = String(opt._id || opt.id || opt.name || "");
+      const optNameStr = String(opt.name || "").toLowerCase();
+
+      const matchedSel = selOptions.find((s) => {
+        if (s.id && String(s.id) === optIdStr) return true;
+        if (s.name && String(s.name).toLowerCase() === optNameStr) return true;
+        return false;
+      });
+
+      if (matchedSel) {
         if (opt.isAvailable === false) {
           const err = new Error(`${opt.name} is currently unavailable.`);
           err.status = 400;
           throw err;
         }
-        modifierTotal += opt.price || 0;
-        modifierLabels.push(opt.name);
+        const qty = Number(matchedSel.quantity) || 1;
+        modifierTotal += (opt.price || 0) * qty;
+        for (let q = 0; q < qty; q++) {
+          modifierLabels.push(opt.name);
+        }
       }
     }
   }
