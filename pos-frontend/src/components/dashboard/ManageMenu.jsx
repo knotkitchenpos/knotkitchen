@@ -288,12 +288,12 @@ const ManageMenu = () => {
   };
 
 
+  // Only invalidate the draft menu query for Manage Menu UI.
+  // POS (system) and Website cache are NOT automatically updated when editing products;
+  // they update only when the user manually clicks "Publish POS" or "Publish Web".
   const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ["menus"] });
-    qc.invalidateQueries({ queryKey: ["menus", "system"] });
+    qc.invalidateQueries({ queryKey: ["menus"], exact: true });
     qc.invalidateQueries({ queryKey: ["popular-items"] });
-    qc.refetchQueries({ queryKey: ["menus"] });
-    qc.refetchQueries({ queryKey: ["menus", "system"] });
   };
 
   const addCategoryMut = useMutation({

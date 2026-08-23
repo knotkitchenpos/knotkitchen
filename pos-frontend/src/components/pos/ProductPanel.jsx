@@ -130,8 +130,8 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
   const { data: menusRes, isLoading } = useQuery({
     queryKey: ["menus", "system"],
     queryFn: () => getMenus({ source: "system" }),
-    staleTime: 0,
-    refetchOnWindowFocus: true,
+    staleTime: Infinity,
+    refetchOnWindowFocus: false,
   });
 
 
