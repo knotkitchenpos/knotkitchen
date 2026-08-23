@@ -127,6 +127,17 @@ const emitToTable = (tableId, event, payload) => {
 const emitOrderCreated = ({ restaurantId, outletId, storeId, order }) => {
   if (!io || !order) return;
 
+  // If order.table is a populated Mongoose document (from .populate('table')),
+  // extract the friendly identifier; otherwise fall back to the raw ObjectId
+  // so the POS popup can at least display "Table {id-suffix}".
+  const tableDoc =
+    order.table && typeof order.table === "object" && order.table.tableNumber != null
+      ? order.table
+      : null;
+  const rawTableId =
+    (tableDoc && String(tableDoc._id)) ||
+    (order.table ? String(order.table) : "");
+
   const payload = {
     type: "ORDER_CREATED",
     source: order.source || "WEBSITE",
@@ -136,20 +147,42 @@ const emitOrderCreated = ({ restaurantId, outletId, storeId, order }) => {
     orderType: order.orderType,
     orderStatus: order.orderStatus,
     scheduledFor: order.scheduledFor || null,
+    // ----- Table context (used by the QR "New Table Order" popup) -----
+    tableId: rawTableId || null,
+    tableNumber: tableDoc?.tableNumber ?? null,
+    tableDisplayId: tableDoc?.displayId || tableDoc?.tableName || null,
+    // Keep the original `table` value on the payload as well so consumers
+    // that receive a populated Order (e.g. immediately after Order.create
+    // + .populate("table")) can render the exact string they want.
+    table: tableDoc
+      ? {
+          _id: tableDoc._id,
+          tableNumber: tableDoc.tableNumber,
+          displayId: tableDoc.displayId || "",
+          tableName: tableDoc.tableName || "",
+        }
+      : rawTableId || null,
     customer: {
       name: order.customerDetails?.name || "",
       phone: order.customerDetails?.phone || "",
     },
-    itemCount: (order.items || []).reduce((sum, i) => sum + (Number(i.quantity) || 0), 0),
+    // Copy the full customerDetails through so table-order popups can show
+    // guest counts, delivery notes, etc. without a follow-up REST call.
+    customerDetails: order.customerDetails || {},
+    // Full items list including modifiers array (name+price) — the QR popup
+    // and Orders page both render this without another fetch.
     items: (order.items || []).map((i) => ({
       name: i.name,
       quantity: i.quantity,
       variant: i.variant?.name || "",
       addons: (i.addons || []).map((a) => a.name),
+      modifiers: Array.isArray(i.modifiers) ? i.modifiers : [],
       options: (i.modifierSelections || []).map((m) => m.optionName),
       note: i.note || "",
       total: i.total,
+      price: i.price,
     })),
+    itemCount: (order.items || []).reduce((sum, i) => sum + (Number(i.quantity) || 0), 0),
     bills: order.bills,
     paymentStatus: order.payments?.[0]?.status || "pending",
     createdAt: order.createdAt || new Date(),

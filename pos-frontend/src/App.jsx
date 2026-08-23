@@ -17,6 +17,7 @@ import Sidebar from "./components/shared/Sidebar";
 import useLoadData from "./hooks/useLoadData";
 import FullScreenLoader from "./components/shared/FullScreenLoader";
 import MarketplaceOrderPopup from "./components/dashboard/MarketplaceOrderPopup";
+import QRTableOrderPopup from "./components/dashboard/QRTableOrderPopup";
 
 function ProtectedRoutes({ children }) {
   const { isAuth } = useSelector((state) => state.user);
@@ -84,6 +85,7 @@ function Layout() {
         {routes}
       </main>
       {isAuth && <MarketplaceOrderPopup />}
+      {isAuth && <QRTableOrderPopup />}
     </div>
   );
 }

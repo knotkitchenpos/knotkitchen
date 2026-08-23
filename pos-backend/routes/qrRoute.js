@@ -10,6 +10,10 @@ const Bill = require("../models/billModel");
 const Restaurant = require("../models/restaurantModel");
 const { findActiveSessionByTable, recalculateSessionBill, validateCapacity, enrichItems, runWithSessionRetry, generateSessionCode } = require("../controllers/tableSessionController");
 const priceService = require("../services/price");
+// Lazy-require services/socket only when we actually need to emit — importing
+// it eagerly pulls in socket.io which touches mongoose internals and breaks
+// tests that mock mongoose before the models are loaded (tableQROrdering.test).
+const getSocket = () => require("../services/socket");
 const crypto = require("crypto");
 const mongoose = require("mongoose");
 const router = express.Router();
@@ -191,6 +195,10 @@ router.route("/session/items/:token").post(resolveTableScope, async (req, res, n
               orderType: "dine-in", orderStatus: "pending", bills: session.bills,
               items: validatedItems.map((it) => ({ menuItemId: it.menuItemId, name: it.name, quantity: it.quantity, price: it.price, total: it.total, modifiers: it.modifiers || [], note: it.note || "", status: "pending" })),
               table: tableInTxn._id, restaurantId, outletId, createdBy: null, tableSessionId: session._id, orderDate: new Date(),
+              // Origin tag → POS UI can distinguish QR-scan orders from
+              // walk-in POS / marketplace / phone orders, and the realtime
+              // popup can show "New QR Order — Table {n}".
+              source: "QR",
             },
           ],
           { session: mongoSession }
@@ -227,6 +235,25 @@ router.route("/session/items/:token").post(resolveTableScope, async (req, res, n
       }));
     } catch (err) {
       return next(err);
+    }
+
+    // Realtime notify the POS the moment a customer QR order lands so the
+    // biller sees a popup with the table number + item list instantly (no
+    // polling needed). The socket event name (`onlineOrder:created`) matches
+    // what useOnlineOrders and MarketplaceOrderPopup already listen for.
+    //
+    // We repopulate the order's `table` field before emitting so the socket
+    // payload carries `table.tableNumber` / `table.displayId` (the popup
+    // renders "New Table Order · Table {n}" straight from this payload).
+    try {
+      const populatedOrder = await Order.findById(result.kitchenOrder._id).populate("table");
+      getSocket().emitOrderCreated({
+        restaurantId: result.session.restaurantId,
+        outletId: result.session.outletId,
+        order: populatedOrder || result.kitchenOrder,
+      });
+    } catch (socketErr) {
+      console.warn("[qrRoute] socket emit failed:", socketErr.message);
     }
 
     res.status(201).json({
