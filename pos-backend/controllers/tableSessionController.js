@@ -32,13 +32,44 @@ const generateSessionCode = () =>
 const runWithSessionRetry = async (work, { retries = 3 } = {}) => {
   let lastError;
   for (let attempt = 1; attempt <= retries; attempt++) {
-    const mongoSession = await mongoose.startSession();
-    mongoSession.startTransaction();
+    let mongoSession = null;
+    try {
+      mongoSession = await mongoose.startSession();
+      mongoSession.startTransaction();
+    } catch (sessionErr) {
+      // Standalone MongoDB instances (like default local `mongod`) do not
+      // support transactions ("Transaction numbers are only allowed on a
+      // replica set member or mongos"). Fall back gracefully to running
+      // non-transactionally so local development works without replica set.
+      if (
+        sessionErr?.message?.includes("replica set member") ||
+        sessionErr?.code === 20
+      ) {
+        const result = await work(null);
+        return { result, mongoSession: null };
+      }
+      throw sessionErr;
+    }
+
     try {
       const result = await work(mongoSession);
       await mongoSession.commitTransaction();
       return { result, mongoSession };
     } catch (error) {
+      // If startTransaction succeeded but commit failed because transactions
+      // aren't supported on this deployment, fall back to no-session work.
+      if (
+        error?.message?.includes("replica set member") ||
+        error?.code === 20
+      ) {
+        try {
+          await mongoSession.abortTransaction();
+        } catch (_) {}
+        mongoSession.endSession();
+        const result = await work(null);
+        return { result, mongoSession: null };
+      }
+
       try {
         await mongoSession.abortTransaction();
       } catch (abortError) {
@@ -47,7 +78,7 @@ const runWithSessionRetry = async (work, { retries = 3 } = {}) => {
       lastError = error;
       if (attempt === retries || error.code !== 11000) break;
     } finally {
-      mongoSession.endSession();
+      if (mongoSession) mongoSession.endSession();
     }
   }
   throw lastError;
@@ -726,8 +757,23 @@ const getSessionBill = async (req, res, next) => {
 // Session closes only on successful server-side payment.
 // ============================================================
 const recordSessionPayment = async (req, res, next) => {
-  const mongoSession = await mongoose.startSession();
-  mongoSession.startTransaction();
+  let mongoSession = null;
+  let useTxn = true;
+  try {
+    mongoSession = await mongoose.startSession();
+    mongoSession.startTransaction();
+  } catch (sessionErr) {
+    if (
+      sessionErr?.message?.includes("replica set member") ||
+      sessionErr?.code === 20 ||
+      sessionErr?.name === "MongoServerError"
+    ) {
+      useTxn = false;
+      mongoSession = null;
+    } else {
+      return next(sessionErr);
+    }
+  }
   try {
     const { id } = req.params;
     const { method, transactionId, amount, paymentStatus, idempotencyKey } = req.body;
