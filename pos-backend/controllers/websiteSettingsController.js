@@ -294,6 +294,16 @@ const updateWebsiteSettings = async (req, res, next) => {
       if (Number.isFinite(tax) && tax >= 0 && tax <= 100) settings.ordering.taxPercent = tax;
       assign(settings.ordering, "currency", clampText(o.currency, 8));
       assign(settings.ordering, "currencySymbol", clampText(o.currencySymbol, 4));
+
+      if (o.autoReadyMinutes && typeof o.autoReadyMinutes === "object") {
+        settings.ordering.autoReadyMinutes = settings.ordering.autoReadyMinutes || {};
+        for (const channelKey of ["collection", "delivery", "table"]) {
+          const val = Number(o.autoReadyMinutes[channelKey]);
+          if (Number.isFinite(val) && val >= 0 && val <= 1440) {
+            settings.ordering.autoReadyMinutes[channelKey] = val;
+          }
+        }
+      }
     }
 
     // ---- Payment Gateways (Module 4) ----

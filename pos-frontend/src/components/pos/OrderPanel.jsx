@@ -1021,14 +1021,31 @@ const OrderPanel = () => {
           // authenticated restaurant's branding, never a hardcoded
           // "KnotKitchen". These come from the same react-query caches
           // that drive the store header at the top of the OrderPanel.
+          //
+          // Store Properties (Settings → Store Properties) is the
+          // CANONICAL source the operator edits; we prefer those
+          // fields and fall back to /api/restaurant/me + website
+          // settings only when the operator hasn't filled them out.
+          // Previously we read only from /api/restaurant/me, so
+          // editing store properties never reflected on the receipt.
           restaurantName={displayName}
           restaurantLogo={restaurantLogo}
           restaurantPhone={
+            storeProps.ownerPhone ||
+            storeProps.contactPersonPhone ||
             restaurant?.phone ||
             websiteSettings?.contact?.phone ||
             ""
           }
           restaurantAddress={
+            storeProps.fullAddress ||
+            [
+              storeProps.secondAddress,
+              storeProps.city,
+              storeProps.postalCode,
+            ]
+              .filter(Boolean)
+              .join(", ") ||
             restaurant?.address?.line1 ||
             websiteSettings?.contact?.address ||
             ""

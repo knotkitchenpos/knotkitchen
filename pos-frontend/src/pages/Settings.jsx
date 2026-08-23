@@ -329,7 +329,15 @@ const StorePropertiesView = () => {
     mutationFn: (data) => updateStoreProperties(data),
     onSuccess: () => {
       enqueueSnackbar("Store properties updated successfully!", { variant: "success" });
+      // Invalidate every cache that mirrors these fields so downstream
+      // views (POS order panel header, Invoice/receipt print, storefront,
+      // Reports header) all refresh in the same tick. Previously we
+      // invalidated only the "store-properties" query, so the invoice /
+      // print page kept showing the pre-edit name / address / phone.
       qc.invalidateQueries({ queryKey: ["store-properties"] });
+      qc.invalidateQueries({ queryKey: ["restaurant", "me"] });
+      qc.invalidateQueries({ queryKey: ["website", "settings"] });
+      qc.invalidateQueries({ queryKey: ["storefront"] });
     },
     onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to update", { variant: "error" }),
   });
@@ -610,6 +618,25 @@ const OrderTypesAutoReadyView = () => {
   const [colAuto, setColAuto] = useState(autoReady.collection ?? 20);
   const [delAuto, setDelAuto] = useState(autoReady.delivery ?? 45);
   const [tblAuto, setTblAuto] = useState(autoReady.table ?? 20);
+
+  // Sync state when backend query data arrives asynchronously
+  useEffect(() => {
+    if (propsRes?.data?.data?.orderTypeToggles) {
+      const t = propsRes.data.data.orderTypeToggles;
+      setColToggle(t.collection ?? true);
+      setDelToggle(t.delivery ?? true);
+      setTblToggle(t.table ?? true);
+    }
+  }, [propsRes]);
+
+  useEffect(() => {
+    if (webRes?.data?.data?.settings?.ordering?.autoReadyMinutes) {
+      const arm = webRes.data.data.settings.ordering.autoReadyMinutes;
+      setColAuto(arm.collection ?? 20);
+      setDelAuto(arm.delivery ?? 45);
+      setTblAuto(arm.table ?? 20);
+    }
+  }, [webRes]);
 
   const toggleMutation = useMutation({
     mutationFn: updateOrderToggles,

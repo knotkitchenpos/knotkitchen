@@ -555,6 +555,23 @@ const saveModifierGroupToDishes = async (req, res, next) => {
     if (!Array.isArray(options)) {
       return next(createHttpError(400, "Components options array is required!"));
     }
+    // ⚠️ Historically an empty/omitted `dishIds` was treated as "apply to
+    // ALL dishes in the tenant". That accidentally attached every newly
+    // created group to every existing product — which is never what the
+    // biller wants. We now REQUIRE an explicit non-empty list of dish IDs
+    // so the operator has to opt in per-product from the "Assign to
+    // Products" panel in the Manage Group drawer.
+    const normalizedDishIds = Array.isArray(dishIds)
+      ? dishIds.map((id) => String(id || "").trim()).filter(Boolean)
+      : [];
+    if (normalizedDishIds.length === 0) {
+      return next(
+        createHttpError(
+          400,
+          "Select at least one product to attach this group to. Groups are no longer applied to every product by default."
+        )
+      );
+    }
 
     const validatedOptions = options.map((o) => {
       if (!o.name || !String(o.name).trim()) {
@@ -567,35 +584,48 @@ const saveModifierGroupToDishes = async (req, res, next) => {
       return { name: String(o.name).trim(), price: p };
     });
 
+    const dishIdSet = new Set(normalizedDishIds);
+
     const menus = await Menu.find(menuScopeFor(req.user));
     let updatedCount = 0;
 
+    // NOTE: this endpoint is deliberately ADD-ONLY. Removing a group from a
+    // product must go through the explicit "Remove Group from Selected"
+    // action (bulkRemoveGroupFromDishes) or the "Delete Group" button.
+    // Silently detaching every unselected product on every save led to
+    // surprises where a badly-refreshed drawer would nuke previously-linked
+    // dishes it didn't know about — we don't do that any more.
     for (const menu of menus) {
       let modified = false;
       for (const item of menu.items) {
-        if (!Array.isArray(dishIds) || dishIds.length === 0 || dishIds.includes(String(item._id))) {
-          item.modifierGroups = item.modifierGroups || [];
-          const existing = item.modifierGroups.find((g) => g.name === groupName);
-          if (existing) {
-            existing.required = Boolean(required);
-            existing.maxSelections = Number(maxSelections) || 1;
-            existing.options = validatedOptions;
-          } else {
-            item.modifierGroups.push({
-              name: groupName,
-              required: Boolean(required),
-              maxSelections: Number(maxSelections) || 1,
-              options: validatedOptions,
-            });
-          }
-          modified = true;
-          updatedCount++;
+        const itemIdStr = String(item._id);
+        if (!dishIdSet.has(itemIdStr)) continue;
+
+        item.modifierGroups = item.modifierGroups || [];
+        const existing = item.modifierGroups.find((g) => g.name === groupName);
+        if (existing) {
+          existing.required = Boolean(required);
+          existing.maxSelections = Number(maxSelections) || 1;
+          existing.options = validatedOptions;
+        } else {
+          item.modifierGroups.push({
+            name: groupName,
+            required: Boolean(required),
+            maxSelections: Number(maxSelections) || 1,
+            options: validatedOptions,
+          });
         }
+        modified = true;
+        updatedCount++;
       }
       if (modified) await menu.save();
     }
 
-    res.status(200).json({ success: true, message: `Group "${groupName}" saved!`, count: updatedCount });
+    res.status(200).json({
+      success: true,
+      message: `Group "${groupName}" saved to ${updatedCount} product(s).`,
+      count: updatedCount,
+    });
   } catch (error) {
     next(error);
   }

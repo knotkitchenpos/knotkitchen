@@ -174,7 +174,14 @@ const sanitizeDeliveryAddress = (raw = {}) => {
 
 const addOrder = async (req, res, next) => {
   try {
-    const { table, customerDetails, bills, orderType, deliveryAddress } = req.body || {};
+    const {
+      table,
+      customerDetails,
+      bills,
+      orderType,
+      deliveryAddress,
+      paymentMethod: rawPaymentMethod,
+    } = req.body || {};
 
     // Backend capacity enforcement for dine-in table orders
     if (table || customerDetails?.guests) {
@@ -307,7 +314,27 @@ const addOrder = async (req, res, next) => {
     // create path would let a caller mark a takeaway order paid without
     // payment. Module 4 §1 renamed "Pending" → "Preparing" so every new POS
     // order enters the queue as Preparing.
-    const initialStatus = "Preparing";
+    //
+    // EXCEPTION (§Finish Order — Cash / QR): when the biller has already
+    // collected physical cash or accepted a UPI/QR payment at the till, the
+    // order is by definition fully paid the moment it's created. We accept
+    // an allow-listed `paymentMethod` from the request body and, for the
+    // "paid-at-till" channels only, mark the order Completed and record a
+    // matching payments[0] entry so downstream code (invoice, reports,
+    // receipts, online orders view) can render the correct payment status
+    // instead of showing "pending" / "Pay on collection" for an order that
+    // has already been paid. Pay-by-Link still stays Preparing + pending —
+    // that transition is owned by verifyAndCaptureLinkPayment.
+    const normalizedPaymentMethod = (() => {
+      const raw = String(rawPaymentMethod || "").trim().toLowerCase();
+      if (raw === "cash") return "Cash";
+      if (raw === "upi" || raw === "qr" || raw === "qr/online" || raw === "online") return "UPI";
+      if (raw === "paymentlink" || raw === "payment_link" || raw === "link") return "PaymentLink";
+      return "";
+    })();
+    const isPaidAtTill =
+      normalizedPaymentMethod === "Cash" || normalizedPaymentMethod === "UPI";
+    const initialStatus = isPaidAtTill ? "Completed" : "Preparing";
 
 
     // EXPLICIT ALLOW-LIST — no spreading `...req.body` (mass-assignment).
@@ -366,6 +393,22 @@ const addOrder = async (req, res, next) => {
       orderType: normalizedOrderType,
     });
 
+    // Build a canonical payments[] array for immediate-pay (Cash/UPI) so
+    // paymentStatus rendering ("paid" vs "pending") is correct from
+    // creation. For Pay-by-Link we omit payments — the payment link
+    // controller pushes a "paid" entry once the customer actually pays.
+    const paidAmount = Number(sanitizedBills?.totalWithTax ?? sanitizedBills?.total ?? 0) || 0;
+    const paymentsForOrder = isPaidAtTill
+      ? [
+          {
+            method: normalizedPaymentMethod === "Cash" ? "cash" : "upi",
+            amount: paidAmount,
+            status: "paid",
+            transactionId: "",
+          },
+        ]
+      : [];
+
     const orderData = {
       customerDetails: {
         name,
@@ -389,6 +432,8 @@ const addOrder = async (req, res, next) => {
       source: "POS",
       orderNumber,
       ...(readyDueAt ? { readyDueAt } : {}),
+      ...(normalizedPaymentMethod ? { paymentMethod: normalizedPaymentMethod } : {}),
+      ...(paymentsForOrder.length ? { payments: paymentsForOrder } : {}),
       timeline: [{ status: initialStatus, timestamp: new Date(), user: req.user?.name || "POS" }],
     };
 

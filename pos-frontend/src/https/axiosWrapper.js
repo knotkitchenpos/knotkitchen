@@ -44,12 +44,19 @@ axiosWrapper.interceptors.response.use(
   async (error) => {
     const originalRequest = error?.config;
     const url = originalRequest?.url || "";
+    // NOTE: only the endpoints that BOOTSTRAP a new session (login/register)
+    // or the refresh endpoint itself are considered "auth endpoints" for the
+    // purpose of skipping the 401 → refresh → retry loop. GET /api/user
+    // (getUserData) is a normal protected endpoint — treating it as an auth
+    // endpoint caused users to be silently logged out any time their 15-minute
+    // access token had expired but a valid refresh token was still in the
+    // cookie jar (e.g. after leaving the browser tab open for a while and
+    // coming back). We now let the interceptor call POST /api/user/refresh
+    // and transparently retry the original /api/user request instead.
     const isAuthEndpoint =
       url.includes("/api/user/login") ||
       url.includes("/api/user/register") ||
-      url.includes("/api/user/refresh") ||
-      url === "/api/user" ||
-      url.endsWith("/api/user");
+      url.includes("/api/user/refresh");
 
     if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isAuthEndpoint) {
       if (isRefreshing) {

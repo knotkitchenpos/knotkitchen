@@ -2,7 +2,9 @@ const express = require("express");
 const {
   getMenus,
   addCategory,
+  updateCategory,
   addSubcategory,
+  updateSubcategory,
   addDish,
   updateDish,
   updateDishSubcategory,

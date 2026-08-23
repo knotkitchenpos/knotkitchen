@@ -151,7 +151,8 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
   const categoryItems = useMemo(() => {
     if (!category?.items) return [];
     return category.items
-      .filter((i) => inSchedule(i.schedule))
+      // Hide out-of-stock items on POS (Module: Availability §Hide OOS)
+      .filter((i) => i && i.isAvailable !== false && inSchedule(i.schedule))
       .map((i) => ({ ...i, categoryId: category._id, categoryName: category.name }));
   }, [category]);
 
@@ -178,7 +179,8 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
     () =>
       menus.flatMap((m) =>
         (m.items || [])
-          .filter((i) => inSchedule(i.schedule))
+          // Hide out-of-stock items across search + all lists
+          .filter((i) => i && i.isAvailable !== false && inSchedule(i.schedule))
           .map((i) => ({ ...i, categoryId: m._id, categoryName: m.name }))
       ),
     [menus]
@@ -204,7 +206,10 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
     staleTime: 60_000,
   });
   const popular = useMemo(
-    () => (popRes?.data?.data || []).filter((i) => inSchedule(i.schedule)),
+    () =>
+      (popRes?.data?.data || []).filter(
+        (i) => i && i.isAvailable !== false && inSchedule(i.schedule),
+      ),
     [popRes]
   );
 
@@ -235,17 +240,56 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
     setSelectedModifiers({});
   };
 
-  const togglePosModifier = (group, optionId) => {
+  /**
+   * Modifier selection model.
+   *
+   * Historically `selectedModifiers[groupName]` was a `string[]` of option
+   * ids — i.e. every option was either "selected once" or "not selected".
+   * That meant an operator could NOT ask for "2 × Tomato + 1 × Onion" from
+   * a Toppings group, and it also made deselecting a radio-style pick
+   * clunky (radios can't be untoggled by clicking).
+   *
+   * We now use `{ [groupName]: { [optionId]: qty } }`. Any entry with
+   * qty > 0 counts as selected; qty of 0 (or missing key) means unselected.
+   * `maxSelections` is enforced on the SUM of quantities within a group so
+   * a "max 3" Toppings group can be filled by 2 Tomato + 1 Onion, or by
+   * 3 Tomato, etc.
+   */
+  const setPosModifierQty = (group, optionId, delta) => {
     setSelectedModifiers((prev) => {
-      const chosen = prev[group.name] || [];
-      const max = group.maxSelections || 1;
+      const groupMap = { ...(prev[group.name] || {}) };
+      const current = Number(groupMap[optionId] || 0);
+      const nextForOption = Math.max(0, current + delta);
 
-      if (chosen.includes(optionId)) {
-        return { ...prev, [group.name]: chosen.filter((o) => o !== optionId) };
+      // Enforce group-level maxSelections when INCREASING (a decrement can
+      // never violate the cap).
+      if (delta > 0) {
+        const max = Math.max(1, Number(group.maxSelections) || 1);
+        const totalForGroup = Object.values(groupMap).reduce(
+          (s, q) => s + (Number(q) || 0),
+          0,
+        );
+        if (totalForGroup + 1 > max) {
+          // Silently cap — snackbar would spam the operator on rapid taps.
+          return prev;
+        }
       }
-      if (max === 1) return { ...prev, [group.name]: [optionId] };
-      if (chosen.length >= max) return prev;
-      return { ...prev, [group.name]: [...chosen, optionId] };
+
+      if (nextForOption === 0) {
+        delete groupMap[optionId];
+      } else {
+        groupMap[optionId] = nextForOption;
+      }
+
+      return { ...prev, [group.name]: groupMap };
+    });
+  };
+
+  const clearPosModifierGroup = (groupName) => {
+    setSelectedModifiers((prev) => {
+      const next = { ...prev };
+      delete next[groupName];
+      return next;
     });
   };
 
@@ -258,11 +302,12 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
     }
     let extras = 0;
     for (const group of customizingItem.modifierGroups || []) {
-      const chosenIds = selectedModifiers[group.name] || [];
+      const chosenMap = selectedModifiers[group.name] || {};
       (group.options || []).forEach((opt) => {
         const optId = String(opt._id || opt.id || opt.name);
-        if (chosenIds.includes(optId)) {
-          extras += Number(opt.price || 0);
+        const qty = Number(chosenMap[optId] || 0);
+        if (qty > 0) {
+          extras += Number(opt.price || 0) * qty;
         }
       });
     }
@@ -272,8 +317,12 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
   const handlePosCustomizedAdd = () => {
     if (!customizingItem) return;
     for (const group of customizingItem.modifierGroups || []) {
-      const chosen = selectedModifiers[group.name] || [];
-      if (group.required && chosen.length === 0) {
+      const chosenMap = selectedModifiers[group.name] || {};
+      const totalQty = Object.values(chosenMap).reduce(
+        (s, q) => s + (Number(q) || 0),
+        0,
+      );
+      if (group.required && totalQty === 0) {
         enqueueSnackbar(`Please select an option for "${group.name}".`, { variant: "warning" });
         return;
       }
@@ -290,16 +339,19 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
     let extraCost = 0;
 
     for (const group of customizingItem.modifierGroups || []) {
-      const chosenIds = selectedModifiers[group.name] || [];
+      const chosenMap = selectedModifiers[group.name] || {};
       (group.options || []).forEach((opt) => {
         const optId = String(opt._id || opt.id || opt.name);
-        if (chosenIds.includes(optId)) {
-          extraCost += Number(opt.price || 0);
+        const qty = Number(chosenMap[optId] || 0);
+        if (qty > 0) {
+          const lineTotal = Number(opt.price || 0) * qty;
+          extraCost += lineTotal;
           selectedList.push({
             groupId: group._id,
             groupName: group.name,
             optionId: opt._id,
             optionName: opt.name,
+            quantity: qty,
             price: Number(opt.price || 0),
           });
         }
@@ -307,7 +359,9 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
     }
 
     const finalUnitPrice = basePrice + extraCost;
-    const optionNamesStr = selectedList.map((s) => s.optionName).join(", ");
+    const optionNamesStr = selectedList
+      .map((s) => (s.quantity > 1 ? `${s.quantity}× ${s.optionName}` : s.optionName))
+      .join(", ");
     const displayName = `${customizingItem.name}${variantObj ? ` (${variantObj.name})` : ""}${optionNamesStr ? ` (+ ${optionNamesStr})` : ""}`;
 
     dispatch(
@@ -706,45 +760,112 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
               </div>
             )}
 
-            {/* Modifier Groups / Components selection */}
-            {(customizingItem.modifierGroups || []).map((group) => (
-              <div key={group._id || group.name} className="space-y-2 pt-2 border-t border-[#E2E8F0]">
-                <div className="flex items-center justify-between">
-                  <span className="text-[13px] font-extrabold text-[#0F172A]">{group.name}</span>
-                  <span className="text-[11px] font-bold text-[#64748B]">
-                    {group.required ? "(Required)" : "(Optional)"}
-                  </span>
-                </div>
+            {/* Modifier Groups / Components selection.
+                Each option is now a quantity stepper so the operator can
+                explicitly deselect (qty → 0) and pick multiple of the
+                same option (e.g. 2× Tomato + 1× Onion) up to the group's
+                maxSelections cap. */}
+            {(customizingItem.modifierGroups || []).map((group) => {
+              const groupMap = selectedModifiers[group.name] || {};
+              const groupTotalQty = Object.values(groupMap).reduce(
+                (s, q) => s + (Number(q) || 0),
+                0,
+              );
+              const groupMax = Math.max(1, Number(group.maxSelections) || 1);
+              const atCap = groupTotalQty >= groupMax;
 
-                <div className="space-y-1.5">
-                  {(group.options || []).map((opt) => {
-                    const optId = String(opt._id || opt.id || opt.name);
-                    const chosen = (selectedModifiers[group.name] || []).includes(optId);
+              return (
+                <div key={group._id || group.name} className="space-y-2 pt-2 border-t border-[#E2E8F0]">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[13px] font-extrabold text-[#0F172A]">{group.name}</span>
+                      <span className="text-[10.5px] font-extrabold px-2 py-0.5 rounded-full bg-[#EEF0FE] text-[#5B42F3]">
+                        {groupTotalQty} / {groupMax}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-bold text-[#64748B]">
+                        {group.required ? "(Required)" : "(Optional)"}
+                      </span>
+                      {groupTotalQty > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => clearPosModifierGroup(group.name)}
+                          className="text-[11px] font-bold text-[#DC2626] hover:underline"
+                        >
+                          Clear
+                        </button>
+                      )}
+                    </div>
+                  </div>
 
-                    return (
-                      <label
-                        key={optId}
-                        className={`flex items-center justify-between p-2.5 rounded-xl border cursor-pointer text-[12.5px] font-bold transition-all ${
-                          chosen ? "border-[#5B42F3] bg-[#EEF0FE]/40" : "border-[#E2E8F0] hover:bg-[#F8FAFC]"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <input
-                            type={group.maxSelections === 1 ? "radio" : "checkbox"}
-                            name={`group-${group.name}`}
-                            checked={chosen}
-                            onChange={() => togglePosModifier(group, optId)}
-                            className="w-4 h-4 accent-[#5B42F3]"
-                          />
-                          <span>{opt.name}</span>
+                  <div className="space-y-1.5">
+                    {(group.options || []).map((opt) => {
+                      const optId = String(opt._id || opt.id || opt.name);
+                      const qty = Number(groupMap[optId] || 0);
+                      const chosen = qty > 0;
+
+                      return (
+                        <div
+                          key={optId}
+                          className={`flex items-center justify-between p-2.5 rounded-xl border text-[12.5px] font-bold transition-all ${
+                            chosen ? "border-[#5B42F3] bg-[#EEF0FE]/40" : "border-[#E2E8F0]"
+                          }`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setPosModifierQty(group, optId, +1)}
+                            disabled={atCap && !chosen}
+                            className="flex items-center gap-2 min-w-0 flex-1 text-left disabled:opacity-60 disabled:cursor-not-allowed"
+                            aria-label={`Add ${opt.name}`}
+                          >
+                            <span
+                              className={`inline-flex w-4 h-4 rounded-full border-2 shrink-0 items-center justify-center ${
+                                chosen ? "bg-[#5B42F3] border-[#5B42F3]" : "border-[#CBD5E1] bg-white"
+                              }`}
+                            >
+                              {chosen && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
+                            </span>
+                            <span className="truncate">{opt.name}</span>
+                          </button>
+
+                          <div className="flex items-center gap-3 shrink-0 ml-2">
+                            <span className="font-extrabold text-[#5B42F3] min-w-[42px] text-right">
+                              ₹{opt.price}
+                            </span>
+
+                            {/* Quantity stepper */}
+                            <div className="flex items-center gap-1 border border-[#E2E8F0] rounded-lg px-1 h-[30px] bg-white">
+                              <button
+                                type="button"
+                                onClick={() => setPosModifierQty(group, optId, -1)}
+                                disabled={qty === 0}
+                                className="w-6 text-[15px] font-bold leading-none text-[#475569] hover:text-[#DC2626] disabled:opacity-30 disabled:cursor-not-allowed"
+                                aria-label={`Remove one ${opt.name}`}
+                              >
+                                −
+                              </button>
+                              <span className="min-w-[18px] text-center font-extrabold text-[#0F172A] text-[13px]">
+                                {qty}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setPosModifierQty(group, optId, +1)}
+                                disabled={atCap}
+                                className="w-6 text-[15px] font-bold leading-none text-[#475569] hover:text-[#5B42F3] disabled:opacity-30 disabled:cursor-not-allowed"
+                                aria-label={`Add one ${opt.name}`}
+                              >
+                                +
+                              </button>
+                            </div>
+                          </div>
                         </div>
-                        <span className="font-extrabold text-[#5B42F3]">₹{opt.price}</span>
-                      </label>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
             {/* Total calculation & Add to Cart button */}
             <div className="pt-4 border-t border-[#E2E8F0] flex items-center justify-between">

@@ -1,5 +1,6 @@
 import React from "react";
 import { useSelector } from "react-redux";
+import { QRCodeCanvas } from "qrcode.react";
 
 /**
  * Print-Ready Table QR Card Component (§Manage Tables Module 2).
@@ -52,14 +53,22 @@ const PrintTableQRModal = ({ isOpen, onClose, table, restaurant }) => {
             <span className="text-sm font-black tracking-wide uppercase">{tableDisplay}</span>
           </div>
 
-          {/* QR Code Placeholder / Image */}
+          {/* QR Code (rendered locally via qrcode.react — no external dependency) */}
           <div className="flex flex-col items-center justify-center py-3">
             <div className="p-3 bg-white rounded-2xl border-2 border-[#E2E8F0] shadow-sm">
-              <img
-                src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(qrUrl)}`}
-                alt={`QR code for ${tableDisplay}`}
-                className="w-44 h-44 object-contain"
-              />
+              {qrUrl ? (
+                <QRCodeCanvas
+                  value={qrUrl}
+                  size={176}
+                  level="H"
+                  includeMargin
+                  aria-label={`QR code for ${tableDisplay}`}
+                />
+              ) : (
+                <div className="w-44 h-44 flex items-center justify-center text-[11px] text-[#94A3B8] font-bold text-center">
+                  QR unavailable — generate a QR token for this table first.
+                </div>
+              )}
             </div>
             <p className="mt-3 text-xs font-black text-[#5B42F3] uppercase tracking-widest">
               Scan Code To View Menu & Order

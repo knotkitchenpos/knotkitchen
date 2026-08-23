@@ -327,14 +327,10 @@ const Orders = () => {
           <h1 className="text-[28px] font-extrabold text-[#0F172A] tracking-tight">Orders</h1>
         </div>
 
-        {/* Stat cards */}
-        <div className="px-7 pb-4 shrink-0 flex flex-wrap gap-3">
-          <StatCard label="Orders in window" value={stats.count} Icon={I.bag} fg="#5B42F3" bg="#F5F3FF" />
-          <StatCard label="Preparing" value={stats.ongoing} Icon={I.clock} fg="#EA580C" bg="#FFF7ED" />
-          <StatCard label="Completed" value={stats.done} Icon={I.check} fg="#16A34A" bg="#F0FDF4" />
-          <StatCard label="Cancelled" value={stats.cancelled} Icon={I.x} fg="#DC2626" bg="#FEF2F2" />
-          <StatCard label="Revenue" value={money(stats.revenue)} Icon={I.wallet} fg="#5B42F3" bg="#F5F3FF" />
-        </div>
+        {/* Stat cards removed on operator request — the per-tab counters
+            already show Preparing / Ready / Completed / Cancelled totals,
+            and the Reports page carries the revenue breakdown, so the
+            duplicate row was noise. */}
 
         {/* Tabs */}
         <div className="px-7 pb-3 shrink-0 flex flex-wrap items-center gap-1.5">

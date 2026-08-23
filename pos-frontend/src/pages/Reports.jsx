@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSelector } from "react-redux";
 import { getOrdersReport } from "../https";
@@ -72,12 +72,24 @@ const sourceLabel = (src) => {
  * We render 14 days back through 3 days ahead — enough to cover a normal
  * fortnight review without an infinite scroller.
  */
+/**
+ * Build a horizontal strip of dates ending on Today (or the active date if
+ * earlier, capped at Today). The user explicitly requested that Today / current
+ * date MUST be the LAST (rightmost) item in the strip — no future dates.
+ */
 const buildQuickDates = (anchor) => {
-  const anchorDay = new Date(anchor);
+  const todayDate = new Date();
+  todayDate.setHours(0, 0, 0, 0);
+
+  const anchorDay = anchor ? new Date(anchor) : new Date(todayDate);
   anchorDay.setHours(0, 0, 0, 0);
+
+  const endDay = anchorDay > todayDate ? new Date(todayDate) : new Date(anchorDay);
+
   const days = [];
-  for (let offset = -14; offset <= 3; offset += 1) {
-    const d = new Date(anchorDay);
+  // Render 14 days back through 0 (where offset 0 = endDay = Today)
+  for (let offset = -14; offset <= 0; offset += 1) {
+    const d = new Date(endDay);
     d.setDate(d.getDate() + offset);
     days.push(d);
   }
@@ -559,6 +571,41 @@ const Reports = () => {
     [mode, selectedDate, rangeTo]
   );
 
+  // Mouse drag-to-scroll support for the quick date selector (Module 5 §3)
+  const dateStripRef = useRef(null);
+  const isMouseDown = useRef(false);
+  const startX = useRef(0);
+  const scrollLeftVal = useRef(0);
+  const dragMoved = useRef(false);
+
+  const handleMouseDown = (e) => {
+    isMouseDown.current = true;
+    dragMoved.current = false;
+    startX.current = e.pageX - (dateStripRef.current?.offsetLeft || 0);
+    scrollLeftVal.current = dateStripRef.current?.scrollLeft || 0;
+  };
+
+  const handleMouseMove = (e) => {
+    if (!isMouseDown.current || !dateStripRef.current) return;
+    const x = e.pageX - dateStripRef.current.offsetLeft;
+    const walk = (x - startX.current) * 1.5;
+    if (Math.abs(walk) > 3) {
+      dragMoved.current = true;
+    }
+    dateStripRef.current.scrollLeft = scrollLeftVal.current - walk;
+  };
+
+  const handleMouseUpOrLeave = () => {
+    isMouseDown.current = false;
+  };
+
+  // Scroll to the far right (where Today is located) when dates render/update
+  useEffect(() => {
+    if (dateStripRef.current) {
+      dateStripRef.current.scrollLeft = dateStripRef.current.scrollWidth;
+    }
+  }, [quickDates]);
+
   const doPrint = () => {
     if (!summary) return;
     const html = buildPrintHtml({
@@ -622,7 +669,14 @@ const Reports = () => {
         </div>
 
         {/* ===== Quick date selector (Module 5 §3) ===== */}
-        <div className="mt-4 flex items-center gap-2 overflow-x-auto pb-1">
+        <div
+          ref={dateStripRef}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUpOrLeave}
+          onMouseLeave={handleMouseUpOrLeave}
+          className="mt-4 flex items-center gap-2 overflow-x-auto pb-1 select-none cursor-grab active:cursor-grabbing no-scrollbar"
+        >
           {quickDates.map((d) => {
             const s = localDay(d);
             const isSelected =
@@ -633,7 +687,9 @@ const Reports = () => {
             return (
               <button
                 key={s}
+                type="button"
                 onClick={() => {
+                  if (dragMoved.current) return;
                   setMode("single");
                   setSelectedDate(s);
                   setRangeFrom(s);

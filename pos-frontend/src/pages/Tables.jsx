@@ -16,6 +16,7 @@ import { enqueueSnackbar } from "notistack";
 // QR-style SVG locally (`IconQr` below) — this keeps the bundle lean
 // and the previous unrelated build failure resolved.
 import { FiGrid, FiPlus, FiTrash2, FiEdit2, FiLayers, FiCheckCircle } from "react-icons/fi";
+import { QRCodeCanvas } from "qrcode.react";
 import { setOrderType } from "../redux/slices/orderTypeSlice";
 import { updateTable as updateTableAction, setSessionId } from "../redux/slices/customerSlice";
 
@@ -47,7 +48,26 @@ const Tables = () => {
   const user = useSelector((s) => s.user);
 
   const [selectedArea, setSelectedArea] = useState("all");
-  const [customAreas, setCustomAreas] = useState([]);
+  // Persist operator-created floors/areas across reloads so a manager can
+  // create "Executive Lounge" once and every biller sees it. LocalStorage
+  // is fine for now — the true source of truth for an area is that at
+  // least one table lives in it. Empty custom areas are convenience only.
+  const [customAreas, setCustomAreas] = useState(() => {
+    try {
+      const raw = localStorage.getItem("kk_custom_areas");
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? parsed.filter((s) => typeof s === "string" && s.trim()) : [];
+    } catch {
+      return [];
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("kk_custom_areas", JSON.stringify(customAreas));
+    } catch {
+      /* quota / private-mode — silent fail is fine */
+    }
+  }, [customAreas]);
   const [status, setStatus] = useState("all");
 
   // Modals
@@ -355,18 +375,52 @@ const Tables = () => {
             </button>
             {allAreas.map((a) => {
               const count = tables.filter((t) => (t.area || t.floor || t.zone) === a).length;
+              const isActive = selectedArea === a;
+              // A floor/area is deletable when it's an operator-created
+              // custom area AND it has zero tables in it. Default areas
+              // (Ground Floor, Rooftop, …) are never deletable because
+              // they're baked in as sensible starter options.
+              const isCustom = customAreas.includes(a);
+              const canDelete = isCustom && count === 0;
               return (
-                <button
+                <div
                   key={a}
-                  onClick={() => setSelectedArea(a)}
-                  className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-colors shrink-0 ${
-                    selectedArea === a
+                  className={`inline-flex items-stretch rounded-xl overflow-hidden shrink-0 ${
+                    isActive
                       ? "bg-[#5B42F3] text-white shadow-sm"
-                      : "bg-[#F8FAFC] border border-[#E2E8F0] text-[#64748B] hover:text-[#0F172A]"
+                      : "bg-[#F8FAFC] border border-[#E2E8F0] text-[#64748B]"
                   }`}
                 >
-                  {a} ({count})
-                </button>
+                  <button
+                    onClick={() => setSelectedArea(a)}
+                    className={`px-4 py-2 text-xs font-extrabold transition-colors ${
+                      isActive ? "" : "hover:text-[#0F172A]"
+                    }`}
+                  >
+                    {a} ({count})
+                  </button>
+                  {canDelete && (
+                    <button
+                      type="button"
+                      title={`Delete "${a}"`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (!window.confirm(`Remove floor/area "${a}"? Tables can be added again later.`)) return;
+                        setCustomAreas((prev) => prev.filter((x) => x !== a));
+                        if (selectedArea === a) setSelectedArea("all");
+                        enqueueSnackbar(`Area "${a}" removed.`, { variant: "success" });
+                      }}
+                      className={`px-2.5 text-[13px] font-extrabold border-l ${
+                        isActive
+                          ? "border-white/30 text-white/85 hover:bg-white/10"
+                          : "border-[#E2E8F0] text-[#94A3B8] hover:text-[#DC2626] hover:bg-white"
+                      }`}
+                      aria-label={`Delete area ${a}`}
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
               );
             })}
           </div>
@@ -669,9 +723,29 @@ const Tables = () => {
               </button>
             </div>
 
-            <div className="p-4 bg-[#F8FAFC] rounded-2xl border border-[#E2E8F0] space-y-2">
+            <div className="p-4 bg-[#F8FAFC] rounded-2xl border border-[#E2E8F0] space-y-3">
               <p className="text-xs font-bold text-[#475569]">Area: {qrModalTable.area || qrModalTable.floor}</p>
               <p className="text-xs text-[#94A3B8]">Token: <code className="font-mono text-[#5B42F3]">{qrModalTable.qrToken ? qrModalTable.qrToken.slice(0, 16) + "…" : "N/A"}</code></p>
+
+              {/* Scannable QR rendered locally (no external API) */}
+              <div className="flex justify-center">
+                <div className="p-3 bg-white rounded-xl border border-[#E2E8F0] shadow-sm">
+                  {qrModalTable.qrToken ? (
+                    <QRCodeCanvas
+                      value={qrModalTable.qrCode || `${window.location.origin}/order?table=${qrModalTable.qrToken}`}
+                      size={180}
+                      level="H"
+                      includeMargin
+                      aria-label="Table QR code"
+                    />
+                  ) : (
+                    <div className="w-[180px] h-[180px] flex items-center justify-center text-[11px] text-[#94A3B8] font-bold text-center px-3">
+                      No QR token yet. Regenerate QR for this table to enable scanning.
+                    </div>
+                  )}
+                </div>
+              </div>
+
               <div className="p-3 bg-white rounded-xl border border-[#E2E8F0] break-all text-[11px] font-mono text-[#334155]">
                 {qrModalTable.qrCode || `${window.location.origin}/order?table=${qrModalTable.qrToken}`}
               </div>
