@@ -8,7 +8,16 @@ import SecurityPinModal from "../components/common/SecurityPinModal";
 import PrintTableQRModal from "../components/tables/PrintTableQRModal";
 import { checkActionAuthorization } from "../utils/security";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { getTables, addTable, updateTable, deleteTable, getTableById, getTableSessionById, regenerateQr } from "../https";
+import {
+  getTables,
+  addTable,
+  updateTable,
+  deleteTable,
+  getTableById,
+  getTableSessionById,
+  regenerateQr,
+  getOrCreateTableQr,
+} from "../https";
 import { enqueueSnackbar } from "notistack";
 // NOTE: `FiQrCode` does not exist in the `react-icons/fi` set — it was a
 // bad copy-paste (probably meant `FaQrcode` from `fa`). Rather than pull
@@ -74,6 +83,7 @@ const Tables = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingTable, setEditingTable] = useState(null);
   const [qrModalTable, setQrModalTable] = useState(null);
+  const [qrFetching, setQrFetching] = useState(false);
   const [printModalTable, setPrintModalTable] = useState(null);
   const [isAreaModalOpen, setIsAreaModalOpen] = useState(false);
   const [newAreaInput, setNewAreaInput] = useState("");
@@ -97,6 +107,55 @@ const Tables = () => {
   useEffect(() => {
     document.title = "KnotKitchen | Manage Tables";
   }, []);
+
+  /*
+   * Whenever the QR modal opens we ALWAYS make sure the table has a modern
+   * secure TableQR entity behind it, by hitting `/api/table-qr/table/:tableId`.
+   *
+   * Why: the legacy `table.qrToken` stored on the Table document is a
+   * 32-hex value produced by `crypto.randomBytes(16).toString("hex")`.
+   * The `resolveTableScope` middleware — which every public QR endpoint
+   * (`/api/qr/table/:token`) uses — only accepts 64-hex tokens minted
+   * from the TableQR collection. So a QR code rendered from
+   * `table.qrToken` alone would render, but scanning/opening it would
+   * always come back "Invalid QR code." (§Security model).
+   *
+   * The backend endpoint returns the ACTIVE 64-hex token AND back-fills
+   * `table.qrToken` + `table.qrCode` on the Table doc, so subsequent
+   * renders show the correct URL immediately.
+   */
+  useEffect(() => {
+    if (!qrModalTable?._id) return;
+    // Already have a modern 64-hex token — no need to hit the API.
+    if (typeof qrModalTable.qrToken === "string" && /^[a-f0-9]{64}$/i.test(qrModalTable.qrToken)) {
+      return;
+    }
+    let cancelled = false;
+    setQrFetching(true);
+    getOrCreateTableQr(qrModalTable._id)
+      .then((res) => {
+        if (cancelled) return;
+        const qr = res?.data?.data;
+        if (!qr?.token) return;
+        setQrModalTable((prev) =>
+          prev ? { ...prev, qrToken: qr.token, qrCode: qr.qrUrl } : prev,
+        );
+        queryClient.invalidateQueries({ queryKey: ["tables"] });
+      })
+      .catch((err) => {
+        enqueueSnackbar(
+          err?.response?.data?.message || "Failed to load QR for this table.",
+          { variant: "error" },
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setQrFetching(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qrModalTable?._id]);
 
   const { data: resData, isError } = useQuery({
     queryKey: ["tables"],
@@ -727,12 +786,19 @@ const Tables = () => {
               <p className="text-xs font-bold text-[#475569]">Area: {qrModalTable.area || qrModalTable.floor}</p>
               <p className="text-xs text-[#94A3B8]">Token: <code className="font-mono text-[#5B42F3]">{qrModalTable.qrToken ? qrModalTable.qrToken.slice(0, 16) + "…" : "N/A"}</code></p>
 
-              {/* Scannable QR rendered locally (no external API) */}
+              {/* Scannable QR rendered locally (no external API).
+                  We always render the modern /t/:token URL so scanning
+                  the printed code hits the secure resolveTableScope
+                  middleware and never fails with "Invalid QR code." */}
               <div className="flex justify-center">
                 <div className="p-3 bg-white rounded-xl border border-[#E2E8F0] shadow-sm">
-                  {qrModalTable.qrToken ? (
+                  {qrFetching ? (
+                    <div className="w-[180px] h-[180px] flex items-center justify-center text-[11px] text-[#5B42F3] font-bold text-center px-3">
+                      Generating secure QR…
+                    </div>
+                  ) : qrModalTable.qrToken ? (
                     <QRCodeCanvas
-                      value={qrModalTable.qrCode || `${window.location.origin}/order?table=${qrModalTable.qrToken}`}
+                      value={`${window.location.origin}/t/${qrModalTable.qrToken}`}
                       size={180}
                       level="H"
                       includeMargin
@@ -747,14 +813,23 @@ const Tables = () => {
               </div>
 
               <div className="p-3 bg-white rounded-xl border border-[#E2E8F0] break-all text-[11px] font-mono text-[#334155]">
-                {qrModalTable.qrCode || `${window.location.origin}/order?table=${qrModalTable.qrToken}`}
+                {qrModalTable.qrToken
+                  ? `${window.location.origin}/t/${qrModalTable.qrToken}`
+                  : "QR will appear once generated."}
               </div>
             </div>
 
             <div className="flex gap-2">
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(qrModalTable.qrCode || `${window.location.origin}/t/${qrModalTable.qrToken}`);
+                  const url = qrModalTable.qrToken
+                    ? `${window.location.origin}/t/${qrModalTable.qrToken}`
+                    : "";
+                  if (!url) {
+                    enqueueSnackbar("QR is not ready yet — please wait.", { variant: "warning" });
+                    return;
+                  }
+                  navigator.clipboard.writeText(url);
                   enqueueSnackbar("QR Link copied to clipboard!", { variant: "success" });
                 }}
                 className="flex-1 py-2.5 rounded-xl border border-[#5B42F3] text-[#5B42F3] text-xs font-bold"

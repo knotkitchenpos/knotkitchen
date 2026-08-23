@@ -89,6 +89,17 @@ export const getTableSessionById = (id) =>
 export const addItemsToTableSession = ({ sessionId, ...data }) =>
   axiosWrapper.post(`/api/table-session/${sessionId}/items`, data);
 export const getTableById = (tableId) => axiosWrapper.get(`/api/table/${tableId}`);
+
+// Secure QR entity endpoints — return the 64-hex token stored in the
+// TableQR collection (the ONLY tokens `resolveTableScope` accepts).
+// The legacy Table.qrToken (32-hex from crypto.randomBytes(16)) is not
+// valid for scanning; opening the QR modal should always fetch/mint a
+// modern secure token via this endpoint.
+export const getOrCreateTableQr = (tableId) =>
+  axiosWrapper.get(`/api/table-qr/table/${tableId}`);
+export const regenerateTableQr = (tableId) =>
+  axiosWrapper.post(`/api/table-qr/table/${tableId}/regenerate`);
+
 export const requestBillForSession = (sessionId) =>
   axiosWrapper.post(`/api/table-session/${sessionId}/request-bill`);
 
