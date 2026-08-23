@@ -758,58 +758,156 @@ const OrderPanel = () => {
             <p className="text-[12px] text-[#94A3B8] mt-0.5">Tap a product to add it.</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {cart.map((item) => (
-              <div key={item.id} className="flex items-center gap-2.5">
-                <div className="min-w-0 flex-1">
-                  <p className="text-[14px] font-bold text-[#0F172A] truncate leading-tight">
-                    {item.name}
-                  </p>
-                  {item.variant?.name && (
-                    <p className="text-[12px] text-[#94A3B8] leading-tight">{item.variant.name}</p>
-                  )}
-                  {item.note && (
-                    <p className="text-[11px] text-[#5B42F3] font-semibold truncate leading-tight">
-                      {item.note}
+          <div className="space-y-5">
+            {cart.map((item) => {
+              // Split display name into the true product name and any modifier tokens
+              // (added via " (+ Modifier1, Modifier2)" by ProductPanel's add flow).
+              const nameSplit = String(item.name || "").split(/\s*\(\+\s*/);
+              const baseName = nameSplit[0].replace(/\s*\(([^()]+)\)\s*$/, (m, inside) => {
+                // Preserve variant suffix like "(Large)" on the base line.
+                return item.variant?.name && inside === item.variant.name ? ` (${inside})` : m;
+              });
+              const modifierStr = nameSplit.length > 1
+                ? nameSplit.slice(1).join(" (+ ").replace(/\)\s*$/, "")
+                : "";
+              const modifierTokens = modifierStr
+                ? modifierStr.split(",").map((t) => t.trim()).filter(Boolean)
+                : [];
+
+              // Structured modifier entries (from ProductPanel POS customization flow).
+              const structuredMods = Array.isArray(item.modifiers) ? item.modifiers : [];
+
+              // Unit base price = total item price minus modifier prices (per unit).
+              const modifiersUnitPrice = structuredMods.reduce(
+                (s, m) => s + Number(m?.price || 0) * Number(m?.quantity || 1),
+                0,
+              );
+              const baseUnitPrice = Math.max(0, Number(item.price || 0) - modifiersUnitPrice);
+
+              return (
+                <div key={item.id} className="space-y-1">
+                  {/* Main line: ❌ + red qty + name + price */}
+                  <div className="flex items-center gap-2.5">
+                    <button
+                      onClick={() => dispatch(removeItem(item.id))}
+                      className="shrink-0 text-[#EF4444] hover:text-[#DC2626] text-[18px] leading-none"
+                      title="Remove item"
+                      aria-label={`Remove ${baseName}`}
+                    >
+                      ⊗
+                    </button>
+                    <span className="shrink-0 w-4 text-[14px] font-extrabold text-[#EF4444] text-center">
+                      {item.quantity}
+                    </span>
+                    <p className="flex-1 min-w-0 text-[14px] font-bold text-[#0F172A] truncate leading-tight">
+                      {baseName}
                     </p>
+                    <span className="shrink-0 text-[14px] font-extrabold text-[#0F172A] w-[72px] text-right">
+                      {money(baseUnitPrice * (item.quantity || 1))}
+                    </span>
+                  </div>
+
+                  {/* Modifier lines from structured selections (POS customization). */}
+                  {structuredMods.length > 0 && structuredMods.map((m, idx) => {
+                    const modLabel =
+                      m.quantity && m.quantity > 1
+                        ? `${m.quantity}× ${m.optionName || m.name}`
+                        : m.optionName || m.name;
+                    const modLineTotal = Number(m.price || 0) * Number(m.quantity || 1) * (item.quantity || 1);
+                    return (
+                      <div key={`${item.id}-mod-${idx}`} className="flex items-center gap-2.5 pl-6">
+                        <button
+                          className="shrink-0 text-[#EF4444] hover:text-[#DC2626] text-[16px] leading-none"
+                          title="Remove modifier (edit the item to change modifiers)"
+                          onClick={() => dispatch(removeItem(item.id))}
+                        >
+                          ⊗
+                        </button>
+                        <p className="flex-1 min-w-0 text-[13.5px] text-[#475569] truncate">
+                          {modLabel}
+                        </p>
+                        <span className="shrink-0 text-[13.5px] font-semibold text-[#334155] w-[72px] text-right">
+                          {money(modLineTotal)}
+                        </span>
+                      </div>
+                    );
+                  })}
+
+                  {/* Fallback: parsed modifier tokens from item.name when structured
+                      modifiers aren't available (legacy items already in the cart). */}
+                  {structuredMods.length === 0 && modifierTokens.length > 0 && modifierTokens.map((tok, idx) => (
+                    <div key={`${item.id}-tok-${idx}`} className="flex items-center gap-2.5 pl-6">
+                      <button
+                        className="shrink-0 text-[#EF4444] hover:text-[#DC2626] text-[16px] leading-none"
+                        title="Remove modifier (edit the item to change modifiers)"
+                        onClick={() => dispatch(removeItem(item.id))}
+                      >
+                        ⊗
+                      </button>
+                      <p className="flex-1 min-w-0 text-[13.5px] text-[#475569] truncate">
+                        {tok}
+                      </p>
+                      <span className="shrink-0 text-[13.5px] font-semibold text-[#334155] w-[72px] text-right">
+                        {money(0)}
+                      </span>
+                    </div>
+                  ))}
+
+                  {/* Note row */}
+                  {item.note && (
+                    <div className="pl-6 text-[11.5px] text-[#5B42F3] font-semibold truncate">
+                      Note: {item.note}
+                    </div>
                   )}
+
+                  {/* Centered action row: ❌ ➕ qty ➖ ⚙️ */}
+                  <div className="flex items-center justify-center gap-4 pt-1.5">
+                    <button
+                      onClick={() => dispatch(removeItem(item.id))}
+                      className="w-7 h-7 rounded-full border-2 border-[#EF4444] text-[#EF4444] flex items-center justify-center text-[14px] font-bold hover:bg-[#FEE2E2] transition-colors"
+                      title="Remove line"
+                      aria-label="Remove line"
+                    >
+                      ×
+                    </button>
+                    <button
+                      onClick={() => dispatch(updateQuantity({ id: item.id, quantity: (item.quantity || 1) + 1 }))}
+                      className="w-7 h-7 rounded-full border-2 border-[#22C55E] text-[#22C55E] flex items-center justify-center text-[14px] font-bold hover:bg-[#DCFCE7] transition-colors"
+                      title="Increase quantity"
+                      aria-label="Increase quantity"
+                    >
+                      +
+                    </button>
+                    <span className="min-w-[16px] text-center text-[14px] font-extrabold text-[#0F172A]">
+                      {item.quantity}
+                    </span>
+                    <button
+                      onClick={() =>
+                        (item.quantity || 0) <= 1
+                          ? dispatch(removeItem(item.id))
+                          : dispatch(updateQuantity({ id: item.id, quantity: item.quantity - 1 }))
+                      }
+                      className="w-7 h-7 rounded-full border-2 border-[#94A3B8] text-[#475569] flex items-center justify-center text-[16px] font-bold hover:bg-[#F1F5F9] transition-colors"
+                      title="Decrease quantity"
+                      aria-label="Decrease quantity"
+                    >
+                      −
+                    </button>
+                    <button
+                      onClick={() => {
+                        setNoteFor(item);
+                        setNoteText(item.note || "");
+                      }}
+                      className="w-7 h-7 rounded-full border-2 border-[#5B42F3] text-[#5B42F3] flex items-center justify-center text-[13px] hover:bg-[#EEF0FE] transition-colors"
+                      title="Item settings / add note"
+                      aria-label="Item settings"
+                    >
+                      ⚙
+                    </button>
+                  </div>
                 </div>
-
-                <div className="flex items-center gap-2 rounded-lg border border-[#E2E8F0] px-1.5 h-[30px] shrink-0">
-                  <button
-                    onClick={() =>
-                      (item.quantity || 0) <= 1
-                        ? dispatch(removeItem(item.id))
-                        : dispatch(updateQuantity({ id: item.id, quantity: item.quantity - 1 }))
-                    }
-                    className="w-[18px] text-[#475569] hover:text-[#5B42F3] text-[15px] font-bold leading-none"
-                  >
-                    −
-                  </button>
-                  <span className="text-[13px] font-extrabold text-[#0F172A] min-w-[14px] text-center">
-                    {item.quantity}
-                  </span>
-                  <button
-                    onClick={() => dispatch(updateQuantity({ id: item.id, quantity: item.quantity + 1 }))}
-                    className="w-[18px] text-[#475569] hover:text-[#5B42F3] text-[15px] font-bold leading-none"
-                  >
-                    +
-                  </button>
-                </div>
-
-                <span className="text-[14px] font-extrabold text-[#0F172A] w-[62px] text-right shrink-0">
-                  {money(item.price)}
-                </span>
-
-                <button
-                  onClick={() => dispatch(removeItem(item.id))}
-                  className="text-[#CBD5E1] hover:text-[#EF4444] text-[18px] leading-none shrink-0 w-4"
-                  title="Remove item"
-                >
-                  ×
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
