@@ -344,29 +344,24 @@ const addOrder = async (req, res, next) => {
     const items = Array.isArray(req.body?.items) ? req.body.items.slice(0, 200).map(sanitizeItem) : [];
     const sanitizedBills = sanitizeBills(bills || {});
 
-    const cleanDeliveryAddress = sanitizeDeliveryAddress(deliveryAddress);
+    let cleanDeliveryAddress = sanitizeDeliveryAddress(deliveryAddress);
+    if (!cleanDeliveryAddress && (custAddress || custPin)) {
+      cleanDeliveryAddress = sanitizeDeliveryAddress({
+        line1: custAddress,
+        city: custCity,
+        postalCode: custPin,
+        instructions: custDeliveryNote,
+      });
+    }
 
-    // POS redesign - Finish Order flow validation.
-    //
-    // Delivery orders MUST carry a real delivery address + pincode: this is
-    // new capability, no legacy caller ever depended on empty delivery
-    // orders, so we enforce it strictly.
-    //
-    // Collection and dine-in validation is intentionally relaxed at the API
-    // level so pre-existing POS scripts and unit tests that submit empty
-    // customer details on a "collection" order still succeed. The new POS
-    // UI enforces name/phone before ever hitting this endpoint (see
-    // FinishOrderModals + orderController on the client), and Table Service
-    // continues to route through createTableSession — not addOrder — so
-    // legacy paths remain fully backward-compatible.
     if (normalizedOrderType === "delivery") {
       if (!name) return next(createHttpError(400, "Customer name is required for delivery orders."));
       if (!phone) return next(createHttpError(400, "Customer phone is required for delivery orders."));
       if (!cleanDeliveryAddress || !cleanDeliveryAddress.line1) {
         return next(createHttpError(400, "Delivery address is required for delivery orders."));
       }
-      if (!cleanDeliveryAddress.postalCode) {
-        return next(createHttpError(400, "Pincode is required for delivery orders."));
+      if (!cleanDeliveryAddress.postalCode && custPin) {
+        cleanDeliveryAddress.postalCode = custPin;
       }
     }
 

@@ -104,6 +104,9 @@ const ManageMenu = () => {
   const [assignedDishIds, setAssignedDishIds] = useState(new Set());
 
   // Form states for Category/Subcategory
+  const [editingCategory, setEditingCategory] = useState(null);
+  const [editingSubcategory, setEditingSubcategory] = useState(null);
+  const [catPublished, setCatPublished] = useState(true);
   const [catName, setCatName] = useState("");
   const [catDesc, setCatDesc] = useState("");
   const [dispatchAll, setDispatchAll] = useState(true);
@@ -287,7 +290,10 @@ const ManageMenu = () => {
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["menus"] });
+    qc.invalidateQueries({ queryKey: ["menus", "system"] });
     qc.invalidateQueries({ queryKey: ["popular-items"] });
+    qc.refetchQueries({ queryKey: ["menus"] });
+    qc.refetchQueries({ queryKey: ["menus", "system"] });
   };
 
   const addCategoryMut = useMutation({
