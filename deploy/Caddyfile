@@ -30,29 +30,21 @@
 }
 
 # =============================================================================
-# api.knotkitchen.com — POS backend
+# api.knotkitchen.online — POS backend
 # =============================================================================
-http://api.{$BASE_DOMAIN}, https://api.{$BASE_DOMAIN} {
-	import wildcard_cert
+api.{$BASE_DOMAIN} {
 	import security_headers
 
-	# Cap request bodies at 12 MB (menu import + base64 payloads fit, arbitrary
-	# uploads do not). The backend also enforces this with express.json limit.
 	request_body {
 		max_size 12MB
 	}
 
-	# WebSocket upgrade for Socket.IO. Caddy handles Upgrade/Connection headers
-	# automatically as long as we pass them through — reverse_proxy does.
 	reverse_proxy pos-api:8000 {
-		# Cloudflare -> Caddy -> upstream: preserve the real client IP so the
-		# backend's rate limiter / audit logs see the actual visitor.
 		header_up X-Real-IP           {remote_host}
 		header_up X-Forwarded-For     {remote_host}
 		header_up X-Forwarded-Proto   {scheme}
 		header_up X-Forwarded-Host    {host}
 
-		# Health check the upstream container itself.
 		health_uri     /health
 		health_interval 15s
 		health_timeout  5s
@@ -65,10 +57,9 @@ http://api.{$BASE_DOMAIN}, https://api.{$BASE_DOMAIN} {
 }
 
 # =============================================================================
-# admin-api.knotkitchen.com — Super-admin backend
+# admin-api.knotkitchen.online — Super-admin backend
 # =============================================================================
-http://admin-api.{$BASE_DOMAIN}, https://admin-api.{$BASE_DOMAIN} {
-	import wildcard_cert
+admin-api.{$BASE_DOMAIN} {
 	import security_headers
 
 	request_body {
@@ -87,10 +78,9 @@ http://admin-api.{$BASE_DOMAIN}, https://admin-api.{$BASE_DOMAIN} {
 }
 
 # =============================================================================
-# admin.knotkitchen.com / onboard.knotkitchen.com — Super-admin & Onboarding SPA
+# admin.knotkitchen.online / onboard.knotkitchen.online — Super-admin & Onboarding SPA
 # =============================================================================
-http://admin.{$BASE_DOMAIN}, https://admin.{$BASE_DOMAIN}, http://onboard.{$BASE_DOMAIN}, https://onboard.{$BASE_DOMAIN} {
-	import wildcard_cert
+admin.{$BASE_DOMAIN}, onboard.{$BASE_DOMAIN} {
 	import security_headers
 
 	encode zstd gzip
@@ -100,10 +90,9 @@ http://admin.{$BASE_DOMAIN}, https://admin.{$BASE_DOMAIN}, http://onboard.{$BASE
 }
 
 # =============================================================================
-# pos.knotkitchen.com / business.knotkitchen.com — POS SPA
+# pos.knotkitchen.online / business.knotkitchen.online — POS SPA
 # =============================================================================
-http://pos.{$BASE_DOMAIN}, https://pos.{$BASE_DOMAIN}, http://business.{$BASE_DOMAIN}, https://business.{$BASE_DOMAIN} {
-	import wildcard_cert
+pos.{$BASE_DOMAIN}, business.{$BASE_DOMAIN} {
 	import security_headers
 
 	encode zstd gzip
@@ -113,10 +102,9 @@ http://pos.{$BASE_DOMAIN}, https://pos.{$BASE_DOMAIN}, http://business.{$BASE_DO
 }
 
 # =============================================================================
-# app.knotkitchen.com — same as POS (reserved for a future main-app SPA).
+# app.knotkitchen.online — same as POS
 # =============================================================================
-http://app.{$BASE_DOMAIN}, https://app.{$BASE_DOMAIN} {
-	import wildcard_cert
+app.{$BASE_DOMAIN} {
 	import security_headers
 
 	encode zstd gzip
@@ -126,33 +114,13 @@ http://app.{$BASE_DOMAIN}, https://app.{$BASE_DOMAIN} {
 }
 
 # =============================================================================
-# knotkitchen.com — bare apex, sends visitors to the customer-web fallback
+# knotkitchen.online / csd.knotkitchen.online — Landing Page & Storefront
 # =============================================================================
-http://{$BASE_DOMAIN}, https://{$BASE_DOMAIN} {
-	import wildcard_cert
+csd.{$BASE_DOMAIN}, {$BASE_DOMAIN} {
 	import security_headers
 
 	encode zstd gzip
 	reverse_proxy customer-web:80 {
-		header_up Host {host}
-	}
-}
-
-# =============================================================================
-# *.knotkitchen.com — every restaurant customer website (wildcard catch-all)
-# -----------------------------------------------------------------------------
-# This block MUST come after the specific subdomains above, or a store slug
-# named "api" would shadow api.knotkitchen.com. It matches everything that
-# hasn't already been handled — the customer-web resolves the slug at runtime.
-# =============================================================================
-http://*.{$BASE_DOMAIN}, https://*.{$BASE_DOMAIN} {
-	import wildcard_cert
-	import security_headers
-
-	encode zstd gzip
-	reverse_proxy customer-web:80 {
-		# Preserve the original Host header so the SPA sees the real hostname
-		# in window.location.hostname (that's how it resolves the tenant).
 		header_up Host {host}
 	}
 }
