@@ -18,12 +18,11 @@
 }
 
 # -----------------------------------------------------------------------------
-# Wildcard certificate — obtained ONCE, reused by every subdomain block below.
+# Certificate configuration — Uses standard ACME HTTP-01 (works with Hostinger DNS)
+# or Cloudflare DNS-01 if CLOUDFLARE_API_TOKEN is provided.
 # -----------------------------------------------------------------------------
 (wildcard_cert) {
-	tls {
-		dns cloudflare {$CLOUDFLARE_API_TOKEN}
-	}
+	tls {$ACME_EMAIL}
 }
 
 # -----------------------------------------------------------------------------
