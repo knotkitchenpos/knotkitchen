@@ -32,7 +32,7 @@
 # =============================================================================
 # api.knotkitchen.com — POS backend
 # =============================================================================
-api.{$BASE_DOMAIN} {
+http://api.{$BASE_DOMAIN}, https://api.{$BASE_DOMAIN} {
 	import wildcard_cert
 	import security_headers
 
@@ -67,7 +67,7 @@ api.{$BASE_DOMAIN} {
 # =============================================================================
 # admin-api.knotkitchen.com — Super-admin backend
 # =============================================================================
-admin-api.{$BASE_DOMAIN} {
+http://admin-api.{$BASE_DOMAIN}, https://admin-api.{$BASE_DOMAIN} {
 	import wildcard_cert
 	import security_headers
 
@@ -89,7 +89,7 @@ admin-api.{$BASE_DOMAIN} {
 # =============================================================================
 # admin.knotkitchen.com / onboard.knotkitchen.com — Super-admin & Onboarding SPA
 # =============================================================================
-admin.{$BASE_DOMAIN}, onboard.{$BASE_DOMAIN} {
+http://admin.{$BASE_DOMAIN}, https://admin.{$BASE_DOMAIN}, http://onboard.{$BASE_DOMAIN}, https://onboard.{$BASE_DOMAIN} {
 	import wildcard_cert
 	import security_headers
 
@@ -102,7 +102,7 @@ admin.{$BASE_DOMAIN}, onboard.{$BASE_DOMAIN} {
 # =============================================================================
 # pos.knotkitchen.com / business.knotkitchen.com — POS SPA
 # =============================================================================
-pos.{$BASE_DOMAIN}, business.{$BASE_DOMAIN} {
+http://pos.{$BASE_DOMAIN}, https://pos.{$BASE_DOMAIN}, http://business.{$BASE_DOMAIN}, https://business.{$BASE_DOMAIN} {
 	import wildcard_cert
 	import security_headers
 
@@ -115,7 +115,7 @@ pos.{$BASE_DOMAIN}, business.{$BASE_DOMAIN} {
 # =============================================================================
 # app.knotkitchen.com — same as POS (reserved for a future main-app SPA).
 # =============================================================================
-app.{$BASE_DOMAIN} {
+http://app.{$BASE_DOMAIN}, https://app.{$BASE_DOMAIN} {
 	import wildcard_cert
 	import security_headers
 
@@ -128,7 +128,7 @@ app.{$BASE_DOMAIN} {
 # =============================================================================
 # knotkitchen.com — bare apex, sends visitors to the customer-web fallback
 # =============================================================================
-{$BASE_DOMAIN} {
+http://{$BASE_DOMAIN}, https://{$BASE_DOMAIN} {
 	import wildcard_cert
 	import security_headers
 
@@ -145,7 +145,7 @@ app.{$BASE_DOMAIN} {
 # named "api" would shadow api.knotkitchen.com. It matches everything that
 # hasn't already been handled — the customer-web resolves the slug at runtime.
 # =============================================================================
-*.{$BASE_DOMAIN} {
+http://*.{$BASE_DOMAIN}, https://*.{$BASE_DOMAIN} {
 	import wildcard_cert
 	import security_headers
 
