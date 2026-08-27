@@ -109,9 +109,9 @@ admin-api.{$BASE_DOMAIN} {
 }
 
 # =============================================================================
-# admin.knotkitchen.com — Super-admin SPA
+# admin.knotkitchen.com / onboard.knotkitchen.com — Super-admin & Onboarding SPA
 # =============================================================================
-admin.{$BASE_DOMAIN} {
+admin.{$BASE_DOMAIN}, onboard.{$BASE_DOMAIN} {
 	import wildcard_cert
 	import security_headers
 
@@ -122,9 +122,9 @@ admin.{$BASE_DOMAIN} {
 }
 
 # =============================================================================
-# pos.knotkitchen.com — POS SPA
+# pos.knotkitchen.com / business.knotkitchen.com — POS SPA
 # =============================================================================
-pos.{$BASE_DOMAIN} {
+pos.{$BASE_DOMAIN}, business.{$BASE_DOMAIN} {
 	import wildcard_cert
 	import security_headers
 

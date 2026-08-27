@@ -50,7 +50,7 @@ services:
       # === CORS ===
       # Explicit hosts + wildcard base for *.knotkitchen.com customer sites.
       FRONTEND_URLS: >-
-        https://admin.${BASE_DOMAIN},https://pos.${BASE_DOMAIN},https://app.${BASE_DOMAIN},https://${BASE_DOMAIN}
+        https://admin.${BASE_DOMAIN},https://onboard.${BASE_DOMAIN},https://pos.${BASE_DOMAIN},https://business.${BASE_DOMAIN},https://app.${BASE_DOMAIN},https://${BASE_DOMAIN}
       CORS_WILDCARD_DOMAINS: ${BASE_DOMAIN}
       BASE_DOMAIN: ${BASE_DOMAIN}
       COOKIE_SAMESITE: none
@@ -105,7 +105,7 @@ services:
       JWT_SECRET: ${ADMIN_JWT_SECRET}
       SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL}
       SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD}
-      ADMIN_FRONTEND_ORIGIN: https://admin.${BASE_DOMAIN}
+      ADMIN_FRONTEND_ORIGIN: https://admin.${BASE_DOMAIN},https://onboard.${BASE_DOMAIN}
       COOKIE_SAMESITE: none
       COOKIE_SECURE: "true"
       # Where the admin backend should tell newly-created stores their public
