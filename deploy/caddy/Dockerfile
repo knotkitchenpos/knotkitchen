@@ -1,13 +1,9 @@
 # =============================================================================
-# Custom Caddy image with the Cloudflare DNS module baked in.
+# Caddy image — stock Alpine build.
 # =============================================================================
-# We need the Cloudflare DNS-01 plugin to obtain a wildcard cert for
-# *.knotkitchen.com. The upstream `caddy:2-alpine` image does not include it,
-# so we compile a custom binary with `xcaddy`.
-
-FROM caddy:2-builder-alpine AS builder
-RUN xcaddy build \
-    --with github.com/caddy-dns/cloudflare
+# We use Let's Encrypt HTTP-01 for every cert (Hostinger DNS, no Cloudflare),
+# so no DNS-plugin build is required. If you later switch to DNS-01 for a
+# real wildcard cert, reintroduce the xcaddy build stage with the matching
+# DNS provider plugin.
 
 FROM caddy:2-alpine
-COPY --from=builder /usr/bin/caddy /usr/bin/caddy

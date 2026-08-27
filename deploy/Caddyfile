@@ -1,18 +1,20 @@
 # =============================================================================
-# Knot Kitchen — Caddy reverse proxy
+# Knot Kitchen — Caddy reverse proxy (Hostinger DNS, no Cloudflare)
 # =============================================================================
-# Standard automatic HTTPS via Let's Encrypt / ZeroSSL HTTP-01 challenge.
-# Every internal upstream is addressed by its Docker service name on the `knot`
-# network — Docker's embedded DNS resolves the correct container.
+# Standard automatic HTTPS via Let's Encrypt HTTP-01. Every internal upstream
+# is addressed by its Docker service name on the `knot` network — Docker's
+# embedded DNS resolves the correct container.
+#
+# Public hostname map (BASE_DOMAIN = knotkitchen.online):
+#   knotkitchen.online            → customer-web  (landing / storefront)
+#   csd.knotkitchen.online        → customer-web  (customer-facing storefront)
+#   business.knotkitchen.online   → pos-web       (POS SPA)
+#   onboard.knotkitchen.online    → admin-web     (super-admin / onboarding SPA)
+#   api.knotkitchen.online        → pos-api       (POS backend API)
+#   admin-api.knotkitchen.online  → admin-api     (super-admin backend API)
 
 {
 	email {$ACME_EMAIL}
-}
-
-# -----------------------------------------------------------------------------
-# Certificate snippet
-# -----------------------------------------------------------------------------
-(wildcard_cert) {
 }
 
 # -----------------------------------------------------------------------------
@@ -78,9 +80,9 @@ admin-api.{$BASE_DOMAIN} {
 }
 
 # =============================================================================
-# admin.knotkitchen.online / onboard.knotkitchen.online — Super-admin & Onboarding SPA
+# onboard.knotkitchen.online — Super-admin & Onboarding SPA
 # =============================================================================
-admin.{$BASE_DOMAIN}, onboard.{$BASE_DOMAIN} {
+onboard.{$BASE_DOMAIN} {
 	import security_headers
 
 	encode zstd gzip
@@ -90,9 +92,9 @@ admin.{$BASE_DOMAIN}, onboard.{$BASE_DOMAIN} {
 }
 
 # =============================================================================
-# pos.knotkitchen.online / business.knotkitchen.online — POS SPA
+# business.knotkitchen.online — POS SPA
 # =============================================================================
-pos.{$BASE_DOMAIN}, business.{$BASE_DOMAIN} {
+business.{$BASE_DOMAIN} {
 	import security_headers
 
 	encode zstd gzip
@@ -102,19 +104,7 @@ pos.{$BASE_DOMAIN}, business.{$BASE_DOMAIN} {
 }
 
 # =============================================================================
-# app.knotkitchen.online — same as POS
-# =============================================================================
-app.{$BASE_DOMAIN} {
-	import security_headers
-
-	encode zstd gzip
-	reverse_proxy pos-web:80 {
-		header_up Host {host}
-	}
-}
-
-# =============================================================================
-# knotkitchen.online / csd.knotkitchen.online — Landing Page & Storefront
+# knotkitchen.online / csd.knotkitchen.online — Landing page & Storefront
 # =============================================================================
 csd.{$BASE_DOMAIN}, {$BASE_DOMAIN} {
 	import security_headers

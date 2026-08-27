@@ -27,7 +27,7 @@ volumes:
 
 services:
   # ---------------------------------------------------------------------------
-  # POS backend  →  api.knotkitchen.com
+  # POS backend  →  api.${BASE_DOMAIN}
   # ---------------------------------------------------------------------------
   pos-api:
     build:
@@ -48,29 +48,36 @@ services:
       REFRESH_TOKEN_EXPIRY: ${REFRESH_TOKEN_EXPIRY:-30d}
 
       # === CORS ===
-      # Explicit hosts + wildcard base for *.knotkitchen.com customer sites.
+      # Explicit hosts + wildcard base so any https://<slug>.${BASE_DOMAIN}
+      # storefront may also call the API.
       FRONTEND_URLS: >-
-        https://admin.${BASE_DOMAIN},https://onboard.${BASE_DOMAIN},https://pos.${BASE_DOMAIN},https://business.${BASE_DOMAIN},https://app.${BASE_DOMAIN},https://${BASE_DOMAIN}
+        https://${BASE_DOMAIN},https://csd.${BASE_DOMAIN},https://business.${BASE_DOMAIN},https://onboard.${BASE_DOMAIN}
       CORS_WILDCARD_DOMAINS: ${BASE_DOMAIN}
       BASE_DOMAIN: ${BASE_DOMAIN}
       COOKIE_SAMESITE: none
       COOKIE_SECURE: "true"
 
       # === Storefront ===
-      STOREFRONT_BASE_URL: https://${BASE_DOMAIN}
+      STOREFRONT_BASE_URL: https://csd.${BASE_DOMAIN}
       STOREFRONT_ROOT_DOMAIN: ${BASE_DOMAIN}
-      FRONTEND_URL: https://pos.${BASE_DOMAIN}
+      FRONTEND_URL: https://business.${BASE_DOMAIN}
       BACKEND_PUBLIC_URL: https://api.${BASE_DOMAIN}
 
       # === Media (object storage) ===
-      MEDIA_STORAGE_PROVIDER: ${MEDIA_STORAGE_PROVIDER:-r2}
-      MEDIA_PUBLIC_BASE_URL: ${MEDIA_PUBLIC_BASE_URL}
-      S3_BUCKET: ${S3_BUCKET}
-      S3_REGION: ${S3_REGION:-auto}
-      S3_ENDPOINT: ${S3_ENDPOINT}
-      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID}
-      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY}
-      S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL}
+      # Default = local (files stored in the backend_uploads Docker volume and
+      # served via https://api.${BASE_DOMAIN}/uploads). Switch to s3 /
+      # cloudinary in deploy/.env if you outgrow the VPS disk.
+      MEDIA_STORAGE_PROVIDER: ${MEDIA_STORAGE_PROVIDER:-local}
+      MEDIA_PUBLIC_BASE_URL: ${MEDIA_PUBLIC_BASE_URL:-https://api.${BASE_DOMAIN}/uploads}
+      S3_BUCKET: ${S3_BUCKET:-}
+      S3_REGION: ${S3_REGION:-us-east-1}
+      S3_ENDPOINT: ${S3_ENDPOINT:-}
+      S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+      S3_PUBLIC_BASE_URL: ${S3_PUBLIC_BASE_URL:-}
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
 
       # === Payments / SMS ===
       RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
@@ -82,12 +89,13 @@ services:
       SOCKET_ENABLED: "true"
 
     # Local uploads dir — only used if MEDIA_STORAGE_PROVIDER=local. Cloud
-    # providers write to R2/S3 and this volume stays empty.
+    # providers (S3-compatible / Cloudinary) write there and this volume
+    # stays empty.
     volumes:
       - backend_uploads:/app/uploads
 
   # ---------------------------------------------------------------------------
-  # Admin backend  →  admin-api.knotkitchen.com
+  # Admin backend  →  admin-api.${BASE_DOMAIN}
   # ---------------------------------------------------------------------------
   admin-api:
     build:
@@ -107,7 +115,7 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-${SUPERADMIN_PASSWORD}}
       SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL:-${ADMIN_EMAIL}}
       SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:-${ADMIN_PASSWORD}}
-      ADMIN_FRONTEND_ORIGIN: https://admin.${BASE_DOMAIN},https://onboard.${BASE_DOMAIN}
+      ADMIN_FRONTEND_ORIGIN: https://onboard.${BASE_DOMAIN}
       COOKIE_SAMESITE: none
       COOKIE_SECURE: "true"
       # Where the admin backend should tell newly-created stores their public
@@ -115,7 +123,7 @@ services:
       STOREFRONT_ROOT_DOMAIN: ${BASE_DOMAIN}
 
   # ---------------------------------------------------------------------------
-  # POS SPA  →  pos.knotkitchen.com
+  # POS SPA  →  business.${BASE_DOMAIN}
   # ---------------------------------------------------------------------------
   pos-web:
     build:
@@ -130,7 +138,7 @@ services:
     networks: [knot]
 
   # ---------------------------------------------------------------------------
-  # Admin SPA  →  admin.knotkitchen.com
+  # Admin / Onboarding SPA  →  onboard.${BASE_DOMAIN}
   # ---------------------------------------------------------------------------
   admin-web:
     build:
@@ -143,7 +151,7 @@ services:
     networks: [knot]
 
   # ---------------------------------------------------------------------------
-  # Customer website  →  <slug>.knotkitchen.com  (wildcard)
+  # Customer website  →  ${BASE_DOMAIN} + csd.${BASE_DOMAIN}
   # ---------------------------------------------------------------------------
   customer-web:
     build:
@@ -159,8 +167,8 @@ services:
 
   # ---------------------------------------------------------------------------
   # Caddy reverse proxy — the only container that publishes host ports.
-  # Custom image (see deploy/caddy/Dockerfile) so it includes the Cloudflare
-  # DNS module needed for the wildcard *.knotkitchen.com certificate.
+  # Uses Let's Encrypt HTTP-01 (Hostinger DNS, no Cloudflare) to obtain and
+  # renew certificates for every hostname in deploy/Caddyfile automatically.
   # ---------------------------------------------------------------------------
   caddy:
     build:
@@ -175,9 +183,8 @@ services:
     environment:
       # Consumed by the Caddyfile via env placeholders.
       BASE_DOMAIN: ${BASE_DOMAIN}
-      # DNS-01 wildcard cert requires a Cloudflare API token scoped to the
-      # zone's DNS:Edit. See DEPLOYMENT.md.
-      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN}
+      # Let's Encrypt / ZeroSSL HTTP-01 only — no DNS provider token needed
+      # because Hostinger DNS is used and Caddy proves ownership over port 80.
       ACME_EMAIL: ${ACME_EMAIL}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro

@@ -3,8 +3,9 @@
 # Knot Kitchen — rollback to the previously-deployed revision
 # =============================================================================
 # Deploy writes the current SHA to deploy/.previous BEFORE moving to the new
-# revision, so this script re-checkouts that SHA and rebuilds. Data in Mongo
-# Atlas and R2 is untouched — a rollback of code does not roll back user data.
+# revision, so this script re-checkouts that SHA and rebuilds. Data in MongoDB
+# and external object storage is untouched — a rollback of code does not roll
+# back user data.
 #
 # Usage on the VPS:
 #   cd /srv/knot

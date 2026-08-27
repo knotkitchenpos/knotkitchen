@@ -8,8 +8,10 @@
 #   3. Local uploads volume       (only meaningful if MEDIA_STORAGE_PROVIDER=local)
 #
 # What this does NOT back up:
-#   * MongoDB              — Atlas has its own continuous backup; DO enable it.
-#   * Object storage       — R2 has versioning + lifecycle; DO enable them.
+#   * MongoDB              — use Atlas continuous backup (or a separate
+#                            `mongodump` cron if you self-host mongo:7).
+#   * External object storage (S3/Cloudinary) — configured to keep versions
+#                            at the provider side.
 #   * Container images     — rebuilt on every deploy from the source repo.
 #
 # Recommended cron entry (as root):
@@ -36,7 +38,8 @@ docker run --rm \
   -v "$TMP":/backup \
   alpine tar -C /data -czf /backup/caddy_data.tar.gz .
 
-# 3. backend_uploads volume — may be tiny/empty when using R2
+# 3. backend_uploads volume — the real payload when MEDIA_STORAGE_PROVIDER=local;
+#    empty/tiny when using an external S3/Cloudinary provider.
 if docker volume inspect knotkitchen_backend_uploads >/dev/null 2>&1; then
   docker run --rm \
     -v knotkitchen_backend_uploads:/data \

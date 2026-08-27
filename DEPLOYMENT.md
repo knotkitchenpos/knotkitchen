@@ -1,223 +1,314 @@
-# Knot Kitchen — Deployment Runbook
+# Knot Kitchen — Hostinger Deployment Runbook
 
-_Companion to `ARCHITECTURE.md`. Everything here assumes you already understand
-the runtime topology described there._
+_Companion to `ARCHITECTURE.md`. Everything here targets a **Hostinger KVM VPS
+with public IPv4 `93.127.194.80`** running the `knotkitchen.online` platform.
+No Cloudflare. No external CDN. Caddy on the VPS terminates TLS directly using
+Let's Encrypt HTTP-01._
 
 ---
 
 ## 0. Prerequisites (one-time)
 
-| Requirement                              | Notes                                                                          |
-| ---------------------------------------- | ------------------------------------------------------------------------------ |
-| Hostinger KVM VPS (Ubuntu 24.04 LTS)     | Minimum 2 vCPU / 4 GB RAM / 40 GB disk. Static IPv4.                           |
-| Cloudflare account managing `knotkitchen.com` | With DNS + WAF + SSL enabled.                                             |
-| MongoDB Atlas cluster                    | M10 or higher recommended for production. Enable continuous backup.            |
-| Cloudflare R2 bucket                     | Public custom domain, e.g. `media.knotkitchen.com`.                            |
-| GitHub repository                        | `main` branch triggers deploy. Set the secrets listed in step 4.                |
+| Requirement | Value / Notes |
+| --- | --- |
+| Hostinger KVM VPS | `93.127.194.80` — Ubuntu 24.04 LTS, ≥ 2 vCPU / 4 GB RAM / 40 GB disk |
+| Domain in Hostinger DNS | `knotkitchen.online` (no CDN, no Cloudflare, no proxy) |
+| MongoDB | Atlas M10+ **or** self-hosted `mongo:7` in the same compose file |
+| Object storage (optional) | S3-compatible (AWS/Wasabi/B2/DO Spaces/MinIO) **or** Cloudinary. Default = `local` |
+| GitHub repo | `main` triggers deploy (or clone + `git pull` manually) |
+| SMS OTP | Fast2SMS account + API key |
 
 ---
 
-## 1. VPS bootstrap
+## 1. Public hostname map
 
-Run as `root` on a fresh VPS.
+| Purpose | Hostname | Backed by |
+| --- | --- | --- |
+| Landing page + storefront | `knotkitchen.online` | `customer-web` |
+| Storefront (customer-facing) | `csd.knotkitchen.online` | `customer-web` |
+| POS SPA | `business.knotkitchen.online` | `pos-web` |
+| Super-admin / onboarding SPA | `onboard.knotkitchen.online` | `admin-web` |
+| POS backend API | `api.knotkitchen.online` | `pos-api` |
+| Super-admin backend API | `admin-api.knotkitchen.online` | `admin-api` |
+
+Only `caddy` publishes host ports 80/443. Everything else is on the internal
+`knot` Docker network and is only reachable through Caddy.
+
+
+---
+
+## 2. Hostinger DNS records
+
+In **hPanel → Domains → knotkitchen.online → DNS / Nameservers → DNS Zone**,
+delete any conflicting default records and create these seven A records —
+every value is the same VPS IP:
+
+| Type | Name (host) | Points to       | TTL |
+| ---- | ----------- | --------------- | --- |
+| A    | `@`         | `93.127.194.80` | 300 |
+| A    | `www`       | `93.127.194.80` | 300 |
+| A    | `csd`       | `93.127.194.80` | 300 |
+| A    | `business`  | `93.127.194.80` | 300 |
+| A    | `onboard`   | `93.127.194.80` | 300 |
+| A    | `api`       | `93.127.194.80` | 300 |
+| A    | `admin-api` | `93.127.194.80` | 300 |
+
+Do **not** enable Hostinger's CDN toggle on any of these records — Caddy must
+terminate TLS itself for Let's Encrypt HTTP-01 to succeed.
+
+Verify from any laptop before continuing:
+
+```powershell
+nslookup api.knotkitchen.online 8.8.8.8
+nslookup business.knotkitchen.online 8.8.8.8
+nslookup onboard.knotkitchen.online 8.8.8.8
+nslookup csd.knotkitchen.online 8.8.8.8
+nslookup knotkitchen.online 8.8.8.8
+```
+
+Every answer must show `93.127.194.80`. If not, wait 5–15 min for TTL to
+expire and re-check.
+
+---
+
+## 3. VPS bootstrap (as `root` over SSH)
 
 ```bash
-apt update && apt upgrade -y
+ssh root@93.127.194.80
 
-# Docker (official Docker Inc. repo)
+apt update && apt -y upgrade
+apt install -y git ufw fail2ban curl gpg
+
+# Docker
 curl -fsSL https://get.docker.com | sh
-usermod -aG docker $USER
 
-# Common utilities
-apt install -y git ufw fail2ban gpg
-
-# Firewall — publish only 22 (SSH), 80, 443. Nothing else must ever be exposed.
+# Firewall — publish ONLY 22 / 80 / 443
 ufw allow OpenSSH
 ufw allow 80/tcp
 ufw allow 443/tcp
 ufw --force enable
 
-# Create a dedicated user for the deploy workflow.
+# Dedicated deploy user
 useradd -m -s /bin/bash deploy
 usermod -aG docker deploy
 mkdir -p /srv/knot && chown -R deploy:deploy /srv/knot
-
-# Add the CI SSH public key (see step 4) to /home/deploy/.ssh/authorized_keys
 ```
 
-Log in as `deploy` for everything below.
+Add your SSH public key to `/home/deploy/.ssh/authorized_keys` and disable
+root SSH login (`PermitRootLogin no` in `/etc/ssh/sshd_config`).
 
 ---
 
-## 2. Cloudflare DNS
-
-In the Cloudflare zone for `knotkitchen.com` create the records listed in
-`ARCHITECTURE.md` §3. All records must be **proxied** (orange cloud) — that's
-what gives you DDoS protection and free edge TLS.
-
-Then create an API token:
-
-1. **My Profile → API Tokens → Create Token**.
-2. Use the **Custom token** template with:
-   * Permissions: `Zone → DNS → Edit`, `Zone → Zone → Read`
-   * Zone Resources: **Include → Specific zone → knotkitchen.com**
-3. Copy the token — you'll paste it into `deploy/.env` as `CLOUDFLARE_API_TOKEN`.
-
-Finally, set **SSL/TLS mode = Full (strict)** in the zone's SSL/TLS panel. This
-requires that Caddy present a valid cert, which it does using the DNS-01
-challenge configured in `deploy/Caddyfile`.
-
----
-
-## 3. First deploy (on the VPS)
+## 4. First deploy
 
 ```bash
 sudo -iu deploy
 cd /srv
-git clone https://github.com/knotkitchenpos/knotkitchen.git knot
+git clone https://github.com/<your-org>/knotkitchen.git knot
 cd knot
 
-# 3a. Configure the environment
+# 4a. Environment
 cp deploy/.env.production.example deploy/.env
-$EDITOR deploy/.env       # fill in EVERY value that isn't sample text
+nano deploy/.env
+```
 
-# 3b. Bring the stack up. First build takes ~5 min (xcaddy compiles Caddy).
+Fill in **at minimum** these values:
+
+```env
+BASE_DOMAIN=knotkitchen.online
+ACME_EMAIL=<your email — Let's Encrypt notifications>
+
+MONGODB_URI=<Atlas SRV URI, or mongodb://user:pass@mongo:27017/knotkitchen?authSource=admin>
+
+# Generate each with:  node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
+JWT_SECRET=<64+ hex chars>
+REFRESH_TOKEN_SECRET=<64+ hex chars>
+ADMIN_JWT_SECRET=<64+ hex chars>
+
+SUPERADMIN_EMAIL=admin@knotkitchen.online
+SUPERADMIN_PASSWORD=<long random passphrase>
+
+FAST2SMS_API_KEY=<your production key>
+
+# Media: leave as `local` for a small deployment
+MEDIA_STORAGE_PROVIDER=local
+MEDIA_PUBLIC_BASE_URL=https://api.knotkitchen.online/uploads
+```
+
+Then bring the stack up (first build is ~5 min):
+
+```bash
+cd /srv/knot
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env build --pull
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d
+docker compose -f deploy/docker-compose.yml ps
+docker compose -f deploy/docker-compose.yml logs -f caddy pos-api admin-api
+```
+
+Within ~30 s Caddy prints one `certificate obtained successfully` per
+hostname (six in total). If any cert fails, 99 % of the time it is one of:
+
+1. That subdomain's A record is missing / still points somewhere else.
+2. Port 80 is blocked (double-check `ufw status` and Hostinger's own
+   firewall panel).
+3. Rate limits from Let's Encrypt if you retry too aggressively — wait 1 h.
+
+---
+
+## 5. Smoke tests
+
+From any laptop:
+
+```powershell
+curl.exe -I https://api.knotkitchen.online/health
+curl.exe -I https://admin-api.knotkitchen.online/health
+curl.exe -I https://business.knotkitchen.online/healthz
+curl.exe -I https://onboard.knotkitchen.online/healthz
+curl.exe -I https://csd.knotkitchen.online/healthz
+curl.exe -I https://knotkitchen.online/healthz
+```
+
+All six MUST return `HTTP/2 200`. Then open
+`https://onboard.knotkitchen.online` and sign in with `SUPERADMIN_EMAIL` /
+`SUPERADMIN_PASSWORD`.
+
+
+
+---
+
+## 6. (Optional) Self-hosted MongoDB on the same VPS
+
+If you don't want Atlas, add the following to `deploy/docker-compose.yml`
+under `services:` (and add `mongo_data:` under `volumes:`):
+
+```yaml
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    networks: [knot]
+    volumes: [mongo_data:/data/db]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD}
+```
+
+Then in `deploy/.env`:
+
+```env
+MONGO_ROOT_USER=knotadmin
+MONGO_ROOT_PASSWORD=<long random>
+MONGODB_URI=mongodb://knotadmin:<long random>@mongo:27017/knotkitchen?authSource=admin
+```
+
+---
+
+## 7. Everyday operations
+
+```bash
+# Redeploy after a git pull
+cd /srv/knot
+git pull --ff-only
 docker compose -f deploy/docker-compose.yml --env-file deploy/.env build --pull
 docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d
 
-# 3c. Watch the health checks
-docker compose -f deploy/docker-compose.yml ps
-docker compose -f deploy/docker-compose.yml logs -f caddy pos-api
-```
+# Tail service logs
+docker compose -f deploy/docker-compose.yml logs -f pos-api
+docker compose -f deploy/docker-compose.yml logs -f caddy
 
-After ~30 seconds `curl -I https://api.knotkitchen.com/health` should return
-200. If TLS fails, check `docker compose logs caddy` — the Cloudflare API token
-is almost always the cause.
+# Restart a single service (e.g. after rotating a secret)
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d pos-api
 
----
-
-## 4. GitHub Actions setup
-
-Add these repository secrets (Settings → Secrets and variables → Actions):
-
-| Secret              | Value                                                     |
-| ------------------- | --------------------------------------------------------- |
-| `DEPLOY_SSH_HOST`   | VPS IPv4 or hostname                                       |
-| `DEPLOY_SSH_USER`   | `deploy`                                                   |
-| `DEPLOY_SSH_KEY`    | Private OpenSSH key (multi-line) matching `deploy@vps`     |
-| `DEPLOY_APP_PATH`   | `/srv/knot`                                                |
-| `CI_JWT_SECRET`     | Any 32+ char string used only by CI                        |
-| `CI_REFRESH_SECRET` | Any 32+ char string used only by CI                        |
-
-Generate the SSH key on your workstation:
-
-```bash
-ssh-keygen -t ed25519 -f knot_deploy -C 'github-actions@knotkitchen'
-# Public key -> /home/deploy/.ssh/authorized_keys on the VPS
-# Private key -> paste as DEPLOY_SSH_KEY in GitHub
-```
-
-From that point on, **every push to `main`** deploys automatically:
-
-```
-git commit -am "Change X"
-git push origin main
-```
-
-The workflow writes the previous SHA to `/srv/knot/deploy/.previous` before
-moving, so a bad deploy can be undone with:
-
-```bash
-ssh deploy@vps 'cd /srv/knot && ./deploy/rollback.sh'
+# Rollback to the previous SHA
+./deploy/rollback.sh
 ```
 
 ---
 
-## 5. Creating restaurants — the automatic subdomain flow
+## 8. Creating a store (no infra change)
 
-Once the platform is live, adding a restaurant requires **only** an Admin Panel
-action (or one API call). No infrastructure change is needed.
+1. Log into `https://onboard.knotkitchen.online`.
+2. Create a Store (e.g. "Burger House"). The backend generates a unique
+   6-digit `storeId` and URL-safe `slug`, and `provisionWebsiteForStore`
+   creates the `WebsiteSettings` document.
+3. Customers reach the storefront at
+   `https://csd.knotkitchen.online/s/<slug>` immediately — no DNS or cert
+   work required because `csd.knotkitchen.online` already exists.
 
-1. Admin logs into `https://admin.knotkitchen.com`.
-2. Creates a new Store — e.g. "Burger House".
-3. The backend:
-   * generates a unique 6-digit `storeId` (`services/storeIdGenerator.js`)
-   * generates a URL-safe unique `slug` (`services/slugService.js`)
-   * calls `provisionWebsiteForStore` which creates the `WebsiteSettings`
-     document with the store's theme, branding, opening hours, etc.
-4. Because DNS carries a wildcard `*.knotkitchen.com` A record and Caddy
-   holds a wildcard cert for the same, `https://burger-house.knotkitchen.com`
-   is instantly reachable — no DNS or TLS action was needed.
-5. The customer-web SPA reads the hostname, calls
-   `GET /api/public/store/by-domain/burger-house`, and renders the store.
+If you later want dedicated `<slug>.knotkitchen.online` subdomains per
+store, add a wildcard `*` A record in Hostinger + a Caddy `on_demand_tls`
+block + a `/api/public/storefront/tls-ask` allow-list endpoint. Not needed
+for the default path-based layout above.
 
 ---
 
-## 6. Rotating secrets
+## 9. Rotating secrets
 
 ```bash
-# JWT / refresh secrets — invalidates ALL active sessions when replaced.
 $EDITOR /srv/knot/deploy/.env
 docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d pos-api admin-api
 ```
 
-Cloudflare API token and R2 keys can be rotated the same way — restart is
-scoped to `caddy` and `pos-api` respectively.
+Rotating `JWT_SECRET` / `REFRESH_TOKEN_SECRET` invalidates every active
+session — users have to sign back in. Expected.
 
 ---
 
-## 7. Backups & restore
+## 10. Backups & restore
 
-Nightly encrypted backup — add to root's crontab on the VPS:
+Add to root's crontab on the VPS:
 
 ```
-KNOT_BACKUP_PASSPHRASE=<long-random>
+KNOT_BACKUP_PASSPHRASE=<long random>
 17 3 * * *   /srv/knot/deploy/backup.sh >> /var/log/knot-backup.log 2>&1
 ```
 
-To restore an env file after a disaster:
+Restore an env file:
 
 ```bash
-gpg -d /var/backups/knotkitchen/knot-YYYYMMDDTHHMMSSZ.tar.gz.gpg | tar -xzf - -C /tmp/restore
+gpg -d /var/backups/knotkitchen/knot-YYYYMMDDTHHMMSSZ.tar.gz.gpg \
+    | tar -xzf - -C /tmp/restore
 cp /tmp/restore/env /srv/knot/deploy/.env
 ```
 
-MongoDB and R2 data have their own vendor-side backups; see
-`ARCHITECTURE.md` §8.
+MongoDB has its own backup story (Atlas continuous snapshots, or a
+`mongodump` cron on the self-hosted `mongo` container).
 
 ---
 
-## 8. Monitoring
+## 11. Monitoring
 
-Cheap first-pass monitoring using Uptime Kuma / Better Uptime:
+Cheap uptime coverage with Uptime Kuma or Better Uptime — poll each of:
 
-* Poll `https://api.knotkitchen.com/health` every 60 s
-* Poll `https://pos.knotkitchen.com/healthz` every 60 s
-* Poll `https://admin.knotkitchen.com/healthz` every 60 s
-* Poll `https://<demo-slug>.knotkitchen.com/healthz` every 60 s
+* `https://api.knotkitchen.online/health`
+* `https://admin-api.knotkitchen.online/health`
+* `https://business.knotkitchen.online/healthz`
+* `https://onboard.knotkitchen.online/healthz`
+* `https://csd.knotkitchen.online/healthz`
+* `https://knotkitchen.online/healthz`
 
-Container-level health is visible via
-`docker compose -f deploy/docker-compose.yml ps` — every service ships with a
-`HEALTHCHECK` directive.
-
----
-
-## 9. Common failure modes
-
-| Symptom                                       | Likely cause                                                                   |
-| --------------------------------------------- | ------------------------------------------------------------------------------ |
-| Caddy loops trying to obtain a cert           | `CLOUDFLARE_API_TOKEN` missing / wrong scope. Fix env, `docker compose restart caddy`. |
-| `pos-api` exits with `[FATAL] JWT_SECRET missing` | The `.env` is not being read. Confirm the path in `--env-file`.             |
-| Customer sites 404 for every slug             | DNS wildcard record missing OR Cloudflare not proxying `*.knotkitchen.com`.    |
-| POS cannot login after deploy                 | You rotated a JWT secret. Users must sign in again — expected.                 |
-| CORS errors from a store subdomain            | `CORS_WILDCARD_DOMAINS=knotkitchen.com` not set in `.env` (see docker-compose). |
+Container-level health: `docker compose -f deploy/docker-compose.yml ps`
+shows the `HEALTHCHECK` state of every service.
 
 ---
 
-## 10. Removing / suspending a store
+## 12. Common failure modes
 
-* Suspend: Admin Panel → mark Store as `suspended`. The storefront resolver
-  refuses to serve it and Socket.IO drops any lingering POS session for it.
-* Delete: soft-delete via `isDeleted=true`. No records are removed from
-  Mongo/R2 for auditability. To hard-delete, run
-  `pos-backend/scripts/mergeStoreDatabases.js` in a maintenance window.
+| Symptom | Likely cause |
+| --- | --- |
+| Caddy loops trying to obtain a cert | DNS still stale or the record isn't `93.127.194.80`. Confirm with `dig +short <host> @8.8.8.8`. |
+| `pos-api` exits with `[FATAL] JWT_SECRET missing` | `.env` file not being read. Verify `--env-file deploy/.env`. |
+| CORS errors from the POS / onboarding UI | Hostname not in `FRONTEND_URLS`. Rebuild with the corrected env. |
+| Media upload 500s | `MEDIA_STORAGE_PROVIDER=s3` set but the `S3_*` fields are blank. Either fill them or switch to `local`. |
+| Let's Encrypt "too many requests" | You retried too fast. Wait 1 hour, then bring the stack up again. |
+| Login OK but POS says "Invalid Store ID" | `admin-api` and `pos-api` are pointing at different `MONGODB_URI` values. They MUST share a database. |
+
+---
+
+## 13. Removing / suspending a store
+
+* **Suspend** — Onboarding UI → mark Store as `suspended`. The storefront
+  resolver refuses to serve it and Socket.IO drops any lingering POS
+  session for it.
+* **Delete** — soft-delete via `isDeleted=true`. Records stay in Mongo for
+  audit; run `pos-backend/scripts/mergeStoreDatabases.js` in a maintenance
+  window for a hard delete.
