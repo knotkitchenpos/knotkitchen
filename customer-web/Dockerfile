@@ -21,7 +21,7 @@ ENV VITE_BACKEND_URL=$VITE_BACKEND_URL \
     VITE_FALLBACK_SLUG=$VITE_FALLBACK_SLUG
 
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
 COPY . .
 RUN npm run build
 
