@@ -18,11 +18,9 @@
 }
 
 # -----------------------------------------------------------------------------
-# Certificate configuration — Uses standard ACME HTTP-01 (works with Hostinger DNS)
-# or Cloudflare DNS-01 if CLOUDFLARE_API_TOKEN is provided.
+# Certificate snippet — Caddy handles automatic TLS via HTTP-01 by default.
 # -----------------------------------------------------------------------------
 (wildcard_cert) {
-	tls {$ACME_EMAIL}
 }
 
 # -----------------------------------------------------------------------------

@@ -42,12 +42,12 @@ const WEAK_ADMIN_PASSWORDS = new Set([
 ]);
 
 const resolveSeedAdminPassword = () => {
-  const supplied = (process.env.ADMIN_PASSWORD || "").trim();
+  const supplied = (process.env.ADMIN_PASSWORD || process.env.SUPERADMIN_PASSWORD || "").trim();
   if (isProd) {
     if (!supplied || supplied.length < 12 || WEAK_ADMIN_PASSWORDS.has(supplied.toLowerCase())) {
       // eslint-disable-next-line no-console
       console.error(
-        "[FATAL] Admin backend requires ADMIN_PASSWORD (>= 12 chars, not a common default) in production."
+        "[FATAL] Admin backend requires ADMIN_PASSWORD or SUPERADMIN_PASSWORD (>= 12 chars, not a common default) in production."
       );
       process.exit(1);
     }
@@ -71,7 +71,7 @@ const config = Object.freeze({
   adminSecret: requireSecret("ADMIN_JWT_SECRET"),
   adminTokenExpiry: process.env.ADMIN_TOKEN_EXPIRY || "2h",
 
-  seedAdminEmail: (process.env.ADMIN_EMAIL || "admin@knotkitchen.io").trim().toLowerCase(),
+  seedAdminEmail: (process.env.ADMIN_EMAIL || process.env.SUPERADMIN_EMAIL || "admin@knotkitchen.io").trim().toLowerCase(),
   seedAdminPassword: resolveSeedAdminPassword(),
 });
 

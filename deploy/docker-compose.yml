@@ -102,9 +102,11 @@ services:
       MONGODB_URI: ${MONGODB_URI}
       # Different secret from the POS! This ensures a compromised admin
       # session key cannot forge tokens accepted by the POS backend.
-      JWT_SECRET: ${ADMIN_JWT_SECRET}
-      SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL}
-      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD}
+      ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET:-${JWT_SECRET}}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-${SUPERADMIN_EMAIL}}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-${SUPERADMIN_PASSWORD}}
+      SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL:-${ADMIN_EMAIL}}
+      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:-${ADMIN_PASSWORD}}
       ADMIN_FRONTEND_ORIGIN: https://admin.${BASE_DOMAIN},https://onboard.${BASE_DOMAIN}
       COOKIE_SAMESITE: none
       COOKIE_SECURE: "true"
