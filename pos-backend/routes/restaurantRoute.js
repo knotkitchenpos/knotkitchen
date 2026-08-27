@@ -16,6 +16,7 @@ const {
   updateOrderToggles,
   updateChannelTimings,
   updateHolidays,
+  toggleClosedForToday,
   addStaffMember,
   getStaffMembers,
   deleteStaffMember,
@@ -39,6 +40,7 @@ router.route("/pos-settings").put(isVerifiedUser, requireProtectedAction, update
 router.route("/order-toggles").put(isVerifiedUser, requireProtectedAction, updateOrderToggles);
 router.route("/timings").put(isVerifiedUser, requireProtectedAction, updateChannelTimings);
 router.route("/holidays").put(isVerifiedUser, requireProtectedAction, updateHolidays);
+router.route("/closed-for-today").put(isVerifiedUser, requireProtectedAction, toggleClosedForToday);
 
 // Staff Management (Owner Only)
 router.route("/staff").post(isVerifiedUser, requireOwnerOnly, addStaffMember);

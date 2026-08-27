@@ -89,12 +89,42 @@ const mapOrderTypeToBucket = (orderType) => {
 };
 
 /**
- * Convenience helper for controllers: compute what readyDueAt SHOULD be
- * for a brand-new order that starts in Preparing. Returns null if
- * auto-ready is disabled for this order type.
+ * Resolve the configured auto-complete minutes for a given (restaurant,
+ * orderType). Returns 0 to mean "disabled" (optional, does not interfere).
+ */
+const getAutoCompleteMinutes = async ({ restaurantId, storeId, orderType }) => {
+  const bucket = mapOrderTypeToBucket(orderType);
+  if (!bucket) return 0;
+
+  try {
+    const query = { isDeleted: { $ne: true } };
+    if (restaurantId) query.restaurantId = restaurantId;
+    else if (storeId) query.storeId = storeId;
+    else return 0;
+
+    const settings = await WebsiteSettings.findOne(query).select("ordering.autoCompleteMinutes");
+    const configured = settings?.ordering?.autoCompleteMinutes?.[bucket];
+    if (typeof configured === "number" && Number.isFinite(configured) && configured > 0) {
+      return Math.min(24 * 60, configured);
+    }
+    return 0; // default 0 (disabled / optional)
+  } catch (err) {
+    return 0;
+  }
+};
+
+/**
+ * Convenience helper for controllers: compute what completeDueAt SHOULD be
+ * for an order. Returns null if auto-complete is disabled (0 mins).
  */
 const computeReadyDueAt = async ({ restaurantId, storeId, orderType, from = new Date() }) => {
   const minutes = await getAutoReadyMinutes({ restaurantId, storeId, orderType });
+  if (!minutes || minutes <= 0) return null;
+  return new Date(from.getTime() + minutes * 60 * 1000);
+};
+
+const computeCompleteDueAt = async ({ restaurantId, storeId, orderType, from = new Date() }) => {
+  const minutes = await getAutoCompleteMinutes({ restaurantId, storeId, orderType });
   if (!minutes || minutes <= 0) return null;
   return new Date(from.getTime() + minutes * 60 * 1000);
 };
@@ -165,6 +195,10 @@ const runAutoReadyTick = async () => {
         console.warn("[autoReady] failed to promote order", order._id, rowErr.message);
       }
     }
+
+    // Run Auto-Complete check on same tick
+    await runAutoCompleteTick(now);
+
     return { promoted, scanned: due.length };
   } catch (err) {
     console.error("[autoReady] tick failed:", err.message);
@@ -200,11 +234,74 @@ const stopAutoReadyScheduler = () => {
   }
 };
 
+/** Single tick of the auto-complete loop. */
+const runAutoCompleteTick = async (now = new Date()) => {
+  try {
+    const due = await Order.find({
+      completeDueAt: { $lte: now, $ne: null },
+      completedAt: null,
+      isDeleted: { $ne: true },
+    })
+      .sort({ completeDueAt: 1 })
+      .limit(MAX_BATCH);
+
+    let completedCount = 0;
+    for (const order of due) {
+      const currentStatus = String(order.orderStatus || "").toLowerCase();
+      // Skip already finished or cancelled orders
+      if (["completed", "delivered", "served", "cancelled", "refunded"].includes(currentStatus)) {
+        order.completeDueAt = null;
+        await order.save();
+        continue;
+      }
+
+      try {
+        const previousStatus = order.orderStatus;
+        const targetStatus = order.orderType === "delivery" ? "Delivered" : order.orderType === "dine-in" ? "Served" : "Completed";
+        order.orderStatus = targetStatus;
+        order.completedAt = now;
+        order.completedBy = "AUTO";
+        order.completeDueAt = null;
+        order.timeline = order.timeline || [];
+        order.timeline.push({
+          status: targetStatus,
+          timestamp: now,
+          user: `AUTO (Auto-Completed from ${previousStatus})`,
+        });
+        await order.save();
+        completedCount += 1;
+
+        if (emitter && order.restaurantId) {
+          try {
+            emitter({
+              restaurantId: order.restaurantId,
+              outletId: order.outletId,
+              storeId: order.storeId,
+              order,
+            });
+          } catch (emitErr) {
+            console.warn("[autoComplete] socket emit failed:", emitErr.message);
+          }
+        }
+      } catch (rowErr) {
+        console.warn("[autoComplete] failed to auto-complete order", order._id, rowErr.message);
+      }
+    }
+    return completedCount;
+  } catch (err) {
+    console.error("[autoComplete] tick failed:", err.message);
+    return 0;
+  }
+};
+
 module.exports = {
   startAutoReadyScheduler,
   stopAutoReadyScheduler,
   runAutoReadyTick,
+  runAutoCompleteTick,
   computeReadyDueAt,
+  computeCompleteDueAt,
   getAutoReadyMinutes,
+  getAutoCompleteMinutes,
   DEFAULT_MINUTES,
 };

@@ -4,12 +4,12 @@ const Menu = require("../models/menuModel");
 const Order = require("../models/orderModel");
 const Customer = require("../models/customerModel");
 const { resolveStorefront, REASON_MESSAGES } = require("../services/storefrontResolver");
-const { isStoreOpen, isItemAvailableNow, getEffectivePrice } = require("../services/businessHours");
+const { isStoreOpen, isClosedForToday, isItemAvailableNow, getEffectivePrice } = require("../services/businessHours");
 const { calculateOrderTotals, PricingError } = require("../services/orderPricingService");
 const { getTheme } = require("../services/themeRegistry");
 const { emitOrderCreated } = require("../services/socket");
 const { generateOrderNumberSafe } = require("../services/orderNumberService");
-const { computeReadyDueAt } = require("../services/autoReadyService");
+const { computeReadyDueAt, computeCompleteDueAt } = require("../services/autoReadyService");
 
 
 /**
@@ -124,6 +124,7 @@ const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezon
 
 
   const now = new Date();
+  const cftClosed = isClosedForToday(settings, timezone);
   const activeHoliday = (settings?.holidays || []).find((h) => {
     const start = new Date(h.startDate);
     const end = new Date(h.endDate);
@@ -133,6 +134,8 @@ const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezon
 
   const openState = preview
     ? { isOpen: true, reason: "", nextOpen: null }
+    : cftClosed
+    ? { isOpen: false, reason: settings.closedForToday?.reason || "Store is Closed for Today", nextOpen: null }
     : activeHoliday
     ? { isOpen: false, reason: `Store is Closed (${activeHoliday.reason || "Holiday"})`, nextOpen: activeHoliday.endDate }
     : isStoreOpen(settings, timezone);
@@ -291,6 +294,10 @@ const createStorefrontOrder = async (req, res, next) => {
       return next(createHttpError(400, "Invalid order type."));
     }
 
+    if (isClosedForToday(settings, timezone)) {
+      return next(createHttpError(409, `Store is Closed: ${settings.closedForToday?.reason || "Closed for Today"}`));
+    }
+
     // ---- Module 7 §7: Holiday calendar gate ----
     const now = new Date();
     const activeHoliday = (settings?.holidays || []).find((h) => {
@@ -438,6 +445,13 @@ const createStorefrontOrder = async (req, res, next) => {
           storeId,
           orderType: orderTypeForOrder,
         });
+    const completeDueAt = scheduledFor
+      ? null
+      : await computeCompleteDueAt({
+          restaurantId,
+          storeId,
+          orderType: orderTypeForOrder,
+        });
 
     const order = new Order({
       customerDetails: { name, phone, guests: 1 },
@@ -455,6 +469,7 @@ const createStorefrontOrder = async (req, res, next) => {
       idempotencyKey,
       scheduledFor,
       ...(readyDueAt ? { readyDueAt } : {}),
+      ...(completeDueAt ? { completeDueAt } : {}),
       channelMeta: {
         slug: settings.slug,
         themeKey: settings.theme?.themeKey || "",

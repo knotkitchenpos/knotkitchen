@@ -304,6 +304,16 @@ const updateWebsiteSettings = async (req, res, next) => {
           }
         }
       }
+
+      if (o.autoCompleteMinutes && typeof o.autoCompleteMinutes === "object") {
+        settings.ordering.autoCompleteMinutes = settings.ordering.autoCompleteMinutes || {};
+        for (const channelKey of ["collection", "delivery", "table"]) {
+          const val = Number(o.autoCompleteMinutes[channelKey]);
+          if (Number.isFinite(val) && val >= 0 && val <= 1440) {
+            settings.ordering.autoCompleteMinutes[channelKey] = val;
+          }
+        }
+      }
     }
 
     // ---- Payment Gateways (Module 4) ----

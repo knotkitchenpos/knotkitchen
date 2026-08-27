@@ -484,8 +484,7 @@ const OrderPanel = () => {
   };
 
   // Payment method chosen inside PaymentMethodModal → route to the correct
-  // customer-details modal (or straight to submit if we already have the
-  // minimum required details).
+  // customer-details modal or directly complete collection order using the on-page fields.
   const onPickPaymentMethod = (method) => {
     setPendingMethod(method);
     if (isDelivery) {
@@ -493,14 +492,22 @@ const OrderPanel = () => {
       setShowDelivery(true);
       return;
     }
-    // Collection — for Pay-by-Link we need a phone number, otherwise the
-    // customer has nowhere to receive the link. All other methods accept
-    // fully-empty customer details (Module 2 §3).
-    setShowCollection(true);
+    // Collection — Customer Name and Phone Number are captured directly on the main page.
+    const name = (customer.customerName || "").trim();
+    const phone = (customer.customerPhone || "").trim();
+
+    if (method === "link" && !phone) {
+      enqueueSnackbar("A phone number is required to send the payment link.", { variant: "warning" });
+      return;
+    }
+
+    setShowPaymentMethod(false);
+    doCollection({ name, phone, chosenMethod: method });
   };
 
-  const doCollection = ({ name, phone, address, city, pinCode, deliveryNote }) => {
-    if (pendingMethod === "link" && !phone) {
+  const doCollection = ({ name, phone, address, city, pinCode, deliveryNote, chosenMethod }) => {
+    const payMethod = chosenMethod || pendingMethod;
+    if (payMethod === "link" && !phone) {
       enqueueSnackbar("A phone number is required to send the payment link.", { variant: "warning" });
       return;
     }
@@ -514,7 +521,7 @@ const OrderPanel = () => {
         pinCode,
         deliveryNote,
         apiType: "collection",
-        paymentMethod: pendingMethod,
+        paymentMethod: payMethod,
       }),
       { onSettled: () => {} },
     );
@@ -722,6 +729,64 @@ const OrderPanel = () => {
           );
         })}
       </div>
+
+      {/* ===== Collection Customer Info (directly on page for faster ordering) ===== */}
+      {!isTable && !isDelivery && (
+        <div className="px-4 pb-3 shrink-0">
+          <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[11.5px] font-extrabold text-[#0F172A] uppercase tracking-wider flex items-center gap-1.5">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
+                  <circle cx="12" cy="7" r="4" />
+                </svg>
+                Customer Info
+              </span>
+              <span className="text-[10.5px] font-semibold text-[#94A3B8]">Optional for Walk-in</span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div>
+                <input
+                  type="text"
+                  value={customer.customerName || ""}
+                  onChange={(e) =>
+                    dispatch(
+                      setCustomer({
+                        name: e.target.value,
+                        phone: customer.customerPhone || "",
+                        guests: customer.guests || 0,
+                      })
+                    )
+                  }
+                  placeholder="Customer Name"
+                  maxLength={120}
+                  className="w-full h-[36px] px-3 bg-white rounded-lg border border-[#E2E8F0] text-[13px] font-medium text-[#0F172A] placeholder-[#94A3B8] focus:border-[#5B42F3] focus:ring-1 focus:ring-[#5B42F3] outline-none transition-all"
+                />
+              </div>
+
+              <div>
+                <input
+                  type="tel"
+                  value={customer.customerPhone || ""}
+                  onChange={(e) =>
+                    dispatch(
+                      setCustomer({
+                        name: customer.customerName || "",
+                        phone: e.target.value,
+                        guests: customer.guests || 0,
+                      })
+                    )
+                  }
+                  placeholder="Phone Number (+91…)"
+                  maxLength={20}
+                  className="w-full h-[36px] px-3 bg-white rounded-lg border border-[#E2E8F0] text-[13px] font-medium text-[#0F172A] placeholder-[#94A3B8] focus:border-[#5B42F3] focus:ring-1 focus:ring-[#5B42F3] outline-none transition-all"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
 
       {/* ===== Cart header ===== */}

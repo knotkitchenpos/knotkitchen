@@ -7,7 +7,7 @@ const { logActivity } = require("../services/auditService");
 
 const { default: mongoose } = require("mongoose");
 const { generateOrderNumberSafe } = require("../services/orderNumberService");
-const { computeReadyDueAt } = require("../services/autoReadyService");
+const { computeReadyDueAt, computeCompleteDueAt } = require("../services/autoReadyService");
 const { notifyOrderReady } = require("../services/readyNotificationService");
 const { emitOrderStatusChanged } = require("../services/socket");
 
@@ -387,6 +387,10 @@ const addOrder = async (req, res, next) => {
       restaurantId: req.user?.restaurantId || null,
       orderType: normalizedOrderType,
     });
+    const completeDueAt = await computeCompleteDueAt({
+      restaurantId: req.user?.restaurantId || null,
+      orderType: normalizedOrderType,
+    });
 
     // Build a canonical payments[] array for immediate-pay (Cash/UPI) so
     // paymentStatus rendering ("paid" vs "pending") is correct from
@@ -427,6 +431,7 @@ const addOrder = async (req, res, next) => {
       source: "POS",
       orderNumber,
       ...(readyDueAt ? { readyDueAt } : {}),
+      ...(completeDueAt ? { completeDueAt } : {}),
       ...(normalizedPaymentMethod ? { paymentMethod: normalizedPaymentMethod } : {}),
       ...(paymentsForOrder.length ? { payments: paymentsForOrder } : {}),
       timeline: [{ status: initialStatus, timestamp: new Date(), user: req.user?.name || "POS" }],
@@ -641,6 +646,22 @@ const updateOrder = async (req, res, next) => {
       order.readyAt = new Date();
       order.readyBy = "STAFF";
       readyTransition = true;
+    }
+
+    const lowerNext = String(nextStatus).toLowerCase();
+    if (["completed", "delivered", "served", "cancelled", "refunded"].includes(lowerNext)) {
+      order.completeDueAt = null;
+      if (["completed", "delivered", "served"].includes(lowerNext) && !order.completedAt) {
+        order.completedAt = new Date();
+        order.completedBy = "STAFF";
+      }
+    } else if (!order.completeDueAt && !order.completedAt) {
+      const computed = await computeCompleteDueAt({
+        restaurantId: order.restaurantId,
+        storeId: order.storeId,
+        orderType: order.orderType,
+      });
+      if (computed) order.completeDueAt = computed;
     }
 
     await order.save();

@@ -96,6 +96,16 @@ const orderSchema = new mongoose.Schema({
   readyDueAt: { type: Date, default: null, index: true },
   readyNotifiedAt: { type: Date, default: null },
 
+  /**
+   * Auto-Complete state tracking.
+   * `completeDueAt`   when the server-side auto-complete timer should fire
+   * `completedAt`     when the order was marked/became Completed
+   * `completedBy`     "STAFF" | "AUTO" | "KDS" | "SYSTEM"
+   */
+  completeDueAt: { type: Date, default: null, index: true },
+  completedAt: { type: Date, default: null },
+  completedBy: { type: String, enum: ["STAFF", "AUTO", "KDS", "SYSTEM", ""], default: "" },
+
   orderStatus: { type: String, required: true },
   marketplace: { type: String, enum: ["Swiggy", "Zomato", "Manual", ""] },
   marketplaceOrderId: { type: String, default: "" },

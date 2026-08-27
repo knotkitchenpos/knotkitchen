@@ -230,21 +230,29 @@ const CalendarModal = ({ initialMode, initialFrom, initialTo, onClose, onProceed
             const s = d ? localDay(d) : null;
             const on = isSelected(d);
             const isRangeEndpoint = mode === "range" && (s === from || s === to);
+            const isTodayCell = s === localDay();
             return (
               <button
                 key={i}
                 onClick={() => onCellClick(d)}
                 disabled={!d}
-                className={`h-9 rounded-lg text-[13px] font-bold ${
+                className={`h-9 rounded-lg text-[13px] font-bold flex flex-col items-center justify-center relative transition-colors ${
                   !d
                     ? "opacity-0"
                     : on
                     ? isRangeEndpoint
                       ? "bg-[#5B42F3] text-white"
                       : "bg-[#EEF0FE] text-[#5B42F3]"
+                    : isTodayCell
+                    ? "border-2 border-[#5B42F3] text-[#5B42F3] bg-[#F5F3FF] font-extrabold"
                     : "text-[#334155] hover:bg-[#F8FAFC]"
                 }`}
-              >{d?.getDate() || ""}</button>
+              >
+                <span>{d?.getDate() || ""}</span>
+                {isTodayCell && (
+                  <span className={`w-1 h-1 rounded-full mt-0.5 ${on && isRangeEndpoint ? "bg-white" : "bg-[#5B42F3]"}`} />
+                )}
+              </button>
             );
           })}
         </div>
@@ -599,6 +607,14 @@ const Reports = () => {
     isMouseDown.current = false;
   };
 
+  // Scroll helper for quick date strip
+  const scrollStrip = (direction) => {
+    if (dateStripRef.current) {
+      const amount = direction === "left" ? -260 : 260;
+      dateStripRef.current.scrollBy({ left: amount, behavior: "smooth" });
+    }
+  };
+
   // Scroll to the far right (where Today is located) when dates render/update
   useEffect(() => {
     if (dateStripRef.current) {
@@ -668,49 +684,171 @@ const Reports = () => {
           </div>
         </div>
 
-        {/* ===== Quick date selector (Module 5 §3) ===== */}
-        <div
-          ref={dateStripRef}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUpOrLeave}
-          onMouseLeave={handleMouseUpOrLeave}
-          className="mt-4 flex items-center gap-2 overflow-x-auto pb-1 select-none cursor-grab active:cursor-grabbing no-scrollbar"
-        >
-          {quickDates.map((d) => {
-            const s = localDay(d);
-            const isSelected =
-              (mode === "single" && s === selectedDate) ||
-              (mode === "range" && s >= rangeFrom && s <= rangeTo);
-            const isToday = s === today;
-            const parts = fmtQuickDate(d);
-            return (
+        {/* ===== Quick date selector & Presets ===== */}
+        <div className="mt-4 space-y-2">
+          {/* Quick preset buttons */}
+          <div className="flex flex-wrap items-center justify-between gap-2 bg-white p-2 rounded-xl border border-[#E2E8F0] shadow-xs">
+            <div className="flex flex-wrap items-center gap-1.5">
               <button
-                key={s}
                 type="button"
                 onClick={() => {
-                  if (dragMoved.current) return;
                   setMode("single");
-                  setSelectedDate(s);
-                  setRangeFrom(s);
-                  setRangeTo(s);
+                  setSelectedDate(today);
+                  setRangeFrom(today);
+                  setRangeTo(today);
                 }}
-                className={`shrink-0 h-[64px] px-3.5 rounded-xl border text-left transition-colors ${
-                  isSelected
-                    ? "bg-[#5B42F3] text-white border-[#5B42F3]"
-                    : "bg-white text-[#334155] border-[#E2E8F0] hover:border-[#CBD5E1]"
+                className={`h-[34px] px-3 rounded-lg text-[12.5px] font-extrabold border transition-all flex items-center gap-1.5 ${
+                  mode === "single" && selectedDate === today
+                    ? "bg-[#5B42F3] text-white border-[#5B42F3] shadow-xs"
+                    : "bg-[#F8FAFC] text-[#334155] border-[#E2E8F0] hover:border-[#CBD5E1]"
                 }`}
               >
-                <p className={`text-[15px] font-extrabold leading-tight ${isSelected ? "" : "text-[#0F172A]"}`}>
-                  {parts.day} {parts.month}
-                </p>
-                <p className={`text-[11.5px] mt-0.5 ${isSelected ? "text-white/85" : "text-[#94A3B8]"}`}>
-                  {parts.weekday}{isToday ? " · Today" : ""}
-                </p>
+                <span className={`w-2 h-2 rounded-full ${mode === "single" && selectedDate === today ? "bg-white animate-pulse" : "bg-[#5B42F3]"}`} />
+                Today
               </button>
-            );
-          })}
+
+              <button
+                type="button"
+                onClick={() => {
+                  const y = localDay(new Date(Date.now() - 86400000));
+                  setMode("single");
+                  setSelectedDate(y);
+                  setRangeFrom(y);
+                  setRangeTo(y);
+                }}
+                className={`h-[34px] px-3 rounded-lg text-[12.5px] font-bold border transition-all ${
+                  mode === "single" && selectedDate === localDay(new Date(Date.now() - 86400000))
+                    ? "bg-[#5B42F3] text-white border-[#5B42F3] shadow-xs"
+                    : "bg-[#F8FAFC] text-[#334155] border-[#E2E8F0] hover:border-[#CBD5E1]"
+                }`}
+              >
+                Yesterday
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const s = localDay(new Date(Date.now() - 6 * 86400000));
+                  setMode("range");
+                  setRangeFrom(s);
+                  setRangeTo(today);
+                  setSelectedDate(s);
+                }}
+                className={`h-[34px] px-3 rounded-lg text-[12.5px] font-bold border transition-all ${
+                  mode === "range" && rangeTo === today && rangeFrom === localDay(new Date(Date.now() - 6 * 86400000))
+                    ? "bg-[#5B42F3] text-white border-[#5B42F3] shadow-xs"
+                    : "bg-[#F8FAFC] text-[#334155] border-[#E2E8F0] hover:border-[#CBD5E1]"
+                }`}
+              >
+                Last 7 Days
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const s = localDay(new Date(Date.now() - 29 * 86400000));
+                  setMode("range");
+                  setRangeFrom(s);
+                  setRangeTo(today);
+                  setSelectedDate(s);
+                }}
+                className={`h-[34px] px-3 rounded-lg text-[12.5px] font-bold border transition-all ${
+                  mode === "range" && rangeTo === today && rangeFrom === localDay(new Date(Date.now() - 29 * 86400000))
+                    ? "bg-[#5B42F3] text-white border-[#5B42F3] shadow-xs"
+                    : "bg-[#F8FAFC] text-[#334155] border-[#E2E8F0] hover:border-[#CBD5E1]"
+                }`}
+              >
+                Last 30 Days
+              </button>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowCalendar(true)}
+              className="h-[34px] px-3 rounded-lg bg-[#F1F5F9] text-[#334155] hover:bg-[#EEF0FE] hover:text-[#5B42F3] text-[12.5px] font-bold flex items-center gap-1.5 transition-colors"
+            >
+              <span>Select Date / Range</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Horizontal scroll strip with navigation */}
+          <div className="relative flex items-center group">
+          <button
+            type="button"
+            onClick={() => scrollStrip("left")}
+            className="absolute left-1 z-10 w-7 h-7 rounded-full bg-white/90 border border-[#CBD5E1] shadow-md flex items-center justify-center text-[#334155] hover:bg-[#5B42F3] hover:text-white hover:border-[#5B42F3] transition-all opacity-80 group-hover:opacity-100"
+            aria-label="Scroll left"
+          >
+            ‹
+          </button>
+
+          <div
+            ref={dateStripRef}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUpOrLeave}
+            onMouseLeave={handleMouseUpOrLeave}
+            className="flex items-center gap-2 overflow-x-auto py-1 px-8 select-none cursor-grab active:cursor-grabbing scrollbar-none w-full"
+          >
+            {quickDates.map((d) => {
+              const s = localDay(d);
+              const isSelected =
+                (mode === "single" && s === selectedDate) ||
+                (mode === "range" && s >= rangeFrom && s <= rangeTo);
+              const isToday = s === today;
+              const parts = fmtQuickDate(d);
+              return (
+                <button
+                  key={s}
+                  type="button"
+                  onClick={() => {
+                    if (dragMoved.current) return;
+                    setMode("single");
+                    setSelectedDate(s);
+                    setRangeFrom(s);
+                    setRangeTo(s);
+                  }}
+                  className={`shrink-0 h-[48px] px-3.5 rounded-xl border text-left transition-all flex items-center gap-2.5 ${
+                    isSelected
+                      ? "bg-[#5B42F3] text-white border-[#5B42F3] shadow-xs"
+                      : isToday
+                      ? "bg-[#F5F3FF] text-[#5B42F3] border-[#5B42F3] shadow-xs ring-1 ring-[#5B42F3]/40 font-bold"
+                      : "bg-white text-[#334155] border-[#E2E8F0] hover:border-[#CBD5E1]"
+                  }`}
+                >
+                  <div>
+                    <p className={`text-[13px] font-extrabold leading-tight ${isSelected ? "text-white" : isToday ? "text-[#5B42F3]" : "text-[#0F172A]"}`}>
+                      {parts.day} {parts.month}
+                    </p>
+                    <p className={`text-[10.5px] font-medium leading-none mt-0.5 ${isSelected ? "text-white/80" : isToday ? "text-[#5B42F3]/80" : "text-[#94A3B8]"}`}>
+                      {parts.weekday}
+                    </p>
+                  </div>
+                  {isToday && (
+                    <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full uppercase tracking-wider ${
+                      isSelected ? "bg-white/25 text-white" : "bg-[#5B42F3] text-white shadow-xs"
+                    }`}>
+                      Today
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <button
+            type="button"
+            onClick={() => scrollStrip("right")}
+            className="absolute right-1 z-10 w-7 h-7 rounded-full bg-white/90 border border-[#CBD5E1] shadow-md flex items-center justify-center text-[#334155] hover:bg-[#5B42F3] hover:text-white hover:border-[#5B42F3] transition-all opacity-80 group-hover:opacity-100"
+            aria-label="Scroll right"
+          >
+            ›
+          </button>
         </div>
+      </div>
 
         {/* Range / window label */}
         {windowLabel && (

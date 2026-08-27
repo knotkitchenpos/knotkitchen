@@ -24,7 +24,11 @@ const menuScopeFor = (user) => {
 
 const getMenus = async (req, res, next) => {
   try {
-    const menus = await Menu.find(menuScopeFor(req.user));
+    // Sort by explicit sortOrder first (set by the drag-and-drop reorder
+    // endpoint) then by createdAt so tenants that never reordered their
+    // categories still get a stable, deterministic ordering that matches
+    // what the operator saw when they first created the menu.
+    const menus = await Menu.find(menuScopeFor(req.user)).sort({ sortOrder: 1, createdAt: 1 });
 
     // Module 9 §2 — POS (System) reads System Published Menu snapshot.
     // Manage Menu (Draft) reads live draft items.
@@ -36,10 +40,57 @@ const getMenus = async (req, res, next) => {
         obj.name = menu.systemSnapshot.name || obj.name;
         obj.items = menu.systemSnapshot.items || [];
       }
+      // Also sort the items array by their sortOrder so drag-reordered
+      // products come back in the biller's chosen order (existing
+      // reorderItems stamps sortOrder but Menu.find doesn't guarantee
+      // subdocument order after a save unless we sort explicitly).
+      if (Array.isArray(obj.items) && obj.items.length > 0) {
+        obj.items = [...obj.items].sort(
+          (a, b) => (Number(a.sortOrder) || 0) - (Number(b.sortOrder) || 0),
+        );
+      }
       return obj;
     });
 
     res.status(200).json({ success: true, data: projected });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * PUT /api/menu/reorder-categories
+ *
+ * Accepts { menuIds: [id1, id2, ...] } — the desired top-to-bottom order of
+ * the tenant's category rows. Stamps `sortOrder` on each match so a
+ * subsequent GET /api/menu returns them in that order. Deliberately silent
+ * on menus not present in the payload (they keep their existing sortOrder)
+ * so a partial payload from a paginated / filtered view can't nuke the
+ * ordering of unseen categories.
+ */
+const reorderMenus = async (req, res, next) => {
+  try {
+    const { menuIds } = req.body;
+    if (!Array.isArray(menuIds)) {
+      return next(createHttpError(400, "menuIds array is required!"));
+    }
+    const scope = menuScopeFor(req.user);
+    let updated = 0;
+    await Promise.all(
+      menuIds.map(async (id, index) => {
+        if (!id) return;
+        const result = await Menu.updateOne(
+          { _id: id, ...scope },
+          { $set: { sortOrder: index } },
+        );
+        if (result && (result.modifiedCount || result.nModified)) updated += 1;
+      }),
+    );
+    res.status(200).json({
+      success: true,
+      message: `Reordered ${updated} categor${updated === 1 ? "y" : "ies"}.`,
+      count: updated,
+    });
   } catch (error) {
     next(error);
   }
@@ -483,6 +534,21 @@ const bulkAddGroupToDishes = async (req, res, next) => {
       return next(createHttpError(400, "Group name and dishIds array are required!"));
     }
 
+    // Normalize the incoming options so we can both create a fresh group
+    // AND back-fill an existing (empty) group with the full component
+    // list when the operator runs bulk-add against products that were
+    // previously attached with `options: []` (the historical bug this
+    // endpoint used to produce).
+    const hasOptions = Array.isArray(options) && options.length > 0;
+    const normalizedOptions = hasOptions
+      ? options
+          .filter((o) => o && String(o.name || "").trim())
+          .map((o) => ({
+            name: String(o.name).trim(),
+            price: Number.isFinite(Number(o.price)) ? Number(o.price) : 0,
+          }))
+      : [];
+
     const menus = await Menu.find(menuScopeFor(req.user));
     let count = 0;
 
@@ -497,10 +563,21 @@ const bulkAddGroupToDishes = async (req, res, next) => {
               name: groupName,
               required: Boolean(required),
               maxSelections: Number(maxSelections) || 1,
-              options: Array.isArray(options) ? options : [],
+              options: normalizedOptions,
             });
             count++;
             modified = true;
+          } else if (hasOptions) {
+            // Re-hydrate an existing but empty/stale group so bulk-add is
+            // idempotent — no more phantom groups with zero components.
+            const existingOptsEmpty = !Array.isArray(existing.options) || existing.options.length === 0;
+            if (existingOptsEmpty) {
+              existing.options = normalizedOptions;
+              existing.required = Boolean(required);
+              existing.maxSelections = Number(maxSelections) || existing.maxSelections || 1;
+              count++;
+              modified = true;
+            }
           }
         }
       }
@@ -1298,6 +1375,7 @@ module.exports = {
 
   deleteDish,
   reorderItems,
+  reorderMenus,
   toggleDishAvailability,
   addVariant,
   deleteVariant,

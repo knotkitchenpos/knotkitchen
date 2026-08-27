@@ -566,6 +566,42 @@ const updateHolidays = async (req, res, next) => {
   }
 };
 
+// Module 7 — Closed for Today Override
+const toggleClosedForToday = async (req, res, next) => {
+  try {
+    const { enabled, date, reason } = req.body || {};
+    const restaurantId = req.user.restaurantId || req.user._id;
+
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, "0");
+    const d = String(now.getDate()).padStart(2, "0");
+    const todayStr = `${y}-${m}-${d}`;
+
+    const updateData = {
+      closedForToday: {
+        enabled: Boolean(enabled),
+        date: date || todayStr,
+        reason: reason || "Closed for Today",
+      },
+    };
+
+    const settings = await WebsiteSettings.findOneAndUpdate(
+      { restaurantId, isDeleted: false },
+      { $set: updateData },
+      { new: true }
+    );
+
+    res.status(200).json({
+      success: true,
+      message: enabled ? "Store set to Closed for Today!" : "Closed for Today disabled. Normal schedule resumed.",
+      data: settings?.closedForToday,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // Module 7 §8 / §9 — Manage Staff (Owner only)
 const addStaffMember = async (req, res, next) => {
   try {
@@ -713,6 +749,7 @@ module.exports = {
   updateOrderToggles,
   updateChannelTimings,
   updateHolidays,
+  toggleClosedForToday,
   addStaffMember,
   getStaffMembers,
   deleteStaffMember,

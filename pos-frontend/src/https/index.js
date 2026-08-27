@@ -123,6 +123,9 @@ export const updateDishSubcategory = ({ menuId, itemId, subcategory }) =>
   axiosWrapper.put(`/api/menu/${menuId}/dish/${itemId}/subcategory`, { subcategory });
 export const reorderDishes = ({ menuId, itemIds }) =>
   axiosWrapper.put(`/api/menu/${menuId}/reorder`, { itemIds });
+// Drag-and-drop reorder for the top-level category rows in Manage Menu.
+export const reorderMenus = ({ menuIds }) =>
+  axiosWrapper.put(`/api/menu/reorder-categories`, { menuIds });
 
 
 // Variant Endpoints
@@ -204,6 +207,7 @@ export const updatePosSettings = (data) => axiosWrapper.put("/api/restaurant/pos
 export const updateOrderToggles = (data) => axiosWrapper.put("/api/restaurant/order-toggles", data);
 export const updateChannelTimings = (data) => axiosWrapper.put("/api/restaurant/timings", data);
 export const updateHolidays = (data) => axiosWrapper.put("/api/restaurant/holidays", data);
+export const toggleClosedForToday = (data) => axiosWrapper.put("/api/restaurant/closed-for-today", data);
 
 export const addStaffMember = (data) => axiosWrapper.post("/api/restaurant/staff", data);
 export const getStaffMembers = () => axiosWrapper.get("/api/restaurant/staff");

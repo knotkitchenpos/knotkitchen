@@ -187,28 +187,32 @@ const ProductModal = ({ product, currencySymbol, allowNotes = true, onClose, onA
                   ? `Choose up to ${group.maxSelections}`
                   : "Choose 1"}
               </p>
-              <div className="space-y-2">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {group.options.map((o) => {
                   const chosen = (selections[group.id] || []).includes(o.id);
                   return (
-                    <label
+                    <button
                       key={o.id}
-                      className="flex items-center gap-3 p-3 rounded-xl border border-black/10 cursor-pointer hover:bg-[var(--sf-surface)]"
+                      type="button"
+                      onClick={() => toggleOption(group, o.id)}
+                      aria-pressed={chosen}
+                      className={`h-[52px] px-3 rounded-xl border text-left transition-all flex flex-col justify-center min-w-0 ${
+                        chosen
+                          ? "border-[var(--sf-primary)] bg-[var(--sf-primary)]/10 shadow-sm"
+                          : "border-black/10 hover:border-[var(--sf-primary)] hover:bg-[var(--sf-surface)]"
+                      }`}
                     >
-                      <input
-                        type={group.maxSelections > 1 ? "checkbox" : "radio"}
-                        name={`group-${group.id}`}
-                        checked={chosen}
-                        onChange={() => toggleOption(group, o.id)}
-                        className="accent-[var(--sf-primary)] w-4 h-4"
-                      />
-                      <span className="flex-1 text-[var(--sf-text)]">{o.name}</span>
-                      {o.price ? (
-                        <span className="text-sm font-medium text-[var(--sf-muted)]">
-                          +{formatPrice(o.price, currencySymbol)}
-                        </span>
-                      ) : null}
-                    </label>
+                      <span
+                        className={`text-xs font-bold leading-tight truncate ${
+                          chosen ? "text-[var(--sf-primary)]" : "text-[var(--sf-text)]"
+                        }`}
+                      >
+                        {o.name}
+                      </span>
+                      <span className="text-[11px] text-[var(--sf-muted)] leading-tight mt-0.5 font-medium">
+                        {o.price ? formatPrice(o.price, currencySymbol) : "Free"}
+                      </span>
+                    </button>
                   );
                 })}
               </div>

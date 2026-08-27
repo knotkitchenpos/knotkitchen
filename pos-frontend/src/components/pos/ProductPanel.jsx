@@ -762,11 +762,21 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
               </div>
             )}
 
-            {/* Modifier Groups / Components selection.
-                Each option is now a quantity stepper so the operator can
-                explicitly deselect (qty → 0) and pick multiple of the
-                same option (e.g. 2× Tomato + 1× Onion) up to the group's
-                maxSelections cap. */}
+            {/*
+              Modifier Groups / Components selection.
+
+              §UI-Redesign: components are now shown as compact chip-style
+              cards in a responsive grid so a group with many options fits
+              on one screen without scrolling. Each chip shows ONLY the
+              component name and its price. Tapping a chip toggles the
+              selection (adds it with qty 1, or removes it). The visible
+              `− 0 +` stepper has been removed per operator feedback — it
+              was fiddly for touch input and confused the biller when the
+              menu declares single-choice groups (max 1). The underlying
+              `setPosModifierQty` logic that supports multi-quantity in
+              certain groups is still available programmatically, but the
+              day-to-day UI is now a clean tap-to-toggle picker.
+            */}
             {(customizingItem.modifierGroups || []).map((group) => {
               const groupMap = selectedModifiers[group.name] || {};
               const groupTotalQty = Object.values(groupMap).reduce(
@@ -774,25 +784,41 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
                 0,
               );
               const groupMax = Math.max(1, Number(group.maxSelections) || 1);
-              const atCap = groupTotalQty >= groupMax;
+              const singleChoice = groupMax === 1;
+
+              const toggleOption = (opt, optId, currentlyChosen) => {
+                if (currentlyChosen) {
+                  // Tap-again deselects. Zero-out the option so it doesn't
+                  // count toward the group total any more.
+                  const currentQty = Number(groupMap[optId] || 0);
+                  if (currentQty > 0) setPosModifierQty(group, optId, -currentQty);
+                  return;
+                }
+                if (singleChoice) {
+                  // Radio behaviour — clear any previous pick in this group
+                  // before adding the new one, so the switch is atomic.
+                  clearPosModifierGroup(group.name);
+                }
+                setPosModifierQty(group, optId, +1);
+              };
 
               return (
-                <div key={group._id || group.name} className="space-y-2 pt-2 border-t border-[#E2E8F0]">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[13px] font-extrabold text-[#0F172A]">{group.name}</span>
-                      <span className="text-[10.5px] font-extrabold px-2 py-0.5 rounded-full bg-[#EEF0FE] text-[#5B42F3]">
+                <div key={group?._id || group?.name || index} className="space-y-2 pt-3 border-t border-[#E2E8F0]">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-[13px] font-extrabold text-[#0F172A] truncate">{group?.name || "Group"}</span>
+                      <span className="text-[10.5px] font-extrabold px-2 py-0.5 rounded-full bg-[#EEF0FE] text-[#5B42F3] shrink-0">
                         {groupTotalQty} / {groupMax}
                       </span>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 shrink-0">
                       <span className="text-[11px] font-bold text-[#64748B]">
-                        {group.required ? "(Required)" : "(Optional)"}
+                        {group?.required ? "(Required)" : "(Optional)"}
                       </span>
                       {groupTotalQty > 0 && (
                         <button
                           type="button"
-                          onClick={() => clearPosModifierGroup(group.name)}
+                          onClick={() => clearPosModifierGroup(group?.name || group)}
                           className="text-[11px] font-bold text-[#DC2626] hover:underline"
                         >
                           Clear
@@ -801,67 +827,47 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
                     </div>
                   </div>
 
-                  <div className="space-y-1.5">
-                    {(group.options || []).map((opt) => {
-                      const optId = String(opt._id || opt.id || opt.name);
+                  {/* Compact chip grid. Auto-fills 2 columns on very
+                      narrow modals and 3 columns above ~360px so 6+
+                      components fit without scrolling. */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                    {(group?.options || []).map((opt) => {
+                      const optId = String(opt?._id || opt?.id || opt?.name || "");
                       const qty = Number(groupMap[optId] || 0);
                       const chosen = qty > 0;
+                      // `atCap` only blocks NEW picks; a chosen chip can
+                      // always be tapped to deselect even at the cap.
+                      const atCap = groupTotalQty >= groupMax && !chosen;
 
                       return (
-                        <div
+                        <button
                           key={optId}
-                          className={`flex items-center justify-between p-2.5 rounded-xl border text-[12.5px] font-bold transition-all ${
-                            chosen ? "border-[#5B42F3] bg-[#EEF0FE]/40" : "border-[#E2E8F0]"
-                          }`}
+                          type="button"
+                          onClick={() => toggleOption(opt, optId, chosen)}
+                          disabled={atCap}
+                          aria-pressed={chosen}
+                          className={`h-[52px] px-2.5 rounded-xl border text-left transition-all flex flex-col justify-center min-w-0 ${
+                            chosen
+                              ? "border-[#5B42F3] bg-[#EEF0FE] shadow-sm"
+                              : "border-[#E2E8F0] bg-white hover:border-[#5B42F3] hover:bg-[#F8FAFC]"
+                          } ${atCap ? "opacity-50 cursor-not-allowed" : ""}`}
+                          title={opt?.name || ""}
                         >
-                          <button
-                            type="button"
-                            onClick={() => setPosModifierQty(group, optId, +1)}
-                            disabled={atCap && !chosen}
-                            className="flex items-center gap-2 min-w-0 flex-1 text-left disabled:opacity-60 disabled:cursor-not-allowed"
-                            aria-label={`Add ${opt.name}`}
+                          <span
+                            className={`text-[12.5px] font-extrabold leading-tight truncate ${
+                              chosen ? "text-[#5B42F3]" : "text-[#0F172A]"
+                            }`}
                           >
-                            <span
-                              className={`inline-flex w-4 h-4 rounded-full border-2 shrink-0 items-center justify-center ${
-                                chosen ? "bg-[#5B42F3] border-[#5B42F3]" : "border-[#CBD5E1] bg-white"
-                              }`}
-                            >
-                              {chosen && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
-                            </span>
-                            <span className="truncate">{opt.name}</span>
-                          </button>
-
-                          <div className="flex items-center gap-3 shrink-0 ml-2">
-                            <span className="font-extrabold text-[#5B42F3] min-w-[42px] text-right">
-                              ₹{opt.price}
-                            </span>
-
-                            {/* Quantity stepper */}
-                            <div className="flex items-center gap-1 border border-[#E2E8F0] rounded-lg px-1 h-[30px] bg-white">
-                              <button
-                                type="button"
-                                onClick={() => setPosModifierQty(group, optId, -1)}
-                                disabled={qty === 0}
-                                className="w-6 text-[15px] font-bold leading-none text-[#475569] hover:text-[#DC2626] disabled:opacity-30 disabled:cursor-not-allowed"
-                                aria-label={`Remove one ${opt.name}`}
-                              >
-                                −
-                              </button>
-                              <span className="min-w-[18px] text-center font-extrabold text-[#0F172A] text-[13px]">
-                                {qty}
-                              </span>
-                              <button
-                                type="button"
-                                onClick={() => setPosModifierQty(group, optId, +1)}
-                                disabled={atCap}
-                                className="w-6 text-[15px] font-bold leading-none text-[#475569] hover:text-[#5B42F3] disabled:opacity-30 disabled:cursor-not-allowed"
-                                aria-label={`Add one ${opt.name}`}
-                              >
-                                +
-                              </button>
-                            </div>
-                          </div>
-                        </div>
+                            {opt?.name || ""}
+                          </span>
+                          <span
+                            className={`text-[11.5px] font-bold leading-tight mt-0.5 ${
+                              chosen ? "text-[#5B42F3]" : "text-[#475569]"
+                            }`}
+                          >
+                            ₹{opt.price}
+                          </span>
+                        </button>
                       );
                     })}
                   </div>

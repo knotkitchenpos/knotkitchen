@@ -12,7 +12,9 @@ import {
   bulkRemoveGroup,
   deleteCategory,
   deleteDish,
-  downloadMenuCsvTemplate,
+  // downloadMenuCsvTemplate — removed from the toolbar per operator
+  // feedback; still exported from https/ for anyone who needs to hit the
+  // endpoint programmatically.
   exportMenuCsv,
   getMenus,
   importMenuCsv,
@@ -22,6 +24,8 @@ import {
   renameGroupInDishes,
   toggleGroupActive,
   reorderGroups,
+  reorderDishes,
+  reorderMenus,
   unpublishMenu,
   publishMenu,
   publishSystemCache,
@@ -92,6 +96,33 @@ const ManageMenu = () => {
   const [draggedGroupIndex, setDraggedGroupIndex] = useState(null);
   const [groupActiveStates, setGroupActiveStates] = useState({});
 
+  // Drag-and-drop state for the Products tab.
+  //   `draggedCategoryIndex` — index of the top-level category row being
+  //     dragged in the "All Categories" list.
+  //   `draggedProductIndex` — index of the product row being dragged
+  //     inside the currently-active category.
+  // Both are cleared on drop / drag-end so an aborted drag doesn't leave
+  // a phantom reference around.
+  const [draggedCategoryIndex, setDraggedCategoryIndex] = useState(null);
+  const [draggedProductIndex, setDraggedProductIndex] = useState(null);
+
+  // Optimistic local ordering — set immediately on drop so the row moves
+  // BEFORE the network round-trip completes. When the invalidated
+  // "menus" query returns fresh data these overrides are cleared so the
+  // server order becomes the source of truth again.
+  const [categoryOrderOverride, setCategoryOrderOverride] = useState(null);
+  const [productOrderOverride, setProductOrderOverride] = useState(null);
+
+  // Generic confirm modal — replaces the old raw `deleteDishMut.mutate`
+  // fire-and-forget so every destructive action asks the operator to
+  // confirm first. `payload` carries whatever the confirm callback needs
+  // (product id, category id, etc.) so the modal itself stays generic.
+  const [confirmState, setConfirmState] = useState(null);
+  const askConfirm = ({ title, message, confirmLabel = "Delete", tone = "danger", onConfirm }) => {
+    setConfirmState({ title, message, confirmLabel, tone, onConfirm });
+  };
+  const closeConfirm = () => setConfirmState(null);
+
   // Group Management Form states (Module 4 & 7)
   const [editingGroup, setEditingGroup] = useState(null);
   const [editingCompIndex, setEditingCompIndex] = useState(null);
@@ -142,8 +173,9 @@ const ManageMenu = () => {
   const [prodDisplay, setProdDisplay] = useState("both"); // both, system, website
   const [prodImageUrl, setProdImageUrl] = useState("");
   const [uploadingImg, setUploadingImg] = useState(false);
-  // Names of modifier groups assigned to the product being created/edited (Module 4)
-  const [prodAssignedGroupNames, setProdAssignedGroupNames] = useState(new Set());
+  // Names of modifier groups assigned to the product being created/edited (Module 4) - array preserves selection order
+  const [prodAssignedGroupNames, setProdAssignedGroupNames] = useState([]);
+  const [selectionType, setSelectionType] = useState("single"); // "single" | "multiple"
 
   const { data: menusRes, isLoading } = useQuery({ queryKey: ["menus"], queryFn: getMenus });
   const menus = menusRes?.data?.data || [];
@@ -168,6 +200,62 @@ const ManageMenu = () => {
       /* ignore storage quota / private mode */
     }
   }, [customCreatedGroups]);
+
+  /*
+   * Real-time reflection guard.
+   *
+   * The Manage Menu drills into a `menus[i]` snapshot (`activeCategory`)
+   * when the operator opens a category. That snapshot is captured at click
+   * time — subsequent invalidations of the "menus" query refresh the top
+   * level list but the drilled-in category still points at the STALE
+   * items array from the moment it was opened. That's why deleting /
+   * hiding / caching a product used to look like nothing happened until
+   * the page was refreshed.
+   *
+   * This effect re-syncs the drilled-in references from the freshly
+   * fetched `menus` list on every render. Group view (`activeGroup`) is
+   * derived from `allGroupsMap` so it re-syncs automatically via its own
+   * useMemo dependency, but the category / subcategory drill needs to be
+   * done here explicitly.
+   */
+  useEffect(() => {
+    if (!activeCategory) return;
+
+    // Defensive: while the menus query is still loading (or is between
+    // refetches and hasn't returned data yet), an empty `menus` array
+    // must NOT be interpreted as "the category was deleted". Otherwise
+    // any open drawer / drill-in view gets torn down on every refetch.
+    if (isLoading) return;
+    if (!Array.isArray(menus) || menus.length === 0) return;
+
+    const fresh = menus.find(
+      (m) => String(m?._id) === String(activeCategory._id),
+    );
+    if (!fresh) {
+      // Category was deleted (or the user's tenant scope changed) — pop
+      // the drill so we don't render stale rows.
+      setActiveCategory(null);
+      setActiveSubcategory(null);
+      return;
+    }
+    // Only replace when the reference actually changed to avoid a render
+    // loop (menus is refetched every focus / mutation).
+    if (fresh !== activeCategory) {
+      setActiveCategory(fresh);
+    }
+    // If the currently drilled-in product view referenced a product that
+    // no longer exists (e.g. it was just deleted), close the modal too.
+    if (viewingProduct && !(fresh.items || []).some((i) => String(i._id) === String(viewingProduct._id))) {
+      setViewingProduct(null);
+    }
+  }, [menus, activeCategory, viewingProduct, isLoading]);
+
+  // Note: the optimistic `categoryOrderOverride` / `productOrderOverride`
+  // are cleared inside the reorderMenusMut / reorderDishesMut success
+  // handlers (and on error). We deliberately do NOT clear them on every
+  // `menus` change because the useQuery hook returns a new reference on
+  // every render (menusRes?.data?.data || []), which would cause the
+  // overrides to be cleared before the drop was even acknowledged.
 
   // Extract all groups across all dishes + registered custom groups (Module 4 §4)
   const allGroupsMap = useMemo(() => {
@@ -281,19 +369,50 @@ const ManageMenu = () => {
     const attachedCount = targetGroup?.dishIds?.size || 0;
     const msg = attachedCount > 0
       ? `Delete Group "${targetGroup.name}"? It is attached to ${attachedCount} product(s). This will safely unassign the group without deleting products or orders.`
-      : `Delete Group "${targetGroup.name}"?`;
-    if (window.confirm(msg)) {
-      deleteGroupMut.mutate({ groupName: targetGroup.name });
-    }
+      : `Delete Group "${targetGroup.name}"? This action cannot be undone.`;
+
+    askConfirm({
+      title: attachedCount > 0
+        ? `Delete group and detach from ${attachedCount} product${attachedCount === 1 ? "" : "s"}?`
+        : "Delete group?",
+      message: msg,
+      confirmLabel: "Delete Group",
+      tone: "danger",
+      onConfirm: () => {
+        if (attachedCount === 0) {
+          // Standalone group — it only lives in the local custom registry,
+          // so there's nothing to hit on the server. Remove it locally.
+          setCustomCreatedGroups((prev) => {
+            const next = { ...prev };
+            delete next[targetGroup.name];
+            return next;
+          });
+          enqueueSnackbar(`Group "${targetGroup.name}" deleted.`, { variant: "success" });
+          setShowManageGroup(false);
+          setActiveGroup(null);
+          setEditingGroup(null);
+          return;
+        }
+        deleteGroupMut.mutate({ groupName: targetGroup.name });
+      },
+    });
   };
 
 
   // Only invalidate the draft menu query for Manage Menu UI.
   // POS (system) and Website cache are NOT automatically updated when editing products;
   // they update only when the user manually clicks "Publish POS" or "Publish Web".
+  //
+  // We use `refetchQueries` (not just `invalidateQueries`) so the fresh data
+  // arrives BEFORE the operator's next click — the previous invalidate-only
+  // path relied on staleTime + focus refetch and could leave the list
+  // showing a just-deleted / just-hidden product until the next reload.
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["menus"], exact: true });
     qc.invalidateQueries({ queryKey: ["popular-items"] });
+    // Kick a background refetch immediately so the drawer / list re-renders
+    // with the new data as soon as the mutation resolves.
+    qc.refetchQueries({ queryKey: ["menus"], exact: true });
   };
 
   const addCategoryMut = useMutation({
@@ -369,19 +488,58 @@ const ManageMenu = () => {
       enqueueSnackbar("Category deleted!", { variant: "success" });
       invalidate();
     },
+    onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to delete category", { variant: "error" }),
   });
 
   const deleteDishMut = useMutation({
     mutationFn: deleteDish,
     onSuccess: () => {
-      enqueueSnackbar("Dish deleted!", { variant: "success" });
+      enqueueSnackbar("Product deleted!", { variant: "success" });
       invalidate();
     },
+    onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to delete product", { variant: "error" }),
   });
 
   const toggleAvailabilityMut = useMutation({
     mutationFn: updateDishStatus,
-    onSuccess: () => invalidate(),
+    onSuccess: (res) => {
+      // Surface the visibility change immediately so the operator sees the
+      // switch update AND the toast — otherwise a silent success looked
+      // identical to a no-op until the page was refreshed.
+      const msg = res?.data?.message || "Product visibility updated";
+      enqueueSnackbar(msg, { variant: "success" });
+      invalidate();
+    },
+    onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to update product visibility", { variant: "error" }),
+  });
+
+  // Drag-and-drop reorder mutations. These fire the network request in
+  // the background; the on-screen order is already updated via the
+  // local `*OrderOverride` state so the operator sees the new order
+  // instantly. On success we refetch to lock the server order back in.
+  const reorderMenusMut = useMutation({
+    mutationFn: reorderMenus,
+    onSuccess: () => {
+      setCategoryOrderOverride(null);
+      invalidate();
+    },
+    onError: (e) => {
+      setCategoryOrderOverride(null);
+      enqueueSnackbar(e.response?.data?.message || "Failed to reorder categories", { variant: "error" });
+      invalidate();
+    },
+  });
+  const reorderDishesMut = useMutation({
+    mutationFn: reorderDishes,
+    onSuccess: () => {
+      setProductOrderOverride(null);
+      invalidate();
+    },
+    onError: (e) => {
+      setProductOrderOverride(null);
+      enqueueSnackbar(e.response?.data?.message || "Failed to reorder products", { variant: "error" });
+      invalidate();
+    },
   });
 
   const bulkAddGroupMut = useMutation({
@@ -440,8 +598,31 @@ const ManageMenu = () => {
     // once at the end, and so the backend sees serialised menu writes.
     try {
       for (const name of picked) {
+        // §Bulk-Add: previously we only sent { groupName, dishIds } which
+        // meant a group added from the bulk picker landed on the product
+        // with an empty `options` array — the biller then saw the group
+        // header but ZERO components in the POS customisation modal.
+        // Ship the full group definition (options / required /
+        // maxSelections) so the components show up immediately.
+        let payload = { groupName: name, dishIds };
+        if (bulkGroupPickerMode !== "remove") {
+          const src = allGroupsMap.get(name);
+          if (src) {
+            payload = {
+              ...payload,
+              required: Boolean(src.required),
+              maxSelections: Number(src.maxSelections) || 1,
+              options: Array.isArray(src.options)
+                ? src.options.map((o) => ({
+                    name: String(o?.name || "").trim(),
+                    price: Number(o?.price) || 0,
+                  }))
+                : [],
+            };
+          }
+        }
         // eslint-disable-next-line no-await-in-loop
-        await mutation.mutateAsync({ groupName: name, dishIds });
+        await mutation.mutateAsync(payload);
       }
       enqueueSnackbar(
         `${bulkGroupPickerMode === "remove" ? "Removed" : "Added"} ${picked.length} group${
@@ -502,7 +683,7 @@ const ManageMenu = () => {
     setProdStartTime("09:00");
     setProdEndTime("23:00");
     setProdDaysOfWeek([0, 1, 2, 3, 4, 5, 6]);
-    setProdAssignedGroupNames(new Set());
+    setProdAssignedGroupNames([]);
     setEditingProduct(null);
   };
 
@@ -511,7 +692,7 @@ const ManageMenu = () => {
     const existingGroupNames = Array.isArray(item?.modifierGroups)
       ? item.modifierGroups.map((g) => g?.name).filter(Boolean)
       : [];
-    setProdAssignedGroupNames(new Set(existingGroupNames));
+    setProdAssignedGroupNames(existingGroupNames);
     setProdName(item.name || "");
     setProdDesc(item.description || "");
     setProdPrice(String(item.price ?? "100"));
@@ -597,16 +778,27 @@ const ManageMenu = () => {
   const isAllSelected = currentItems.length > 0 && selectedIds.size === currentItems.length;
 
   const handleBulkDelete = () => {
-    if (!window.confirm(`Delete ${selectedIds.size} selected item(s)?`)) return;
-    selectedIds.forEach((id) => {
-      if (activeCategory) {
-        deleteDishMut.mutate({ menuId: activeCategory._id, itemId: id });
-      } else {
-        deleteCategoryMut.mutate(id);
-      }
+    const count = selectedIds.size;
+    const scope = activeCategory ? "product" : "category";
+    askConfirm({
+      title: `Delete ${count} selected ${scope}${count === 1 ? "" : scope === "product" ? "s" : "ies"}?`,
+      message: activeCategory
+        ? `These products will be removed from "${activeCategory.name}". Existing orders that referenced them are not affected.`
+        : `The selected categories and every product they contain will be removed. Existing orders that referenced them are not affected.`,
+      confirmLabel: `Delete ${count} item${count === 1 ? "" : "s"}`,
+      tone: "danger",
+      onConfirm: () => {
+        selectedIds.forEach((id) => {
+          if (activeCategory) {
+            deleteDishMut.mutate({ menuId: activeCategory._id, itemId: id });
+          } else {
+            deleteCategoryMut.mutate(id);
+          }
+        });
+        setSelectedIds(new Set());
+        setShowBulkMenu(false);
+      },
     });
-    setSelectedIds(new Set());
-    setShowBulkMenu(false);
   };
 
   const handleSaveCategory = () => {
@@ -622,8 +814,8 @@ const ManageMenu = () => {
       if (editingSubcategory) {
         updateSubcatMut.mutate({
           menuId: activeCategory._id,
-          subcategoryId: editingSubcategory._id,
-          oldName: typeof editingSubcategory === "string" ? editingSubcategory : editingSubcategory.name,
+          subcategoryId: editingSubcategory?._id || editingSubcategory?.id,
+          oldName: typeof editingSubcategory === "string" ? editingSubcategory : editingSubcategory?.name || editingSubcategory?._id || "",
           name: catName,
           description: catDesc,
           dispatchType,
@@ -697,8 +889,8 @@ const ManageMenu = () => {
     };
 
     const payload = {
-      menuId: activeCategory._id,
-      category: activeCategory.name,
+      menuId: activeCategory?._id,
+      category: activeCategory?.name || "",
       subcategory: activeSubcategory || undefined,
       name: prodName,
       price: priceNum,
@@ -722,7 +914,7 @@ const ManageMenu = () => {
       imageUrl: prodImageUrl,
       isAvailable: prodAvailable,
       schedule,
-      modifierGroups: Array.from(prodAssignedGroupNames)
+      modifierGroups: prodAssignedGroupNames
         .map((name) => {
           const g = allGroupsMap.get(name);
           if (!g) return { name, required: false, maxSelections: 1, options: [] };
@@ -836,7 +1028,7 @@ const ManageMenu = () => {
                           setSelectedIds(new Set());
                         }}
                       >
-                        {activeCategory.name}
+                        {activeCategory?.name || "Category"}
                       </span>
                     </>
                   )}
@@ -861,15 +1053,19 @@ const ManageMenu = () => {
                   {activeGroup && (
                     <>
                       <span className="text-[#94A3B8]">/</span>
-                      <span>{activeGroup.name}</span>
+                      <span>{typeof activeGroup === "string" ? activeGroup : activeGroup?.name || "Group"}</span>
                     </>
                   )}
                 </>
               )}
             </div>
 
-            {/* Select All Checkbox */}
-            {(!activeTab === "groups" || !activeGroup) && (
+            {/* Select All Checkbox.
+                Hide when the operator has drilled into a specific group
+                (Group Contents view) since there's nothing selectable
+                there — the group's attached-products list is a read-only
+                summary. Every other view can multi-select. */}
+            {!(activeTab === "groups" && activeGroup) && (
               <label className="flex items-center gap-2 cursor-pointer select-none text-[13.5px] font-bold text-[#334155] ml-2">
                 <input
                   type="checkbox"
@@ -926,26 +1122,14 @@ const ManageMenu = () => {
               Publish Web
             </button>
 
-            {/* Download Template, Export CSV & Import CSV Buttons */}
-            <button
-              onClick={async () => {
-                try {
-                  const res = await downloadMenuCsvTemplate();
-                  const url = window.URL.createObjectURL(new Blob([res.data]));
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = "knotkitchen_menu_template.csv";
-                  a.click();
-                  enqueueSnackbar("CSV Template downloaded!", { variant: "success" });
-                } catch (e) {
-                  enqueueSnackbar("Failed to download CSV template", { variant: "error" });
-                }
-              }}
-              className="h-[36px] px-3.5 rounded-xl border border-[#CBD5E1] bg-white text-[#334155] text-[12.5px] font-bold hover:bg-[#F8FAFC]"
-              title="Download sample Menu CSV template"
-            >
-              Download Template
-            </button>
+            {/*
+              §UI: the CSV "Download Template" affordance has been removed
+              from the header. The template is still available server-side
+              (GET /api/menu/csv/template) and is exercised by tests, but
+              the operator no longer needs it in the day-to-day Manage Menu
+              toolbar — it was noisy and the Export CSV flow is enough to
+              seed a starting point for anyone who really needs one.
+            */}
 
             <button
               onClick={async () => {
@@ -1040,7 +1224,23 @@ const ManageMenu = () => {
               ) : (
                 <div className="flex items-center gap-2">
                   <button
-                    onClick={() => {
+                    type="button"
+                    onClick={(e) => {
+                      // §Add-Subcategory: guarantee the drawer opens by
+                      // stopping any bubbling handlers (e.g. a parent
+                      // that might have been added as a drag/drop or
+                      // selection toggle) and by scheduling the state
+                      // updates in a specific, defensive order — reset
+                      // any lingering edit references first, close the
+                      // OTHER drawers (so a stale showCreateCategory
+                      // can't render the wrong title), then open the
+                      // subcategory drawer.
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShowCreateCategory(false);
+                      setShowCreateProduct(false);
+                      setEditingCategory(null);
+                      setEditingSubcategory(null);
                       resetCategoryForm();
                       setShowCreateSubcategory(true);
                     }}
@@ -1049,7 +1249,13 @@ const ManageMenu = () => {
                     + Add Subcategory
                   </button>
                   <button
-                    onClick={() => {
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      setShowCreateCategory(false);
+                      setShowCreateSubcategory(false);
+                      setEditingProduct(null);
                       resetProductForm();
                       setShowCreateProduct(true);
                     }}
@@ -1165,16 +1371,22 @@ const ManageMenu = () => {
                             </button>
                             <button
                               onClick={() => {
-                                if (window.confirm(`Delete component "${opt.name}" from group?`)) {
-                                  const updatedOpts = (activeGroup.options || []).filter((_, i) => i !== idx);
-                                  saveGroupMut.mutate({
-                                    groupName: activeGroup.name,
-                                    required: activeGroup.required,
-                                    maxSelections: activeGroup.maxSelections,
-                                    options: updatedOpts,
-                                    dishIds: Array.from(activeGroup.dishIds),
-                                  });
-                                }
+                                askConfirm({
+                                  title: "Delete component?",
+                                  message: `Delete component "${opt.name}" from group "${activeGroup.name}"?`,
+                                  confirmLabel: "Delete Component",
+                                  tone: "danger",
+                                  onConfirm: () => {
+                                    const updatedOpts = (activeGroup.options || []).filter((_, i) => i !== idx);
+                                    saveGroupMut.mutate({
+                                      groupName: activeGroup.name,
+                                      required: activeGroup.required,
+                                      maxSelections: activeGroup.maxSelections,
+                                      options: updatedOpts,
+                                      dishIds: Array.from(activeGroup.dishIds),
+                                    });
+                                  },
+                                });
                               }}
                               className="h-[28px] px-2 rounded-lg border border-[#FECACA] text-[11px] font-bold text-[#DC2626] hover:bg-[#FEF2F2]"
                             >
@@ -1335,13 +1547,50 @@ const ManageMenu = () => {
             )
           ) : !activeCategory ? (
             /* Main Categories List (Level 0 Products) */
-            menus.map((menu) => {
+            (() => {
+              // Apply optimistic drag order (if any) so the biller sees the
+              // new position immediately, before the reorder request round
+              // trips.
+              const orderedMenus = (() => {
+                if (!categoryOrderOverride) return menus;
+                const map = new Map(menus.map((m) => [String(m._id), m]));
+                const rest = menus.filter((m) => !categoryOrderOverride.includes(String(m._id)));
+                return [
+                  ...categoryOrderOverride.map((id) => map.get(String(id))).filter(Boolean),
+                  ...rest,
+                ];
+              })();
+              return orderedMenus.map((menu, catIndex) => {
               const selected = selectedIds.has(menu._id);
               const isPublished = menu.published !== false;
 
               return (
                 <div
                   key={menu._id}
+                  draggable
+                  onDragStart={(e) => {
+                    setDraggedCategoryIndex(catIndex);
+                    try { e.dataTransfer.effectAllowed = "move"; } catch { /* Safari */ }
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    try { e.dataTransfer.dropEffect = "move"; } catch { /* Safari */ }
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    if (draggedCategoryIndex === null || draggedCategoryIndex === catIndex) {
+                      setDraggedCategoryIndex(null);
+                      return;
+                    }
+                    const next = [...orderedMenus];
+                    const [moved] = next.splice(draggedCategoryIndex, 1);
+                    next.splice(catIndex, 0, moved);
+                    const idOrder = next.map((m) => String(m._id));
+                    setCategoryOrderOverride(idOrder);
+                    setDraggedCategoryIndex(null);
+                    reorderMenusMut.mutate({ menuIds: idOrder });
+                  }}
+                  onDragEnd={() => setDraggedCategoryIndex(null)}
                   onClick={() => {
                     setActiveCategory(menu);
                     setActiveSubcategory(null);
@@ -1349,7 +1598,7 @@ const ManageMenu = () => {
                   }}
                   className={`px-6 py-4 flex items-center justify-between gap-4 transition-colors cursor-pointer ${
                     selected ? "bg-[#EEF0FE]/40" : "hover:bg-[#F8FAFC]"
-                  }`}
+                  } ${draggedCategoryIndex === catIndex ? "opacity-50" : ""}`}
                 >
                   <div className="flex items-center gap-4 min-w-0 flex-1">
                     {/* Selection Checkbox */}
@@ -1410,28 +1659,89 @@ const ManageMenu = () => {
                       Manage
                     </button>
 
-                    <IconDots />
+                    {/* Drag handle affordance — the whole row is draggable
+                        but the dots signal "grab me to reorder". */}
+                    <span
+                      className="text-[#94A3B8] hover:text-[#0F172A] cursor-grab select-none"
+                      title="Drag to reorder"
+                    >
+                      <IconDots />
+                    </span>
                   </div>
                 </div>
               );
-            })
+              });
+            })()
           ) : (
             /* Inside Category / Subcategory View (Module 2) */
             (() => {
-              const allCategoryItems = activeCategory.items || [];
+              const rawCategoryItems = activeCategory.items || [];
 
-              // Helper to render product row
-              const renderProductRow = (item) => {
+              // Apply optimistic drag order for the products list so the
+              // biller sees the row move immediately, before the reorder
+              // request comes back from the server.
+              const applyProductOverride = (list) => {
+                if (!productOrderOverride) return list;
+                const map = new Map(list.map((it) => [String(it._id), it]));
+                const rest = list.filter((it) => !productOrderOverride.includes(String(it._id)));
+                return [
+                  ...productOrderOverride.map((id) => map.get(String(id))).filter(Boolean),
+                  ...rest,
+                ];
+              };
+              const allCategoryItems = applyProductOverride(rawCategoryItems);
+
+              // Helper to render product row. `visibleItems` is the array
+              // the row lives inside (used for drop-index maths so items
+              // hidden by the subcategory filter don't scramble the order
+              // stamped on the server).
+              const renderProductRow = (item, prodIndex, visibleItems) => {
                 const selected = selectedIds.has(item._id);
                 const isAvailable = item.isAvailable !== false;
 
                 return (
                   <div
                     key={item._id}
+                    draggable
+                    onDragStart={(e) => {
+                      setDraggedProductIndex(prodIndex);
+                      try { e.dataTransfer.effectAllowed = "move"; } catch { /* Safari */ }
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      try { e.dataTransfer.dropEffect = "move"; } catch { /* Safari */ }
+                    }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      if (draggedProductIndex === null || draggedProductIndex === prodIndex) {
+                        setDraggedProductIndex(null);
+                        return;
+                      }
+                      const next = [...visibleItems];
+                      const [moved] = next.splice(draggedProductIndex, 1);
+                      next.splice(prodIndex, 0, moved);
+                      // Preserve the full category order — items not in
+                      // `visibleItems` (other subcategories) keep their
+                      // existing relative order behind the dragged group.
+                      const visibleIds = new Set(visibleItems.map((i) => String(i._id)));
+                      const orderedIds = [
+                        ...next.map((i) => String(i._id)),
+                        ...allCategoryItems
+                          .filter((i) => !visibleIds.has(String(i._id)))
+                          .map((i) => String(i._id)),
+                      ];
+                      setProductOrderOverride(orderedIds);
+                      setDraggedProductIndex(null);
+                      reorderDishesMut.mutate({
+                        menuId: activeCategory._id,
+                        itemIds: orderedIds,
+                      });
+                    }}
+                    onDragEnd={() => setDraggedProductIndex(null)}
                     onClick={() => setViewingProduct(item)}
                     className={`px-6 py-4 flex items-center justify-between gap-4 transition-colors cursor-pointer ${
                       selected ? "bg-[#EEF0FE]/40" : "hover:bg-[#F8FAFC]"
-                    }`}
+                    } ${draggedProductIndex === prodIndex ? "opacity-50" : ""}`}
                   >
                     <div className="flex items-center gap-4 min-w-0 flex-1">
                       <input
@@ -1514,14 +1824,36 @@ const ManageMenu = () => {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          deleteDishMut.mutate({ menuId: activeCategory._id, itemId: item._id });
+                          // §Delete-Confirm: the Delete button used to fire
+                          // the mutation immediately. Route it through the
+                          // shared confirm modal so a mis-tap can't nuke a
+                          // product without an explicit "Yes, delete" click.
+                          askConfirm({
+                            title: "Delete product?",
+                            message: `Delete "${item.name}"? This will remove it from the menu. Existing orders that referenced this product are not affected.`,
+                            confirmLabel: "Delete Product",
+                            tone: "danger",
+                            onConfirm: () => {
+                              deleteDishMut.mutate({
+                                menuId: activeCategory._id,
+                                itemId: item._id,
+                              });
+                            },
+                          });
                         }}
                         className="h-[34px] px-3 rounded-xl border border-[#FECACA] text-[#DC2626] text-[12px] font-bold hover:bg-[#FEF2F2]"
                       >
                         Delete
                       </button>
 
-                      <IconDots />
+                      {/* Drag handle — the whole row is `draggable` but the
+                          dots give the biller a visual affordance to grab. */}
+                      <span
+                        className="text-[#94A3B8] hover:text-[#0F172A] cursor-grab select-none"
+                        title="Drag to reorder"
+                      >
+                        <IconDots />
+                      </span>
                     </div>
                   </div>
                 );
@@ -1543,7 +1875,7 @@ const ManageMenu = () => {
                   );
                 }
 
-                return subcategoryItems.map(renderProductRow);
+                return subcategoryItems.map((it, i) => renderProductRow(it, i, subcategoryItems));
               }
 
               // Case B: Inside Category View (Level 1)
@@ -1559,7 +1891,7 @@ const ManageMenu = () => {
                     <span className="text-3xl block mb-2">📁</span>
                     <p className="font-bold text-[14px] text-[#475569]">This category is empty</p>
                     <p className="text-[12px] text-[#94A3B8] mt-1">
-                      No subcategories or products created in "{activeCategory.name}" yet.
+                      No subcategories or products created in "{activeCategory?.name || "Category"}" yet.
                     </p>
                   </div>
                 );
@@ -1636,7 +1968,7 @@ const ManageMenu = () => {
                             Direct Products ({directProducts.length})
                           </h4>
                         </div>
-                        {directProducts.map(renderProductRow)}
+                        {directProducts.map((it, i) => renderProductRow(it, i, directProducts))}
                       </div>
                     ) : (
                       <div className="p-8 text-center text-[#94A3B8]">
@@ -1645,7 +1977,7 @@ const ManageMenu = () => {
                       </div>
                     )
                   ) : (
-                    allCategoryItems.map(renderProductRow)
+                    allCategoryItems.map((it, i) => renderProductRow(it, i, allCategoryItems))
                   )}
                 </div>
               );
@@ -1654,60 +1986,7 @@ const ManageMenu = () => {
         </div>
       </div>
 
-      {/* Column 3: Right Steps Panel (Matching reference screenshots 1 & 4) */}
-      <div className="w-[280px] shrink-0 bg-[#1C2638] text-white p-6 flex flex-col space-y-6 overflow-y-auto">
-        <h3 className="text-[18px] font-extrabold tracking-tight">
-          {activeTab === "groups" ? "Group's Steps" : "Category's Steps"}
-        </h3>
 
-        {activeTab === "groups" ? (
-          <div className="space-y-4 text-[12.5px] leading-relaxed text-[#CBD5E1]">
-            <div className="flex items-start gap-2.5">
-              <span className="w-6 h-6 rounded-full border border-white/40 text-white font-bold flex items-center justify-center shrink-0 text-[11px]">01</span>
-              <p>Create groups of different dishes that you offer (example, Toppings for 15 inch pizza, Sauce & Salad for wraps, Create your own toppings for 14 inch pizza etc).</p>
-            </div>
-            <div className="flex items-start gap-2.5">
-              <span className="w-6 h-6 rounded-full border border-white/40 text-white font-bold flex items-center justify-center shrink-0 text-[11px]">02</span>
-              <p>Create the group by clicking on the Group tab at the top right corner.</p>
-            </div>
-            <div className="flex items-start gap-2.5">
-              <span className="w-6 h-6 rounded-full border border-white/40 text-white font-bold flex items-center justify-center shrink-0 text-[11px]">03</span>
-              <p>Click on Save Changes.</p>
-            </div>
-            <div className="flex items-start gap-2.5">
-              <span className="w-6 h-6 rounded-full border border-white/40 text-white font-bold flex items-center justify-center shrink-0 text-[11px]">04</span>
-              <p>Once the Group is made, click on Manage to customise.</p>
-            </div>
-            <div className="flex items-start gap-2.5">
-              <span className="w-6 h-6 rounded-full border border-white/40 text-white font-bold flex items-center justify-center shrink-0 text-[11px]">05</span>
-              <p>If you want to add a series of extra options to this group, click on Add New Extra and enter the details.</p>
-            </div>
-            <div className="flex items-start gap-2.5">
-              <span className="w-6 h-6 rounded-full border border-white/40 text-white font-bold flex items-center justify-center shrink-0 text-[11px]">06</span>
-              <p>Add in the rest of the details as required and click on Save Changes.</p>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-5 text-[13px] leading-relaxed text-[#CBD5E1]">
-            <div className="flex items-start gap-3">
-              <span className="w-7 h-7 rounded-full border-2 border-white/30 text-white font-extrabold flex items-center justify-center shrink-0 text-[12px]">01</span>
-              <p>Categorise the dishes according to the time of day they're served.</p>
-            </div>
-            <div className="flex items-start gap-3">
-              <span className="w-7 h-7 rounded-full border-2 border-white/30 text-white font-extrabold flex items-center justify-center shrink-0 text-[12px]">02</span>
-              <p>Click on the Product time button at the top right corner of the page.</p>
-            </div>
-            <div className="flex items-start gap-3">
-              <span className="w-7 h-7 rounded-full border-2 border-white/30 text-white font-extrabold flex items-center justify-center shrink-0 text-[12px]">03</span>
-              <p>Enter the name of the dish and the timing through which it is served.</p>
-            </div>
-            <div className="flex items-start gap-3">
-              <span className="w-7 h-7 rounded-full border-2 border-white/30 text-white font-extrabold flex items-center justify-center shrink-0 text-[12px]">04</span>
-              <p>Click on Save Changes.</p>
-            </div>
-          </div>
-        )}
-      </div>
 
 
       {/* Drawers: Create / Manage Category / Subcategory Slide-Over Drawer */}
@@ -1934,7 +2213,7 @@ const ManageMenu = () => {
                 />
               </div>
 
-              <div className="flex items-center justify-between border-t border-b border-[#E2E8F0] py-3">
+              <div className="flex items-center justify-between border-t border-[#E2E8F0] py-3">
                 <span className="font-extrabold text-[#0F172A]">Required Selection</span>
                 <input
                   type="checkbox"
@@ -1942,6 +2221,73 @@ const ManageMenu = () => {
                   onChange={(e) => setGroupRequired(e.target.checked)}
                   className="w-5 h-5 accent-[#22C55E]"
                 />
+              </div>
+
+              {/* Selection Type: Single vs Multiple */}
+              <div className="space-y-2 border-b border-[#E2E8F0] pb-3">
+                <div>
+                  <span className="font-extrabold text-[#0F172A] block">Selection Type</span>
+                  <span className="text-[11.5px] font-semibold text-[#64748B]">
+                    Single = customer can pick 1 item. Multiple = customer can pick multiple items.
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectionType("single");
+                      setGroupMax("1");
+                    }}
+                    className={`h-[40px] px-3 rounded-xl border text-[13px] font-extrabold flex items-center justify-center gap-2 transition-all ${
+                      selectionType === "single"
+                        ? "bg-[#5B42F3] text-white border-[#5B42F3] shadow-xs"
+                        : "bg-white text-[#334155] border-[#E2E8F0] hover:border-[#CBD5E1]"
+                    }`}
+                  >
+                    <span className={`w-2.5 h-2.5 rounded-full ${selectionType === "single" ? "bg-white" : "bg-[#94A3B8]"}`} />
+                    Single (Choose 1)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectionType("multiple");
+                      if (Number(groupMax) <= 1) setGroupMax("5");
+                    }}
+                    className={`h-[40px] px-3 rounded-xl border text-[13px] font-extrabold flex items-center justify-center gap-2 transition-all ${
+                      selectionType === "multiple"
+                        ? "bg-[#5B42F3] text-white border-[#5B42F3] shadow-xs"
+                        : "bg-white text-[#334155] border-[#E2E8F0] hover:border-[#CBD5E1]"
+                    }`}
+                  >
+                    <span className={`w-2.5 h-2.5 rounded-full ${selectionType === "multiple" ? "bg-white" : "bg-[#94A3B8]"}`} />
+                    Multiple (Choose Many)
+                  </button>
+                </div>
+
+                {selectionType === "multiple" && (
+                  <div className="flex items-center justify-between pt-2.5 mt-1 border-t border-dashed border-[#E2E8F0]">
+                    <div>
+                      <span className="text-[12px] font-extrabold text-[#334155] block">Max Selections Allowed</span>
+                      <span className="text-[11px] font-semibold text-[#64748B]">Maximum items selectable by customer</span>
+                    </div>
+                    <input
+                      type="number"
+                      min={2}
+                      step={1}
+                      value={groupMax}
+                      onChange={(e) => {
+                        const v = e.target.value;
+                        if (v === "") { setGroupMax(""); return; }
+                        const n = Math.max(2, Math.floor(Number(v) || 2));
+                        setGroupMax(String(n));
+                      }}
+                      onBlur={() => {
+                        if (!groupMax || Number(groupMax) < 2) setGroupMax("2");
+                      }}
+                      className="w-[80px] h-[36px] px-2 text-center rounded-xl border border-[#E2E8F0] font-extrabold text-[13.5px]"
+                    />
+                  </div>
+                )}
               </div>
 
               {/* Add Components Section (Module 6: Groups -> Components) */}
@@ -2018,13 +2364,19 @@ const ManageMenu = () => {
                           <button
                             type="button"
                             onClick={() => {
-                              if (window.confirm(`Delete component "${extra.name}"?`)) {
-                                setExtrasList(extrasList.filter((_, i) => i !== idx));
-                                if (editingCompIndex === idx) {
-                                  setEditingCompIndex(null);
-                                  setExtraNameInput("");
-                                }
-                              }
+                              askConfirm({
+                                title: "Delete component?",
+                                message: `Delete component "${extra.name}" from this group?`,
+                                confirmLabel: "Delete Component",
+                                tone: "danger",
+                                onConfirm: () => {
+                                  setExtrasList(extrasList.filter((_, i) => i !== idx));
+                                  if (editingCompIndex === idx) {
+                                    setEditingCompIndex(null);
+                                    setExtraNameInput("");
+                                  }
+                                },
+                              });
                             }}
                             className="text-[#DC2626] font-bold hover:underline text-[11.5px]"
                           >
@@ -2085,23 +2437,55 @@ const ManageMenu = () => {
                       return;
                     }
                   }
-                  // Explicit product assignment is required (§Groups).
-                  // Previously an empty selection defaulted to "attach to
-                  // every product" — which the operator almost never wants.
-                  // Force them to opt-in to at least one product first.
+                  // §Groups: a group may now be created / edited WITHOUT
+                  // being attached to any product. Standalone groups live
+                  // in the local `customCreatedGroups` registry so they
+                  // still appear in the Groups list and in the "Bulk Add
+                  // Group" picker — the operator can attach them later
+                  // from Products → Select → Manage → Add Group.
+                  const trimmedName = groupName.trim();
+                  const normalizedMax = selectionType === "single" ? 1 : Math.max(1, Number(groupMax) || 1);
+                  const normalizedOptions = extrasList.map((e) => ({
+                    name: e.name.trim(),
+                    price: Number(e.price) || 0,
+                  }));
+
                   if (!assignedDishIds || assignedDishIds.size === 0) {
+                    // Register (or update) the group locally — no server
+                    // call needed since it isn't attached to any product
+                    // yet. If the operator was renaming an existing
+                    // standalone group we also drop the old key so the
+                    // list doesn't show duplicates.
+                    setCustomCreatedGroups((prev) => {
+                      const next = { ...prev };
+                      if (editingGroup && editingGroup.name && editingGroup.name !== trimmedName) {
+                        delete next[editingGroup.name];
+                      }
+                      next[trimmedName] = {
+                        name: trimmedName,
+                        required: Boolean(groupRequired),
+                        maxSelections: normalizedMax,
+                        options: normalizedOptions,
+                      };
+                      return next;
+                    });
                     enqueueSnackbar(
-                      'Select at least one product under "Assign to Products" before saving the group.',
-                      { variant: "warning" },
+                      editingGroup
+                        ? `Group "${trimmedName}" updated. Attach it to products from the Products tab when you're ready.`
+                        : `Group "${trimmedName}" created. Attach it to products from the Products tab when you're ready.`,
+                      { variant: "success" },
                     );
+                    setShowManageGroup(false);
+                    setEditingGroup(null);
                     return;
                   }
+
                   saveGroupMut.mutate({
-                    groupName: groupName.trim(),
+                    groupName: trimmedName,
                     oldGroupName: editingGroup ? editingGroup.name : undefined,
                     required: groupRequired,
-                    maxSelections: Number(groupMax) || 1,
-                    options: extrasList.map((e) => ({ name: e.name.trim(), price: Number(e.price) || 0 })),
+                    maxSelections: normalizedMax,
+                    options: normalizedOptions,
                     dishIds: Array.from(assignedDishIds),
                   });
                 }}
@@ -2193,13 +2577,13 @@ const ManageMenu = () => {
           <div className="w-full max-w-[480px] bg-white rounded-2xl p-6 shadow-2xl space-y-4 text-[#0F172A]">
             <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
               <div className="flex items-center gap-2">
-                <h3 className="text-[18px] font-extrabold">{viewingProduct.name}</h3>
+                <h3 className="text-[18px] font-extrabold">{viewingProduct?.name || "Product"}</h3>
                 <span className={`text-[10.5px] font-extrabold px-2 py-0.5 rounded border ${
-                  viewingProduct.isVegetarian !== false
+                  viewingProduct?.isVegetarian !== false
                     ? "bg-[#DCFCE7] text-[#15803D] border-[#86EFAC]"
                     : "bg-[#FEE2E2] text-[#B91C1C] border-[#FCA5A5]"
                 }`}>
-                  {viewingProduct.isVegetarian !== false ? "🌱 Veg" : "🔴 Non-Veg"}
+                  {viewingProduct?.isVegetarian !== false ? "🌱 Veg" : "🔴 Non-Veg"}
                 </span>
               </div>
               <button onClick={() => setViewingProduct(null)} className="text-[#94A3B8] hover:text-[#0F172A]">
@@ -2207,44 +2591,44 @@ const ManageMenu = () => {
               </button>
             </div>
 
-            {viewingProduct.imageUrl || viewingProduct.image ? (
-              <img src={viewingProduct.imageUrl || viewingProduct.image} alt={viewingProduct.name} className="w-full h-44 object-cover rounded-xl border" />
+            {viewingProduct?.imageUrl || viewingProduct?.image ? (
+              <img src={viewingProduct?.imageUrl || viewingProduct?.image} alt={viewingProduct?.name || "Product"} className="w-full h-44 object-cover rounded-xl border" />
             ) : null}
 
             <div className="space-y-3 text-[13px]">
-              {viewingProduct.description && (
+              {viewingProduct?.description && (
                 <p className="text-[#475569] font-medium leading-relaxed">{viewingProduct.description}</p>
               )}
 
               <div className="grid grid-cols-2 gap-3 pt-2 border-t border-[#E2E8F0]">
                 <div className="p-3 rounded-xl bg-[#F8FAFC] border">
                   <span className="text-[#64748B] text-[11px] font-bold">Standard Price</span>
-                  <p className="text-lg font-extrabold text-[#5B42F3]">₹{viewingProduct.price}</p>
+                  <p className="text-lg font-extrabold text-[#5B42F3]">₹{viewingProduct?.price || 0}</p>
                 </div>
                 <div className="p-3 rounded-xl bg-[#F8FAFC] border">
                   <span className="text-[#64748B] text-[11px] font-bold">Display Status</span>
                   <p className="text-[13px] font-extrabold">
-                    {viewingProduct.isAvailable !== false ? "🟢 Display ON" : "🔴 Display OFF"}
+                    {viewingProduct?.isAvailable !== false ? "🟢 Display ON" : "🔴 Display OFF"}
                   </p>
                 </div>
               </div>
 
               {/* Assigned Groups & Components details */}
-              {Array.isArray(viewingProduct.modifierGroups) && viewingProduct.modifierGroups.length > 0 ? (
+              {Array.isArray(viewingProduct?.modifierGroups) && viewingProduct.modifierGroups.length > 0 ? (
                 <div className="p-3 rounded-xl bg-[#F8FAFC] border space-y-2 text-[12px]">
                   <p className="font-extrabold text-[#0F172A]">Assigned Groups & Components ({viewingProduct.modifierGroups.length})</p>
                   <div className="space-y-1.5">
-                    {viewingProduct.modifierGroups.map((g) => (
-                      <div key={g.name} className="p-2.5 rounded-lg bg-white border border-[#E2E8F0]">
+                    {viewingProduct.modifierGroups.map((g, idx) => (
+                      <div key={g?.name || g?._id || idx} className="p-2.5 rounded-lg bg-white border border-[#E2E8F0]">
                         <div className="flex items-center justify-between font-extrabold text-[#0F172A]">
-                          <span>🧩 {g.name}</span>
+                          <span>🧩 {g?.name || "Group"}</span>
                           <span className="text-[10.5px] font-bold text-[#5B42F3] bg-[#EEF0FE] px-2 py-0.5 rounded-md">
-                            {g.required ? "Required" : "Optional"} · max {g.maxSelections || 1}
+                            {g?.required ? "Required" : "Optional"} · max {g?.maxSelections || 1}
                           </span>
                         </div>
-                        {Array.isArray(g.options) && g.options.length > 0 && (
+                        {Array.isArray(g?.options) && g.options.length > 0 && (
                           <p className="text-[11.5px] font-semibold text-[#475569] mt-1">
-                            {g.options.map((o) => `${o.name} (₹${o.price})`).join(", ")}
+                            {g.options.map((o) => `${o?.name || "Item"} (₹${o?.price || 0})`).join(", ")}
                           </p>
                         )}
                       </div>
@@ -2507,33 +2891,90 @@ const ManageMenu = () => {
 
               {/* Assign Groups (Module 8) */}
               <div className="pt-2 border-t border-[#E2E8F0] space-y-2">
-                <label className="text-[12px] font-extrabold text-[#334155]">Assign Groups / Components</label>
+                <div>
+                  <label className="text-[12px] font-extrabold text-[#334155] block">Assign Groups / Components</label>
+                  <span className="text-[11px] font-medium text-[#64748B]">Groups appear in the exact order you select them</span>
+                </div>
                 {groupsList.length === 0 ? (
                   <p className="text-[11.5px] text-[#94A3B8]">No groups created yet.</p>
                 ) : (
-                  <div className="max-h-[140px] overflow-y-auto space-y-1.5 p-2 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
-                    {groupsList.map((g) => {
-                      const checked = prodAssignedGroupNames.has(g.name);
-                      return (
-                        <label key={g.name} className="flex items-center justify-between p-1.5 hover:bg-white rounded-lg cursor-pointer text-[12px] font-bold text-[#334155]">
-                          <div className="flex items-center gap-2">
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => {
-                                const next = new Set(prodAssignedGroupNames);
-                                if (next.has(g.name)) next.delete(g.name);
-                                else next.add(g.name);
-                                setProdAssignedGroupNames(next);
-                              }}
-                              className="w-4 h-4 accent-[#5B42F3]"
-                            />
-                            <span>{g.name}</span>
-                          </div>
-                          <span className="text-[10.5px] font-semibold text-[#64748B]">{(g.options || []).length} Components</span>
-                        </label>
-                      );
-                    })}
+                  <div className="space-y-2">
+                    <div className="max-h-[140px] overflow-y-auto space-y-1.5 p-2 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
+                      {groupsList.map((g) => {
+                        const orderIndex = prodAssignedGroupNames.indexOf(g.name);
+                        const checked = orderIndex !== -1;
+                        return (
+                          <label key={g.name} className="flex items-center justify-between p-1.5 hover:bg-white rounded-lg cursor-pointer text-[12px] font-bold text-[#334155]">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <input
+                                type="checkbox"
+                                checked={checked}
+                                onChange={() => {
+                                  if (checked) {
+                                    setProdAssignedGroupNames(prodAssignedGroupNames.filter((n) => n !== g.name));
+                                  } else {
+                                    setProdAssignedGroupNames([...prodAssignedGroupNames, g.name]);
+                                  }
+                                }}
+                                className="w-4 h-4 accent-[#5B42F3] shrink-0"
+                              />
+                              <span className="truncate">{g.name}</span>
+                              {checked && (
+                                <span className="px-1.5 py-0.2 rounded-full bg-[#5B42F3] text-white text-[10px] font-extrabold shrink-0">
+                                  #{orderIndex + 1}
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[10.5px] font-semibold text-[#64748B] shrink-0">{(g.options || []).length} Components</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+
+                    {prodAssignedGroupNames.length > 0 && (
+                      <div className="p-2.5 rounded-xl bg-[#EEF0FE]/60 border border-[#C7D2FE] space-y-1">
+                        <span className="text-[11px] font-extrabold text-[#5B42F3] uppercase tracking-wider block">
+                          Attached Order ({prodAssignedGroupNames.length})
+                        </span>
+                        <div className="space-y-1">
+                          {prodAssignedGroupNames.map((name, idx) => (
+                            <div key={name} className="flex items-center justify-between px-2 py-0.5 rounded bg-white border border-[#E2E8F0] text-[11.5px] font-bold text-[#0F172A]">
+                              <span className="truncate">#{idx + 1} {name}</span>
+                              <div className="flex items-center gap-1 shrink-0">
+                                {idx > 0 && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const next = [...prodAssignedGroupNames];
+                                      const temp = next[idx - 1];
+                                      next[idx - 1] = next[idx];
+                                      next[idx] = temp;
+                                      setProdAssignedGroupNames(next);
+                                    }}
+                                    className="w-4 h-4 rounded text-[#5B42F3] hover:bg-[#EEF0FE] text-[10px]"
+                                  >▲</button>
+                                )}
+                                {idx < prodAssignedGroupNames.length - 1 && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const next = [...prodAssignedGroupNames];
+                                      const temp = next[idx + 1];
+                                      next[idx + 1] = next[idx];
+                                      next[idx] = temp;
+                                      setProdAssignedGroupNames(next);
+                                    }}
+                                    className="w-4 h-4 rounded text-[#5B42F3] hover:bg-[#EEF0FE] text-[10px]"
+                                  >▼</button>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -2841,6 +3282,83 @@ const ManageMenu = () => {
                   : bulkGroupPickerMode === "remove"
                   ? `Remove ${bulkPickedGroups.size || ""} Group${bulkPickedGroups.size === 1 ? "" : "s"}`
                   : `Add ${bulkPickedGroups.size || ""} Group${bulkPickedGroups.size === 1 ? "" : "s"}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/*
+        Shared confirmation modal.
+
+        Every destructive action in Manage Menu (Delete Product,
+        Delete Category, Delete Group, Delete Component, Bulk Delete)
+        now routes through `askConfirm()` which populates `confirmState`.
+        The old `window.confirm()` calls have been replaced so the biller
+        never loses an item to an accidental mis-click, and so the
+        confirmation UX matches the rest of the app (no native browser
+        dialog).
+      */}
+      {confirmState && (
+        <div
+          className="fixed inset-0 z-[200] bg-black/60 flex items-center justify-center p-4"
+          onClick={closeConfirm}
+          role="dialog"
+          aria-modal="true"
+        >
+          <div
+            className="w-full max-w-[440px] bg-white rounded-2xl shadow-2xl p-6 space-y-4 text-[#0F172A]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start gap-3">
+              <span
+                className={`w-10 h-10 rounded-full flex items-center justify-center text-[18px] font-extrabold shrink-0 ${
+                  confirmState.tone === "danger"
+                    ? "bg-[#FEE2E2] text-[#DC2626]"
+                    : "bg-[#EEF0FE] text-[#5B42F3]"
+                }`}
+                aria-hidden="true"
+              >
+                {confirmState.tone === "danger" ? "!" : "?"}
+              </span>
+              <div className="min-w-0 flex-1">
+                <h3 className="text-[16.5px] font-extrabold text-[#0F172A] leading-snug">
+                  {confirmState.title}
+                </h3>
+                {confirmState.message && (
+                  <p className="mt-1 text-[13px] leading-relaxed text-[#475569]">
+                    {confirmState.message}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={closeConfirm}
+                className="h-[40px] px-4 rounded-xl border border-[#E2E8F0] text-[#475569] text-[13px] font-bold hover:bg-[#F8FAFC]"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const fn = confirmState.onConfirm;
+                  // Close the modal FIRST so the confirm callback can open
+                  // another modal (e.g. success toast + re-render) without
+                  // fighting our closeConfirm() call.
+                  closeConfirm();
+                  if (typeof fn === "function") fn();
+                }}
+                className={`h-[40px] px-5 rounded-xl text-white text-[13px] font-extrabold shadow-md ${
+                  confirmState.tone === "danger"
+                    ? "bg-[#DC2626] hover:bg-[#B91C1C]"
+                    : "bg-[#5B42F3] hover:bg-[#4A32E0]"
+                }`}
+                autoFocus
+              >
+                {confirmState.confirmLabel || "Confirm"}
               </button>
             </div>
           </div>

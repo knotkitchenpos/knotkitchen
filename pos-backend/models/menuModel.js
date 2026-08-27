@@ -170,6 +170,13 @@ const menuSchema = new mongoose.Schema({
       items: [menuItemSchema],
     },
 
+    // Display order for Manage Menu / storefront category chips. Older
+    // records default to 0; the reorder endpoint stamps a fresh value on
+    // every menu returned by the caller so ties break deterministically.
+    // The `getMenus` projection sorts by this ascending, falling back on
+    // createdAt when several menus share the default 0.
+    sortOrder: { type: Number, default: 0 },
+
     hasPublishedToWebsite: { type: Boolean, default: false },
     lastPublishedToWebsiteAt: { type: Date, default: null },
     websiteVersion: { type: Number, default: 0 },

@@ -105,6 +105,7 @@ const openingHourSchema = new mongoose.Schema(
     day: { type: Number, min: 0, max: 6, required: true }, // 0 = Sunday
     isOpen: { type: Boolean, default: true },
     openTime: { type: String, default: "09:00" }, // HH:mm
+    closeDay: { type: Number, min: 0, max: 6, default: null }, // 0 = Sunday, 1 = Monday...
     closeTime: { type: String, default: "22:00" }, // HH:mm
   },
   { _id: false }
@@ -267,6 +268,11 @@ const orderingSchema = new mongoose.Schema(
       delivery: { type: Number, default: 45, min: 0, max: 24 * 60 },
       table: { type: Number, default: 20, min: 0, max: 24 * 60 },
     },
+    autoCompleteMinutes: {
+      collection: { type: Number, default: 0, min: 0, max: 24 * 60 },
+      delivery: { type: Number, default: 0, min: 0, max: 24 * 60 },
+      table: { type: Number, default: 0, min: 0, max: 24 * 60 },
+    },
 
     // Module 8 §1 — Minimum order per channel & applicability
     minOrderConfig: {
@@ -365,6 +371,11 @@ const websiteSettingsSchema = new mongoose.Schema(
     },
 
     holidays: { type: [holidaySchema], default: [] },
+    closedForToday: {
+      enabled: { type: Boolean, default: false },
+      date: { type: String, default: "" },
+      reason: { type: String, default: "Closed for Today" },
+    },
     paymentGateways: { type: paymentGatewaysSchema, default: () => ({}) },
 
     // Module 8 §4 — Discounts

@@ -14,6 +14,7 @@ import {
   publishWebsiteCache,
   updateChannelTimings,
   updateHolidays,
+  toggleClosedForToday,
   updateOrderToggles,
   updatePosSettings,
   updateStoreProperties,
@@ -619,6 +620,22 @@ const OrderTypesAutoReadyView = () => {
   const [delAuto, setDelAuto] = useState(autoReady.delivery ?? 45);
   const [tblAuto, setTblAuto] = useState(autoReady.table ?? 20);
 
+  // Auto-Complete Duration state
+  const getPresetAndCustom = (val) => {
+    const num = Number(val) || 0;
+    if ([0, 15, 30, 60, 120].includes(num)) {
+      return { preset: String(num), custom: "" };
+    }
+    return { preset: "custom", custom: String(num) };
+  };
+
+  const [colCompPreset, setColCompPreset] = useState("0");
+  const [colCompCustom, setColCompCustom] = useState("");
+  const [delCompPreset, setDelCompPreset] = useState("0");
+  const [delCompCustom, setDelCompCustom] = useState("");
+  const [tblCompPreset, setTblCompPreset] = useState("0");
+  const [tblCompCustom, setTblCompCustom] = useState("");
+
   // Sync state when backend query data arrives asynchronously
   useEffect(() => {
     if (propsRes?.data?.data?.orderTypeToggles) {
@@ -635,6 +652,21 @@ const OrderTypesAutoReadyView = () => {
       setColAuto(arm.collection ?? 20);
       setDelAuto(arm.delivery ?? 45);
       setTblAuto(arm.table ?? 20);
+    }
+
+    if (webRes?.data?.data?.settings?.ordering?.autoCompleteMinutes) {
+      const acm = webRes.data.data.settings.ordering.autoCompleteMinutes;
+      const col = getPresetAndCustom(acm.collection);
+      setColCompPreset(col.preset);
+      setColCompCustom(col.custom);
+
+      const del = getPresetAndCustom(acm.delivery);
+      setDelCompPreset(del.preset);
+      setDelCompCustom(del.custom);
+
+      const tbl = getPresetAndCustom(acm.table);
+      setTblCompPreset(tbl.preset);
+      setTblCompCustom(tbl.custom);
     }
   }, [webRes]);
 
@@ -656,6 +688,15 @@ const OrderTypesAutoReadyView = () => {
     onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed", { variant: "error" }),
   });
 
+  const autoCompleteMutation = useMutation({
+    mutationFn: (minutes) => updateWebsiteSettings({ ordering: { autoCompleteMinutes: minutes } }),
+    onSuccess: () => {
+      enqueueSnackbar("Auto-complete durations updated!", { variant: "success" });
+      qc.invalidateQueries({ queryKey: ["website", "settings"] });
+    },
+    onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed", { variant: "error" }),
+  });
+
   const saveToggles = () => {
     toggleMutation.mutate({ collection: colToggle, delivery: delToggle, table: tblToggle });
   };
@@ -665,6 +706,18 @@ const OrderTypesAutoReadyView = () => {
       collection: Number(colAuto) || 0,
       delivery: Number(delAuto) || 0,
       table: Number(tblAuto) || 0,
+    });
+  };
+
+  const saveAutoComplete = () => {
+    const colVal = colCompPreset === "custom" ? (Number(colCompCustom) || 0) : (Number(colCompPreset) || 0);
+    const delVal = delCompPreset === "custom" ? (Number(delCompCustom) || 0) : (Number(delCompPreset) || 0);
+    const tblVal = tblCompPreset === "custom" ? (Number(tblCompCustom) || 0) : (Number(tblCompPreset) || 0);
+
+    autoCompleteMutation.mutate({
+      collection: colVal,
+      delivery: delVal,
+      table: tblVal,
     });
   };
 
@@ -779,6 +832,109 @@ const OrderTypesAutoReadyView = () => {
           </button>
         </div>
       </div>
+
+      {/* Auto-Complete Duration Settings */}
+      <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
+        <div>
+          <h4 className="text-[15px] font-extrabold text-[#0F172A]">Auto-Complete Duration</h4>
+          <p className="text-[12px] text-[#94A3B8]">
+            Set how long an order remains active before it is automatically marked as Completed (e.g. 15m, 30m, 1h, 2h or Custom). Leave Disabled for manual POS completion.
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[13px]">
+          {/* Collection */}
+          <div>
+            <label className="text-[11.5px] font-bold text-[#94A3B8] block mb-1">Collection Orders</label>
+            <select
+              value={colCompPreset}
+              onChange={(e) => setColCompPreset(e.target.value)}
+              className="w-full h-[38px] px-3 rounded-xl border border-[#E2E8F0] font-bold text-[#0F172A] bg-white cursor-pointer"
+            >
+              <option value="0">Disabled (Manual POS completion)</option>
+              <option value="15">15 minutes</option>
+              <option value="30">30 minutes</option>
+              <option value="60">1 hour</option>
+              <option value="120">2 hours</option>
+              <option value="custom">Custom duration</option>
+            </select>
+            {colCompPreset === "custom" && (
+              <input
+                type="number"
+                min={1}
+                placeholder="Duration in minutes"
+                value={colCompCustom}
+                onChange={(e) => setColCompCustom(e.target.value)}
+                className="w-full h-[38px] px-3 mt-2 rounded-xl border border-[#E2E8F0] font-bold text-[#0F172A]"
+              />
+            )}
+          </div>
+
+          {/* Delivery */}
+          <div>
+            <label className="text-[11.5px] font-bold text-[#94A3B8] block mb-1">Delivery Orders</label>
+            <select
+              value={delCompPreset}
+              onChange={(e) => setDelCompPreset(e.target.value)}
+              className="w-full h-[38px] px-3 rounded-xl border border-[#E2E8F0] font-bold text-[#0F172A] bg-white cursor-pointer"
+            >
+              <option value="0">Disabled (Manual POS completion)</option>
+              <option value="15">15 minutes</option>
+              <option value="30">30 minutes</option>
+              <option value="60">1 hour</option>
+              <option value="120">2 hours</option>
+              <option value="custom">Custom duration</option>
+            </select>
+            {delCompPreset === "custom" && (
+              <input
+                type="number"
+                min={1}
+                placeholder="Duration in minutes"
+                value={delCompCustom}
+                onChange={(e) => setDelCompCustom(e.target.value)}
+                className="w-full h-[38px] px-3 mt-2 rounded-xl border border-[#E2E8F0] font-bold text-[#0F172A]"
+              />
+            )}
+          </div>
+
+          {/* Table / Dine-in */}
+          <div>
+            <label className="text-[11.5px] font-bold text-[#94A3B8] block mb-1">Table Orders</label>
+            <select
+              value={tblCompPreset}
+              onChange={(e) => setTblCompPreset(e.target.value)}
+              className="w-full h-[38px] px-3 rounded-xl border border-[#E2E8F0] font-bold text-[#0F172A] bg-white cursor-pointer"
+            >
+              <option value="0">Disabled (Manual POS completion)</option>
+              <option value="15">15 minutes</option>
+              <option value="30">30 minutes</option>
+              <option value="60">1 hour</option>
+              <option value="120">2 hours</option>
+              <option value="custom">Custom duration</option>
+            </select>
+            {tblCompPreset === "custom" && (
+              <input
+                type="number"
+                min={1}
+                placeholder="Duration in minutes"
+                value={tblCompCustom}
+                onChange={(e) => setTblCompCustom(e.target.value)}
+                className="w-full h-[38px] px-3 mt-2 rounded-xl border border-[#E2E8F0] font-bold text-[#0F172A]"
+              />
+            )}
+          </div>
+        </div>
+
+        <div className="pt-1 flex justify-end">
+          <button
+            onClick={saveAutoComplete}
+            disabled={autoCompleteMutation.isPending}
+            className="h-[40px] px-5 rounded-xl bg-[#5B42F3] text-white text-[13px] font-bold hover:bg-[#4A32E0] disabled:opacity-50"
+          >
+            {autoCompleteMutation.isPending ? "Saving…" : "Save Auto-Complete Settings"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 };
@@ -825,10 +981,18 @@ const TimingsHolidaysView = () => {
     const map = {};
     DAYS.forEach(({ key, dayIndex }) => {
       const found = (rawData.weekly || []).find((w) => Number(w.day) === dayIndex);
+      const openT = found?.openTime || "16:00";
+      const closeT = found?.closeTime || "23:50";
+      const isOvr = isOvernight(openT, closeT);
+      const closeD = found?.closeDay !== undefined && found?.closeDay !== null
+        ? Number(found.closeDay)
+        : (isOvr ? (dayIndex + 1) % 7 : dayIndex);
+
       map[key] = {
         isOpen: found ? Boolean(found.isOpen) : true,
-        openTime: found?.openTime || "16:00",
-        closeTime: found?.closeTime || "23:50",
+        openTime: openT,
+        closeDay: closeD,
+        closeTime: closeT,
         periods: Array.isArray(found?.periods) ? found.periods : [],
       };
     });
@@ -853,6 +1017,15 @@ const TimingsHolidaysView = () => {
     onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to update holidays", { variant: "error" }),
   });
 
+  const cftMutation = useMutation({
+    mutationFn: toggleClosedForToday,
+    onSuccess: (res) => {
+      enqueueSnackbar(res.data?.message || "Closed for Today status updated!", { variant: "success" });
+      qc.invalidateQueries({ queryKey: ["website", "settings"] });
+    },
+    onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to update Closed for Today status", { variant: "error" }),
+  });
+
   const format12H = (hhmm) => {
     if (!hhmm) return "04:00 PM";
     const [h, m] = String(hhmm).split(":").map(Number);
@@ -869,12 +1042,6 @@ const TimingsHolidaysView = () => {
     return ch * 60 + cm < oh * 60 + om;
   };
 
-  const getNextDayName = (dayName) => {
-    const days = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
-    const idx = days.indexOf(dayName);
-    return days[(idx + 1) % 7];
-  };
-
   const handleToggleDay = (dayKey) => {
     setWeeklySchedule((prev) => ({
       ...prev,
@@ -887,17 +1054,42 @@ const TimingsHolidaysView = () => {
 
   const handleTimeChange = (dayKey, field, val, periodIdx = null) => {
     setWeeklySchedule((prev) => {
-      const current = prev[dayKey] || { isOpen: true, openTime: "16:00", closeTime: "23:50", periods: [] };
+      const current = prev[dayKey] || { isOpen: true, openTime: "16:00", closeDay: 1, closeTime: "23:50", periods: [] };
       if (periodIdx !== null) {
         const copyPeriods = [...(current.periods || [])];
         copyPeriods[periodIdx] = { ...copyPeriods[periodIdx], [field]: val };
         return { ...prev, [dayKey]: { ...current, periods: copyPeriods } };
       }
+
       const updated = { ...current, [field]: val };
+
+      // Auto-adjust closeDay if openTime or closeTime is changed and closeDay wasn't manually specified
+      if (field === "openTime" || field === "closeTime") {
+        const openT = field === "openTime" ? val : current.openTime;
+        const closeT = field === "closeTime" ? val : current.closeTime;
+        const dayObj = DAYS.find((d) => d.key === dayKey);
+        const startDayIdx = dayObj ? dayObj.dayIndex : 0;
+        if (isOvernight(openT, closeT)) {
+          updated.closeDay = (startDayIdx + 1) % 7;
+        } else {
+          updated.closeDay = startDayIdx;
+        }
+      }
+
       if (sameTimingAllDays) {
         const syncAll = {};
-        DAYS.forEach(({ key }) => {
-          syncAll[key] = { ...prev[key], [field]: val };
+        DAYS.forEach(({ key, dayIndex }) => {
+          const itemOpenT = field === "openTime" ? val : (prev[key]?.openTime || "16:00");
+          const itemCloseT = field === "closeTime" ? val : (prev[key]?.closeTime || "23:50");
+          let itemCloseD = field === "closeDay" ? Number(val) : (prev[key]?.closeDay ?? dayIndex);
+          if (field === "openTime" || field === "closeTime") {
+            itemCloseD = isOvernight(itemOpenT, itemCloseT) ? (dayIndex + 1) % 7 : dayIndex;
+          }
+          syncAll[key] = {
+            ...prev[key],
+            [field]: val,
+            closeDay: itemCloseD,
+          };
         });
         return syncAll;
       }
@@ -924,11 +1116,19 @@ const TimingsHolidaysView = () => {
   const handleSubmitDay = (dayKey) => {
     const weekly = DAYS.map(({ key, dayIndex }) => {
       const dayData = weeklySchedule[key] || { isOpen: true, openTime: "16:00", closeTime: "23:50", periods: [] };
+      const openT = dayData.openTime || "16:00";
+      const closeT = dayData.closeTime || "23:50";
+      const isOvr = isOvernight(openT, closeT);
+      const closeD = dayData.closeDay !== undefined && dayData.closeDay !== null
+        ? Number(dayData.closeDay)
+        : (isOvr ? (dayIndex + 1) % 7 : dayIndex);
+
       return {
         day: dayIndex,
-        isOpen: dayData.isOpen,
-        openTime: dayData.openTime,
-        closeTime: dayData.closeTime,
+        isOpen: Boolean(dayData.isOpen),
+        openTime: openT,
+        closeDay: closeD,
+        closeTime: closeT,
         periods: dayData.periods || [],
       };
     });
@@ -1035,39 +1235,56 @@ const TimingsHolidaysView = () => {
 
                   {/* Primary Operating Time Inputs */}
                   {isOpen ? (
-                    <div className="flex items-center gap-3 flex-1">
-                      {/* Opening Time Input */}
-                      <div className="relative">
+                    <div className="flex items-center gap-2 flex-1 flex-wrap">
+                      {/* Opening / Start Time Input */}
+                      <div className="flex items-center gap-1.5">
                         <input
                           type="time"
                           value={dayData.openTime}
                           onChange={(e) => handleTimeChange(key, "openTime", e.target.value)}
                           className="h-[38px] px-3 rounded-lg border border-[#E2E8F0] font-semibold text-[13.5px] text-[#334155] bg-white focus:border-[#5B42F3]"
                         />
-                        <span className="ml-2 text-[12.5px] font-bold text-[#64748B]">
+                        <span className="text-[12px] font-bold text-[#64748B] min-w-[65px]">
                           {format12H(dayData.openTime)}
                         </span>
                       </div>
 
-                      <span className="text-[#94A3B8] font-bold px-1">—</span>
+                      {/* Connector Arrow */}
+                      <span className="text-[#5B42F3] font-extrabold text-sm px-1">→</span>
 
-                      {/* Closing Time Input */}
-                      <div className="flex items-center gap-2">
-                        {overnight && (
-                          <span className="px-2.5 py-1 rounded-md bg-[#E0F2FE] text-[#0284C7] text-[11.5px] font-extrabold shrink-0">
-                            {getNextDayName(label)}
-                          </span>
-                        )}
+                      {/* End Day Selector Dropdown */}
+                      <div className="flex items-center gap-1.5">
+                        <select
+                          value={dayData.closeDay !== undefined && dayData.closeDay !== null ? dayData.closeDay : (overnight ? (dayIndex + 1) % 7 : dayIndex)}
+                          onChange={(e) => handleTimeChange(key, "closeDay", Number(e.target.value))}
+                          className="h-[38px] px-2.5 rounded-lg border border-[#E2E8F0] font-semibold text-[13px] text-[#334155] bg-white focus:border-[#5B42F3] cursor-pointer"
+                          title="Select End Day"
+                        >
+                          {DAYS.map((d) => (
+                            <option key={d.dayIndex} value={d.dayIndex}>
+                              {d.label}
+                            </option>
+                          ))}
+                        </select>
+
+                        {/* Closing / End Time Input */}
                         <input
                           type="time"
                           value={dayData.closeTime}
                           onChange={(e) => handleTimeChange(key, "closeTime", e.target.value)}
                           className="h-[38px] px-3 rounded-lg border border-[#E2E8F0] font-semibold text-[13.5px] text-[#334155] bg-white focus:border-[#5B42F3]"
                         />
-                        <span className="ml-2 text-[12.5px] font-bold text-[#64748B]">
+                        <span className="text-[12px] font-bold text-[#64748B] min-w-[65px]">
                           {format12H(dayData.closeTime)}
                         </span>
                       </div>
+
+                      {/* Overnight / Next-Day Indicator Badge */}
+                      {(Number(dayData.closeDay) !== dayIndex || overnight) && (
+                        <span className="px-2.5 py-1 rounded-md bg-[#EEF0FE] text-[#5B42F3] text-[11px] font-extrabold shrink-0 flex items-center gap-1">
+                          <span>🌙</span> Overnight
+                        </span>
+                      )}
                     </div>
                   ) : (
                     <div className="flex-1 text-[13px] font-bold text-[#94A3B8] italic">
@@ -1131,6 +1348,57 @@ const TimingsHolidaysView = () => {
               </div>
             );
           })}
+        </div>
+      </div>
+
+      {/* Closed for Today 1-Day Override Card */}
+      <div className={`border rounded-2xl p-5 transition-all ${
+        settings.closedForToday?.enabled
+          ? "bg-[#FEF2F2] border-[#FCA5A5]"
+          : "bg-white border-[#E2E8F0]"
+      }`}>
+        <div className="flex items-center justify-between flex-wrap gap-4">
+          <div className="space-y-1 max-w-[640px]">
+            <div className="flex items-center gap-2.5">
+              <h4 className="text-[15px] font-extrabold text-[#0F172A]">Closed for Today</h4>
+              {settings.closedForToday?.enabled ? (
+                <span className="px-2.5 py-0.5 rounded-full bg-[#DC2626] text-white text-[11px] font-extrabold uppercase tracking-wide animate-pulse">
+                  Active (Closed Today)
+                </span>
+              ) : (
+                <span className="px-2.5 py-0.5 rounded-full bg-[#F1F5F9] text-[#64748B] text-[11px] font-bold">
+                  Normal Schedule Active
+                </span>
+              )}
+            </div>
+            <p className="text-[12.5px] text-[#475569]">
+              Temporarily close takeaway and online ordering for the entire current business day (including overnight shift). Regular schedule will automatically resume tomorrow without altering any configured hours.
+            </p>
+            {settings.closedForToday?.enabled && (
+              <p className="text-[12px] font-bold text-[#DC2626] pt-1">
+                🚫 Ordering is currently blocked for today ({settings.closedForToday?.date}). Will automatically re-open on tomorrow's scheduled time.
+              </p>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                const nowState = Boolean(settings.closedForToday?.enabled);
+                cftMutation.mutate({ enabled: !nowState });
+              }}
+              disabled={cftMutation.isPending}
+              className={`h-[42px] px-5 rounded-xl text-[13.5px] font-extrabold transition-all flex items-center gap-2 shadow-xs ${
+                settings.closedForToday?.enabled
+                  ? "bg-[#DC2626] text-white hover:bg-[#B91C1C]"
+                  : "bg-[#0F172A] text-white hover:bg-[#1E293B]"
+              } disabled:opacity-50`}
+            >
+              <span className={`w-2.5 h-2.5 rounded-full ${settings.closedForToday?.enabled ? "bg-white animate-ping" : "bg-emerald-400"}`} />
+              {settings.closedForToday?.enabled ? "Turn Off 'Closed for Today'" : "Enable 'Closed for Today'"}
+            </button>
+          </div>
         </div>
       </div>
 

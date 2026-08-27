@@ -47,11 +47,65 @@ const isWithinWindow = (minutes, startTime, endTime) => {
 };
 
 /**
+ * Check if the store is override-closed for today (including overnight boundary).
+ */
+const isClosedForToday = (settings, timezone) => {
+  const cft = settings?.closedForToday;
+  if (!cft || !cft.enabled || !cft.date) return false;
+
+  const { day, date } = nowInTimezone(timezone);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  const todayStr = `${y}-${m}-${d}`;
+
+  // 1. Direct match for today's date
+  if (cft.date === todayStr) {
+    return true;
+  }
+
+  // 2. Check if yesterday was cft.date AND we are currently within yesterday's overnight shift
+  const yesterday = new Date(date);
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yy = yesterday.getFullYear();
+  const ym = String(yesterday.getMonth() + 1).padStart(2, "0");
+  const yd = String(yesterday.getDate()).padStart(2, "0");
+  const yesterdayStr = `${yy}-${ym}-${yd}`;
+
+  if (cft.date === yesterdayStr) {
+    const prevDay = (day + 6) % 7;
+    const yesterdayEntry = settings.openingHours?.find((h) => Number(h.day) === prevDay);
+    if (yesterdayEntry && yesterdayEntry.isOpen) {
+      const startM = toMinutes(yesterdayEntry.openTime);
+      const endM = toMinutes(yesterdayEntry.closeTime);
+      const startDay = Number(yesterdayEntry.day);
+      const closeDay = (yesterdayEntry.closeDay !== undefined && yesterdayEntry.closeDay !== null)
+        ? Number(yesterdayEntry.closeDay)
+        : (endM < startM ? (startDay + 1) % 7 : startDay);
+
+      if (startDay !== closeDay) {
+        const { minutes } = nowInTimezone(timezone);
+        if (minutes <= endM) {
+          return true; // Still inside yesterday's overnight shift!
+        }
+      }
+    }
+  }
+
+  return false;
+};
+
+/**
  * Is the store currently open for online orders?
+ * Supports overnight schedules and closeDay crossing into next day.
  * @returns {{isOpen:boolean, reason:string, nextOpen:{day:number,time:string}|null}}
  */
 const isStoreOpen = (settings, timezone) => {
   if (!settings) return { isOpen: false, reason: "Store unavailable", nextOpen: null };
+
+  if (isClosedForToday(settings, timezone)) {
+    return { isOpen: false, reason: settings.closedForToday?.reason || "Store is Closed for Today", nextOpen: null };
+  }
 
   // Stores that have not opted into hour enforcement are always orderable.
   if (!settings.useBusinessHours || !Array.isArray(settings.openingHours) || !settings.openingHours.length) {
@@ -59,13 +113,47 @@ const isStoreOpen = (settings, timezone) => {
   }
 
   const { day, minutes } = nowInTimezone(timezone);
-  const today = settings.openingHours.find((h) => Number(h.day) === day);
 
-  if (today && today.isOpen && isWithinWindow(minutes, today.openTime, today.closeTime)) {
+  // Helper to check if an opening hour entry h is currently active
+  const isEntryActive = (h, isToday) => {
+    if (!h || !h.isOpen) return false;
+    const startM = toMinutes(h.openTime);
+    const endM = toMinutes(h.closeTime);
+    const startDay = Number(h.day);
+    const closeDay = (h.closeDay !== undefined && h.closeDay !== null)
+      ? Number(h.closeDay)
+      : (endM < startM ? (startDay + 1) % 7 : startDay);
+
+    if (startDay === closeDay) {
+      // Same-day shift
+      if (!isToday) return false;
+      return minutes >= startM && minutes <= endM;
+    } else {
+      // Overnight or multi-day shift
+      if (isToday) {
+        // Evening portion of shift started today
+        return minutes >= startM;
+      } else {
+        // Morning portion of shift started yesterday extending into today
+        return minutes <= endM;
+      }
+    }
+  };
+
+  // 1. Check today's shift
+  const todayEntry = settings.openingHours.find((h) => Number(h.day) === day);
+  if (isEntryActive(todayEntry, true)) {
     return { isOpen: true, reason: "", nextOpen: null };
   }
 
-  // Find the next opening slot within the coming week for the "opens at" hint.
+  // 2. Check yesterday's overnight shift
+  const prevDay = (day + 6) % 7;
+  const yesterdayEntry = settings.openingHours.find((h) => Number(h.day) === prevDay);
+  if (isEntryActive(yesterdayEntry, false)) {
+    return { isOpen: true, reason: "", nextOpen: null };
+  }
+
+  // Find next opening slot
   let nextOpen = null;
   for (let i = 0; i < 8; i += 1) {
     const probeDay = (day + i) % 7;
@@ -121,6 +209,7 @@ const getEffectivePrice = (item, timezone) => {
 
 module.exports = {
   isStoreOpen,
+  isClosedForToday,
   isItemAvailableNow,
   getEffectivePrice,
   isWithinWindow,
