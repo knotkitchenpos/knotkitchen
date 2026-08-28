@@ -30,6 +30,7 @@ Let's Encrypt HTTP-01._
 | Super-admin / onboarding SPA | `onboard.knotkitchen.online` | `admin-web` |
 | POS backend API | `api.knotkitchen.online` | `pos-api` |
 | Super-admin backend API | `admin-api.knotkitchen.online` | `admin-api` |
+| Partner onboarding / agreement portal | `agreement.knotkitchen.online` | `onboard-portal` (separate repo: `knotkitchenpos/onboard`, cloned to `/srv/onboard`) |
 
 Only `caddy` publishes host ports 80/443. Everything else is on the internal
 `knot` Docker network and is only reachable through Caddy.

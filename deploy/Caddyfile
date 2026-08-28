@@ -114,3 +114,25 @@ csd.{$BASE_DOMAIN}, {$BASE_DOMAIN} {
 		header_up Host {host}
 	}
 }
+
+# =============================================================================
+# agreement.knotkitchen.online — Partner Onboarding & Agreement portal
+# =============================================================================
+agreement.{$BASE_DOMAIN} {
+	import security_headers
+
+	request_body {
+		max_size 20MB
+	}
+
+	encode zstd gzip
+	reverse_proxy onboard-portal:3000 {
+		header_up X-Real-IP           {remote_host}
+		header_up X-Forwarded-For     {remote_host}
+		header_up X-Forwarded-Proto   {scheme}
+		header_up X-Forwarded-Host    {host}
+
+		health_uri     /api/health
+		health_interval 15s
+	}
+}

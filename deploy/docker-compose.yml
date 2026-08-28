@@ -24,6 +24,8 @@ volumes:
   caddy_data:      # ACME certs, OCSP staples — MUST persist across restarts
   caddy_config:
   backend_uploads: # only used when MEDIA_STORAGE_PROVIDER=local (dev/small deploys)
+  onboard_data:    # onboard-portal's server/data/database.json (agents + agreements)
+  onboard_uploads: # onboard-portal's uploaded KYC documents
 
 services:
   # ---------------------------------------------------------------------------
@@ -166,6 +168,31 @@ services:
     networks: [knot]
 
   # ---------------------------------------------------------------------------
+  # Partner Onboarding & Agreement portal  →  agreement.${BASE_DOMAIN}
+  # Separate repo (knotkitchenpos/onboard), cloned as a sibling of this repo
+  # at /srv/onboard on the VPS.
+  # ---------------------------------------------------------------------------
+  onboard-portal:
+    build:
+      context: ../../onboard
+      dockerfile: Dockerfile
+    image: knotkitchen/onboard-portal:latest
+    restart: unless-stopped
+    networks: [knot]
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      ALLOWED_ORIGINS: https://agreement.${BASE_DOMAIN}
+      AGENT_JWT_SECRET: ${ONBOARD_JWT_SECRET}
+      # Only used to bootstrap an admin account if server/data/database.json
+      # doesn't exist on the volume yet.
+      ADMIN_USERNAME: ${ONBOARD_ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ONBOARD_ADMIN_PASSWORD}
+    volumes:
+      - onboard_data:/app/server/data
+      - onboard_uploads:/app/uploads
+
+  # ---------------------------------------------------------------------------
   # Caddy reverse proxy — the only container that publishes host ports.
   # Uses Let's Encrypt HTTP-01 (Hostinger DNS, no Cloudflare) to obtain and
   # renew certificates for every hostname in deploy/Caddyfile automatically.
@@ -193,6 +220,7 @@ services:
     depends_on:
       - pos-api
       - admin-api
+      - onboard-portal
       - pos-web
       - admin-web
       - customer-web
