@@ -145,7 +145,7 @@ services:
       context: ../knotkitchen-admin/frontend
       dockerfile: Dockerfile
       args:
-        VITE_BACKEND_URL: https://admin-api.${BASE_DOMAIN}
+        VITE_API_BASE_URL: https://admin-api.${BASE_DOMAIN}/api
     image: knotkitchen/admin-web:latest
     restart: unless-stopped
     networks: [knot]
