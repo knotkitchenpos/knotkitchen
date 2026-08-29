@@ -9,6 +9,9 @@ import StoreDetail from "./pages/StoreDetail";
 import Placeholder from "./pages/Placeholder";
 import Dashboard from "./pages/Dashboard";
 import Onboarding from "./pages/Onboarding";
+import SearchConsole from "./pages/SearchConsole";
+import Jobs from "./pages/Jobs";
+import JobDetail from "./pages/JobDetail";
 
 const Splash = () => (
   <div className="flex min-h-screen items-center justify-center bg-navy-950 text-navy-300">
@@ -56,9 +59,10 @@ const App = () => (
           <Route path="/profile" element={<Profile />} />
           <Route path="/stores" element={<StoreSearch />} />
           <Route path="/stores/:storeId" element={<StoreDetail />} />
-          <Route path="/search" element={<Placeholder title="Search Console" phase={3} />} />
+          <Route path="/search" element={<SearchConsole />} />
           <Route path="/chat" element={<Placeholder title="Chat" phase={4} />} />
-          <Route path="/jobs" element={<Placeholder title="Jobs" phase={3} />} />
+          <Route path="/jobs" element={<Jobs />} />
+          <Route path="/jobs/:jobId" element={<JobDetail />} />
 
           {/* Admin only */}
           <Route

@@ -63,4 +63,19 @@ export const onboarding = {
   createStore: (payload) => api.post("/onboarding/stores", payload).then((r) => r.data.data),
 };
 
+export const orders = {
+  search: (params) => api.get("/orders/search", { params }).then((r) => r.data.data),
+  get: (id) => api.get(`/orders/${id}`).then((r) => r.data.data),
+};
+
+export const jobs = {
+  list: (params) => api.get("/jobs", { params }).then((r) => r.data.data),
+  get: (id) => api.get(`/jobs/${id}`).then((r) => r.data.data),
+  create: (payload) => api.post("/jobs", payload).then((r) => r.data.data),
+  update: (id, payload) => api.patch(`/jobs/${id}`, payload).then((r) => r.data.data),
+  setStatus: (id, status) => api.patch(`/jobs/${id}/status`, { status }).then((r) => r.data.data),
+  comment: (id, body) => api.post(`/jobs/${id}/comments`, { body }).then((r) => r.data.data),
+  assignees: () => api.get("/jobs/meta/assignees").then((r) => r.data.data),
+};
+
 export default api;

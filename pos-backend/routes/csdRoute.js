@@ -7,6 +7,10 @@ const { sendOtp, verifyOtpAndSignIn, me, logout } = require("../controllers/csdA
 const { searchStores, getStore, updateStoreStatus } = require("../controllers/csdStoreController");
 const { getDashboard } = require("../controllers/csdDashboardController");
 const { createStore, getOptions } = require("../controllers/csdOnboardingController");
+const { searchOrders, getOrder } = require("../controllers/csdSearchController");
+const {
+  listJobs, getJob, createJob, updateJob, changeStatus, addComment, listAssignees,
+} = require("../controllers/csdJobController");
 
 /**
  * KnotKitchen Business — CSD + Admin panel API (csd.knotkitchen.online).
@@ -58,6 +62,22 @@ router.post("/auth/logout", logout);
 // ---------------------------------------------------------------------------
 router.get("/stores/search", searchStores);
 router.get("/stores/:storeId", getStore);
+
+// Search Console — multi-filter order lookup, core CSD work.
+router.get("/orders/search", searchOrders);
+router.get("/orders/:id", getOrder);
+
+// Jobs. Shared by design: the spec wants a record of who did what work for
+// which restaurant, which only holds if staff can see and pick up each
+// other's jobs. There is deliberately NO delete route — "never permanently
+// delete closed jobs from the system".
+router.get("/jobs/meta/assignees", listAssignees);
+router.get("/jobs", listJobs);
+router.post("/jobs", createJob);
+router.get("/jobs/:id", getJob);
+router.patch("/jobs/:id", updateJob);
+router.patch("/jobs/:id/status", changeStatus);
+router.post("/jobs/:id/comments", addComment);
 
 // ---------------------------------------------------------------------------
 // 4. Admin only
