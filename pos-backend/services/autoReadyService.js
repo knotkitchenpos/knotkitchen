@@ -32,6 +32,11 @@
 const Order = require("../models/orderModel");
 const WebsiteSettings = require("../models/websiteSettingsModel");
 const { notifyOrderReady } = require("./readyNotificationService");
+const {
+  READY, SERVED, DELIVERED, COMPLETED,
+  PREPARING_STATUSES, SETTLED_STATUSES, CANCELLED_STATUSES, REFUNDED_STATUSES,
+  isPreparing,
+} = require("../constants/orderStatus");
 
 const AUTO_READY_TICK_MS = 30 * 1000;   // 30 seconds
 const MAX_BATCH = 100;
@@ -129,12 +134,9 @@ const computeCompleteDueAt = async ({ restaurantId, storeId, orderType, from = n
   return new Date(from.getTime() + minutes * 60 * 1000);
 };
 
-const isPreparingStatus = (status) => {
-  const s = String(status || "").toLowerCase();
-  // "Preparing" is the canonical Module 4 name; "Pending" and
-  // "In Progress" are historical aliases still present on old orders.
-  return s === "preparing" || s === "pending" || s === "in progress";
-};
+// Kept as a named local for readability; the vocabulary itself now lives in
+// constants/orderStatus.js so this guard and the query above cannot drift.
+const isPreparingStatus = (status) => isPreparing(status);
 
 /** Single tick of the auto-ready loop. Exported for tests / manual runs. */
 const runAutoReadyTick = async () => {
@@ -150,7 +152,10 @@ const runAutoReadyTick = async () => {
       readyDueAt: { $lte: now, $ne: null },
       readyAt: null,
       isDeleted: { $ne: true },
-      orderStatus: { $in: ["Preparing", "Pending", "In Progress"] },
+      // Must list every historical spelling: the QR and table-session flows
+      // wrote lowercase "pending", so a Title-Case-only $in silently returned
+      // none of those orders and they were never auto-promoted to Ready.
+      orderStatus: { $in: PREPARING_STATUSES },
     })
       .sort({ readyDueAt: 1 })
       .limit(MAX_BATCH);
@@ -160,12 +165,12 @@ const runAutoReadyTick = async () => {
       if (!isPreparingStatus(order.orderStatus)) continue;
       try {
         const previousStatus = order.orderStatus;
-        order.orderStatus = "Ready";
+        order.orderStatus = READY;
         order.readyAt = now;
         order.readyBy = "AUTO";
         order.timeline = order.timeline || [];
         order.timeline.push({
-          status: "Ready",
+          status: READY,
           timestamp: now,
           user: `AUTO (from ${previousStatus})`,
         });
@@ -247,9 +252,12 @@ const runAutoCompleteTick = async (now = new Date()) => {
 
     let completedCount = 0;
     for (const order of due) {
-      const currentStatus = String(order.orderStatus || "").toLowerCase();
-      // Skip already finished or cancelled orders
-      if (["completed", "delivered", "served", "cancelled", "refunded"].includes(currentStatus)) {
+      // Skip already finished or cancelled orders. SETTLED_STATUSES includes
+      // "paid" — a table session whose bill was settled must not be dragged
+      // back into "Served" by this sweep and have its history rewritten.
+      const currentStatus = String(order.orderStatus || "");
+      const finished = [...SETTLED_STATUSES, ...CANCELLED_STATUSES, ...REFUNDED_STATUSES];
+      if (finished.includes(currentStatus)) {
         order.completeDueAt = null;
         await order.save();
         continue;
@@ -257,7 +265,7 @@ const runAutoCompleteTick = async (now = new Date()) => {
 
       try {
         const previousStatus = order.orderStatus;
-        const targetStatus = order.orderType === "delivery" ? "Delivered" : order.orderType === "dine-in" ? "Served" : "Completed";
+        const targetStatus = order.orderType === "delivery" ? DELIVERED : order.orderType === "dine-in" ? SERVED : COMPLETED;
         order.orderStatus = targetStatus;
         order.completedAt = now;
         order.completedBy = "AUTO";

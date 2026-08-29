@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from "react";
 import { FiCheck } from "react-icons/fi";
 import { useQuery } from "@tanstack/react-query";
 import { getOrders, getMenus } from "../../https";
+import { isPreparing } from "../../constants/orderStatus";
 
 const dateRanges = [
   { label: "Today", days: 1 },
@@ -53,7 +54,7 @@ const Metrics = () => {
       0
     );
     const activeOrders = rangedOrders.filter(
-      (o) => o.orderStatus === "Pending" || o.orderStatus === "Preparing"
+      (o) => isPreparing(o.orderStatus)
     ).length;
     const totalItems = menus.reduce((sum, m) => sum + (m.items?.length || 0), 0);
 

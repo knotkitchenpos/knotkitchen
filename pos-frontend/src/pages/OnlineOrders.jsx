@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { useSelector } from "react-redux";
 import { useOnlineOrders } from "../hooks/useOnlineOrders";
 import { updateOnlineOrderStatus } from "../https/storefrontApi";
+import { isAwaitingAcceptance, statusLabel } from "../constants/orderStatus";
 
 /**
  * POS → Online Orders (§14).
@@ -14,6 +15,12 @@ import { updateOnlineOrderStatus } from "../https/storefrontApi";
 const STATUS_STYLES = {
   Pending: "bg-amber-500/15 text-amber-400 border-amber-500/30",
   "In Progress": "bg-blue-500/15 text-blue-400 border-blue-500/30",
+  // "Preparing" is the canonical name for the same kitchen state. Orders
+  // created before the acceptance step existed carry it, and without a style
+  // of its own they fell through to the grey "Completed" look.
+  Preparing: "bg-blue-500/15 text-blue-400 border-blue-500/30",
+  Served: "bg-slate-500/15 text-slate-400 border-slate-500/30",
+  Delivered: "bg-slate-500/15 text-slate-400 border-slate-500/30",
   Ready: "bg-green-500/15 text-green-400 border-green-500/30",
   Completed: "bg-slate-500/15 text-slate-400 border-slate-500/30",
   Cancelled: "bg-red-500/15 text-red-400 border-red-500/30",
@@ -29,6 +36,12 @@ const NEXT_ACTIONS = {
     { action: "ready", label: "Mark Ready", style: "bg-blue-600 hover:bg-blue-500" },
     { action: "cancel", label: "Cancel", style: "bg-slate-600 hover:bg-slate-500" },
   ],
+  // Same state, canonical spelling — an older order sitting in "Preparing"
+  // must still be actionable rather than stranded with no buttons.
+  Preparing: [
+    { action: "ready", label: "Mark Ready", style: "bg-blue-600 hover:bg-blue-500" },
+    { action: "cancel", label: "Cancel", style: "bg-slate-600 hover:bg-slate-500" },
+  ],
   Ready: [{ action: "completed", label: "Complete", style: "bg-green-600 hover:bg-green-500" }],
 };
 
@@ -36,7 +49,7 @@ const money = (n) => `₹${(Number(n) || 0).toFixed(2)}`;
 
 const OrderCard = ({ order, onAction, busy }) => {
   const actions = NEXT_ACTIONS[order.orderStatus] || [];
-  const isNew = order.orderStatus === "Pending";
+  const isNew = isAwaitingAcceptance(order.orderStatus);
 
   return (
     <article
@@ -66,7 +79,7 @@ const OrderCard = ({ order, onAction, busy }) => {
               STATUS_STYLES[order.orderStatus] || STATUS_STYLES.Completed
             }`}
           >
-            {order.orderStatus}
+            {statusLabel(order.orderStatus)}
           </span>
         </div>
 

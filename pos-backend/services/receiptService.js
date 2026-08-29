@@ -3,6 +3,8 @@
  * Formats structured receipt data for orders, bills, and table sessions.
  */
 
+const { isSettled } = require("../constants/orderStatus");
+
 const formatPaymentMethod = (method) => {
   const m = String(method || "").trim().toUpperCase();
   if (m === "CASH") return "Paid by Cash";
@@ -102,7 +104,10 @@ const buildReceipt = ({
     paymentStatus = bill.status === "PAID" ? "PAID" : "PENDING";
     rawPaymentMethod = bill.paymentMethod || "CASH";
   } else if (order?.orderStatus) {
-    paymentStatus = order.orderStatus === "paid" || order.orderStatus === "completed" ? "PAID" : "PENDING";
+    // Was an exact match on the two lowercase spellings, so a receipt for an
+    // order finished through the POS (canonical "Completed") or the
+    // auto-complete sweep ("Served" / "Delivered") printed PENDING.
+    paymentStatus = isSettled(order.orderStatus) ? "PAID" : "PENDING";
     rawPaymentMethod = order.paymentMethod || (order.payments && order.payments[0]?.method) || "CASH";
   }
 

@@ -102,7 +102,11 @@ test("Website Module 5: Website order creates 'WEBSITE' source order and emits r
   }
 
   assert.ok(resData);
-  assert.equal(resData.data.status, "Preparing");
+  // A website order arrives AWAITING ACCEPTANCE (§14), not already in the
+  // kitchen. This is what makes the POS show Accept / Reject: those buttons
+  // key off "Pending", so creating the order as "Preparing" left the
+  // online-orders screen with no actions and the feature unreachable.
+  assert.equal(resData.data.status, "Pending");
   assert.ok(emittedData);
   assert.equal(emittedData.storeId, STORE_ID);
 });

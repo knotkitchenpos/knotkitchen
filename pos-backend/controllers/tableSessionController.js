@@ -9,6 +9,8 @@ const priceService = require("../services/price");
 const { emitOrderCreated, emitOrderStatusChanged } = require("../services/socket");
 
 const createHttpError = require("http-errors");
+const { PREPARING, PAID } = require("../constants/orderStatus");
+const { computeReadyDueAt } = require("../services/autoReadyService");
 
 const SESSION_CODE_PREFIX = "TS";
 
@@ -315,7 +317,10 @@ const addItemsToSession = async (req, res, next) => {
               guests: session.customerCount || 1,
             },
             orderType: "dine-in",
-            orderStatus: "pending",
+            orderStatus: PREPARING,
+            // Module 4 §4: table orders are auto-ready eligible. Without a
+            // readyDueAt the sweep skips them and they sit in Preparing forever.
+            readyDueAt: await computeReadyDueAt({ restaurantId: session.restaurantId, orderType: "dine-in" }),
             bills: session.bills,
             items: validatedItems.map((it) => ({
               menuItemId: it.menuItemId,
@@ -450,7 +455,10 @@ const addItemsToExistingSession = async (req, res, next) => {
               guests: session.customerCount || 1,
             },
             orderType: "dine-in",
-            orderStatus: "pending",
+            orderStatus: PREPARING,
+            // Module 4 §4: table orders are auto-ready eligible. Without a
+            // readyDueAt the sweep skips them and they sit in Preparing forever.
+            readyDueAt: await computeReadyDueAt({ restaurantId: session.restaurantId, orderType: "dine-in" }),
             bills: session.bills,
             items: validatedItems.map((it) => ({
               menuItemId: it.menuItemId,
@@ -936,7 +944,7 @@ const recordSessionPayment = async (req, res, next) => {
     if (paid) {
       await Order.updateMany(
         { tableSessionId: session._id, isDeleted: { $ne: true } },
-        { $set: { orderStatus: "paid", "bills.totalWithTax": payableAmount } },
+        { $set: { orderStatus: PAID, "bills.totalWithTax": payableAmount } },
         { session: mongoSession }
       );
     }

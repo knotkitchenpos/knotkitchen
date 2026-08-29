@@ -6,6 +6,7 @@ import KnotLogo from "../components/shared/KnotLogo";
 import { getOrders, getStoreProperties, markOrderReady, updateOrderStatus } from "../https";
 import { getMyRestaurant } from "../https/newModules";
 import { printReceipt } from "../utils/printReceipt";
+import { isPreparing, isReady, isSettled, isCancelled, statusLabel, COMPLETED, CANCELLED } from "../constants/orderStatus";
 
 /* ---------- Icons ---------- */
 const I = {
@@ -97,7 +98,7 @@ const TABS = [
   { key: "Cancelled", statuses: ["Cancelled"] },
 ];
 
-const isPreparing = (s) => ["Preparing", "Pending", "In Progress"].includes(s);
+
 const isFinished = (s) => ["Completed", "Cancelled"].includes(s);
 
 /**
@@ -246,9 +247,12 @@ const Orders = () => {
     orders.forEach((o) => {
       const amt = Number(o.bills?.totalWithTax || o.bills?.total || 0);
       count += 1;
-      if (o.orderStatus !== "Cancelled") revenue += amt;
-      if (o.orderStatus === "Completed") done += 1;
-      else if (o.orderStatus === "Cancelled") cancelled += 1;
+      // isSettled, not === "Completed": the auto-complete sweep finishes
+      // orders as "Served" / "Delivered" and a settled table bill is "paid",
+      // so an exact match reported all of those as still ongoing.
+      if (!isCancelled(o.orderStatus)) revenue += amt;
+      if (isSettled(o.orderStatus)) done += 1;
+      else if (isCancelled(o.orderStatus)) cancelled += 1;
       else ongoing += 1;
     });
     return { count, revenue, ongoing, done, cancelled };
@@ -454,9 +458,9 @@ const Orders = () => {
                 const on = selected?._id === o._id;
                 const mins = minsAgo(o.createdAt);
                 const ring = mins < 10 ? "#16A34A" : mins < 20 ? "#F59E0B" : "#EF4444";
-                const cancelled = o.orderStatus === "Cancelled";
+                const cancelled = isCancelled(o.orderStatus);
                 const preparingBadge = isPreparing(o.orderStatus);
-                const readyBadge = o.orderStatus === "Ready";
+                const readyBadge = isReady(o.orderStatus);
                 return (
                   <button
                     key={o._id}
@@ -521,7 +525,7 @@ const Orders = () => {
                           : "bg-[#F0FDF4] text-[#15803D]"
                       }`}
                     >
-                      {cancelled ? "Cancelled" : (preparingBadge ? "Preparing" : o.orderStatus)}
+                      {statusLabel(o.orderStatus)}
                     </span>
                     <span className="text-[14.5px] font-extrabold text-[#0F172A] w-[80px] text-right shrink-0">
                       {money(o.bills?.totalWithTax || o.bills?.total)}
@@ -758,7 +762,7 @@ const Orders = () => {
                   <div>
                     <p className="text-[#94A3B8]">Status</p>
                     <p className="font-bold text-[#0F172A] mt-0.5">
-                      {isPreparing(selected.orderStatus) ? "Preparing" : selected.orderStatus}
+                      {statusLabel(selected.orderStatus)}
                     </p>
                   </div>
                   <div>
@@ -874,11 +878,11 @@ const Orders = () => {
                   <I.check s={16} />
                   Mark Ready
                 </button>
-              ) : selected.orderStatus === "Ready" ? (
+              ) : isReady(selected.orderStatus) ? (
                 <button
                   disabled={statusMutation.isPending}
                   onClick={() =>
-                    statusMutation.mutate({ orderId: selected._id, orderStatus: "Completed" })
+                    statusMutation.mutate({ orderId: selected._id, orderStatus: COMPLETED })
                   }
                   className="h-[46px] rounded-xl bg-[#16A34A] text-white text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#15803D] disabled:opacity-40"
                 >
@@ -897,7 +901,7 @@ const Orders = () => {
 
               <button
                 disabled={isFinished(selected.orderStatus) || statusMutation.isPending}
-                onClick={() => statusMutation.mutate({ orderId: selected._id, orderStatus: "Cancelled" })}
+                onClick={() => statusMutation.mutate({ orderId: selected._id, orderStatus: CANCELLED })}
                 className="h-[46px] rounded-xl border border-[#FCA5A5] text-[#DC2626] text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#FEF2F2] disabled:opacity-40"
               >
                 <I.x s={16} /> Cancel

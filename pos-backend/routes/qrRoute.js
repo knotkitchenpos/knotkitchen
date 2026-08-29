@@ -16,6 +16,11 @@ const priceService = require("../services/price");
 const getSocket = () => require("../services/socket");
 const crypto = require("crypto");
 const mongoose = require("mongoose");
+const { PREPARING } = require("../constants/orderStatus");
+// Lazy for the same reason as getSocket above: autoReadyService pulls in the
+// Order/WebsiteSettings models, and requiring them at module load breaks the
+// tests that mock mongoose before the models are loaded.
+const computeReadyDueAt = (args) => require("../services/autoReadyService").computeReadyDueAt(args);
 const router = express.Router();
 
 const scopedMenu = (restaurantId, outletId) =>
@@ -187,12 +192,18 @@ router.route("/session/items/:token").post(resolveTableScope, async (req, res, n
         session.timeline.push({ event: "ITEMS_ADDED", note: `${validatedItems.length} item(s) added by QR`, actorType: "QR" });
         await recalculateSessionBill(session);
 
+        // Module 4 §4 lists Table orders as auto-ready eligible, and
+        // autoReadyService has a "table" bucket for exactly this. Without a
+        // readyDueAt the sweep's `readyDueAt: { $ne: null }` filter skips the
+        // order entirely, so a QR order would sit in Preparing forever.
+        const readyDueAt = await computeReadyDueAt({ restaurantId, orderType: "dine-in" });
+
         const kitchenOrder = await Order.create(
           [
             {
               requestId: requestId || "",
               customerDetails: { name: session.customerName || "Guest", phone: session.customerPhone || "", guests: session.customerCount || 1 },
-              orderType: "dine-in", orderStatus: "pending", bills: session.bills,
+              orderType: "dine-in", orderStatus: PREPARING, bills: session.bills, readyDueAt,
               items: validatedItems.map((it) => ({ menuItemId: it.menuItemId, name: it.name, quantity: it.quantity, price: it.price, total: it.total, modifiers: it.modifiers || [], note: it.note || "", status: "pending" })),
               table: tableInTxn._id, restaurantId, outletId, createdBy: null, tableSessionId: session._id, orderDate: new Date(),
               // Origin tag → POS UI can distinguish QR-scan orders from
@@ -361,10 +372,12 @@ router.route("/order/:token").post(resolveTableScope, async (req, res, next) => 
 
     const validatedItems = await enrichItems({ items, restaurantId, outletId, addedBy: "QR" });
     const bills = priceService.calculateBill({ items: validatedItems.map((i) => ({ price: i.price, quantity: i.quantity })) });
+    // See the note on the other QR order-creation path above.
+    const readyDueAt = await computeReadyDueAt({ restaurantId, orderType: "dine-in" });
     const order = await Order.create({
       requestId: requestId || "",
       customerDetails: { name: customerName || "Guest", phone: phone || "", guests: guests || 1 },
-      orderType: "dine-in", orderStatus: "pending", bills,
+      orderType: "dine-in", orderStatus: PREPARING, bills, readyDueAt,
       items: validatedItems.map((it) => ({ menuItemId: it.menuItemId, name: it.name, quantity: it.quantity, price: it.price, total: it.total, modifiers: it.modifiers || [], note: it.note || "", status: "pending" })),
       table: table._id, restaurantId, outletId, orderDate: new Date(), createdBy: null,
     });

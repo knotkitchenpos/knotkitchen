@@ -3,6 +3,8 @@ const mongoose = require("mongoose");
 const Order = require("../models/orderModel");
 const { resolveTenantFromUser } = require("../services/tenantContext");
 const { emitOrderStatusChanged } = require("../services/socket");
+const { isFinished, AWAITING_ACCEPTANCE } = require("../constants/orderStatus");
+const { computeReadyDueAt, computeCompleteDueAt } = require("../services/autoReadyService");
 
 /**
  * POS-side online order management (§14).
@@ -40,6 +42,11 @@ const toPosOrderView = (order) => ({
   source: order.source,
   storeId: order.storeId,
   orderType: order.orderType,
+  // Deliberately NOT canonicalised. canonicalStatus folds "Pending" and
+  // "In Progress" into "Preparing", but this view drives the Accept / Reject
+  // buttons, and those two states are what tell staff whether an order still
+  // needs accepting. Folding them would collapse the distinction and leave
+  // the card with no actions at all.
   orderStatus: order.orderStatus,
   scheduledFor: order.scheduledFor,
   customerDetails: order.customerDetails,
@@ -138,11 +145,31 @@ const updateOnlineOrderStatus = async (req, res, next) => {
     const order = await Order.findOne({ _id: req.params.id, ...scoped.scope });
     if (!order) return next(createHttpError(404, "Order not found."));
 
-    if (["Completed", "Cancelled"].includes(order.orderStatus)) {
+    // Was ["Completed", "Cancelled"] — an exact-match pair that missed
+    // "Served"/"Delivered" (written by the auto-complete sweep), "paid"
+    // (a settled table bill) and every legacy lowercase spelling, so a
+    // finished order could be transitioned again.
+    if (isFinished(order.orderStatus)) {
       return next(createHttpError(409, `This order is already ${order.orderStatus.toLowerCase()}.`));
     }
 
     order.orderStatus = nextStatus;
+
+    // The auto-ready / auto-complete clocks start on ACCEPTANCE, not at
+    // creation. A website order sits in "Pending" until a human takes it, and
+    // an order nobody has accepted must never promote itself to Ready and text
+    // the customer that food is waiting. Scheduled pre-orders keep skipping
+    // auto-ready — their deadline belongs to scheduledFor, not to now.
+    if ((action === "accept" || action === "preparing") && !order.readyDueAt && !order.scheduledFor) {
+      const clockArgs = {
+        restaurantId: order.restaurantId,
+        storeId: order.storeId,
+        orderType: order.orderType,
+      };
+      order.readyDueAt = await computeReadyDueAt(clockArgs);
+      order.completeDueAt = await computeCompleteDueAt(clockArgs);
+    }
+
     order.timeline.push({
       status: nextStatus,
       timestamp: new Date(),
@@ -194,7 +221,7 @@ const getOnlineOrderStats = async (req, res, next) => {
           _id: null,
           orders: { $sum: 1 },
           revenue: { $sum: "$bills.totalWithTax" },
-          pending: { $sum: { $cond: [{ $eq: ["$orderStatus", "Pending"] }, 1, 0] } },
+          pending: { $sum: { $cond: [{ $eq: ["$orderStatus", AWAITING_ACCEPTANCE] }, 1, 0] } },
         },
       },
     ]);

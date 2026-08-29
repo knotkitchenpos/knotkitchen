@@ -9,6 +9,7 @@ import RecentOrders from "../components/home/RecentOrders";
 import PopularDishes from "../components/home/PopularDishes";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { getOrders, getTables } from "../https/index";
+import { isPreparing, isActive } from "../constants/orderStatus";
 
 const Home = () => {
   useEffect(() => {
@@ -34,12 +35,13 @@ const Home = () => {
       (sum, order) => sum + (order.bills?.totalWithTax || 0),
       0
     );
-    const inProgressCount = orders.filter(
-      (order) => order.orderStatus === "In Progress"
+    // isPreparing, not === "In Progress": the API canonicalises the status on
+    // read, so "In Progress" never arrives and this count was always zero.
+    const inProgressCount = orders.filter((order) =>
+      isPreparing(order.orderStatus)
     ).length;
-    const activeOrders = orders.filter(
-      (order) =>
-        order.orderStatus === "In Progress" || order.orderStatus === "Ready"
+    const activeOrders = orders.filter((order) =>
+      isActive(order.orderStatus)
     ).length;
     const bookedTables = tables.filter(
       (table) => table.status === "Booked"

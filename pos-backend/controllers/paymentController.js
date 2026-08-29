@@ -4,6 +4,7 @@ const config = require("../config/config");
 const crypto = require("crypto");
 const mongoose = require("mongoose");
 const Payment = require("../models/paymentModel");
+const { COMPLETED } = require("../constants/orderStatus");
 const Order = require("../models/orderModel");
 const Bill = require("../models/billModel");
 const PaymentLink = require("../models/paymentLinkModel");
@@ -245,7 +246,7 @@ const finalizePaymentLinkFromGateway = async ({
       },
       {
         $set: {
-          orderStatus: "Completed",
+          orderStatus: COMPLETED,
           paymentMethod: method,
         },
         $push: {

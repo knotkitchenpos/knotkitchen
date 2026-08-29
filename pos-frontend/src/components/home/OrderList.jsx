@@ -2,9 +2,10 @@ import React from "react";
 import { FiCheckSquare, FiClock, FiArrowRight } from "react-icons/fi";
 import { getAvatarName } from "../../utils/index";
 import { useNavigate } from "react-router-dom";
+import { isReady as ready } from "../../constants/orderStatus";
 
 const OrderList = ({ key, order }) => {
-  const isReady = order.orderStatus === "Ready";
+  const isReady = ready(order.orderStatus);
   const navigate = useNavigate();
 
   return (

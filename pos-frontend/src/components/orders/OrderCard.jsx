@@ -3,11 +3,14 @@ import { FaCheckDouble } from "react-icons/fa";
 import { FaCircle, FaLongArrowAltRight } from "react-icons/fa";
 import { FiClock } from "react-icons/fi";
 import { formatDateAndTime, getAvatarName } from "../../utils/index";
+import { isReady as ready, isSettled, isAwaitingAcceptance } from "../../constants/orderStatus";
 
 const OrderCard = ({ order }) => {
-  const isReady = order.orderStatus === "Ready";
-  const isCompleted = order.orderStatus === "Completed";
-  const isPending = order.orderStatus === "Pending";
+  const isReady = ready(order.orderStatus);
+  // isSettled: "Served", "Delivered" and a settled bill ("paid") are finished
+  // too, and an exact match on "Completed" showed them as still in progress.
+  const isCompleted = isSettled(order.orderStatus);
+  const isPending = isAwaitingAcceptance(order.orderStatus);
 
   const statusBadge = isCompleted ? (
     <span className="badge badge-completed">

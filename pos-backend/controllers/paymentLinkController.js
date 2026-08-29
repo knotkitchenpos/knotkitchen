@@ -9,6 +9,7 @@ const Order = require("../models/orderModel");
 const TableSession = require("../models/tableSessionModel");
 const Restaurant = require("../models/restaurantModel");
 const { sendPaymentLinkMessage } = require("../services/messagingService");
+const { READY, SETTLED_STATUSES } = require("../constants/orderStatus");
 
 /**
  * Validate customer phone number for collection payment links.
@@ -48,7 +49,11 @@ const createPaymentLink = async (req, res, next) => {
       targetOrder = await Order.findOne({ _id: orderId, ...scopeQuery, isDeleted: { $ne: true } });
       if (!targetOrder) throw createHttpError(404, "Order not found!");
 
-      if (targetOrder.payments?.some((p) => p.status === "paid") || targetOrder.orderStatus === "completed") {
+      // isSettled covers every finished spelling, not just lowercase
+      // "completed" — otherwise an already-settled order could be sent a
+      // second payment link.
+      const hasPaidPayment = targetOrder.payments?.some((p) => p.status === "paid");
+      if (hasPaidPayment || SETTLED_STATUSES.includes(targetOrder.orderStatus)) {
         throw createHttpError(400, "Order is already paid!");
       }
 
@@ -385,7 +390,7 @@ const verifyAndCaptureLinkPayment = async (req, res, next) => {
       await Order.findOneAndUpdate(
         { _id: link.orderId, restaurantId: link.restaurantId },
         {
-          orderStatus: "ready",
+          orderStatus: READY,
           paymentMethod: paymentMethod,
           payments: [{ method: paymentMethod.toLowerCase(), amount: lockedAmount, status: "paid", transactionId }],
         },

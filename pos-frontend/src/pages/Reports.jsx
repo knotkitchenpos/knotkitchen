@@ -5,6 +5,7 @@ import { getOrdersReport } from "../https";
 import { getMyRestaurant } from "../https/newModules";
 import { getWebsiteSettings } from "../https/storefrontApi";
 import { printHtmlDocument } from "../utils/printDocument";
+import { isPreparing, isReady, isCancelled, statusLabel } from "../constants/orderStatus";
 
 /**
  * Module 5 — Reports.
@@ -386,7 +387,7 @@ const OrderDetailsModal = ({ order, onClose }) => {
           <DetailRow label="Payment Method" value={(order.paymentMethod || payment?.method || "Cash").toString()} />
           <DetailRow label="Payment Status" value={(payment?.status || "pending").toString()} />
           <DetailRow label="Payment ID" value={payment?.transactionId || order.paymentData?.razorpay_payment_id || "—"} />
-          <DetailRow label="Status" value={order.orderStatus} />
+          <DetailRow label="Status" value={statusLabel(order.orderStatus)} />
         </div>
       </div>
     </div>
@@ -917,15 +918,15 @@ const Reports = () => {
                   </span>
                   <span
                     className={`text-[11px] font-bold px-2 py-[3px] rounded-md shrink-0 ${
-                      o.orderStatus === "Cancelled"
+                      isCancelled(o.orderStatus)
                         ? "bg-[#FEF2F2] text-[#DC2626]"
-                        : o.orderStatus === "Ready"
+                        : isReady(o.orderStatus)
                         ? "bg-[#DCFCE7] text-[#15803D]"
-                        : o.orderStatus === "Preparing"
+                        : isPreparing(o.orderStatus)
                         ? "bg-[#FFEDD5] text-[#C2410C]"
                         : "bg-[#F0FDF4] text-[#15803D]"
                     }`}
-                  >{o.orderStatus}</span>
+                  >{statusLabel(o.orderStatus)}</span>
                   <span className="text-[13.5px] font-extrabold text-[#0F172A] w-[90px] text-right shrink-0">
                     {money(o.bills?.totalWithTax || o.bills?.total)}
                   </span>

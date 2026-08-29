@@ -3,6 +3,7 @@ import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tansta
 import { enqueueSnackbar } from "notistack";
 import { getOrders, updateOrderStatus } from "../../https/index";
 import { formatDateAndTime, getAvatarName } from "../../utils";
+import { isReady, isAwaitingAcceptance } from "../../constants/orderStatus";
 
 const RecentOrders = () => {
   const queryClient = useQueryClient();
@@ -84,9 +85,9 @@ const RecentOrders = () => {
                   <td className="p-4">
                     <select
                       className={`px-3 py-2 rounded-lg border text-sm font-semibold focus:outline-none border-border bg-surface-input ${
-                        order.orderStatus === "Ready"
+                        isReady(order.orderStatus)
                           ? "text-accent-green"
-                          : order.orderStatus === "Pending"
+                          : isAwaitingAcceptance(order.orderStatus)
                           ? "text-accent-red"
                           : "text-accent-amber"
                       }`}

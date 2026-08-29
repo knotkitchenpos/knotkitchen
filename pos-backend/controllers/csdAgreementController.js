@@ -10,8 +10,23 @@ const { csdAudit } = require("../services/csdAuditService");
 
 const str = (v) => String(v ?? "").trim();
 
-/** Statuses the portal uses to mean "the agent has finished signing". */
-const COMPLETED = new Set(["completed", "signed", "complete", "store created"]);
+/**
+ * Statuses the portal uses to mean "the agent has finished signing".
+ *
+ * "submitted" is the one that actually matters: the portal's own vocabulary is
+ * Draft → eSigned → Submitted, and `state.status = 'Submitted'` is what a
+ * finished agreement ends up as. The others are accepted defensively because
+ * the portal's UI also renders "Completed" as a done state.
+ *
+ * "esigned" is deliberately EXCLUDED. In the portal it means the customer
+ * uploaded a signed PDF but the agreement has not been submitted, and the
+ * portal tells them so: an uploaded PDF is not automatically treated as
+ * verified, staff confirm the eSign first. Creating a store from one would
+ * skip that check.
+ */
+const COMPLETED = new Set([
+  "submitted", "completed", "signed", "complete", "store created",
+]);
 const isCompleted = (a) => COMPLETED.has(str(a?.status).toLowerCase());
 
 /**

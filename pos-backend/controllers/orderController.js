@@ -48,29 +48,23 @@ const ALLOWED_ORDER_TYPES = new Set([
 /**
  * Module 4 §1 — canonical order-status vocabulary.
  *
- * "Preparing" is the new canonical name for the kitchen state that used
- * to be called "Pending" and "In Progress". We keep those two names in
- * the allowed set for backward-compatibility (historical orders on disk,
- * KDS + marketplace flows that still write "In Progress") but new writes
- * should always use "Preparing".
- *
  *   Preparing → Ready → Completed
  *
- * Cancelled is terminal and reachable from any non-terminal state.
+ * The vocabulary itself now lives in constants/orderStatus.js, which is the
+ * single source of truth shared with the auto-ready sweep, analytics and the
+ * table/QR flows. It previously lived here, and every other file kept its own
+ * slightly different copy — that divergence is what let lowercase statuses go
+ * unmatched by queries for so long. Re-exported below so existing importers
+ * of this module keep working.
  */
-const ALLOWED_INITIAL_STATUS = new Set(["Preparing", "Pending", "In Progress", "Ready"]);
-const ALLOWED_STATUS_TRANSITIONS = new Set([
-  "Preparing", "Pending", "In Progress", "Ready", "Completed", "Cancelled",
-]);
-const TERMINAL_STATUSES = new Set(["Completed", "Cancelled", "Refunded"]);
-
-// Convert any legacy status alias to the canonical Module 4 name so the
-// UI, analytics and downstream services see one consistent vocabulary.
-const canonicalStatus = (status) => {
-  const s = String(status || "");
-  if (s === "Pending" || s === "In Progress") return "Preparing";
-  return s;
-};
+const {
+  READY,
+  ALLOWED_INITIAL_STATUS,
+  ALLOWED_STATUS_TRANSITIONS,
+  TERMINAL_STATUSES,
+  canonicalStatus,
+  isFinished,
+} = require("../constants/orderStatus");
 
 
 const tenantScopeFor = (user, extra = {}) =>
@@ -621,7 +615,10 @@ const updateOrder = async (req, res, next) => {
 
     // Reject transitions out of terminal states — you cannot un-cancel or
     // un-complete an order via this endpoint (§17 business logic).
-    if (TERMINAL_STATUSES.has(order.orderStatus) && order.orderStatus !== orderStatus) {
+    // isFinished, not TERMINAL_STATUSES.has: the latter holds only the three
+    // canonical names, so "Served", "Delivered", "paid" and the legacy
+    // lowercase spellings slipped past and a finished order could be reopened.
+    if (isFinished(order.orderStatus) && canonicalStatus(order.orderStatus) !== canonicalStatus(orderStatus)) {
       return next(
         createHttpError(409, `Order is already ${order.orderStatus.toLowerCase()} and cannot be changed.`)
       );
@@ -724,12 +721,12 @@ const markOrderReady = async (req, res, next) => {
     });
     if (!order) return next(createHttpError(404, "Order not found!"));
 
-    if (TERMINAL_STATUSES.has(order.orderStatus)) {
+    if (isFinished(order.orderStatus)) {
       return next(
         createHttpError(409, `Order is already ${order.orderStatus.toLowerCase()} and cannot be changed.`)
       );
     }
-    if (order.orderStatus === "Ready") {
+    if (order.orderStatus === READY) {
       // Idempotent — return the current state without re-firing SMS/emit.
       const projected = order.toObject();
       projected.orderStatus = canonicalStatus(projected.orderStatus);
@@ -738,7 +735,7 @@ const markOrderReady = async (req, res, next) => {
         .json({ success: true, message: "Order already ready", data: projected });
     }
 
-    order.orderStatus = "Ready";
+    order.orderStatus = READY;
     order.readyAt = new Date();
     order.readyBy = "STAFF";
     order.timeline = order.timeline || [];

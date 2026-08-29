@@ -5,6 +5,7 @@ const KDSOrder = require("../models/kdsModel");
 const Ingredient = require("../models/inventoryModel").Ingredient;
 const Customer = require("../models/loyaltyModel").Customer;
 const Table = require("../models/tableModel");
+const { SETTLED_STATUSES, ACTIVE_STATUSES, isSettled } = require("../constants/orderStatus");
 const router = express.Router();
 
 // Sales dashboard / analytics
@@ -22,7 +23,10 @@ router.route("/sales/:restaurantId").get(isVerifiedUser, async (req, res, next) 
     if (outletId) match.outletId = outletId;
 
     const orders = await Order.find(match);
-    const completedOrders = orders.filter(o => ["completed", "delivered", "served"].includes(o.orderStatus));
+    // Was ["completed", "delivered", "served"] — three spellings nothing in the
+    // codebase writes, so every revenue figure below was computed from an empty
+    // list. isSettled() knows the spellings actually on disk, "paid" included.
+    const completedOrders = orders.filter((o) => isSettled(o.orderStatus));
     const totalRevenue = completedOrders.reduce((sum, o) => sum + (o.bills?.totalWithTax || 0), 0);
     const totalOrders = completedOrders.length;
     const avgOrderValue = totalOrders ? totalRevenue / totalOrders : 0;
@@ -73,12 +77,12 @@ router.route("/realtime/:restaurantId").get(isVerifiedUser, async (req, res, nex
     const now = new Date();
     const todayStart = new Date(now.setHours(0, 0, 0, 0));
     const [activeOrders, todayOrders, activeTables, kitchenQueue, activeCustomers, todayRevenue] = await Promise.all([
-      Order.find({ restaurantId: req.params.restaurantId, orderStatus: { $in: ["pending", "preparing", "ready"] } }).countDocuments(),
+      Order.find({ restaurantId: req.params.restaurantId, orderStatus: { $in: ACTIVE_STATUSES } }).countDocuments(),
       Order.find({ restaurantId: req.params.restaurantId, orderDate: { $gte: todayStart } }),
       Table.find({ restaurantId: req.params.restaurantId, status: "occupied" }).countDocuments(),
       KDSOrder.find({ restaurantId: req.params.restaurantId, status: { $in: ["new", "preparing"] } }),
       Customer.find({ restaurantId: req.params.restaurantId, isDeleted: false }).countDocuments(),
-      Order.find({ restaurantId: req.params.restaurantId, orderDate: { $gte: todayStart }, orderStatus: { $in: ["completed", "served", "delivered"] } }),
+      Order.find({ restaurantId: req.params.restaurantId, orderDate: { $gte: todayStart }, orderStatus: { $in: SETTLED_STATUSES } }),
     ]);
     const todayRevenueTotal = todayRevenue.reduce((s, o) => s + (o.bills?.totalWithTax || 0), 0);
     res.status(200).json({ success: true, data: {
@@ -113,7 +117,7 @@ router.route("/customers/:restaurantId").get(isVerifiedUser, async (req, res, ne
 // Profitability report (revenue vs ingredient cost)
 router.route("/profitability/:restaurantId").get(isVerifiedUser, async (req, res, next) => {
   try {
-    const orders = await Order.find({ restaurantId: req.params.restaurantId, isDeleted: false, orderStatus: { $in: ["completed", "served", "delivered"] } });
+    const orders = await Order.find({ restaurantId: req.params.restaurantId, isDeleted: false, orderStatus: { $in: SETTLED_STATUSES } });
     const ingredients = await Ingredient.find({ restaurantId: req.params.restaurantId });
     const totalRevenue = orders.reduce((s, o) => s + (o.bills?.totalWithTax || 0), 0);
     const totalCost = ingredients.reduce((s, i) => s + (i.stockQuantity * i.costPerUnit), 0);

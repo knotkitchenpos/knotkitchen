@@ -1,6 +1,8 @@
 const createHttpError = require("http-errors");
 const mongoose = require("mongoose");
 const Order = require("../models/orderModel");
+// Marketplace orders arrive needing acceptance, like website orders.
+const { AWAITING_ACCEPTANCE } = require("../constants/orderStatus");
 
 // Store active SSE client connections
 const sseClients = new Set();
@@ -40,7 +42,7 @@ const webhookMarketplaceOrder = async (req, res, next) => {
     }
     const newOrder = new Order(order);
     newOrder.marketplace = order.marketplace || "Manual";
-    newOrder.orderStatus = order.orderStatus || "Pending";
+    newOrder.orderStatus = order.orderStatus || AWAITING_ACCEPTANCE;
     await newOrder.save();
     broadcastNewOrder(newOrder);
     res.status(201).json({ success: true, message: "Order received!", data: newOrder });
@@ -53,7 +55,7 @@ const manualMarketplaceOrder = async (req, res, next) => {
   try {
     const order = new Order({ ...req.body, createdBy: req.user._id });
     order.marketplace = req.body.marketplace || "Manual";
-    order.orderStatus = req.body.orderStatus || "Pending";
+    order.orderStatus = req.body.orderStatus || AWAITING_ACCEPTANCE;
     await order.save();
     broadcastNewOrder(order);
     res.status(201).json({ success: true, message: "Marketplace order added!", data: order });

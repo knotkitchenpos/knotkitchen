@@ -2,6 +2,7 @@ const createHttpError = require("http-errors");
 const KDSOrder = require("../models/kdsModel");
 const Order = require("../models/orderModel");
 const AuditLog = require("../models/auditLogModel");
+const { PREPARING, READY, COMPLETED } = require("../constants/orderStatus");
 
 // ===== Create KDS Order from order =====
 const createKDSOrder = async (req, res, next) => {
@@ -39,7 +40,7 @@ const createKDSOrder = async (req, res, next) => {
     });
 
     // Update order status to "In Progress"
-    await Order.findByIdAndUpdate(orderId, { orderStatus: "In Progress" });
+    await Order.findByIdAndUpdate(orderId, { orderStatus: PREPARING });
 
     res.status(201).json({ success: true, message: "Order sent to kitchen!", data: kdsOrder });
   } catch (error) {
@@ -111,7 +112,7 @@ const updateItemStatus = async (req, res, next) => {
 
     // Update order status when ready
     if (item.status === "ready") {
-      await Order.findByIdAndUpdate(kdsOrder.orderId, { orderStatus: "Ready" });
+      await Order.findByIdAndUpdate(kdsOrder.orderId, { orderStatus: READY });
     }
 
     res.status(200).json({ success: true, message: "Item status updated!", data: kdsOrder });
@@ -150,9 +151,9 @@ const updateKDSStatus = async (req, res, next) => {
     await kdsOrder.save();
 
     if (status === "ready") {
-      await Order.findByIdAndUpdate(kdsOrder.orderId, { orderStatus: "Ready" });
+      await Order.findByIdAndUpdate(kdsOrder.orderId, { orderStatus: READY });
     } else if (status === "served") {
-      await Order.findByIdAndUpdate(kdsOrder.orderId, { orderStatus: "Completed" });
+      await Order.findByIdAndUpdate(kdsOrder.orderId, { orderStatus: COMPLETED });
     }
 
     res.status(200).json({ success: true, message: "Order status updated!", data: kdsOrder });

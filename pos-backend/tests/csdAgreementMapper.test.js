@@ -148,3 +148,34 @@ test("an empty agreement does not throw", () => {
   const { missing } = mapAgreementToStore({});
   assert.ok(missing.length > 0);
 });
+
+/**
+ * Status-vocabulary tests, added after reading the real onboarding portal.
+ *
+ * The portal's vocabulary is Draft → eSigned → Submitted; a finished agreement
+ * ends as "Submitted" (index.html: `state.status = 'Submitted'`). CSD had been
+ * written against a mock that used "Completed", so with the real portal it
+ * would have listed zero agreements and refused every store creation.
+ */
+const { isCompleted } = require("../controllers/csdAgreementController");
+
+test("REGRESSION: 'Submitted' is what the real portal actually sets", () => {
+  assert.ok(isCompleted({ status: "Submitted" }));
+  assert.ok(isCompleted({ status: "submitted" }), "matching must be case-insensitive");
+});
+
+test("the other done-ish statuses the portal UI renders are accepted", () => {
+  for (const s of ["Completed", "Signed", "Store Created"]) {
+    assert.ok(isCompleted({ status: s }), `${s} should be accepted`);
+  }
+});
+
+test("'eSigned' is NOT enough to create a store", () => {
+  // The portal explicitly warns that an uploaded PDF is not treated as
+  // verified until staff confirm it — the agreement is not yet submitted.
+  assert.ok(!isCompleted({ status: "eSigned" }));
+  assert.ok(!isCompleted({ status: "Draft" }));
+  assert.ok(!isCompleted({ status: "" }));
+  assert.ok(!isCompleted({}));
+  assert.ok(!isCompleted(null));
+});

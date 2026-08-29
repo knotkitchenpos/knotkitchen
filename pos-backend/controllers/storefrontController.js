@@ -4,12 +4,12 @@ const Menu = require("../models/menuModel");
 const Order = require("../models/orderModel");
 const Customer = require("../models/customerModel");
 const { resolveStorefront, REASON_MESSAGES } = require("../services/storefrontResolver");
+const { AWAITING_ACCEPTANCE } = require("../constants/orderStatus");
 const { isStoreOpen, isClosedForToday, isItemAvailableNow, getEffectivePrice } = require("../services/businessHours");
 const { calculateOrderTotals, PricingError } = require("../services/orderPricingService");
 const { getTheme } = require("../services/themeRegistry");
 const { emitOrderCreated } = require("../services/socket");
 const { generateOrderNumberSafe } = require("../services/orderNumberService");
-const { computeReadyDueAt, computeCompleteDueAt } = require("../services/autoReadyService");
 
 
 /**
@@ -431,34 +431,32 @@ const createStorefrontOrder = async (req, res, next) => {
       restaurantId,
     });
 
-    // Module 4 §4 — website orders enter the kitchen queue as "Preparing"
-    // (renamed from "Pending") and get a server-authoritative auto-ready
-    // deadline based on the tenant's configured minutes. Scheduled orders
-    // deliberately skip auto-ready — the deadline for a pre-order should
-    // be based on scheduledFor, not on createdAt.
+    // A website order arrives AWAITING ACCEPTANCE (§14). The restaurant has to
+    // take it before anything else happens — it may be slammed, out of an
+    // ingredient, or closing — and onlineOrderController implements exactly
+    // that with accept/reject.
+    //
+    // This used to be created as "Preparing", on the assumption that
+    // "Preparing" was simply a rename of "Pending". In the POS order list it
+    // effectively is, but NOT here: the Accept / Reject buttons key off
+    // "Pending", so a website order was created in a state the online-orders
+    // screen had no actions for, and the whole accept/reject feature was
+    // unreachable.
+    //
+    // The auto-ready and auto-complete clocks deliberately do NOT start here.
+    // They are set when a human accepts (see onlineOrderController). Starting
+    // them at creation would let an order nobody has accepted promote itself
+    // to Ready and text the customer that food is ready that nobody has begun
+    // cooking.
     const orderTypeForOrder =
       requestedType === "delivery" ? "delivery" : "takeaway";
-    const readyDueAt = scheduledFor
-      ? null
-      : await computeReadyDueAt({
-          restaurantId,
-          storeId,
-          orderType: orderTypeForOrder,
-        });
-    const completeDueAt = scheduledFor
-      ? null
-      : await computeCompleteDueAt({
-          restaurantId,
-          storeId,
-          orderType: orderTypeForOrder,
-        });
 
     const order = new Order({
       customerDetails: { name, phone, guests: 1 },
       // Map to the POS's existing vocabulary so downstream reports keep working.
       orderType: orderTypeForOrder,
       ...(deliveryAddress ? { deliveryAddress } : {}),
-      orderStatus: "Preparing",
+      orderStatus: AWAITING_ACCEPTANCE,
       items: priced.items,
       bills: priced.bills,
       restaurantId,
@@ -468,8 +466,6 @@ const createStorefrontOrder = async (req, res, next) => {
       orderNumber,
       idempotencyKey,
       scheduledFor,
-      ...(readyDueAt ? { readyDueAt } : {}),
-      ...(completeDueAt ? { completeDueAt } : {}),
       channelMeta: {
         slug: settings.slug,
         themeKey: settings.theme?.themeKey || "",

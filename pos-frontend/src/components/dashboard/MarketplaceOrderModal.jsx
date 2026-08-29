@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { enqueueSnackbar } from "notistack";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { addMarketplaceOrder } from "../../https/marketplace";
+import { AWAITING_ACCEPTANCE } from "../../constants/orderStatus";
 
 const MarketplaceOrderModal = ({ menus = [], onClose }) => {
   const queryClient = useQueryClient();
@@ -49,7 +50,7 @@ const MarketplaceOrderModal = ({ menus = [], onClose }) => {
         phone: formData.get("customerPhone") || "",
         guests: 1,
       },
-      orderStatus: "Pending",
+      orderStatus: AWAITING_ACCEPTANCE,
       marketplace: formData.get("marketplace"),
       marketplaceOrderId: formData.get("orderId") || "",
       bills: { total, tax: 0, totalWithTax: total },
