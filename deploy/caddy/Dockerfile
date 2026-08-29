@@ -1,9 +1,17 @@
 # =============================================================================
-# Caddy image — stock Alpine build.
+# Caddy image — custom build with the Cloudflare DNS plugin.
 # =============================================================================
-# We use Let's Encrypt HTTP-01 for every cert (Hostinger DNS, no Cloudflare),
-# so no DNS-plugin build is required. If you later switch to DNS-01 for a
-# real wildcard cert, reintroduce the xcaddy build stage with the matching
-# DNS provider plugin.
+# DNS is hosted on Cloudflare (DNS-only mode — no proxying, Caddy still
+# terminates TLS directly). The api.{$BASE_DOMAIN} etc. certs still use plain
+# HTTP-01 automatically; the Cloudflare plugin is only needed to obtain the
+# *.{$BASE_DOMAIN} wildcard cert via DNS-01, since a wildcard can never be
+# issued over HTTP-01.
+
+FROM caddy:2-builder-alpine AS builder
+
+RUN xcaddy build \
+    --with github.com/caddy-dns/cloudflare
 
 FROM caddy:2-alpine
+
+COPY --from=builder /usr/bin/caddy /usr/bin/caddy

@@ -31,9 +31,17 @@ Let's Encrypt HTTP-01._
 | POS backend API | `api.knotkitchen.online` | `pos-api` |
 | Super-admin backend API | `admin-api.knotkitchen.online` | `admin-api` |
 | Partner onboarding / agreement portal | `agreement.knotkitchen.online` | `onboard-portal` (separate repo: `knotkitchenpos/onboard`, cloned to `/srv/onboard`) |
+| Per-store customer website | `<store_id>.knotkitchen.online` (any subdomain not listed above) | `customer-web`, resolved by hostname via `resolveStorefront()` |
 
 Only `caddy` publishes host ports 80/443. Everything else is on the internal
 `knot` Docker network and is only reachable through Caddy.
+
+DNS for `knotkitchen.online` is hosted on **Cloudflare, in "DNS only" (grey
+cloud) mode** — Cloudflare never proxies traffic; Caddy on the VPS still
+terminates TLS directly, exactly as before. The only thing Cloudflare adds is
+letting Caddy obtain a real `*.knotkitchen.online` wildcard cert via DNS-01
+(`caddy-dns/cloudflare` plugin, `CLOUDFLARE_API_TOKEN` in `deploy/.env`) —
+every named hostname above still gets its cert the old way, via plain HTTP-01.
 
 
 ---

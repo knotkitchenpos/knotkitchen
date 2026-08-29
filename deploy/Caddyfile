@@ -1,9 +1,15 @@
 # =============================================================================
-# Knot Kitchen — Caddy reverse proxy (Hostinger DNS, no Cloudflare)
+# Knot Kitchen — Caddy reverse proxy (Cloudflare DNS-only, no proxying)
 # =============================================================================
-# Standard automatic HTTPS via Let's Encrypt HTTP-01. Every internal upstream
-# is addressed by its Docker service name on the `knot` network — Docker's
-# embedded DNS resolves the correct container.
+# Every named hostname still gets its cert the standard way (HTTP-01). Only
+# the *.knotkitchen.online wildcard vhost below uses DNS-01 (via the
+# caddy-dns/cloudflare plugin baked into this image) — a wildcard cert can
+# never be issued over HTTP-01. DNS is hosted on Cloudflare in "DNS only"
+# (grey cloud) mode, so traffic never actually passes through Cloudflare's
+# edge — Caddy on this VPS still terminates TLS directly, same as before.
+#
+# Every internal upstream is addressed by its Docker service name on the
+# `knot` network — Docker's embedded DNS resolves the correct container.
 #
 # Public hostname map (BASE_DOMAIN = knotkitchen.online):
 #   knotkitchen.online            → customer-web  (landing / storefront)
@@ -12,6 +18,8 @@
 #   onboard.knotkitchen.online    → admin-web     (super-admin / onboarding SPA)
 #   api.knotkitchen.online        → pos-api       (POS backend API)
 #   admin-api.knotkitchen.online  → admin-api     (super-admin backend API)
+#   agreement.knotkitchen.online  → onboard-portal (partner onboarding)
+#   <store_id>.knotkitchen.online → customer-web  (per-store storefront)
 
 {
 	email {$ACME_EMAIL}
@@ -134,5 +142,25 @@ agreement.{$BASE_DOMAIN} {
 
 		health_uri     /api/health
 		health_interval 15s
+	}
+}
+
+# =============================================================================
+# <store_id>.knotkitchen.online — Per-store customer website
+# =============================================================================
+# Catch-all for any subdomain not matched by a vhost above. Unlike the
+# on_demand_tls attempt that broke TLS for every hostname on this server, this
+# uses a single wildcard cert obtained proactively via DNS-01 (see the `dns
+# cloudflare` block below) — no per-request cert logic, no "ask" endpoint, no
+# way for a handshake to hit an unissued cert.
+*.{$BASE_DOMAIN} {
+	import security_headers
+	tls {
+		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+	}
+
+	encode zstd gzip
+	reverse_proxy customer-web:80 {
+		header_up Host {host}
 	}
 }

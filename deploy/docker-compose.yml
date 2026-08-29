@@ -210,9 +210,11 @@ services:
     environment:
       # Consumed by the Caddyfile via env placeholders.
       BASE_DOMAIN: ${BASE_DOMAIN}
-      # Let's Encrypt / ZeroSSL HTTP-01 only — no DNS provider token needed
-      # because Hostinger DNS is used and Caddy proves ownership over port 80.
       ACME_EMAIL: ${ACME_EMAIL}
+      # Cloudflare API token (Zone:DNS:Edit, scoped to this zone only) — used
+      # solely to obtain the *.${BASE_DOMAIN} wildcard cert via DNS-01. Every
+      # other hostname still uses plain HTTP-01 and never touches Cloudflare.
+      CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
