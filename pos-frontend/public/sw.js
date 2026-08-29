@@ -1,5 +1,9 @@
-const CACHE_NAME = "knotkitchen-shell-v1";
-const APP_SHELL = ["/", "/manifest.webmanifest", "/knotkitchen-icon.svg"];
+// Bumped to v2 with the icon rename: `activate` purges every cache whose name
+// doesn't match, so this is what evicts the stale v1 shell holding the old icon.
+const CACHE_NAME = "knotkitchen-shell-v2";
+// addAll() rejects the whole install if any entry 404s, so every URL here must
+// exist in public/.
+const APP_SHELL = ["/", "/manifest.webmanifest", "/icons/favicon-32.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)));
