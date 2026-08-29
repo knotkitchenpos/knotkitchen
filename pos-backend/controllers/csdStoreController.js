@@ -1,0 +1,160 @@
+const createHttpError = require("http-errors");
+const Store = require("../models/storeModel");
+const Restaurant = require("../models/restaurantModel");
+
+/** Escape user input before it reaches a RegExp — otherwise "(" or "*" throws. */
+const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/** Present a Store + its Restaurant as one flat row for the results table. */
+const toResultRow = (store, restaurant) => {
+  const a = restaurant?.address || {};
+  const address = [a.line1, a.line2, a.city, a.state, a.postalCode]
+    .map((p) => (p || "").trim())
+    .filter(Boolean)
+    .join(", ");
+
+  return {
+    storeId: store.storeId,
+    restaurantName: restaurant?.name || store.storeName || "",
+    ownerName: store.ownerName || restaurant?.ownerName || "",
+    ownerPhone: store.ownerPhone || restaurant?.ownerPhone || "",
+    address,
+    city: a.city || "",
+    state: a.state || "",
+    status: store.status,
+    closedUntil: store.closedUntil || null,
+    restaurantId: restaurant ? String(restaurant._id) : null,
+    createdAt: store.createdAt,
+  };
+};
+
+/**
+ * GET /api/csd/stores/search?q=...&limit=&status=
+ *
+ * The header's global search. One box, matching any of: Store ID, restaurant
+ * name, owner phone, or address.
+ *
+ * Store and Restaurant are separate collections with the addresses living on
+ * Restaurant, so an address query can't be expressed as a single Store find().
+ * Rather than $lookup (which can't use the text indexes on either side well
+ * here), this queries both collections and unions on storeId. Both halves are
+ * capped so a one-character query can't pull the whole database into memory.
+ */
+const searchStores = async (req, res, next) => {
+  try {
+    const q = String(req.query.q || "").trim();
+    const status = String(req.query.status || "").trim();
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 25, 1), 100);
+
+    if (q.length < 2) {
+      return res
+        .status(200)
+        .json({ success: true, data: { results: [], query: q, truncated: false } });
+    }
+
+    const rx = new RegExp(escapeRegex(q), "i");
+    const digits = q.replace(/\D/g, "");
+    const SCAN_CAP = 200;
+
+    const storeFilter = { isDeleted: { $ne: true }, $or: [{ storeName: rx }, { ownerName: rx }] };
+    if (/^\d{1,6}$/.test(digits)) storeFilter.$or.push({ storeId: new RegExp(`^${digits}`) });
+    if (digits.length >= 4) storeFilter.$or.push({ ownerPhone: new RegExp(escapeRegex(digits)) });
+    if (status) storeFilter.status = status;
+
+    const restaurantFilter = {
+      isDeleted: { $ne: true },
+      $or: [
+        { name: rx },
+        { "address.line1": rx },
+        { "address.line2": rx },
+        { "address.city": rx },
+        { "address.state": rx },
+        { "address.postalCode": rx },
+      ],
+    };
+    if (digits.length >= 4) restaurantFilter.$or.push({ ownerPhone: new RegExp(escapeRegex(digits)) });
+
+    const [storeHits, restaurantHits] = await Promise.all([
+      Store.find(storeFilter).limit(SCAN_CAP).lean(),
+      Restaurant.find(restaurantFilter, { name: 1, address: 1, storeId: 1, ownerName: 1, ownerPhone: 1 })
+        .limit(SCAN_CAP)
+        .lean(),
+    ]);
+
+    // Union by storeId. Restaurant rows without a storeId can't be actioned
+    // from this panel, so they're dropped rather than shown as dead entries.
+    const storeIds = new Set(storeHits.map((s) => s.storeId));
+    for (const r of restaurantHits) if (r.storeId) storeIds.add(r.storeId);
+
+    const allIds = [...storeIds];
+    const truncated = allIds.length > limit;
+    const pageIds = allIds.slice(0, limit);
+
+    const [stores, restaurants] = await Promise.all([
+      Store.find({ storeId: { $in: pageIds }, isDeleted: { $ne: true } }).lean(),
+      Restaurant.find(
+        { storeId: { $in: pageIds }, isDeleted: { $ne: true } },
+        { name: 1, address: 1, storeId: 1, ownerName: 1, ownerPhone: 1 }
+      ).lean(),
+    ]);
+
+    const byStoreId = new Map(restaurants.map((r) => [r.storeId, r]));
+    const results = stores
+      .filter((s) => !status || s.status === status)
+      .map((s) => toResultRow(s, byStoreId.get(s.storeId)))
+      .sort((a, b) => a.restaurantName.localeCompare(b.restaurantName));
+
+    res.status(200).json({ success: true, data: { results, query: q, truncated } });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/csd/stores/:storeId
+ *
+ * Full store profile. Available to staff as well as admins — viewing store
+ * details is core CSD work.
+ */
+const getStore = async (req, res, next) => {
+  try {
+    const storeId = String(req.params.storeId || "").trim();
+    if (!/^\d{6}$/.test(storeId)) return next(createHttpError(400, "Invalid Store ID."));
+
+    const store = await Store.findOne({ storeId, isDeleted: { $ne: true } }).lean();
+    if (!store) return next(createHttpError(404, "Store not found."));
+
+    const restaurant = await Restaurant.findOne(
+      { storeId, isDeleted: { $ne: true } },
+      { securityPin: 0 } // never expose the store's protection PIN hash
+    ).lean();
+
+    res.status(200).json({
+      success: true,
+      data: {
+        ...toResultRow(store, restaurant),
+        restaurant: restaurant
+          ? {
+              id: String(restaurant._id),
+              name: restaurant.name,
+              legalName: restaurant.legalName,
+              taxId: restaurant.taxId,
+              fssaiNumber: restaurant.fssaiNumber,
+              mapsLink: restaurant.mapsLink,
+              ownerEmail: restaurant.ownerEmail,
+              currency: restaurant.currency,
+              timezone: restaurant.timezone,
+              isActive: restaurant.isActive,
+              address: restaurant.address || {},
+              subscription: restaurant.subscription || {},
+              createdAt: restaurant.createdAt,
+            }
+          : null,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { searchStores, getStore };

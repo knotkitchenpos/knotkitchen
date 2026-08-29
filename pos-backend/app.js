@@ -182,6 +182,12 @@ app.use("/api/offline", require("./routes/offlineRoute"));
 app.use("/api/plugin", require("./routes/pluginRoute"));
 app.use("/api/public", require("./routes/publicStoreRoute"));
 
+// ===== KnotKitchen Business — CSD + Admin panel (csd.${BASE_DOMAIN}) =====
+// Phone + OTP authenticated, role-gated server-side. Separate JWT secret and
+// cookie from the POS session above, so a CSD token can never authenticate a
+// POS request or vice versa.
+app.use("/api/csd", require("./routes/csdRoute"));
+
 // ===== Multi-tenant storefront (customer website) =====
 // Public, unauthenticated customer website API
 app.use("/api/storefront", require("./routes/storefrontRoute"));
