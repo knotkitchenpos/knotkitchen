@@ -225,6 +225,11 @@ services:
       # doesn't exist on the volume yet.
       ADMIN_USERNAME: ${ONBOARD_ADMIN_USERNAME:-admin}
       ADMIN_PASSWORD: ${ONBOARD_ADMIN_PASSWORD}
+      # Shared secret that lets CSD read agreements and their uploaded
+      # documents without an agent session. MUST match the value pos-api uses.
+      # Unset = the portal accepts no service token at all and CSD reports the
+      # connection as not configured, which is the correct inert default.
+      ONBOARD_SERVICE_TOKEN: ${ONBOARD_SERVICE_TOKEN:-}
     volumes:
       - onboard_data:/app/server/data
       - onboard_uploads:/app/uploads
