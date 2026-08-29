@@ -158,6 +158,25 @@ services:
     networks: [knot]
 
   # ---------------------------------------------------------------------------
+  # Customer Support Desk SPA  →  csd.${BASE_DOMAIN}
+  #
+  # Internal staff tool. Talks to pos-api at https://api.${BASE_DOMAIN}/api/csd;
+  # that origin is already in FRONTEND_URLS above and the API issues
+  # SameSite=None cookies in production, so the cross-origin session works the
+  # same way the POS already does.
+  # ---------------------------------------------------------------------------
+  csd-web:
+    build:
+      context: ../csd-web
+      dockerfile: Dockerfile
+      args:
+        # src/api/index.js appends "/csd" to this.
+        VITE_API_BASE_URL: https://api.${BASE_DOMAIN}/api
+    image: knotkitchen/csd-web:latest
+    restart: unless-stopped
+    networks: [knot]
+
+  # ---------------------------------------------------------------------------
   # Admin / Onboarding SPA  →  onboard.${BASE_DOMAIN}
   # ---------------------------------------------------------------------------
   admin-web:

@@ -112,9 +112,24 @@ business.{$BASE_DOMAIN} {
 }
 
 # =============================================================================
-# knotkitchen.online / csd.knotkitchen.online — Landing page & Storefront
+# csd.knotkitchen.online — Customer Support Desk (internal staff tool)
+#
+# Previously an alias for the landing page. It now serves the CSD panel, so
+# the apex below no longer lists it.
 # =============================================================================
-csd.{$BASE_DOMAIN}, {$BASE_DOMAIN} {
+csd.{$BASE_DOMAIN} {
+	import security_headers
+
+	encode zstd gzip
+	reverse_proxy csd-web:80 {
+		header_up Host {host}
+	}
+}
+
+# =============================================================================
+# knotkitchen.online — Landing page & Storefront
+# =============================================================================
+{$BASE_DOMAIN} {
 	import security_headers
 
 	encode zstd gzip
