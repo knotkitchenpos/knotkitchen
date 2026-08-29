@@ -17,8 +17,6 @@
 	email {$ACME_EMAIL}
 	on_demand_tls {
 		ask https://api.{$BASE_DOMAIN}/api/public/tls-ask
-		interval 2m
-		burst 5
 	}
 }
 
