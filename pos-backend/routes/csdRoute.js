@@ -4,7 +4,9 @@ const router = express.Router();
 const { rateLimit, clientIp } = require("../middlewares/rateLimiter");
 const { requireCsdAuth, requireCsdAdmin } = require("../middlewares/csdAuth");
 const { sendOtp, verifyOtpAndSignIn, me, logout } = require("../controllers/csdAuthController");
-const { searchStores, getStore } = require("../controllers/csdStoreController");
+const { searchStores, getStore, updateStoreStatus } = require("../controllers/csdStoreController");
+const { getDashboard } = require("../controllers/csdDashboardController");
+const { createStore, getOptions } = require("../controllers/csdOnboardingController");
 
 /**
  * KnotKitchen Business — CSD + Admin panel API (csd.knotkitchen.online).
@@ -65,5 +67,14 @@ router.get("/stores/:storeId", getStore);
 router.get("/admin/ping", requireCsdAdmin, (req, res) =>
   res.status(200).json({ success: true, data: { role: req.csdStaff.role } })
 );
+
+router.get("/dashboard", requireCsdAdmin, getDashboard);
+
+router.get("/onboarding/options", requireCsdAdmin, getOptions);
+router.post("/onboarding/stores", requireCsdAdmin, createStore);
+
+// Status decides whether the public storefront serves customers at all, so it
+// is admin-only even though viewing the store is not.
+router.patch("/stores/:storeId/status", requireCsdAdmin, updateStoreStatus);
 
 module.exports = router;

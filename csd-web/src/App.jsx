@@ -7,6 +7,8 @@ import Profile from "./pages/Profile";
 import StoreSearch from "./pages/StoreSearch";
 import StoreDetail from "./pages/StoreDetail";
 import Placeholder from "./pages/Placeholder";
+import Dashboard from "./pages/Dashboard";
+import Onboarding from "./pages/Onboarding";
 
 const Splash = () => (
   <div className="flex min-h-screen items-center justify-center bg-navy-950 text-navy-300">
@@ -61,11 +63,11 @@ const App = () => (
           {/* Admin only */}
           <Route
             path="/dashboard"
-            element={<RequireAdmin><Placeholder title="Dashboard" phase={2} /></RequireAdmin>}
+            element={<RequireAdmin><Dashboard /></RequireAdmin>}
           />
           <Route
             path="/onboarding"
-            element={<RequireAdmin><Placeholder title="Store Onboarding" phase={2} /></RequireAdmin>}
+            element={<RequireAdmin><Onboarding /></RequireAdmin>}
           />
           <Route
             path="/staff"

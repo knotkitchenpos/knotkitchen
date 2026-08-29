@@ -55,6 +55,17 @@ const restaurantSchema = new mongoose.Schema(
     fssaiNumber: { type: String, default: "" },
     mapsLink: { type: String, default: "" },
 
+    // --- CSD onboarding (csd.<domain> → Store Onboarding) ---
+    // The restaurant's own public line, distinct from the owner's personal
+    // number above.
+    restaurantPhone: { type: String, default: "" },
+    restaurantType: { type: String, default: "" },
+    // Tracked separately from `taxId` because "not GST registered" is a valid,
+    // meaningful state — an empty taxId alone can't distinguish that from
+    // "registered but we haven't captured the number yet".
+    gstRegistered: { type: Boolean, default: false },
+    fssaiValidUntil: { type: Date, default: null },
+
     // Module 7 §2 — Hashed Protection PIN (Default "8796")
     // Stored as bcrypt hash, never plaintext!
     securityPin: { type: String, default: "" },

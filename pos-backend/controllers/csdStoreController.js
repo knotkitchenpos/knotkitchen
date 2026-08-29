@@ -1,6 +1,7 @@
 const createHttpError = require("http-errors");
 const Store = require("../models/storeModel");
 const Restaurant = require("../models/restaurantModel");
+const { csdAudit } = require("../services/csdAuditService");
 
 /** Escape user input before it reaches a RegExp — otherwise "(" or "*" throws. */
 const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -157,4 +158,72 @@ const getStore = async (req, res, next) => {
   }
 };
 
-module.exports = { searchStores, getStore };
+/**
+ * PATCH /api/csd/stores/:storeId/status — admin only.
+ *
+ * Changing a store's status decides whether its storefront serves customers
+ * at all (storefrontResolver refuses suspended/closed stores), so this is
+ * admin-gated and always audited with the previous value.
+ */
+const ALLOWED_STATUS = ["active", "pending", "suspended", "closed_temporarily", "closed_until"];
+
+const updateStoreStatus = async (req, res, next) => {
+  try {
+    const storeId = String(req.params.storeId || "").trim();
+    if (!/^\d{6}$/.test(storeId)) return next(createHttpError(400, "Invalid Store ID."));
+
+    const status = String(req.body?.status || "").trim();
+    if (!ALLOWED_STATUS.includes(status)) {
+      return next(createHttpError(400, `Status must be one of: ${ALLOWED_STATUS.join(", ")}`));
+    }
+
+    const reason = String(req.body?.reason || "").trim().slice(0, 500);
+
+    let closedUntil = null;
+    if (status === "closed_until") {
+      const d = new Date(req.body?.closedUntil);
+      if (Number.isNaN(d.getTime())) {
+        return next(createHttpError(400, "Provide the date this store reopens."));
+      }
+      if (d.getTime() <= Date.now()) {
+        // A past date would leave the store instantly open again while the UI
+        // still displayed "closed until" — refuse rather than mislead.
+        return next(createHttpError(400, "The reopening date must be in the future."));
+      }
+      closedUntil = d;
+    }
+
+    const store = await Store.findOne({ storeId, isDeleted: { $ne: true } });
+    if (!store) return next(createHttpError(404, "Store not found."));
+
+    const previous = { status: store.status, closedUntil: store.closedUntil || null };
+
+    store.status = status;
+    store.closedUntil = closedUntil;
+    store.closureReason = status === "active" ? "" : reason;
+    await store.save();
+
+    await csdAudit({
+      req,
+      staff: req.csdStaff,
+      action: "CSD_STORE_STATUS_CHANGED",
+      resource: "Store",
+      entityType: "Store",
+      entityId: store._id,
+      storeId,
+      description: `Store ${storeId} status ${previous.status} → ${status}`,
+      previousValue: previous,
+      newValue: { status, closedUntil, reason: store.closureReason },
+      severity: status === "suspended" ? "WARNING" : "INFO",
+    });
+
+    res.status(200).json({
+      success: true,
+      data: { storeId, status: store.status, closedUntil: store.closedUntil, reason: store.closureReason },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { searchStores, getStore, updateStoreStatus, ALLOWED_STATUS };

@@ -44,9 +44,23 @@ export const auth = {
   logout: () => api.post("/auth/logout").then((r) => r.data),
 };
 
+/** Per-field messages from a 400, for highlighting form inputs. */
+export const fieldErrors = (err) => err?.response?.data?.fieldErrors || {};
+
 export const stores = {
   search: (params) => api.get("/stores/search", { params }).then((r) => r.data.data),
   get: (storeId) => api.get(`/stores/${storeId}`).then((r) => r.data.data),
+  updateStatus: (storeId, payload) =>
+    api.patch(`/stores/${storeId}/status`, payload).then((r) => r.data.data),
+};
+
+export const dashboard = {
+  get: () => api.get("/dashboard").then((r) => r.data.data),
+};
+
+export const onboarding = {
+  options: () => api.get("/onboarding/options").then((r) => r.data.data),
+  createStore: (payload) => api.post("/onboarding/stores", payload).then((r) => r.data.data),
 };
 
 export default api;

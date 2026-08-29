@@ -1,8 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { FiArrowLeft, FiExternalLink } from "react-icons/fi";
+import { FiArrowLeft, FiExternalLink, FiEdit2 } from "react-icons/fi";
 import { stores, errorMessage } from "../api";
 import StatusBadge from "../components/StatusBadge";
+import { useAuth } from "../context/AuthContext";
+import StatusDialog from "../components/StatusDialog";
 
 const fmt = (d) => (d ? new Date(d).toLocaleDateString("en-IN", { dateStyle: "medium" }) : "—");
 
@@ -17,9 +19,11 @@ const Row = ({ label, children }) => (
 
 const StoreDetail = () => {
   const { storeId } = useParams();
+  const { isAdmin } = useAuth();
   const [store, setStore] = useState(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
+  const [editing, setEditing] = useState(false);
 
   useEffect(() => {
     let alive = true;
@@ -61,7 +65,28 @@ const StoreDetail = () => {
         <span className="rounded-lg bg-navy-100 px-2 py-1 font-mono text-sm text-navy-700">
           {store.storeId}
         </span>
+        {/* Visibility only — the PATCH route is guarded by requireCsdAdmin. */}
+        {isAdmin && (
+          <button
+            type="button"
+            onClick={() => setEditing(true)}
+            className="ml-auto inline-flex items-center gap-2 rounded-xl border border-navy-300 bg-white px-3.5 py-2 text-sm font-semibold text-navy-700 hover:bg-navy-50"
+          >
+            <FiEdit2 aria-hidden="true" /> Change status
+          </button>
+        )}
       </header>
+
+      {editing && (
+        <StatusDialog
+          store={store}
+          onClose={() => setEditing(false)}
+          onSaved={(saved) => {
+            setStore((s) => ({ ...s, ...saved }));
+            setEditing(false);
+          }}
+        />
+      )}
 
       <div className="mt-6 grid gap-5 lg:grid-cols-2">
         <section className="rounded-2xl border border-navy-200 bg-white p-5">

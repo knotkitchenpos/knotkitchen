@@ -39,6 +39,16 @@ const globalErrorHandler = (err, req, res, next) => { // eslint-disable-line no-
     reqId,
   };
 
+  // Per-field validation messages for forms, e.g.
+  // createHttpError(400, "...", { fieldErrors: { gstin: "..." } }).
+  //
+  // Deliberately NOT named `errors`: Mongoose's ValidationError carries an
+  // `errors` property full of internals (paths, kinds, casting detail), and
+  // forwarding that name would leak them. Only 4xx — a 5xx must stay generic.
+  if (!isServerError && err?.fieldErrors && typeof err.fieldErrors === "object") {
+    payload.fieldErrors = err.fieldErrors;
+  }
+
   if (!config.isProduction && err?.stack) {
     payload.errorStack = err.stack;
   }
