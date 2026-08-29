@@ -24,6 +24,7 @@ volumes:
   caddy_data:      # ACME certs, OCSP staples — MUST persist across restarts
   caddy_config:
   backend_uploads: # only used when MEDIA_STORAGE_PROVIDER=local (dev/small deploys)
+  csd_documents:   # restaurant KYC/compliance documents — never served statically
   onboard_data:    # onboard-portal's server/data/database.json (agents + agreements)
   onboard_uploads: # onboard-portal's uploaded KYC documents
 
@@ -90,11 +91,28 @@ services:
       # Realtime
       SOCKET_ENABLED: "true"
 
+      # === CSD panel ===
+      CSD_JWT_SECRET: ${CSD_JWT_SECRET:-}
+      CSD_ADMIN_PHONES: ${CSD_ADMIN_PHONES:-8646826709,9875678060}
+      CSD_TOKEN_EXPIRY: ${CSD_TOKEN_EXPIRY:-12h}
+      # Must match the csd_documents mount below.
+      CSD_DOCUMENTS_DIR: /app/csd-documents
+      # Agreement → store creation. Unset until the onboarding portal supports
+      # a service token; CSD then makes no calls at all.
+      ONBOARD_BASE_URL: ${ONBOARD_BASE_URL:-http://onboard-portal:3000}
+      ONBOARD_SERVICE_TOKEN: ${ONBOARD_SERVICE_TOKEN:-}
+
     # Local uploads dir — only used if MEDIA_STORAGE_PROVIDER=local. Cloud
     # providers (S3-compatible / Cloudinary) write there and this volume
     # stays empty.
     volumes:
       - backend_uploads:/app/uploads
+      # Restaurant compliance documents (GST, FSSAI, PAN/KYC, signed
+      # agreements). A SEPARATE volume from backend_uploads on purpose:
+      # /app/uploads is published publicly by express.static for menu photos,
+      # and customer KYC must never be reachable that way. Nothing serves this
+      # directory — the files stream through an authenticated CSD route.
+      - csd_documents:/app/csd-documents
 
   # ---------------------------------------------------------------------------
   # Admin backend  →  admin-api.${BASE_DOMAIN}

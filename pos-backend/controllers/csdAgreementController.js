@@ -256,6 +256,17 @@ const createStoreFromAgreement = async (req, res, next) => {
       storefrontError = err.message;
     }
 
+    // Carry the agreement's uploaded documents across. Never throws: a
+    // document that fails to import must not undo a store that was otherwise
+    // created correctly, so the per-file outcome is reported instead.
+    const { importAgreementDocuments } = require("./csdDocumentController");
+    const documents = await importAgreementDocuments({
+      agreement,
+      storeId,
+      staff: req.csdStaff,
+      req,
+    });
+
     // Best-effort by design — the store exists either way, and the link
     // records that the portal still needs telling.
     try {
@@ -296,6 +307,11 @@ const createStoreFromAgreement = async (req, res, next) => {
         storefrontError,
         portalNotified: link.portalNotified,
         portalNotifyError: link.portalNotifyError || null,
+        documents: {
+          imported: documents.imported.length,
+          failed: documents.failed,
+          names: documents.imported.map((d) => d.name),
+        },
         warnings,
       },
     });

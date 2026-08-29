@@ -10,6 +10,7 @@ import { useAuth } from "../context/AuthContext";
 import ChargesDialog from "../components/ChargesDialog";
 import PosAccessDialog from "../components/PosAccessDialog";
 import CustomersDialog from "../components/CustomersDialog";
+import StoreDocuments from "../components/StoreDocuments";
 
 const inr = (n) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(n || 0);
 const dt = (d) => (d ? new Date(d).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "—");
@@ -456,14 +457,10 @@ const RestaurantDetail = () => {
         </Card>
       </div>
 
-      {/* ── Documents (§30) — not built ───────────────────────────────── */}
-      <Card title="Stored images &amp; documents" className="mt-5">
-        <p className="flex items-start gap-2 text-sm text-navy-500">
-          <FiAlertTriangle className="mt-0.5 shrink-0 text-navy-400" aria-hidden="true" />
-          Document storage is not available yet. It needs a storage decision (local disk vs
-          S3/Cloudinary) and a document-safe upload path — the existing uploader accepts images only.
-        </p>
-      </Card>
+      {/* ── Documents (§30) ──────────────────────────────────────────── */}
+      <div className="mt-5">
+        <StoreDocuments storeId={storeId} />
+      </div>
 
       {/* ── Activity (§33) ───────────────────────────────────────────── */}
       <Card title="Restaurant activity" className="mt-5">

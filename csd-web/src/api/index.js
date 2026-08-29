@@ -78,6 +78,37 @@ export const restaurants = {
     api.patch(`/restaurants/${storeId}/charges`, payload).then((r) => r.data.data),
   updateGoogleBusiness: (storeId, googleBusinessUrl) =>
     api.patch(`/restaurants/${storeId}/google-business`, { googleBusinessUrl }).then((r) => r.data.data),
+
+  documents: (storeId) => api.get(`/restaurants/${storeId}/documents`).then((r) => r.data.data),
+
+  // Documents are never reachable by URL — they stream through an
+  // authenticated route, so the browser needs the cookie on the request and
+  // the bytes become a short-lived object URL.
+  documentBlobUrl: async (storeId, docId) => {
+    const res = await api.get(`/restaurants/${storeId}/documents/${docId}/file`, {
+      responseType: "blob",
+    });
+    return URL.createObjectURL(res.data);
+  },
+
+  uploadDocument: (storeId, { file, name, category }) =>
+    api
+      .post(`/restaurants/${storeId}/documents`, file, {
+        params: { name, category },
+        headers: { "content-type": file.type || "application/octet-stream" },
+      })
+      .then((r) => r.data.data),
+
+  replaceDocument: (storeId, docId, { file, name, category }) =>
+    api
+      .put(`/restaurants/${storeId}/documents/${docId}`, file, {
+        params: { name, category },
+        headers: { "content-type": file.type || "application/octet-stream" },
+      })
+      .then((r) => r.data.data),
+
+  deleteDocument: (storeId, docId) =>
+    api.delete(`/restaurants/${storeId}/documents/${docId}`).then((r) => r.data.data),
 };
 
 export const dashboard = {

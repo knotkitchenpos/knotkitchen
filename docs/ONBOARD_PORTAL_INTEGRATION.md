@@ -61,7 +61,18 @@ CSD reads these fields (everything else is ignored):
 | `created_at` | list display |
 | `data.*` | everything mapped onto the store — see the mapper |
 
-### 3. One new endpoint
+### 3. Accept the service token on `/uploads/*`
+
+The agreement's uploaded documents are copied into the store when it is
+created. `/uploads` is session-protected in the portal (correctly — it holds
+customer KYC), so it must accept a valid service token in place of a session,
+exactly as the agreement endpoints do.
+
+Files are **copied, not linked**. A store's GST certificate must not disappear
+because a sales agent later deleted the agreement or one of its files, and the
+documents must remain readable when the portal is down.
+
+### 4. One new endpoint
 
 ```
 POST /api/agreements/:id/store-created
@@ -140,3 +151,25 @@ do not block.
 | Storefront provisioning fails | Store still created; the error is surfaced |
 | Portal write-back fails | Store still created; flagged, and retryable via **Sync portal** |
 | Two admins click at once | Exactly one store; the other gets a 409 naming the existing store |
+| A document fails to import | The store is still created; the failure is listed per-file and it can be uploaded manually |
+| A document is not a PDF/image | Refused by byte-sniffing, regardless of its declared content-type |
+
+---
+
+## Where documents are stored
+
+**Not** in `services/storage/` with the menu photos. That path is mounted at
+`/uploads` by `express.static` with no authentication and
+`Cache-Control: public, immutable`, and its S3/Cloudinary drivers likewise
+return publicly fetchable URLs. Putting a customer's PAN card there would
+expose their KYC at a guessable URL.
+
+Compliance documents instead live under `CSD_DOCUMENTS_DIR`
+(`/app/csd-documents`, its own `csd_documents` Docker volume), which nothing
+serves statically. They reach a browser only by streaming through an
+authenticated CSD route, with `no-store`, `nosniff` and a null CSP. Storage
+keys are random and never sent to the client.
+
+Type safety is by **byte sniffing**, not the declared content-type: only PDF,
+JPEG, PNG, WebP and HEIC are accepted, so nothing a browser might execute can
+be stored and later opened by a staff member.

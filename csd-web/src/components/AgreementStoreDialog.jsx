@@ -240,6 +240,21 @@ const AgreementStoreDialog = ({ agreement, onClose, onCreated }) => {
             </div>
 
             {/* Surface partial failures rather than implying everything worked. */}
+            {result.documents?.imported > 0 && (
+              <p className="mx-auto mt-4 max-w-sm rounded-xl border border-emerald-300 bg-emerald-50 p-3 text-left text-xs text-emerald-800">
+                <strong>{result.documents.imported} document{result.documents.imported === 1 ? "" : "s"}</strong>{" "}
+                imported from the agreement: {result.documents.names.join(", ")}.
+              </p>
+            )}
+            {result.documents?.failed?.length > 0 && (
+              <p className="mx-auto mt-3 max-w-sm rounded-xl border border-amber-300 bg-amber-50 p-3 text-left text-xs text-amber-800">
+                {result.documents.failed.length} document
+                {result.documents.failed.length === 1 ? "" : "s"} could not be imported
+                ({result.documents.failed.map((f) => `${f.name}: ${f.reason}`).join("; ")}). They can be
+                uploaded manually from the store's documents section.
+              </p>
+            )}
+
             {!result.portalNotified && (
               <p className="mx-auto mt-4 max-w-sm rounded-xl border border-amber-300 bg-amber-50 p-3 text-left text-xs text-amber-800">
                 The store exists, but the onboarding portal could not be told

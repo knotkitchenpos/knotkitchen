@@ -11,3 +11,8 @@ node_modules
 # Locally-stored media library files (MEDIA_STORAGE_PROVIDER=local).
 # Production uses object storage, so these must never be committed.
 uploads/
+
+# Restaurant compliance documents — GST certificates, FSSAI licences,
+# PAN/KYC scans, signed agreements. A local run writes real customer records
+# here, so this must never reach the repository under any circumstances.
+csd-documents/

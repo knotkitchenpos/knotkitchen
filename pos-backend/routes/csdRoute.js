@@ -21,6 +21,9 @@ const {
   listAgreements, getAgreement, createStoreFromAgreement, retryPortalNotify,
 } = require("../controllers/csdAgreementController");
 const {
+  listDocuments, downloadDocument, uploadDocument, deleteDocument,
+} = require("../controllers/csdDocumentController");
+const {
   getRestaurant, getCustomers, getOrderSummary, getRestaurantStaff, getActivity,
   updateGoogleBusiness, updateCharges, createPosSession, listPosSessions,
 } = require("../controllers/csdRestaurantController");
@@ -89,6 +92,13 @@ router.get("/restaurants/:storeId/staff", getRestaurantStaff);
 router.get("/restaurants/:storeId/activity", getActivity);
 router.get("/restaurants/:storeId/pos-sessions", listPosSessions);
 
+// Stored documents (§30/§31). View, upload and update are available to staff
+// and admin; DELETE is admin-only and guarded separately below.
+router.get("/restaurants/:storeId/documents", listDocuments);
+router.get("/restaurants/:storeId/documents/:docId/file", downloadDocument);
+router.post("/restaurants/:storeId/documents", uploadDocument);
+router.put("/restaurants/:storeId/documents/:docId", uploadDocument);
+
 // POS support access (§22). Available to staff — the spec wants CSD staff to
 // fix menus for restaurants — but every issue is audited and the token is
 // single-use, short-lived and bound to both this store and this staff member.
@@ -141,6 +151,9 @@ router.patch("/staff/:id", requireCsdAdmin, updateStaff);
 
 // §29/§34: only an admin may change commercial terms or the Google Business
 // listing. Staff can see both.
+// §31: staff may view, upload and update documents, but never delete one.
+router.delete("/restaurants/:storeId/documents/:docId", requireCsdAdmin, deleteDocument);
+
 router.patch("/restaurants/:storeId/charges", requireCsdAdmin, updateCharges);
 router.patch("/restaurants/:storeId/google-business", requireCsdAdmin, updateGoogleBusiness);
 

@@ -91,6 +91,62 @@ const markStoreCreated = async (id, { storeId, storeCreatedAt, by }) =>
     body: { storeId, storeCreatedAt, by },
   });
 
+/**
+ * Fetch one uploaded file from the portal as bytes.
+ *
+ * The portal's `/uploads` is session-protected (it holds customer KYC), so
+ * this sends the service token too. Returns the raw bytes rather than a URL
+ * because the caller stores its own copy — see csdDocumentController for why
+ * referencing the portal's copy would be wrong.
+ *
+ * Capped: the portal is a trusted peer, but a corrupt or hostile response
+ * must not be able to exhaust this process's memory.
+ */
+const MAX_FILE_BYTES = 20 * 1024 * 1024;
+
+const fetchFile = async (fileUrl) => {
+  const token = serviceToken();
+  if (!token) throw createHttpError(503, "The onboarding portal connection is not configured.");
+
+  // Only ever fetch from the configured portal — never follow a path from the
+  // agreement to some other host.
+  const url = fileUrl.startsWith("http") ? fileUrl : `${baseUrl()}${fileUrl.startsWith("/") ? "" : "/"}${fileUrl}`;
+  if (!url.startsWith(baseUrl())) {
+    throw createHttpError(400, "That document is not hosted on the onboarding portal.");
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 20000);
+
+  let res;
+  try {
+    res = await fetch(url, { headers: { "x-service-token": token }, signal: controller.signal });
+  } catch (err) {
+    throw createHttpError(
+      err.name === "AbortError" ? 504 : 502,
+      "Could not download the document from the onboarding portal."
+    );
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (!res.ok) {
+    throw createHttpError(502, `The onboarding portal returned ${res.status} for a document.`);
+  }
+
+  const declared = Number(res.headers.get("content-length") || 0);
+  if (declared && declared > MAX_FILE_BYTES) {
+    throw createHttpError(413, "That document is larger than 20 MB.");
+  }
+
+  const buffer = Buffer.from(await res.arrayBuffer());
+  if (buffer.length > MAX_FILE_BYTES) {
+    throw createHttpError(413, "That document is larger than 20 MB.");
+  }
+
+  return { buffer, contentType: res.headers.get("content-type") || "" };
+};
+
 const isConfigured = () => Boolean(serviceToken());
 
-module.exports = { listAgreements, getAgreement, markStoreCreated, isConfigured, baseUrl };
+module.exports = { listAgreements, getAgreement, markStoreCreated, fetchFile, isConfigured, baseUrl };
