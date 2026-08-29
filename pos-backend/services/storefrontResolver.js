@@ -1,6 +1,7 @@
 const WebsiteSettings = require("../models/websiteSettingsModel");
 const Store = require("../models/storeModel");
 const Restaurant = require("../models/restaurantModel");
+const config = require("../config/config");
 
 /**
  * Storefront tenant resolver (§18, §37).
@@ -47,8 +48,13 @@ const findSettingsByHost = async (host) => {
   const bySubdomain = await WebsiteSettings.findOne({ subdomain: hostname, isDeleted: { $ne: true } });
   if (bySubdomain) return bySubdomain;
 
-  // 3. Match StoreID.knotkitchen.in or <slug>.knotkitchen.in
-  const subMatch = hostname.match(/^([a-z0-9-]+)\.(?:knotkitchen\.in|knotkitchen\.com|localhost)$/i);
+  // 3. Match StoreID.<base> or <slug>.<base>, where <base> is whichever base
+  // domain(s) this deployment is actually served under (BASE_DOMAIN / legacy
+  // fallbacks), so a fresh deployment under a new domain works with zero code
+  // changes — only an env var.
+  const bases = [config.baseDomain, "knotkitchen.in", "knotkitchen.com", "localhost"].filter(Boolean);
+  const baseSuffix = bases.map((b) => b.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+  const subMatch = baseSuffix ? hostname.match(new RegExp(`^([a-z0-9-]+)\\.(?:${baseSuffix})$`, "i")) : null;
   if (subMatch) {
     const sub = subMatch[1];
     if (/^\d{6}$/.test(sub)) {
