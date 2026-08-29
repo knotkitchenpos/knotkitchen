@@ -154,9 +154,6 @@ const Login = () => {
             className="space-y-6"
           >
             <div>
-              <label className="block text-xs font-semibold text-[#AEB8CA] uppercase tracking-wider mb-2.5">
-                6-Digit Store ID
-              </label>
               <div className="input-container flex items-center gap-3 bg-[#0D1526] border-[#26344B] focus-within:border-[#FF5A00] group rounded-xl px-4 py-3.5 border transition-all duration-200 shadow-sm focus-within:shadow-[0_0_0_3px_rgba(255,90,0,0.15)]">
                 <FiKey size={18} className="text-[#77839A] group-focus-within:text-[#FF5A00] transition-colors shrink-0" />
                 <input
@@ -168,7 +165,7 @@ const Login = () => {
                     setErrorMessage("");
                     setStoreId(e.target.value.replace(/\D/g, "").slice(0, 6));
                   }}
-                  placeholder="Enter 6-digit Store ID (e.g. 482731)"
+                  placeholder="Enter 6-digit Store ID"
                   className="w-full bg-transparent text-[#F5F7FA] text-sm sm:text-base font-mono tracking-wider placeholder:text-[#77839A] placeholder:font-sans placeholder:tracking-normal outline-none"
                   autoFocus
                   required
@@ -176,7 +173,7 @@ const Login = () => {
                 />
               </div>
               <p className="mt-2.5 text-xs text-[#77839A]">
-                Enter the unique 6-digit Store ID generated from your Admin Portal.
+                Enter the unique 6-digit Store ID provided by KnotKitchen.
               </p>
             </div>
 
