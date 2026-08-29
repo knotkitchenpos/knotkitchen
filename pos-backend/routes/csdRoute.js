@@ -24,6 +24,11 @@ const {
   listDocuments, downloadDocument, uploadDocument, deleteDocument,
 } = require("../controllers/csdDocumentController");
 const {
+  listMenus, toggleMenuPublish, updateDish,
+  listTables, updateTable,
+  listUsers, updateUser,
+} = require("../controllers/csdCatalogController");
+const {
   getRestaurant, getCustomers, getOrderSummary, getRestaurantStaff, getActivity,
   updateGoogleBusiness, updateCharges, createPosSession, listPosSessions,
 } = require("../controllers/csdRestaurantController");
@@ -163,6 +168,22 @@ router.get("/agreements", requireCsdAdmin, listAgreements);
 router.get("/agreements/:id", requireCsdAdmin, getAgreement);
 router.post("/agreements/:id/create-store", requireCsdAdmin, createStoreFromAgreement);
 router.post("/agreements/:id/retry-notify", requireCsdAdmin, retryPortalNotify);
+
+// Menus, Tables and the restaurant's own POS users. These three were the only
+// capabilities the Admin Portal had that CSD lacked, and the reason it had to
+// keep running. Any signed-in staff member may look; only an admin may change
+// anything, which matches the Admin Portal's own superAdmin gate on exactly
+// these writes.
+router.get("/restaurants/:storeId/menus", requireCsdAuth, listMenus);
+router.patch("/restaurants/:storeId/menus/:menuId/publish", requireCsdAdmin, toggleMenuPublish);
+router.patch("/restaurants/:storeId/menus/:menuId/items/:itemId", requireCsdAdmin, updateDish);
+
+router.get("/restaurants/:storeId/tables", requireCsdAuth, listTables);
+router.patch("/restaurants/:storeId/tables/:tableId", requireCsdAdmin, updateTable);
+
+// The restaurant's own employees, NOT CSD staff (see /staff above).
+router.get("/restaurants/:storeId/users", requireCsdAuth, listUsers);
+router.patch("/restaurants/:storeId/users/:userId", requireCsdAdmin, updateUser);
 
 router.get("/reports", requireCsdAdmin, getReports);
 router.get("/reports/audit", requireCsdAdmin, getAuditLog);
