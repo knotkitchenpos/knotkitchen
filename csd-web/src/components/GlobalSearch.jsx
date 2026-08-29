@@ -101,6 +101,8 @@ const GlobalSearch = () => {
             </p>
           )}
 
+          {/* §17 — one compact card per restaurant. The whole card is the
+              click target, with an explicit "View Store" affordance. */}
           {results.map((r) => (
             <button
               key={r.storeId}
@@ -114,11 +116,18 @@ const GlobalSearch = () => {
                   <StatusBadge status={r.status} />
                 </div>
                 <div className="mt-0.5 text-xs text-navy-500">
-                  <span className="font-mono">{r.storeId}</span>
-                  {r.ownerName && <> · {r.ownerName}</>}
-                  {r.ownerPhone && <> · {r.ownerPhone}</>}
+                  Store ID: <span className="font-mono">{r.storeId}</span>
                 </div>
-                {r.address && <div className="mt-0.5 truncate text-xs text-navy-400">{r.address}</div>}
+                {r.website && (
+                  <div className="mt-0.5 truncate text-xs text-navy-500">
+                    <span aria-hidden="true">🌐</span> {r.website.replace(/^https?:\/\//, "")}
+                  </div>
+                )}
+                {r.address && (
+                  <div className="mt-0.5 truncate text-xs text-navy-400">
+                    <span aria-hidden="true">📍</span> {r.address}
+                  </div>
+                )}
               </div>
               <span className="shrink-0 self-center text-xs font-semibold text-brand-600">View store</span>
             </button>

@@ -17,6 +17,10 @@ const {
 } = require("../controllers/csdChatController");
 const { getReports, getAuditLog } = require("../controllers/csdReportsController");
 const { getSettings } = require("../controllers/csdSettingsController");
+const {
+  getRestaurant, getCustomers, getOrderSummary, getRestaurantStaff, getActivity,
+  updateGoogleBusiness, updateCharges, createPosSession, listPosSessions,
+} = require("../controllers/csdRestaurantController");
 
 /**
  * KnotKitchen Business — CSD + Admin panel API (csd.knotkitchen.online).
@@ -73,6 +77,20 @@ router.get("/stores/:storeId", getStore);
 router.get("/orders/search", searchOrders);
 router.get("/orders/:id", getOrder);
 
+// Restaurant Details Page (§34: visible to staff AND admin; the mutating
+// routes below carry requireCsdAdmin individually).
+router.get("/restaurants/:storeId", getRestaurant);
+router.get("/restaurants/:storeId/customers", getCustomers);
+router.get("/restaurants/:storeId/order-summary", getOrderSummary);
+router.get("/restaurants/:storeId/staff", getRestaurantStaff);
+router.get("/restaurants/:storeId/activity", getActivity);
+router.get("/restaurants/:storeId/pos-sessions", listPosSessions);
+
+// POS support access (§22). Available to staff — the spec wants CSD staff to
+// fix menus for restaurants — but every issue is audited and the token is
+// single-use, short-lived and bound to both this store and this staff member.
+router.post("/restaurants/:storeId/pos-session", createPosSession);
+
 // Jobs. Shared by design: the spec wants a record of who did what work for
 // which restaurant, which only holds if staff can see and pick up each
 // other's jobs. There is deliberately NO delete route — "never permanently
@@ -117,6 +135,11 @@ router.get("/staff", requireCsdAdmin, listStaff);
 router.post("/staff", requireCsdAdmin, createStaff);
 router.get("/staff/:id", requireCsdAdmin, getStaff);
 router.patch("/staff/:id", requireCsdAdmin, updateStaff);
+
+// §29/§34: only an admin may change commercial terms or the Google Business
+// listing. Staff can see both.
+router.patch("/restaurants/:storeId/charges", requireCsdAdmin, updateCharges);
+router.patch("/restaurants/:storeId/google-business", requireCsdAdmin, updateGoogleBusiness);
 
 router.get("/reports", requireCsdAdmin, getReports);
 router.get("/reports/audit", requireCsdAdmin, getAuditLog);

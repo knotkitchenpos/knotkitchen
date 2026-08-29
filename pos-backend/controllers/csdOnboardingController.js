@@ -43,6 +43,10 @@ const validate = (body) => {
     gstin: str(body.gstin).toUpperCase(),
     fssaiNumber: str(body.fssaiNumber),
     fssaiValidUntil: str(body.fssaiValidUntil),
+    // §23 — who won the account. Captured here so it is recorded at the one
+    // moment the answer is actually known.
+    salesAgentName: str(body.salesAgentName),
+    googleBusinessUrl: str(body.googleBusinessUrl),
   };
 
   if (v.restaurantName.length < 2) errors.restaurantName = "Enter the restaurant's display name.";
@@ -70,6 +74,9 @@ const validate = (body) => {
 
   if (v.fssaiNumber && !FSSAI_RE.test(v.fssaiNumber))
     errors.fssaiNumber = "FSSAI licence number must be 14 digits.";
+
+  if (v.googleBusinessUrl && !/^https?:\/\//i.test(v.googleBusinessUrl))
+    errors.googleBusinessUrl = "Must start with http:// or https://";
 
   if (v.fssaiValidUntil) {
     const d = new Date(v.fssaiValidUntil);
@@ -127,6 +134,8 @@ const createStore = async (req, res, next) => {
       taxId: v.gstRegistered ? v.gstin : "",
       fssaiNumber: v.fssaiNumber,
       fssaiValidUntil: v.fssaiValidUntilDate || null,
+      salesAgentName: v.salesAgentName,
+      googleBusinessUrl: v.googleBusinessUrl,
       currency: "INR",
       timezone: "Asia/Kolkata",
       isActive: true,

@@ -5,7 +5,7 @@ import Layout from "./components/Layout";
 import Login from "./pages/Login";
 import Profile from "./pages/Profile";
 import StoreSearch from "./pages/StoreSearch";
-import StoreDetail from "./pages/StoreDetail";
+import RestaurantDetail from "./pages/RestaurantDetail";
 import Dashboard from "./pages/Dashboard";
 import Onboarding from "./pages/Onboarding";
 import SearchConsole from "./pages/SearchConsole";
@@ -61,7 +61,7 @@ const App = () => (
           {/* Shared — staff and admin */}
           <Route path="/profile" element={<Profile />} />
           <Route path="/stores" element={<StoreSearch />} />
-          <Route path="/stores/:storeId" element={<StoreDetail />} />
+          <Route path="/stores/:storeId" element={<RestaurantDetail />} />
           <Route path="/search" element={<SearchConsole />} />
           <Route path="/chat" element={<Chat />} />
           <Route path="/jobs" element={<Jobs />} />

@@ -1,13 +1,15 @@
 const createHttpError = require("http-errors");
 const Store = require("../models/storeModel");
 const Restaurant = require("../models/restaurantModel");
+const WebsiteSettings = require("../models/websiteSettingsModel");
+const { buildStorefrontUrl } = require("../services/websiteProvisioningService");
 const { csdAudit } = require("../services/csdAuditService");
 
 /** Escape user input before it reaches a RegExp — otherwise "(" or "*" throws. */
 const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** Present a Store + its Restaurant as one flat row for the results table. */
-const toResultRow = (store, restaurant) => {
+const toResultRow = (store, restaurant, website = "") => {
   const a = restaurant?.address || {};
   const address = [a.line1, a.line2, a.city, a.state, a.postalCode]
     .map((p) => (p || "").trim())
@@ -22,6 +24,7 @@ const toResultRow = (store, restaurant) => {
     address,
     city: a.city || "",
     state: a.state || "",
+    website,
     status: store.status,
     closedUntil: store.closedUntil || null,
     restaurantId: restaurant ? String(restaurant._id) : null,
@@ -91,18 +94,26 @@ const searchStores = async (req, res, next) => {
     const truncated = allIds.length > limit;
     const pageIds = allIds.slice(0, limit);
 
-    const [stores, restaurants] = await Promise.all([
+    // Website settings are fetched only for the page being returned, so the
+    // storefront URL on each card costs one extra indexed query, not one per
+    // candidate match.
+    const [stores, restaurants, websites] = await Promise.all([
       Store.find({ storeId: { $in: pageIds }, isDeleted: { $ne: true } }).lean(),
       Restaurant.find(
         { storeId: { $in: pageIds }, isDeleted: { $ne: true } },
         { name: 1, address: 1, storeId: 1, ownerName: 1, ownerPhone: 1 }
       ).lean(),
+      WebsiteSettings.find(
+        { storeId: { $in: pageIds }, isDeleted: { $ne: true } },
+        { storeId: 1, slug: 1, subdomain: 1, customDomain: 1 }
+      ).lean(),
     ]);
 
     const byStoreId = new Map(restaurants.map((r) => [r.storeId, r]));
+    const siteByStoreId = new Map(websites.map((w) => [w.storeId, buildStorefrontUrl(w)]));
     const results = stores
       .filter((s) => !status || s.status === status)
-      .map((s) => toResultRow(s, byStoreId.get(s.storeId)))
+      .map((s) => toResultRow(s, byStoreId.get(s.storeId), siteByStoreId.get(s.storeId) || ""))
       .sort((a, b) => a.restaurantName.localeCompare(b.restaurantName));
 
     res.status(200).json({ success: true, data: { results, query: q, truncated } });

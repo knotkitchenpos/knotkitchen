@@ -54,6 +54,23 @@ export const stores = {
     api.patch(`/stores/${storeId}/status`, payload).then((r) => r.data.data),
 };
 
+export const restaurants = {
+  get: (storeId) => api.get(`/restaurants/${storeId}`).then((r) => r.data.data),
+  customers: (storeId, params) =>
+    api.get(`/restaurants/${storeId}/customers`, { params }).then((r) => r.data.data),
+  orderSummary: (storeId, period) =>
+    api.get(`/restaurants/${storeId}/order-summary`, { params: { period } }).then((r) => r.data.data),
+  staff: (storeId) => api.get(`/restaurants/${storeId}/staff`).then((r) => r.data.data),
+  activity: (storeId) => api.get(`/restaurants/${storeId}/activity`).then((r) => r.data.data),
+  posSessions: (storeId) => api.get(`/restaurants/${storeId}/pos-sessions`).then((r) => r.data.data),
+  openPos: (storeId, reason) =>
+    api.post(`/restaurants/${storeId}/pos-session`, { reason }).then((r) => r.data.data),
+  updateCharges: (storeId, payload) =>
+    api.patch(`/restaurants/${storeId}/charges`, payload).then((r) => r.data.data),
+  updateGoogleBusiness: (storeId, googleBusinessUrl) =>
+    api.patch(`/restaurants/${storeId}/google-business`, { googleBusinessUrl }).then((r) => r.data.data),
+};
+
 export const dashboard = {
   get: () => api.get("/dashboard").then((r) => r.data.data),
 };

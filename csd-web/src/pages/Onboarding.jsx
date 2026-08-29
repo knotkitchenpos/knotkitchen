@@ -8,6 +8,7 @@ const EMPTY = {
   postalCode: "", restaurantPhone: "", mapsLink: "", restaurantType: "",
   ownerName: "", ownerPhone: "", ownerEmail: "",
   gstRegistered: false, gstin: "", fssaiNumber: "", fssaiValidUntil: "",
+  salesAgentName: "", googleBusinessUrl: "",
 };
 
 const Field = ({ label, name, value, onChange, error, required, hint, ...rest }) => (
@@ -234,6 +235,14 @@ const Onboarding = () => {
             value={form.fssaiNumber} onChange={set} error={errors.fssaiNumber} hint="14 digits" />
           <Field label="FSSAI valid until" name="fssaiValidUntil" type="date"
             value={form.fssaiValidUntil} onChange={set} error={errors.fssaiValidUntil} />
+        </Section>
+
+        <Section title="Sales &amp; listing">
+          <Field label="Sales agent" name="salesAgentName" value={form.salesAgentName}
+            onChange={set} error={errors.salesAgentName}
+            hint="Who won this account — recorded now, while it's known" />
+          <Field label="Google Business URL" name="googleBusinessUrl" value={form.googleBusinessUrl}
+            onChange={set} error={errors.googleBusinessUrl} placeholder="https://maps.google.com/…" />
         </Section>
 
         <div className="flex justify-end">

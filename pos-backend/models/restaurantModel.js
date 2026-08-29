@@ -60,6 +60,14 @@ const restaurantSchema = new mongoose.Schema(
     // number above.
     restaurantPhone: { type: String, default: "" },
     restaurantType: { type: String, default: "" },
+
+    // The restaurant's Google Business / Maps listing, maintained by CSD.
+    // Distinct from `mapsLink`, which is the pin captured at onboarding.
+    googleBusinessUrl: { type: String, default: "" },
+
+    // Who won the account. Captured at onboarding; existing restaurants read
+    // as "not recorded" rather than being back-filled with a guess.
+    salesAgentName: { type: String, default: "" },
     // Tracked separately from `taxId` because "not GST registered" is a valid,
     // meaningful state — an empty taxId alone can't distinguish that from
     // "registered but we haven't captured the number yet".
