@@ -54,6 +54,15 @@ export const stores = {
     api.patch(`/stores/${storeId}/status`, payload).then((r) => r.data.data),
 };
 
+export const agreements = {
+  list: () => api.get("/agreements").then((r) => r.data.data),
+  get: (id) => api.get(`/agreements/${encodeURIComponent(id)}`).then((r) => r.data.data),
+  createStore: (id, payload) =>
+    api.post(`/agreements/${encodeURIComponent(id)}/create-store`, payload).then((r) => r.data.data),
+  retryNotify: (id) =>
+    api.post(`/agreements/${encodeURIComponent(id)}/retry-notify`).then((r) => r.data.data),
+};
+
 export const restaurants = {
   get: (storeId) => api.get(`/restaurants/${storeId}`).then((r) => r.data.data),
   customers: (storeId, params) =>

@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   FiGrid, FiUserPlus, FiUsers, FiShoppingBag, FiSearch, FiMessageSquare,
-  FiCheckSquare, FiBarChart2, FiSettings, FiLogOut, FiMenu, FiX, FiBell,
+  FiCheckSquare, FiBarChart2, FiSettings, FiLogOut, FiMenu, FiX, FiBell, FiFileText,
 } from "react-icons/fi";
 import { useAuth } from "../context/AuthContext";
 import GlobalSearch from "./GlobalSearch";
@@ -15,6 +15,7 @@ import markUrl from "../assets/knotkitchen-mark.png";
  */
 const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: FiGrid, adminOnly: true },
+  { to: "/agreements", label: "Agreements", icon: FiFileText, adminOnly: true },
   { to: "/onboarding", label: "Store Onboarding", icon: FiUserPlus, adminOnly: true },
   { to: "/stores", label: "Store Management", icon: FiShoppingBag, adminOnly: false },
   { to: "/search", label: "Search Console", icon: FiSearch, adminOnly: false },

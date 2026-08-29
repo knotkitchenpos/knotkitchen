@@ -18,6 +18,9 @@ const {
 const { getReports, getAuditLog } = require("../controllers/csdReportsController");
 const { getSettings } = require("../controllers/csdSettingsController");
 const {
+  listAgreements, getAgreement, createStoreFromAgreement, retryPortalNotify,
+} = require("../controllers/csdAgreementController");
+const {
   getRestaurant, getCustomers, getOrderSummary, getRestaurantStaff, getActivity,
   updateGoogleBusiness, updateCharges, createPosSession, listPosSessions,
 } = require("../controllers/csdRestaurantController");
@@ -140,6 +143,13 @@ router.patch("/staff/:id", requireCsdAdmin, updateStaff);
 // listing. Staff can see both.
 router.patch("/restaurants/:storeId/charges", requireCsdAdmin, updateCharges);
 router.patch("/restaurants/:storeId/google-business", requireCsdAdmin, updateGoogleBusiness);
+
+// Agreement → store creation. Admin only: this creates a paying customer
+// record and is the commercial handover from sales to operations.
+router.get("/agreements", requireCsdAdmin, listAgreements);
+router.get("/agreements/:id", requireCsdAdmin, getAgreement);
+router.post("/agreements/:id/create-store", requireCsdAdmin, createStoreFromAgreement);
+router.post("/agreements/:id/retry-notify", requireCsdAdmin, retryPortalNotify);
 
 router.get("/reports", requireCsdAdmin, getReports);
 router.get("/reports/audit", requireCsdAdmin, getAuditLog);
