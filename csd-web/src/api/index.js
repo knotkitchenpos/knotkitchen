@@ -68,6 +68,32 @@ export const orders = {
   get: (id) => api.get(`/orders/${id}`).then((r) => r.data.data),
 };
 
+export const staffAdmin = {
+  list: (params) => api.get("/staff", { params }).then((r) => r.data.data),
+  get: (id) => api.get(`/staff/${id}`).then((r) => r.data.data),
+  create: (payload) => api.post("/staff", payload).then((r) => r.data.data),
+  update: (id, payload) => api.patch(`/staff/${id}`, payload).then((r) => r.data.data),
+};
+
+export const chat = {
+  conversations: (params) => api.get("/chat/conversations", { params }).then((r) => r.data.data),
+  createConversation: (payload) => api.post("/chat/conversations", payload).then((r) => r.data.data),
+  messages: (id, params) =>
+    api.get(`/chat/conversations/${id}/messages`, { params }).then((r) => r.data.data),
+  send: (id, body) =>
+    api.post(`/chat/conversations/${id}/messages`, { body }).then((r) => r.data.data),
+  search: (q) => api.get("/chat/search", { params: { q } }).then((r) => r.data.data),
+};
+
+export const reports = {
+  get: (params) => api.get("/reports", { params }).then((r) => r.data.data),
+  audit: (params) => api.get("/reports/audit", { params }).then((r) => r.data.data),
+};
+
+export const settings = {
+  get: () => api.get("/settings").then((r) => r.data.data),
+};
+
 export const jobs = {
   list: (params) => api.get("/jobs", { params }).then((r) => r.data.data),
   get: (id) => api.get(`/jobs/${id}`).then((r) => r.data.data),

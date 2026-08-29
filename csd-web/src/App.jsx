@@ -6,12 +6,15 @@ import Login from "./pages/Login";
 import Profile from "./pages/Profile";
 import StoreSearch from "./pages/StoreSearch";
 import StoreDetail from "./pages/StoreDetail";
-import Placeholder from "./pages/Placeholder";
 import Dashboard from "./pages/Dashboard";
 import Onboarding from "./pages/Onboarding";
 import SearchConsole from "./pages/SearchConsole";
 import Jobs from "./pages/Jobs";
 import JobDetail from "./pages/JobDetail";
+import Chat from "./pages/Chat";
+import StaffManagement from "./pages/StaffManagement";
+import Reports from "./pages/Reports";
+import Settings from "./pages/Settings";
 
 const Splash = () => (
   <div className="flex min-h-screen items-center justify-center bg-navy-950 text-navy-300">
@@ -60,7 +63,7 @@ const App = () => (
           <Route path="/stores" element={<StoreSearch />} />
           <Route path="/stores/:storeId" element={<StoreDetail />} />
           <Route path="/search" element={<SearchConsole />} />
-          <Route path="/chat" element={<Placeholder title="Chat" phase={4} />} />
+          <Route path="/chat" element={<Chat />} />
           <Route path="/jobs" element={<Jobs />} />
           <Route path="/jobs/:jobId" element={<JobDetail />} />
 
@@ -75,15 +78,15 @@ const App = () => (
           />
           <Route
             path="/staff"
-            element={<RequireAdmin><Placeholder title="Staff Management" phase={4} /></RequireAdmin>}
+            element={<RequireAdmin><StaffManagement /></RequireAdmin>}
           />
           <Route
             path="/reports"
-            element={<RequireAdmin><Placeholder title="Reports" phase={4} /></RequireAdmin>}
+            element={<RequireAdmin><Reports /></RequireAdmin>}
           />
           <Route
             path="/settings"
-            element={<RequireAdmin><Placeholder title="Settings" phase={4} /></RequireAdmin>}
+            element={<RequireAdmin><Settings /></RequireAdmin>}
           />
 
           {/* Admins land on the dashboard, staff on store search. */}

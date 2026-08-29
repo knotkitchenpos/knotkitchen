@@ -11,6 +11,12 @@ const { searchOrders, getOrder } = require("../controllers/csdSearchController")
 const {
   listJobs, getJob, createJob, updateJob, changeStatus, addComment, listAssignees,
 } = require("../controllers/csdJobController");
+const { listStaff, getStaff, createStaff, updateStaff } = require("../controllers/csdStaffController");
+const {
+  listConversations, createConversation, listMessages, postMessage, searchMessages,
+} = require("../controllers/csdChatController");
+const { getReports, getAuditLog } = require("../controllers/csdReportsController");
+const { getSettings } = require("../controllers/csdSettingsController");
 
 /**
  * KnotKitchen Business — CSD + Admin panel API (csd.knotkitchen.online).
@@ -79,6 +85,14 @@ router.patch("/jobs/:id", updateJob);
 router.patch("/jobs/:id/status", changeStatus);
 router.post("/jobs/:id/comments", addComment);
 
+// Chat. Threads are readable by every CSD staff member by design — this is an
+// internal support desk, and a colleague picking up a ticket needs the history.
+router.get("/chat/search", searchMessages);
+router.get("/chat/conversations", listConversations);
+router.post("/chat/conversations", createConversation);
+router.get("/chat/conversations/:id/messages", listMessages);
+router.post("/chat/conversations/:id/messages", postMessage);
+
 // ---------------------------------------------------------------------------
 // 4. Admin only
 // ---------------------------------------------------------------------------
@@ -96,5 +110,16 @@ router.post("/onboarding/stores", requireCsdAdmin, createStore);
 // Status decides whether the public storefront serves customers at all, so it
 // is admin-only even though viewing the store is not.
 router.patch("/stores/:storeId/status", requireCsdAdmin, updateStoreStatus);
+
+// Staff Management. This is what lets anyone beyond the two predefined admin
+// numbers sign in at all — sendOtp refuses phones with no active staff row.
+router.get("/staff", requireCsdAdmin, listStaff);
+router.post("/staff", requireCsdAdmin, createStaff);
+router.get("/staff/:id", requireCsdAdmin, getStaff);
+router.patch("/staff/:id", requireCsdAdmin, updateStaff);
+
+router.get("/reports", requireCsdAdmin, getReports);
+router.get("/reports/audit", requireCsdAdmin, getAuditLog);
+router.get("/settings", requireCsdAdmin, getSettings);
 
 module.exports = router;
