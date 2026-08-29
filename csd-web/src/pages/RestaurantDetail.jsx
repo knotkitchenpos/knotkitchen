@@ -11,6 +11,7 @@ import ChargesDialog from "../components/ChargesDialog";
 import PosAccessDialog from "../components/PosAccessDialog";
 import CustomersDialog from "../components/CustomersDialog";
 import StoreDocuments from "../components/StoreDocuments";
+import { MenusPanel, TablesPanel, UsersPanel } from "../components/CatalogPanels";
 
 const inr = (n) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(n || 0);
 const dt = (d) => (d ? new Date(d).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "—");
@@ -460,6 +461,15 @@ const RestaurantDetail = () => {
       {/* ── Documents (§30) ──────────────────────────────────────────── */}
       <div className="mt-5">
         <StoreDocuments storeId={storeId} />
+      </div>
+
+      {/* ── Menus / Tables / POS users ──────────────────────────────────
+          Ported from the retired Admin Portal. Each loads its own data on
+          mount rather than adding to this page's initial request. ────────── */}
+      <div className="mt-5 space-y-5">
+        <MenusPanel storeId={storeId} />
+        <TablesPanel storeId={storeId} />
+        <UsersPanel storeId={storeId} />
       </div>
 
       {/* ── Activity (§33) ───────────────────────────────────────────── */}

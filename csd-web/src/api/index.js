@@ -81,6 +81,23 @@ export const restaurants = {
 
   documents: (storeId) => api.get(`/restaurants/${storeId}/documents`).then((r) => r.data.data),
 
+  // Menus / Tables / Users — ported from the retired Admin Portal. Every
+  // response carries `canEdit`, so the UI shows read-only state from the
+  // server's answer rather than guessing from the signed-in role.
+  menus: (storeId) => api.get(`/restaurants/${storeId}/menus`).then((r) => r.data.data),
+  toggleMenuPublish: (storeId, menuId) =>
+    api.patch(`/restaurants/${storeId}/menus/${menuId}/publish`).then((r) => r.data.data),
+  updateDish: (storeId, menuId, itemId, payload) =>
+    api.patch(`/restaurants/${storeId}/menus/${menuId}/items/${itemId}`, payload).then((r) => r.data.data),
+
+  tables: (storeId) => api.get(`/restaurants/${storeId}/tables`).then((r) => r.data.data),
+  updateTable: (storeId, tableId, payload) =>
+    api.patch(`/restaurants/${storeId}/tables/${tableId}`, payload).then((r) => r.data.data),
+
+  users: (storeId) => api.get(`/restaurants/${storeId}/users`).then((r) => r.data.data),
+  updateUser: (storeId, userId, payload) =>
+    api.patch(`/restaurants/${storeId}/users/${userId}`, payload).then((r) => r.data.data),
+
   // Documents are never reachable by URL — they stream through an
   // authenticated route, so the browser needs the cookie on the request and
   // the bytes become a short-lived object URL.
