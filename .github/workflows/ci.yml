@@ -59,13 +59,28 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Every SPA that deploy/docker-compose.yml builds must appear here,
+        # otherwise a broken build is only discovered on the VPS during deploy.
+        # The env values mirror the build args in that compose file; each app
+        # reads only the VITE_* vars it actually declares (see src/), the rest
+        # are inert.
         include:
           - app: pos-frontend
             path: pos-frontend
+            backend_url: "https://api.knotkitchen.online"
+            api_base_url: ""
           - app: admin-frontend
             path: knotkitchen-admin/frontend
+            backend_url: ""
+            api_base_url: "https://admin-api.knotkitchen.online/api"
+          - app: csd-web
+            path: csd-web
+            backend_url: ""
+            api_base_url: "https://api.knotkitchen.online/api"
           - app: customer-web
             path: customer-web
+            backend_url: "https://api.knotkitchen.online"
+            api_base_url: ""
     steps:
       - uses: actions/checkout@v4
 
@@ -82,9 +97,12 @@ jobs:
       - name: Build
         working-directory: ${{ matrix.path }}
         # Give Vite a safe default so no "undefined" appears in the bundle.
+        # These are BUILD-TIME placeholders only — the real values are baked in
+        # by deploy/docker-compose.yml from ${BASE_DOMAIN}.
         env:
-          VITE_BACKEND_URL: "https://api.knotkitchen.com"
-          VITE_BASE_DOMAIN: "knotkitchen.com"
+          VITE_BACKEND_URL: ${{ matrix.backend_url }}
+          VITE_API_BASE_URL: ${{ matrix.api_base_url }}
+          VITE_BASE_DOMAIN: "knotkitchen.online"
         run: npm run build
 
   # ---------------------------------------------------------------------------
