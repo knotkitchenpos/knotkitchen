@@ -13,7 +13,7 @@ const config = require("../config/config");
  * Public store lookup (§9 of the production spec).
  *
  * These endpoints are consumed by the customer website when it is served from
- * a per-store subdomain (burger-house.knotkitchen.com) and needs to bootstrap
+ * a per-store subdomain (burger-house.knotkitchen.online) and needs to bootstrap
  * itself before it has a `slug` in the URL path. They intentionally overlap in
  * responsibility with /api/storefront/* but return a smaller, cheaper payload
  * — enough for the customer-web bootstrap, then it fetches the full storefront
