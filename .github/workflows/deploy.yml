@@ -40,6 +40,27 @@ jobs:
       name: production
       url: https://api.knotkitchen.online/health
     steps:
+      # Fail fast with a legible message. appleboy/ssh-action reports an
+      # unreachable host as an opaque "dial tcp ***:22: i/o timeout" after 30s,
+      # with the host masked, which is indistinguishable from a wrong secret.
+      # This says which it is before we get there.
+      - name: Preflight — can the runner reach the VPS on 22?
+        run: |
+          probe() {
+            if timeout 10 bash -c "cat < /dev/null > /dev/tcp/$1/22" 2>/dev/null; then
+              echo "  REACHABLE   $2"
+            else
+              echo "  UNREACHABLE $2"
+            fi
+          }
+          echo "TCP 22 reachability from this runner:"
+          probe "${{ secrets.DEPLOY_SSH_HOST }}" "DEPLOY_SSH_HOST (value masked)"
+          probe "api.knotkitchen.online" "api.knotkitchen.online (public DNS -> VPS)"
+          echo
+          echo "If the public hostname is REACHABLE but DEPLOY_SSH_HOST is not,"
+          echo "the secret holds the wrong value. If both are UNREACHABLE, the"
+          echo "network path from GitHub to the VPS is blocked."
+
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
