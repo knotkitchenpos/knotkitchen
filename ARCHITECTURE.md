@@ -1,10 +1,21 @@
 # Knot Kitchen — Production Architecture
 
-_Last reviewed: 2026-08-17_
+_Last reviewed: 2026-08-30_
 
 This document is the authoritative reference for how Knot Kitchen is deployed
-to `knotkitchen.com` on a Hostinger KVM VPS behind Cloudflare. It supersedes
-any inline notes in individual services.
+to **`knotkitchen.online`** on a Hostinger KVM VPS. It supersedes any inline
+notes in individual services.
+
+> **On Cloudflare.** DNS for the zone is hosted at Cloudflare in **"DNS only"
+> (grey cloud)** mode. Traffic does **not** pass through Cloudflare's edge —
+> Caddy on the VPS terminates TLS directly, and there is no Cloudflare WAF or
+> DDoS layer in the request path. The Cloudflare API token exists for exactly
+> one purpose: the DNS-01 challenge that issues the `*.knotkitchen.online`
+> wildcard certificate. Every other hostname uses plain HTTP-01.
+>
+> The base domain is not hardcoded anywhere — it is the `BASE_DOMAIN` variable
+> in `deploy/.env`, consumed by both `docker-compose.yml` and the `Caddyfile`.
+> Hostnames below are written out in full for readability.
 
 ---
 
@@ -25,6 +36,37 @@ production-hosting effort.
 | Super-Admin Frontend         | `knotkitchen-admin/frontend/` | React + Vite     | `5174` |
 
 Package manager: **npm** everywhere (lockfiles present).
+
+Two further applications were added after the original audit and are now part
+of the deployed system. They are listed here so this table stays the complete
+inventory:
+
+| App                          | Path                      | Type                | Dev port |
+| ---------------------------- | ------------------------- | ------------------- | -------- |
+| Customer website             | `customer-web/`           | React + Vite (SPA)  | `5176`   |
+| CSD / support desk           | `csd-web/`                | React + Vite (SPA)  | `5175`   |
+
+The full dev-port allocation is `5173` pos-frontend · `5174` admin frontend ·
+`5175` csd-web · `5176` customer-web. Keep them distinct: `customer-web` sets
+`strictPort: true` (a wildcard-subdomain app that silently moved ports would
+break the `*.localhost` URLs a developer has open), so a clash is a hard
+startup failure rather than a fallback. Until 2026-08-30 it and csd-web both
+requested `5175` and could not be run at the same time.
+
+`csd-web` is an **internal staff tool** (support desk + platform admin). It has
+no backend of its own — it talks to `pos-backend` under `/api/csd`, with its
+own OTP session and its own `CSD_JWT_SECRET`.
+
+One more service is built by `deploy/docker-compose.yml` but does **not** live
+in this repository:
+
+| App                | Source                              | Type              | Dev port |
+| ------------------ | ----------------------------------- | ----------------- | -------- |
+| Onboarding portal  | separate repo, cloned as `../onboard` | Node.js + Express | `3000` |
+
+The compose file references it as `context: ../../onboard`, so a checkout of
+this repo alone **cannot** `docker compose build` without that sibling clone
+present on the VPS at `/srv/onboard`.
 
 ### 1.2 Multi-tenant plumbing already in place
 
@@ -105,7 +147,7 @@ The codebase is already a true multi-tenant SaaS. In particular:
 | - | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
 | 1 | Only one React app served both POS and the customer storefront.    | Introduced a dedicated **`customer-web`** application (still shares the backend + the theme layer).                    |
 | 2 | Hostname-based store resolution was implemented on the backend but not exercised by any frontend. | Added `resolveStoreFromHostname()` utility + `by-domain` public endpoint, wired both apps.                             |
-| 3 | Root domain CORS did not know about `*.knotkitchen.com`.           | Added `CORS_WILDCARD_DOMAINS` support so subdomains are validated by pattern.                                          |
+| 3 | Root domain CORS did not know about `*.knotkitchen.online`.        | Added `CORS_WILDCARD_DOMAINS` support so subdomains are validated by pattern.                                          |
 | 4 | No `/health` or `/ready` endpoint.                                 | Added both.                                                                                                            |
 | 5 | No graceful SIGTERM/SIGINT handling.                                | Added a shared shutdown handler that closes HTTP, Socket.IO, and Mongoose in order.                                    |
 | 6 | No Dockerfiles / compose / reverse proxy.                          | Added production-grade Dockerfiles for all four apps + a Caddy reverse proxy with wildcard TLS.                        |
@@ -121,9 +163,8 @@ Nothing that already worked was replaced or rewritten.
 ```
                        INTERNET
                           │
-                          ▼
-                    Cloudflare  (DNS + TLS + WAF + DDoS)
-                          │  proxied A / AAAA
+                          │  Cloudflare hosts DNS only (grey cloud).
+                          │  Traffic does NOT traverse Cloudflare's edge.
                           ▼
               ┌───────────────────────────┐
               │  Hostinger KVM VPS        │
@@ -134,55 +175,76 @@ Nothing that already worked was replaced or rewritten.
                            ▼
               ┌───────────────────────────┐
               │  Caddy reverse proxy      │
-              │  (automatic TLS,          │
-              │   wildcard *.knotkitchen) │
+              │  terminates TLS itself    │
+              │  HTTP-01 per hostname,    │
+              │  DNS-01 for the wildcard  │
               └────────────┬──────────────┘
                 internal Docker network `knot`
-     ┌───────────┬─────────┼─────────┬────────────┐
-     ▼           ▼         ▼         ▼            ▼
-  admin-web  pos-web  customer-web  admin-api  pos-api
-     :80        :80        :80        :4000     :8000
-                                        │         │
-                                        └────┬────┘
-                                             ▼
-                                     MongoDB Atlas
-                                     (shared cluster,
-                                      one DB per env)
+   ┌──────────┬──────────┬─┴────────┬──────────────┬───────────┐
+   ▼          ▼          ▼          ▼              ▼           ▼
+admin-web  pos-web   csd-web  customer-web  onboard-portal  (APIs)
+  :80        :80       :80        :80           :3000          │
+                                                               │
+                                            ┌──────────────────┴───┐
+                                            ▼                      ▼
+                                        admin-api              pos-api
+                                          :4000                 :8000
+                                            │                      │
+                                            └──────────┬───────────┘
+                                                       ▼
+                                               MongoDB Atlas
+                                            (shared cluster,
+                                             one DB per env)
 
-                                     Object Storage
-                                     (Cloudflare R2 or S3;
-                                      restaurant media)
+                                               Media storage
+                                        (default: local Docker volume;
+                                         S3/R2/Cloudinary optional — §7)
 ```
 
 Rules that come out of this topology:
 
 * Only the **Caddy** container publishes ports (80/443) to the host.
 * All Node containers listen on the **internal** Docker network only.
-* Cloudflare is the *only* thing that terminates public TCP. `trust proxy = 1`
-  in every Express app already handles the extra hop.
+* **Caddy terminates public TLS.** `trust proxy = 1` in every Express app
+  handles that single hop. There is no second proxy in front of it, so
+  `X-Forwarded-For` has exactly one hop worth of trust — do not raise it.
+* Because Cloudflare is not proxying, there is **no WAF and no DDoS
+  scrubbing** in front of the VPS. The application-level rate limiters in
+  `middlewares/rateLimiter.js` are the only such protection. Turning the
+  orange cloud on later would require raising `trust proxy` to `2`.
 
 ---
 
 ## 3. DNS
 
-Create these records in Cloudflare (all *proxied*, orange cloud):
+Create these records in Cloudflare. **All must be "DNS only" (grey cloud)** —
+proxying them would break Caddy's HTTP-01 challenges and put an untrusted
+extra hop in front of `trust proxy = 1`.
 
-| Type | Name                    | Value             | Notes                        |
-| ---- | ----------------------- | ----------------- | ---------------------------- |
-| A    | `knotkitchen.com`       | `<VPS IPv4>`      | Marketing / redirect         |
-| A    | `admin.knotkitchen.com` | `<VPS IPv4>`      | Super-admin portal           |
-| A    | `pos.knotkitchen.com`   | `<VPS IPv4>`      | Restaurant POS               |
-| A    | `app.knotkitchen.com`   | `<VPS IPv4>`      | Optional main application    |
-| A    | `api.knotkitchen.com`   | `<VPS IPv4>`      | POS backend API              |
-| A    | `admin-api.knotkitchen.com` | `<VPS IPv4>`  | Super-admin backend API      |
-| A    | `*.knotkitchen.com`     | `<VPS IPv4>`      | **Wildcard** for `<slug>.knotkitchen.com` |
+| Type | Name                             | Value        | Serves          |
+| ---- | -------------------------------- | ------------ | --------------- |
+| A    | `knotkitchen.online`             | `<VPS IPv4>` | customer-web    |
+| A    | `business.knotkitchen.online`    | `<VPS IPv4>` | pos-web (POS SPA) |
+| A    | `onboard.knotkitchen.online`     | `<VPS IPv4>` | admin-web (super-admin) |
+| A    | `csd.knotkitchen.online`         | `<VPS IPv4>` | csd-web (support desk) |
+| A    | `agreement.knotkitchen.online`   | `<VPS IPv4>` | onboard-portal  |
+| A    | `api.knotkitchen.online`         | `<VPS IPv4>` | pos-api         |
+| A    | `admin-api.knotkitchen.online`   | `<VPS IPv4>` | admin-api       |
+| A    | `*.knotkitchen.online`           | `<VPS IPv4>` | **Wildcard** — customer-web, one vhost per store |
 
 The wildcard record is what makes new stores available *automatically* — no
 per-restaurant DNS change is ever required.
 
-TLS: Caddy performs a **DNS-01 ACME challenge with Cloudflare** so it can
-obtain a real wildcard certificate for `*.knotkitchen.com`. This requires the
-`CLOUDFLARE_API_TOKEN` env var described in `DEPLOYMENT.md`.
+TLS: every named hostname above gets its certificate by ordinary **HTTP-01**.
+Only the `*.knotkitchen.online` wildcard uses a **DNS-01 ACME challenge with
+Cloudflare**, because a wildcard cert cannot be issued over HTTP-01. That is
+the sole reason `CLOUDFLARE_API_TOKEN` exists; scope it to Zone:DNS:Edit on
+this zone only. See `DEPLOYMENT.md`.
+
+> **Historical note.** Earlier revisions of this document described
+> `knotkitchen.com` with `pos.` / `admin.` / `app.` hostnames behind a proxied
+> (orange-cloud) Cloudflare. None of that was ever deployed. `deploy/Caddyfile`
+> is the authority for what hostnames exist.
 
 ---
 
@@ -195,8 +257,15 @@ Every store has **three** identifiers that never change once assigned:
 * `slug` — URL-safe (`burger-house`). May be renamed by the owner. Reserved
   words are blocked (`admin`, `api`, `pos`, …).
 
-Public URL:  `https://<slug>.knotkitchen.com`
-Legacy URL: `https://app.knotkitchen.com/store/<slug>` (still works)
+Public URL:  `https://<slug>.knotkitchen.online`
+Numeric URL: `https://<storeId>.knotkitchen.online` — `storefrontResolver`
+accepts a 6-digit subdomain, which keeps printed QR codes working across a
+slug rename.
+Legacy URL: `https://business.knotkitchen.online/store/<slug>` — the POS SPA
+still serves the storefront at its `/store/:slug` route.
+
+A store may also be reached on its own `customDomain`, which is checked before
+subdomain and slug. See the resolution order in §1.2.
 
 ### Tenant isolation invariants
 
@@ -216,16 +285,20 @@ Legacy URL: `https://app.knotkitchen.com/store/<slug>` (still works)
 
 ## 5. Ports (recap)
 
-| Container    | Internal port | Published? | Public URL                       |
-| ------------ | ------------- | ---------- | -------------------------------- |
-| caddy        | 80, 443       | ✅ yes      | *(the only public entry point)*  |
-| pos-api      | 8000          | ❌ no       | `api.knotkitchen.com`            |
-| admin-api    | 4000          | ❌ no       | `admin-api.knotkitchen.com`      |
-| pos-web      | 80            | ❌ no       | `pos.knotkitchen.com`            |
-| admin-web    | 80            | ❌ no       | `admin.knotkitchen.com`          |
-| customer-web | 80            | ❌ no       | `*.knotkitchen.com` (wildcard)   |
+| Container      | Internal port | Published? | Public URL                            |
+| -------------- | ------------- | ---------- | ------------------------------------- |
+| caddy          | 80, 443       | ✅ yes      | *(the only public entry point)*       |
+| pos-api        | 8000          | ❌ no       | `api.knotkitchen.online`              |
+| admin-api      | 4000          | ❌ no       | `admin-api.knotkitchen.online`        |
+| pos-web        | 80            | ❌ no       | `business.knotkitchen.online`         |
+| admin-web      | 80            | ❌ no       | `onboard.knotkitchen.online`          |
+| csd-web        | 80            | ❌ no       | `csd.knotkitchen.online`              |
+| onboard-portal | 3000          | ❌ no       | `agreement.knotkitchen.online`        |
+| customer-web   | 80            | ❌ no       | `knotkitchen.online` + `*.knotkitchen.online` |
 
-Dev ports `5173/5174/8000/4000` remain unchanged for local development.
+Dev ports `5173` (pos-web), `5174` (admin-web), `5175` (csd-web), `5176`
+(customer-web), `8000` (pos-api) and `4000` (admin-api) remain unchanged for
+local development.
 
 ---
 
@@ -239,33 +312,144 @@ See `.env.example` files in each app. The consolidated production file lives at
 
 ## 7. Object storage
 
-`pos-backend/services/storage/` already implements a driver-based abstraction
-(`local`, `cloudinary`, `s3`, `r2`). Production uses **Cloudflare R2** (S3-API
-compatible) via `MEDIA_STORAGE_PROVIDER=r2`. Local disk is **not** used in
-production. MongoDB only stores metadata (`imageUrl`, `storageKey`, `fileName`,
-`mimeType`, `size`, `storeId`).
+`pos-backend/services/storage/` implements a driver-based abstraction selected
+by `MEDIA_STORAGE_PROVIDER`:
+
+| Value                | Driver                  | Notes                                   |
+| -------------------- | ----------------------- | --------------------------------------- |
+| `local` *(default)*  | `localProvider.js`      | Files on disk, served by `express.static` |
+| `s3` / `r2`          | `s3Provider.js`         | R2 is S3-API compatible — same driver, custom endpoint |
+| `cloudinary`         | `cloudinaryProvider.js` | —                                       |
+
+**As deployed today the provider is `local`**, not R2. `docker-compose.yml`
+defaults it (`${MEDIA_STORAGE_PROVIDER:-local}`) and media lands in the
+`backend_uploads` Docker volume, published at
+`https://api.knotkitchen.online/uploads`. MongoDB stores only metadata
+(`imageUrl`, `storageKey`, `fileName`, `mimeType`, `size`, `storeId`).
+
+Consequences of being on `local`, which you are accepting until you switch:
+
+* Media lives on **one VPS disk**. It is not replicated, and it grows without
+  a lifecycle policy. It is included in the backup (§8) — verify the tarball
+  size stays sane as restaurants upload menu photos.
+* It pins the deployment to a single host. Horizontal scaling of `pos-api`
+  (§10) requires moving to `s3`/`r2` first, or two instances will serve
+  different subsets of the images.
+
+Switching is an env-var change plus a one-time copy of the existing volume
+into the bucket — no code change.
+
+Restaurant KYC/compliance documents are deliberately **not** in this system.
+They use a separate `csd_documents` volume mounted at `/app/csd-documents`,
+which nothing serves statically; the files stream through an authenticated CSD
+route. Keeping them off `/app/uploads` is what stops `express.static` from
+publishing customer identity documents.
 
 ---
 
 ## 8. Backups
 
-* **MongoDB Atlas** — enable continuous cloud backup on the cluster; retain 7
-  daily snapshots + 4 weekly. Restores are point-in-time.
-* **VPS** — a nightly `duplicity` job (see `deploy/backup.sh`) rsyncs
-  `/srv/knot/deploy/.env` and the Caddy data dir to an offsite S3 bucket.
-* **Object storage** — R2 buckets are versioned; lifecycle rule expires
-  non-current versions after 30 days.
-* **GitHub** — production deploy is always from a signed tag; the tag is the
-  recovery source. Never deploy from a moving branch.
+* **MongoDB Atlas** — *what you get depends entirely on the cluster tier, and
+  the free tier gives you nothing.*
+
+  | Tier            | Backup                                    |
+  | --------------- | ----------------------------------------- |
+  | **M0 (free)**   | **None.** No snapshots, no restore, at all |
+  | Paid shared     | Scheduled snapshots                       |
+  | M10+ dedicated  | Continuous backup + point-in-time restore |
+
+  The target configuration is M10+ with continuous backup, 7 daily snapshots
+  and 4 weekly, restoring point-in-time. **Verify which tier this deployment
+  is actually on before relying on any of that** — an earlier revision of this
+  document instructed the reader to "enable continuous cloud backup" without
+  noting that the instruction is impossible to follow on M0, where orders,
+  menus, stores, users and payments have no second copy anywhere.
+
+  While on a tier without snapshots, `deploy/backup.sh` runs a nightly
+  `mongodump` into the encrypted archive and **that dump is the only database
+  backup that exists**. It is fatal-by-default in the script for that reason.
+  Once the cluster has verified snapshots of its own, set
+  `KNOT_BACKUP_SKIP_MONGO=true` to stop duplicating them.
+
+  Note the free tier also caps connections at 500 — see the pool sizing note
+  in §10.
+* **VPS** — `deploy/backup.sh` writes a **GPG-symmetric-encrypted tarball**
+  (AES256) to `${KNOT_BACKUP_DIR:-/var/backups/knotkitchen}` and deletes its
+  own local output older than **14 days**. It refuses to run without
+  `KNOT_BACKUP_PASSPHRASE`, so it can never silently write plaintext. Run it
+  from cron. It captures `deploy/.env` plus every stateful Docker volume:
+
+  | Volume                        | Contents                                    |
+  | ----------------------------- | ------------------------------------------- |
+  | `knotkitchen_caddy_data`      | ACME account key + issued certificates      |
+  | `knotkitchen_backend_uploads` | menu media (when `MEDIA_STORAGE_PROVIDER=local`) |
+  | `knotkitchen_csd_documents`   | restaurant KYC / GST / FSSAI / agreements   |
+  | `knotkitchen_onboard_data`    | onboard portal `database.json` — **a primary datastore**, not mirrored in Atlas |
+  | `knotkitchen_onboard_uploads` | KYC documents uploaded via the portal       |
+
+  A volume that does not exist yet is skipped with a warning; a volume that
+  exists and fails to archive aborts the run, because a silently partial
+  backup is worse than an obviously missing one.
+
+  **Offsite is opt-in and you must set it up.** Set `KNOT_BACKUP_REMOTE` to an
+  rclone remote (e.g. `r2:knot-backups`) and each archive is copied there after
+  it is written; a failure to copy exits non-zero so cron mails you. Leave it
+  unset and the script warns on every run that the backup lives only on the
+  machine it is protecting. The archive is already encrypted, so the
+  destination needs to be durable, not trusted. Remote retention is the
+  bucket's lifecycle rule — the script never deletes remotely.
+
+  `deploy/.env` holds `KNOT_BACKUP_PASSPHRASE` itself, and the passphrase is
+  what decrypts the backup containing that env file. Store the passphrase
+  somewhere outside this VPS or a host loss leaves you with archives you
+  cannot open.
+
+  **Monitoring.** Set `KNOT_BACKUP_HEARTBEAT_URL` to a dead-man's-switch
+  endpoint (Healthchecks.io et al). The script pings `/start`, success, and
+  `/fail`, so the monitor alerts on a ping that never arrives — catching the
+  VPS being down, cron disabled, or a full disk, none of which a log file can
+  report. A ping that fails only warns; it never fails the backup itself.
+  `$KNOT_BACKUP_DIR/.last-success` is stamped on every good run.
+
+* **Volume protection** — `csd_documents`, `onboard_data` and
+  `onboard_uploads` are declared `external: true` in `docker-compose.yml`, so
+  `docker compose down -v` and `docker volume prune` cannot destroy them.
+  Those hand-typed commands are the realistic threat to data that exists
+  nowhere else. The cost is that the volumes must pre-exist;
+  `deploy/bootstrap-volumes.sh` creates them idempotently and both
+  `deploy.yml` and `rollback.sh` run it automatically.
+* **Media** — covered by the `backend_uploads` volume above while the provider
+  is `local` (§7). If you move to `s3`/`r2`, enable bucket versioning with a
+  lifecycle rule expiring non-current versions after 30 days, and drop the
+  volume from the tarball.
+* **GitHub** — the deploy workflow records the previous SHA to
+  `deploy/.previous` before moving (§9), and that file is the practical
+  recovery source.
 
 ---
 
 ## 9. Rollback
 
-* `git tag production-YYYY-MM-DD-HHMM` before every deploy.
-* Deploy script writes the previous SHA to `/srv/knot/deploy/.previous`.
-* `deploy/rollback.sh` re-checkouts the previous tag, rebuilds and restarts
-  containers. Data is not touched (Atlas + R2 are external).
+How it actually works today:
+
+* `.github/workflows/deploy.yml` fires on **every push to `main`**, and also
+  accepts a `ref` input via `workflow_dispatch` for deploying a specific
+  branch, tag or SHA.
+* Before it moves, the deploy script writes the outgoing SHA to
+  `/srv/knot/deploy/.previous`.
+* `deploy/rollback.sh` checks out `deploy/.previous` (or an explicit
+  `<sha-or-tag>` argument), rebuilds, restarts, then polls `/health` up to 30
+  times and exits non-zero if the backend never comes up. Data is not touched —
+  Atlas is external, and media is in a Docker volume the rebuild does not
+  recreate.
+
+> **Deviation from the intended policy.** This document previously stated
+> "production deploy is always from a signed tag; never deploy from a moving
+> branch." That is *not* the current configuration — `main` is a moving branch
+> and every push to it deploys. `deploy/.previous` gives you a one-step
+> rollback, but there is no immutable tag per release. If you want the stated
+> policy, change `deploy.yml`'s trigger to `push: tags: ['production-*']` and
+> tag each release; nothing else needs to change.
 
 ---
 
@@ -277,6 +461,13 @@ designed for 10,000+ stores on the same infrastructure.
 
 Vertical growth path:
 
+* **Mind the connection pool.** Both Node apps pin `maxPoolSize` in their
+  `config/database.js` (POS 20, admin 10, override with
+  `MONGO_MAX_POOL_SIZE`) instead of taking the driver's default of 100. The
+  budget is per *process*: every additional instance multiplies it, and an
+  Atlas free/shared tier caps the cluster at 500 connections. Recalculate this
+  before scaling out, or you will exhaust the cluster long before you exhaust
+  CPU — and it presents as intermittent timeouts, not a clean error.
 * Move the in-process rate limiter (`middlewares/rateLimiter.js`) to Redis
   when running > 1 Node instance per app.
 * Move Socket.IO to a Redis adapter for horizontal scale.

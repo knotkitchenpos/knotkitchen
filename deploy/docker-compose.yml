@@ -20,13 +20,42 @@ networks:
   knot:
     driver: bridge
 
+# -----------------------------------------------------------------------------
+# Volumes.
+#
+# The three volumes below marked `external: true` hold data that exists NOWHERE
+# ELSE and cannot be regenerated: restaurant compliance documents, and the
+# onboarding portal's own database. Compose does not manage external volumes,
+# which is the point — `docker compose down -v` and `docker volume prune` both
+# leave them alone. Those two commands are the realistic way this data dies,
+# because they get typed by hand during an incident.
+#
+# The trade-off: they must EXIST before `docker compose up`, or compose refuses
+# to start. `deploy/bootstrap-volumes.sh` creates them idempotently and the
+# deploy workflow runs it first, so this is handled automatically — but if you
+# bring the stack up by hand on a fresh host, run that script first.
+#
+# `name:` pins each to the identifier compose was already using
+# (project "knotkitchen" + volume name), so switching an existing deployment to
+# external binds to the SAME volume. No migration, no data movement.
+#
+# caddy_data / caddy_config / backend_uploads stay compose-managed: certs
+# re-issue themselves and media is comparatively replaceable.
+# -----------------------------------------------------------------------------
 volumes:
   caddy_data:      # ACME certs, OCSP staples — MUST persist across restarts
   caddy_config:
   backend_uploads: # only used when MEDIA_STORAGE_PROVIDER=local (dev/small deploys)
+
   csd_documents:   # restaurant KYC/compliance documents — never served statically
+    external: true
+    name: knotkitchen_csd_documents
   onboard_data:    # onboard-portal's server/data/database.json (agents + agreements)
+    external: true
+    name: knotkitchen_onboard_data
   onboard_uploads: # onboard-portal's uploaded KYC documents
+    external: true
+    name: knotkitchen_onboard_uploads
 
 services:
   # ---------------------------------------------------------------------------

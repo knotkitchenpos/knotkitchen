@@ -7,15 +7,15 @@
  *
  * Supported inputs:
  *
- *   burger-house.knotkitchen.com  →  { slug: "burger-house", mode: "subdomain" }
+ *   burger-house.knotkitchen.online  →  { slug: "burger-house", mode: "subdomain" }
  *   burger-house.localhost        →  { slug: "burger-house", mode: "subdomain" }
  *   www.burgerhouse.com           →  { host: "burgerhouse.com", mode: "custom" }
  *   burgerhouse.com               →  { host: "burgerhouse.com", mode: "custom" }
- *   knotkitchen.com               →  { slug: fallback, mode: "apex" }
+ *   knotkitchen.online               →  { slug: fallback, mode: "apex" }
  *   127.0.0.1 / raw IP            →  { slug: fallback, mode: "ip" }
  *
  * The base-domain list (`bases`) is what allows the same code to work for
- * production (`knotkitchen.com`), dev (`localhost`), and any future domain
+ * production (`knotkitchen.online`), dev (`localhost`), and any future domain
  * without a rebuild — we compare the hostname's suffix against every entry.
  *
  * SECURITY: this runs client-side and is used only to pick the correct
@@ -70,15 +70,16 @@ export function resolveStoreFromHostname(hostname, { bases = [], fallbackSlug = 
     .map((b) => stripWww(stripPort(String(b || "").trim())))
     .filter(Boolean);
 
-  // Try each configured base longest-first so "app.knotkitchen.com" matches
-  // "knotkitchen.com" (not "com"). Ties broken alphabetically for determinism.
+  // Try each configured base longest-first so "app.knotkitchen.online" matches
+  // the base "knotkitchen.online" rather than a shorter suffix. Ties broken
+  // alphabetically for determinism.
   const sortedBases = [...normalizedBases].sort(
     (a, b) => b.length - a.length || a.localeCompare(b)
   );
 
   for (const base of sortedBases) {
     if (host === base) {
-      // Apex visit (someone typed knotkitchen.com directly).
+      // Apex visit (someone typed knotkitchen.online directly).
       return fallbackSlug
         ? { slug: fallbackSlug, mode: "apex", base, raw }
         : { mode: "apex", base, raw };
@@ -86,7 +87,7 @@ export function resolveStoreFromHostname(hostname, { bases = [], fallbackSlug = 
 
     if (host.endsWith(`.${base}`)) {
       const prefix = host.slice(0, host.length - base.length - 1);
-      // Multi-level subdomains ("shop.burger-house.knotkitchen.com") aren't
+      // Multi-level subdomains ("shop.burger-house.knotkitchen.online") aren't
       // used by the platform today; take the LAST label so we don't accidentally
       // resolve to a wrong store.
       const parts = prefix.split(".").filter(Boolean);
@@ -114,7 +115,7 @@ export function resolveStoreFromHostname(hostname, { bases = [], fallbackSlug = 
  * the pure resolver above is trivially testable.
  */
 export function resolveStoreFromWindow() {
-  const bases = String(import.meta.env.VITE_BASE_DOMAIN || "knotkitchen.com,localhost")
+  const bases = String(import.meta.env.VITE_BASE_DOMAIN || "knotkitchen.online,localhost")
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);

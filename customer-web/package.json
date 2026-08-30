@@ -3,7 +3,7 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Knot Kitchen customer-facing restaurant website. One application, served for every store under <slug>.knotkitchen.com. The store is resolved at runtime from the browser hostname — no per-restaurant build.",
+  "description": "Knot Kitchen customer-facing restaurant website. One application, served for every store under <slug>.knotkitchen.online. The store is resolved at runtime from the browser hostname — no per-restaurant build.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

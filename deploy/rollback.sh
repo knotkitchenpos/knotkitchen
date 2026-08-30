@@ -36,6 +36,11 @@ echo "==> Rolling back to $TARGET"
 git fetch --tags --prune origin
 git checkout "$TARGET"
 
+# External volumes must exist before compose will start (see docker-compose.yml).
+# Idempotent; a rollback to an older tag must not be the thing that fails here.
+echo "==> Ensuring external volumes exist"
+bash deploy/bootstrap-volumes.sh
+
 echo "==> Rebuilding + restarting containers"
 docker compose -f deploy/docker-compose.yml --env-file deploy/.env build --pull
 docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --remove-orphans

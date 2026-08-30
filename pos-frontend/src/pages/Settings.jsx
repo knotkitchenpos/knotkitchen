@@ -260,7 +260,7 @@ const DeviceConfigurationView = () => {
             <input
               value={webLink}
               onChange={(e) => setWebLink(e.target.value)}
-              placeholder="e.g. https://knotkitchen.com"
+              placeholder="e.g. https://your-restaurant.com"
               className="w-full h-[38px] px-3 mt-1 rounded-xl border border-[#E2E8F0] text-[13px]"
             />
           </div>

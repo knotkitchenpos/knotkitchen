@@ -54,7 +54,17 @@ const backfillStoreIds = async () => {
 
 const connectDB = async () => {
   try {
-    const conn = await mongoose.connect(config.databaseURI);
+    // Pool size is pinned rather than left to the driver default of 100.
+    // Two Node apps share one Atlas cluster, so the default would let them
+    // claim up to 200 connections between them — and an Atlas free/shared
+    // tier caps the cluster at 500, which container restarts (leaving sockets
+    // draining) can push you into. Exhaustion shows up as intermittent
+    // timeouts rather than a clear error, so it is worth bounding explicitly.
+    // 20 is ample for this workload; raise via MONGO_MAX_POOL_SIZE if a real
+    // load test says otherwise.
+    const conn = await mongoose.connect(config.databaseURI, {
+      maxPoolSize: Number(process.env.MONGO_MAX_POOL_SIZE) || 20,
+    });
     console.log(`✅ MongoDB Connected: ${conn.connection.host}`);
     require("../models/storeModel");
     require("../models/restaurantModel");

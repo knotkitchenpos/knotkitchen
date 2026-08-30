@@ -46,7 +46,7 @@ const Login = () => {
       const data = res.data;
       if (data && data.success) {
         setErrorMessage("");
-        enqueueSnackbar("OTP sent successfully! Demo OTP: 123456", { variant: "info" });
+        enqueueSnackbar("OTP sent to the registered owner phone number.", { variant: "info" });
         setStep(3);
       }
     },
@@ -277,7 +277,6 @@ const Login = () => {
             <div className="p-3 bg-[#1E293B]/60 border border-[#26344B] rounded-xl flex items-center justify-between">
               <div>
                 <div className="text-xs text-[#77839A]">OTP sent to {phone}</div>
-                <div className="text-xs font-mono text-[#FF5A00] mt-0.5">Demo OTP: 123456</div>
               </div>
               <button
                 type="button"
@@ -303,7 +302,7 @@ const Login = () => {
                     setErrorMessage("");
                     setOtp(e.target.value.replace(/\D/g, "").slice(0, 6));
                   }}
-                  placeholder="Enter OTP (Demo: 123456)"
+                  placeholder="Enter 6-digit OTP"
                   className="w-full bg-transparent text-[#F5F7FA] text-lg sm:text-xl font-mono tracking-widest text-center placeholder:text-[#77839A] placeholder:text-sm placeholder:tracking-normal outline-none"
                   autoFocus
                   required

@@ -27,7 +27,7 @@ test("subdomain in local dev works identically", () => {
 });
 
 test("port suffix is stripped before resolution", () => {
-  const r = resolveStoreFromHostname("burger-house.localhost:5175", opts);
+  const r = resolveStoreFromHostname("burger-house.localhost:5176", opts);
   assert.equal(r.slug, "burger-house");
 });
 

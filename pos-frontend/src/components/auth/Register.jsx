@@ -25,7 +25,10 @@ const Register = () => {
   const [storeData, setStoreData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [otpSent, setOtpSent] = useState(false);
-  const [devOtp, setDevOtp] = useState("");
+  // The API returns only a masked phone — the OTP itself is never sent to the
+  // client (see userController.sendStoreOtp). In non-production it is printed
+  // to the server console, gated on ALLOW_DEV_OTP.
+  const [maskedPhone, setMaskedPhone] = useState("");
 
   // Step 1: Validate Store ID
   const handleStep1 = async (e) => {
@@ -66,9 +69,7 @@ const Register = () => {
       const otpRes = await sendStoreOtp({ storeId: storeId.trim(), phone: phone.trim() });
       if (otpRes.data.success) {
         setOtpSent(true);
-        if (otpRes.data.data?.otp) {
-          setDevOtp(otpRes.data.data.otp);
-        }
+        setMaskedPhone(otpRes.data.data?.maskedPhone || "");
         enqueueSnackbar("OTP sent to owner phone number!", { variant: "success" });
         setStep(3);
       }
@@ -235,13 +236,9 @@ const Register = () => {
           <div className="bg-surface-tertiary p-3 rounded-lg text-sm mb-2">
             <p className="font-medium text-content">Verification Sent</p>
             <p className="text-xs text-content-muted">
-              OTP sent to owner phone number <span className="font-semibold text-content">{phone}</span>
+              OTP sent to owner phone number{" "}
+              <span className="font-semibold text-content">{maskedPhone || phone}</span>
             </p>
-            {devOtp && (
-              <p className="text-xs font-mono text-accent mt-1 bg-accent/10 p-1.5 rounded">
-                Demo OTP: <strong>{devOtp}</strong>
-              </p>
-            )}
           </div>
 
           <div>
