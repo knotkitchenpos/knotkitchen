@@ -97,7 +97,20 @@ app.use((req, res, next) => {
 
 // Slightly larger limit than the default 100kb so base64 image uploads and
 // multi-item storefront carts fit comfortably.
-app.use(express.json({ limit: "8mb" })); // parse incoming request in json format
+// `verify` hands us the EXACT bytes received, before parsing. Gateway webhook
+// signatures (Razorpay et al.) are computed over the raw request body, so
+// verifying against JSON.stringify(req.body) — a re-serialisation — is only
+// accidentally correct: it breaks on any non-ASCII character, different number
+// formatting, or key ordering the gateway did not use. Stored only for the
+// webhook route to consume; every other handler keeps using req.body.
+app.use(
+    express.json({
+        limit: "8mb",
+        verify: (req, _res, buf) => {
+            if (buf && buf.length) req.rawBody = buf;
+        },
+    })
+); // parse incoming request in json format
 app.use(cookieParser());
 
 /**

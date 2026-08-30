@@ -9,7 +9,21 @@ const Order = require("../models/orderModel");
 const TableSession = require("../models/tableSessionModel");
 const Restaurant = require("../models/restaurantModel");
 const { sendPaymentLinkMessage } = require("../services/messagingService");
-const { READY, SETTLED_STATUSES } = require("../constants/orderStatus");
+const { COMPLETED, SETTLED_STATUSES } = require("../constants/orderStatus");
+const { normalizePaymentMethod, toOrderPaymentMethod } = require("../constants/paymentMethods");
+
+/**
+ * Constant-time string comparison for gateway signatures. Mirrors the helper in
+ * paymentController.js — a plain `!==` returns early on the first differing
+ * byte and leaks how much of a guessed signature was correct.
+ */
+const timingSafeEquals = (a, b) => {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  const aBuf = Buffer.from(a);
+  const bBuf = Buffer.from(b);
+  if (aBuf.length !== bBuf.length) return false;
+  return crypto.timingSafeEqual(aBuf, bBuf);
+};
 
 /**
  * Validate customer phone number for collection payment links.
@@ -276,6 +290,14 @@ const getPaymentLink = async (req, res, next) => {
       success: true,
       data: {
         linkToken: link.linkToken,
+        // The customer page passes this to Razorpay Checkout as `order_id`
+        // (pos-frontend/src/pages/PaymentLink.jsx). It was missing from this
+        // payload, so checkout opened with order_id: undefined. Not a secret —
+        // it is a gateway order handle that is useless without a valid
+        // signature, and the capture endpoint now requires one that matches
+        // this exact value.
+        gatewayOrderId: link.gatewayOrderId || "",
+        gatewayName: link.gatewayName || "RAZORPAY",
         restaurantName: restaurant?.name || "Knot Kitchen",
         orderNumber: order?.marketplaceOrderId || order?._id?.toString() || bill?.billNumber || "N/A",
         orderedItems,
@@ -318,13 +340,56 @@ const verifyAndCaptureLinkPayment = async (req, res, next) => {
       throw createHttpError(400, "Payment link has expired.");
     }
 
-    // Razorpay signature verification if keys configured
-    if (config.razorpaySecretKey && razorpay_order_id && razorpay_payment_id) {
-      const expected = crypto
-        .createHmac("sha256", config.razorpaySecretKey)
-        .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-        .digest("hex");
-      if (expected !== razorpay_signature) throw createHttpError(400, "Invalid payment signature!");
+    // ---- Gateway signature verification (MANDATORY) ----
+    //
+    // This endpoint is PUBLIC — anyone holding a link token can call it, and
+    // every customer sent a payment link holds one. It marks the link, the
+    // bill and the order paid and closes the table session, so it must never
+    // run on unverified input.
+    //
+    // The previous guard was:
+    //
+    //   if (config.razorpaySecretKey && razorpay_order_id && razorpay_payment_id)
+    //
+    // Two of those three operands are attacker-controlled request-body fields,
+    // so simply OMITTING them skipped verification entirely and fell through to
+    // the "mark everything paid" code below. `POST /:token/verify` with a body
+    // of `{"paymentMethod":"UPI"}` settled any bill for free.
+    //
+    // Verification is now required, and failure to verify is fatal.
+    if (!config.razorpaySecretKey) {
+      // Refuse rather than trust: with no secret we cannot tell a real payment
+      // from a forged one. Genuine payments still reconcile via the webhook.
+      throw createHttpError(503, "Payment verification is unavailable. Please contact the restaurant.");
+    }
+
+    // Only Razorpay is actually integrated. The cashfree/phonepe branches in
+    // createPaymentLink mint a synthetic gatewayOrderId and never create a real
+    // gateway order, so a "capture" for them would be unverifiable by
+    // construction. Reject instead of pretending.
+    const linkGateway = String(link.gatewayName || "RAZORPAY").toUpperCase();
+    if (linkGateway !== "RAZORPAY") {
+      throw createHttpError(501, "This payment method cannot be confirmed here.");
+    }
+
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+      throw createHttpError(400, "Invalid payment signature!");
+    }
+
+    // Bind the signed payload to THIS link. Without this a valid signature from
+    // any other Razorpay order on the same account would settle this link.
+    if (link.gatewayOrderId && razorpay_order_id !== link.gatewayOrderId) {
+      throw createHttpError(400, "Invalid payment signature!");
+    }
+
+    const expected = crypto
+      .createHmac("sha256", config.razorpaySecretKey)
+      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+      .digest("hex");
+
+    // Constant-time: a plain !== leaks how much of the signature matched.
+    if (!timingSafeEquals(expected, String(razorpay_signature))) {
+      throw createHttpError(400, "Invalid payment signature!");
     }
 
     const transactionId = razorpay_payment_id || `txn_${crypto.randomBytes(12).toString("hex")}`;
@@ -356,10 +421,15 @@ const verifyAndCaptureLinkPayment = async (req, res, next) => {
           tableSessionId: link.tableSessionId,
           customerId: link.customerId,
           paymentLinkId: link._id,
-          method: paymentMethod,
+          // `method` is the payment INSTRUMENT and its enum does not include
+          // provider names. `paymentMethod` defaults to "RAZORPAY" and the
+          // customer page never sends the field, so this previously threw a
+          // ValidationError on every genuine capture and aborted the
+          // transaction. See constants/paymentMethods.js.
+          method: normalizePaymentMethod(paymentMethod),
           amount: lockedAmount,
           status: "PAID",
-          provider: link.gatewayName || (paymentMethod === "RAZORPAY" ? "RAZORPAY" : "SECURE_LINK"),
+          provider: link.gatewayName || "RAZORPAY",
           transactionId,
           gatewayOrderId: gatewayOrder,
           gatewayPaymentId: transactionId,
@@ -388,11 +458,29 @@ const verifyAndCaptureLinkPayment = async (req, res, next) => {
     // Update Order if present
     if (link.orderId) {
       await Order.findOneAndUpdate(
-        { _id: link.orderId, restaurantId: link.restaurantId },
+        // Guard on "not already paid" so a concurrent webhook and browser
+        // callback cannot both append a payment for the same settlement.
+        { _id: link.orderId, restaurantId: link.restaurantId, "payments.status": { $ne: "paid" } },
         {
-          orderStatus: READY,
-          paymentMethod: paymentMethod,
-          payments: [{ method: paymentMethod.toLowerCase(), amount: lockedAmount, status: "paid", transactionId }],
+          $set: {
+            // COMPLETED, not READY. The webhook path (paymentController
+            // .finalizePaymentLinkFromGateway) already sets COMPLETED, so a
+            // paid order's status used to depend on which path happened to win
+            // the race. Settling a bill completes the order in both.
+            orderStatus: COMPLETED,
+            paymentMethod: normalizePaymentMethod(paymentMethod),
+          },
+          // $push, not assignment. Assigning replaced the whole array and
+          // discarded any earlier partial/split payments on the order.
+          $push: {
+            payments: {
+              method: toOrderPaymentMethod(paymentMethod),
+              amount: lockedAmount,
+              status: "paid",
+              transactionId,
+            },
+            timeline: { status: "Completed", timestamp: new Date(), user: "Payment Link" },
+          },
         },
         { session: mongoSession }
       );
