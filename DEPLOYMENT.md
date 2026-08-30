@@ -108,6 +108,52 @@ root SSH login (`PermitRootLogin no` in `/etc/ssh/sshd_config`).
 
 ---
 
+## 3a. GitHub access for the VPS (read-only deploy key)
+
+The repo is private, so `/srv/knot` cannot `git pull` without a key. Generate the
+key **on the VPS** so the private half never leaves it, and register only the
+public half as a **read-only** deploy key — the server only ever pulls.
+
+```bash
+# on the VPS
+ssh-keygen -t ed25519 -f ~/.ssh/github_knotkitchen -N '' -C "$(hostname)-knotkitchen-deploy"
+cat ~/.ssh/github_knotkitchen.pub
+```
+
+Register it (read-only, scoped to this repo alone):
+
+```bash
+gh api repos/knotkitchenpos/knotkitchen/keys -X POST   -f title="$(hostname) VPS deploy (read-only)" -f key="$(cat ~/.ssh/github_knotkitchen.pub)" -F read_only=true
+```
+
+The remote uses the alias `github.com-knotkitchen`, so the VPS needs it in
+`~/.ssh/config` (chmod 600) or every pull fails with
+`Could not resolve hostname github.com-knotkitchen`:
+
+```
+Host github.com-knotkitchen
+    HostName github.com
+    User git
+    IdentityFile ~/.ssh/github_knotkitchen
+    IdentitiesOnly yes
+```
+
+Seed `~/.ssh/known_hosts` from GitHub's **published** host keys rather than a
+blind `ssh-keyscan` (which trusts whatever answers on first contact):
+
+```bash
+gh api meta --jq '.ssh_keys[]' | sed 's/^/github.com /' >> ~/.ssh/known_hosts
+```
+
+Verify with `ssh -T git@github.com-knotkitchen` (expect "successfully
+authenticated") and `git -C /srv/knot pull --ff-only`.
+
+If the private key is ever lost, the deploy key left on GitHub is orphaned —
+revoke it (`gh api -X DELETE repos/knotkitchenpos/knotkitchen/keys/<id>`) rather
+than leaving a credential registered that nothing on the server holds.
+
+---
+
 ## 4. First deploy
 
 ```bash
