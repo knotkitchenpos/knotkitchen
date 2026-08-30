@@ -259,6 +259,7 @@ services:
       CLOUDFLARE_API_TOKEN: ${CLOUDFLARE_API_TOKEN}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./landing:/srv/landing:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:

@@ -1,0 +1,270 @@
+:root{
+  /* Brand: navy + orange, sampled from the KnotKitchen logo */
+  --navy:#0a1b45; --navy-2:#12306b; --orange:#f4620a; --orange-deep:#d94e05;
+
+  --bg:#fffdfa; --bg-2:#f6f1e9; --surface:#ffffff; --line:#e8e0d4;
+  --text:#0a1b45; --muted:#6c6257; --accent:#c9490a; --accent-2:#f0a202;
+  --accent-soft:#fdf0e6; --shadow:0 1px 2px rgba(10,27,69,.05),0 8px 30px rgba(10,27,69,.07);
+  --radius:14px;
+  /* Fluid layout tokens: everything scales continuously with the viewport
+     instead of stepping at a handful of breakpoints. */
+  --max:1120px;
+  --gutter:clamp(16px,4vw,24px);
+  --nav-h:64px;
+  --section-y:clamp(44px,7vw,76px);
+  --card-pad:clamp(20px,2.6vw,26px);
+  --grid-gap:clamp(14px,1.8vw,20px);
+
+  /* The brand lockup is navy + orange and is never recoloured, so every
+     surface it sits on stays light. Deliberately light-only. */
+  color-scheme:light;
+}
+
+*{box-sizing:border-box}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+body{
+  margin:0;background:var(--bg);color:var(--text);
+  font:400 clamp(15.5px,0.35vw + 14.6px,17px)/1.65 ui-sans-serif,-apple-system,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+img{max-width:100%}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+.wrap{width:min(var(--max),100% - var(--gutter)*2);margin-inline:auto}
+h1,h2,h3{line-height:1.2;letter-spacing:-.02em;margin:0 0 .5em}
+h1{font-size:clamp(1.85rem,5.6vw,3.6rem);font-weight:700}
+h2{font-size:clamp(1.4rem,3.4vw,2.2rem);font-weight:650}
+h3{font-size:1.1rem;font-weight:650}
+p{margin:0 0 1em}
+
+/* header */
+header{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--bg) 88%,transparent);
+  backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+.nav{display:flex;align-items:center;justify-content:space-between;gap:16px;height:64px}
+.brand{display:flex;align-items:center;flex:none;min-height:44px}
+.brand:hover{text-decoration:none}
+.brand-mark{display:inline-block;margin-bottom:16px}
+/* The wordmark is part of the artwork — never re-typed in a UI font, and the
+   artwork itself is never recoloured. The lockup ships transparent and sits
+   directly on the page. */
+.brand-logo{height:28px;width:auto;display:block}
+.brand-stack{display:block;height:auto;width:190px}
+
+.btn{display:inline-block;padding:12px 22px;border-radius:999px;font-weight:600;font-size:.98rem;
+  background:linear-gradient(135deg,var(--orange),var(--orange-deep));color:#fff;
+  border:1px solid transparent;transition:transform .15s,filter .15s}
+.btn:hover{filter:brightness(1.08);text-decoration:none;transform:translateY(-1px)}
+.btn.ghost{background:transparent;color:var(--text);border-color:var(--line)}
+
+/* --- Navigation ----------------------------------------------------------
+   One markup for both layouts. <details> gives a working disclosure menu with
+   no JavaScript; above 860px the <details> is flattened with display:contents
+   and the panel is forced open, so it renders as an ordinary desktop bar. */
+.menu summary{list-style:none;cursor:pointer;display:grid;place-items:center;
+  width:44px;height:44px;margin-right:-10px;border-radius:10px}
+.menu summary::-webkit-details-marker{display:none}
+.menu summary::marker{content:"";display:none}
+.menu summary:hover{background:var(--bg-2)}
+.bars,.bars::before,.bars::after{content:"";display:block;width:20px;height:2px;
+  border-radius:2px;background:var(--text);transition:transform .18s,opacity .18s}
+.bars{position:relative}
+.bars::before{position:absolute;top:-6px}
+.bars::after{position:absolute;top:6px}
+.menu[open] .bars{background:transparent}
+.menu[open] .bars::before{transform:translateY(6px) rotate(45deg)}
+.menu[open] .bars::after{transform:translateY(-6px) rotate(-45deg)}
+
+.menu-panel{position:absolute;left:0;right:0;top:100%;
+  background:var(--bg);border-bottom:1px solid var(--line);
+  box-shadow:0 18px 40px rgba(10,27,69,.10);
+  padding:8px 24px 22px;display:grid;gap:4px}
+.menu-panel ul{list-style:none;margin:0;padding:0;display:grid}
+.menu-panel ul a{display:block;padding:14px 4px;color:var(--text);
+  font-size:1.02rem;font-weight:500;border-bottom:1px solid var(--line)}
+.menu-panel ul a:hover{text-decoration:none;color:var(--accent)}
+.menu-panel .btn{margin-top:16px;text-align:center}
+
+@media(min-width:861px){
+  /* Chrome wraps <details> children in a UA ::details-content box, so
+     display:contents on the <details> alone does not flatten all the way —
+     flatten both, and let .nav's space-between do the alignment either way. */
+  .menu{display:contents}
+  .menu::details-content{display:contents}
+  .menu summary{display:none}
+  .menu-panel{position:static;display:flex;align-items:center;gap:26px;
+    padding:0;background:none;border:0;box-shadow:none}
+  .menu-panel ul{display:flex;gap:24px}
+  .menu-panel ul a{padding:0;border:0;color:var(--muted);font-size:.95rem}
+  .menu-panel ul a:hover{color:var(--text)}
+  .menu-panel .btn{margin-top:0;padding:10px 18px}
+  .brand-logo{height:30px}
+}
+
+/* hero */
+.hero{position:relative;overflow:hidden;padding:clamp(48px,7vw,96px) 0 clamp(52px,7vw,88px);color:#fff;
+  background:var(--navy) url("assets/hero-bg.webp") center/cover no-repeat}
+.hero::before{content:"";position:absolute;inset:0;
+  background:linear-gradient(100deg,rgba(6,15,38,.92) 0%,rgba(6,15,38,.80) 42%,rgba(6,15,38,.55) 100%)}
+.hero .wrap{position:relative}
+.hero h1{color:#fff}
+.hero .lede{color:#d5deef}
+.hero .eyebrow{color:#ffd0ac;background:rgba(255,255,255,.10);
+  border-color:rgba(255,255,255,.22)}
+.hero .hero-note{color:#a8b6d1}
+.hero .btn.ghost{color:#fff;border-color:rgba(255,255,255,.35);background:rgba(255,255,255,.06)}
+.hero .btn.ghost:hover{background:rgba(255,255,255,.14)}
+.hero-grid{display:grid;align-items:center;gap:clamp(32px,4.5vw,56px);
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,27rem),1fr))}
+.eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:.82rem;font-weight:600;
+  letter-spacing:.04em;text-transform:uppercase;color:var(--accent);
+  background:var(--accent-soft);border:1px solid color-mix(in srgb,var(--accent) 22%,transparent);
+  padding:6px 14px;border-radius:999px;margin-bottom:22px}
+.lede{font-size:clamp(1.02rem,0.5vw + .95rem,1.16rem);color:var(--muted);max-width:34em}
+.cta-row{display:flex;flex-wrap:wrap;gap:12px;margin-top:28px}
+.hero-note{margin-top:20px;font-size:.9rem;color:var(--muted)}
+
+/* device mock */
+.mock{background:rgba(10,20,44,.62);border:1px solid rgba(255,255,255,.16);border-radius:18px;
+  box-shadow:0 24px 60px rgba(0,0,0,.45);overflow:hidden;backdrop-filter:blur(14px);color:#fff}
+.mock-bar{display:flex;align-items:center;gap:7px;padding:12px 16px;
+  border-bottom:1px solid rgba(255,255,255,.14);background:rgba(255,255,255,.06)}
+.dot{width:10px;height:10px;border-radius:50%;background:rgba(255,255,255,.28)}
+.mock-body{padding:18px}
+.mock-row{display:flex;justify-content:space-between;align-items:center;padding:11px 0;
+  border-bottom:1px dashed rgba(255,255,255,.16);font-size:.94rem}
+.mock-row:last-child{border:0}
+.mock-row span:last-child{font-variant-numeric:tabular-nums;color:#c3cee4}
+.pill{font-size:.72rem;font-weight:650;padding:3px 10px;border-radius:999px;
+  background:rgba(244,98,10,.22);color:#ffb27a}
+.mock-total{display:flex;justify-content:space-between;margin-top:14px;padding-top:14px;
+  border-top:1px solid rgba(255,255,255,.2);font-weight:700}
+
+/* sections */
+section{padding:var(--section-y) 0;scroll-margin-top:calc(var(--nav-h,64px) + 8px)}
+.sec-head{max-width:44em;margin-bottom:clamp(26px,3.6vw,44px)}
+.sec-head p{color:var(--muted);margin:0}
+.alt{background:var(--bg-2);border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.grid{display:grid;gap:20px}
+.grid{gap:var(--grid-gap)}
+/* auto-fit + minmax means the column count falls out of the available width,
+   so these reflow smoothly at every size rather than snapping at 900/600px.
+   The inner max() floors each track at 1/N of the row, which caps the count at
+   N so six cards never sit 4+2; the outer min(100%,…) stops a track from
+   overflowing a screen narrower than the floor. */
+.g3{grid-template-columns:repeat(auto-fit,minmax(min(100%,max(268px,(100% - 2*var(--grid-gap))/3)),1fr))}
+.g4{grid-template-columns:repeat(auto-fit,minmax(min(100%,max(200px,(100% - 3*var(--grid-gap))/4)),1fr))}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);
+  padding:var(--card-pad);box-shadow:var(--shadow)}
+.card p{color:var(--muted);font-size:.96rem;margin:0}
+.ico{width:40px;height:40px;border-radius:11px;display:grid;place-items:center;margin-bottom:16px;
+  background:var(--accent-soft);color:var(--accent)}
+.ico svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.8;
+  stroke-linecap:round;stroke-linejoin:round}
+
+/* steps */
+.steps{counter-reset:s}
+.step{position:relative;padding-left:56px}
+.step::before{counter-increment:s;content:counter(s);position:absolute;left:0;top:0;
+  width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font-weight:700;
+  background:linear-gradient(135deg,var(--orange),var(--orange-deep));color:#fff}
+.step p{color:var(--muted);font-size:.96rem;margin:0}
+
+/* stack list */
+.tags{display:flex;flex-wrap:wrap;gap:10px;list-style:none;padding:0;margin:0}
+.tags li{border:1px solid var(--line);background:var(--surface);border-radius:999px;
+  padding:7px 16px;font-size:.9rem;color:var(--muted)}
+
+/* contact */
+.contact{position:relative;overflow:hidden;border:1px solid var(--line);border-radius:20px;
+  padding:clamp(32px,5vw,64px) clamp(22px,4vw,52px);
+  box-shadow:var(--shadow);color:#fff;
+  background:#140b06 url("assets/cta-bg.webp") center/cover no-repeat}
+.contact::before{content:"";position:absolute;inset:0;
+  background:linear-gradient(95deg,rgba(12,7,4,.90) 0%,rgba(12,7,4,.72) 55%,rgba(12,7,4,.35) 100%)}
+.contact > *{position:relative}
+.contact h2{color:#fff}
+.contact p{color:#e3d4c8;max-width:34em}
+.contact .btn{background:#fff;color:var(--navy)}
+.contact .btn:hover{background:#fff;filter:brightness(.94)}
+/* white plate so the navy half of the lockup stays legible on the artwork */
+.contact .cta-row{margin-top:24px}
+@media(max-width:820px){.contact{padding:34px 26px}}
+.contact h2{margin-bottom:.35em}
+.contact p{color:var(--muted);margin:0}
+
+/* footer */
+footer{border-top:1px solid var(--line);background:var(--bg-2);padding:clamp(40px,5vw,56px) 0 clamp(30px,4vw,40px);font-size:.93rem}
+.f-grid{display:grid;--f-gap:clamp(24px,3vw,32px);gap:var(--f-gap);
+  grid-template-columns:repeat(auto-fit,minmax(min(100%,max(210px,(100% - 2*var(--f-gap))/3)),1fr))}
+footer h4{font-size:.8rem;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);
+  margin:0 0 14px;font-weight:650}
+footer ul{list-style:none;margin:0;padding:0;display:grid;gap:9px}
+footer ul a{color:var(--muted)}
+footer ul a:hover{color:var(--text)}
+.f-bottom{margin-top:40px;padding-top:22px;border-top:1px solid var(--line);
+  display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;color:var(--muted)}
+
+/* legal pages */
+.legal{padding:clamp(36px,5vw,60px) 0 clamp(52px,7vw,80px);max-width:800px}
+.legal h1{font-size:clamp(1.6rem,4.2vw,2.6rem)}
+.legal .eff{display:inline-block;font-size:.9rem;color:var(--muted);background:var(--bg-2);
+  border:1px solid var(--line);border-radius:999px;padding:6px 14px;margin-bottom:28px}
+.legal h2{font-size:1.25rem;margin:2em 0 .6em;padding-top:.2em}
+.legal ul{color:var(--muted);padding-left:1.2em}
+.legal li{margin-bottom:.4em}
+.legal p{color:var(--muted)}
+.legal p strong,.legal li strong{color:var(--text)}
+.back{display:inline-flex;align-items:center;gap:6px;font-size:.92rem;color:var(--muted);margin-bottom:26px}
+.legal-nav{display:flex;flex-wrap:wrap;gap:8px;margin:44px 0 0;padding-top:26px;border-top:1px solid var(--line)}
+.legal-nav a{font-size:.88rem;border:1px solid var(--line);border-radius:999px;padding:7px 15px;color:var(--muted)}
+.legal-nav a:hover{color:var(--text);text-decoration:none;border-color:var(--accent)}
+.legal-nav a[aria-current]{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+
+/* --- Size-specific adjustments -------------------------------------------
+   Spacing and type are fluid above; these handle things a clamp() cannot
+   express — layout switches, and viewports that are extreme in one axis. */
+
+/* Phones: stack the hero CTAs full-width and slim the footer lockup. */
+@media(max-width:700px){
+  .hero .cta-row .btn{flex:1 1 auto;text-align:center}
+  .cta-row{gap:10px}
+  .step{padding-left:50px}
+  .legal h2{margin:1.6em 0 .5em}
+  .brand-stack{width:clamp(140px,42vw,190px)}
+  .legal-nav{gap:10px}
+  .legal-nav a{padding:11px 16px}   /* 44px tap target */
+}
+
+/* Very small / folded screens (down to ~280px). */
+@media(max-width:360px){
+  .brand-logo{height:24px}
+  .btn{padding:11px 16px;font-size:.92rem}
+  .hero .cta-row{display:grid}
+  .hero .cta-row .btn{width:100%}
+  .eyebrow{font-size:.74rem;padding:5px 11px}
+  .mock-row{font-size:.86rem}
+  .tags li{font-size:.84rem;padding:6px 12px}
+}
+
+/* Short viewports — phones in landscape, small laptops. The hero is sized by
+   content, so only its generous vertical padding needs reining in. */
+@media(max-height:560px) and (orientation:landscape){
+  .hero{padding:36px 0 40px}
+  header{position:static}          /* a sticky bar eats too much of a short screen */
+}
+
+/* Large and ultra-wide displays: let the measure grow a little rather than
+   stranding the content in a 1120px column on a 2560px monitor. */
+@media(min-width:1600px){
+  :root{--max:1240px}
+  body{font-size:17.5px}
+}
+@media(min-width:2200px){
+  :root{--max:1360px}
+}
+
+/* Users who prefer reduced motion. */
+@media(prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  *,*::before,*::after{transition-duration:.01ms !important;animation-duration:.01ms !important}
+}
