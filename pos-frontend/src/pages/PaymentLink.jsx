@@ -43,8 +43,17 @@ export default function PaymentLink() {
           name: "Knot Kitchen",
           description: `Bill ${link.billNumber || ""}`,
           handler: async (res) => {
+            // `res` carries razorpay_order_id / _payment_id / _signature. All
+            // three are now REQUIRED by the capture endpoint — it no longer
+            // settles a link on unverified input.
+            //
+            // paymentMethod is sent explicitly rather than relying on the
+            // server default: that default was "RAZORPAY", a provider name the
+            // PaymentTransaction.method enum rejects, so every genuine capture
+            // used to abort with a ValidationError.
             await paymentLinkVerify(token, {
               ...res,
+              paymentMethod: "ONLINE",
               idempotencyKey: `${res.razorpay_order_id}_${res.razorpay_payment_id}`,
             });
             setDone(true);

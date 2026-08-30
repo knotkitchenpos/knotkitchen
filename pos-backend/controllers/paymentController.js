@@ -5,6 +5,7 @@ const crypto = require("crypto");
 const mongoose = require("mongoose");
 const Payment = require("../models/paymentModel");
 const { COMPLETED } = require("../constants/orderStatus");
+const { normalizePaymentMethod, toOrderPaymentMethod } = require("../constants/paymentMethods");
 const Order = require("../models/orderModel");
 const Bill = require("../models/billModel");
 const PaymentLink = require("../models/paymentLinkModel");
@@ -193,7 +194,12 @@ const finalizePaymentLinkFromGateway = async ({
         tableSessionId: link.tableSessionId,
         customerId: link.customerId,
         paymentLinkId: link._id,
-        method,
+        // `method` arrives as the gateway's own instrument name (Razorpay sends
+        // "netbanking", "card", "upi", ...) or a provider name. The model's
+        // enum accepts neither "RAZORPAY" nor "NETBANKING", so those writes
+        // threw ValidationError — caught by the caller and logged, meaning
+        // netbanking payments silently never reconciled.
+        method: normalizePaymentMethod(method),
         amount: lockedAmount,
         status: "PAID",
         provider: method === "RAZORPAY" ? "RAZORPAY" : "SECURE_LINK",
@@ -247,11 +253,13 @@ const finalizePaymentLinkFromGateway = async ({
       {
         $set: {
           orderStatus: COMPLETED,
-          paymentMethod: method,
+          paymentMethod: normalizePaymentMethod(method),
         },
         $push: {
           payments: {
-            method: method.toLowerCase() === "razorpay" ? "online" : method.toLowerCase(),
+            // Order.payments[].method is its own narrower lower-case enum; the
+            // old ternary handled "razorpay" but not "netbanking" or "emi".
+            method: toOrderPaymentMethod(method),
             amount: lockedAmount,
             status: "paid",
             transactionId: gatewayPaymentId || `webhook_${Date.now()}`,
@@ -272,48 +280,34 @@ const finalizePaymentLinkFromGateway = async ({
 
 const webHookVerification = async (req, res, next) => {
   try {
-    // ---- Cashfree Webhook Handling ----
-    if (req.body.type === "PAYMENT_SUCCESS_WEBHOOK" || req.body.data?.order?.order_id) {
-      const data = req.body.data || {};
-      const gatewayOrderId = data.order?.order_id || "";
-      const gatewayPaymentId = String(data.payment?.cf_payment_id || `cf_${Date.now()}`);
-      const amount = Number(data.payment?.payment_amount || data.order?.order_amount || 0);
-
-      if (gatewayOrderId) {
-        await finalizePaymentLinkFromGateway({
-          gatewayOrderId,
-          gatewayPaymentId,
-          amount,
-          method: "CASHFREE",
-        });
-      }
-      return res.status(200).json({ success: true, gateway: "CASHFREE" });
-    }
-
-    // ---- PhonePe Webhook Handling ----
-    if (req.body.response || req.body.code === "PAYMENT_SUCCESS") {
-      let decoded = req.body;
-      if (typeof req.body.response === "string") {
-        try {
-          decoded = JSON.parse(Buffer.from(req.body.response, "base64").toString("utf-8"));
-        } catch (e) {
-          console.warn("[webhook] Failed to decode PhonePe payload", e.message);
-        }
-      }
-      const data = decoded.data || {};
-      const gatewayOrderId = data.merchantTransactionId || "";
-      const gatewayPaymentId = String(data.transactionId || `phonepe_${Date.now()}`);
-      const amount = Number(data.amount || 0) / 100;
-
-      if (gatewayOrderId && (decoded.code === "PAYMENT_SUCCESS" || decoded.success)) {
-        await finalizePaymentLinkFromGateway({
-          gatewayOrderId,
-          gatewayPaymentId,
-          amount,
-          method: "PHONEPE",
-        });
-      }
-      return res.status(200).json({ success: true, gateway: "PHONEPE" });
+    // ---- Cashfree / PhonePe ----
+    //
+    // DISABLED, deliberately. These branches used to run BEFORE any signature
+    // check and performed no verification of their own, while calling
+    // finalizePaymentLinkFromGateway — which marks a PaymentLink, its Bill and
+    // its Order paid. This endpoint is unauthenticated, so a forged
+    // `{"type":"PAYMENT_SUCCESS_WEBHOOK", ...}` body settled a bill for free.
+    //
+    // Neither gateway is actually integrated: createPaymentLink mints a
+    // synthetic `CASHFREE_LINK_<ts>` / `PHONEPE_LINK_<ts>` id without calling
+    // the provider, and no CASHFREE_/PHONEPE_ secret exists anywhere in the
+    // configuration — so there is nothing to verify against even in principle.
+    //
+    // Acknowledging (200) without acting is the correct inert behaviour: it
+    // stops provider retries without granting unauthenticated writes. When
+    // either gateway is genuinely integrated, restore the branch TOGETHER WITH
+    // its signature verification, never before.
+    if (
+      req.body.type === "PAYMENT_SUCCESS_WEBHOOK" ||
+      req.body.data?.order?.order_id ||
+      req.body.response ||
+      req.body.code === "PAYMENT_SUCCESS"
+    ) {
+      console.warn(
+        "[webhook] Received a Cashfree/PhonePe-shaped payload. These gateways are " +
+          "not integrated and their webhooks are NOT verifiable; ignoring."
+      );
+      return res.status(200).json({ success: true, skipped: true });
     }
 
     // ---- Razorpay Webhook Handling ----
@@ -324,16 +318,28 @@ const webHookVerification = async (req, res, next) => {
       console.warn("[webhook] RAZORPAY_WEBHOOK_SECRET is not set; ignoring event.");
       return res.status(200).json({ success: true, skipped: true });
     }
+
     const signature = String(req.headers["x-razorpay-signature"] || "");
 
-    const body = JSON.stringify(req.body);
+    // A MISSING signature is a failure, not a pass. The previous condition was
+    // `if (signature && !timingSafeEquals(...))`, so omitting the header
+    // short-circuited the check and the forged event was processed as genuine.
+    if (!signature) {
+      return next(createHttpError(400, "Invalid Signature!"));
+    }
+
+    // Sign over the RAW bytes received (captured by express.json's `verify` in
+    // app.js). JSON.stringify(req.body) re-serialises and only matches by
+    // luck — any non-ASCII character in a customer name breaks it, so genuine
+    // webhooks would start failing verification with no code change.
+    const body = req.rawBody ? req.rawBody.toString("utf8") : JSON.stringify(req.body);
 
     const expectedSignature = crypto
       .createHmac("sha256", secret)
       .update(body)
       .digest("hex");
 
-    if (signature && !timingSafeEquals(expectedSignature, signature)) {
+    if (!timingSafeEquals(expectedSignature, signature)) {
       return next(createHttpError(400, "Invalid Signature!"));
     }
 
