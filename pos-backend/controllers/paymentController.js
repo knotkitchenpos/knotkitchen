@@ -311,7 +311,7 @@ const webHookVerification = async (req, res, next) => {
     }
 
     // ---- Razorpay Webhook Handling ----
-    const secret = config.razorpyWebhookSecret;
+    const secret = config.razorpayWebhookSecret;
     if (!secret) {
       // Deliberately return 200 so Razorpay stops retrying, but log so an
       // operator notices the missing configuration.

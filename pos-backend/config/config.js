@@ -68,7 +68,7 @@ const config = Object.freeze({
 
     razorpayKeyId: process.env.RAZORPAY_KEY_ID,
     razorpaySecretKey: process.env.RAZORPAY_KEY_SECRET,
-    razorpyWebhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET,
+    razorpayWebhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET,
 
     // Rate limiting
     rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
