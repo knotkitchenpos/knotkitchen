@@ -144,6 +144,20 @@ MEDIA_STORAGE_PROVIDER=local
 MEDIA_PUBLIC_BASE_URL=https://api.knotkitchen.online/uploads
 ```
 
+Create the external volumes. The KYC and onboarding volumes are declared
+`external: true` in `docker-compose.yml` so a stray `docker compose down -v` or
+`docker volume prune` cannot destroy them — the trade-off is that Compose will
+not create them for you, and `up` fails with *"volume ... declared as external,
+but could not be found"* until they exist:
+
+```bash
+bash deploy/bootstrap-volumes.sh
+```
+
+It is idempotent and never touches the contents of a volume that already
+exists, so it is safe to re-run. The deploy workflow and `rollback.sh` both
+call it automatically; you only need this by hand on a brand-new host.
+
 Then bring the stack up (first build is ~5 min):
 
 ```bash
@@ -231,6 +245,23 @@ docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d pos-api
 ./deploy/rollback.sh
 ```
 
+### A note on `down -v`
+
+`docker compose down -v` and `docker volume prune` destroy volumes. The three
+holding irreplaceable data — `knotkitchen_csd_documents`,
+`knotkitchen_onboard_data`, `knotkitchen_onboard_uploads` — are declared
+`external: true` precisely so **both of those commands skip them**. That is a
+deliberate guardrail against a 2am incident, not an accident of configuration.
+
+It is not a licence to run either command casually: `down -v` still wipes
+`caddy_data` (you re-issue certs, and can hit Let's Encrypt rate limits) and
+`backend_uploads` (you lose menu media). To stop the stack, use `down` without
+`-v`.
+
+To genuinely delete a protected volume you must name it explicitly —
+`docker volume rm knotkitchen_csd_documents` — which is the point: it cannot
+happen as a side effect of a command aimed at something else.
+
 ---
 
 ## 8. Creating a store (no infra change)
@@ -268,8 +299,91 @@ Add to root's crontab on the VPS:
 
 ```
 KNOT_BACKUP_PASSPHRASE=<long random>
+KNOT_BACKUP_REMOTE=r2:knot-backups
+KNOT_BACKUP_HEARTBEAT_URL=https://hc-ping.com/<your-uuid>
 17 3 * * *   /srv/knot/deploy/backup.sh >> /var/log/knot-backup.log 2>&1
 ```
+
+`KNOT_BACKUP_HEARTBEAT_URL` is a dead-man's switch. The script pings
+`<url>/start` when it begins, `<url>` on success and `<url>/fail` on any
+failure; the monitor alerts when an expected ping **doesn't arrive**. That is
+what catches the failures logging cannot — the VPS being down, cron disabled,
+the disk full before the script runs. [Healthchecks.io](https://healthchecks.io)
+has a free tier; create a check on a daily schedule with a few hours' grace and
+paste its ping URL here.
+
+A monitoring outage never fails the backup: a ping that cannot be sent logs a
+warning and the run continues. `$KNOT_BACKUP_DIR/.last-success` is also stamped
+on every successful run, so `stat` answers "when did a backup last actually
+work?" without trusting the monitor or parsing logs.
+
+**This matters most right now.** While the Atlas cluster is on a tier without
+its own snapshots, the `mongodump` in this archive is the only database backup
+that exists — so a silently dead cron is the difference between having a
+business and not.
+
+`KNOT_BACKUP_PASSPHRASE` is required — the script refuses to write an
+unencrypted archive. **Keep a copy of it somewhere other than this VPS.** It
+lives in `deploy/.env`, and `deploy/.env` is inside the encrypted backup, so
+losing the host without an external copy of the passphrase leaves you holding
+archives you cannot decrypt.
+
+`KNOT_BACKUP_REMOTE` is an [rclone](https://rclone.org/install/) remote. It is
+optional but strongly recommended: without it the backup never leaves the
+machine it is protecting, and the script warns about that on every run. With it
+set, a failed copy aborts the run non-zero so cron mails you. Set it up with:
+
+```bash
+apt-get install -y rclone
+rclone config          # create a remote named e.g. "r2"
+rclone lsd r2:         # verify it authenticates
+```
+
+The archive is encrypted before it is uploaded, so the destination needs to be
+durable, not trusted. Set a lifecycle rule on the bucket for remote retention —
+the script only rotates its own **local** copies (14 nights).
+
+What is captured: `deploy/.env`, every stateful Docker volume — `caddy_data`,
+`backend_uploads`, `csd_documents`, `onboard_data`, `onboard_uploads` — and a
+full `mongodump` of the Atlas cluster. Note that `onboard_data` holds the
+onboarding portal's `database.json`, a primary datastore with no Atlas
+equivalent.
+
+The dump requires the MongoDB Database Tools on the VPS:
+
+```bash
+apt-get install -y mongodb-database-tools
+```
+
+The script **exits non-zero if `mongodump` is missing or fails**, rather than
+writing an archive without the database. That is deliberate: on an Atlas M0
+(free) cluster there are no snapshots of any kind, so this dump is the only
+database backup in existence. Once the cluster is on a tier with its own
+verified snapshots, set `KNOT_BACKUP_SKIP_MONGO=true` to stop duplicating them.
+
+Restore the database:
+
+```bash
+mongorestore --uri="$MONGODB_URI" --archive=/tmp/restore/mongodump.archive.gz --gzip
+```
+
+### Verify the setup
+
+`backup.sh` can exit 0 having produced an archive that is still one host
+failure from worthless — encrypted with a passphrase that exists only on this
+machine, never copied offsite, monitored by nothing. Those are configuration
+gaps, so the backup itself cannot report them. This does:
+
+```bash
+sudo -i
+set -a; . /etc/knot-backup.env; set +a     # same env cron uses
+bash /srv/knot/deploy/verify-backup-setup.sh
+```
+
+Exit 0 means every required piece is in place. It checks tooling, the
+passphrase, `MONGODB_URI`, that the rclone remote actually authenticates, the
+heartbeat, the three protected volumes, and how long ago the last successful
+run was. Run it after any change to the backup configuration.
 
 Restore an env file:
 
@@ -277,6 +391,13 @@ Restore an env file:
 gpg -d /var/backups/knotkitchen/knot-YYYYMMDDTHHMMSSZ.tar.gz.gpg \
     | tar -xzf - -C /tmp/restore
 cp /tmp/restore/env /srv/knot/deploy/.env
+```
+
+Restore a volume (example: the KYC documents):
+
+```bash
+docker run --rm -v knotkitchen_csd_documents:/data -v /tmp/restore:/backup \
+    alpine sh -c 'rm -rf /data/* && tar -C /data -xzf /backup/knotkitchen_csd_documents.tar.gz'
 ```
 
 MongoDB has its own backup story (Atlas continuous snapshots, or a
