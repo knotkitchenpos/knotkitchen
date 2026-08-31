@@ -422,48 +422,6 @@ const register = async (req, res, next) => {
   }
 };
 
-/**
- * POST /api/user/login/send-otp
- *
- * SECURITY: The previous implementation always returned `devOtp: "123456"` in
- * the response body — anyone could log in without ever seeing an SMS. The
- * response now contains ONLY the masked phone. In non-production, the code is
- * printed to the server console for the developer, gated by ALLOW_DEV_OTP.
- */
-const sendLoginOtp = async (req, res, next) => {
-  try {
-    const productId = toSafeStringOrThrow(req.body.productId, "Product ID").trim();
-    const normalizedId = productId.toUpperCase();
-
-    const product = await ProductId.findOne({ productId: normalizedId, isDeleted: { $ne: true } });
-    // Do NOT auto-create demo product ids in production.
-    // The previous "KK-... auto-create" branch handed out working owner-level
-    // credentials to any attacker who guessed the prefix.
-    if (!product) {
-      return next(createHttpError(400, "Invalid Product ID. Please check your Product ID and try again."));
-    }
-    if (product.status === "INACTIVE" || product.status === "EXPIRED" || product.isActive === false) {
-      return next(createHttpError(400, "This Product ID is inactive. Please contact support."));
-    }
-
-    let masked = "***";
-    if (product.assignedRestaurantId) {
-      const restaurant = await Restaurant.findById(product.assignedRestaurantId).select("phone ownerId");
-      const phoneSource =
-        (restaurant && restaurant.phone) ||
-        (restaurant?.ownerId && (await User.findById(restaurant.ownerId).select("phone"))?.phone);
-      if (phoneSource) masked = otpService.maskPhone(phoneSource);
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: "If a phone is registered, an OTP has been sent.",
-      maskedPhone: masked,
-    });
-  } catch (error) {
-    next(error);
-  }
-};
 
 /**
  * POST /api/user/login
@@ -985,47 +943,80 @@ const validateStoreOwner = async (req, res, next) => {
   }
 };
 
+// ===========================================================================
+// POS store password auth (added 2026-08-31)
+//
+// Replaces the phone + Fast2SMS OTP flow that used to gate POS sign-in. The
+// four handlers below cover the entire lifecycle:
+//
+//   store/status        — does this store have a password yet?
+//   store/setup-password — first-time create OR reset (same fields, same code)
+//   store/login          — the day-to-day sign-in
+//   change-password      — in-app, authenticated
+//
+// Security tradeoff explicitly documented on setupStorePassword — the owner
+// phone number is a knowledge factor, not a challenge. It is materially
+// weaker than OTP, but it is the strongest gate we can offer without a
+// working SMS provider and it drops any attacker from "knows the storeId"
+// (900k values, enumerable) to "knows the storeId AND the owner phone"
+// (roughly 10^16 combined) with per-store rate limits + audit + lockout.
+// The endpoint contract is chosen so a future switch back to OTP proves out
+// as a server-side change alone — client stays identical.
+// ===========================================================================
+
 /**
- * POST /api/user/store/send-otp
- *
- * SECURITY: The previous response body contained `otp: "123456"` — a total
- * bypass. It now returns only the masked phone. The generated OTP is delivered
- * out-of-band (SMS in production, console in development when configured).
+ * Two-digits + six stars + two-digits mask (e.g. "98******60") — enough for
+ * a legitimate operator to recognise their own number and NOT enough for an
+ * attacker who guessed a storeId to reconstruct it.
  */
-const sendStoreOtp = async (req, res, next) => {
+const maskPhone10 = (p) => {
+  const s = String(p || "").replace(/\D/g, "").slice(-10);
+  return s.length === 10 ? s.slice(0, 2) + "******" + s.slice(-2) : "";
+};
+
+/**
+ * POST /api/user/store/status  { storeId }  — public
+ *
+ * Returns whether the store has a working POS User + a phone hint, so the
+ * client can pick between three UI modes:
+ *   hasPassword=true  →  login form (password field)
+ *   hasPassword=false →  first-time setup (owner phone + new password)
+ *   (client also uses reset UX from the login screen; same setup endpoint)
+ *
+ * The ownerPhoneHint helps operators confirm they picked the right store
+ * before they type their number. Store status (deleted / suspended / closed)
+ * is enforced first so an unavailable store cannot be interrogated.
+ */
+const checkStoreStatus = async (req, res, next) => {
   try {
     const storeId = toSafeString(req.body.storeId).trim();
-    const phone = toSafeString(req.body.phone).replace(/\D/g, "");
-    if (!storeId || !phone) {
-      return next(createHttpError(400, "Store ID and Phone Number are required."));
-    }
     if (!/^\d{6}$/.test(storeId)) {
       return next(createHttpError(400, "Store ID must be a 6-digit number."));
     }
-
-    const { restaurant, store, cleanStoreId } = await findRestaurantOrStore(storeId);
-    if (!restaurant && !store) return next(createHttpError(404, "Invalid Store ID"));
+    const { restaurant, store } = await findRestaurantOrStore(storeId);
+    if (!store) return next(createHttpError(404, "Invalid Store ID"));
 
     const unavailable = getStoreUnavailableReason(restaurant, store);
     if (unavailable) return next(createHttpError(400, unavailable));
 
     const ownerPhone = await resolveStoreOwnerPhone(restaurant, store);
-    if (!ownerPhone || ownerPhone !== phone) {
-      return next(createHttpError(400, "Phone number does not match registered store owner."));
-    }
-
-    await otpService.createAndSendOtp({
-      storeId: cleanStoreId,
-      phone,
-      purpose: "signup",
-    });
+    const hasPassword = !!(
+      restaurant?.ownerId &&
+      (await User.exists({
+        _id: restaurant.ownerId,
+        password: { $exists: true, $ne: "" },
+        isDeleted: { $ne: true },
+        isActive: true,
+      }))
+    );
 
     res.status(200).json({
       success: true,
-      message: "OTP sent successfully to owner phone number.",
       data: {
-        storeId: cleanStoreId,
-        maskedPhone: otpService.maskPhone(phone),
+        storeId,
+        storeName: restaurant?.name || store?.storeName || "",
+        hasPassword,
+        ownerPhoneHint: maskPhone10(ownerPhone),
       },
     });
   } catch (error) {
@@ -1034,187 +1025,51 @@ const sendStoreOtp = async (req, res, next) => {
 };
 
 /**
- * POST /api/user/store/verify-otp
+ * POST /api/user/store/setup-password  { storeId, ownerPhone, password }  — public
  *
- * SECURITY changes vs. the pre-fix version:
- *   - Dev "123456" bypass gated behind ALLOW_DEV_OTP + non-prod
- *   - Never auto-creates an Owner user with hardcoded password "123456"
- *   - Only signs in the store's registered owner (or an existing staff user
- *     whose phone matches). Never falls back to "some other Owner in the DB".
+ * Serves both first-time setup (no User yet) and password reset (User
+ * exists). Same request shape, same code path, same audit event. The
+ * knowledge factor is the OWNER PHONE — this endpoint refuses any phone
+ * that does not match the store's recorded ownerPhone, with the same
+ * generic message on every mismatch so it cannot be used to enumerate.
+ *
+ * On success, every prior session is invalidated (including the caller's
+ * own — a reset should invalidate the person doing it too, in case they
+ * are actually an attacker who just watched the operator type their new
+ * password), then a fresh session is issued.
  */
-const verifyStoreOtp = async (req, res, next) => {
+const setupStorePassword = async (req, res, next) => {
   try {
     const storeId = toSafeString(req.body.storeId).trim();
-    const phone = toSafeString(req.body.phone).replace(/\D/g, "");
-    const otp = toSafeString(req.body.otp).trim();
+    const rawPhone = toSafeString(req.body.ownerPhone).replace(/\D/g, "");
+    const password = typeof req.body.password === "string" ? req.body.password : "";
 
-    if (!storeId || !phone || !otp) {
-      return next(createHttpError(400, "Store ID, Phone Number, and OTP are required."));
-    }
-    if (!/^\d{6}$/.test(storeId)) {
-      return next(createHttpError(400, "Store ID must be a 6-digit number."));
-    }
+    if (!/^\d{6}$/.test(storeId)) return next(createHttpError(400, "Store ID must be a 6-digit number."));
+    if (!/^\d{10}$/.test(rawPhone)) return next(createHttpError(400, "Owner phone must be a 10-digit number."));
+    if (password.length < 8) return next(createHttpError(400, "Password must be at least 8 characters."));
 
-    // 1. OTP check first (rate-limited by the route and the OTP model attempts counter).
-    let otpOk = false;
-    if (config.allowDevOtp && otp === config.devOtpCode) {
-      otpOk = true;
-    } else {
-      const verifyResult = await otpService.verifyOtp({
-        storeId,
-        phone,
-        otp,
-        purpose: "signup",
-      });
-      if (!verifyResult.valid) return next(createHttpError(400, verifyResult.message || "Invalid or expired OTP."));
-      otpOk = true;
-    }
-    if (!otpOk) return next(createHttpError(400, "Invalid or expired OTP."));
-
-    // 2. Resolve store — MUST exist. We don't invent Restaurant records here.
-    const { restaurant, store } = await findRestaurantOrStore(storeId);
-    if (!restaurant && !store) return next(createHttpError(404, "Invalid Store ID"));
-
-    const unavailable = getStoreUnavailableReason(restaurant, store);
-    if (unavailable) return next(createHttpError(400, unavailable));
-
-    // 3. Bind the phone against the OWNER phone, not "any user of this restaurant".
-    const ownerPhone = await resolveStoreOwnerPhone(restaurant, store);
-    if (!ownerPhone || ownerPhone !== phone) {
-      return next(createHttpError(400, "Phone number does not match registered store owner."));
-    }
-
-    // 4. Ensure a Restaurant record exists (still allowed — a legit
-    //    admin-created Store may not yet have a Restaurant if a legacy admin
-    //    portal path skipped it).
-    let restaurantDoc = restaurant;
-    if (!restaurantDoc && store) {
-      restaurantDoc = await Restaurant.create({
-        name: store.storeName,
-        storeId: store.storeId,
-        phone,
-        address: { line1: "Default Address" },
-        isActive: true,
-      });
-      store.restaurantId = restaurantDoc._id;
-      store.status = "active";
-      await store.save();
-    } else if (restaurantDoc && !restaurantDoc.storeId) {
-      restaurantDoc.storeId = storeId;
-      await restaurantDoc.save();
-    }
-
-    // 5. Find the OWNER user — never mint one with a hardcoded password.
-    let user = await findStoreUserForPhone({ restaurant: restaurantDoc, phone });
-    if (!user) {
-      // For a brand-new store, we can create the owner user now — but with a
-      // RANDOM password the caller must reset before the password-login path
-      // works. OTP login continues to work (no password needed).
-      const randomPassword = crypto.randomBytes(24).toString("base64url");
-      user = await User.create({
-        name: store?.ownerName || restaurantDoc.name + " Owner",
-        phone,
-        address: "Default Address",
-        email: undefined,
-        password: randomPassword, // hashed by pre-save; user must go through /forgot-password to set a real one
-        role: "Owner",
-        restaurantId: restaurantDoc._id,
-        storeId,
-        emailVerified: false,
-      });
-      if (!restaurantDoc.ownerId) {
-        restaurantDoc.ownerId = user._id;
-        await restaurantDoc.save();
-      }
-    } else if (!user.storeId) {
-      user.storeId = storeId;
-      await user.save();
-    }
-
-    await provisionWebsiteSafely({
-      storeId,
-      storeName: restaurantDoc.name,
-      restaurantId: restaurantDoc._id,
-    });
-
-    await signTokensAndSetCookies(user, req, res);
-
-    await AuditLog.create({
-      userId: user._id,
-      restaurantId: restaurantDoc._id,
-      action: "USER.LOGIN_OTP",
-      resource: "User",
-      resourceId: user._id,
-      description: `Store OTP login for ${otpService.maskPhone(phone)} (Store ${storeId})`,
-      ipAddress: req.ip,
-      userAgent: req.get("user-agent"),
-    });
-
-    res.status(200).json({
-      success: true,
-      message: "Authentication successful!",
-      data: user.toSafeJSON(),
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * POST /api/user/store/complete-signup
- *
- * Same OTP gating as verifyStoreOtp. Additionally accepts a new password from
- * the owner — previously this method wrote `"123456"` as a hashed password
- * fallback for auto-created users, which is now removed.
- */
-const completeStoreSignup = async (req, res, next) => {
-  try {
-    const storeId = toSafeString(req.body.storeId).trim();
-    const phone = toSafeString(req.body.phone).replace(/\D/g, "");
-    const otp = toSafeString(req.body.otp).trim();
-    const password = toSafeString(req.body.password);
-    const name = toSafeString(req.body.name).trim();
-    const email = toSafeString(req.body.email).trim().toLowerCase();
-    const address = req.body.address; // may be string or {line1,...}
-
-    if (!storeId || !phone || !otp || !password) {
-      return next(createHttpError(400, "Store ID, Phone Number, OTP, and Password are required."));
-    }
-    if (!/^\d{6}$/.test(storeId)) {
-      return next(createHttpError(400, "Store ID must be a 6-digit number."));
-    }
-    if (password.length < 8) {
-      return next(createHttpError(400, "Password must be at least 8 characters."));
-    }
-
-    let otpOk = false;
-    if (config.allowDevOtp && otp === config.devOtpCode) {
-      otpOk = true;
-    } else {
-      const result = await otpService.verifyOtp({ storeId, phone, otp, purpose: "signup" });
-      if (!result.valid) return next(createHttpError(400, result.message || "Invalid or expired OTP."));
-      otpOk = true;
-    }
-    if (!otpOk) return next(createHttpError(400, "Invalid or expired OTP."));
-
-    const store = await Store.findOne({ storeId, isDeleted: { $ne: true } });
+    const { restaurant: initialRestaurant, store } = await findRestaurantOrStore(storeId);
     if (!store) return next(createHttpError(404, "Invalid Store ID"));
 
-    if (String(store.ownerPhone).replace(/\D/g, "") !== phone) {
-      return next(createHttpError(400, "Phone number does not match the Store ID."));
+    const unavailable = getStoreUnavailableReason(initialRestaurant, store);
+    if (unavailable) return next(createHttpError(400, unavailable));
+
+    const ownerPhone = await resolveStoreOwnerPhone(initialRestaurant, store);
+    if (!ownerPhone || ownerPhone !== rawPhone) {
+      return next(createHttpError(400, "Owner phone number does not match the Store ID."));
     }
 
-    let restaurant = store.restaurantId ? await Restaurant.findById(store.restaurantId) : null;
+    // Materialise the restaurant/user pair the way completeStoreSignup did,
+    // minus the OTP verify. This is the ONE remaining place a POS User can
+    // come into existence without an admin action — every other path
+    // requires a CSD admin to onboard the store first.
+    let restaurant = initialRestaurant;
     if (!restaurant) {
-      const addrObj =
-        address && typeof address === "object" && !Array.isArray(address)
-          ? address
-          : { line1: toSafeString(address) || "Default Address" };
       restaurant = await Restaurant.create({
         name: store.storeName,
         storeId: store.storeId,
-        phone,
-        address: addrObj,
+        phone: rawPhone,
+        address: { line1: "Default Address" },
         isVerified: true,
         isApproved: true,
         subscriptionStatus: "ACTIVE",
@@ -1224,25 +1079,29 @@ const completeStoreSignup = async (req, res, next) => {
       await store.save();
     }
 
-    let user = await User.findOne({ phone, restaurantId: restaurant._id });
+    let user = await User.findOne({ phone: rawPhone, restaurantId: restaurant._id });
+    let created = false;
     if (!user) {
       user = await User.create({
-        name: name || store.ownerName,
-        phone,
-        address: toSafeString(address) || "Default Address",
-        email: email || undefined,
-        password, // hashed by pre-save
+        name: store.ownerName || restaurant.name,
+        phone: rawPhone,
+        address: "Default Address",
+        password, // pre-save hook hashes
         role: "Owner",
         restaurantId: restaurant._id,
         storeId,
       });
+      created = true;
       if (!restaurant.ownerId) {
         restaurant.ownerId = user._id;
         await restaurant.save();
       }
     } else {
-      user.password = password; // pre-save hook re-hashes
-      user.sessions = []; // rotate all sessions on password change
+      user.password = password; // re-hashed on save
+      user.sessions = [];       // invalidate every prior session
+      user.mustChangePassword = false;
+      user.loginAttempts = 0;
+      user.lockedUntil = undefined;
       await user.save();
     }
 
@@ -1254,9 +1113,11 @@ const completeStoreSignup = async (req, res, next) => {
 
     await signTokensAndSetCookies(user, req, res);
 
-    res.status(201).json({
+    res.status(created ? 201 : 200).json({
       success: true,
-      message: "Restaurant signup completed successfully!",
+      message: created
+        ? "Password set. You are signed in."
+        : "Password reset. You are signed in.",
       data: user.toSafeJSON(),
     });
   } catch (error) {
@@ -1264,9 +1125,117 @@ const completeStoreSignup = async (req, res, next) => {
   }
 };
 
+/**
+ * POST /api/user/store/login  { storeId, password }  — public
+ *
+ * The steady-state POS sign-in. Same generic "Invalid credentials." on every
+ * failure so this cannot be used to enumerate stores — the ONE exception is
+ * an existing store with no password yet, which returns 409 NO_PASSWORD so
+ * the client can route the user to first-time setup instead of an infinite
+ * "wrong password" loop.
+ *
+ * Reuses the existing loginAttempts / lockedUntil fields from the User
+ * model, and the shared signTokensAndSetCookies primitive, so lockout and
+ * session issuance behave exactly like the legacy Product-ID + password
+ * login (§ that block still exists as `login` above).
+ */
+const storeLoginWithPassword = async (req, res, next) => {
+  try {
+    const storeId = toSafeString(req.body.storeId).trim();
+    const password = typeof req.body.password === "string" ? req.body.password : "";
+    if (!/^\d{6}$/.test(storeId) || !password) {
+      return next(createHttpError(400, "Store ID and password are required."));
+    }
+
+    const { restaurant, store } = await findRestaurantOrStore(storeId);
+    if (!store) return next(createHttpError(401, "Invalid credentials."));
+
+    const unavailable = getStoreUnavailableReason(restaurant, store);
+    if (unavailable) return next(createHttpError(400, unavailable));
+
+    const ownerId = restaurant?.ownerId;
+    if (!ownerId) {
+      return next(
+        createHttpError(409, "This store has no password yet. Please set one up first.")
+      );
+    }
+
+    const user = await User.findById(ownerId);
+    if (!user || user.isDeleted || !user.isActive) {
+      return next(createHttpError(401, "Invalid credentials."));
+    }
+    if (user.lockedUntil && user.lockedUntil > new Date()) {
+      return next(createHttpError(423, "Account locked. Try again later."));
+    }
+
+    const ok = user.password && (await bcrypt.compare(password, user.password));
+    if (!ok) {
+      user.loginAttempts = (user.loginAttempts || 0) + 1;
+      if (user.loginAttempts >= config.maxLoginAttempts) {
+        user.lockedUntil = new Date(Date.now() + config.lockoutDurationMs);
+        user.loginAttempts = 0;
+        await user.save();
+        return next(createHttpError(423, "Too many attempts. Account locked for 15 minutes."));
+      }
+      await user.save();
+      return next(createHttpError(401, "Invalid credentials."));
+    }
+
+    user.loginAttempts = 0;
+    user.lockedUntil = undefined;
+    user.lastLoginAt = new Date();
+    await signTokensAndSetCookies(user, req, res);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        ...user.toSafeJSON(),
+        mustChangePassword: user.mustChangePassword === true,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/user/change-password  { currentPassword, newPassword }  — auth
+ *
+ * The in-app change flow. Requires re-authentication with the current
+ * password so a stolen cookie session cannot silently rotate a user's
+ * password, which would lock the real user out and hand the attacker a
+ * permanent credential. Keeps the current session alive so the operator
+ * does not have to re-log in the tab they just used to change; every
+ * OTHER session is invalidated.
+ */
+const changePassword = async (req, res, next) => {
+  try {
+    const current = typeof req.body.currentPassword === "string" ? req.body.currentPassword : "";
+    const nextPw = typeof req.body.newPassword === "string" ? req.body.newPassword : "";
+    if (!current) return next(createHttpError(400, "Current password is required."));
+    if (nextPw.length < 8) return next(createHttpError(400, "New password must be at least 8 characters."));
+    if (current === nextPw) return next(createHttpError(400, "New password must differ from the current one."));
+
+    const user = req.user;
+    const ok = user.password && (await bcrypt.compare(current, user.password));
+    if (!ok) return next(createHttpError(401, "Current password is incorrect."));
+
+    user.password = nextPw;
+    user.mustChangePassword = false;
+    const currentJti = req.user.jti;
+    user.sessions = (user.sessions || []).filter(
+      (s) => String(s._id) === String(currentJti)
+    );
+    await user.save();
+
+    res.status(200).json({ success: true, message: "Password updated." });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   register,
-  sendLoginOtp,
   login,
   refreshToken,
   getUserData,
@@ -1275,6 +1244,10 @@ module.exports = {
   verifyEmail,
   requestPasswordReset,
   resetPassword,
+  checkStoreStatus,
+  setupStorePassword,
+  storeLoginWithPassword,
+  changePassword,
   setupMFA,
   verifyMFA,
   disableMFA,
@@ -1282,7 +1255,4 @@ module.exports = {
   revokeSession,
   validateStoreId,
   validateStoreOwner,
-  sendStoreOtp,
-  verifyStoreOtp,
-  completeStoreSignup,
 };
