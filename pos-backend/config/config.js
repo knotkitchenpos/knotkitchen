@@ -165,6 +165,17 @@ const config = Object.freeze({
     // Dev-only Product ID auto-creation (§30). NEVER active in production.
     allowDemoProductId: !isProd && process.env.ALLOW_DEMO_PRODUCT_ID !== "false",
 
+    // ===== CSD panel bootstrap =====
+    //
+    // Seeds the first CSD super-administrator on server start. Historically
+    // these two vars only fed the (removed) knotkitchen-admin backend; now
+    // they also seed the CSD panel that replaced it, so operators keep one
+    // credential across both. Missing values in production print a warning
+    // and skip seeding — sign-in still works if a CsdStaff row already
+    // exists, so this doesn't fail closed and take the panel down.
+    csdSeedEmail: process.env.SUPERADMIN_EMAIL || process.env.ADMIN_EMAIL || "",
+    csdSeedPassword: process.env.SUPERADMIN_PASSWORD || process.env.ADMIN_PASSWORD || "",
+
 });
 
 

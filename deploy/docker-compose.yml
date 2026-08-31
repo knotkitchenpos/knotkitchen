@@ -82,8 +82,10 @@ services:
       # === CORS ===
       # Explicit hosts + wildcard base so any https://<slug>.${BASE_DOMAIN}
       # storefront may also call the API.
+      # onboard.${BASE_DOMAIN} was removed along with the admin-web/admin-api
+      # services (2026-08-30) — the CSD panel took over that surface.
       FRONTEND_URLS: >-
-        https://${BASE_DOMAIN},https://csd.${BASE_DOMAIN},https://business.${BASE_DOMAIN},https://onboard.${BASE_DOMAIN}
+        https://${BASE_DOMAIN},https://csd.${BASE_DOMAIN},https://business.${BASE_DOMAIN}
       CORS_WILDCARD_DOMAINS: ${BASE_DOMAIN}
       BASE_DOMAIN: ${BASE_DOMAIN}
       COOKIE_SAMESITE: none
@@ -122,7 +124,6 @@ services:
 
       # === CSD panel ===
       CSD_JWT_SECRET: ${CSD_JWT_SECRET:-}
-      CSD_ADMIN_PHONES: ${CSD_ADMIN_PHONES:-8646826709,9875678060}
       CSD_TOKEN_EXPIRY: ${CSD_TOKEN_EXPIRY:-12h}
       # Must match the csd_documents mount below.
       CSD_DOCUMENTS_DIR: /app/csd-documents
@@ -142,34 +143,6 @@ services:
       # and customer KYC must never be reachable that way. Nothing serves this
       # directory — the files stream through an authenticated CSD route.
       - csd_documents:/app/csd-documents
-
-  # ---------------------------------------------------------------------------
-  # Admin backend  →  admin-api.${BASE_DOMAIN}
-  # ---------------------------------------------------------------------------
-  admin-api:
-    build:
-      context: ../knotkitchen-admin/backend
-      dockerfile: Dockerfile
-    image: knotkitchen/admin-api:latest
-    restart: unless-stopped
-    networks: [knot]
-    environment:
-      NODE_ENV: production
-      PORT: "4000"
-      MONGODB_URI: ${MONGODB_URI}
-      # Different secret from the POS! This ensures a compromised admin
-      # session key cannot forge tokens accepted by the POS backend.
-      ADMIN_JWT_SECRET: ${ADMIN_JWT_SECRET:-${JWT_SECRET}}
-      ADMIN_EMAIL: ${ADMIN_EMAIL:-${SUPERADMIN_EMAIL}}
-      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-${SUPERADMIN_PASSWORD}}
-      SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL:-${ADMIN_EMAIL}}
-      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:-${ADMIN_PASSWORD}}
-      ADMIN_FRONTEND_ORIGIN: https://onboard.${BASE_DOMAIN}
-      COOKIE_SAMESITE: none
-      COOKIE_SECURE: "true"
-      # Where the admin backend should tell newly-created stores their public
-      # website will live. Consumed by services/websiteProvisioningService.js.
-      STOREFRONT_ROOT_DOMAIN: ${BASE_DOMAIN}
 
   # ---------------------------------------------------------------------------
   # POS SPA  →  business.${BASE_DOMAIN}
@@ -202,19 +175,6 @@ services:
         # src/api/index.js appends "/csd" to this.
         VITE_API_BASE_URL: https://api.${BASE_DOMAIN}/api
     image: knotkitchen/csd-web:latest
-    restart: unless-stopped
-    networks: [knot]
-
-  # ---------------------------------------------------------------------------
-  # Admin / Onboarding SPA  →  onboard.${BASE_DOMAIN}
-  # ---------------------------------------------------------------------------
-  admin-web:
-    build:
-      context: ../knotkitchen-admin/frontend
-      dockerfile: Dockerfile
-      args:
-        VITE_API_BASE_URL: https://admin-api.${BASE_DOMAIN}/api
-    image: knotkitchen/admin-web:latest
     restart: unless-stopped
     networks: [knot]
 
@@ -253,7 +213,6 @@ services:
       # Only used to bootstrap an admin account if server/data/database.json
       # doesn't exist on the volume yet.
       ADMIN_USERNAME: ${ONBOARD_ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD: ${ONBOARD_ADMIN_PASSWORD}
       # Shared secret that lets CSD read agreements and their uploaded
       # documents without an agent session. MUST match the value pos-api uses.
       # Unset = the portal accepts no service token at all and CSD reports the
@@ -293,8 +252,6 @@ services:
       - caddy_config:/config
     depends_on:
       - pos-api
-      - admin-api
       - onboard-portal
       - pos-web
-      - admin-web
       - customer-web

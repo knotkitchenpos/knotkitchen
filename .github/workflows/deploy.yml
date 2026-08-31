@@ -122,6 +122,5 @@ jobs:
           # never existed, so `set -e` + `curl -f` failed every deploy here.
           curl -fsSI https://api.knotkitchen.online/health > /dev/null && echo "api       OK"
           curl -fsSI https://business.knotkitchen.online/  > /dev/null && echo "pos       OK"
-          curl -fsSI https://onboard.knotkitchen.online/   > /dev/null && echo "onboard   OK"
           curl -fsSI https://csd.knotkitchen.online/       > /dev/null && echo "csd       OK"
           curl -fsSI https://knotkitchen.online/           > /dev/null && echo "customer  OK"

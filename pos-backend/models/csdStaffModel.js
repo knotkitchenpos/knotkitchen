@@ -1,18 +1,26 @@
 const mongoose = require("mongoose");
+const bcrypt = require("bcrypt");
 
 /**
  * CSD / Admin panel staff (csd.knotkitchen.online).
  *
- * Deliberately separate from `User` (restaurant staff working a POS terminal)
- * and from knotkitchen-admin's `Admin` (email/password superadmin). These are
- * KnotKitchen's OWN employees doing customer-support and operations work
- * across every tenant, so they authenticate by phone + OTP and are scoped by
- * role rather than by restaurantId.
+ * Deliberately separate from `User` (restaurant staff working a POS terminal):
+ * these are KnotKitchen's OWN employees doing customer-support and operations
+ * work across every tenant. They authenticate by EMAIL + PASSWORD and are
+ * scoped by role rather than by restaurantId.
  *
- * Security model: this collection is an ALLOW-LIST. A phone number that has no
- * active row here cannot even request an OTP — see csdAuthController.sendOtp.
- * The only exception is the predefined admin phones in config.csdAdminPhones,
- * which self-provision a row on first successful login.
+ * Auth history (2026-08-30): originally phone + OTP, gated by a hardcoded
+ * `CSD_ADMIN_PHONES` allow-list. That went via Fast2SMS, which introduced a
+ * hard external dependency for logging into your own admin panel — so a
+ * provider outage or account-verification block (real, took us out today)
+ * locked every operator out. Switched to email + password, seeded from the
+ * SUPERADMIN_EMAIL / SUPERADMIN_PASSWORD env vars, so first-run bootstrap
+ * needs nothing beyond the .env file that already existed for the onboard
+ * super-admin that this replaces.
+ *
+ * Security model: password is stored bcrypt-hashed with a pre-save hook and
+ * has `select: false`, so it never appears in queries or JSON unless a caller
+ * explicitly asks for it. toSafeJSON() below is what the API returns.
  */
 
 const loginEventSchema = new mongoose.Schema(
@@ -38,14 +46,30 @@ const csdStaffSchema = new mongoose.Schema(
 
     fullName: { type: String, required: true, trim: true },
 
-    // Login identity. Stored as bare 10 digits so lookups are exact — every
-    // write path normalises through otpService.normalizePhone first.
-    phone: {
+    // Login identity.
+    email: {
       type: String,
       required: true,
       unique: true,
+      lowercase: true,
+      trim: true,
+      match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "Enter a valid email address"],
+    },
+
+    // Bcrypt hash. select:false keeps it out of every read by default; auth
+    // paths that need it use `.select("+password")` explicitly.
+    password: { type: String, required: true, select: false },
+
+    // Optional legacy phone. Kept nullable + sparse-unique so old data
+    // migrates cleanly and we can still reach a staff member by phone from
+    // ops tools, but nothing on the auth path reads it any more.
+    phone: {
+      type: String,
+      default: null,
+      sparse: true,
+      unique: true,
       validate: {
-        validator: (v) => /^\d{10}$/.test(v),
+        validator: (v) => v == null || v === "" || /^\d{10}$/.test(v),
         message: "Phone must be a 10-digit number",
       },
     },
@@ -56,6 +80,12 @@ const csdStaffSchema = new mongoose.Schema(
     // "admin" unlocks Dashboard, Store Onboarding, Staff Management, Settings
     // and Reports. "staff" is the CSD support role.
     role: { type: String, enum: ["admin", "staff"], default: "staff", index: true },
+
+    // The bootstrap super-admin. Its password can be reset via env
+    // (RESET_SUPERADMIN_PASSWORD=true) and Staff Management refuses to
+    // demote or disable it, so the platform can never be locked out with
+    // zero administrators.
+    isPredefined: { type: Boolean, default: false },
 
     // `disabled` blocks login without destroying the audit trail that
     // references this staff member. Rows are never hard-deleted.
@@ -79,16 +109,36 @@ const csdStaffSchema = new mongoose.Schema(
 
 csdStaffSchema.index({ fullName: 1 });
 
-/** Never leak loginHistory or raw mongo internals to the browser by default. */
+/**
+ * Hash the password on any write that modified it. Mirrors the pattern the
+ * onboard `Admin` model used, so the migration from that system does not
+ * change hashing parameters.
+ */
+csdStaffSchema.pre("save", async function hashPassword(next) {
+  if (!this.isModified("password")) return next();
+  const salt = await bcrypt.genSalt(10);
+  this.password = await bcrypt.hash(this.password, salt);
+  next();
+});
+
+/** Constant-time compare via bcrypt. */
+csdStaffSchema.methods.comparePassword = function comparePassword(candidate) {
+  if (typeof candidate !== "string" || !this.password) return Promise.resolve(false);
+  return bcrypt.compare(candidate, this.password);
+};
+
+/** Never leak password or loginHistory to the browser by default. */
 csdStaffSchema.methods.toSafeJSON = function () {
   return {
     id: String(this._id),
     staffId: this.staffId,
     fullName: this.fullName,
-    phone: this.phone,
+    email: this.email,
+    phone: this.phone || "",
     personalEmail: this.personalEmail,
     officialEmail: this.officialEmail,
     role: this.role,
+    isPredefined: this.isPredefined === true,
     status: this.status,
     permissions: this.permissions,
     dateJoined: this.dateJoined,
@@ -98,12 +148,8 @@ csdStaffSchema.methods.toSafeJSON = function () {
 
 /**
  * Allocate the next sequential staff id (KK-ST-001, KK-ST-002, ...).
- *
- * Sorts lexically on a zero-padded field, which is only correct while the
- * numeric part stays the same width — padStart(3) keeps that true to 999 and
- * the width grows naturally after that (KK-ST-1000 > KK-ST-999 lexically).
- * The unique index on staffId is the real guard: concurrent creates collide
- * there and the caller retries.
+ * See the width note in the previous revision — padStart(3) is correct to
+ * 999 and lexical order still holds beyond that.
  */
 csdStaffSchema.statics.nextStaffId = async function () {
   const last = await this.findOne({}, { staffId: 1 }).sort({ staffId: -1 }).lean();

@@ -7,7 +7,14 @@ import { useAuth } from "../context/AuthContext";
 const dt = (d) =>
   d ? new Date(d).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "Never";
 
-const EMPTY = { fullName: "", phone: "", personalEmail: "", officialEmail: "", role: "staff" };
+const EMPTY = {
+  fullName: "",
+  email: "",
+  password: "",
+  personalEmail: "",
+  officialEmail: "",
+  role: "staff",
+};
 
 /**
  * Defined at module scope, NOT inside StaffDialog. A component declared inside
@@ -36,8 +43,12 @@ const StaffDialog = ({ member, onClose, onSaved }) => {
   const [form, setForm] = useState(
     editing
       ? {
-          fullName: member.fullName, phone: member.phone,
-          personalEmail: member.personalEmail || "", officialEmail: member.officialEmail || "",
+          fullName: member.fullName,
+          email: member.email || "",
+          // password is only set on create, or when the admin explicitly resets one on edit
+          password: "",
+          personalEmail: member.personalEmail || "",
+          officialEmail: member.officialEmail || "",
           role: member.role,
         }
       : EMPTY
@@ -48,7 +59,7 @@ const StaffDialog = ({ member, onClose, onSaved }) => {
 
   const set = (e) => {
     const { name, value } = e.target;
-    setForm((f) => ({ ...f, [name]: name === "phone" ? value.replace(/\D/g, "").slice(0, 10) : value }));
+    setForm((f) => ({ ...f, [name]: value }));
     setErrors((x) => ({ ...x, [name]: undefined }));
     setBanner("");
   };
@@ -60,9 +71,12 @@ const StaffDialog = ({ member, onClose, onSaved }) => {
     setErrors({});
     try {
       if (editing) {
-        // phone is intentionally omitted — the server rejects changing it.
-        const { phone, ...rest } = form; // eslint-disable-line no-unused-vars
-        await staffAdmin.update(member.id, rest);
+        // email is intentionally omitted — the server rejects changing it.
+        // password is only sent if it was set in this session (a reset).
+        // eslint-disable-next-line no-unused-vars
+        const { email, password, ...rest } = form;
+        const payload = password ? { ...rest, password } : rest;
+        await staffAdmin.update(member.id, payload);
       } else {
         await staffAdmin.create(form);
       }
@@ -89,14 +103,31 @@ const StaffDialog = ({ member, onClose, onSaved }) => {
 
         <form onSubmit={submit} className="space-y-4">
           <Field label="Full name" name="fullName" required {...fieldProps} />
-          <Field label="Login phone number" name="phone" inputMode="numeric" required disabled={editing} {...fieldProps} />
+          <Field
+            label="Login email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            required
+            disabled={editing}
+            {...fieldProps}
+          />
           {editing && (
             <p className="-mt-2 flex items-start gap-1.5 text-xs text-navy-500">
               <FiInfo className="mt-0.5 shrink-0" aria-hidden="true" />
-              The login phone identifies this account across the audit log and cannot be changed.
+              The login email identifies this account across the audit log and cannot be changed.
               Disable this record and create a new one instead.
             </p>
           )}
+          <Field
+            label={editing ? "New password (leave blank to keep)" : "Password"}
+            name="password"
+            type="password"
+            autoComplete={editing ? "new-password" : "new-password"}
+            minLength={8}
+            required={!editing}
+            {...fieldProps}
+          />
           <Field label="Official email" name="officialEmail" type="email" {...fieldProps} />
           <Field label="Personal email" name="personalEmail" type="email" {...fieldProps} />
 
@@ -175,7 +206,7 @@ const StaffManagement = () => {
         <div>
           <h1 className="text-2xl font-bold text-navy-900">Staff Management</h1>
           <p className="mt-1 text-sm text-navy-500">
-            Only people listed here can sign in — an unlisted number cannot even request a code.
+            Only people listed here can sign in — an unlisted email cannot log in.
           </p>
         </div>
         <button type="button" onClick={() => setDialog({})}
@@ -185,7 +216,7 @@ const StaffManagement = () => {
       </header>
 
       <input value={q} onChange={(e) => setQ(e.target.value)}
-        placeholder="Search name, Staff ID, phone or email…"
+        placeholder="Search name, Staff ID or email…"
         aria-label="Search staff"
         className="w-full rounded-xl border border-navy-200 px-3.5 py-2.5 text-sm outline-none focus:border-brand-500" />
 
@@ -199,7 +230,7 @@ const StaffManagement = () => {
               <tr>
                 <th scope="col" className="px-4 py-3">Staff ID</th>
                 <th scope="col" className="px-4 py-3">Name</th>
-                <th scope="col" className="px-4 py-3">Phone</th>
+                <th scope="col" className="px-4 py-3">Email</th>
                 <th scope="col" className="px-4 py-3">Role</th>
                 <th scope="col" className="px-4 py-3">Last login</th>
                 <th scope="col" className="px-4 py-3">Status</th>
@@ -220,12 +251,12 @@ const StaffManagement = () => {
                       </div>
                       {m.officialEmail && <div className="text-xs text-navy-400">{m.officialEmail}</div>}
                     </td>
-                    <td className="px-4 py-3 text-navy-700">{m.phone}</td>
+                    <td className="px-4 py-3 text-navy-700">{m.email}</td>
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center gap-1.5 text-xs font-medium text-navy-700">
                         {m.role === "admin" && <FiShield size={12} className="text-brand-600" aria-hidden="true" />}
                         {m.role === "admin" ? "Administrator" : "CSD Staff"}
-                        {locked && <FiLock size={11} className="text-navy-400" title="Predefined administrator" />}
+                        {locked && <FiLock size={11} className="text-navy-400" title="Seeded super-administrator" />}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-xs text-navy-600">{dt(m.lastLoginAt)}</td>

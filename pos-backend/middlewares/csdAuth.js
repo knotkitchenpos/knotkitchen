@@ -44,15 +44,6 @@ const getSecret = () => {
   return cachedSecret;
 };
 
-/** Predefined admin phones, normalised to bare 10 digits. */
-const adminPhones = () =>
-  (process.env.CSD_ADMIN_PHONES || "8646826709,9875678060")
-    .split(",")
-    .map((p) => p.replace(/\D/g, "").slice(-10))
-    .filter((p) => /^\d{10}$/.test(p));
-
-const isAdminPhone = (phone) => adminPhones().includes(String(phone));
-
 const issueSessionCookie = (res, staff) => {
   const token = jwt.sign(
     { sub: String(staff._id), staffId: staff.staffId },
@@ -140,8 +131,6 @@ const requireCsdAdmin = (req, res, next) => {
 module.exports = {
   COOKIE_NAME,
   getSecret,
-  adminPhones,
-  isAdminPhone,
   issueSessionCookie,
   clearSessionCookie,
   requireCsdAuth,

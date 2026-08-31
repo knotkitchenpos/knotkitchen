@@ -1,23 +1,21 @@
 # Knot Kitchen — Security Notes
 
 This document records the security posture of the Knot Kitchen POS
-(`pos-backend`) and Admin Portal (`knotkitchen-admin/backend`), and the
 operator actions required for a hardened deployment.
 
 ## Required environment variables (production)
 
-Both backends refuse to start if these are missing or too short.
+`pos-backend` refuses to start if these are missing or too short.
 
-| Variable | Backend | Notes |
-| --- | --- | --- |
-| `JWT_SECRET` | pos | ≥ 32 chars, unpredictable |
-| `REFRESH_TOKEN_SECRET` | pos | ≥ 32 chars, distinct from `JWT_SECRET` |
-| `ADMIN_JWT_SECRET` | admin | ≥ 32 chars |
-| `ADMIN_PASSWORD` | admin | ≥ 12 chars, not a common default |
-| `MONGODB_URI` | both | must point to the same DB for both apps |
-| `FRONTEND_URLS` | pos | comma-separated allow-list of client origins |
-| `ADMIN_FRONTEND_ORIGIN` | admin | comma-separated allow-list |
-| `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` / `RAZORPAY_WEBHOOK_SECRET` | pos | only if payments are used |
+| Variable | Notes |
+| --- | --- |
+| `JWT_SECRET` | ≥ 32 chars, unpredictable |
+| `REFRESH_TOKEN_SECRET` | ≥ 32 chars, distinct from `JWT_SECRET` |
+| `CSD_JWT_SECRET` | ≥ 32 chars, signs the CSD panel session cookie |
+| `SUPERADMIN_EMAIL` / `SUPERADMIN_PASSWORD` | seeds the CSD super-admin on first boot; also honoured by `RESET_SUPERADMIN_PASSWORD=true` for one-time password reset |
+| `MONGODB_URI` | Atlas SRV URI |
+| `FRONTEND_URLS` | comma-separated allow-list of client origins |
+| `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` / `RAZORPAY_WEBHOOK_SECRET` | only if payments are used |
 
 Generate a secret:
 
@@ -47,20 +45,22 @@ the local dev loop remains fast. Production ignores them.
 
 ## CORS
 
-- pos-backend and admin-backend use an explicit allow-list. `origin: *` and
-  wildcard `.vercel.app` are **never** accepted.
-- Add every deployed frontend origin to `FRONTEND_URLS` /
-  `ADMIN_FRONTEND_ORIGIN`.
+- `pos-backend` uses an explicit allow-list. `origin: *` and wildcard
+  `.vercel.app` are **never** accepted.
+- Add every deployed frontend origin to `FRONTEND_URLS`. Subdomains of
+  `BASE_DOMAIN` come in via `CORS_WILDCARD_DOMAINS` instead of an explicit
+  list, so per-store storefronts don't need to be enumerated.
 
 ## Secrets rotation
 
 If you deployed a previous version of Knot Kitchen (before this security
 release) rotate **all** of the following before your first production deploy:
 
-- `JWT_SECRET`, `REFRESH_TOKEN_SECRET`, `ADMIN_JWT_SECRET` — the previous
-  fallback values (`knotkitchen-secret-key-2024-pos-system`,
-  `knotkitchen-refresh-secret-2024-pos-system`,
-  `knotkitchen-remote-admin-secret`) are in the git history.
+- `JWT_SECRET`, `REFRESH_TOKEN_SECRET` — the previous fallback values
+  (`knotkitchen-secret-key-2024-pos-system`,
+  `knotkitchen-refresh-secret-2024-pos-system`) are in the git history.
+  (`ADMIN_JWT_SECRET` also needed rotating; that variable was retired with
+  the admin-web / admin-api removal on 2026-08-30.)
 - Any real `FAST2SMS_API_KEY` — the previous code shipped a hardcoded
   fallback key.
 - Any admin `ADMIN_PASSWORD` still set to `admin123` or another default.
