@@ -638,6 +638,11 @@ const createPosSession = async (req, res, next) => {
         posUrl: posHost ? `https://${posHost}/support-session?token=${raw}` : "",
         fallbackUrl: base ? `https://business.${base}/support-session?token=${raw}&store=${storeId}` : "",
         posHostReady: false,
+        // The impersonation landing route lives on the platform-wide POS host
+        // (business.<domain>), which is guaranteed reachable — unlike the
+        // per-store <storeId>.business.<domain> subdomains that still need
+        // wildcard DNS + a cert. This is what the CSD "Open POS" button uses.
+        impersonateUrl: base ? `https://business.${base}/impersonate?token=${raw}` : "",
         ttlSeconds: Math.round(POS_SESSION_TTL_MS / 1000),
       },
     });

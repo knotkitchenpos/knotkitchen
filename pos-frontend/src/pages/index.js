@@ -15,5 +15,6 @@ export { default as Reports } from "./Reports.jsx"
 export { default as Settings } from "./Settings.jsx"
 export { default as ManageMenuPage } from "./ManageMenuPage.jsx"
 export { default as Support } from "./Support.jsx"
+export { default as Impersonate } from "./Impersonate.jsx"
 
 

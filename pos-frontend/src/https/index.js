@@ -17,6 +17,8 @@ export const validateStoreOwner = (data) => axiosWrapper.post("/api/user/store/v
 export const checkStoreStatus = (data) => axiosWrapper.post("/api/user/store/status", data);
 export const setupStorePassword = (data) => axiosWrapper.post("/api/user/store/setup-password", data);
 export const storeLogin = (data) => axiosWrapper.post("/api/user/store/login", data);
+export const impersonateWithSupportToken = (token) =>
+  axiosWrapper.post("/api/user/impersonate", { token });
 
 // Table Endpoints
 export const addTable = (data) => axiosWrapper.post("/api/table/", data);

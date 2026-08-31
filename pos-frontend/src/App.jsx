@@ -10,7 +10,7 @@ import { useSelector } from "react-redux";
 import {
   Home, Auth, Orders, Tables, Menu, Dashboard, KDS, OrderOnline, PaymentLink,
   Storefront, WebsiteSettings, OnlineOrders, Reports, Settings, ManageMenuPage, Support,
-
+  Impersonate,
 } from "./pages";
 
 import Sidebar from "./components/shared/Sidebar";
@@ -41,6 +41,7 @@ function Layout() {
     <Routes>
       <Route path="/" element={<ProtectedRoutes><Menu /></ProtectedRoutes>} />
       <Route path="/auth" element={isAuth ? <Navigate to="/" /> : <Auth />} />
+      <Route path="/impersonate" element={<Impersonate />} />
       <Route path="/menu" element={<ProtectedRoutes><Menu /></ProtectedRoutes>} />
       <Route path="/orders" element={<ProtectedRoutes><Orders /></ProtectedRoutes>} />
       <Route path="/reports" element={<ProtectedRoutes><Reports /></ProtectedRoutes>} />

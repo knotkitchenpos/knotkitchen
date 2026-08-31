@@ -1234,6 +1234,89 @@ const changePassword = async (req, res, next) => {
   }
 };
 
+/**
+ * POST /api/user/impersonate — CSD → POS handoff.
+ *
+ * Consumes a one-shot support-session token minted by CSD's createPosSession
+ * (see csdRestaurantController) and issues a normal POS session cookie so
+ * the admin lands directly on the POS home. This is the "Open POS" button
+ * on the CSD Restaurant Detail page.
+ *
+ * Security:
+ *   - Token is looked up by sha256 hash, matching how CsdPosSession stores it.
+ *   - Single use: the session row's usedAt is set atomically; a replay of the
+ *     same token is refused.
+ *   - Short-lived: the CSD side sets expiresAt to a few minutes; expired
+ *     tokens are rejected.
+ *   - No auth middleware — the token IS the credential.
+ *   - The POS session issued is identical in shape to a normal login, so all
+ *     tenant guards (restaurantId in the JWT vs the DB) still hold.
+ */
+const CsdPosSession = require("../models/csdPosSessionModel");
+
+const impersonateWithSupportToken = async (req, res, next) => {
+  try {
+    const raw = toSafeString(req.body?.token).trim();
+    if (!raw || raw.length < 32) {
+      return next(createHttpError(400, "Missing or invalid support token."));
+    }
+    const tokenHash = crypto.createHash("sha256").update(raw).digest("hex");
+
+    // Atomic claim: only unused, unexpired rows flip to used. Anything else
+    // returns null and is refused as a generic invalid token — no leak about
+    // whether it was already used vs never existed.
+    const now = new Date();
+    const clientIp = (req.headers["x-real-ip"] || req.ip || "").toString().split(",")[0].trim();
+    const support = await CsdPosSession.findOneAndUpdate(
+      { tokenHash, usedAt: null, expiresAt: { $gt: now } },
+      { $set: { usedAt: now, usedFromIp: clientIp } },
+      { new: true }
+    );
+    if (!support) {
+      return next(createHttpError(401, "Support token is invalid, already used, or expired."));
+    }
+
+    // Prefer an active Owner for that store; fall back to any active user so
+    // admin can still get in when the owner seat hasn't been claimed yet.
+    const user =
+      (await User.findOne({
+        storeId: support.storeId,
+        role: "Owner",
+        isActive: true,
+        isDeleted: { $ne: true },
+      })) ||
+      (await User.findOne({
+        storeId: support.storeId,
+        isActive: true,
+        isDeleted: { $ne: true },
+      }));
+
+    if (!user) {
+      return next(
+        createHttpError(409, "This store has no POS user yet. Ask the operator to complete setup first.")
+      );
+    }
+
+    await signTokensAndSetCookies(user, req, res);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        user: user.toSafeJSON ? user.toSafeJSON() : {
+          _id: user._id, name: user.name, role: user.role,
+          storeId: user.storeId, restaurantId: user.restaurantId,
+        },
+        supportContext: {
+          issuedBy: support.staffName || support.staffCode || "CSD",
+          reason: support.reason || "",
+        },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   register,
   login,
@@ -1248,6 +1331,7 @@ module.exports = {
   setupStorePassword,
   storeLoginWithPassword,
   changePassword,
+  impersonateWithSupportToken,
   setupMFA,
   verifyMFA,
   disableMFA,

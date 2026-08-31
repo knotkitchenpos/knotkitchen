@@ -7,6 +7,7 @@ const {
   getSessions, revokeSession,
   validateStoreId, validateStoreOwner,
   checkStoreStatus, setupStorePassword, storeLoginWithPassword, changePassword,
+  impersonateWithSupportToken,
 } = require("../controllers/userController");
 const { isVerifiedUser } = require("../middlewares/tokenVerification");
 const { rateLimit, clientIp } = require("../middlewares/rateLimiter");
@@ -85,6 +86,11 @@ const storeLookupLimiter = rateLimit({
 router.route("/store/status").post(storeLookupLimiter, checkStoreStatus);
 router.route("/store/setup-password").post(storeSetupLimiter, setupStorePassword);
 router.route("/store/login").post(storeLoginLimiter, storeLoginWithPassword);
+
+// One-shot support handoff. Consumes a token minted by CSD's
+// createPosSession and drops the caller into a normal POS session. No auth
+// middleware — the token itself is the credential and is single-use.
+router.route("/impersonate").post(impersonateWithSupportToken);
 
 // Legacy lookup endpoints (still used by the current login screen before
 // this migration, and by future admin tools).

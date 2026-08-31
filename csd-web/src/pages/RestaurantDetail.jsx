@@ -8,7 +8,6 @@ import { restaurants as api, stores as storesApi, errorMessage, fieldErrors } fr
 import StatusBadge from "../components/StatusBadge";
 import { useAuth } from "../context/AuthContext";
 import ChargesDialog from "../components/ChargesDialog";
-import PosAccessDialog from "../components/PosAccessDialog";
 import CustomersDialog from "../components/CustomersDialog";
 import StoreDocuments from "../components/StoreDocuments";
 import { UsersPanel } from "../components/CatalogPanels";
@@ -195,7 +194,8 @@ const RestaurantDetail = () => {
   const [customerCount, setCustomerCount] = useState(null);
   const [staff, setStaff] = useState([]);
   const [activity, setActivity] = useState([]);
-  const [dialog, setDialog] = useState(null); // 'charges' | 'pos' | 'customers' | 'gbp'
+  const [dialog, setDialog] = useState(null); // 'charges' | 'customers' | 'gbp'
+  const [openingPos, setOpeningPos] = useState(false);
   const [gbpUrl, setGbpUrl] = useState("");
   const [gbpErr, setGbpErr] = useState("");
   const [savingGbp, setSavingGbp] = useState(false);
@@ -360,12 +360,32 @@ const RestaurantDetail = () => {
               {basic.website && <FiExternalLink className="shrink-0 text-navy-400" aria-hidden="true" />}
             </a>
 
-            <button type="button" onClick={() => setDialog("pos")}
-              className="flex w-full items-center gap-3 rounded-xl border border-navy-200 p-4 text-left hover:bg-navy-50">
+            <button
+              type="button"
+              disabled={openingPos}
+              onClick={async () => {
+                setOpeningPos(true);
+                try {
+                  const s = await api.openPos(storeId, "Admin quick-open (CSD)");
+                  const url = s.impersonateUrl || s.fallbackUrl;
+                  if (!url) throw new Error("No POS URL returned.");
+                  window.open(url, "_blank", "noopener,noreferrer");
+                } catch (err) {
+                  window.alert(errorMessage(err, "Could not open POS."));
+                } finally {
+                  setOpeningPos(false);
+                }
+              }}
+              className="flex w-full items-center gap-3 rounded-xl border border-navy-200 p-4 text-left hover:bg-navy-50 disabled:cursor-wait disabled:opacity-60"
+            >
               <FiMonitor className="shrink-0 text-brand-600" size={20} aria-hidden="true" />
               <span className="min-w-0 flex-1">
-                <span className="block text-sm font-semibold text-navy-900">Login to POS</span>
-                <span className="block text-xs text-navy-500">Support session — recorded against your name</span>
+                <span className="block text-sm font-semibold text-navy-900">
+                  {openingPos ? "Opening POS…" : "Open POS"}
+                </span>
+                <span className="block text-xs text-navy-500">
+                  Opens in a new tab, signed in as the store's Owner. Recorded against your name.
+                </span>
               </span>
             </button>
 
@@ -630,10 +650,6 @@ const RestaurantDetail = () => {
       {dialog === "charges" && (
         <ChargesDialog storeId={storeId} charges={charges}
           onClose={() => setDialog(null)} onSaved={() => { setDialog(null); load(); }} />
-      )}
-      {dialog === "pos" && (
-        <PosAccessDialog storeId={storeId} restaurantName={header.restaurantName}
-          onClose={() => { setDialog(null); api.activity(storeId).then((d) => setActivity(d.entries)).catch(() => {}); }} />
       )}
       {dialog === "customers" && (
         <CustomersDialog storeId={storeId} onClose={() => setDialog(null)} />
