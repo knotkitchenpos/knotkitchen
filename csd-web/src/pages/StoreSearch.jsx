@@ -24,9 +24,10 @@ const StoreSearch = () => {
 
   useEffect(() => {
     const term = q.trim();
-    if (term.length < 2) {
-      setRows([]);
-      setSearched(false);
+    // Empty query is now valid — the backend returns the most recent stores
+    // so an operator opening this page sees the registry, not a blank slate.
+    // We only debounce and short-circuit for the awkward 1-char case.
+    if (term.length === 1) {
       setBusy(false);
       return undefined;
     }

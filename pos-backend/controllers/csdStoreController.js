@@ -50,19 +50,24 @@ const searchStores = async (req, res, next) => {
     const status = String(req.query.status || "").trim();
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 25, 1), 100);
 
-    if (q.length < 2) {
-      return res
-        .status(200)
-        .json({ success: true, data: { results: [], query: q, truncated: false } });
-    }
-
-    const rx = new RegExp(escapeRegex(q), "i");
+    const rx = q.length >= 2 ? new RegExp(escapeRegex(q), "i") : null;
     const digits = q.replace(/\D/g, "");
     const SCAN_CAP = 200;
 
-    const storeFilter = { isDeleted: { $ne: true }, $or: [{ storeName: rx }, { ownerName: rx }] };
-    if (/^\d{1,6}$/.test(digits)) storeFilter.$or.push({ storeId: new RegExp(`^${digits}`) });
-    if (digits.length >= 4) storeFilter.$or.push({ ownerPhone: new RegExp(escapeRegex(digits)) });
+    // Empty query = "browse mode": return the most recent stores so an admin
+    // opening Store Management sees the registry instead of a blank slate.
+    // Filters (status, storeId prefix if the box holds only digits) still
+    // apply even when q is empty.
+    const storeFilter = { isDeleted: { $ne: true } };
+    if (rx) storeFilter.$or = [{ storeName: rx }, { ownerName: rx }];
+    if (/^\d{1,6}$/.test(digits)) {
+      const idClause = { storeId: new RegExp(`^${digits}`) };
+      storeFilter.$or ? storeFilter.$or.push(idClause) : (storeFilter.$or = [idClause]);
+    }
+    if (digits.length >= 4) {
+      const phClause = { ownerPhone: new RegExp(escapeRegex(digits)) };
+      storeFilter.$or ? storeFilter.$or.push(phClause) : (storeFilter.$or = [phClause]);
+    }
     if (status) storeFilter.status = status;
 
     const restaurantFilter = {
@@ -79,10 +84,14 @@ const searchStores = async (req, res, next) => {
     if (digits.length >= 4) restaurantFilter.$or.push({ ownerPhone: new RegExp(escapeRegex(digits)) });
 
     const [storeHits, restaurantHits] = await Promise.all([
-      Store.find(storeFilter).limit(SCAN_CAP).lean(),
-      Restaurant.find(restaurantFilter, { name: 1, address: 1, storeId: 1, ownerName: 1, ownerPhone: 1 })
-        .limit(SCAN_CAP)
-        .lean(),
+      Store.find(storeFilter).sort({ createdAt: -1 }).limit(SCAN_CAP).lean(),
+      // Restaurant-side text/address query only makes sense once the operator
+      // has actually typed something; browsing skips it entirely.
+      rx
+        ? Restaurant.find(restaurantFilter, { name: 1, address: 1, storeId: 1, ownerName: 1, ownerPhone: 1 })
+            .limit(SCAN_CAP)
+            .lean()
+        : Promise.resolve([]),
     ]);
 
     // Union by storeId. Restaurant rows without a storeId can't be actioned
