@@ -1,6 +1,5 @@
 const mongoose = require("mongoose");
 const CsdStaff = require("../models/csdStaffModel");
-const { adminPhones } = require("../middlewares/csdAuth");
 const config = require("../config/config");
 
 /**
@@ -29,24 +28,16 @@ const getSettings = async (req, res, next) => {
       success: true,
       data: {
         authentication: {
-          method: "Phone number + OTP (SMS)",
-          smsProvider: "Fast2SMS",
-          // Whether OTPs can actually be delivered — the single most common
-          // cause of "nobody can log in".
-          smsConfigured: Boolean(process.env.FAST2SMS_API_KEY),
-          otpValidityMinutes: Math.round((parseInt(process.env.OTP_EXPIRY_MS, 10) || 600000) / 60000),
-          otpResendCooldownSeconds: Math.round(
-            (parseInt(process.env.OTP_RATE_LIMIT_MS, 10) || 60000) / 1000
-          ),
-          otpMaxAttempts: parseInt(process.env.OTP_MAX_ATTEMPTS, 10) || 5,
+          method: "Email + password",
           sessionLength: process.env.CSD_TOKEN_EXPIRY || "12h",
           sessionSecretConfigured: csdSecret.length >= 32,
-          // Never the numbers themselves in full — masked, like OTP logging.
-          predefinedAdminPhones: adminPhones().map((p) => `${p.slice(0, 2)}${"*".repeat(6)}${p.slice(-2)}`),
-          devOtpBypassEnabled: Boolean(config.allowDevOtp),
+          superAdminSeedConfigured: Boolean(
+            (process.env.SUPERADMIN_EMAIL || process.env.ADMIN_EMAIL) &&
+              (process.env.SUPERADMIN_PASSWORD || process.env.ADMIN_PASSWORD)
+          ),
         },
         access: {
-          model: "Allow-list. A phone number with no active staff record cannot request an OTP.",
+          model: "Email + password. A staff record with status !== 'active' cannot sign in.",
           staffTotal,
           staffActive,
           staffDisabled: staffTotal - staffActive,
