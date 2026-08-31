@@ -3,9 +3,9 @@ import axios from "axios";
 /**
  * CSD API client.
  *
- * Auth is a httpOnly cookie issued by /api/csd/auth/verify-otp, so nothing
- * here ever touches a token — `withCredentials` is what carries the session,
- * and JS cannot read or exfiltrate it.
+ * Auth is a httpOnly cookie issued by /api/csd/auth/login, so nothing here
+ * ever touches a token — `withCredentials` is what carries the session, and
+ * JS cannot read or exfiltrate it.
  */
 const api = axios.create({
   baseURL: `${import.meta.env.VITE_API_BASE_URL || "/api"}/csd`,
@@ -38,8 +38,7 @@ api.interceptors.response.use(
 );
 
 export const auth = {
-  sendOtp: (phone) => api.post("/auth/send-otp", { phone }).then((r) => r.data.data),
-  verifyOtp: (phone, otp) => api.post("/auth/verify-otp", { phone, otp }).then((r) => r.data.data),
+  login: (email, password) => api.post("/auth/login", { email, password }).then((r) => r.data.data),
   me: () => api.get("/auth/me").then((r) => r.data.data),
   logout: () => api.post("/auth/logout").then((r) => r.data),
 };

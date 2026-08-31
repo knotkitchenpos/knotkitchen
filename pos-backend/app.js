@@ -13,6 +13,17 @@ const app = express();
 const PORT = config.port;
 connectDB();
 
+// Seed the CSD super-administrator on first Mongo ready. Deferred to the
+// "connected" event so it runs whether connectDB resolves synchronously or
+// after a reconnection, and it never blocks the HTTP listener coming up —
+// a seed failure is logged and the server still boots. See
+// controllers/csdAuthController.js:seedSuperAdmin for the recovery path.
+mongoose.connection.once("connected", () => {
+    require("./controllers/csdAuthController")
+        .seedSuperAdmin()
+        .catch((err) => console.error("[boot] CSD seed failed:", err?.message || err));
+});
+
 // Trust the first proxy hop so req.ip / secure cookies / rate limiting reflect
 // the real client (nginx, Vercel, Cloudflare, etc.) rather than the LB address.
 // A LB-terminated deployment MUST set this, otherwise Secure cookies and IP

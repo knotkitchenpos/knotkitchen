@@ -1,13 +1,13 @@
 const createHttpError = require("http-errors");
 const mongoose = require("mongoose");
 const CsdStaff = require("../models/csdStaffModel");
-const { normalizePhone } = require("../services/otpService");
-const { isAdminPhone } = require("../middlewares/csdAuth");
 const { csdAudit } = require("../services/csdAuditService");
 
 const str = (v) => String(v ?? "").trim();
 const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+const PHONE_RE = /^\d{10}$/;
+const normalizePhone = (v) => str(v).replace(/\D/g, "").slice(-10);
 
 /**
  * Guard against locking the platform out of its own admin panel.
@@ -16,10 +16,11 @@ const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
  *   1. Nobody can disable or demote themselves — the classic way an operator
  *      accidentally removes their own access mid-session.
  *   2. The last remaining active admin cannot be demoted or disabled.
- *   3. A predefined CSD_ADMIN_PHONES number cannot be demoted or disabled at
- *      all. Those numbers are the documented recovery path: if every other
- *      admin is lost they can still self-provision on login, and that only
- *      works while their row is admin+active.
+ *   3. The seeded (`isPredefined`) super-admin — bootstrapped from
+ *      SUPERADMIN_EMAIL / SUPERADMIN_PASSWORD — cannot be demoted or disabled
+ *      at all. It is the recovery path if every other admin account is lost:
+ *      RESET_SUPERADMIN_PASSWORD=true regenerates its password on next boot,
+ *      but only while the row itself is still admin+active.
  */
 const assertSafeChange = async (target, actor, { role, status } = {}) => {
   const demoting = role && role !== "admin" && target.role === "admin";
@@ -30,10 +31,10 @@ const assertSafeChange = async (target, actor, { role, status } = {}) => {
     throw createHttpError(400, "You cannot disable or demote your own account.");
   }
 
-  if (isAdminPhone(target.phone)) {
+  if (target.isPredefined) {
     throw createHttpError(
       400,
-      "This is a predefined administrator number and must stay active — it is the recovery path if other admin accounts are lost."
+      "This is the seeded super-administrator account and must stay active — it is the recovery path if other admin accounts are lost."
     );
   }
 
@@ -55,7 +56,7 @@ const listStaff = async (req, res, next) => {
     if (str(q.role)) filters.role = str(q.role);
     if (str(q.q)) {
       const rx = new RegExp(escapeRegex(str(q.q)), "i");
-      filters.$or = [{ fullName: rx }, { staffId: rx }, { phone: rx }, { officialEmail: rx }];
+      filters.$or = [{ fullName: rx }, { staffId: rx }, { email: rx }, { officialEmail: rx }];
     }
 
     const staff = await CsdStaff.find(filters).sort({ staffId: 1 }).lean();
@@ -66,7 +67,8 @@ const listStaff = async (req, res, next) => {
         id: String(s._id),
         staffId: s.staffId,
         fullName: s.fullName,
-        phone: s.phone,
+        email: s.email,
+        phone: s.phone || "",
         personalEmail: s.personalEmail,
         officialEmail: s.officialEmail,
         role: s.role,
@@ -76,7 +78,7 @@ const listStaff = async (req, res, next) => {
         lastLoginAt: s.lastLoginAt,
         loginCount: (s.loginHistory || []).length,
         // Surfaced so the UI can explain why this row's controls are locked.
-        isPredefinedAdmin: isAdminPhone(s.phone),
+        isPredefinedAdmin: s.isPredefined === true,
       })),
     });
   } catch (error) {
@@ -99,7 +101,8 @@ const getStaff = async (req, res, next) => {
         id: String(s._id),
         staffId: s.staffId,
         fullName: s.fullName,
-        phone: s.phone,
+        email: s.email,
+        phone: s.phone || "",
         personalEmail: s.personalEmail,
         officialEmail: s.officialEmail,
         role: s.role,
@@ -107,7 +110,7 @@ const getStaff = async (req, res, next) => {
         permissions: s.permissions || [],
         dateJoined: s.dateJoined,
         lastLoginAt: s.lastLoginAt,
-        isPredefinedAdmin: isAdminPhone(s.phone),
+        isPredefinedAdmin: s.isPredefined === true,
         // Most recent first, capped — this is a convenience view, the
         // AuditLog holds the durable record.
         loginHistory: [...(s.loginHistory || [])].reverse().slice(0, 25),
@@ -121,20 +124,23 @@ const getStaff = async (req, res, next) => {
 /**
  * POST /api/csd/staff — admin only.
  *
- * This is what makes anyone other than the two predefined numbers able to
- * sign in: csdAuthController refuses to send an OTP to a phone with no active
- * row here.
+ * This is what makes anyone other than the seeded super-admin able to sign
+ * in: csdAuthController.login refuses any email that has no active row here.
  */
 const createStaff = async (req, res, next) => {
   try {
     const b = req.body || {};
     const fullName = str(b.fullName);
-    const phone = normalizePhone(b.phone);
+    const email = str(b.email).toLowerCase();
+    const password = typeof b.password === "string" ? b.password : "";
+    const phone = b.phone ? normalizePhone(b.phone) : "";
     const role = str(b.role) || "staff";
     const fieldErrors = {};
 
     if (fullName.length < 2) fieldErrors.fullName = "Enter the staff member's full name.";
-    if (!/^\d{10}$/.test(phone)) fieldErrors.phone = "Phone must be a 10-digit number.";
+    if (!EMAIL_RE.test(email)) fieldErrors.email = "Enter a valid email address.";
+    if (password.length < 8) fieldErrors.password = "Password must be at least 8 characters.";
+    if (phone && !PHONE_RE.test(phone)) fieldErrors.phone = "Phone must be a 10-digit number.";
     if (!["admin", "staff"].includes(role)) fieldErrors.role = "Role must be admin or staff.";
     if (str(b.personalEmail) && !EMAIL_RE.test(str(b.personalEmail)))
       fieldErrors.personalEmail = "Enter a valid email address.";
@@ -145,7 +151,14 @@ const createStaff = async (req, res, next) => {
       return next(createHttpError(400, "Please correct the highlighted fields.", { fieldErrors }));
     }
 
-    if (await CsdStaff.exists({ phone })) {
+    if (await CsdStaff.exists({ email })) {
+      return next(
+        createHttpError(409, "A staff member with that email already exists.", {
+          fieldErrors: { email: "This email is already registered." },
+        })
+      );
+    }
+    if (phone && (await CsdStaff.exists({ phone }))) {
       return next(
         createHttpError(409, "A staff member with that phone number already exists.", {
           fieldErrors: { phone: "This number is already registered." },
@@ -156,23 +169,30 @@ const createStaff = async (req, res, next) => {
     let staff = null;
     for (let attempt = 0; attempt < 3 && !staff; attempt++) {
       try {
-        staff = await CsdStaff.create({
+        const doc = new CsdStaff({
           staffId: await CsdStaff.nextStaffId(),
           fullName,
-          phone,
+          email,
+          password,
+          phone: phone || null,
           personalEmail: str(b.personalEmail).toLowerCase(),
           officialEmail: str(b.officialEmail).toLowerCase(),
-          // A predefined admin number is always admin regardless of what the
-          // form said, so the row matches what login will grant anyway.
-          role: isAdminPhone(phone) ? "admin" : role,
+          role,
           status: "active",
+          isPredefined: false,
           permissions: Array.isArray(b.permissions) ? b.permissions.map(str).filter(Boolean) : [],
           createdBy: req.csdStaff._id,
         });
+        // .save() triggers the pre-save bcrypt hook. Retry loop is for the
+        // (rare) staffId race; other duplicates are reported below.
+        await doc.save();
+        staff = doc;
       } catch (err) {
         if (err?.code !== 11000) throw err;
-        // Either a staffId race (retry) or the phone (report properly).
-        if (await CsdStaff.exists({ phone })) {
+        if (await CsdStaff.exists({ email })) {
+          return next(createHttpError(409, "A staff member with that email already exists."));
+        }
+        if (phone && (await CsdStaff.exists({ phone }))) {
           return next(createHttpError(409, "A staff member with that phone number already exists."));
         }
       }
@@ -187,7 +207,7 @@ const createStaff = async (req, res, next) => {
       entityType: "CsdStaff",
       entityId: staff._id,
       description: `Created ${staff.staffId} (${staff.fullName}) as ${staff.role}`,
-      newValue: { staffId: staff.staffId, fullName, phone, role: staff.role },
+      newValue: { staffId: staff.staffId, fullName, email, role: staff.role },
       severity: staff.role === "admin" ? "WARNING" : "INFO",
     });
 
@@ -250,21 +270,29 @@ const updateStaff = async (req, res, next) => {
       }
     }
 
-    if (nextRole !== undefined) {
-      staff.role = isAdminPhone(staff.phone) ? "admin" : nextRole;
-    }
+    if (nextRole !== undefined) staff.role = nextRole;
     if (nextStatus !== undefined) staff.status = nextStatus;
     if (b.permissions !== undefined && Array.isArray(b.permissions)) {
       staff.permissions = b.permissions.map(str).filter(Boolean);
     }
 
-    // The login phone is the identity this account authenticates with and is
+    // Login email is the identity this account authenticates with and is
     // referenced by every audit entry — changing it would silently transfer
     // an account's history to a different person. Create a new record instead.
-    if (b.phone !== undefined && normalizePhone(b.phone) !== staff.phone) {
+    if (b.email !== undefined && str(b.email).toLowerCase() !== staff.email) {
       return next(
-        createHttpError(400, "A staff member's login phone cannot be changed. Disable this record and create a new one.")
+        createHttpError(400, "A staff member's login email cannot be changed. Disable this record and create a new one.")
       );
+    }
+
+    // Optional password reset. 8+ chars enforced consistently with create.
+    if (typeof b.password === "string" && b.password.length > 0) {
+      if (b.password.length < 8) {
+        return next(createHttpError(400, "Password must be at least 8 characters.", {
+          fieldErrors: { password: "Password must be at least 8 characters." },
+        }));
+      }
+      staff.password = b.password; // pre-save hook hashes it
     }
 
     await staff.save();

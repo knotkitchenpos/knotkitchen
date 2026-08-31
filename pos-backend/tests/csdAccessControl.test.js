@@ -22,7 +22,7 @@ const jwt = require("jsonwebtoken");
 
 const SECRET = "test-csd-secret-that-is-comfortably-over-32-chars";
 process.env.CSD_JWT_SECRET = SECRET;
-process.env.CSD_ADMIN_PHONES = "8646826709,9875678060";
+// CSD_ADMIN_PHONES no longer exists — the panel is email+password now.
 
 // --- Stub the CsdStaff model BEFORE the middleware requires it -------------
 const staffModelPath = require.resolve("../models/csdStaffModel");
@@ -37,8 +37,6 @@ require.cache[staffModelPath] = {
 const {
   requireCsdAuth,
   requireCsdAdmin,
-  isAdminPhone,
-  adminPhones,
 } = require("../middlewares/csdAuth");
 
 // --- Tiny express-ish doubles ---------------------------------------------
@@ -158,10 +156,7 @@ test("a deleted staff row cannot authenticate even with a valid token", async ()
   assert.equal(err?.status, 401);
 });
 
-test("only the two predefined numbers are treated as admin phones", async () => {
-  assert.equal(adminPhones().length, 2);
-  assert.ok(isAdminPhone("8646826709"));
-  assert.ok(isAdminPhone("9875678060"));
-  assert.equal(isAdminPhone("9999999999"), false);
-  assert.equal(isAdminPhone(""), false);
-});
+// The predefined-phones admin gate (isAdminPhone) was removed with the switch
+// to email+password auth. The equivalent guarantee is now enforced by the
+// `isPredefined` flag on the seeded CsdStaff row and covered by the seed and
+// Staff Management tests below.

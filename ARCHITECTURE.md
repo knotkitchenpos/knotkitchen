@@ -32,8 +32,6 @@ production-hosting effort.
 | ---------------------------- | ------------------------- | ------------------- | -------- |
 | POS Backend API              | `pos-backend/`            | Node.js + Express   | `8000`   |
 | POS / Restaurant Frontend    | `pos-frontend/`           | React + Vite (SPA)  | `5173`   |
-| Super-Admin Backend          | `knotkitchen-admin/backend/`  | Node.js + Express | `4000` |
-| Super-Admin Frontend         | `knotkitchen-admin/frontend/` | React + Vite     | `5174` |
 
 Package manager: **npm** everywhere (lockfiles present).
 
@@ -46,16 +44,19 @@ inventory:
 | Customer website             | `customer-web/`           | React + Vite (SPA)  | `5176`   |
 | CSD / support desk           | `csd-web/`                | React + Vite (SPA)  | `5175`   |
 
-The full dev-port allocation is `5173` pos-frontend · `5174` admin frontend ·
-`5175` csd-web · `5176` customer-web. Keep them distinct: `customer-web` sets
+The full dev-port allocation is now `5173` pos-frontend · `5175` csd-web ·
+`5176` customer-web (the `5174` admin frontend went with the removed
+`knotkitchen-admin/` on 2026-08-30). Keep them distinct: `customer-web` sets
 `strictPort: true` (a wildcard-subdomain app that silently moved ports would
 break the `*.localhost` URLs a developer has open), so a clash is a hard
 startup failure rather than a fallback. Until 2026-08-30 it and csd-web both
 requested `5175` and could not be run at the same time.
 
-`csd-web` is an **internal staff tool** (support desk + platform admin). It has
-no backend of its own — it talks to `pos-backend` under `/api/csd`, with its
-own OTP session and its own `CSD_JWT_SECRET`.
+`csd-web` is an **internal staff tool** (support desk + platform admin, which
+replaced the deleted `knotkitchen-admin/` super-admin app). It has no backend
+of its own — it talks to `pos-backend` under `/api/csd` with an email +
+password session (bcrypt-hashed, signed by `CSD_JWT_SECRET`) seeded from the
+`SUPERADMIN_EMAIL` / `SUPERADMIN_PASSWORD` env vars.
 
 One more service is built by `deploy/docker-compose.yml` but does **not** live
 in this repository:
@@ -180,19 +181,13 @@ Nothing that already worked was replaced or rewritten.
               │  DNS-01 for the wildcard  │
               └────────────┬──────────────┘
                 internal Docker network `knot`
-   ┌──────────┬──────────┬─┴────────┬──────────────┬───────────┐
-   ▼          ▼          ▼          ▼              ▼           ▼
-admin-web  pos-web   csd-web  customer-web  onboard-portal  (APIs)
-  :80        :80       :80        :80           :3000          │
-                                                               │
-                                            ┌──────────────────┴───┐
-                                            ▼                      ▼
-                                        admin-api              pos-api
-                                          :4000                 :8000
-                                            │                      │
-                                            └──────────┬───────────┘
-                                                       ▼
-                                               MongoDB Atlas
+   ┌──────────┬──────────┬──────────────┬───────────┐
+   ▼          ▼          ▼              ▼           ▼
+ pos-web  csd-web  customer-web  onboard-portal   pos-api
+  :80       :80        :80          :3000          :8000
+                                                     │
+                                                     ▼
+                                             MongoDB Atlas
                                             (shared cluster,
                                              one DB per env)
 
@@ -225,11 +220,9 @@ extra hop in front of `trust proxy = 1`.
 | ---- | -------------------------------- | ------------ | --------------- |
 | A    | `knotkitchen.online`             | `<VPS IPv4>` | customer-web    |
 | A    | `business.knotkitchen.online`    | `<VPS IPv4>` | pos-web (POS SPA) |
-| A    | `onboard.knotkitchen.online`     | `<VPS IPv4>` | admin-web (super-admin) |
 | A    | `csd.knotkitchen.online`         | `<VPS IPv4>` | csd-web (support desk) |
 | A    | `agreement.knotkitchen.online`   | `<VPS IPv4>` | onboard-portal  |
 | A    | `api.knotkitchen.online`         | `<VPS IPv4>` | pos-api         |
-| A    | `admin-api.knotkitchen.online`   | `<VPS IPv4>` | admin-api       |
 | A    | `*.knotkitchen.online`           | `<VPS IPv4>` | **Wildcard** — customer-web, one vhost per store |
 
 The wildcard record is what makes new stores available *automatically* — no
@@ -289,15 +282,13 @@ subdomain and slug. See the resolution order in §1.2.
 | -------------- | ------------- | ---------- | ------------------------------------- |
 | caddy          | 80, 443       | ✅ yes      | *(the only public entry point)*       |
 | pos-api        | 8000          | ❌ no       | `api.knotkitchen.online`              |
-| admin-api      | 4000          | ❌ no       | `admin-api.knotkitchen.online`        |
 | pos-web        | 80            | ❌ no       | `business.knotkitchen.online`         |
-| admin-web      | 80            | ❌ no       | `onboard.knotkitchen.online`          |
 | csd-web        | 80            | ❌ no       | `csd.knotkitchen.online`              |
 | onboard-portal | 3000          | ❌ no       | `agreement.knotkitchen.online`        |
 | customer-web   | 80            | ❌ no       | `knotkitchen.online` + `*.knotkitchen.online` |
 
-Dev ports `5173` (pos-web), `5174` (admin-web), `5175` (csd-web), `5176`
-(customer-web), `8000` (pos-api) and `4000` (admin-api) remain unchanged for
+Dev ports `5173` (pos-web), `5175` (csd-web), `5176`
+(customer-web) and `8000` (pos-api) remain unchanged for
 local development.
 
 ---

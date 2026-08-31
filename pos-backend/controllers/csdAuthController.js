@@ -1,14 +1,25 @@
 const createHttpError = require("http-errors");
 const CsdStaff = require("../models/csdStaffModel");
-const { createAndSendOtp, verifyOtp, normalizePhone, maskPhone } = require("../services/otpService");
-const { issueSessionCookie, clearSessionCookie, isAdminPhone } = require("../middlewares/csdAuth");
+const config = require("../config/config");
+const { issueSessionCookie, clearSessionCookie } = require("../middlewares/csdAuth");
 const { csdAudit } = require("../services/csdAuditService");
 
-// otpModel requires a storeId, but a CSD login isn't scoped to any store.
-// A constant sentinel keeps those rows in their own namespace so they can
-// never collide with a real 6-digit store's OTP for the same phone.
-const CSD_OTP_SCOPE = "CSD";
-const CSD_OTP_PURPOSE = "csd_login";
+/**
+ * CSD authentication — email + password.
+ *
+ * Migrated 2026-08-30 from phone + OTP because the OTP path had a hard
+ * Fast2SMS dependency, and a provider verification block took every operator
+ * out of the panel. Email + password mirrors the pattern the (now removed)
+ * onboard super-admin used, so no new secret store is needed; the same
+ * SUPERADMIN_EMAIL / SUPERADMIN_PASSWORD env vars seed the first admin.
+ *
+ * Deliberate omissions:
+ *   - No self-signup. Staff are provisioned by an existing admin via the
+ *     Staff Management screen.
+ *   - No password reset endpoint yet. RESET_SUPERADMIN_PASSWORD=true resets
+ *     the seeded superadmin on next boot; that is the recovery path until a
+ *     proper reset flow ships.
+ */
 
 const clientIp = (req) =>
   (req.headers["x-real-ip"] || req.headers["x-forwarded-for"] || req.ip || "")
@@ -17,122 +28,103 @@ const clientIp = (req) =>
     .trim();
 
 /**
- * Look up who, if anyone, is allowed to sign in with this phone.
+ * Seed the bootstrap superadmin on first run.
  *
- * Returns the staff row, or a marker for a predefined admin phone that hasn't
- * been provisioned yet. Anything else is not authorised.
+ * Loud but non-fatal: a seed failure logs and the server still starts. In
+ * production a missing seed just means "sign in with an existing admin
+ * account", which is the right behaviour once the platform is off first boot.
+ *
+ * `RESET_SUPERADMIN_PASSWORD=true` overwrites the seeded admin's password on
+ * next start. It only applies to the row created from the seed env vars, so
+ * a genuinely disabled admin cannot be re-enabled through an unrelated
+ * account with the same email.
  */
-const resolveEligibility = async (phone) => {
-  const staff = await CsdStaff.findOne({ phone });
-
-  if (staff) {
-    if (staff.status !== "active") return { ok: false };
-    return { ok: true, staff };
+const seedSuperAdmin = async () => {
+  const email = String(config.csdSeedEmail || "").trim().toLowerCase();
+  const rawPassword = String(config.csdSeedPassword || "");
+  if (!email || !rawPassword) {
+    if (config.isProduction) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        "[CSD] SUPERADMIN_EMAIL / SUPERADMIN_PASSWORD not set — the CSD panel " +
+          "will have no seeded administrator until they are provided."
+      );
+    }
+    return;
   }
 
-  // Predefined admin numbers bootstrap themselves on first login, so the
-  // system is never locked out with zero administrators.
-  if (isAdminPhone(phone)) return { ok: true, staff: null, bootstrapAdmin: true };
+  try {
+    // Look up by seed email OR the isPredefined marker, so a rename via
+    // SUPERADMIN_EMAIL still finds the original bootstrap row instead of
+    // silently creating a second one.
+    let seeded = await CsdStaff.findOne({
+      $or: [{ email }, { isPredefined: true }],
+    }).select("+password");
 
-  return { ok: false };
+    if (!seeded) {
+      const staffId = await CsdStaff.nextStaffId();
+      const created = new CsdStaff({
+        staffId,
+        fullName: "Super Admin",
+        email,
+        password: rawPassword,
+        role: "admin",
+        isPredefined: true,
+        status: "active",
+      });
+      await created.save();
+      // eslint-disable-next-line no-console
+      console.log(`✅ Seeded CSD super-admin: ${email}`);
+      return;
+    }
+
+    let dirty = false;
+    if (seeded.email !== email) { seeded.email = email; dirty = true; }
+    if (!seeded.isPredefined) { seeded.isPredefined = true; dirty = true; }
+    if (seeded.role !== "admin") { seeded.role = "admin"; dirty = true; }
+    if (seeded.status !== "active") { seeded.status = "active"; dirty = true; }
+    if (process.env.RESET_SUPERADMIN_PASSWORD === "true") {
+      // eslint-disable-next-line no-console
+      console.warn(`[SECURITY] RESET_SUPERADMIN_PASSWORD=true — resetting ${email}.`);
+      seeded.password = rawPassword;
+      dirty = true;
+    }
+    if (dirty) await seeded.save();
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[CSD] Failed to seed super-admin:", err?.message || err);
+  }
 };
 
 /**
- * POST /api/csd/auth/send-otp   { phone }
+ * POST /api/csd/auth/login  { email, password }
  *
- * Enforces the allow-list: a number with no active staff row (and which isn't
- * a predefined admin) never receives a code.
+ * A single generic error for every failure — bad email, bad password,
+ * disabled account, malformed input — so this endpoint cannot be used to
+ * enumerate staff.
  */
-const sendOtp = async (req, res, next) => {
+const login = async (req, res, next) => {
   try {
-    const phone = normalizePhone(req.body?.phone);
-    if (!/^\d{10}$/.test(phone)) {
-      return next(createHttpError(400, "Enter a valid 10-digit phone number."));
+    const rawEmail = req.body?.email;
+    const rawPassword = req.body?.password;
+    if (typeof rawEmail !== "string" || typeof rawPassword !== "string") {
+      return next(createHttpError(400, "Email and password are required."));
+    }
+    const email = rawEmail.trim().toLowerCase();
+    const password = rawPassword; // do NOT trim — trailing spaces are legal password characters
+    if (!email || !password) {
+      return next(createHttpError(400, "Email and password are required."));
     }
 
-    const eligibility = await resolveEligibility(phone);
-    if (!eligibility.ok) {
-      // Deliberately identical to the success shape's failure mode and timing
-      // is not constant, but the MESSAGE must not distinguish "not a KnotKitchen
-      // number" from "disabled account" — that would let anyone enumerate which
-      // numbers belong to staff.
-      return next(
-        createHttpError(403, "This number is not authorised for the KnotKitchen Business panel.")
-      );
+    // .select("+password") because the schema hides it by default.
+    const staff = await CsdStaff.findOne({ email }).select("+password");
+    // Same message for "no such user" and "wrong password" — no enumeration.
+    if (!staff || staff.status !== "active") {
+      return next(createHttpError(401, "Invalid email or password."));
     }
 
-    const { expiresAt } = await createAndSendOtp({
-      storeId: CSD_OTP_SCOPE,
-      phone,
-      purpose: CSD_OTP_PURPOSE,
-    });
-
-    res.status(200).json({
-      success: true,
-      data: { maskedPhone: maskPhone(phone), expiresAt },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
- * POST /api/csd/auth/verify-otp   { phone, otp }
- *
- * On success issues the httpOnly session cookie and returns the profile,
- * including the role the SPA uses to choose which navigation to render.
- */
-const verifyOtpAndSignIn = async (req, res, next) => {
-  try {
-    const phone = normalizePhone(req.body?.phone);
-    const otp = String(req.body?.otp || "").trim();
-
-    if (!/^\d{10}$/.test(phone) || !/^\d{4,8}$/.test(otp)) {
-      return next(createHttpError(400, "Enter the code that was sent to your phone."));
-    }
-
-    // Re-check eligibility at verify time too: an admin may have disabled the
-    // account in the seconds between the code being sent and used.
-    const eligibility = await resolveEligibility(phone);
-    if (!eligibility.ok) {
-      return next(
-        createHttpError(403, "This number is not authorised for the KnotKitchen Business panel.")
-      );
-    }
-
-    const result = await verifyOtp({
-      storeId: CSD_OTP_SCOPE,
-      phone,
-      otp,
-      purpose: CSD_OTP_PURPOSE,
-    });
-    if (!result.valid) return next(createHttpError(401, result.message || "Invalid OTP."));
-
-    let staff = eligibility.staff;
-
-    if (!staff) {
-      // Bootstrap a predefined admin. Retry once on the unique-index collision
-      // that a concurrent first login would cause.
-      for (let attempt = 0; attempt < 2 && !staff; attempt++) {
-        try {
-          staff = await CsdStaff.create({
-            staffId: await CsdStaff.nextStaffId(),
-            fullName: `Administrator ${phone.slice(-4)}`,
-            phone,
-            role: "admin",
-            status: "active",
-          });
-        } catch (err) {
-          if (err?.code !== 11000) throw err;
-          staff = await CsdStaff.findOne({ phone });
-        }
-      }
-      if (!staff) return next(createHttpError(500, "Could not provision the administrator account."));
-    } else if (isAdminPhone(phone) && staff.role !== "admin") {
-      // A predefined admin number always holds admin, even if a row was
-      // created for it as staff at some point.
-      staff.role = "admin";
-    }
+    const ok = await staff.comparePassword(password);
+    if (!ok) return next(createHttpError(401, "Invalid email or password."));
 
     staff.lastLoginAt = new Date();
     staff.loginHistory.push({
@@ -175,4 +167,4 @@ const logout = async (req, res) => {
   res.status(200).json({ success: true });
 };
 
-module.exports = { sendOtp, verifyOtpAndSignIn, me, logout, CSD_OTP_SCOPE, CSD_OTP_PURPOSE };
+module.exports = { login, me, logout, seedSuperAdmin };

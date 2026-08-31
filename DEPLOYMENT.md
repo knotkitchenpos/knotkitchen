@@ -25,11 +25,9 @@ Let's Encrypt HTTP-01._
 | Purpose | Hostname | Backed by |
 | --- | --- | --- |
 | Landing page + storefront | `knotkitchen.online` | `customer-web` |
-| Storefront (customer-facing) | `csd.knotkitchen.online` | `customer-web` |
+| Support desk / internal admin | `csd.knotkitchen.online` | `csd-web` |
 | POS SPA | `business.knotkitchen.online` | `pos-web` |
-| Super-admin / onboarding SPA | `onboard.knotkitchen.online` | `admin-web` |
 | POS backend API | `api.knotkitchen.online` | `pos-api` |
-| Super-admin backend API | `admin-api.knotkitchen.online` | `admin-api` |
 | Partner onboarding / agreement portal | `agreement.knotkitchen.online` | `onboard-portal` (separate repo: `knotkitchenpos/onboard`, cloned to `/srv/onboard`) |
 | Per-store customer website | `<store_id>.knotkitchen.online` (any subdomain not listed above) | `customer-web`, resolved by hostname via `resolveStorefront()` |
 
@@ -58,9 +56,7 @@ every value is the same VPS IP:
 | A    | `www`       | `93.127.194.80` | 300 |
 | A    | `csd`       | `93.127.194.80` | 300 |
 | A    | `business`  | `93.127.194.80` | 300 |
-| A    | `onboard`   | `93.127.194.80` | 300 |
 | A    | `api`       | `93.127.194.80` | 300 |
-| A    | `admin-api` | `93.127.194.80` | 300 |
 
 Do **not** enable Hostinger's CDN toggle on any of these records — Caddy must
 terminate TLS itself for Let's Encrypt HTTP-01 to succeed.
@@ -70,7 +66,6 @@ Verify from any laptop before continuing:
 ```powershell
 nslookup api.knotkitchen.online 8.8.8.8
 nslookup business.knotkitchen.online 8.8.8.8
-nslookup onboard.knotkitchen.online 8.8.8.8
 nslookup csd.knotkitchen.online 8.8.8.8
 nslookup knotkitchen.online 8.8.8.8
 ```
@@ -178,7 +173,6 @@ MONGODB_URI=<Atlas SRV URI, or mongodb://user:pass@mongo:27017/knotkitchen?authS
 # Generate each with:  node -e "console.log(require('crypto').randomBytes(48).toString('hex'))"
 JWT_SECRET=<64+ hex chars>
 REFRESH_TOKEN_SECRET=<64+ hex chars>
-ADMIN_JWT_SECRET=<64+ hex chars>
 
 SUPERADMIN_EMAIL=admin@knotkitchen.online
 SUPERADMIN_PASSWORD=<long random passphrase>
@@ -211,7 +205,7 @@ cd /srv/knot
 docker compose -f deploy/docker-compose.yml --env-file deploy/.env build --pull
 docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d
 docker compose -f deploy/docker-compose.yml ps
-docker compose -f deploy/docker-compose.yml logs -f caddy pos-api admin-api
+docker compose -f deploy/docker-compose.yml logs -f caddy pos-api
 ```
 
 Within ~30 s Caddy prints one `certificate obtained successfully` per
@@ -230,15 +224,13 @@ From any laptop:
 
 ```powershell
 curl.exe -I https://api.knotkitchen.online/health
-curl.exe -I https://admin-api.knotkitchen.online/health
 curl.exe -I https://business.knotkitchen.online/healthz
-curl.exe -I https://onboard.knotkitchen.online/healthz
 curl.exe -I https://csd.knotkitchen.online/healthz
 curl.exe -I https://knotkitchen.online/healthz
 ```
 
 All six MUST return `HTTP/2 200`. Then open
-`https://onboard.knotkitchen.online` and sign in with `SUPERADMIN_EMAIL` /
+`https://csd.knotkitchen.online` and sign in with `SUPERADMIN_EMAIL` /
 `SUPERADMIN_PASSWORD`.
 
 
@@ -312,7 +304,7 @@ happen as a side effect of a command aimed at something else.
 
 ## 8. Creating a store (no infra change)
 
-1. Log into `https://onboard.knotkitchen.online`.
+1. Log into `https://csd.knotkitchen.online`.
 2. Create a Store (e.g. "Burger House"). The backend generates a unique
    6-digit `storeId` and URL-safe `slug`, and `provisionWebsiteForStore`
    creates the `WebsiteSettings` document.
@@ -331,7 +323,7 @@ for the default path-based layout above.
 
 ```bash
 $EDITOR /srv/knot/deploy/.env
-docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d pos-api admin-api
+docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d pos-api
 ```
 
 Rotating `JWT_SECRET` / `REFRESH_TOKEN_SECRET` invalidates every active
@@ -456,9 +448,7 @@ MongoDB has its own backup story (Atlas continuous snapshots, or a
 Cheap uptime coverage with Uptime Kuma or Better Uptime — poll each of:
 
 * `https://api.knotkitchen.online/health`
-* `https://admin-api.knotkitchen.online/health`
 * `https://business.knotkitchen.online/healthz`
-* `https://onboard.knotkitchen.online/healthz`
 * `https://csd.knotkitchen.online/healthz`
 * `https://knotkitchen.online/healthz`
 
@@ -476,7 +466,6 @@ shows the `HEALTHCHECK` state of every service.
 | CORS errors from the POS / onboarding UI | Hostname not in `FRONTEND_URLS`. Rebuild with the corrected env. |
 | Media upload 500s | `MEDIA_STORAGE_PROVIDER=s3` set but the `S3_*` fields are blank. Either fill them or switch to `local`. |
 | Let's Encrypt "too many requests" | You retried too fast. Wait 1 hour, then bring the stack up again. |
-| Login OK but POS says "Invalid Store ID" | `admin-api` and `pos-api` are pointing at different `MONGODB_URI` values. They MUST share a database. |
 
 ---
 

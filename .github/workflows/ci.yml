@@ -35,26 +35,10 @@ jobs:
         with:
           node-version: "20"
           cache: "npm"
-          cache-dependency-path: |
-            pos-backend/package-lock.json
-            knotkitchen-admin/backend/package-lock.json
+          cache-dependency-path: pos-backend/package-lock.json
 
       - name: Install
         working-directory: pos-backend
-        run: npm ci
-
-      # tests/storeSignup.test.js deliberately loads the ADMIN backend's
-      # controllers/restaurantController.js — the point of that test is to prove
-      # the POS and the admin portal agree on the store-status vocabulary, which
-      # cannot be checked from inside one package.
-      #
-      # That controller requires `bcryptjs`, a dependency of the admin backend
-      # and NOT of pos-backend (which uses `bcrypt`). Installing only
-      # pos-backend left it unresolvable, so the whole test file threw
-      # MODULE_NOT_FOUND at load and its 11 tests never ran — silently, because
-      # a file that fails to load reports as one failure rather than eleven.
-      - name: Install admin backend deps (loaded by storeSignup.test.js)
-        working-directory: knotkitchen-admin/backend
         run: npm ci
 
       - name: Test (tenant isolation, slugs, media, pricing, ...)
@@ -85,10 +69,6 @@ jobs:
             path: pos-frontend
             backend_url: "https://api.knotkitchen.online"
             api_base_url: ""
-          - app: admin-frontend
-            path: knotkitchen-admin/frontend
-            backend_url: ""
-            api_base_url: "https://admin-api.knotkitchen.online/api"
           - app: csd-web
             path: csd-web
             backend_url: ""

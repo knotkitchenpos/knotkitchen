@@ -3,7 +3,7 @@ const router = express.Router();
 
 const { rateLimit, clientIp } = require("../middlewares/rateLimiter");
 const { requireCsdAuth, requireCsdAdmin } = require("../middlewares/csdAuth");
-const { sendOtp, verifyOtpAndSignIn, me, logout } = require("../controllers/csdAuthController");
+const { login, me, logout } = require("../controllers/csdAuthController");
 const { searchStores, getStore, updateStoreStatus } = require("../controllers/csdStoreController");
 const { getDashboard } = require("../controllers/csdDashboardController");
 const { createStore, getOptions } = require("../controllers/csdOnboardingController");
@@ -55,20 +55,17 @@ const {
 // Tight limits: this endpoint reveals whether a number is authorised and it
 // sends real SMS, so it is both an enumeration and a cost vector. otpService
 // separately enforces a 60s per-number cooldown.
-const otpSendLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  keyGenerator: (req) => `csd-otp-send:${clientIp(req)}`,
-});
-
-const otpVerifyLimiter = rateLimit({
+// Tight limit on the credential-based login endpoint. otpService's
+// per-number cooldown no longer applies (there is no more OTP), so this is
+// the only brute-force gate for the panel — per-IP AND per-email so one bad
+// IP cannot deny service across every operator.
+const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
-  keyGenerator: (req) => `csd-otp-verify:${clientIp(req)}`,
+  keyGenerator: (req) => 'csd-login:'+clientIp(req)+':'+String(req.body?.email||'').toLowerCase().slice(0,64),
 });
 
-router.post("/auth/send-otp", otpSendLimiter, sendOtp);
-router.post("/auth/verify-otp", otpVerifyLimiter, verifyOtpAndSignIn);
+router.post('/auth/login', loginLimiter, login);
 
 // ---------------------------------------------------------------------------
 // 2. Everything below requires a valid, active session

@@ -88,19 +88,12 @@ admin-api.{$BASE_DOMAIN} {
 }
 
 # =============================================================================
-# onboard.knotkitchen.online — Super-admin & Onboarding SPA
-# =============================================================================
-onboard.{$BASE_DOMAIN} {
-	import security_headers
-
-	encode zstd gzip
-	reverse_proxy admin-web:80 {
-		header_up Host {host}
-	}
-}
-
-# =============================================================================
 # business.knotkitchen.online — POS SPA
+# =============================================================================
+# NOTE: `onboard.${BASE_DOMAIN}` was removed on 2026-08-30 along with the
+# admin-web/admin-api services. The CSD panel at csd.${BASE_DOMAIN} took over
+# that surface. Also delete the `onboard` A record from Cloudflare — a stale
+# DNS entry would still be presented a cert here on renewal and 502 forever.
 # =============================================================================
 business.{$BASE_DOMAIN} {
 	import security_headers
