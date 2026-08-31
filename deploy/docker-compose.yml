@@ -222,6 +222,7 @@ services:
       # Only used to bootstrap an admin account if server/data/database.json
       # doesn't exist on the volume yet.
       ADMIN_USERNAME: ${ONBOARD_ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ONBOARD_ADMIN_PASSWORD}
       # Shared secret that lets CSD read agreements and their uploaded
       # documents without an agent session. MUST match the value pos-api uses.
       # Unset = the portal accepts no service token at all and CSD reports the
