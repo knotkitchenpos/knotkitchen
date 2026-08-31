@@ -169,12 +169,15 @@ const createStaff = async (req, res, next) => {
     let staff = null;
     for (let attempt = 0; attempt < 3 && !staff; attempt++) {
       try {
-        const doc = new CsdStaff({
+        // Do NOT set phone when the caller omitted it. A sparse unique index
+        // in MongoDB indexes null values just like any other value, so a
+        // second staff row with phone:null still collides on phone_1 with
+        // code 11000. Absent → the sparse index skips the doc entirely.
+        const payload = {
           staffId: await CsdStaff.nextStaffId(),
           fullName,
           email,
           password,
-          phone: phone || null,
           personalEmail: str(b.personalEmail).toLowerCase(),
           officialEmail: str(b.officialEmail).toLowerCase(),
           role,
@@ -182,7 +185,9 @@ const createStaff = async (req, res, next) => {
           isPredefined: false,
           permissions: Array.isArray(b.permissions) ? b.permissions.map(str).filter(Boolean) : [],
           createdBy: req.csdStaff._id,
-        });
+        };
+        if (phone) payload.phone = phone;
+        const doc = new CsdStaff(payload);
         // .save() triggers the pre-save bcrypt hook. Retry loop is for the
         // (rare) staffId race; other duplicates are reported below.
         await doc.save();

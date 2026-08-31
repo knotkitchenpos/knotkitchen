@@ -60,12 +60,13 @@ const csdStaffSchema = new mongoose.Schema(
     // paths that need it use `.select("+password")` explicitly.
     password: { type: String, required: true, select: false },
 
-    // Optional legacy phone. Kept nullable + sparse-unique so old data
-    // migrates cleanly and we can still reach a staff member by phone from
-    // ops tools, but nothing on the auth path reads it any more.
+    // Optional legacy phone. Sparse-unique — deliberately no `default`, so a
+    // staff record without a phone omits the field entirely and the sparse
+    // index skips the doc. A `default: null` would write null explicitly,
+    // and MongoDB's sparse indexes still cover explicit nulls: every second
+    // no-phone staff would then collide on phone_1 with code 11000.
     phone: {
       type: String,
-      default: null,
       sparse: true,
       unique: true,
       validate: {
