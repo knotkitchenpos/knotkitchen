@@ -54,23 +54,14 @@ const Settings = () => {
         </p>
       </header>
 
-      {!a.smsConfigured && (
-        <div className="mb-5 flex items-start gap-2.5 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-800">
-          <FiAlertTriangle className="mt-0.5 shrink-0" aria-hidden="true" />
-          <span>
-            <strong>No SMS provider is configured.</strong> Nobody can receive a login code on this
-            server. Set <code className="font-mono">FAST2SMS_API_KEY</code> in the deployment
-            environment.
-          </span>
-        </div>
-      )}
-
-      {a.devOtpBypassEnabled && (
+      {a.superAdminSeedConfigured === false && (
         <div className="mb-5 flex items-start gap-2.5 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-800">
           <FiAlertTriangle className="mt-0.5 shrink-0" aria-hidden="true" />
           <span>
-            <strong>Development OTP bypass is enabled.</strong> A fixed code will be accepted
-            instead of a real one. This must never be on in production.
+            <strong>Super-admin seed is not configured.</strong> Set{" "}
+            <code className="font-mono">SUPERADMIN_EMAIL</code> and{" "}
+            <code className="font-mono">SUPERADMIN_PASSWORD</code> in the deployment environment,
+            then restart. Without them the recovery admin cannot be re-created.
           </span>
         </div>
       )}
@@ -78,18 +69,12 @@ const Settings = () => {
       <div className="space-y-5">
         <Card title="Authentication" subtitle="How people sign in to this panel">
           <Row label="Method">{a.method}</Row>
-          <Row label="SMS provider" hint={a.smsProvider}>
-            <Yes ok={a.smsConfigured} />
-          </Row>
           <Row label="Session secret" hint="Signs the session cookie; separate from the POS secret">
             <Yes ok={a.sessionSecretConfigured} yes="Set (32+ chars)" no="Missing or too short" />
           </Row>
           <Row label="Session length">{a.sessionLength}</Row>
-          <Row label="Code validity">{a.otpValidityMinutes} minutes</Row>
-          <Row label="Resend cooldown">{a.otpResendCooldownSeconds} seconds</Row>
-          <Row label="Max code attempts">{a.otpMaxAttempts}</Row>
-          <Row label="Predefined administrators" hint="Cannot be demoted or disabled — the recovery path">
-            <span className="font-mono text-xs">{a.predefinedAdminPhones.join(", ")}</span>
+          <Row label="Super-admin seed" hint="Recovery account bootstrapped from SUPERADMIN_EMAIL / SUPERADMIN_PASSWORD">
+            <Yes ok={a.superAdminSeedConfigured} />
           </Row>
         </Card>
 
