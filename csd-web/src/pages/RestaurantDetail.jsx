@@ -4,14 +4,14 @@ import {
   FiArrowLeft, FiExternalLink, FiMapPin, FiGlobe, FiMonitor, FiEdit2,
   FiUsers, FiClock, FiAlertTriangle, FiCheck, FiX,
 } from "react-icons/fi";
-import { restaurants as api, errorMessage, fieldErrors } from "../api";
+import { restaurants as api, stores as storesApi, errorMessage, fieldErrors } from "../api";
 import StatusBadge from "../components/StatusBadge";
 import { useAuth } from "../context/AuthContext";
 import ChargesDialog from "../components/ChargesDialog";
 import PosAccessDialog from "../components/PosAccessDialog";
 import CustomersDialog from "../components/CustomersDialog";
 import StoreDocuments from "../components/StoreDocuments";
-import { MenusPanel, TablesPanel, UsersPanel } from "../components/CatalogPanels";
+import { UsersPanel } from "../components/CatalogPanels";
 
 const inr = (n) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(n || 0);
 const dt = (d) => (d ? new Date(d).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "—");
@@ -53,6 +53,129 @@ const Toggle = ({ on, label }) => (
     </span>
   </div>
 );
+
+/**
+ * StoreStatusCard — admin-only control to disable, re-enable, or temporarily
+ * close a store. Backend: PATCH /api/csd/stores/:storeId/status. A closed or
+ * suspended store is immediately blocked from every POS entry point, so this
+ * is a destructive-ish action and gets a confirm step + audit trail server-
+ * side.
+ */
+const STATUS_OPTIONS = [
+  { value: "active", label: "Active", hint: "Store operates normally." },
+  { value: "suspended", label: "Disabled (suspended)", hint: "Blocks all POS sign-ins and hides the storefront. Use for policy violations." },
+  { value: "closed_temporarily", label: "Closed temporarily", hint: "Same block as suspended, but framed to staff as an operator-side pause (staff training, renovation)." },
+  { value: "closed_until", label: "Closed until a date", hint: "Auto-reopens after the chosen date passes." },
+];
+
+const StoreStatusCard = ({ storeId, current, onChanged }) => {
+  const [next, setNext] = useState(current);
+  const [reason, setReason] = useState("");
+  const [until, setUntil] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => { setNext(current); }, [current]);
+
+  const dirty = next !== current;
+  const requiresUntil = next === "closed_until";
+  const requiresReason = next !== "active";
+
+  const submit = async () => {
+    setMsg("");
+    if (requiresReason && !reason.trim()) return setMsg("A reason is required when changing away from Active.");
+    if (requiresUntil && !until) return setMsg("Pick the reopening date.");
+    if (!window.confirm(`Change store ${storeId} status to "${next}"? This is audited.`)) return;
+    setBusy(true);
+    try {
+      await storesApi.updateStatus(storeId, {
+        status: next,
+        reason: reason.trim() || undefined,
+        closedUntil: requiresUntil ? new Date(until).toISOString() : undefined,
+      });
+      setReason("");
+      setUntil("");
+      setMsg("Status updated.");
+      onChanged && onChanged();
+    } catch (err) {
+      setMsg(errorMessage(err, "Could not update status."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card title="Store status" className="mt-5">
+      <p className="text-sm text-navy-500">
+        Change the operating status of this store. Disabling or closing takes effect immediately
+        across the POS, storefront and CSD lookups.
+      </p>
+
+      <div className="mt-4 space-y-3">
+        <div>
+          <label className="text-xs font-semibold uppercase tracking-wider text-navy-500">New status</label>
+          <select
+            value={next}
+            onChange={(e) => setNext(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-navy-200 bg-white px-3 py-2 text-sm text-navy-900 focus:border-brand-500 focus:outline-none"
+          >
+            {STATUS_OPTIONS.map((o) => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-navy-500">
+            {STATUS_OPTIONS.find((o) => o.value === next)?.hint}
+          </p>
+        </div>
+
+        {requiresReason && (
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wider text-navy-500">
+              Reason (shown to store staff)
+            </label>
+            <input
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="e.g. Compliance review pending"
+              className="mt-1 w-full rounded-lg border border-navy-200 bg-white px-3 py-2 text-sm text-navy-900 focus:border-brand-500 focus:outline-none"
+              maxLength={500}
+            />
+          </div>
+        )}
+
+        {requiresUntil && (
+          <div>
+            <label className="text-xs font-semibold uppercase tracking-wider text-navy-500">Reopens on</label>
+            <input
+              type="date"
+              value={until}
+              onChange={(e) => setUntil(e.target.value)}
+              min={new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10)}
+              className="mt-1 w-full rounded-lg border border-navy-200 bg-white px-3 py-2 text-sm text-navy-900 focus:border-brand-500 focus:outline-none"
+            />
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={submit}
+          disabled={!dirty || busy}
+          className={`inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white ${
+            !dirty || busy ? "cursor-not-allowed bg-navy-300" : next === "active" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"
+          }`}
+        >
+          {busy ? "Saving…" : dirty ? `Apply: ${STATUS_OPTIONS.find((o) => o.value === next)?.label}` : "No changes"}
+        </button>
+
+        {msg && (
+          <p className={`text-sm ${msg === "Status updated." ? "text-emerald-700" : "text-red-600"}`}>
+            {msg}
+          </p>
+        )}
+      </div>
+    </Card>
+  );
+};
 
 const PERIODS = [
   { key: "month", label: "Last month" },
@@ -463,14 +586,19 @@ const RestaurantDetail = () => {
         <StoreDocuments storeId={storeId} />
       </div>
 
-      {/* ── Menus / Tables / POS users ──────────────────────────────────
-          Ported from the retired Admin Portal. Each loads its own data on
-          mount rather than adding to this page's initial request. ────────── */}
+      {/* ── POS users ──────────────────────────────────────────────────── */}
       <div className="mt-5 space-y-5">
-        <MenusPanel storeId={storeId} />
-        <TablesPanel storeId={storeId} />
         <UsersPanel storeId={storeId} />
       </div>
+
+      {/* ── Store status control (admin only) ─────────────────────────── */}
+      {isAdmin && (
+        <StoreStatusCard
+          storeId={storeId}
+          current={basic.status}
+          onChanged={load}
+        />
+      )}
 
       {/* ── Activity (§33) ───────────────────────────────────────────── */}
       <Card title="Restaurant activity" className="mt-5">
