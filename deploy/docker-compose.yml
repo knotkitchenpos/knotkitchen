@@ -125,6 +125,15 @@ services:
       # === CSD panel ===
       CSD_JWT_SECRET: ${CSD_JWT_SECRET:-}
       CSD_TOKEN_EXPIRY: ${CSD_TOKEN_EXPIRY:-12h}
+      # Seeds the CSD super-administrator on first pos-api start. Previously
+      # only piped into admin-api (which we deleted); csdAuthController now
+      # reads them here too, so they MUST be declared for the container to
+      # see them — deploy/.env alone is not enough, compose only forwards
+      # explicitly-listed keys. RESET_SUPERADMIN_PASSWORD=true is honoured
+      # once on startup and then remove.
+      SUPERADMIN_EMAIL: ${SUPERADMIN_EMAIL:-}
+      SUPERADMIN_PASSWORD: ${SUPERADMIN_PASSWORD:-}
+      RESET_SUPERADMIN_PASSWORD: ${RESET_SUPERADMIN_PASSWORD:-}
       # Must match the csd_documents mount below.
       CSD_DOCUMENTS_DIR: /app/csd-documents
       # Agreement → store creation. Unset until the onboarding portal supports
