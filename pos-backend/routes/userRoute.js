@@ -1,11 +1,12 @@
 const express = require("express");
 const {
-  register, sendLoginOtp, login, refreshToken, getUserData, logout,
+  register, login, refreshToken, getUserData, logout,
   requestEmailVerification, verifyEmail,
   requestPasswordReset, resetPassword,
   setupMFA, verifyMFA, disableMFA,
   getSessions, revokeSession,
-  validateStoreId, validateStoreOwner, sendStoreOtp, verifyStoreOtp, completeStoreSignup,
+  validateStoreId, validateStoreOwner,
+  checkStoreStatus, setupStorePassword, storeLoginWithPassword, changePassword,
 } = require("../controllers/userController");
 const { isVerifiedUser } = require("../middlewares/tokenVerification");
 const { rateLimit, clientIp } = require("../middlewares/rateLimiter");
@@ -16,40 +17,48 @@ const router = express.Router();
 /**
  * Rate limiters (§13).
  *
- * The prior implementation shipped NO rate limits on auth endpoints, which
- * left login, OTP request, OTP verify, forgot-password and store lookup
- * open to unbounded brute-force. We now apply:
+ * Every credential-verifying endpoint is protected. All limits are
+ * intentionally generous enough that real POS operators (fat-fingering a
+ * password once, retrying on a flaky mobile network) still work.
  *
- *   - per-IP + per-productId login limit (10 / 15 min by default)
- *   - per-IP + per-phone OTP send limit  (5 / 15 min)
- *   - per-IP + per-phone OTP verify limit (10 / 15 min)
- *   - per-IP password reset request limit (5 / 15 min)
- *   - per-IP store-lookup limit          (30 / 5 min)
+ * The 2026-08-31 migration off Fast2SMS retired otpSendLimiter and
+ * otpVerifyLimiter; the two new POS-auth endpoints have their own limiters:
  *
- * All limits are intentionally generous enough that real POS operators (e.g.
- * on flaky mobile networks, fat-fingering a password once) still work.
+ *   - storeSetupLimiter — /store/setup-password
+ *     Per-storeId AND per-IP. The knowledge-factor is the owner phone, and
+ *     without SMS confirmation this is the only rate-limit gate between an
+ *     attacker guessing (storeId, phone) pairs and being right. Deliberately
+ *     tight — an operator setting up once, or resetting after forgetting,
+ *     hits it maybe twice in a session.
+ *
+ *   - storeLoginLimiter — /store/login
+ *     Per-storeId AND per-IP. The User model's own loginAttempts + lockout
+ *     is the second layer.
  */
 const loginLimiter = rateLimit({
   windowMs: config.authLoginRateWindowMs,
   max: config.authLoginRateMax,
-  keyGenerator: (req) => `login:${clientIp(req)}:${(req.body?.productId || "").toString().slice(0, 32)}`,
+  keyGenerator: (req) =>
+    `login:${clientIp(req)}:${(req.body?.productId || "").toString().slice(0, 32)}`,
   message: "Too many login attempts. Please wait a few minutes and try again.",
 });
 
-const otpSendLimiter = rateLimit({
-  windowMs: config.authOtpSendRateWindowMs,
-  max: config.authOtpSendRateMax,
+const storeLoginLimiter = rateLimit({
+  windowMs: config.authLoginRateWindowMs,
+  max: config.authLoginRateMax,
   keyGenerator: (req) =>
-    `otp-send:${clientIp(req)}:${(req.body?.phone || "").toString().replace(/\D/g, "")}`,
-  message: "Too many OTP requests. Please wait a few minutes before requesting another.",
+    `store-login:${clientIp(req)}:${(req.body?.storeId || "").toString().slice(0, 12)}`,
+  message: "Too many sign-in attempts. Please wait a few minutes and try again.",
 });
 
-const otpVerifyLimiter = rateLimit({
-  windowMs: config.authOtpVerifyRateWindowMs,
-  max: config.authOtpVerifyRateMax,
+const storeSetupLimiter = rateLimit({
+  // 5 per hour per storeId + IP. Reset-password and first-time-setup both go
+  // through here; a legitimate operator hits it maybe twice a year.
+  windowMs: 60 * 60 * 1000,
+  max: 5,
   keyGenerator: (req) =>
-    `otp-verify:${clientIp(req)}:${(req.body?.phone || "").toString().replace(/\D/g, "")}`,
-  message: "Too many verification attempts. Please request a new OTP.",
+    `store-setup:${clientIp(req)}:${(req.body?.storeId || "").toString().slice(0, 12)}`,
+  message: "Too many attempts. Please wait an hour before trying again.",
 });
 
 const passwordResetLimiter = rateLimit({
@@ -66,31 +75,37 @@ const storeLookupLimiter = rateLimit({
   message: "Too many store lookups. Please slow down.",
 });
 
-// Store Signup & Verification Endpoints
+// ---------------------------------------------------------------------------
+// POS store auth (password-based, 2026-08-31)
+//
+// /store/status         — used by the client to decide UI mode
+// /store/setup-password — first-time create OR reset (idempotent by intent)
+// /store/login          — steady-state sign-in
+// ---------------------------------------------------------------------------
+router.route("/store/status").post(storeLookupLimiter, checkStoreStatus);
+router.route("/store/setup-password").post(storeSetupLimiter, setupStorePassword);
+router.route("/store/login").post(storeLoginLimiter, storeLoginWithPassword);
+
+// Legacy lookup endpoints (still used by the current login screen before
+// this migration, and by future admin tools).
 router.route("/store/validate-id").post(storeLookupLimiter, validateStoreId);
 router.route("/store/validate-owner").post(storeLookupLimiter, validateStoreOwner);
-router.route("/store/send-otp").post(otpSendLimiter, sendStoreOtp);
-router.route("/store/verify-otp").post(otpVerifyLimiter, verifyStoreOtp);
-router.route("/store/complete-signup").post(otpVerifyLimiter, completeStoreSignup);
-
-// Auth Spec Standard Endpoints
 router.route("/validate-store").post(storeLookupLimiter, validateStoreId);
-router.route("/request-otp").post(otpSendLimiter, sendStoreOtp);
-router.route("/verify-otp").post(otpVerifyLimiter, verifyStoreOtp);
 
 // Auth
 router.route("/register").post(loginLimiter, register);
-router.route("/login/send-otp").post(otpSendLimiter, sendLoginOtp);
 router.route("/login").post(loginLimiter, login);
 router.route("/refresh").post(refreshToken);
 router.route("/logout").post(isVerifiedUser, logout);
 router.route("/").get(isVerifiedUser, getUserData);
+router.route("/change-password").post(isVerifiedUser, changePassword);
 
 // Email verification
 router.route("/verify-email/request").post(isVerifiedUser, requestEmailVerification);
 router.route("/verify-email/:token").get(verifyEmail);
 
-// Password reset
+// Password reset (email-based; separate from the storeId-based reset above,
+// which is what POS operators actually use)
 router.route("/forgot-password").post(passwordResetLimiter, requestPasswordReset);
 router.route("/reset-password").post(passwordResetLimiter, resetPassword);
 

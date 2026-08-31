@@ -3,18 +3,20 @@ import { axiosWrapper } from "./axiosWrapper";
 // API Endpoints
 
 // Auth Endpoints
-export const sendLoginOtp = (data) => axiosWrapper.post("/api/user/login/send-otp", data);
 export const login = (data) => axiosWrapper.post("/api/user/login", data);
 export const register = (data) => axiosWrapper.post("/api/user/register", data);
 export const getUserData = () => axiosWrapper.get("/api/user");
 export const logout = () => axiosWrapper.post("/api/user/logout");
+export const changePassword = (data) => axiosWrapper.post("/api/user/change-password", data);
 
-// Store Auth Endpoints
-export const validateStoreId = (data) => axiosWrapper.post("/api/auth/validate-store", data);
+// Store Auth Endpoints — password-based, 2026-08-31 migration off Fast2SMS.
+// The old sendStoreOtp/verifyStoreOtp/completeStoreSignup/sendLoginOtp
+// endpoints were removed together with the entire phone+OTP flow.
+export const validateStoreId = (data) => axiosWrapper.post("/api/user/store/validate-id", data);
 export const validateStoreOwner = (data) => axiosWrapper.post("/api/user/store/validate-owner", data);
-export const sendStoreOtp = (data) => axiosWrapper.post("/api/auth/request-otp", data);
-export const verifyStoreOtp = (data) => axiosWrapper.post("/api/auth/verify-otp", data);
-export const completeStoreSignup = (data) => axiosWrapper.post("/api/user/store/complete-signup", data);
+export const checkStoreStatus = (data) => axiosWrapper.post("/api/user/store/status", data);
+export const setupStorePassword = (data) => axiosWrapper.post("/api/user/store/setup-password", data);
+export const storeLogin = (data) => axiosWrapper.post("/api/user/store/login", data);
 
 // Table Endpoints
 export const addTable = (data) => axiosWrapper.post("/api/table/", data);

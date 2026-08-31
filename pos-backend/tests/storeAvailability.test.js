@@ -160,6 +160,10 @@ test("a deleted store is rejected", async () => {
 });
 
 test("closure is enforced on every store entry point, not just validate-id", async () => {
+  // Same intent as before: the closed_temporarily status must be respected
+  // by every public POS entry point, not just the initial lookup. Now
+  // exercises the password-based endpoints that replaced sendStoreOtp /
+  // verifyStoreOtp / completeStoreSignup on 2026-08-31.
   makeStore("100008", { status: "closed_temporarily" });
 
   const owner = await call(userCtrl.validateStoreOwner, {
@@ -168,67 +172,21 @@ test("closure is enforced on every store entry point, not just validate-id", asy
   });
   assert.equal(owner.err?.status, 400, "validateStoreOwner must reject a closed store");
 
-  const otp = await call(userCtrl.sendStoreOtp, {
+  const status = await call(userCtrl.checkStoreStatus, { storeId: "100008" });
+  assert.equal(status.err?.status, 400, "checkStoreStatus must reject a closed store");
+
+  const setup = await call(userCtrl.setupStorePassword, {
     storeId: "100008",
-    phone: "9876543210",
+    ownerPhone: "9876543210",
+    password: "long-enough-password",
   });
-  assert.equal(otp.err?.status, 400, "sendStoreOtp must reject a closed store");
+  assert.equal(setup.err?.status, 400, "setupStorePassword must reject a closed store");
 
-  const verify = await call(userCtrl.verifyStoreOtp, {
+  const login = await call(userCtrl.storeLoginWithPassword, {
     storeId: "100008",
-    phone: "9876543210",
-    otp: "123456",
+    password: "any",
   });
-  assert.equal(verify.err?.status, 400, "verifyStoreOtp must reject a closed store");
-});
-
-// ---------------- OTP contract ----------------
-
-test("a correct OTP is accepted (verifyOtp returns { valid })", async () => {
-  makeStore("100009", { status: "active" });
-
-  // 999999 is the only code the mocked service treats as correct, so this
-  // exercises the real service contract rather than the demo-code shortcut.
-  const { err } = await call(userCtrl.completeStoreSignup, {
-    storeId: "100009",
-    phone: "9876543210",
-    otp: "999999",
-    password: "password123",
-  });
-
-  assert.ifError(err, "a valid OTP must not be rejected");
-});
-
-test("an incorrect OTP is still rejected", async () => {
-  makeStore("100010", { status: "active" });
-  const { err } = await call(userCtrl.completeStoreSignup, {
-    storeId: "100010",
-    phone: "9876543210",
-    otp: "111111",
-    password: "password123",
-  });
-
-  assert.equal(err.status, 400);
-  assert.match(err.message, /Invalid OTP/i);
-});
-
-test("the demo OTP keeps working for both signup paths", async () => {
-  makeStore("100011", { status: "active" });
-
-  const signup = await call(userCtrl.completeStoreSignup, {
-    storeId: "100011",
-    phone: "9876543210",
-    otp: "123456",
-    password: "password123",
-  });
-  assert.ifError(signup.err);
-
-  const verify = await call(userCtrl.verifyStoreOtp, {
-    storeId: "100011",
-    phone: "9876543210",
-    otp: "123456",
-  });
-  assert.ifError(verify.err);
+  assert.equal(login.err?.status, 400, "storeLoginWithPassword must reject a closed store");
 });
 
 // ---------------- Shared store status enum ----------------

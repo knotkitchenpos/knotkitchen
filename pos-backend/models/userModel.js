@@ -96,6 +96,13 @@ const userSchema = new mongoose.Schema(
     lastLoginAt: { type: Date },
     loginAttempts: { type: Number, default: 0 },
     lockedUntil: { type: Date },
+
+    // Set when an admin (CSD) force-resets a store's password to a temp
+    // value, or when the seeded first-time password came from a place the
+    // owner should not keep using. UI routes the user to a mandatory
+    // password-change screen on next login and refuses to proceed until
+    // they set their own.
+    mustChangePassword: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
