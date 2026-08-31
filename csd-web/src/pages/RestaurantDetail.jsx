@@ -547,7 +547,9 @@ const RestaurantDetail = () => {
             </Row>
             <Row label="GST">{charges.gstPercent}%</Row>
             <Row label="Current plan"><span className="capitalize">{charges.plan}</span></Row>
-            <Row label="Monthly subscription">{inr(charges.monthlySubscription)} + GST</Row>
+            {String(charges.plan).toLowerCase() !== "free" && (
+              <Row label="Monthly subscription">{inr(charges.monthlySubscription)} + GST</Row>
+            )}
           </dl>
           {charges.usingDefaults && (
             <p className="mt-3 text-xs text-navy-400">
