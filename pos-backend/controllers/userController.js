@@ -117,9 +117,15 @@ const generateResetPasswordToken = () => crypto.randomBytes(32).toString("hex");
  * Create a session document (source of truth for whether an access token is
  * still valid) and set the access + refresh cookies on the response.
  */
+// Session lifetime for POS operators. Deliberately long — they should not have
+// to re-enter a password unless they explicitly log out. Actual security is
+// still per-request (jti lookup against the User's sessions[]), so revoking is
+// instant even with a year-long cookie.
+const SESSION_LIFETIME_DAYS = 365;
+const SESSION_LIFETIME_MS = SESSION_LIFETIME_DAYS * 24 * 60 * 60 * 1000;
+
 const signTokensAndSetCookies = async (user, req, res) => {
-  const sessionExpiry = new Date();
-  sessionExpiry.setDate(sessionExpiry.getDate() + 30);
+  const sessionExpiry = new Date(Date.now() + SESSION_LIFETIME_MS);
 
   user.sessions = user.sessions || [];
   const session = user.sessions[user.sessions.push({
@@ -161,7 +167,7 @@ const signTokensAndSetCookies = async (user, req, res) => {
   });
 
   res.cookie("refreshToken", refreshToken, {
-    maxAge: 1000 * 60 * 60 * 24 * 30,
+    maxAge: SESSION_LIFETIME_MS,
     httpOnly: true,
     sameSite,
     secure: secureCookie,
@@ -619,7 +625,13 @@ const refreshToken = async (req, res, next) => {
     if (!session) return next(createHttpError(401, "Invalid or expired refresh token!"));
 
     const accessToken = generateAccessToken(user, String(session._id));
+    // Slide the session: every successful refresh pushes expiresAt out by
+    // another full lifetime so an actively used POS never logs itself out.
+    // The refresh cookie is re-set with the same maxAge so the browser's copy
+    // stays fresh too (some browsers cap third-party cookies to shorter
+    // lifetimes anyway; re-setting it is the cheapest way to keep it alive).
     session.lastActiveAt = new Date();
+    session.expiresAt = new Date(Date.now() + SESSION_LIFETIME_MS);
     await user.save();
 
     const secureCookie = config.cookieSecure;
@@ -630,6 +642,13 @@ const refreshToken = async (req, res, next) => {
       sameSite,
       secure: secureCookie,
       path: "/",
+    });
+    res.cookie("refreshToken", token, {
+      maxAge: SESSION_LIFETIME_MS,
+      httpOnly: true,
+      sameSite,
+      secure: secureCookie,
+      path: "/api/user",
     });
 
     res.status(200).json({ success: true, message: "Token refreshed!" });
