@@ -27,8 +27,8 @@ const to12h = (hhmm) => {
 };
 
 const Card = ({ title, action, children, className = "" }) => (
-  <section className={`rounded-2xl border border-navy-200 bg-white p-5 ${className}`}>
-    <div className="mb-3 flex items-center justify-between gap-3">
+  <section className={`rounded-2xl border border-navy-200 bg-white p-3.5 ${className}`}>
+    <div className="mb-2 flex items-center justify-between gap-3">
       <h2 className="text-sm font-bold uppercase tracking-wider text-navy-700">{title}</h2>
       {action}
     </div>
@@ -37,14 +37,14 @@ const Card = ({ title, action, children, className = "" }) => (
 );
 
 const Row = ({ label, children }) => (
-  <div className="flex justify-between gap-4 border-b border-navy-100 py-2.5 last:border-b-0">
+  <div className="flex justify-between gap-4 border-b border-navy-100 py-1.5 last:border-b-0">
     <dt className="shrink-0 text-xs font-semibold uppercase tracking-wider text-navy-500">{label}</dt>
     <dd className="text-right text-sm text-navy-900">{children ?? "—"}</dd>
   </div>
 );
 
 const Toggle = ({ on, label }) => (
-  <div className="flex items-center justify-between gap-3 border-b border-navy-100 py-2.5 last:border-b-0">
+  <div className="flex items-center justify-between gap-3 border-b border-navy-100 py-1.5 last:border-b-0">
     <span className="text-sm text-navy-800">{label}</span>
     <span className={`inline-flex items-center gap-1.5 text-sm font-medium ${on ? "text-emerald-700" : "text-navy-400"}`}>
       {on ? <FiCheck size={14} aria-hidden="true" /> : <FiX size={14} aria-hidden="true" />}
@@ -104,7 +104,7 @@ const StoreStatusCard = ({ storeId, current, onChanged }) => {
   };
 
   return (
-    <Card title="Store status" className="mt-5">
+    <Card title="Store status" className="mt-3">
       <p className="text-sm text-navy-500">
         Change the operating status of this store. Disabling or closing takes effect immediately
         across the POS, storefront and CSD lookups.
@@ -258,7 +258,7 @@ const RestaurantDetail = () => {
       </Link>
 
       {/* ── Header (§18) ─────────────────────────────────────────────── */}
-      <header className="mt-4 flex flex-wrap items-center gap-4 rounded-2xl border border-navy-200 bg-white p-5">
+      <header className="mt-3 flex flex-wrap items-center gap-3 rounded-2xl border border-navy-200 bg-white p-3.5">
         {header.logoUrl ? (
           <img src={header.logoUrl} alt="" className="h-16 w-16 rounded-xl object-cover" />
         ) : (
@@ -294,7 +294,7 @@ const RestaurantDetail = () => {
         </div>
       </header>
 
-      <div className="mt-5 grid gap-5 lg:grid-cols-2">
+      <div className="mt-3 grid gap-3 lg:grid-cols-2">
         {/* ── Row 1 ─────────────────────────────────────────────────── */}
         <Card title="Basic information">
           <dl>
@@ -323,13 +323,13 @@ const RestaurantDetail = () => {
         </Card>
 
         <Card title="Quick access">
-          <div className="space-y-3">
+          <div className="space-y-2">
             <a
               href={googleBusiness.url || undefined}
               target="_blank" rel="noopener noreferrer"
               aria-disabled={!googleBusiness.url}
               onClick={(e) => { if (!googleBusiness.url) e.preventDefault(); }}
-              className={`flex items-center gap-3 rounded-xl border p-4 ${
+              className={`flex items-center gap-3 rounded-xl border p-2.5 ${
                 googleBusiness.url ? "border-navy-200 hover:bg-navy-50" : "cursor-not-allowed border-navy-100 opacity-50"
               }`}>
               <FiMapPin className="shrink-0 text-brand-600" size={20} aria-hidden="true" />
@@ -347,7 +347,7 @@ const RestaurantDetail = () => {
               target="_blank" rel="noopener noreferrer"
               aria-disabled={!basic.website}
               onClick={(e) => { if (!basic.website) e.preventDefault(); }}
-              className={`flex items-center gap-3 rounded-xl border p-4 ${
+              className={`flex items-center gap-3 rounded-xl border p-2.5 ${
                 basic.website ? "border-navy-200 hover:bg-navy-50" : "cursor-not-allowed border-navy-100 opacity-50"
               }`}>
               <FiGlobe className="shrink-0 text-brand-600" size={20} aria-hidden="true" />
@@ -376,7 +376,7 @@ const RestaurantDetail = () => {
                   setOpeningPos(false);
                 }
               }}
-              className="flex w-full items-center gap-3 rounded-xl border border-navy-200 p-4 text-left hover:bg-navy-50 disabled:cursor-wait disabled:opacity-60"
+              className="flex w-full items-center gap-3 rounded-xl border border-navy-200 p-2.5 text-left hover:bg-navy-50 disabled:cursor-wait disabled:opacity-60"
             >
               <FiMonitor className="shrink-0 text-brand-600" size={20} aria-hidden="true" />
               <span className="min-w-0 flex-1">
@@ -602,12 +602,12 @@ const RestaurantDetail = () => {
       </div>
 
       {/* ── Documents (§30) ──────────────────────────────────────────── */}
-      <div className="mt-5">
+      <div className="mt-3">
         <StoreDocuments storeId={storeId} />
       </div>
 
       {/* ── POS users ──────────────────────────────────────────────────── */}
-      <div className="mt-5 space-y-5">
+      <div className="mt-3 space-y-3">
         <UsersPanel storeId={storeId} />
       </div>
 
@@ -621,7 +621,7 @@ const RestaurantDetail = () => {
       )}
 
       {/* ── Activity (§33) ───────────────────────────────────────────── */}
-      <Card title="Restaurant activity" className="mt-5">
+      <Card title="Restaurant activity" className="mt-3">
         {activity.length === 0 ? (
           <p className="text-sm text-navy-400">No activity recorded for this restaurant yet.</p>
         ) : (

@@ -170,7 +170,7 @@ const Layout = () => {
           </div>
         </header>
 
-        <main className="p-4 sm:p-6">
+        <main className="p-3 sm:p-4">
           <Outlet />
         </main>
       </div>
