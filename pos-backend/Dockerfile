@@ -34,11 +34,12 @@ RUN apk add --no-cache tini curl
 COPY --from=deps --chown=node:node /app/node_modules ./node_modules
 COPY --chown=node:node . .
 
-# Media library defaults to writing under /app/uploads when
-# MEDIA_STORAGE_PROVIDER=local. Production should use r2/s3/cloudinary, but if
-# a small deploy sticks with local we make sure the dir exists and is owned by
-# node — otherwise the very first upload would fail.
-RUN mkdir -p /app/uploads && chown -R node:node /app/uploads
+# Volume mountpoints that the app writes to as `node` (uid 1000). Docker
+# copies the ownership of these directories from the image the first time a
+# fresh named volume attaches, so shipping them owned by node avoids the
+# EACCES-on-first-write trap we hit with csd-documents in prod (Sep 2026).
+RUN mkdir -p /app/uploads /app/csd-documents \
+ && chown -R node:node /app/uploads /app/csd-documents
 
 USER node
 EXPOSE 8000
