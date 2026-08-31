@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  FiX, FiCheckCircle, FiAlertTriangle, FiMapPin, FiArrowRight, FiCopy, FiCheck,
+  FiX, FiCheckCircle, FiAlertTriangle, FiMapPin, FiArrowRight, FiCopy, FiCheck, FiExternalLink,
 } from "react-icons/fi";
 import { agreements as api, errorMessage, fieldErrors } from "../api";
 
@@ -171,10 +171,33 @@ const AgreementStoreDialog = ({ agreement, onClose, onCreated }) => {
                   <h3 className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-navy-700">
                     <FiMapPin size={12} aria-hidden="true" /> Restaurant coordinates
                   </h3>
-                  <p className="mb-3 text-xs text-navy-600">
+                  <p className="mb-2 text-xs text-navy-600">
                     The only thing the agreement doesn't carry — used to place the restaurant for
                     delivery and search.
                   </p>
+                  {/* Open Google Maps: if the operator has already typed lat/lng, jump
+                      straight to that point; otherwise search the agreement address so
+                      they can drop a pin and copy the coordinates back here. */}
+                  <a
+                    href={(() => {
+                      const lat = String(coords.latitude || "").trim();
+                      const lng = String(coords.longitude || "").trim();
+                      if (lat && lng && !Number.isNaN(+lat) && !Number.isNaN(+lng)) {
+                        return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lat},${lng}`)}`;
+                      }
+                      const q = [m.addressLine1, m.city, m.state, m.postalCode].filter(Boolean).join(", ");
+                      return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q || "India")}`;
+                    })()}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mb-3 inline-flex items-center gap-1.5 text-xs font-semibold text-brand-600 hover:text-brand-700"
+                  >
+                    <FiMapPin size={12} aria-hidden="true" />
+                    {coords.latitude && coords.longitude
+                      ? "Open this point on Google Maps"
+                      : "Find on Google Maps"}
+                    <FiExternalLink size={11} aria-hidden="true" />
+                  </a>
                   <div className="grid grid-cols-2 gap-3">
                     {[
                       { name: "latitude", label: "Latitude", ph: "22.5726" },
