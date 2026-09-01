@@ -16,7 +16,53 @@ const config = require("../config/config");
  *     an operator can look them up without shipping them to the browser.
  *   - Stack trace is only ever returned when NODE_ENV === "development".
  */
-const globalErrorHandler = (err, req, res, next) => { // eslint-disable-line no-unused-vars
+/**
+ * Convert Mongoose / MongoDB "programmer error looks like a 500" errors into
+ * proper 4xx responses with actionable messages. Without this, a schema
+ * required-field mismatch (like TableSession.outletId in Sep 2026), a bad
+ * ObjectId cast, or a duplicate-key insertion all bubble up as a generic
+ * "Internal server error." — and the operator has no way to tell WHAT went
+ * wrong, only THAT it did. Now the same mistakes surface with the exact
+ * failing field and a self-diagnosing message.
+ */
+const normalizeError = (err) => {
+  if (!err || typeof err !== "object") return err;
+
+  // Mongoose ValidationError — one or more required/enum/validate failures.
+  if (err.name === "ValidationError" && err.errors) {
+    const fieldErrors = {};
+    for (const [path, e] of Object.entries(err.errors)) {
+      fieldErrors[path] = e?.message || String(e);
+    }
+    const paths = Object.keys(fieldErrors);
+    const message = paths.length
+      ? `Validation failed on ${paths.join(", ")}.`
+      : "Validation failed.";
+    return Object.assign(new Error(message), { statusCode: 400, fieldErrors });
+  }
+
+  // Bad ObjectId / bad enum value / bad number coercion.
+  if (err.name === "CastError") {
+    return Object.assign(
+      new Error(`Invalid value for ${err.path || "field"}.`),
+      { statusCode: 400 }
+    );
+  }
+
+  // Duplicate key — a unique index would reject the insert.
+  if (err.code === 11000 && err.keyValue) {
+    const key = Object.keys(err.keyValue)[0] || "field";
+    return Object.assign(
+      new Error(`A record with that ${key} already exists.`),
+      { statusCode: 409, fieldErrors: { [key]: "Already registered." } }
+    );
+  }
+
+  return err;
+};
+
+const globalErrorHandler = (rawErr, req, res, next) => { // eslint-disable-line no-unused-vars
+  const err = normalizeError(rawErr);
   const statusCode = err.statusCode || err.status || 500;
   const isServerError = statusCode >= 500;
 
