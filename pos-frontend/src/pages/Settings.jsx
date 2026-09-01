@@ -1201,7 +1201,10 @@ const TimingsHolidaysView = () => {
 
             return (
               <div key={key} className="py-4 space-y-3">
-                <div className="flex items-center gap-4 text-[13.5px]">
+                {/* flex-wrap: the row is a fixed ~975px of controls, so on a
+                    narrow window the badge and buttons drop to a second line
+                    instead of overflowing the card. */}
+                <div className="flex items-center gap-4 text-[13.5px] flex-wrap">
                   {/* ON/OFF Switch */}
                   <div className="flex items-center gap-2.5 w-[90px] shrink-0">
                     <button
@@ -1227,15 +1230,18 @@ const TimingsHolidaysView = () => {
                     {label}
                   </span>
 
-                  {/* Primary Operating Time Inputs */}
+                  {/* Primary Operating Time Inputs.
+                      Fixed widths, not flex-1: letting this block stretch pushed
+                      the action buttons to the far edge of the card and opened a
+                      chasm across the middle of every row. */}
                   {isOpen ? (
-                    <div className="flex items-center gap-2 flex-1 flex-wrap">
+                    <div className="flex items-center gap-2 shrink-0">
                       {/* Opening / Start Time Input */}
                       <input
                         type="time"
                         value={dayData.openTime}
                         onChange={(e) => handleTimeChange(key, "openTime", e.target.value)}
-                        className="h-[38px] px-3 rounded-lg border border-[#E2E8F0] font-semibold text-[13.5px] text-[#334155] bg-white focus:border-[#5B42F3]"
+                        className="w-[125px] h-[38px] px-3 rounded-lg border border-[#E2E8F0] font-semibold text-[13.5px] text-[#334155] bg-white focus:border-[#5B42F3]"
                       />
 
                       {/* Connector Arrow */}
@@ -1246,7 +1252,7 @@ const TimingsHolidaysView = () => {
                         <select
                           value={dayData.closeDay !== undefined && dayData.closeDay !== null ? dayData.closeDay : (overnight ? (dayIndex + 1) % 7 : dayIndex)}
                           onChange={(e) => handleTimeChange(key, "closeDay", Number(e.target.value))}
-                          className="h-[38px] px-2.5 rounded-lg border border-[#E2E8F0] font-semibold text-[13px] text-[#334155] bg-white focus:border-[#5B42F3] cursor-pointer"
+                          className="w-[145px] h-[38px] px-2.5 rounded-lg border border-[#E2E8F0] font-semibold text-[13px] text-[#334155] bg-white focus:border-[#5B42F3] cursor-pointer"
                           title="Select End Day"
                         >
                           {DAYS.map((d) => (
@@ -1261,25 +1267,35 @@ const TimingsHolidaysView = () => {
                           type="time"
                           value={dayData.closeTime}
                           onChange={(e) => handleTimeChange(key, "closeTime", e.target.value)}
-                          className="h-[38px] px-3 rounded-lg border border-[#E2E8F0] font-semibold text-[13.5px] text-[#334155] bg-white focus:border-[#5B42F3]"
+                          className="w-[125px] h-[38px] px-3 rounded-lg border border-[#E2E8F0] font-semibold text-[13.5px] text-[#334155] bg-white focus:border-[#5B42F3]"
                         />
                       </div>
 
-                      {/* Overnight / Next-Day Indicator Badge */}
-                      {(Number(dayData.closeDay) !== dayIndex || overnight) && (
-                        <span className="px-2.5 py-1 rounded-md bg-[#EEF0FE] text-[#5B42F3] text-[11px] font-extrabold shrink-0 flex items-center gap-1">
-                          <span>🌙</span> Overnight
-                        </span>
-                      )}
                     </div>
                   ) : (
-                    <div className="flex-1 text-[13px] font-bold text-[#94A3B8] italic">
+                    // 125 + 8 + 22 (arrow) + 8 + (145 + 6 + 125) — the width of the time
+                    // block above, so the buttons sit in the same place either way.
+                    <div className="w-[439px] shrink-0 text-[13px] font-bold text-[#94A3B8] italic">
                       Closed all day
                     </div>
                   )}
 
-                  {/* Actions: Add Hour & Submit */}
-                  <div className="flex items-center gap-2 shrink-0 ml-auto">
+                  {/* Overnight / Next-Day Indicator Badge.
+                      Reserved slot rather than a conditional element, so one
+                      overnight day doesn't shove its own buttons out of line
+                      with every other row. */}
+                  <div className="w-[104px] shrink-0">
+                    {isOpen && (Number(dayData.closeDay) !== dayIndex || overnight) && (
+                      <span className="px-2.5 py-1 rounded-md bg-[#EEF0FE] text-[#5B42F3] text-[11px] font-extrabold flex items-center gap-1 w-fit">
+                        <span>🌙</span> Overnight
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Actions: Add Hour & Submit. Right-aligned inside a fixed
+                      slot so Submit keeps its column on closed days, where
+                      Add Hour isn't rendered. */}
+                  <div className="w-[168px] shrink-0 flex items-center justify-end gap-2">
                     {isOpen && (
                       <button
                         type="button"
