@@ -1145,25 +1145,30 @@ const setupStorePassword = async (req, res, next) => {
 };
 
 /**
- * POST /api/user/store/login  { storeId, password }  — public
+ * POST /api/user/store/login  { storeId, phone, password }  — public
  *
- * The steady-state POS sign-in. Same generic "Invalid credentials." on every
- * failure so this cannot be used to enumerate stores — the ONE exception is
- * an existing store with no password yet, which returns 409 NO_PASSWORD so
- * the client can route the user to first-time setup instead of an infinite
- * "wrong password" loop.
+ * Multi-user POS sign-in. A store has ONE Owner plus any number of staff
+ * added from Settings → Staff; each of them signs in with the same storeId
+ * but their own phone + password. The phone acts as the account selector
+ * inside the tenant; the password is what actually authenticates.
  *
- * Reuses the existing loginAttempts / lockedUntil fields from the User
- * model, and the shared signTokensAndSetCookies primitive, so lockout and
- * session issuance behave exactly like the legacy Product-ID + password
- * login (§ that block still exists as `login` above).
+ * Failures collapse to the same generic "Invalid credentials." (unknown
+ * phone, wrong password, deleted/inactive account) so this cannot be used
+ * to enumerate staff. The ONE exception is a store with no users yet at
+ * all, which returns 409 NO_PASSWORD so the client can route to first-time
+ * setup instead of an infinite "wrong password" loop.
+ *
+ * Reuses loginAttempts / lockedUntil on the User model, and the shared
+ * signTokensAndSetCookies primitive, so lockout and session issuance
+ * behave exactly like the legacy Product-ID + password login.
  */
 const storeLoginWithPassword = async (req, res, next) => {
   try {
     const storeId = toSafeString(req.body.storeId).trim();
+    const phoneRaw = toSafeString(req.body.phone).replace(/\D/g, "").slice(-10);
     const password = typeof req.body.password === "string" ? req.body.password : "";
-    if (!/^\d{6}$/.test(storeId) || !password) {
-      return next(createHttpError(400, "Store ID and password are required."));
+    if (!/^\d{6}$/.test(storeId) || !/^\d{10}$/.test(phoneRaw) || !password) {
+      return next(createHttpError(400, "Store ID, phone and password are required."));
     }
 
     const { restaurant, store } = await findRestaurantOrStore(storeId);
@@ -1172,15 +1177,31 @@ const storeLoginWithPassword = async (req, res, next) => {
     const unavailable = getStoreUnavailableReason(restaurant, store);
     if (unavailable) return next(createHttpError(400, unavailable));
 
-    const ownerId = restaurant?.ownerId;
-    if (!ownerId) {
+    // Any user of this store yet? If not, this is a fresh store — send the
+    // client to setup instead of looping on 401.
+    const anyUserExists = await User.exists({
+      storeId,
+      isActive: true,
+      isDeleted: { $ne: true },
+      password: { $exists: true, $ne: "" },
+    });
+    if (!anyUserExists) {
       return next(
         createHttpError(409, "This store has no password yet. Please set one up first.")
       );
     }
 
-    const user = await User.findById(ownerId);
-    if (!user || user.isDeleted || !user.isActive) {
+    const user = await User.findOne({
+      storeId,
+      phone: phoneRaw,
+      isActive: true,
+      isDeleted: { $ne: true },
+    });
+    if (!user) {
+      // Unknown phone for this store — same generic reply.
+      return next(createHttpError(401, "Invalid credentials."));
+    }
+    if (user.isDeleted || !user.isActive) {
       return next(createHttpError(401, "Invalid credentials."));
     }
     if (user.lockedUntil && user.lockedUntil > new Date()) {

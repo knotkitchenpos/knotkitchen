@@ -137,11 +137,16 @@ const Login = () => {
   const handleLoginSubmit = (e) => {
     e.preventDefault();
     setErrorMessage("");
+    const cleanPhone = ownerPhone.replace(/\D/g, "");
+    if (cleanPhone.length !== 10) {
+      setErrorMessage("Enter your 10-digit phone number.");
+      return;
+    }
     if (!password) {
       setErrorMessage("Please enter your password.");
       return;
     }
-    loginMutation.mutate({ storeId: storeId.trim(), password });
+    loginMutation.mutate({ storeId: storeId.trim(), phone: cleanPhone, password });
   };
 
   const handleSetupSubmit = (e) => {
@@ -245,13 +250,35 @@ const Login = () => {
             </div>
 
             <label className="block">
+              <span className="text-xs font-semibold text-[#AEB8CA] uppercase tracking-wider">Your phone</span>
+              <div className="mt-2.5 flex items-center gap-3 bg-[#0D1526] border-[#26344B] focus-within:border-[#FF5A00] group rounded-xl px-4 py-3.5 border transition-all duration-200 shadow-sm focus-within:shadow-[0_0_0_3px_rgba(255,90,0,0.15)]">
+                <FiPhone size={18} className="text-[#77839A] group-focus-within:text-[#FF5A00] transition-colors shrink-0" />
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  autoComplete="tel"
+                  autoFocus
+                  required
+                  maxLength={10}
+                  value={ownerPhone}
+                  onChange={(e) => setOwnerPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                  disabled={busy}
+                  placeholder="10-digit phone"
+                  className="w-full bg-transparent text-[#F5F7FA] text-base placeholder:text-[#77839A] outline-none"
+                />
+              </div>
+              <span className="mt-1 block text-[11px] text-[#77839A]">
+                The phone tied to your staff account for this store.
+              </span>
+            </label>
+
+            <label className="block">
               <span className="text-xs font-semibold text-[#AEB8CA] uppercase tracking-wider">Password</span>
               <div className="mt-2.5 flex items-center gap-3 bg-[#0D1526] border-[#26344B] focus-within:border-[#FF5A00] group rounded-xl px-4 py-3.5 border transition-all duration-200 shadow-sm focus-within:shadow-[0_0_0_3px_rgba(255,90,0,0.15)]">
                 <FiLock size={18} className="text-[#77839A] group-focus-within:text-[#FF5A00] transition-colors shrink-0" />
                 <input
                   type="password"
                   autoComplete="current-password"
-                  autoFocus
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
@@ -264,7 +291,7 @@ const Login = () => {
 
             <button
               type="submit"
-              disabled={busy || !password}
+              disabled={busy || !password || ownerPhone.replace(/\D/g, "").length !== 10}
               className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#FF5A00] py-3.5 font-semibold text-white disabled:opacity-60 hover:bg-[#FF7A2A] transition"
             >
               {loginMutation.isPending ? "Signing in…" : "Sign in"}

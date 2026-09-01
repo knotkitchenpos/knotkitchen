@@ -94,6 +94,29 @@ const UserMock = {
     if (q.phone && q.restaurantId) {
       return usersByPhoneAndRestaurant[key(q.phone, q.restaurantId)] || null;
     }
+    // Login lookup: (storeId, phone) with active/isDeleted filters.
+    if (q.storeId && q.phone) {
+      const match = Object.values(usersById).find(
+        (u) =>
+          String(u.storeId) === String(q.storeId) &&
+          String(u.phone) === String(q.phone) &&
+          (q.isActive === undefined || Boolean(u.isActive) === Boolean(q.isActive)) &&
+          (q.isDeleted?.$ne === undefined || Boolean(u.isDeleted) !== Boolean(q.isDeleted.$ne))
+      );
+      return match || null;
+    }
+    // anyUserExists lookup: storeId only, active, has password.
+    if (q.storeId && q.password?.$exists) {
+      const match = Object.values(usersById).find(
+        (u) =>
+          String(u.storeId) === String(q.storeId) &&
+          Boolean(u.isActive) === true &&
+          !u.isDeleted &&
+          typeof u.password === "string" &&
+          u.password.length > 0
+      );
+      return match || null;
+    }
     return null;
   },
   findById: async (id) => usersById[String(id)] || null,
@@ -283,15 +306,17 @@ test("login: no-password store → 409 (route client to setup, not infinite 401)
   seedFreshStore("200020");
   const { err } = await call(userCtrl.storeLoginWithPassword, {
     storeId: "200020",
-    password: "anything",
+    phone: "9876543210",
+    password: "anything-here",
   });
   assert.equal(err?.status, 409, "409 tells the client to switch to setup mode");
 });
 
-test("login: correct password succeeds and issues session", async () => {
+test("login: correct phone + password succeeds and issues session", async () => {
   await seedStoreWithOwner("200021", "9876543210", "correct-horse-battery");
   const { res, err } = await call(userCtrl.storeLoginWithPassword, {
     storeId: "200021",
+    phone: "9876543210",
     password: "correct-horse-battery",
   });
   assert.ifError(err);
@@ -303,7 +328,19 @@ test("login: wrong password returns 401 with the generic message", async () => {
   await seedStoreWithOwner("200022", "9876543210", "correct-horse-battery");
   const { err } = await call(userCtrl.storeLoginWithPassword, {
     storeId: "200022",
+    phone: "9876543210",
     password: "definitely-not-the-password",
+  });
+  assert.equal(err?.status, 401);
+  assert.equal(err.message, "Invalid credentials.");
+});
+
+test("login: unknown phone for existing store returns the same 401", async () => {
+  await seedStoreWithOwner("200023", "9876543210", "correct-horse-battery");
+  const { err } = await call(userCtrl.storeLoginWithPassword, {
+    storeId: "200023",
+    phone: "9999999999",
+    password: "correct-horse-battery",
   });
   assert.equal(err?.status, 401);
   assert.equal(err.message, "Invalid credentials.");
@@ -312,14 +349,22 @@ test("login: wrong password returns 401 with the generic message", async () => {
 test("login: unknown store returns the SAME 401 (no enumeration)", async () => {
   const { err } = await call(userCtrl.storeLoginWithPassword, {
     storeId: "111111",
-    password: "anything",
+    phone: "9876543210",
+    password: "anything-here",
   });
   assert.equal(err?.status, 401);
   assert.equal(err.message, "Invalid credentials.");
 });
 
 test("login: missing fields → 400 (separate error class from wrong credentials)", async () => {
-  for (const body of [{}, { storeId: "200021" }, { password: "abc" }, { storeId: 1, password: "" }]) {
+  for (const body of [
+    {},
+    { storeId: "200021" },
+    { phone: "9876543210", password: "abc" },
+    { storeId: "200021", password: "abc" },
+    { storeId: "200021", phone: "9876543210" },
+    { storeId: 1, phone: "9876543210", password: "" },
+  ]) {
     const { err } = await call(userCtrl.storeLoginWithPassword, body);
     assert.equal(err?.status, 400, `body=${JSON.stringify(body)} must be 400`);
   }
