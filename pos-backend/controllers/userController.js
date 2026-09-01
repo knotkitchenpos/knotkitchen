@@ -994,6 +994,26 @@ const maskPhone10 = (p) => {
 };
 
 /**
+ * A store's users whose password was actually chosen by a person. Everything
+ * that asks "can someone sign in to this store yet?" must go through here so
+ * status and login can never disagree.
+ */
+const claimedUserFilter = ({ storeId, restaurant }) => {
+  const scope = restaurant?._id
+    ? { $or: [{ storeId }, { restaurantId: restaurant._id }] }
+    : { storeId };
+  return {
+    ...scope,
+    password: { $exists: true, $ne: "" },
+    passwordPlaceholder: { $ne: true },
+    isActive: true,
+    isDeleted: { $ne: true },
+  };
+};
+
+const findClaimedStoreUser = (scope) => User.exists(claimedUserFilter(scope));
+
+/**
  * POST /api/user/store/status  { storeId }  — public
  *
  * Returns whether the store has a working POS User + a phone hint, so the
@@ -1019,15 +1039,17 @@ const checkStoreStatus = async (req, res, next) => {
     if (unavailable) return next(createHttpError(400, unavailable));
 
     const ownerPhone = await resolveStoreOwnerPhone(restaurant, store);
-    const hasPassword = !!(
-      restaurant?.ownerId &&
-      (await User.exists({
-        _id: restaurant.ownerId,
-        password: { $exists: true, $ne: "" },
-        isDeleted: { $ne: true },
-        isActive: true,
-      }))
-    );
+
+    // "Has a password" means A HUMAN CHOSE ONE — not merely "a User row
+    // exists". `password` is required:true on the model, so every row has a
+    // hash; system-materialised rows (the CSD "Open POS" bootstrap) carry a
+    // random hash nobody holds and are flagged passwordPlaceholder. Counting
+    // those as a password is what stranded new stores on a login form for a
+    // password that was never set.
+    //
+    // Scoped by storeId (not restaurant.ownerId) because any staff member may
+    // have claimed the store, and because ownerId is frequently unset.
+    const hasPassword = !!(await findClaimedStoreUser({ storeId, restaurant }));
 
     res.status(200).json({
       success: true,
@@ -1106,6 +1128,7 @@ const setupStorePassword = async (req, res, next) => {
         phone: rawPhone,
         address: "Default Address",
         password, // pre-save hook hashes
+        passwordPlaceholder: false,
         role: "Owner",
         restaurantId: restaurant._id,
         storeId,
@@ -1116,9 +1139,10 @@ const setupStorePassword = async (req, res, next) => {
         await restaurant.save();
       }
     } else {
-      user.password = password; // re-hashed on save
-      user.sessions = [];       // invalidate every prior session
+      user.password = password;      // re-hashed on save
+      user.sessions = [];            // invalidate every prior session
       user.mustChangePassword = false;
+      user.passwordPlaceholder = false; // a person has now chosen it
       user.loginAttempts = 0;
       user.lockedUntil = undefined;
       await user.save();
@@ -1177,14 +1201,11 @@ const storeLoginWithPassword = async (req, res, next) => {
     const unavailable = getStoreUnavailableReason(restaurant, store);
     if (unavailable) return next(createHttpError(400, unavailable));
 
-    // Any user of this store yet? If not, this is a fresh store — send the
-    // client to setup instead of looping on 401.
-    const anyUserExists = await User.exists({
-      storeId,
-      isActive: true,
-      isDeleted: { $ne: true },
-      password: { $exists: true, $ne: "" },
-    });
+    // Anyone actually claimed this store yet? A store whose only rows are
+    // system-seeded placeholders counts as unclaimed — same rule as
+    // /store/status, so the two endpoints can never disagree and bounce the
+    // operator between "set a password" and "wrong password".
+    const anyUserExists = await findClaimedStoreUser({ storeId, restaurant });
     if (!anyUserExists) {
       return next(
         createHttpError(409, "This store has no password yet. Please set one up first.")
@@ -1203,6 +1224,13 @@ const storeLoginWithPassword = async (req, res, next) => {
     }
     if (user.isDeleted || !user.isActive) {
       return next(createHttpError(401, "Invalid credentials."));
+    }
+    // Never let a placeholder hash be guessed at: nobody holds it, so every
+    // attempt would burn a login attempt toward lockout for no reason.
+    if (user.passwordPlaceholder === true) {
+      return next(
+        createHttpError(409, "This account has no password yet. Please set one up first.")
+      );
     }
     if (user.lockedUntil && user.lockedUntil > new Date()) {
       return next(createHttpError(423, "Account locked. Try again later."));
@@ -1262,6 +1290,7 @@ const changePassword = async (req, res, next) => {
 
     user.password = nextPw;
     user.mustChangePassword = false;
+    user.passwordPlaceholder = false;
     const currentJti = req.user.jti;
     user.sessions = (user.sessions || []).filter(
       (s) => String(s._id) === String(currentJti)
@@ -1356,6 +1385,10 @@ const impersonateWithSupportToken = async (req, res, next) => {
         storeId: support.storeId,
         isActive: true,
         mustChangePassword: true,
+        // The hash above is 32 random bytes — no human holds it. Without this
+        // flag the store looks "already set up" to /store/status and the real
+        // operator is shown a password prompt they can never satisfy.
+        passwordPlaceholder: true,
       };
       if (/^\d{10}$/.test(seedPhone)) seedPayload.phone = seedPhone;
       user = await User.create(seedPayload);

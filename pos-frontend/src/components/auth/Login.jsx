@@ -16,28 +16,27 @@ import { useNavigate } from "react-router-dom";
  *   Step 1 — always: enter Store ID → server tells us whether this store
  *            already has a password.
  *
- *   Step 2 — one of three modes decided by the server, never the client:
+ *   Step 2 — one of two modes decided by the server, never the client:
  *
- *     LOGIN     (hasPassword: true)   — password field only
- *     SETUP     (hasPassword: false)  — owner phone + new password + confirm
- *     RESET     (opt-in via "Forgot password?" on the LOGIN form)
- *                                     — owner phone + new password + confirm
+ *     LOGIN  (hasPassword: true)   — phone + password
+ *     SETUP  (hasPassword: false)  — owner phone + new password + confirm
  *
- * SETUP and RESET both POST to /store/setup-password with the same fields.
- * The server distinguishes at runtime; the client just knows "the user is
- * setting or resetting the password with the owner phone as the knowledge
- * gate".
+ * "hasPassword" means a person actually chose one. A store that exists only
+ * as an admin-created Store ID, or whose sole account was auto-seeded by the
+ * CSD "Open POS" handoff, reports false and lands the manager on SETUP —
+ * which is the whole point of handing them a bare Store ID.
  *
- * No SMS. No OTP. If the operator has forgotten the owner phone associated
- * with their store as well, the CSD admin panel can reset it (that surface
- * is a follow-up — for now the message on the SETUP screen tells them to
- * contact KnotKitchen support).
+ * There is deliberately NO self-service reset here. Recovery goes through
+ * KnotKitchen support / CSD, so the owner phone is not a standing
+ * password-change gate on a public form.
+ *
+ * No SMS. No OTP.
  */
 const Login = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
 
-  // "storeId" → "login" | "setup" | "reset"
+  // "storeId" → "login" | "setup"
   const [step, setStep] = useState("storeId");
 
   const [storeId, setStoreId] = useState("");
@@ -111,7 +110,7 @@ const Login = () => {
     },
   });
 
-  // --- Step 2b: SETUP or RESET (server treats them identically) -----------
+  // --- Step 2b: first-time SETUP -----------------------------------------
   const setupMutation = useMutation({
     mutationFn: (reqData) => setupStorePassword(reqData),
     onSuccess: (res) => {
@@ -297,23 +296,15 @@ const Login = () => {
               {!loginMutation.isPending && <FiArrowRight aria-hidden="true" />}
             </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                setStep("reset");
-                setPassword("");
-                setErrorMessage("");
-              }}
-              className="w-full text-xs text-[#77839A] hover:text-[#FF5A00] transition"
-            >
-              Forgot password?
-            </button>
+            <p className="text-[11px] text-[#77839A] text-center">
+              Forgot your password? Contact KnotKitchen support.
+            </p>
           </motion.form>
         )}
 
-        {(step === "setup" || step === "reset") && (
+        {step === "setup" && (
           <motion.form
-            key={step}
+            key="setup"
             initial={{ opacity: 0, x: 10 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -10 }}
@@ -321,13 +312,9 @@ const Login = () => {
             className="space-y-5"
           >
             <div className="p-3 bg-[#1E293B]/60 border border-[#26344B] rounded-xl">
-              <div className="text-xs text-[#F5F7FA] font-semibold">
-                {step === "setup" ? "First-time setup" : "Reset password"}
-              </div>
+              <div className="text-xs text-[#F5F7FA] font-semibold">First-time setup</div>
               <div className="text-xs text-[#77839A] mt-1">
-                {step === "setup"
-                  ? `Set the password for ${storeInfo?.storeName || "your store"}. You will use it every day to sign in.`
-                  : "Enter the store owner's phone to authorise this password change."}
+                {`Set the password for ${storeInfo?.storeName || "your store"}. You will use it every day to sign in.`}
               </div>
               {storeInfo?.ownerPhoneHint && (
                 <div className="text-[11px] text-[#77839A] mt-1.5">
@@ -365,7 +352,7 @@ const Login = () => {
 
             <label className="block">
               <span className="text-xs font-semibold text-[#AEB8CA] uppercase tracking-wider">
-                {step === "setup" ? "Create password" : "New password"}
+                Create password
               </span>
               <div className="mt-2.5 flex items-center gap-3 bg-[#0D1526] border-[#26344B] focus-within:border-[#FF5A00] group rounded-xl px-4 py-3.5 border transition-all duration-200 shadow-sm focus-within:shadow-[0_0_0_3px_rgba(255,90,0,0.15)]">
                 <FiLock size={18} className="text-[#77839A] group-focus-within:text-[#FF5A00] transition-colors shrink-0" />
@@ -406,16 +393,12 @@ const Login = () => {
               disabled={busy || !ownerPhone || !password || !confirmPw}
               className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#FF5A00] py-3.5 font-semibold text-white disabled:opacity-60 hover:bg-[#FF7A2A] transition"
             >
-              {setupMutation.isPending
-                ? "Saving…"
-                : step === "setup"
-                ? "Create password & sign in"
-                : "Reset & sign in"}
+              {setupMutation.isPending ? "Saving…" : "Create password & sign in"}
               {!setupMutation.isPending && <FiArrowRight aria-hidden="true" />}
             </button>
 
             <p className="text-[11px] text-[#77839A] text-center">
-              Owner phone doesn&apos;t match either? Contact KnotKitchen support.
+              Owner phone doesn&apos;t match? Contact KnotKitchen support.
             </p>
           </motion.form>
         )}

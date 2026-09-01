@@ -105,15 +105,28 @@ const UserMock = {
       );
       return match || null;
     }
-    // anyUserExists lookup: storeId only, active, has password.
-    if (q.storeId && q.password?.$exists) {
+    // "Claimed user" lookup, shared by /store/status and /store/login:
+    //   { $or:[{storeId},{restaurantId}] | storeId,
+    //     password:{$exists,$ne:""}, passwordPlaceholder:{$ne:true},
+    //     isActive, isDeleted:{$ne:true} }
+    // A system-seeded placeholder row must NOT satisfy it.
+    if (q.password?.$exists && (q.storeId || q.$or)) {
+      const scopes = q.$or || [{ storeId: q.storeId }];
+      const inScope = (u) =>
+        scopes.some(
+          (sc) =>
+            (sc.storeId !== undefined && String(u.storeId) === String(sc.storeId)) ||
+            (sc.restaurantId !== undefined &&
+              String(u.restaurantId) === String(sc.restaurantId))
+        );
       const match = Object.values(usersById).find(
         (u) =>
-          String(u.storeId) === String(q.storeId) &&
+          inScope(u) &&
           Boolean(u.isActive) === true &&
           !u.isDeleted &&
           typeof u.password === "string" &&
-          u.password.length > 0
+          u.password.length > 0 &&
+          (q.passwordPlaceholder?.$ne !== true || u.passwordPlaceholder !== true)
       );
       return match || null;
     }
@@ -211,6 +224,38 @@ const seedStoreWithOwner = async (storeId, ownerPhone = "9876543210", password =
     role: "Owner",
     restaurantId: restaurant._id,
     storeId,
+  });
+  await user.save();
+  restaurant.ownerId = user._id;
+  restaurantsById[String(restaurant._id)] = restaurant;
+  return { restaurant, user };
+};
+
+/**
+ * The row the CSD "Open POS" handoff auto-creates for a store nobody has
+ * signed into yet: a real User with a random 32-byte password no human holds.
+ * Reproduces the regression where such a store reported hasPassword=true and
+ * stranded the restaurant manager on a login form.
+ */
+const seedStoreWithPlaceholderOwner = async (storeId, ownerPhone = "9876543210") => {
+  seedFreshStore(storeId, ownerPhone);
+  const restaurant = await RestaurantMock.create({
+    name: stores[storeId].storeName,
+    storeId,
+    phone: ownerPhone,
+    address: { line1: "Default Address" },
+  });
+  stores[storeId].restaurantId = restaurant._id;
+  const user = makeUserDoc({
+    name: "Owner",
+    phone: ownerPhone,
+    address: "Default Address",
+    password: require("crypto").randomBytes(32).toString("hex"),
+    role: "Owner",
+    restaurantId: restaurant._id,
+    storeId,
+    mustChangePassword: true,
+    passwordPlaceholder: true,
   });
   await user.save();
   restaurant.ownerId = user._id;
@@ -368,4 +413,57 @@ test("login: missing fields → 400 (separate error class from wrong credentials
     const { err } = await call(userCtrl.storeLoginWithPassword, body);
     assert.equal(err?.status, 400, `body=${JSON.stringify(body)} must be 400`);
   }
+});
+
+// ---------------------------------------------------------------------------
+// Regression: an admin-created store whose only account was auto-seeded by
+// CSD "Open POS" must still read as UNCLAIMED. Otherwise the manager who is
+// handed the bare Store ID is shown a password prompt nobody can satisfy.
+// ---------------------------------------------------------------------------
+
+test("status: store whose only account is a CSD-seeded placeholder → hasPassword=false", async () => {
+  await seedStoreWithPlaceholderOwner("300031");
+  const { res, err } = await call(userCtrl.checkStoreStatus, { storeId: "300031" });
+  assert.equal(err, null);
+  assert.equal(res._j.data.hasPassword, false);
+});
+
+test("login: placeholder-only store → 409, routing the manager to setup", async () => {
+  await seedStoreWithPlaceholderOwner("300032");
+  const { err } = await call(userCtrl.storeLoginWithPassword, {
+    storeId: "300032",
+    phone: "9876543210",
+    password: "whatever-they-guess",
+  });
+  assert.equal(err?.status, 409);
+});
+
+test("setup: the manager can claim a placeholder store, and it then reads as claimed", async () => {
+  const { user } = await seedStoreWithPlaceholderOwner("300033");
+  const seededHash = user.password;
+
+  const { res, err } = await call(userCtrl.setupStorePassword, {
+    storeId: "300033",
+    ownerPhone: "9876543210",
+    password: "manager-chosen-pw",
+  });
+  assert.equal(err, null);
+  assert.equal(res.statusCode, 200);
+
+  // The unusable hash is gone and the row is no longer a placeholder.
+  assert.notEqual(user.password, seededHash);
+  assert.equal(user.passwordPlaceholder, false);
+  assert.equal(user.mustChangePassword, false);
+
+  const status = await call(userCtrl.checkStoreStatus, { storeId: "300033" });
+  assert.equal(status.res._j.data.hasPassword, true);
+
+  // …and the password they just chose actually signs them in.
+  const login = await call(userCtrl.storeLoginWithPassword, {
+    storeId: "300033",
+    phone: "9876543210",
+    password: "manager-chosen-pw",
+  });
+  assert.equal(login.err, null);
+  assert.equal(login.res.statusCode, 200);
 });

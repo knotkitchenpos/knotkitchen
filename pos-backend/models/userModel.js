@@ -105,6 +105,16 @@ const userSchema = new mongoose.Schema(
     // password-change screen on next login and refuses to proceed until
     // they set their own.
     mustChangePassword: { type: Boolean, default: false },
+
+    // True while the stored password hash is a random value NOBODY holds —
+    // i.e. the row was materialised by the system (CSD "Open POS" bootstrap)
+    // rather than by a human choosing a password. `password` is
+    // `required: true`, so its mere presence proves nothing; this flag is the
+    // only honest answer to "has this store's password actually been set?".
+    // A placeholder account cannot sign in: /store/login sends it to
+    // first-time setup instead of looping on "Invalid credentials".
+    // Cleared by /store/setup-password and /change-password.
+    passwordPlaceholder: { type: Boolean, default: false },
   },
   { timestamps: true }
 );
