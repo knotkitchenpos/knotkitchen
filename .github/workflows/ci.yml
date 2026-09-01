@@ -90,6 +90,22 @@ jobs:
         working-directory: ${{ matrix.path }}
         run: npm ci
 
+      # `vite build` uses esbuild, which does no scope analysis: an unbound
+      # variable compiles fine and throws ReferenceError at runtime. That is
+      # how a crash on the Timings & Holidays settings page shipped green.
+      # Only pos-frontend has an ESLint config today — see the note in
+      # scripts/check-undefined.mjs.
+      - name: Check for undefined references
+        if: matrix.app == 'pos-frontend'
+        working-directory: ${{ matrix.path }}
+        run: npm run lint:undef
+
+      # pos-frontend is the only SPA with a test suite; it had never run here.
+      - name: Test
+        if: matrix.app == 'pos-frontend'
+        working-directory: ${{ matrix.path }}
+        run: npm test
+
       - name: Build
         working-directory: ${{ matrix.path }}
         # Give Vite a safe default so no "undefined" appears in the bundle.

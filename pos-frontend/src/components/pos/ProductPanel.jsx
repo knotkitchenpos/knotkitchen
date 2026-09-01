@@ -777,7 +777,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
               certain groups is still available programmatically, but the
               day-to-day UI is now a clean tap-to-toggle picker.
             */}
-            {(customizingItem.modifierGroups || []).map((group) => {
+            {(customizingItem.modifierGroups || []).map((group, index) => {
               const groupMap = selectedModifiers[group.name] || {};
               const groupTotalQty = Object.values(groupMap).reduce(
                 (s, q) => s + (Number(q) || 0),

@@ -3,7 +3,7 @@ import { useSelector } from "react-redux";
 import MediaLibrary from "../components/media/MediaLibrary";
 import SecurityPinModal from "../components/common/SecurityPinModal";
 import { isOwner, checkActionAuthorization } from "../utils/security";
-import { getWebsiteSettings, updateWebsiteSettings } from "../https/storefrontApi";
+import { getWebsiteSettings, updateWebsiteSettings, validateGatewayCredentials } from "../https/storefrontApi";
 import { publishWebsiteCache } from "../https";
 
 /**

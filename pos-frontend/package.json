@@ -14,7 +14,8 @@
     "android:run": "cap run android",
     "android:build": "npm run cap:sync && cap build android",
     "android:apk": "npm run cap:sync && cd android && gradlew.bat assembleDebug",
-    "test": "node --test tests/*.test.mjs"
+    "test": "node --test tests/*.test.mjs",
+    "lint:undef": "node scripts/check-undefined.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^7.4.4",

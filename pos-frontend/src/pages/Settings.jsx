@@ -1200,7 +1200,10 @@ const TimingsHolidaysView = () => {
 
         {/* Day-by-Day Timings List */}
         <div className="divide-y divide-[#F1F5F9]">
-          {DAYS.map(({ key, label }) => {
+          {/* dayIndex is used below for the end-day dropdown default and the
+              overnight badge — destructure it or the whole page throws
+              ReferenceError on first render. */}
+          {DAYS.map(({ key, label, dayIndex }) => {
             const dayData = weeklySchedule[key] || { isOpen: true, openTime: "16:00", closeTime: "23:50", periods: [] };
             const isOpen = dayData.isOpen;
             const overnight = isOpen && isOvernight(dayData.openTime, dayData.closeTime);
