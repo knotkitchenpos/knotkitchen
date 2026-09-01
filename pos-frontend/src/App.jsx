@@ -15,6 +15,7 @@ import {
 
 import Sidebar from "./components/shared/Sidebar";
 import useLoadData from "./hooks/useLoadData";
+import { isPublicPath } from "./utils/publicRoutes";
 import FullScreenLoader from "./components/shared/FullScreenLoader";
 import MarketplaceOrderPopup from "./components/dashboard/MarketplaceOrderPopup";
 import QRTableOrderPopup from "./components/dashboard/QRTableOrderPopup";
@@ -31,9 +32,11 @@ function Layout() {
   const { isAuth } = useSelector((state) => state.user);
   const [mobileOpen, setMobileOpen] = useState(false);
 
-  const isStorefront =
-    location.pathname.startsWith("/store/") || location.pathname === "/website/preview";
-  const bare = ["/auth", "/order", "/pay"].includes(location.pathname) || location.pathname.startsWith("/t/") || isStorefront;
+  // Chrome-less pages: everything a guest can open, plus the owner's own
+  // storefront preview. The old list matched "/pay" exactly, so the real
+  // payment-link URL (/pay/<token>) fell through and rendered a customer's
+  // payment page inside the staff sidebar.
+  const bare = isPublicPath(location.pathname) || location.pathname === "/website/preview";
 
   if (isLoading) return <FullScreenLoader />;
 

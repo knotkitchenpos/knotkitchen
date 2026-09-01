@@ -1,4 +1,5 @@
 import axios from "axios";
+import { isPublicPath } from "../utils/publicRoutes";
 
 const defaultHeader = {
   "Content-Type": "application/json",
@@ -83,7 +84,11 @@ axiosWrapper.interceptors.response.use(
         return axiosWrapper(originalRequest);
       } catch (refreshError) {
         flushQueue(refreshError);
-        if (window.location.pathname !== "/auth") {
+        // Only staff pages get bounced to the sign-in screen. On a guest page
+        // (a scanned table QR, a payment link) a failed refresh just means
+        // "no session", which is the normal state — redirecting there would
+        // replace the customer's menu with the POS login.
+        if (!isPublicPath()) {
           window.location.href = "/auth";
         }
         return Promise.reject(refreshError);

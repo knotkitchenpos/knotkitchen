@@ -3,6 +3,7 @@ import { getUserData } from "../https";
 import { useEffect, useState } from "react";
 import { removeUser, setUser } from "../redux/slices/userSlice";
 import { useNavigate } from "react-router-dom";
+import { isPublicPath } from "../utils/publicRoutes";
 
 const useLoadData = () => {
   const dispatch = useDispatch();
@@ -11,6 +12,16 @@ const useLoadData = () => {
 
   useEffect(() => {
     let isMounted = true;
+
+    // A guest page never had a session to load. Asking for one costs a
+    // guaranteed 401, and the axios interceptor turns that 401 into a hard
+    // redirect to /auth before this hook's own catch block can decide
+    // otherwise — which is how a diner scanning a table QR ended up on the
+    // staff login screen. Skip the call entirely.
+    if (isPublicPath()) {
+      setIsLoading(false);
+      return;
+    }
 
     const fetchUser = async () => {
       try {
@@ -22,14 +33,7 @@ const useLoadData = () => {
         }
       } catch (error) {
         dispatch(removeUser());
-        if (
-          window.location.pathname !== "/auth" &&
-          !window.location.pathname.startsWith("/order") &&
-          !window.location.pathname.startsWith("/pay") &&
-          !window.location.pathname.startsWith("/store")
-        ) {
-          navigate("/auth");
-        }
+        if (!isPublicPath()) navigate("/auth");
       } finally {
         if (isMounted) {
           setIsLoading(false);
