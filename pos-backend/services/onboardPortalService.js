@@ -149,4 +149,14 @@ const fetchFile = async (fileUrl) => {
 
 const isConfigured = () => Boolean(serviceToken());
 
-module.exports = { listAgreements, getAgreement, markStoreCreated, fetchFile, isConfigured, baseUrl };
+/**
+ * Delete one agreement from the portal, including its uploaded files.
+ * Called by CSD when an admin permanently deletes the store the agreement
+ * spawned. Best-effort by contract: the store-side deletion has already
+ * committed by the time this runs; a failure here surfaces to the operator
+ * so they can retry, but does not roll back the store.
+ */
+const deleteAgreement = async (id) =>
+  request(`/api/agreements/${encodeURIComponent(id)}`, { method: "DELETE" });
+
+module.exports = { listAgreements, getAgreement, markStoreCreated, deleteAgreement, fetchFile, isConfigured, baseUrl };

@@ -2,8 +2,10 @@ const createHttpError = require("http-errors");
 const Store = require("../models/storeModel");
 const Restaurant = require("../models/restaurantModel");
 const WebsiteSettings = require("../models/websiteSettingsModel");
+const CsdAgreementLink = require("../models/csdAgreementLinkModel");
 const { buildStorefrontUrl } = require("../services/websiteProvisioningService");
 const { csdAudit } = require("../services/csdAuditService");
+const onboardPortalService = require("../services/onboardPortalService");
 
 /** Escape user input before it reaches a RegExp — otherwise "(" or "*" throws. */
 const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -185,7 +187,87 @@ const getStore = async (req, res, next) => {
  * at all (storefrontResolver refuses suspended/closed stores), so this is
  * admin-gated and always audited with the previous value.
  */
-const ALLOWED_STATUS = ["active", "pending", "suspended", "closed_temporarily", "closed_until"];
+// "deleted" is a terminal status. The store's row keeps its status field
+// for audit but is also isDeleted-flagged so every isDeleted:{$ne:true}
+// query across the app hides it. The associated Restaurant and the
+// agreement link are removed too — see permanentlyDeleteStore below.
+const ALLOWED_STATUS = ["active", "pending", "suspended", "closed_temporarily", "closed_until", "deleted"];
+
+/**
+ * Terminal delete path. Soft-deletes the Store and Restaurant, drops the
+ * CsdAgreementLink so the agreement is no longer marked "already processed",
+ * and asks the onboarding portal to delete its own copy of the agreement
+ * (files + record) so the whole thing genuinely goes away.
+ *
+ * Best-effort on the portal call: the local delete has already committed by
+ * the time we hit the network, so a portal failure surfaces as a warning
+ * rather than rolling back. The link row is deleted regardless because it is
+ * the local record of "this agreement produced a store" and the store no
+ * longer exists.
+ */
+const permanentlyDeleteStore = async ({ req, store, storeId, reason }) => {
+  const previous = { status: store.status, closedUntil: store.closedUntil || null };
+
+  const link = await CsdAgreementLink.findOne({ storeId }).lean();
+  const agreementId = link?.agreementId || "";
+
+  // 1. Local: mark store deleted (keep the doc for audit + FK integrity).
+  store.status = "deleted";
+  store.closedUntil = null;
+  store.closureReason = reason || "Permanently deleted";
+  store.isDeleted = true;
+  await store.save();
+
+  // 2. Restaurant: hide it from every query without hard-deleting so
+  //    orders / payments retain their FK targets for reconciliation.
+  if (store.restaurantId) {
+    await Restaurant.updateOne(
+      { _id: store.restaurantId },
+      { $set: { isDeleted: true } }
+    );
+  }
+
+  // 3. Local agreement link: gone. Without this row, listing the portal's
+  //    agreements will no longer show a "store already created" badge.
+  if (link?._id) {
+    await CsdAgreementLink.deleteOne({ _id: link._id });
+  }
+
+  // 4. Remote agreement + files: best-effort. Never block on this.
+  let portalError = "";
+  if (agreementId) {
+    try {
+      if (onboardPortalService.isConfigured()) {
+        await onboardPortalService.deleteAgreement(agreementId);
+      } else {
+        portalError = "Onboarding portal not configured; agreement not removed.";
+      }
+    } catch (e) {
+      portalError = e?.message || "Portal deletion failed.";
+    }
+  }
+
+  await csdAudit({
+    req,
+    staff: req.csdStaff,
+    action: "CSD_STORE_DELETED",
+    resource: "Store",
+    entityType: "Store",
+    entityId: store._id,
+    storeId,
+    description: `Store ${storeId} permanently deleted (agreement ${agreementId || "(none)"})`,
+    previousValue: previous,
+    newValue: {
+      status: "deleted",
+      reason: store.closureReason,
+      agreementId: agreementId || null,
+      portalError: portalError || null,
+    },
+    severity: "CRITICAL",
+  });
+
+  return { agreementId, portalError };
+};
 
 const updateStoreStatus = async (req, res, next) => {
   try {
@@ -215,6 +297,28 @@ const updateStoreStatus = async (req, res, next) => {
 
     const store = await Store.findOne({ storeId, isDeleted: { $ne: true } });
     if (!store) return next(createHttpError(404, "Store not found."));
+
+    // Terminal path: destroys the store + its agreement.
+    if (status === "deleted") {
+      const { agreementId, portalError } = await permanentlyDeleteStore({
+        req,
+        store,
+        storeId,
+        reason,
+      });
+      return res.status(200).json({
+        success: true,
+        data: {
+          storeId,
+          status: "deleted",
+          agreementId: agreementId || null,
+          portalError: portalError || null,
+        },
+        message: portalError
+          ? `Store deleted, but the agreement portal call failed: ${portalError}`
+          : "Store and agreement permanently deleted.",
+      });
+    }
 
     const previous = { status: store.status, closedUntil: store.closedUntil || null };
 

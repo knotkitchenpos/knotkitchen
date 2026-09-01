@@ -65,6 +65,7 @@ const STATUS_OPTIONS = [
   { value: "suspended", label: "Disabled (suspended)", hint: "Blocks all POS sign-ins and hides the storefront. Use for policy violations." },
   { value: "closed_temporarily", label: "Closed temporarily", hint: "Same block as suspended, but framed to staff as an operator-side pause (staff training, renovation)." },
   { value: "closed_until", label: "Closed until a date", hint: "Auto-reopens after the chosen date passes." },
+  { value: "deleted", label: "Delete permanently", hint: "DESTRUCTIVE. Removes the store, its restaurant record and the linked agreement (files included) from the onboarding portal. Cannot be undone." },
 ];
 
 const StoreStatusCard = ({ storeId, current, onChanged }) => {
@@ -80,21 +81,38 @@ const StoreStatusCard = ({ storeId, current, onChanged }) => {
   const requiresUntil = next === "closed_until";
   const requiresReason = next !== "active";
 
+  const isDelete = next === "deleted";
+
   const submit = async () => {
     setMsg("");
     if (requiresReason && !reason.trim()) return setMsg("A reason is required when changing away from Active.");
     if (requiresUntil && !until) return setMsg("Pick the reopening date.");
-    if (!window.confirm(`Change store ${storeId} status to "${next}"? This is audited.`)) return;
+    if (isDelete) {
+      // Two-step confirm for deletion, and typed acknowledgement so a
+      // muscle-memory Enter can't wipe a store.
+      const typed = window.prompt(
+        `PERMANENT DELETE — this removes the store, the restaurant record AND the linked agreement (files included) from the onboarding portal. This cannot be undone.\n\nType the Store ID (${storeId}) to confirm:`
+      );
+      if (typed !== storeId) return setMsg(typed == null ? "" : "Store ID did not match. Nothing was deleted.");
+    } else if (!window.confirm(`Change store ${storeId} status to "${next}"? This is audited.`)) {
+      return;
+    }
     setBusy(true);
     try {
-      await storesApi.updateStatus(storeId, {
+      const res = await storesApi.updateStatus(storeId, {
         status: next,
         reason: reason.trim() || undefined,
         closedUntil: requiresUntil ? new Date(until).toISOString() : undefined,
       });
       setReason("");
       setUntil("");
-      setMsg("Status updated.");
+      setMsg(
+        isDelete
+          ? res?.portalError
+            ? `Store deleted, but the agreement portal call failed: ${res.portalError}`
+            : "Store and agreement permanently deleted."
+          : "Status updated."
+      );
       onChanged && onChanged();
     } catch (err) {
       setMsg(errorMessage(err, "Could not update status."));
@@ -167,7 +185,7 @@ const StoreStatusCard = ({ storeId, current, onChanged }) => {
         </button>
 
         {msg && (
-          <p className={`text-sm ${msg === "Status updated." ? "text-emerald-700" : "text-red-600"}`}>
+          <p className={`text-sm ${/updated|deleted/i.test(msg) ? "text-emerald-700" : "text-red-600"}`}>
             {msg}
           </p>
         )}
