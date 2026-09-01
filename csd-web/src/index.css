@@ -5,3 +5,24 @@
 
 html { -webkit-text-size-adjust: 100%; }
 body { font-family: Inter, system-ui, sans-serif; }
+
+/*
+ * Chrome (Blink) paints its own pale-yellow background on autofilled inputs
+ * via the :-webkit-autofill pseudo-class and ignores background-color rules
+ * on the element itself. The only workaround it honours is a very large
+ * inset box-shadow of the desired color, plus -webkit-text-fill-color for
+ * the text (color: is also ignored). Apply on any dark-theme input so
+ * remembered credentials don't punch a light rectangle through the surface.
+ */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px transparent inset !important;
+  box-shadow: 0 0 0 1000px transparent inset !important;
+  -webkit-text-fill-color: inherit !important;
+  caret-color: inherit;
+  transition: background-color 5000s ease-in-out 0s;
+}

@@ -71,3 +71,22 @@ select:focus {
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
+
+/*
+ * Chrome autofill draws a pale background on remembered credentials that
+ * ignores background-color. The only override it honours is a large inset
+ * box-shadow, plus -webkit-text-fill-color for the text. Keeps the dark
+ * login form from flashing white on saved-password entry.
+ */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus,
+input:-webkit-autofill:active,
+textarea:-webkit-autofill,
+select:-webkit-autofill {
+  -webkit-box-shadow: 0 0 0 1000px transparent inset !important;
+  box-shadow: 0 0 0 1000px transparent inset !important;
+  -webkit-text-fill-color: inherit !important;
+  caret-color: inherit;
+  transition: background-color 5000s ease-in-out 0s;
+}
