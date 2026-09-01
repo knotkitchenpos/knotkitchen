@@ -317,13 +317,30 @@ const updateWebsiteSettings = async (req, res, next) => {
     }
 
     // ---- Payment Gateways (Module 4) ----
+    //
+    // The website editor PUTs the WHOLE settings object on every save, so
+    // `body.paymentGateways` is present even when the operator was editing
+    // their logo. Both guards below must therefore fire on an actual CHANGE,
+    // never on the client echoing back what it was already given — otherwise
+    // a store that has not set up a gateway can never save anything on this
+    // page at all. `activeGateway` defaults to "razorpay" with
+    // isConfigured=false, which made that the default state for every new
+    // store: the whole page 400'd before it ever reached settings.save().
     if (body.paymentGateways) {
-      if (req.user?.role !== "Owner" && req.user?.role !== "owner" && req.user?.role !== "superadmin") {
-        return next(createHttpError(403, "Only the Store Owner can configure payment gateways."));
-      }
       const pg = body.paymentGateways;
-      if (pg.activeGateway && ["cashfree", "phonepe", "razorpay"].includes(pg.activeGateway)) {
-        // Enforce that gateway can only be active if configured
+      const currentActive = settings.paymentGateways?.activeGateway;
+      const activeGatewayChanging =
+        pg.activeGateway !== undefined && pg.activeGateway !== currentActive;
+      const credentialsSubmitted = ["cashfree", "phonepe", "razorpay"].some((k) => pg[k]);
+
+      if (activeGatewayChanging || credentialsSubmitted) {
+        if (req.user?.role !== "Owner" && req.user?.role !== "owner" && req.user?.role !== "superadmin") {
+          return next(createHttpError(403, "Only the Store Owner can configure payment gateways."));
+        }
+      }
+
+      if (activeGatewayChanging && ["cashfree", "phonepe", "razorpay"].includes(pg.activeGateway)) {
+        // A gateway may only be switched ON once it has credentials.
         const targetGw = settings.paymentGateways[pg.activeGateway];
         if (targetGw && targetGw.isConfigured !== false) {
           settings.paymentGateways.activeGateway = pg.activeGateway;
