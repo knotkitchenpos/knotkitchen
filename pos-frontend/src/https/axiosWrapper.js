@@ -53,10 +53,19 @@ axiosWrapper.interceptors.response.use(
     // cookie jar (e.g. after leaving the browser tab open for a while and
     // coming back). We now let the interceptor call POST /api/user/refresh
     // and transparently retry the original /api/user request instead.
+    // Every endpoint that either BOOTSTRAPS a fresh session or exists to
+    // hand one out is exempt from the refresh loop — otherwise a wrong
+    // password on any of these gets swallowed by /api/user/refresh's own
+    // 401 ("No refresh token provided!") and the caller never sees the
+    // real 'Invalid credentials.' message.
     const isAuthEndpoint =
       url.includes("/api/user/login") ||
       url.includes("/api/user/register") ||
-      url.includes("/api/user/refresh");
+      url.includes("/api/user/refresh") ||
+      url.includes("/api/user/store/login") ||
+      url.includes("/api/user/store/setup-password") ||
+      url.includes("/api/user/store/status") ||
+      url.includes("/api/user/impersonate");
 
     if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isAuthEndpoint) {
       if (isRefreshing) {

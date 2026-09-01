@@ -82,11 +82,14 @@ const Login = () => {
     onError: (error) => {
       const msg = error.response?.data?.message || "Invalid Store ID. Please check and try again.";
       setErrorMessage(msg);
-      enqueueSnackbar(msg, { variant: "error" });
     },
   });
 
   // --- Step 2a: LOGIN with password ----------------------------------------
+  // Login errors surface ONLY through the inline banner above the form —
+  // the corner snackbar was redundant and, worse, occasionally showed a
+  // stale interceptor error ("No refresh token provided!") because axios'
+  // 401 → refresh path used to fire even for /store/login.
   const loginMutation = useMutation({
     mutationFn: (reqData) => storeLogin(reqData),
     onSuccess: (res) => {
@@ -99,14 +102,12 @@ const Login = () => {
       // (e.g. race between status check and login). Route the user to setup
       // rather than showing "wrong password" for a store they never set one on.
       if (status === 409) {
-        enqueueSnackbar("This store has no password yet — please set one up.", { variant: "info" });
+        setErrorMessage("This store has no password yet — please set one up.");
         setStep("setup");
         setPassword("");
         return;
       }
-      const msg = error.response?.data?.message || "Invalid credentials.";
-      setErrorMessage(msg);
-      enqueueSnackbar(msg, { variant: "error" });
+      setErrorMessage(error.response?.data?.message || "Invalid credentials.");
     },
   });
 
@@ -118,9 +119,7 @@ const Login = () => {
       if (data) handleLoggedIn(data);
     },
     onError: (error) => {
-      const msg = error.response?.data?.message || "Could not set the password.";
-      setErrorMessage(msg);
-      enqueueSnackbar(msg, { variant: "error" });
+      setErrorMessage(error.response?.data?.message || "Could not set the password.");
     },
   });
 
