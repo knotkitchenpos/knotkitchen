@@ -39,10 +39,12 @@ const userSchema = new mongoose.Schema(
       },
     },
 
+    // Phone uniqueness is enforced PER STORE by the compound index below —
+    // not globally — because the same person can own or work at more than
+    // one KnotKitchen store and each of those tenants keeps its own copy.
     phone: {
       type: String,
       required: true,
-      unique: true,
       validate: {
         validator: function (v) {
           return /\d{10}/.test(v);
@@ -130,5 +132,20 @@ userSchema.methods.toSafeJSON = function () {
   }
   return obj;
 };
+
+// Per-tenant phone uniqueness. Two different stores may each have a user
+// with the same phone (owner or shared staff), but within one storeId the
+// phone is the login handle and must appear at most once.
+userSchema.index(
+  { storeId: 1, phone: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      storeId: { $type: "string" },
+      phone: { $type: "string" },
+    },
+    name: "storeId_1_phone_1_unique",
+  }
+);
 
 module.exports = mongoose.model("User", userSchema);
