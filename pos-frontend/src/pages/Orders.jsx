@@ -462,10 +462,18 @@ const Orders = () => {
                 const preparingBadge = isPreparing(o.orderStatus);
                 const readyBadge = isReady(o.orderStatus);
                 return (
-                  <button
+                  <div
                     key={o._id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setSelectedId(o._id)}
-                    className={`w-full text-left flex items-center gap-4 px-4 py-3 rounded-xl border-l-[3px] border transition-all ${
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setSelectedId(o._id);
+                      }
+                    }}
+                    className={`w-full text-left flex items-center gap-4 px-4 py-3 rounded-xl border-l-[3px] border transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#5B42F3]/40 ${
                       on ? "border-[#5B42F3] bg-[#F5F3FF]" : "border-[#E2E8F0] bg-white hover:border-[#CBD5E1]"
                     }`}
                     style={{ borderLeftColor: ring }}
@@ -531,16 +539,24 @@ const Orders = () => {
                       {money(o.bills?.totalWithTax || o.bills?.total)}
                     </span>
 
-                    <span
+                    <button
+                      type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         setSelectedId(o._id);
+                        // Bring the details pane into view on smaller screens
+                        // where it might be below the fold.
+                        if (typeof document !== "undefined") {
+                          document
+                            .getElementById("order-detail-pane")
+                            ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                        }
                       }}
                       className="h-[32px] px-3.5 rounded-lg border border-[#5B42F3] text-[#5B42F3] text-[12.5px] font-bold flex items-center shrink-0 hover:bg-[#EEF0FE]"
                     >
                       View
-                    </span>
-                  </button>
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -555,7 +571,7 @@ const Orders = () => {
       </div>
 
       {/* ===== Right: Order detail ===== */}
-      <aside className="w-[400px] shrink-0 h-full bg-white border-l border-[#E2E8F0] flex flex-col">
+      <aside id="order-detail-pane" className="w-[400px] shrink-0 h-full bg-white border-l border-[#E2E8F0] flex flex-col">
         {/*
           Store header — MUST show the RESTAURANT/STORE name and logo,
           not the logged-in user. Previously this fell back to
