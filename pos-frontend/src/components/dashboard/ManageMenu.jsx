@@ -1915,10 +1915,18 @@ const ManageMenu = () => {
                                 setActiveSubcategory(subcat);
                                 setSelectedIds(new Set());
                               }}
-                              className="p-3 bg-white rounded-xl border border-[#E2E8F0] shadow-sm hover:border-[#5B42F3] hover:shadow-md cursor-pointer transition-all flex items-center justify-between gap-3"
+                              className="relative p-3 pl-4 rounded-xl border border-[#C7D2FE] bg-gradient-to-br from-[#EEF2FF] to-white shadow-sm hover:border-[#5B42F3] hover:shadow-md cursor-pointer transition-all flex items-center justify-between gap-3 overflow-hidden"
                             >
+                              {/* Left accent strip — the strongest single cue
+                                  that this is a subcategory card, not a product row. */}
+                              <span
+                                aria-hidden="true"
+                                className="absolute left-0 top-0 bottom-0 w-1.5 bg-[#5B42F3]"
+                              />
                               <div className="flex items-center gap-3 min-w-0 flex-1">
-                                <IconFolder />
+                                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#5B42F3]/12 text-[#5B42F3]">
+                                  <IconFolder />
+                                </span>
                                 <div className="min-w-0 flex-1">
                                   <p className="font-extrabold text-[14px] text-[#0F172A] truncate">{subcat}</p>
                                   <p className="text-[11px] font-bold text-[#64748B]">{count} Product(s)</p>
