@@ -83,10 +83,69 @@ const cartSlice = createSlice({
             if (item) {
                 item.note = note;
             }
-        }
+        },
+
+        // Drop a single modifier from a cart line without touching the base
+        // product. Payload: { id, index, kind: "structured" | "token" }.
+        // "structured" removes item.modifiers[index] and reprices the line.
+        // "token" edits the display name to strip the parsed "(+ X, Y)"
+        // token at `index` — used for legacy items already in the cart that
+        // predate structured modifiers and carry their extras only in name.
+        removeModifier: (state, action) => {
+            const { id, index, kind = "structured" } = action.payload || {};
+            const item = state.find((i) => i.id === id);
+            if (!item || typeof index !== "number") return;
+
+            if (kind === "structured") {
+                const mods = Array.isArray(item.modifiers) ? item.modifiers : [];
+                if (index < 0 || index >= mods.length) return;
+                const removed = mods[index];
+                const removedUnit = Number(removed?.price || 0) * Number(removed?.quantity || 1);
+                item.modifiers = mods.filter((_, i) => i !== index);
+
+                // Reprice: pricePerQuantity was base + all mod unit prices.
+                // Subtract just the removed one and re-derive line total.
+                item.pricePerQuantity = Math.max(
+                    0,
+                    Number(item.pricePerQuantity || 0) - removedUnit
+                );
+                item.price = item.pricePerQuantity * Number(item.quantity || 1);
+
+                // Keep the display name aligned with what's actually in the
+                // line so the printed bill/kitchen ticket doesn't lie.
+                const removedLabel = (removed?.optionName || removed?.name || "").trim();
+                if (removedLabel && typeof item.name === "string") {
+                    // "Base (+ A, B, C)" → remove the matching token
+                    item.name = item.name.replace(
+                        /\s*\(\+\s*([^()]+)\)\s*$/,
+                        (m, inside) => {
+                            const kept = inside
+                                .split(",")
+                                .map((s) => s.trim())
+                                .filter((s) => s && s !== removedLabel);
+                            return kept.length ? ` (+ ${kept.join(", ")})` : "";
+                        }
+                    );
+                }
+                return;
+            }
+
+            if (kind === "token") {
+                // Legacy line: modifiers live only in the "Base (+ A, B)" tail.
+                if (typeof item.name !== "string") return;
+                item.name = item.name.replace(
+                    /\s*\(\+\s*([^()]+)\)\s*$/,
+                    (m, inside) => {
+                        const parts = inside.split(",").map((s) => s.trim()).filter(Boolean);
+                        const kept = parts.filter((_, i) => i !== index);
+                        return kept.length ? ` (+ ${kept.join(", ")})` : "";
+                    }
+                );
+            }
+        },
     }
 })
 
 export const getTotalPrice = (state) => state.cart.reduce((total, item) => total + item.price, 0);
-export const { addItems, removeItem, removeAllItems, setCart, updateQuantity, updateItemNote } = cartSlice.actions;
+export const { addItems, removeItem, removeAllItems, setCart, updateQuantity, updateItemNote, removeModifier } = cartSlice.actions;
 export default cartSlice.reducer;

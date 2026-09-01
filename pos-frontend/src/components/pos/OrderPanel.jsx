@@ -7,6 +7,7 @@ import {
   getTotalPrice,
   removeAllItems,
   removeItem,
+  removeModifier,
   setCart,
   updateQuantity,
   updateItemNote,
@@ -883,8 +884,11 @@ const OrderPanel = () => {
                       <div key={`${item.id}-mod-${idx}`} className="flex items-center gap-2.5 pl-6">
                         <button
                           className="shrink-0 text-[#EF4444] hover:text-[#DC2626] text-[16px] leading-none"
-                          title="Remove modifier (edit the item to change modifiers)"
-                          onClick={() => dispatch(removeItem(item.id))}
+                          title="Remove this add-on"
+                          aria-label={`Remove ${modLabel}`}
+                          onClick={() =>
+                            dispatch(removeModifier({ id: item.id, index: idx, kind: "structured" }))
+                          }
                         >
                           ⊗
                         </button>
@@ -904,8 +908,11 @@ const OrderPanel = () => {
                     <div key={`${item.id}-tok-${idx}`} className="flex items-center gap-2.5 pl-6">
                       <button
                         className="shrink-0 text-[#EF4444] hover:text-[#DC2626] text-[16px] leading-none"
-                        title="Remove modifier (edit the item to change modifiers)"
-                        onClick={() => dispatch(removeItem(item.id))}
+                        title="Remove this add-on"
+                        aria-label={`Remove ${tok}`}
+                        onClick={() =>
+                          dispatch(removeModifier({ id: item.id, index: idx, kind: "token" }))
+                        }
                       >
                         ⊗
                       </button>
