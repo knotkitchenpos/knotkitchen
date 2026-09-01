@@ -110,11 +110,17 @@ const orderSchema = new mongoose.Schema({
   marketplace: { type: String, enum: ["Swiggy", "Zomato", "Manual", ""] },
   marketplaceOrderId: { type: String, default: "" },
   orderDate: { type: Date, default: Date.now },
+  // Every field defaults to 0. TableSession + Bill sub-docs already do this,
+  // and this schema used to disagree — writing a TableSession's `bills`
+  // straight into an Order (QR / add-to-session paths) 400'd on missing
+  // `total` because TableSession never carried that field. `total` on
+  // Order is derivable from totalWithTax − tax anyway; leaving it as 0 for
+  // a zero-value order is the same as it being explicit.
   bills: {
     subtotal: { type: Number, default: 0 },
-    total: { type: Number, required: true },
-    tax: { type: Number, required: true },
-    totalWithTax: { type: Number, required: true },
+    total: { type: Number, default: 0 },
+    tax: { type: Number, default: 0 },
+    totalWithTax: { type: Number, default: 0 },
     discount: { type: Number, default: 0 },
     deliveryFee: { type: Number, default: 0 },
     packagingFee: { type: Number, default: 0 },
