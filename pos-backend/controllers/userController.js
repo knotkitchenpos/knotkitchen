@@ -1318,7 +1318,7 @@ const impersonateWithSupportToken = async (req, res, next) => {
 
     // Prefer an active Owner for that store; fall back to any active user so
     // admin can still get in when the owner seat hasn't been claimed yet.
-    const user =
+    let user =
       (await User.findOne({
         storeId: support.storeId,
         role: "Owner",
@@ -1331,10 +1331,43 @@ const impersonateWithSupportToken = async (req, res, next) => {
         isDeleted: { $ne: true },
       }));
 
+    // If the store has no user at all yet (operator never completed first-time
+    // setup), auto-bootstrap an Owner from the store record so the CSD "Open
+    // POS" flow works end-to-end. The seeded user gets an unusable random
+    // password + mustChangePassword=true, so the real operator can still claim
+    // the account later via /store/setup-password (owner-phone gate applies,
+    // same as normal reset).
     if (!user) {
-      return next(
-        createHttpError(409, "This store has no POS user yet. Ask the operator to complete setup first.")
-      );
+      const { store, restaurant } = await findRestaurantOrStore(support.storeId);
+      if (!store || !restaurant) {
+        return next(
+          createHttpError(409, "This store has no restaurant record — cannot open the POS.")
+        );
+      }
+      const seedPhone = String(store.ownerPhone || "").replace(/\D/g, "").slice(-10);
+      const seedName = store.ownerName || restaurant.name || "Owner";
+      const randomPw = crypto.randomBytes(32).toString("hex");
+      const seedPayload = {
+        name: seedName,
+        address: (restaurant.address && (restaurant.address.line1 || "")) || "N/A",
+        password: randomPw,
+        role: "Owner",
+        restaurantId: restaurant._id,
+        storeId: support.storeId,
+        isActive: true,
+        mustChangePassword: true,
+      };
+      if (/^\d{10}$/.test(seedPhone)) seedPayload.phone = seedPhone;
+      user = await User.create(seedPayload);
+
+      // Backfill Restaurant.ownerId so future non-CSD lookups by ownerId
+      // (legacy flows) resolve to the same user.
+      if (!restaurant.ownerId) {
+        await require("../models/restaurantModel").updateOne(
+          { _id: restaurant._id },
+          { $set: { ownerId: user._id } }
+        );
+      }
     }
 
     await signTokensAndSetCookies(user, req, res);
