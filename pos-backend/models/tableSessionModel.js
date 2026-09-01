@@ -27,7 +27,14 @@ const tableSessionSchema = new mongoose.Schema(
   {
     sessionCode: { type: String, required: true, unique: true },
     restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: "Restaurant", required: true },
-    outletId: { type: mongoose.Schema.Types.ObjectId, ref: "Outlet", required: true },
+    // Optional. Single-outlet restaurants (which is the norm outside the
+    // multi-outlet enterprise plan) never have an Outlet document, so
+    // outletId legitimately ends up null — every reader downstream already
+    // handles it that way (`{ $in: [outletId, null] }` in scoped queries,
+    // `table.outletId || req.user?.outletId || null` at write sites).
+    // Marking it required here broke every POS + QR order for such stores
+    // with ValidationError 'Path `outletId` is required.'
+    outletId: { type: mongoose.Schema.Types.ObjectId, ref: "Outlet", default: null },
     tableId: { type: mongoose.Schema.Types.ObjectId, ref: "Table", required: true },
 
     // Origin of the session: opened from POS UI or from customer QR scan
