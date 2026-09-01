@@ -128,6 +128,11 @@ const WebsiteSettings = () => {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState(null);
 
+  // Edits live in `settings` until an explicit save. Publishing does NOT
+  // persist them (see publish() below), so the editor has to know whether
+  // anything is pending.
+  const [dirty, setDirty] = useState(false);
+
   const [pinModalOpen, setPinModalOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
 
@@ -160,6 +165,7 @@ const WebsiteSettings = () => {
       cursor[keys[keys.length - 1]] = value;
       return next;
     });
+    setDirty(true);
   };
 
   const executeWithSecurity = (actionFn, isOwnerOnly = false) => {
@@ -176,20 +182,55 @@ const WebsiteSettings = () => {
     actionFn();
   };
 
+  /** Write the editor's current state to the server. Throws on failure. */
+  const persist = async () => {
+    const res = await updateWebsiteSettings(settings);
+    setSettings(res.data.data.settings);
+    setStorefrontUrl(res.data.data.storefrontUrl);
+    setDirty(false);
+  };
+
   const save = async () => {
     executeWithSecurity(async () => {
       try {
         setSaving(true);
         setMessage(null);
-        const res = await updateWebsiteSettings(settings);
-        setSettings(res.data.data.settings);
-        setStorefrontUrl(res.data.data.storefrontUrl);
+        await persist();
         setMessage({ type: "success", text: "Website settings saved." });
       } catch (err) {
         setMessage({ type: "error", text: err.response?.data?.message || "Couldn't save settings." });
       } finally {
         setSaving(false);
         setTimeout(() => setMessage(null), 4000);
+      }
+    });
+  };
+
+  /**
+   * Publish = refresh the live customer-site cache. It does NOT send the
+   * editor's state, so on its own it drops anything unsaved while still
+   * reporting success — which is how a freshly picked logo could be uploaded,
+   * "published", and silently never stored. Save first, then publish.
+   */
+  const publish = async () => {
+    executeWithSecurity(async () => {
+      try {
+        setSaving(true);
+        setMessage(null);
+        if (dirty) await persist();
+        const res = await publishWebsiteCache();
+        setMessage({
+          type: "success",
+          text: res.data?.message || "Website published / cache updated!",
+        });
+      } catch (e) {
+        setMessage({
+          type: "error",
+          text: e.response?.data?.message || "Failed to publish website.",
+        });
+      } finally {
+        setSaving(false);
+        setTimeout(() => setMessage(null), 5000);
       }
     });
   };
@@ -227,15 +268,9 @@ const WebsiteSettings = () => {
         <div className="ml-auto flex items-center gap-2">
           <button
             type="button"
-            onClick={async () => {
-              try {
-                const res = await publishWebsiteCache();
-                setMessage({ type: "success", text: res.data?.message || "Website Published / Cache Updated!" });
-              } catch (e) {
-                setMessage({ type: "error", text: e.response?.data?.message || "Failed to publish website cache" });
-              }
-            }}
-            className="px-4 py-2 rounded-xl bg-[#22C55E] text-white text-sm font-bold hover:bg-[#16A34A] shadow-sm"
+            onClick={publish}
+            disabled={saving}
+            className="px-4 py-2 rounded-xl bg-[#22C55E] text-white text-sm font-bold hover:bg-[#16A34A] shadow-sm disabled:opacity-60"
           >
             🚀 Publish Website
           </button>
@@ -253,8 +288,18 @@ const WebsiteSettings = () => {
             disabled={saving}
             className="px-5 py-2 rounded-xl bg-[#5B42F3] text-white text-sm font-bold disabled:opacity-60 hover:bg-[#4A32E0]"
           >
-            {saving ? "Saving Draft" : "Save Changes"}
+            {saving ? "Saving…" : "Save Changes"}
+            {dirty && !saving ? (
+              <span
+                aria-hidden="true"
+                title="You have unsaved changes"
+                className="ml-2 inline-block w-2 h-2 rounded-full bg-white/90 align-middle"
+              />
+            ) : null}
           </button>
+          {dirty && !saving ? (
+            <span className="text-xs font-semibold text-[#B45309]">Unsaved changes</span>
+          ) : null}
         </div>
       </div>
 
