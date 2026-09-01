@@ -91,7 +91,11 @@ router.get("/restaurants/:storeId", getRestaurant);
 router.get("/restaurants/:storeId/customers", getCustomers);
 router.get("/restaurants/:storeId/order-summary", getOrderSummary);
 router.get("/restaurants/:storeId/staff", getRestaurantStaff);
-router.get("/restaurants/:storeId/activity", getActivity);
+// Activity is a full audit trail (support sessions, jobs, admin actions).
+// Staff members should not see who accessed a POS or what other admins did,
+// so this is admin-only. The client hides the card too but the server is
+// the real guard.
+router.get("/restaurants/:storeId/activity", requireCsdAdmin, getActivity);
 router.get("/restaurants/:storeId/pos-sessions", listPosSessions);
 
 // Stored documents (§30/§31). View, upload and update are available to staff

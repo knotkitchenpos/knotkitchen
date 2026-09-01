@@ -237,8 +237,14 @@ const RestaurantDetail = () => {
   useEffect(() => {
     api.customers(storeId, { limit: 1 }).then((d) => setCustomerCount(d.total)).catch(() => setCustomerCount(null));
     api.staff(storeId).then((d) => setStaff(d.staff)).catch(() => setStaff([]));
-    api.activity(storeId).then((d) => setActivity(d.entries)).catch(() => setActivity([]));
-  }, [storeId]);
+    // Activity is admin-only both server-side and here — skip the fetch
+    // for staff so the network tab doesn't 403 on every store open.
+    if (isAdmin) {
+      api.activity(storeId).then((d) => setActivity(d.entries)).catch(() => setActivity([]));
+    } else {
+      setActivity([]);
+    }
+  }, [storeId, isAdmin]);
 
   const saveGbp = async (e) => {
     e.preventDefault();
@@ -640,7 +646,8 @@ const RestaurantDetail = () => {
         />
       )}
 
-      {/* ── Activity (§33) ───────────────────────────────────────────── */}
+      {/* ── Activity (§33) — admin only ─────────────────────────────── */}
+      {isAdmin && (
       <Card title="Restaurant activity" className="mt-3">
         {activity.length === 0 ? (
           <p className="text-sm text-navy-400">No activity recorded for this restaurant yet.</p>
@@ -665,6 +672,7 @@ const RestaurantDetail = () => {
           </ul>
         )}
       </Card>
+      )}
 
       {/* ── Dialogs ──────────────────────────────────────────────────── */}
       {dialog === "charges" && (
