@@ -1026,15 +1026,6 @@ const TimingsHolidaysView = () => {
     onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to update Closed for Today status", { variant: "error" }),
   });
 
-  const format12H = (hhmm) => {
-    if (!hhmm) return "04:00 PM";
-    const [h, m] = String(hhmm).split(":").map(Number);
-    if (Number.isNaN(h) || Number.isNaN(m)) return hhmm;
-    const period = h >= 12 ? "PM" : "AM";
-    const h12 = h % 12 === 0 ? 12 : h % 12;
-    return `${String(h12).padStart(2, "0")}:${String(m).padStart(2, "0")} ${period}`;
-  };
-
   const isOvernight = (openT, closeT) => {
     if (!openT || !closeT) return false;
     const [oh, om] = openT.split(":").map(Number);
@@ -1240,17 +1231,12 @@ const TimingsHolidaysView = () => {
                   {isOpen ? (
                     <div className="flex items-center gap-2 flex-1 flex-wrap">
                       {/* Opening / Start Time Input */}
-                      <div className="flex items-center gap-1.5">
-                        <input
-                          type="time"
-                          value={dayData.openTime}
-                          onChange={(e) => handleTimeChange(key, "openTime", e.target.value)}
-                          className="h-[38px] px-3 rounded-lg border border-[#E2E8F0] font-semibold text-[13.5px] text-[#334155] bg-white focus:border-[#5B42F3]"
-                        />
-                        <span className="text-[12px] font-bold text-[#64748B] min-w-[65px]">
-                          {format12H(dayData.openTime)}
-                        </span>
-                      </div>
+                      <input
+                        type="time"
+                        value={dayData.openTime}
+                        onChange={(e) => handleTimeChange(key, "openTime", e.target.value)}
+                        className="h-[38px] px-3 rounded-lg border border-[#E2E8F0] font-semibold text-[13.5px] text-[#334155] bg-white focus:border-[#5B42F3]"
+                      />
 
                       {/* Connector Arrow */}
                       <span className="text-[#5B42F3] font-extrabold text-sm px-1">→</span>
@@ -1277,9 +1263,6 @@ const TimingsHolidaysView = () => {
                           onChange={(e) => handleTimeChange(key, "closeTime", e.target.value)}
                           className="h-[38px] px-3 rounded-lg border border-[#E2E8F0] font-semibold text-[13.5px] text-[#334155] bg-white focus:border-[#5B42F3]"
                         />
-                        <span className="text-[12px] font-bold text-[#64748B] min-w-[65px]">
-                          {format12H(dayData.closeTime)}
-                        </span>
                       </div>
 
                       {/* Overnight / Next-Day Indicator Badge */}
@@ -1327,7 +1310,6 @@ const TimingsHolidaysView = () => {
                       onChange={(e) => handleTimeChange(key, "openTime", e.target.value, pIdx)}
                       className="h-[34px] px-2.5 rounded-lg border border-[#E2E8F0] font-semibold text-[12.5px]"
                     />
-                    <span className="text-[12px] font-bold text-[#64748B]">{format12H(period.openTime)}</span>
 
                     <span className="text-[#94A3B8] font-bold px-1">—</span>
 
@@ -1337,7 +1319,6 @@ const TimingsHolidaysView = () => {
                       onChange={(e) => handleTimeChange(key, "closeTime", e.target.value, pIdx)}
                       className="h-[34px] px-2.5 rounded-lg border border-[#E2E8F0] font-semibold text-[12.5px]"
                     />
-                    <span className="text-[12px] font-bold text-[#64748B]">{format12H(period.closeTime)}</span>
 
                     <button
                       type="button"
