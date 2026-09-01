@@ -10,10 +10,15 @@
  * this list, so a route added to one can never be forgotten in the other.
  * `/t/` in particular was missing from the bootstrap's own allow-list when it
  * was introduced, which is exactly how that regression shipped.
+ *
+ * EXACT vs PREFIX matters. `/order` is the legacy `?table=<token>` QR page and
+ * matches exactly; matching it as a prefix would also swallow `/orders`, the
+ * staff order list, and skip the session bootstrap on a page that needs it.
  */
-const PUBLIC_PREFIXES = ["/t/", "/order", "/pay", "/store/"];
+const PUBLIC_EXACT = ["/auth", "/order"];
+const PUBLIC_PREFIXES = ["/t/", "/pay/", "/store/"];
 
 export const isPublicPath = (pathname = window.location.pathname) =>
-  pathname === "/auth" || PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
+  PUBLIC_EXACT.includes(pathname) || PUBLIC_PREFIXES.some((p) => pathname.startsWith(p));
 
 export default isPublicPath;
