@@ -1,4 +1,5 @@
 const Menu = require("../models/menuModel");
+const { AUDIENCES, menuViewFor } = require("./menuCache");
 
 // ============================================================
 // Server-side pricing engine
@@ -57,12 +58,27 @@ const getActivePrice = (item) => {
  * Resolve a menu item for ordering.
  * Throws http-errors if the item is unavailable / deleted / not published.
  */
-const resolveMenuItem = async ({ menuItemId, restaurantId, outletId }) => {
+const resolveMenuItem = async ({ menuItemId, restaurantId, outletId, audience = AUDIENCES.SYSTEM }) => {
+  // Price against the copy the customer was actually shown.
+  //
+  // Both callers of this — POS staff adding to a table session, and a diner
+  // ordering from a table QR — see the System Published snapshot, so that is
+  // what they are billed from. Resolving against the live draft (as this used
+  // to) meant an unpublished price edit in Manage Menu was charged against a
+  // menu still displaying the old price, and a draft-only item could be
+  // ordered before anyone published it.
+  const snapshotPath =
+    audience === AUDIENCES.WEBSITE
+      ? "websiteSnapshot.items"
+      : audience === AUDIENCES.SYSTEM
+      ? "systemSnapshot.items"
+      : "items";
+
   const menu = await Menu.findOne({
     restaurantId,
     isDeleted: { $ne: true },
     published: { $ne: false },
-    "items._id": menuItemId,
+    [`${snapshotPath}._id`]: menuItemId,
   });
 
   if (!menu) {
@@ -71,7 +87,9 @@ const resolveMenuItem = async ({ menuItemId, restaurantId, outletId }) => {
     throw err;
   }
 
-  const item = menu.items.find((i) => i._id.toString() === menuItemId.toString());
+  const item = (menuViewFor(menu, audience).items || []).find(
+    (i) => i._id && i._id.toString() === menuItemId.toString(),
+  );
   if (!item) {
     const err = new Error("This menu item is currently unavailable.");
     err.status = 400;

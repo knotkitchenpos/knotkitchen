@@ -20,10 +20,13 @@ test("Website Module 6: Scheduled collection order within current business day &
     status: "active",
   };
 
+  const BIRYANI = { _id: "d-1", name: "Biryani", price: 200, showOnWebsite: true, isAvailable: true };
   const mockMenu = {
     _id: "m-1",
     published: true,
-    items: [{ _id: "d-1", name: "Biryani", price: 200, showOnWebsite: true, isAvailable: true }],
+    items: [BIRYANI],
+    hasPublishedToWebsite: true,
+    websiteSnapshot: { name: "Mains", items: [BIRYANI] },
   };
 
   const storefrontResolverMock = {
@@ -126,7 +129,18 @@ test("Website Module 6: Collection order scheduled for tomorrow or in the past i
   };
 
   const MenuMock = {
-    find: async () => [{ _id: "m-1", published: true, items: [{ _id: "d-1", price: 200, showOnWebsite: true, isAvailable: true }] }],
+    // Website order pricing reads the WEBSITE PUBLISHED snapshot, so the
+    // fixture carries one.
+    find: async () => {
+      const item = { _id: "d-1", price: 200, showOnWebsite: true, isAvailable: true };
+      return [{
+        _id: "m-1",
+        published: true,
+        items: [item],
+        hasPublishedToWebsite: true,
+        websiteSnapshot: { name: "Mains", items: [item] },
+      }];
+    },
   };
 
   const Module = require("module");

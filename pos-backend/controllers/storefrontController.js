@@ -7,6 +7,7 @@ const { resolveStorefront, REASON_MESSAGES } = require("../services/storefrontRe
 const { AWAITING_ACCEPTANCE } = require("../constants/orderStatus");
 const { isStoreOpen, isClosedForToday, isItemAvailableNow, getEffectivePrice } = require("../services/businessHours");
 const { calculateOrderTotals, PricingError } = require("../services/orderPricingService");
+const { AUDIENCES, menuViewFor, projectMenus } = require("../services/menuCache");
 const { getTheme } = require("../services/themeRegistry");
 const { emitOrderCreated } = require("../services/socket");
 const { generateOrderNumberSafe } = require("../services/orderNumberService");
@@ -97,13 +98,12 @@ const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezon
     const menuActive = !menu.schedule?.enabled || isItemAvailableNow({ isAvailable: true, schedule: menu.schedule }, timezone);
     if (!menuActive) continue;
 
-    // Module 9 §3 — Storefront reads Website Published Menu snapshot
-    const activeItems = menu.hasPublishedToWebsite && menu.websiteSnapshot?.items
-      ? menu.websiteSnapshot.items
-      : menu.items || [];
-    const activeName = menu.hasPublishedToWebsite && menu.websiteSnapshot?.name
-      ? menu.websiteSnapshot.name
-      : menu.name;
+    // Module 9 §3 — the storefront serves the Website Published snapshot and
+    // nothing else. It used to fall back to menu.items for any menu not yet
+    // published, which put unpublished drafts straight on the public site.
+    const view = menuViewFor(menu, AUDIENCES.WEBSITE);
+    const activeItems = view.items;
+    const activeName = view.name;
 
     const products = activeItems
       .filter((item) => item.showOnWebsite !== false && item.displayTarget !== "system")
@@ -365,11 +365,18 @@ const createStorefrontOrder = async (req, res, next) => {
     }
 
     // ---- Authoritative pricing against this store's own menus ----
-    const menus = await Menu.find({
+    //
+    // Priced against the WEBSITE snapshot, i.e. the exact catalogue this
+    // customer was shown. Pricing used to read menu.items, so an unpublished
+    // price edit in Manage Menu would quietly charge the new price against a
+    // site still displaying the old one — and an item only present in the
+    // draft could be ordered at all.
+    const menuDocs = await Menu.find({
       restaurantId,
       isDeleted: { $ne: true },
       $or: [{ published: true }, { published: { $exists: false }, isPublished: true }],
     });
+    const menus = projectMenus(menuDocs, AUDIENCES.WEBSITE);
 
     let priced;
     try {

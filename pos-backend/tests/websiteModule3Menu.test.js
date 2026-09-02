@@ -12,26 +12,41 @@ test("Website Module 3: Public store menu returns categories, products with Veg/
     status: "active",
   };
 
+  // A Menu document is a CATEGORY holding items — the previous fixture modelled
+  // each menu as a bare dish, which is not a shape production ever returns.
+  //
+  // The public menu endpoint serves the WEBSITE PUBLISHED snapshot, so each
+  // category carries one. `items` (the draft) deliberately holds a DIFFERENT
+  // price here, to prove the response comes from the snapshot and not the
+  // draft — that is the whole point of Manage Cache.
+  const paneer = {
+    _id: "d1",
+    name: "Paneer Tikka",
+    description: "Cottage cheese grilled in tandoor",
+    price: 280,
+    isVegetarian: true,
+    showOnWebsite: true,
+    isAvailable: true,
+  };
+  const chicken = {
+    _id: "d2",
+    name: "Chicken Tikka",
+    description: "Spicy grilled chicken kebab",
+    price: 350,
+    isVegetarian: false,
+    showOnWebsite: true,
+    isAvailable: true,
+  };
+
   const mockMenus = [
     {
       _id: "m1",
-      name: "Paneer Tikka",
-      description: "Cottage cheese grilled in tandoor",
-      price: 280,
-      isVegetarian: true,
-      category: "Starters",
+      name: "Starters",
       published: true,
       isDeleted: false,
-    },
-    {
-      _id: "m2",
-      name: "Chicken Tikka",
-      description: "Spicy grilled chicken kebab",
-      price: 350,
-      isVegetarian: false,
-      category: "Starters",
-      published: true,
-      isDeleted: false,
+      items: [{ ...paneer, price: 999 }, { ...chicken, price: 999 }],
+      hasPublishedToWebsite: true,
+      websiteSnapshot: { name: "Starters", items: [paneer, chicken] },
     },
   ];
 
@@ -81,10 +96,17 @@ test("Website Module 3: Public store menu returns categories, products with Veg/
   }
 
   assert.ok(resData);
-  const items = resData.data;
+  const categories = resData.data;
+  assert.equal(categories.length, 1);
+
+  const items = categories[0].items;
   assert.equal(items.length, 2);
   const vegItem = items.find((i) => i.isVegetarian === true);
   const nonVegItem = items.find((i) => i.isVegetarian === false);
   assert.equal(vegItem.name, "Paneer Tikka");
   assert.equal(nonVegItem.name, "Chicken Tikka");
+
+  // Published prices, not the 999 sitting unpublished in the draft.
+  assert.equal(vegItem.price, 280);
+  assert.equal(nonVegItem.price, 350);
 });

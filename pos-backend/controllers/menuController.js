@@ -22,6 +22,8 @@ const menuScopeFor = (user) => {
   return { createdBy: user?._id };
 };
 
+const { AUDIENCES, projectMenu } = require("../services/menuCache");
+
 const getMenus = async (req, res, next) => {
   try {
     // Sort by explicit sortOrder first (set by the drag-and-drop reorder
@@ -30,16 +32,19 @@ const getMenus = async (req, res, next) => {
     // what the operator saw when they first created the menu.
     const menus = await Menu.find(menuScopeFor(req.user)).sort({ sortOrder: 1, createdAt: 1 });
 
-    // Module 9 §2 — POS (System) reads System Published Menu snapshot.
+    // Module 9 §2 — POS (System) reads the System Published snapshot.
     // Manage Menu (Draft) reads live draft items.
+    //
+    // The snapshot is the ONLY source for source=system. There is no longer a
+    // fallback to menu.items when a menu has not been published yet: that
+    // fallback is what let a freshly created category appear on the tills
+    // before anyone pressed "Update System Cache". A menu with nothing
+    // published simply has no items here.
     const isSystemSource = req.query.source === "system" || req.headers["x-pos-source"] === "system";
+    const audience = isSystemSource ? AUDIENCES.SYSTEM : AUDIENCES.DRAFT;
 
     const projected = menus.map((menu) => {
-      const obj = menu.toObject ? menu.toObject() : { ...menu };
-      if (isSystemSource && menu.hasPublishedToSystem && menu.systemSnapshot) {
-        obj.name = menu.systemSnapshot.name || obj.name;
-        obj.items = menu.systemSnapshot.items || [];
-      }
+      const obj = projectMenu(menu, audience);
       // Also sort the items array by their sortOrder so drag-reordered
       // products come back in the biller's chosen order (existing
       // reorderItems stamps sortOrder but Menu.find doesn't guarantee

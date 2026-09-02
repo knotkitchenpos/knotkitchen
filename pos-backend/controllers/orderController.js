@@ -1,4 +1,5 @@
 const createHttpError = require("http-errors");
+const { AUDIENCES, projectMenus } = require("../services/menuCache");
 const Order = require("../models/orderModel");
 const Table = require("../models/tableModel");
 const Customer = require("../models/customerModel");
@@ -973,12 +974,18 @@ const getPopularItems = async (req, res, next) => {
       published: { $ne: false },
     });
 
+    // POS surface: index the System Published catalogue, so "popular dishes"
+    // can never suggest an item the tills are not serving yet.
+    const publishedMenus = projectMenus(menus, AUDIENCES.SYSTEM);
+
     const dishesById = new Map();
     const dishesByName = new Map();
-    menus.forEach((menu) => {
+    publishedMenus.forEach((menu) => {
       (menu.items || []).forEach((item) => {
         const enriched = {
-          ...item.toObject(),
+          // Snapshot items come through as plain objects, live subdocuments do
+          // not — accept either.
+          ...(typeof item.toObject === "function" ? item.toObject() : item),
           categoryId: menu._id,
           categoryName: menu.name,
         };
@@ -1013,11 +1020,11 @@ const getPopularItems = async (req, res, next) => {
     // with the store's own default/featured products, then any active dishes.
     if (popular.length < limit) {
       const fallbackCandidates = [];
-      menus.forEach((menu) => {
+      publishedMenus.forEach((menu) => {
         (menu.items || []).forEach((item) => {
           if (item.isAvailable === false) return;
           fallbackCandidates.push({
-            ...item.toObject(),
+            ...(typeof item.toObject === "function" ? item.toObject() : item),
             categoryId: menu._id,
             categoryName: menu.name,
           });

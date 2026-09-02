@@ -22,10 +22,15 @@ test("Website Module 5: Website order creates 'WEBSITE' source order and emits r
     status: "active",
   };
 
+  // The storefront serves the WEBSITE PUBLISHED snapshot, so a menu the site
+  // is live with carries one. An unpublished draft is deliberately invisible.
+  const naan = { _id: "d-1", name: "Naan", price: 50, showOnWebsite: true, isAvailable: true };
   const mockMenu = {
     _id: "m-1",
     published: true,
-    items: [{ _id: "d-1", name: "Naan", price: 50, showOnWebsite: true, isAvailable: true }],
+    items: [naan],
+    hasPublishedToWebsite: true,
+    websiteSnapshot: { name: "Breads", items: [naan] },
   };
 
   const storefrontResolverMock = {

@@ -133,12 +133,35 @@ const TableMock = {
   },
 };
 
+// A table QR serves the SYSTEM PUBLISHED snapshot, so these fixtures carry
+// one — a category with only draft items is invisible to a diner by design
+// (see services/menuCache.js). `items` mirrors the snapshot here because these
+// categories have no unpublished edits pending.
+const menuCategory = (id, name, price, category) => {
+  const item = { _id: id, name, price, category, isAvailable: true };
+  return {
+    _id: id,
+    name,
+    price,
+    category,
+    restaurantId: "rest-A",
+    outletId: "outlet-A",
+    isDeleted: false,
+    published: true,
+    items: [item],
+    hasPublishedToSystem: true,
+    systemSnapshot: { name, items: [item] },
+    hasPublishedToWebsite: true,
+    websiteSnapshot: { name, items: [item] },
+  };
+};
+
 const MenuMock = {
   async find() {
     return [
-      { _id: "menu_biryani", name: "Biryani", price: 250, category: "Main", restaurantId: "rest-A", outletId: "outlet-A", isDeleted: false, published: true },
-      { _id: "menu_water", name: "Water", price: 20, category: "Beverages", restaurantId: "rest-A", outletId: "outlet-A", isDeleted: false, published: true },
-      { _id: "menu_kebab", name: "Kebab", price: 300, category: "Starters", restaurantId: "rest-A", outletId: "outlet-A", isDeleted: false, published: true },
+      menuCategory("menu_biryani", "Biryani", 250, "Main"),
+      menuCategory("menu_water", "Water", 20, "Beverages"),
+      menuCategory("menu_kebab", "Kebab", 300, "Starters"),
     ];
   },
 };

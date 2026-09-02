@@ -21,10 +21,31 @@ const { PREPARING } = require("../constants/orderStatus");
 // Order/WebsiteSettings models, and requiring them at module load breaks the
 // tests that mock mongoose before the models are loaded.
 const computeReadyDueAt = (args) => require("../services/autoReadyService").computeReadyDueAt(args);
+const { AUDIENCES, projectMenus } = require("../services/menuCache");
 const router = express.Router();
 
-const scopedMenu = (restaurantId, outletId) =>
-  Menu.find({ restaurantId, outletId: { $in: [outletId, null] }, isDeleted: false, $or: [{ published: true }, { isPublished: true }] });
+/**
+ * The in-restaurant menu a diner sees after scanning their table QR.
+ *
+ * Served from the System Published snapshot — the same catalogue the till
+ * shows and the same one enrichItems bills from, so what is displayed and
+ * what is charged cannot drift apart. Returning the raw documents (as this
+ * used to) also handed every anonymous scanner the live draft plus both
+ * snapshots; projecting strips all of that.
+ */
+const scopedMenu = async (restaurantId, outletId) => {
+  const docs = await Menu.find({
+    restaurantId,
+    outletId: { $in: [outletId, null] },
+    isDeleted: false,
+    $or: [{ published: true }, { isPublished: true }],
+  });
+  return projectMenus(docs, AUDIENCES.SYSTEM).map((m) => {
+    delete m.systemSnapshot;
+    delete m.websiteSnapshot;
+    return m;
+  });
+};
 
 // Public session sanitizer — strips internal fields before returning to the
 // customer browser. Never exposes restaurantId/outletId-driven internals

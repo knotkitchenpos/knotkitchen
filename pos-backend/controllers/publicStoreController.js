@@ -1,4 +1,5 @@
 const createHttpError = require("http-errors");
+const { AUDIENCES, projectMenus } = require("../services/menuCache");
 const Store = require("../models/storeModel");
 const Restaurant = require("../models/restaurantModel");
 const Menu = require("../models/menuModel");
@@ -70,15 +71,18 @@ const getPublicStoreMenu = async (req, res, next) => {
     }
 
     // Strict multi-tenant query: ONLY menus belonging to this restaurantId
-    const menus = await Menu.find({
+    const menuDocs = await Menu.find({
       restaurantId: store.restaurantId,
       isDeleted: { $ne: true },
       published: true,
     });
 
+    // Anonymous, customer-facing: serves the Website Published snapshot, the
+    // same copy the storefront renders. Returning the raw documents here
+    // published every unsaved draft edit to anyone who asked.
     res.status(200).json({
       success: true,
-      data: menus,
+      data: projectMenus(menuDocs, AUDIENCES.WEBSITE),
     });
   } catch (error) {
     next(error);

@@ -32,9 +32,20 @@ const Dashboard = () => {
   const [isMarketplaceModalOpen, setIsMarketplaceModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("Metrics");
 
+  // Draft list — used only to populate the "add a dish" category picker, where
+  // a category the operator just created must be selectable before it is
+  // published.
   const { data: menusRes } = useQuery({
     queryKey: ["menus"],
     queryFn: getMenus,
+  });
+
+  // Published (System) catalogue — anything that ORDERS from the menu must use
+  // this, so a marketplace order can only contain items the tills are actually
+  // serving. See services/menuCache.js.
+  const { data: systemMenusRes } = useQuery({
+    queryKey: ["menus", "system"],
+    queryFn: () => getMenus({ source: "system" }),
   });
   const { data: ordersRes } = useQuery({
     queryKey: ["orders"],
@@ -42,6 +53,7 @@ const Dashboard = () => {
   });
 
   const menus = Array.isArray(menusRes?.data?.data) ? menusRes.data.data : [];
+  const systemMenus = Array.isArray(systemMenusRes?.data?.data) ? systemMenusRes.data.data : [];
   const orders = Array.isArray(ordersRes?.data?.data) ? ordersRes.data.data : [];
 
   const addCategoryMutation = useMutation({
@@ -174,7 +186,7 @@ const Dashboard = () => {
 
       {/* Marketplace Order Modal */}
       {isMarketplaceModalOpen && (
-        <MarketplaceOrderModal menus={menus} onClose={handleCloseMarketplaceModal} />
+        <MarketplaceOrderModal menus={systemMenus} onClose={handleCloseMarketplaceModal} />
       )}
 
       {/* Category Modal */}
