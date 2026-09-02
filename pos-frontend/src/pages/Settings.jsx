@@ -367,7 +367,7 @@ const StorePropertiesView = () => {
         <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
           <div>
             <h4 className="text-[16px] font-extrabold text-[#0F172A]">Store Properties</h4>
-            <p className="text-[12px] text-[#94A3B8]">Editing protected properties requires PIN verification (Default PIN: 8796)</p>
+            <p className="text-[12px] text-[#94A3B8]">Editing protected properties requires PIN verification</p>
           </div>
           {!pinVerified ? (
             <div className="flex items-center gap-2">
@@ -376,7 +376,7 @@ const StorePropertiesView = () => {
                 maxLength={8}
                 value={pin}
                 onChange={(e) => setPin(e.target.value)}
-                placeholder="Enter PIN (8796)"
+                placeholder="Enter PIN"
                 className="h-[36px] w-[140px] px-3 rounded-xl border border-[#E2E8F0] text-[13px] font-bold"
               />
               <button
@@ -552,7 +552,7 @@ const StorePropertiesView = () => {
           <div className="flex items-center justify-between">
             <div>
               <h4 className="text-[15px] font-extrabold text-[#0F172A]">Protection PIN Management</h4>
-              <p className="text-[12px] text-[#94A3B8]">Owner can change the default security PIN (8796)</p>
+              <p className="text-[12px] text-[#94A3B8]">Owner can change the security PIN</p>
             </div>
             <button
               onClick={() => setShowChangePin(!showChangePin)}
@@ -1721,7 +1721,7 @@ const RulesChargesView = () => {
 const MENU_ITEMS = [
   { id: "cache", title: "1. Manage Cache", desc: "Publish menu changes to Website or System cache.", Icon: I.database, mode: "view" },
   { id: "device", title: "2. Device Configuration", desc: "Printer paper sizes, auto-print & e-bill settings.", Icon: I.printer, mode: "view" },
-  { id: "properties", title: "3. Store Properties", desc: "14 store details & protection PIN (8796).", Icon: I.store, mode: "view" },
+  { id: "properties", title: "3. Store Properties", desc: "14 store details & protection PIN.", Icon: I.store, mode: "view" },
   { id: "menu", title: "4. Manage Menu", desc: "Categories, dishes, variants and add-ons.", Icon: I.utensils, path: "/manage-menu" },
   { id: "table", title: "5. Manage Table", desc: "Table layouts and session status.", Icon: I.grid, path: "/tables" },
   { id: "staff", title: "6. Manage Staff", desc: "Add/delete staff and PIN privileges.", Icon: I.users, mode: "view" },
