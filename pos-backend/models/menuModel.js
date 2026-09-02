@@ -162,6 +162,18 @@ const menuSchema = new mongoose.Schema({
     publishedAt: { type: Date, default: null },
     versionHistory: { type: [versionSnapshotSchema], default: [] },
 
+    // Per-surface visibility overrides.
+    //
+    // `published` is the master switch: ON means the category shows on both
+    // the POS and the website. These two are consulted ONLY when it is OFF,
+    // so an operator can hide a category everywhere except one surface —
+    // e.g. a delivery-only range kept off the tills.
+    //
+    // They default to false, which means "Display OFF" keeps its existing
+    // meaning (hidden from both) for every category that predates them.
+    showOnPos: { type: Boolean, default: false },
+    showOnWebsite: { type: Boolean, default: false },
+
     hasPublishedToSystem: { type: Boolean, default: false },
     lastPublishedToSystemAt: { type: Date, default: null },
     systemVersion: { type: Number, default: 0 },

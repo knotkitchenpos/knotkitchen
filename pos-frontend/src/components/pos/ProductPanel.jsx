@@ -116,6 +116,8 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
   const dispatch = useDispatch();
   const location = useLocation();
   const cart = useSelector((s) => s.cart);
+  // "Collection" | "Delivery" | "Table Service" — drives Dispatch Type filtering below.
+  const orderType = useSelector((s) => s.orderType.orderType);
 
   const [view, setView] = useState("grid");
   const [q, setQ] = useState("");
@@ -135,10 +137,30 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
   });
 
 
+  // Dispatch Type maps the POS order type onto the category's own flags.
+  // Absent or all-off means "no restriction", so categories created before
+  // this behave exactly as they always did.
+  const dispatchKeyFor = (type) =>
+    type === "Delivery" ? "delivery" : type === "Table Service" ? "table" : "collection";
+
+  const allowsOrderType = (menu, type) => {
+    const dt = menu?.dispatchType;
+    if (!dt) return true;
+    if (!dt.collection && !dt.delivery && !dt.table) return true;
+    return dt[dispatchKeyFor(type)] !== false;
+  };
+
   const menus = useMemo(() => {
     const all = menusRes?.data?.data || [];
-    return all.filter((m) => m.published !== false && inSchedule(m.schedule));
-  }, [menusRes]);
+    return all.filter(
+      (m) =>
+        // Display Status ON, or hidden everywhere EXCEPT the POS.
+        (m.published !== false || m.showOnPos === true) &&
+        allowsOrderType(m, orderType) &&
+        inSchedule(m.schedule),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [menusRes, orderType]);
 
   useEffect(() => {
     const id = location.state?.selectedCategoryId;

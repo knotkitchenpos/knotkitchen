@@ -140,3 +140,84 @@ test("a menu missing snapshot fields entirely is treated as unpublished, not as 
   assert.equal(menuViewFor(legacy, AUDIENCES.SYSTEM).items.length, 0);
   assert.equal(menuViewFor(legacy, AUDIENCES.WEBSITE).items.length, 0);
 });
+
+// ---------------------------------------------------------------------------
+// Category visibility and Dispatch Type.
+//
+// `published` (Display Status) is the master switch. When it is OFF the two
+// per-surface flags decide where the category still shows. Dispatch Type
+// restricts which order types it may be sold through — it had been stored on
+// the model since the beginning and read by nothing.
+// ---------------------------------------------------------------------------
+
+const {
+  isVisibleOnPos,
+  isVisibleOnWebsite,
+  allowsOrderType,
+  ORDER_TYPES,
+} = require("../services/menuCache");
+
+test("Display Status ON shows the category on both surfaces", () => {
+  const menu = { published: true };
+  assert.equal(isVisibleOnPos(menu), true);
+  assert.equal(isVisibleOnWebsite(menu), true);
+});
+
+test("Display Status OFF hides it from both, as it always did", () => {
+  const menu = { published: false };
+  assert.equal(isVisibleOnPos(menu), false);
+  assert.equal(isVisibleOnWebsite(menu), false);
+});
+
+test("Display Status OFF + Website Visibility shows it on the website ONLY", () => {
+  const menu = { published: false, showOnWebsite: true };
+  assert.equal(isVisibleOnWebsite(menu), true);
+  assert.equal(isVisibleOnPos(menu), false);
+});
+
+test("Display Status OFF + POS Visibility shows it on the POS ONLY", () => {
+  const menu = { published: false, showOnPos: true };
+  assert.equal(isVisibleOnPos(menu), true);
+  assert.equal(isVisibleOnWebsite(menu), false);
+});
+
+test("BACKWARD COMPAT: a category predating the flags is unaffected", () => {
+  // No showOnPos/showOnWebsite keys at all — Display Status alone decides.
+  assert.equal(isVisibleOnPos({ published: true }), true);
+  assert.equal(isVisibleOnWebsite({ published: false }), false);
+  // `published` absent entirely (very old rows) counts as visible.
+  assert.equal(isVisibleOnPos({}), true);
+});
+
+test("a collection-only category is sold through collection and nothing else", () => {
+  const menu = { dispatchType: { collection: true, delivery: false, table: false } };
+  assert.equal(allowsOrderType(menu, ORDER_TYPES.COLLECTION), true);
+  assert.equal(allowsOrderType(menu, ORDER_TYPES.DELIVERY), false);
+  assert.equal(allowsOrderType(menu, ORDER_TYPES.TABLE), false);
+});
+
+test("delivery-only and table-only follow the same rule", () => {
+  const delivery = { dispatchType: { collection: false, delivery: true, table: false } };
+  assert.equal(allowsOrderType(delivery, ORDER_TYPES.DELIVERY), true);
+  assert.equal(allowsOrderType(delivery, ORDER_TYPES.COLLECTION), false);
+
+  const table = { dispatchType: { collection: false, delivery: false, table: true } };
+  assert.equal(allowsOrderType(table, ORDER_TYPES.TABLE), true);
+  assert.equal(allowsOrderType(table, ORDER_TYPES.DELIVERY), false);
+});
+
+test("BACKWARD COMPAT: no dispatchType means no restriction", () => {
+  for (const t of Object.values(ORDER_TYPES)) {
+    assert.equal(allowsOrderType({}, t), true);
+    assert.equal(allowsOrderType({ dispatchType: null }, t), true);
+  }
+});
+
+test("all three dispatch flags off is treated as unrestricted, not as hidden", () => {
+  // Otherwise an operator who unticked everything would silently lose the
+  // category from every surface with no way to see why.
+  const menu = { dispatchType: { collection: false, delivery: false, table: false } };
+  for (const t of Object.values(ORDER_TYPES)) {
+    assert.equal(allowsOrderType(menu, t), true);
+  }
+});

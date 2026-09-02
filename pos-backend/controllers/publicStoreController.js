@@ -1,5 +1,5 @@
 const createHttpError = require("http-errors");
-const { AUDIENCES, projectMenus } = require("../services/menuCache");
+const { AUDIENCES, projectMenus, WEBSITE_VISIBLE_QUERY } = require("../services/menuCache");
 const Store = require("../models/storeModel");
 const Restaurant = require("../models/restaurantModel");
 const Menu = require("../models/menuModel");
@@ -74,7 +74,7 @@ const getPublicStoreMenu = async (req, res, next) => {
     const menuDocs = await Menu.find({
       restaurantId: store.restaurantId,
       isDeleted: { $ne: true },
-      published: true,
+      ...WEBSITE_VISIBLE_QUERY,
     });
 
     // Anonymous, customer-facing: serves the Website Published snapshot, the

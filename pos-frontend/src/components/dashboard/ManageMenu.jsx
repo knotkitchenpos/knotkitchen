@@ -138,6 +138,10 @@ const ManageMenu = () => {
   const [editingCategory, setEditingCategory] = useState(null);
   const [editingSubcategory, setEditingSubcategory] = useState(null);
   const [catPublished, setCatPublished] = useState(true);
+  // Only meaningful while Display Status is OFF — they let a hidden category
+  // still appear on one surface.
+  const [catShowOnPos, setCatShowOnPos] = useState(false);
+  const [catShowOnWebsite, setCatShowOnWebsite] = useState(false);
   const [catName, setCatName] = useState("");
   const [catDesc, setCatDesc] = useState("");
   const [dispatchAll, setDispatchAll] = useState(true);
@@ -820,7 +824,6 @@ const ManageMenu = () => {
           description: catDesc,
           dispatchType,
           published: catPublished,
-          bgColor,
           textColor,
         });
       } else {
@@ -829,7 +832,6 @@ const ManageMenu = () => {
           name: catName,
           description: catDesc,
           dispatchType,
-          bgColor,
           textColor,
         });
       }
@@ -841,7 +843,8 @@ const ManageMenu = () => {
           description: catDesc,
           dispatchType,
           published: catPublished,
-          bgColor,
+          showOnPos: catPublished ? false : catShowOnPos,
+          showOnWebsite: catPublished ? false : catShowOnWebsite,
           textColor,
         });
       } else {
@@ -849,7 +852,9 @@ const ManageMenu = () => {
           name: catName,
           description: catDesc,
           dispatchType,
-          bgColor,
+          published: catPublished,
+          showOnPos: catPublished ? false : catShowOnPos,
+          showOnWebsite: catPublished ? false : catShowOnWebsite,
           textColor,
         });
       }
@@ -1651,6 +1656,8 @@ const ManageMenu = () => {
                         setDispatchDel(Boolean(dt.delivery));
                         setDispatchTbl(Boolean(dt.table));
                         setBgColor(menu.bgColor || "#5b45b0");
+                        setCatShowOnPos(menu.showOnPos === true);
+                        setCatShowOnWebsite(menu.showOnWebsite === true);
                         setTextColor(menu.textColor || "#ffffff");
                         setShowCreateCategory(true);
                       }}
@@ -2037,10 +2044,7 @@ const ManageMenu = () => {
               </div>
 
               <div>
-                <div className="flex items-center justify-between">
-                  <label className="text-[12px] font-extrabold text-[#334155]">Description</label>
-                  <span className="text-[10.5px] text-[#94A3B8] font-bold">{catDesc.length}/200</span>
-                </div>
+                <label className="text-[12px] font-extrabold text-[#334155]">Description</label>
                 <textarea
                   maxLength={200}
                   rows={3}
@@ -2073,6 +2077,37 @@ const ManageMenu = () => {
                   />
                 </button>
               </div>
+
+              {/* With Display Status OFF the category is hidden everywhere by
+                  default; these let it back onto one surface only. */}
+              {!catPublished && (
+                <div className="space-y-2 pl-1">
+                  {[
+                    { label: "POS Visibility", hint: "Show on the POS tills only", on: catShowOnPos, set: setCatShowOnPos },
+                    { label: "Website Visibility", hint: "Show on the customer website only", on: catShowOnWebsite, set: setCatShowOnWebsite },
+                  ].map(({ label, hint, on, set }) => (
+                    <div key={label} className="flex items-center justify-between">
+                      <div>
+                        <span className="font-bold text-[12.5px] text-[#334155] block">{label}</span>
+                        <span className="text-[11px] text-[#94A3B8]">{hint}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => set((prev) => !prev)}
+                        className={`w-10 h-[22px] rounded-full transition-colors relative shrink-0 ${
+                          on ? "bg-[#22C55E]" : "bg-[#CBD5E1]"
+                        }`}
+                      >
+                        <span
+                          className={`absolute top-[3px] w-4 h-4 rounded-full bg-white transition-transform ${
+                            on ? "right-[3px]" : "left-[3px]"
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Dispatch Type (Collection, Delivery, Table) */}
               <div className="space-y-2 pt-2 border-t border-[#E2E8F0]">
@@ -2131,23 +2166,9 @@ const ManageMenu = () => {
               </div>
 
               <div className="space-y-3 pt-2 border-t border-[#E2E8F0]">
-                <div>
-                  <label className="text-[12px] font-extrabold text-[#334155]">Background Color</label>
-                  <div className="flex items-center gap-2 mt-1">
-                    <input
-                      value={bgColor}
-                      onChange={(e) => setBgColor(e.target.value)}
-                      className="flex-1 h-[38px] px-3 rounded-xl border border-[#E2E8F0] font-bold"
-                    />
-                    <input
-                      type="color"
-                      value={bgColor}
-                      onChange={(e) => setBgColor(e.target.value)}
-                      className="w-9 h-9 rounded-lg cursor-pointer border"
-                    />
-                  </div>
-                </div>
-
+                {/* Background Color removed from the category form. `bgColor`
+                    is still sent (unchanged) so existing category colours are
+                    preserved rather than reset on the next save. */}
                 <div>
                   <label className="text-[12px] font-extrabold text-[#334155]">Text Color</label>
                   <div className="flex items-center gap-2 mt-1">

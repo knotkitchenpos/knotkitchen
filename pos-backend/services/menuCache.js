@@ -118,8 +118,57 @@ const hasUnpublishedChanges = (menu, audience) => {
   return new Date(changedAt).getTime() > new Date(stamp).getTime();
 };
 
+/**
+ * Per-surface category visibility.
+ *
+ * `published` (Display Status) is the master switch: ON shows the category on
+ * both the POS and the website. When it is OFF the two per-surface flags take
+ * over, so a category can be hidden everywhere except one surface. Both
+ * default to false, so "Display OFF" keeps meaning "hidden from both" for
+ * every category that predates them.
+ */
+const isVisibleOnPos = (menu) => (menu ? menu.published !== false || menu.showOnPos === true : false);
+const isVisibleOnWebsite = (menu) => (menu ? menu.published !== false || menu.showOnWebsite === true : false);
+
+/** Mongo clauses matching the two rules above, for use in a find(). */
+const POS_VISIBLE_QUERY = { $or: [{ published: { $ne: false } }, { showOnPos: true }] };
+const WEBSITE_VISIBLE_QUERY = { $or: [{ published: { $ne: false } }, { showOnWebsite: true }] };
+
+/**
+ * Order types a category may be sold through.
+ *
+ * dispatchType has existed on the model since the beginning but was stored and
+ * never read — every surface showed every category regardless. Enabling only
+ * "Collection" now genuinely restricts the category to collection orders.
+ *
+ * An absent or empty dispatchType means "no restriction", which keeps every
+ * category created before this behaved as it always did.
+ */
+const ORDER_TYPES = Object.freeze({ COLLECTION: "collection", DELIVERY: "delivery", TABLE: "table" });
+
+const allowsOrderType = (menu, orderType) => {
+  if (!menu || !orderType) return true;
+  const dt = menu.dispatchType;
+  if (!dt) return true;
+  const flags = typeof dt.toObject === "function" ? dt.toObject() : dt;
+  const { collection, delivery, table } = flags || {};
+  // All three off (or all undefined) is not a meaningful restriction — treat
+  // it as unrestricted rather than silently hiding the category everywhere.
+  if (!collection && !delivery && !table) return true;
+  if (orderType === ORDER_TYPES.COLLECTION) return collection !== false;
+  if (orderType === ORDER_TYPES.DELIVERY) return delivery !== false;
+  if (orderType === ORDER_TYPES.TABLE) return table !== false;
+  return true;
+};
+
 module.exports = {
   AUDIENCES,
+  ORDER_TYPES,
+  isVisibleOnPos,
+  isVisibleOnWebsite,
+  POS_VISIBLE_QUERY,
+  WEBSITE_VISIBLE_QUERY,
+  allowsOrderType,
   menuViewFor,
   projectMenu,
   projectMenus,

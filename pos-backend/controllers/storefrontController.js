@@ -7,7 +7,7 @@ const { resolveStorefront, REASON_MESSAGES } = require("../services/storefrontRe
 const { AWAITING_ACCEPTANCE } = require("../constants/orderStatus");
 const { isStoreOpen, isClosedForToday, isItemAvailableNow, getEffectivePrice } = require("../services/businessHours");
 const { calculateOrderTotals, PricingError } = require("../services/orderPricingService");
-const { AUDIENCES, menuViewFor, projectMenus } = require("../services/menuCache");
+const { AUDIENCES, ORDER_TYPES, menuViewFor, projectMenus, allowsOrderType } = require("../services/menuCache");
 const { getTheme } = require("../services/themeRegistry");
 const { emitOrderCreated } = require("../services/socket");
 const { generateOrderNumberSafe } = require("../services/orderNumberService");
@@ -88,7 +88,13 @@ const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezon
         isDeleted: { $ne: true },
         // Older menus used isPublished; new menus use published. Accept both
         // so a legacy POS menu does not silently disappear from the website.
-        $or: [{ published: true }, { published: { $exists: false }, isPublished: true }],
+        // `showOnWebsite` is the per-surface override: it lets a category with
+        // Display Status OFF still appear here and nowhere else.
+        $or: [
+          { published: true },
+          { published: { $exists: false }, isPublished: true },
+          { showOnWebsite: true },
+        ],
       }).sort({ createdAt: 1 })
     : [];
 
@@ -115,6 +121,15 @@ const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezon
     categories.push({
       id: menu._id,
       name: activeName,
+      // Which order types this category may be sold through. The storefront
+      // asks for delivery/collection at checkout rather than up front, so the
+      // authoritative check runs at order time (see createStorefrontOrder);
+      // this is exposed so the UI can also filter once a choice is made.
+      dispatchType: menu.dispatchType
+        ? { collection: menu.dispatchType.collection !== false,
+            delivery: menu.dispatchType.delivery !== false,
+            table: menu.dispatchType.table !== false }
+        : { collection: true, delivery: true, table: true },
       icon: menu.icon || "",
       bgColor: menu.bgColor || "",
       isActive: menuActive,
@@ -376,7 +391,16 @@ const createStorefrontOrder = async (req, res, next) => {
       isDeleted: { $ne: true },
       $or: [{ published: true }, { published: { $exists: false }, isPublished: true }],
     });
-    const menus = projectMenus(menuDocs, AUDIENCES.WEBSITE);
+    // Dispatch Type is authoritative here. The website asks for pickup vs
+    // delivery at checkout rather than before browsing, so a delivery-only
+    // category cannot be filtered out of the catalogue up front — instead a
+    // category that does not allow the chosen order type is dropped from the
+    // priced menu, and ordering from it fails the same way an unavailable
+    // item does. "pickup" on the website is a collection order.
+    const dispatchKey = requestedType === "delivery" ? ORDER_TYPES.DELIVERY : ORDER_TYPES.COLLECTION;
+    const menus = projectMenus(menuDocs, AUDIENCES.WEBSITE).filter((m) =>
+      allowsOrderType(m, dispatchKey),
+    );
 
     let priced;
     try {

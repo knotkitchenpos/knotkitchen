@@ -56,7 +56,13 @@ test("Website Module 3: Public store menu returns categories, products with Veg/
 
   const MenuMock = {
     find: async (query) => {
-      if (query.restaurantId === RESTAURANT_ID && query.published === true) {
+      // Visibility is expressed as an $or now — `published: true` OR the
+      // per-surface showOnWebsite override — so the old `query.published`
+      // check no longer describes what the controller asks for.
+      const clauses = query.$or || [];
+      const scopesToPublished = clauses.some((c) => c.published !== undefined);
+      const honoursOverride = clauses.some((c) => c.showOnWebsite === true);
+      if (query.restaurantId === RESTAURANT_ID && scopesToPublished && honoursOverride) {
         return mockMenus;
       }
       return [];

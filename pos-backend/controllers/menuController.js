@@ -104,7 +104,7 @@ const reorderMenus = async (req, res, next) => {
 
 const addCategory = async (req, res, next) => {
   try {
-    const { name, description, dispatchType, bgColor, textColor } = req.body;
+    const { name, description, dispatchType, bgColor, textColor, showOnPos, showOnWebsite } = req.body;
     if (!name) {
       const error = createHttpError(400, "Category name is required!");
       return next(error);
@@ -124,6 +124,14 @@ const addCategory = async (req, res, next) => {
       restaurantId: req.user?.restaurantId,
       outletId: req.user?.outletId,
       bgColor: bgColor || "#5b45b0",
+      // description and dispatchType were read off the body and then never
+      // written, so a category created with either was silently saved without
+      // them and the operator had to re-enter them via Edit.
+      ...(description !== undefined ? { description: String(description).trim() } : {}),
+      ...(dispatchType !== undefined ? { dispatchType } : {}),
+      ...(textColor !== undefined ? { textColor } : {}),
+      ...(showOnPos !== undefined ? { showOnPos: Boolean(showOnPos) } : {}),
+      ...(showOnWebsite !== undefined ? { showOnWebsite: Boolean(showOnWebsite) } : {}),
     });
     await menu.save();
     res.status(201).json({ success: true, message: "Category added!", data: menu });
@@ -134,7 +142,7 @@ const addCategory = async (req, res, next) => {
 
 const updateCategory = async (req, res, next) => {
   try {
-    const { menuId, name, description, dispatchType, published, bgColor, textColor } = req.body;
+    const { menuId, name, description, dispatchType, published, bgColor, textColor, showOnPos, showOnWebsite } = req.body;
     if (!menuId || !name) {
       return next(createHttpError(400, "Menu ID and Category name are required!"));
     }
@@ -154,6 +162,8 @@ const updateCategory = async (req, res, next) => {
     }
     if (bgColor !== undefined) menu.bgColor = bgColor;
     if (textColor !== undefined) menu.textColor = textColor;
+    if (showOnPos !== undefined) menu.showOnPos = Boolean(showOnPos);
+    if (showOnWebsite !== undefined) menu.showOnWebsite = Boolean(showOnWebsite);
 
     // If category name changed, update items
     if (oldName !== newName && Array.isArray(menu.items)) {

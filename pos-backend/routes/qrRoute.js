@@ -21,7 +21,7 @@ const { PREPARING } = require("../constants/orderStatus");
 // Order/WebsiteSettings models, and requiring them at module load breaks the
 // tests that mock mongoose before the models are loaded.
 const computeReadyDueAt = (args) => require("../services/autoReadyService").computeReadyDueAt(args);
-const { AUDIENCES, projectMenus } = require("../services/menuCache");
+const { AUDIENCES, ORDER_TYPES, projectMenus, allowsOrderType } = require("../services/menuCache");
 const router = express.Router();
 
 /**
@@ -38,9 +38,13 @@ const scopedMenu = async (restaurantId, outletId) => {
     restaurantId,
     outletId: { $in: [outletId, null] },
     isDeleted: false,
-    $or: [{ published: true }, { isPublished: true }],
+    $or: [{ published: true }, { isPublished: true }, { showOnPos: true }],
   });
-  return projectMenus(docs, AUDIENCES.SYSTEM).map((m) => {
+  return projectMenus(docs, AUDIENCES.SYSTEM)
+    // A table QR is unambiguously a TABLE order, so a category restricted to
+    // collection and/or delivery has no business appearing on it.
+    .filter((m) => allowsOrderType(m, ORDER_TYPES.TABLE))
+    .map((m) => {
     delete m.systemSnapshot;
     delete m.websiteSnapshot;
     return m;
