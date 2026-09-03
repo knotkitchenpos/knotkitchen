@@ -19,6 +19,7 @@ import { isPublicPath } from "./utils/publicRoutes";
 import FullScreenLoader from "./components/shared/FullScreenLoader";
 import MarketplaceOrderPopup from "./components/dashboard/MarketplaceOrderPopup";
 import QRTableOrderPopup from "./components/dashboard/QRTableOrderPopup";
+import WaiterCallPopup from "./components/dashboard/WaiterCallPopup";
 
 function ProtectedRoutes({ children }) {
   const { isAuth } = useSelector((state) => state.user);
@@ -90,6 +91,7 @@ function Layout() {
       </main>
       {isAuth && <MarketplaceOrderPopup />}
       {isAuth && <QRTableOrderPopup />}
+      {isAuth && <WaiterCallPopup />}
     </div>
   );
 }

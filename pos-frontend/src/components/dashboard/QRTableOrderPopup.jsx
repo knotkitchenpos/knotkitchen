@@ -3,6 +3,8 @@ import { useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
 import { enqueueSnackbar } from "notistack";
+import { updateOnlineOrderStatus } from "../../https/storefrontApi";
+import useAlertBeep from "../../hooks/useAlertBeep";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, "") || "";
 
@@ -31,7 +33,12 @@ const QRTableOrderPopup = () => {
   const navigate = useNavigate();
   const restaurantId = useSelector((s) => s.user?.restaurantId);
   const [queue, setQueue] = useState([]);
+  const [busy, setBusy] = useState(false);
   const socketRef = useRef(null);
+
+  // A QR order is a customer waiting at a table — the alert holds until the
+  // biller actually decides, rather than being a toast that scrolls away.
+  useAlertBeep(queue.length > 0);
 
   useEffect(() => {
     if (!restaurantId) return undefined;
@@ -73,6 +80,34 @@ const QRTableOrderPopup = () => {
   if (queue.length === 0) return null;
   const current = queue[0];
   const dismiss = () => setQueue((prev) => prev.slice(1));
+
+  /**
+   * Accept sends the order to the kitchen; Cancel rejects it. Both go through
+   * the existing online-order status endpoint, so a QR order follows exactly
+   * the same lifecycle (and the same auto-ready sweep) as any other channel.
+   */
+  const decide = async (action) => {
+    const orderId = current?._id || current?.id;
+    if (!orderId) {
+      // Nothing to act on — don't strand the operator with a beeping popup.
+      dismiss();
+      return;
+    }
+    setBusy(true);
+    try {
+      await updateOnlineOrderStatus(orderId, action);
+      enqueueSnackbar(action === "accept" ? "Order accepted." : "Order cancelled.", {
+        variant: action === "accept" ? "success" : "info",
+      });
+      dismiss();
+    } catch (e) {
+      enqueueSnackbar(e?.response?.data?.message || "Could not update the order.", {
+        variant: "error",
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
 
   // The socket payload from emitOrderCreated carries the full Order doc
   // (see services/socket.js). The `table` field is a populated ObjectId
@@ -160,26 +195,36 @@ const QRTableOrderPopup = () => {
             )}
           </div>
 
-          {/* Action row */}
+          {/* Action row — the alert keeps sounding until one of these is used. */}
           <div className="grid grid-cols-2 gap-2.5 pt-1">
             <button
               type="button"
-              onClick={dismiss}
-              className="h-[44px] rounded-xl border border-[#E2E8F0] text-[#334155] text-[13.5px] font-bold hover:bg-[#F8FAFC]"
+              onClick={() => decide("cancel")}
+              disabled={busy}
+              className="h-[44px] rounded-xl border border-[#FECACA] bg-[#FEF2F2] text-[#DC2626] text-[13.5px] font-bold hover:bg-[#FEE2E2] disabled:opacity-60"
             >
-              Dismiss
+              Cancel Order
             </button>
             <button
               type="button"
-              onClick={() => {
-                dismiss();
-                navigate("/orders");
-              }}
-              className="h-[44px] rounded-xl bg-[#5B42F3] text-white text-[13.5px] font-extrabold hover:bg-[#4A32E0]"
+              onClick={() => decide("accept")}
+              disabled={busy}
+              className="h-[44px] rounded-xl bg-[#22C55E] text-white text-[13.5px] font-extrabold hover:bg-[#16A34A] disabled:opacity-60"
             >
-              View in Orders
+              {busy ? "Working…" : "Accept Order"}
             </button>
           </div>
+
+          <button
+            type="button"
+            onClick={() => {
+              dismiss();
+              navigate("/orders");
+            }}
+            className="w-full text-[12px] font-bold text-[#64748B] hover:text-[#5B42F3]"
+          >
+            View in Orders
+          </button>
 
           {queue.length > 1 && (
             <p className="text-[11px] font-bold text-[#94A3B8] text-center">

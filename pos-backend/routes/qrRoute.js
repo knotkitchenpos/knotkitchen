@@ -411,10 +411,37 @@ router.route("/order/:token").post(resolveTableScope, async (req, res, next) => 
   } catch (error) { next(error); }
 });
 
-// Public: call waiter
+// Public: call waiter.
+//
+// This used to set a flag on the Table and stop there — nothing was pushed to
+// the POS, so the only way a cashier learned a table wanted service was to
+// happen to reload the Tables screen. It now emits on the restaurant's socket
+// room so the till can raise an alert the moment the customer taps.
 router.route("/waiter-call/:token").post(resolveTableScope, async (req, res, next) => {
   try {
-    await Table.findOneAndUpdate({ _id: req.scope.table._id }, { waiterCallActive: true, waiterCallRequestedAt: new Date() }, { new: true });
+    const { table, restaurantId, outletId } = req.scope;
+    const requestedAt = new Date();
+    await Table.findOneAndUpdate(
+      { _id: table._id },
+      { waiterCallActive: true, waiterCallRequestedAt: requestedAt },
+      { new: true },
+    );
+
+    try {
+      getSocket().emitToRestaurant(restaurantId, "waiter:called", {
+        tableId: String(table._id),
+        tableNumber: table.tableNumber,
+        displayId: table.displayId || table.tableName || "",
+        area: table.area || table.floor || "",
+        restaurantId: String(restaurantId),
+        outletId: outletId ? String(outletId) : null,
+        requestedAt,
+      });
+    } catch (socketErr) {
+      // A dropped notification must never fail the customer's request.
+      console.warn("[qrRoute] waiter:called emit failed:", socketErr.message);
+    }
+
     res.status(200).json({ success: true, message: "Waiter called!" });
   } catch (error) { next(error); }
 });
@@ -430,11 +457,22 @@ router.route("/pay-request/:token").post(resolveTableScope, async (req, res, nex
   } catch (error) { next(error); }
 });
 
-// Dismiss waiter call
+// Acknowledge a waiter call. Emits so every till silences its alert, not just
+// the one that happened to press the button.
 router.route("/waiter-call/:tableId/dismiss").post(isVerifiedUser, async (req, res, next) => {
   try {
     const table = await Table.findOneAndUpdate({ _id: req.params.tableId, restaurantId: req.user.restaurantId }, { waiterCallActive: false }, { new: true });
     if (!table) return res.status(404).json({ success: false, message: "Table not found!" });
+
+    try {
+      getSocket().emitToRestaurant(req.user.restaurantId, "waiter:cleared", {
+        tableId: String(table._id),
+        acknowledgedBy: req.user?.name || "",
+      });
+    } catch (socketErr) {
+      console.warn("[qrRoute] waiter:cleared emit failed:", socketErr.message);
+    }
+
     res.status(200).json({ success: true, data: table });
   } catch (error) { next(error); }
 });
