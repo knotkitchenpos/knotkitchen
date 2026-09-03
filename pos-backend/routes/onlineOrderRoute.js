@@ -5,6 +5,7 @@ const {
   listOnlineOrders,
   getOnlineOrder,
   updateOnlineOrderStatus,
+  resolveAddedItems,
   getOnlineOrderStats,
 } = require("../controllers/onlineOrderController");
 
@@ -20,5 +21,8 @@ router.get("/stats/summary", isVerifiedUser, getOnlineOrderStats);
 router.get("/", isVerifiedUser, listOnlineOrders);
 router.get("/:id", isVerifiedUser, getOnlineOrder);
 router.put("/:id/status", isVerifiedUser, updateOnlineOrderStatus);
+
+// Accept or reject the items a diner added to a table already mid-meal.
+router.put("/:id/items", isVerifiedUser, resolveAddedItems);
 
 module.exports = router;

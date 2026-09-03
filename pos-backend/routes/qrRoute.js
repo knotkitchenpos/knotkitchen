@@ -16,7 +16,7 @@ const priceService = require("../services/price");
 const getSocket = () => require("../services/socket");
 const crypto = require("crypto");
 const mongoose = require("mongoose");
-const { PREPARING } = require("../constants/orderStatus");
+const { PREPARING, SETTLED_STATUSES, CANCELLED_STATUSES } = require("../constants/orderStatus");
 // Lazy for the same reason as getSocket above: autoReadyService pulls in the
 // Order/WebsiteSettings models, and requiring them at module load breaks the
 // tests that mock mongoose before the models are loaded.
@@ -223,6 +223,39 @@ router.route("/session/items/:token").post(resolveTableScope, async (req, res, n
         // order entirely, so a QR order would sit in Preparing forever.
         const readyDueAt = await computeReadyDueAt({ restaurantId, orderType: "dine-in" });
 
+        // A table that is already mid-meal has an open kitchen order. Extra
+        // items belong ON that order, not on a second one: the spec is
+        // explicit that additions must never create a new order, and a
+        // second order would also split the table across two kitchen
+        // tickets and two POS cards for one bill.
+        //
+        // The additions land as item.status "pending" so the till can accept
+        // or reject them; accepted items become "preparing" and only then
+        // reach the kitchen.
+        const openOrder = await Order.findOne({
+          tableSessionId: session._id,
+          isDeleted: { $ne: true },
+          orderStatus: { $nin: [...SETTLED_STATUSES, ...CANCELLED_STATUSES] },
+        }).sort({ createdAt: -1 }).session(mongoSession);
+
+        const asOrderItems = (list, status) =>
+          list.map((it) => ({
+            menuItemId: it.menuItemId, name: it.name, quantity: it.quantity,
+            price: it.price, total: it.total, modifiers: it.modifiers || [],
+            note: it.note || "", status,
+          }));
+
+        let kitchenOrderDoc;
+        let appendedToExisting = false;
+
+        if (openOrder) {
+          // Append to the order this table already has.
+          openOrder.items.push(...asOrderItems(validatedItems, "pending"));
+          openOrder.bills = session.bills;
+          await openOrder.save({ session: mongoSession });
+          kitchenOrderDoc = openOrder;
+          appendedToExisting = true;
+        } else {
         const kitchenOrder = await Order.create(
           [
             {
@@ -239,8 +272,9 @@ router.route("/session/items/:token").post(resolveTableScope, async (req, res, n
           ],
           { session: mongoSession }
         );
+          kitchenOrderDoc = kitchenOrder[0];
+        }
 
-        const kitchenOrderDoc = kitchenOrder[0];
         const startIdx = session.items.length - validatedItems.length;
         validatedItems.forEach((it, idx) => {
           const si = session.items[startIdx + idx];
@@ -267,7 +301,7 @@ router.route("/session/items/:token").post(resolveTableScope, async (req, res, n
         await tableInTxn.save({ session: mongoSession });
         await session.save({ session: mongoSession });
 
-        return { session, kitchenOrder: kitchenOrderDoc, created };
+        return { session, kitchenOrder: kitchenOrderDoc, created, appendedToExisting, addedCount: validatedItems.length };
       }));
     } catch (err) {
       return next(err);
@@ -283,11 +317,30 @@ router.route("/session/items/:token").post(resolveTableScope, async (req, res, n
     // renders "New Table Order · Table {n}" straight from this payload).
     try {
       const populatedOrder = await Order.findById(result.kitchenOrder._id).populate("table");
-      getSocket().emitOrderCreated({
-        restaurantId: result.session.restaurantId,
-        outletId: result.session.outletId,
-        order: populatedOrder || result.kitchenOrder,
-      });
+      const order = populatedOrder || result.kitchenOrder;
+
+      if (result.appendedToExisting) {
+        // Additions to a table that is already mid-meal are a DIFFERENT event
+        // from a brand new order: the till has already accepted this table, so
+        // it needs to review just what was added rather than the whole ticket.
+        getSocket().emitToRestaurant(result.session.restaurantId, "tableOrder:itemsAdded", {
+          orderId: String(order._id),
+          tableSessionId: String(result.session._id),
+          tableNumber: order.table?.tableNumber ?? null,
+          displayId: order.table?.displayId || order.table?.tableName || "",
+          addedCount: result.addedCount,
+          pendingItems: (order.items || [])
+            .filter((i) => i.status === "pending")
+            .map((i) => ({ name: i.name, quantity: i.quantity, total: i.total })),
+          bills: order.bills,
+        });
+      } else {
+        getSocket().emitOrderCreated({
+          restaurantId: result.session.restaurantId,
+          outletId: result.session.outletId,
+          order,
+        });
+      }
     } catch (socketErr) {
       console.warn("[qrRoute] socket emit failed:", socketErr.message);
     }

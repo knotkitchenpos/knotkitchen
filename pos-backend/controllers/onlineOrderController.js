@@ -240,7 +240,83 @@ const getOnlineOrderStats = async (req, res, next) => {
   }
 };
 
+/**
+ * PUT /api/online-orders/:id/items  { action: "accept" | "reject" }
+ *
+ * Resolves the items a diner added to a table that was already mid-meal.
+ * Those arrive on the EXISTING order as status "pending" (see qrRoute), so
+ * the till reviews just the additions rather than the whole ticket.
+ *
+ *   accept -> the pending items join the ticket as "preparing"
+ *   reject -> they are removed and the bill drops back
+ *
+ * Either way the order itself is untouched: additions must never spawn a
+ * second order for one table.
+ */
+const resolveAddedItems = async (req, res, next) => {
+  try {
+    const action = String(req.body?.action || "").toLowerCase();
+    if (!["accept", "reject"].includes(action)) {
+      return next(createHttpError(400, "action must be accept or reject."));
+    }
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+      return next(createHttpError(404, "Invalid order id."));
+    }
+
+    const scope = await tenantScope(req);
+    const order = await Order.findOne({ _id: req.params.id, ...scope, isDeleted: { $ne: true } });
+    if (!order) return next(createHttpError(404, "Order not found."));
+
+    const pending = (order.items || []).filter((i) => i.status === "pending");
+    if (pending.length === 0) {
+      return next(createHttpError(409, "This order has no items waiting to be reviewed."));
+    }
+
+    if (action === "accept") {
+      pending.forEach((i) => { i.status = "preparing"; });
+    } else {
+      order.items = (order.items || []).filter((i) => i.status !== "pending");
+    }
+
+    // Keep the ticket total honest after either outcome.
+    const subtotal = (order.items || []).reduce((s, i) => s + (Number(i.total) || 0), 0);
+    if (order.bills) {
+      const taxRate = Number(order.bills.subtotal) > 0
+        ? Number(order.bills.tax || 0) / Number(order.bills.subtotal)
+        : 0;
+      order.bills.subtotal = subtotal;
+      order.bills.tax = Math.round(subtotal * taxRate * 100) / 100;
+      order.bills.totalWithTax =
+        Math.round((subtotal + order.bills.tax + Number(order.bills.charges || 0)) * 100) / 100;
+    }
+
+    await order.save();
+
+    try {
+      emitOrderStatusChanged({
+        restaurantId: order.restaurantId,
+        outletId: order.outletId,
+        order,
+      });
+    } catch (e) {
+      console.warn("[onlineOrder] added-items emit failed:", e.message);
+    }
+
+    res.status(200).json({
+      success: true,
+      message:
+        action === "accept"
+          ? `${pending.length} added item(s) accepted.`
+          : `${pending.length} added item(s) removed.`,
+      data: toPosOrderView(order),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
+  resolveAddedItems,
   listOnlineOrders,
   getOnlineOrder,
   updateOnlineOrderStatus,

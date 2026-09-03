@@ -244,19 +244,46 @@ const TableSessionMock = {
   async save() {},
 };
 
+/**
+ * Orders created during a test, so the "is this table already mid-meal?"
+ * lookup can find one. QR additions must land on the SAME order rather than
+ * opening a second ticket for one table.
+ */
+const orderStore = [];
+
 const OrderMock = {
-  async findOne() {
-    return null;
+  // Chainable: the route does findOne(...).sort(...).session(...).
+  findOne(query = {}) {
+    const chain = {
+      sort: () => chain,
+      session: () => chain,
+      then: (resolve, reject) => Promise.resolve(chain._resolve()).then(resolve, reject),
+      _resolve() {
+        // Only the open-order lookup passes tableSessionId; everything else
+        // (the requestId dedupe) still finds nothing, as before.
+        if (!query.tableSessionId) return null;
+        return (
+          orderStore.find((o) => String(o.tableSessionId) === String(query.tableSessionId)) || null
+        );
+      },
+    };
+    return chain;
   },
   async create(docs) {
     const arr = Array.isArray(docs) ? docs : [docs];
-    return arr.map((d) => ({
+    const created = arr.map((d) => ({
       _id: newId(),
       ...d,
-      items: d.items.map(() => ({ _id: newId() })),
+      items: d.items.map((it) => ({ _id: newId(), ...it })),
       createdAt: new Date(),
       updatedAt: new Date(),
+      async save() { return this; },
     }));
+    orderStore.push(...created);
+    return created;
+  },
+  async findById(id) {
+    return orderStore.find((o) => String(o._id) === String(id)) || null;
   },
 };
 
@@ -881,4 +908,34 @@ test("QR token for Table 4 can never resolve to Table 5's session", async () => 
   const returnedSession = db.sessions.find((s) => s._id === body.data.session._id);
   assert.equal(returnedSession.tableId, TABLES[4]._id);
   assert.equal(body.data.session.items[0].name, "Biryani");
+});
+test("REGRESSION: a second QR round appends to the SAME order, never a new one", async () => {
+  // Every submission used to call Order.create, giving one table two kitchen
+  // tickets and two POS cards against a single bill.
+  const router = loadQrRoute();
+  const token = await createQrForTable(TABLES[5]._id);
+  const before = orderStore.length;
+
+  const first = await callRoute(router, "/session/items/:token", "post", {
+    params: { token },
+    body: { items: [{ menuItemId: "menu_biryani", quantity: 1 }], customerCount: 2 },
+  });
+  assert.equal(first.statusCode, 201);
+  const createdOrders = orderStore.length - before;
+  assert.equal(createdOrders, 1, "the first round opens exactly one order");
+  const orderId = String(orderStore[orderStore.length - 1]._id);
+
+  const second = await callRoute(router, "/session/items/:token", "post", {
+    params: { token },
+    body: { items: [{ menuItemId: "menu_water", quantity: 1 }] },
+  });
+  assert.equal(second.statusCode, 201);
+  assert.equal(orderStore.length - before, 1, "the second round must NOT create another order");
+
+  const order = orderStore.find((o) => String(o._id) === orderId);
+  assert.equal(order.items.length, 2, "both rounds live on one ticket");
+
+  // The addition waits for the till rather than going straight to the kitchen.
+  const pending = order.items.filter((i) => i.status === "pending");
+  assert.equal(pending.length, 2, "added items arrive as a request");
 });

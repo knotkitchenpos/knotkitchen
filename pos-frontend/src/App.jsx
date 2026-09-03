@@ -20,6 +20,7 @@ import FullScreenLoader from "./components/shared/FullScreenLoader";
 import MarketplaceOrderPopup from "./components/dashboard/MarketplaceOrderPopup";
 import QRTableOrderPopup from "./components/dashboard/QRTableOrderPopup";
 import WaiterCallPopup from "./components/dashboard/WaiterCallPopup";
+import AddedItemsPopup from "./components/dashboard/AddedItemsPopup";
 
 function ProtectedRoutes({ children }) {
   const { isAuth } = useSelector((state) => state.user);
@@ -92,6 +93,7 @@ function Layout() {
       {isAuth && <MarketplaceOrderPopup />}
       {isAuth && <QRTableOrderPopup />}
       {isAuth && <WaiterCallPopup />}
+      {isAuth && <AddedItemsPopup />}
     </div>
   );
 }
