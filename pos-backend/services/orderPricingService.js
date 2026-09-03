@@ -36,7 +36,7 @@ const idsMatch = (a, b) => String(a) === String(b);
  * @param {Map}    itemIndex  key `${menuId}:${itemId}` -> { item, menu }
  * @param {string} timezone
  */
-const priceLine = (line, itemIndex, timezone) => {
+const priceLine = (line, itemIndex, timezone, pricingContext = {}) => {
   const quantity = Math.floor(Number(line?.quantity));
   if (!Number.isFinite(quantity) || quantity < 1) {
     throw new PricingError("Invalid quantity in cart.");
@@ -62,12 +62,16 @@ const priceLine = (line, itemIndex, timezone) => {
     throw new PricingError(`${item.name} is not available for online ordering.`);
   }
 
-  if (!isItemAvailableNow(item, timezone)) {
+  if (!isItemAvailableNow(item, timezone, "website")) {
     throw new PricingError(`${item.name} is currently unavailable.`);
   }
 
-  // ---- Base price: time-aware price rules, then optional discount price ----
-  let basePrice = getEffectivePrice(item, timezone);
+  // ---- Base price: the channel's list price, then time-aware price rules,
+  //      then optional discount price ----
+  // pricingContext carries the environment (POS vs website) and the channel
+  // (collection/delivery/table) so "Same price for all channels = off" is
+  // actually billed. Without it every channel was charged item.price.
+  let basePrice = getEffectivePrice(item, timezone, pricingContext);
   if (
     item.discountPrice !== null &&
     item.discountPrice !== undefined &&
@@ -288,7 +292,9 @@ const calculateOrderTotals = ({
     : "collection";
 
   const itemIndex = buildItemIndex(menus);
-  const pricedItems = items.map((line) => priceLine(line, itemIndex, timezone));
+  const pricedItems = items.map((line) =>
+    priceLine(line, itemIndex, timezone, { environment, channel }),
+  );
 
   let subtotal = round2(pricedItems.reduce((sum, i) => sum + i.total, 0));
 

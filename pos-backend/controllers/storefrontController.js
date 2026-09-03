@@ -25,7 +25,16 @@ const { generateOrderNumberSafe } = require("../services/orderNumberService");
 
 /** Serialize a menu item for public consumption. */
 const toPublicProduct = (item, menu, timezone) => {
-  const effectivePrice = getEffectivePrice(item, timezone);
+  // The website's list price. A product with separate channel prices shows its
+  // WEBSITE COLLECTION figure here — the storefront asks for delivery vs
+  // pickup at checkout, so collection is the honest default to browse at, and
+  // the bill is recomputed against the chosen channel at order time.
+  // `channelPrices` also travels with the product so the cart can show the
+  // delivery figure once the customer picks delivery.
+  const effectivePrice = getEffectivePrice(item, timezone, {
+    environment: "website",
+    channel: "collection",
+  });
   const hasDiscount =
     item.discountPrice !== null &&
     item.discountPrice !== undefined &&
@@ -41,11 +50,21 @@ const toPublicProduct = (item, menu, timezone) => {
     // `price` is what the customer pays; `originalPrice` drives strike-through.
     price: hasDiscount ? Number(item.discountPrice) : effectivePrice,
     originalPrice: hasDiscount ? effectivePrice : null,
+    // Per-channel website prices, present only when the product opts out of a
+    // single price. Lets the cart re-price when the customer picks delivery.
+    channelPrices:
+      item.samePrice === false && item.channelPrices
+        ? {
+            collection: Number(item.channelPrices.websiteCollection) || effectivePrice,
+            delivery: Number(item.channelPrices.websiteDelivery) || effectivePrice,
+            table: Number(item.channelPrices.websiteTable) || effectivePrice,
+          }
+        : null,
     image: item.imageUrl || item.image || "",
     thumbnail: item.imageThumbnailUrl || item.imageUrl || item.image || "",
     imageAlt: item.imageAlt || item.name,
     isVegetarian: Boolean(item.isVegetarian),
-    isAvailable: isItemAvailableNow(item, timezone),
+    isAvailable: isItemAvailableNow(item, timezone, "website"),
     isFeatured: Boolean(item.isFeatured),
     isCombo: Boolean(item.isCombo),
     comboDescription: item.comboDescription || "",

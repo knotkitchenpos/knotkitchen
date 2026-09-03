@@ -118,6 +118,14 @@ export const deleteCategory = (menuId) => axiosWrapper.delete(`/api/menu/${menuI
 export const addDish = (data) => axiosWrapper.post("/api/menu/dish", data);
 export const updateDish = ({ menuId, itemId, ...data }) =>
   axiosWrapper.put(`/api/menu/${menuId}/dish/${itemId}`, data);
+/**
+ * Bulk delete in ONE request. Looping deleteDish over a selection made every
+ * call load and save the same Menu document, so all but the first failed
+ * Mongoose's version check and returned 500.
+ */
+export const deleteDishes = ({ menuId, itemIds }) =>
+  axiosWrapper.delete(`/api/menu/${menuId}/dishes`, { data: { itemIds } });
+
 export const deleteDish = ({ menuId, itemId }) =>
   axiosWrapper.delete(`/api/menu/${menuId}/dish/${itemId}`);
 export const updateDishStatus = ({ menuId, itemId }) =>

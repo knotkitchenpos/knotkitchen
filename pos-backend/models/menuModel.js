@@ -96,6 +96,17 @@ const menuItemSchema = new mongoose.Schema({
     // Module 2 §7: Display (System / Website / Both)
     displayTarget: { type: String, enum: ["both", "system", "website"], default: "both" },
 
+    // Display Status (isAvailable) OFF used to remove the product everywhere.
+    // These let it stay live on exactly one surface instead. Consulted ONLY
+    // when isAvailable is false, and both default to false, so "Display OFF"
+    // keeps its existing meaning for every product that predates them.
+    //
+    // Named for the condition they apply to rather than reusing showOnWebsite,
+    // which already exists on the item with the opposite default and a
+    // different meaning ("list this product on the website at all").
+    visibleOnPosWhenOff: { type: Boolean, default: false },
+    visibleOnWebsiteWhenOff: { type: Boolean, default: false },
+
     // Product Image
     image: { type: String, default: "" },
     imageId: { type: mongoose.Schema.Types.ObjectId, ref: "MediaAsset", default: null },

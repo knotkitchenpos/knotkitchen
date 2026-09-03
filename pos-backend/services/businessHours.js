@@ -168,9 +168,20 @@ const isStoreOpen = (settings, timezone) => {
 };
 
 /** Does an item's own schedule permit ordering right now? */
-const isItemAvailableNow = (item, timezone) => {
+/**
+ * @param {string} [surface] "pos" | "website". When given, a product whose
+ *   Display Status is OFF can still be available on that one surface via
+ *   visibleOnPosWhenOff / visibleOnWebsiteWhenOff. Omit it for the old
+ *   all-or-nothing behaviour.
+ */
+const isItemAvailableNow = (item, timezone, surface) => {
   if (!item) return false;
-  if (item.isAvailable === false) return false;
+  if (item.isAvailable === false) {
+    const rescued =
+      (surface === "pos" && item.visibleOnPosWhenOff === true) ||
+      (surface === "website" && item.visibleOnWebsiteWhenOff === true);
+    if (!rescued) return false;
+  }
 
   const schedule = item.schedule;
   if (!schedule || !schedule.enabled) return true;
@@ -188,8 +199,44 @@ const isItemAvailableNow = (item, timezone) => {
  * and the authoritative order pricing, so a customer is always charged exactly
  * what the storefront displayed.
  */
-const getEffectivePrice = (item, timezone) => {
+/**
+ * The item's list price for one selling channel.
+ *
+ * "Same price for all channels" OFF stores six figures on the product —
+ * posCollection / posDelivery / posTable and the three website equivalents —
+ * and until now NOTHING read them: every surface, and every bill, used
+ * `item.price`. Turning the toggle off therefore appeared to do nothing.
+ *
+ * `environment` is "system" (POS) or "website"; `channel` is one of
+ * collection | delivery | table. Falls back to `item.price` when the product
+ * uses one price everywhere, when the channel figure is missing, or when it
+ * is zero — a channel priced at 0 is far more likely to be an unset field
+ * than a genuinely free product.
+ */
+const CHANNEL_PRICE_KEYS = {
+  system: { collection: "posCollection", delivery: "posDelivery", table: "posTable" },
+  website: { collection: "websiteCollection", delivery: "websiteDelivery", table: "websiteTable" },
+};
+
+const getChannelPrice = (item, environment, channel) => {
   const base = Number(item?.price) || 0;
+  if (!item || item.samePrice !== false) return base;
+
+  const keys = CHANNEL_PRICE_KEYS[environment === "system" ? "system" : "website"];
+  const key = keys[channel] || keys.collection;
+  const raw = item.channelPrices ? item.channelPrices[key] : undefined;
+  const value = Number(raw);
+  return Number.isFinite(value) && value > 0 ? value : base;
+};
+
+/**
+ * Effective unit price: the channel list price, then any active time-based
+ * price rule (Happy Hour etc), which overrides it.
+ */
+const getEffectivePrice = (item, timezone, { environment, channel } = {}) => {
+  const base = environment || channel
+    ? getChannelPrice(item, environment, channel)
+    : Number(item?.price) || 0;
   const rules = Array.isArray(item?.priceRules) ? item.priceRules : [];
   if (!rules.length) return base;
 
@@ -208,6 +255,7 @@ const getEffectivePrice = (item, timezone) => {
 };
 
 module.exports = {
+  getChannelPrice,
   isStoreOpen,
   isClosedForToday,
   isItemAvailableNow,

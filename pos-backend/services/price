@@ -1,5 +1,6 @@
 const Menu = require("../models/menuModel");
 const { AUDIENCES, menuViewFor } = require("./menuCache");
+const { getChannelPrice } = require("./businessHours");
 
 // ============================================================
 // Server-side pricing engine
@@ -37,8 +38,10 @@ const isInSchedule = (schedule) => {
   return now >= start || now <= end;
 };
 
-const getActivePrice = (item) => {
-  if (!item?.priceRules?.length) return item?.price;
+const getActivePrice = (item, { environment, channel } = {}) => {
+  const listPrice =
+    environment || channel ? getChannelPrice(item, environment, channel) : item?.price;
+  if (!item?.priceRules?.length) return listPrice;
   const now = currentTimeInMinutes();
   const today = new Date().getDay();
   const activeRule = item.priceRules.find((r) => {
@@ -51,7 +54,7 @@ const getActivePrice = (item) => {
     if (start <= end) return now >= start && now <= end;
     return now >= start || now <= end;
   });
-  return activeRule ? activeRule.price : item?.price;
+  return activeRule ? activeRule.price : listPrice;
 };
 
 /**
@@ -112,17 +115,31 @@ const resolveMenuItem = async ({ menuItemId, restaurantId, outletId, audience = 
     throw err;
   }
 
-  return { menu, item, basePrice: getActivePrice(item) };
+  return {
+    menu,
+    item,
+    basePrice: getActivePrice(item, { environment: "system", channel: "table" }),
+  };
 };
 
 /**
  * Calculate the server-side unit price for an item including
  * variants, add-ons and modifiers.
  */
-const calculateUnitPrice = ({ item, variantId, addonIds = [], modifierSelections = {} }) => {
+const calculateUnitPrice = ({
+  item,
+  variantId,
+  addonIds = [],
+  modifierSelections = {},
+  // Table sessions — POS tills and table QR alike — are "system" + "table".
+  // Passing them makes "Same price for all channels = off" actually bill the
+  // table price; before this every channel was charged item.price.
+  environment = "system",
+  channel = "table",
+} = {}) => {
   if (!item) return 0;
 
-  let price = getActivePrice(item);
+  let price = getActivePrice(item, { environment, channel });
 
   // Variant
   let variant = null;

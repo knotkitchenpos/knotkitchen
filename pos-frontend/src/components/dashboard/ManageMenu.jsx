@@ -12,6 +12,7 @@ import {
   bulkRemoveGroup,
   deleteCategory,
   deleteDish,
+  deleteDishes,
   // downloadMenuCsvTemplate — removed from the toolbar per operator
   // feedback; still exported from https/ for anyone who needs to hit the
   // endpoint programmatically.
@@ -70,6 +71,32 @@ const NAV_TABS = [
   { id: "product", label: "Products" },
   { id: "groups", label: "Groups" },
 ];
+
+/**
+ * What to print on a product row in Manage Menu.
+ *
+ * With "Same price for all channels" ON this is simply the price. With it OFF
+ * the product has six channel figures and `price` is just the base the form
+ * started from — so the row kept showing a number the operator had already
+ * changed. Summarise the channel prices instead: one figure if they agree, a
+ * range if they do not.
+ */
+const displayPrice = (item) => {
+  const base = Number(item?.price) || 0;
+  if (!item || item.samePrice !== false || !item.channelPrices) return `₹${base}`;
+
+  const values = [
+    "posCollection", "posDelivery", "posTable",
+    "websiteCollection", "websiteDelivery", "websiteTable",
+  ]
+    .map((k) => Number(item.channelPrices[k]))
+    .filter((n) => Number.isFinite(n) && n > 0);
+
+  if (!values.length) return `₹${base}`;
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  return min === max ? `₹${min}` : `₹${min} – ₹${max}`;
+};
 
 const ManageMenu = () => {
   const qc = useQueryClient();
@@ -175,6 +202,10 @@ const ManageMenu = () => {
   });
   const [prodVeg, setProdVeg] = useState(true);
   const [prodDisplay, setProdDisplay] = useState("both"); // both, system, website
+  // Only meaningful while Display Status is OFF — they keep the product live
+  // on exactly one surface instead of removing it from both.
+  const [prodOffOnPos, setProdOffOnPos] = useState(false);
+  const [prodOffOnWebsite, setProdOffOnWebsite] = useState(false);
   const [prodImageUrl, setProdImageUrl] = useState("");
   const [uploadingImg, setUploadingImg] = useState(false);
   // Names of modifier groups assigned to the product being created/edited (Module 4) - array preserves selection order
@@ -495,6 +526,15 @@ const ManageMenu = () => {
     onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to delete category", { variant: "error" }),
   });
 
+  const bulkDeleteDishesMut = useMutation({
+    mutationFn: deleteDishes,
+    onSuccess: (res) => {
+      enqueueSnackbar(res?.data?.message || "Products deleted!", { variant: "success" });
+      invalidate();
+    },
+    onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to delete products", { variant: "error" }),
+  });
+
   const deleteDishMut = useMutation({
     mutationFn: deleteDish,
     onSuccess: () => {
@@ -683,6 +723,8 @@ const ManageMenu = () => {
     setDispatchDel(true);
     setDispatchTbl(true);
     setProdAvailable(true);
+    setProdOffOnPos(false);
+    setProdOffOnWebsite(false);
     setProdScheduleEnabled(false);
     setProdStartTime("09:00");
     setProdEndTime("23:00");
@@ -718,6 +760,8 @@ const ManageMenu = () => {
     setDispatchDel(Boolean(dt.delivery));
     setDispatchTbl(Boolean(dt.table));
     setProdAvailable(item.isAvailable !== false);
+    setProdOffOnPos(item.visibleOnPosWhenOff === true);
+    setProdOffOnWebsite(item.visibleOnWebsiteWhenOff === true);
     const sch = item.schedule || {};
     setProdScheduleEnabled(Boolean(sch.enabled));
     setProdStartTime(sch.startTime || "09:00");
@@ -792,13 +836,17 @@ const ManageMenu = () => {
       confirmLabel: `Delete ${count} item${count === 1 ? "" : "s"}`,
       tone: "danger",
       onConfirm: () => {
-        selectedIds.forEach((id) => {
-          if (activeCategory) {
-            deleteDishMut.mutate({ menuId: activeCategory._id, itemId: id });
-          } else {
-            deleteCategoryMut.mutate(id);
-          }
-        });
+        if (activeCategory) {
+          // ONE request. Firing a delete per id raced the same Menu document
+          // and 500'd on everything after the first.
+          bulkDeleteDishesMut.mutate({
+            menuId: activeCategory._id,
+            itemIds: Array.from(selectedIds),
+          });
+        } else {
+          // Categories are separate documents, so these do not race.
+          selectedIds.forEach((id) => deleteCategoryMut.mutate(id));
+        }
         setSelectedIds(new Set());
         setShowBulkMenu(false);
       },
@@ -916,6 +964,8 @@ const ManageMenu = () => {
           },
       isVegetarian: prodVeg,
       displayTarget: prodDisplay,
+      visibleOnPosWhenOff: prodAvailable ? false : prodOffOnPos,
+      visibleOnWebsiteWhenOff: prodAvailable ? false : prodOffOnWebsite,
       imageUrl: prodImageUrl,
       isAvailable: prodAvailable,
       schedule,
@@ -1421,7 +1471,7 @@ const ManageMenu = () => {
                               <p className="text-[11px] text-[#64748B]">{item.category}</p>
                             </div>
                           </div>
-                          <span className="font-bold text-[#0F172A]">₹{item.price}</span>
+                          <span className="font-bold text-[#0F172A]">{displayPrice(item)}</span>
                         </div>
                       ))}
                     </div>
@@ -1816,7 +1866,7 @@ const ManageMenu = () => {
                     </div>
 
                     <div className="flex items-center gap-4 shrink-0">
-                      <span className="font-extrabold text-[14px] text-[#0F172A]">₹{item.price}</span>
+                      <span className="font-extrabold text-[14px] text-[#0F172A]">{displayPrice(item)}</span>
 
                       <button
                         onClick={(e) => {
@@ -2749,7 +2799,7 @@ const ManageMenu = () => {
               <div>
                 <div className="flex items-center justify-between">
                   <label className="text-[12px] font-extrabold text-[#334155]">Product Description</label>
-                  <span className="text-[10.5px] text-[#94A3B8] font-bold">{prodDesc.length}/200</span>
+
                 </div>
                 <textarea
                   maxLength={200}
@@ -2780,6 +2830,29 @@ const ManageMenu = () => {
                     />
                   </label>
                 </div>
+
+                {!dispatchAll && (
+                  <div className="grid grid-cols-3 gap-2 pt-1 text-[12px]">
+                    {[
+                      { label: "Collection", on: dispatchCol, set: setDispatchCol },
+                      { label: "Delivery", on: dispatchDel, set: setDispatchDel },
+                      { label: "Table", on: dispatchTbl, set: setDispatchTbl },
+                    ].map(({ label, on, set }) => (
+                      <label
+                        key={label}
+                        className="flex items-center gap-1.5 p-2 rounded-lg bg-[#F8FAFC] border font-bold"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={on}
+                          onChange={(e) => set(e.target.checked)}
+                          className="accent-[#5B42F3]"
+                        />
+                        <span>{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Product Image Click-to-Upload / Replace / Remove */}
@@ -2917,6 +2990,37 @@ const ManageMenu = () => {
                   />
                 </button>
               </div>
+
+              {/* Display OFF removes the product from both surfaces by
+                  default; these keep it live on one of them. */}
+              {!prodAvailable && (
+                <div className="space-y-2 pl-1">
+                  {[
+                    { label: "POS Visibility", hint: "Keep selling on the POS tills only", on: prodOffOnPos, set: setProdOffOnPos },
+                    { label: "Website Visibility", hint: "Keep selling on the customer website only", on: prodOffOnWebsite, set: setProdOffOnWebsite },
+                  ].map(({ label, hint, on, set }) => (
+                    <div key={label} className="flex items-center justify-between">
+                      <div>
+                        <span className="font-bold text-[12.5px] text-[#334155] block">{label}</span>
+                        <span className="text-[11px] text-[#94A3B8]">{hint}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => set((prev) => !prev)}
+                        className={`w-10 h-[22px] rounded-full transition-colors relative shrink-0 ${
+                          on ? "bg-[#22C55E]" : "bg-[#CBD5E1]"
+                        }`}
+                      >
+                        <span
+                          className={`absolute top-[3px] w-4 h-4 rounded-full bg-white transition-transform ${
+                            on ? "right-[3px]" : "left-[3px]"
+                          }`}
+                        />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Assign Groups (Module 8) */}
               <div className="pt-2 border-t border-[#E2E8F0] space-y-2">

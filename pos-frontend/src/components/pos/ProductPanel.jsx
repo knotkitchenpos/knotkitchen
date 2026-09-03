@@ -35,8 +35,25 @@ const inSchedule = (s) => {
   if (!days.includes(new Date().getDay())) return false;
   return a <= b ? n >= a && n <= b : n >= a || n <= b;
 };
-const activePrice = (item) => {
-  if (!item?.priceRules?.length) return item?.price;
+/**
+ * The product's list price for the till's current order type.
+ *
+ * "Same price for all channels" OFF stores posCollection / posDelivery /
+ * posTable on the product; the POS used to ignore them and always show
+ * item.price, so the operator saw one figure and the bill used another.
+ */
+const CHANNEL_KEY = { Delivery: "posDelivery", "Table Service": "posTable", Collection: "posCollection" };
+
+const channelPrice = (item, orderType) => {
+  const base = item?.price;
+  if (!item || item.samePrice !== false || !item.channelPrices) return base;
+  const value = Number(item.channelPrices[CHANNEL_KEY[orderType] || "posCollection"]);
+  return Number.isFinite(value) && value > 0 ? value : base;
+};
+
+const activePrice = (item, orderType) => {
+  const listPrice = channelPrice(item, orderType);
+  if (!item?.priceRules?.length) return listPrice;
   const n = nowMins();
   const today = new Date().getDay();
   const rule = item.priceRules.find((r) => {
@@ -47,7 +64,7 @@ const activePrice = (item) => {
     if (a === null || b === null) return true;
     return a <= b ? n >= a && n <= b : n >= a || n <= b;
   });
-  return rule ? rule.price : item?.price;
+  return rule ? rule.price : listPrice;
 };
 
 /* ---------- Icons ---------- */
@@ -176,7 +193,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
     if (!category?.items) return [];
     return category.items
       // Hide out-of-stock items on POS (Module: Availability §Hide OOS)
-      .filter((i) => i && i.isAvailable !== false && inSchedule(i.schedule))
+      .filter((i) => i && (i.isAvailable !== false || i.visibleOnPosWhenOff === true) && inSchedule(i.schedule))
       .map((i) => ({ ...i, categoryId: category._id, categoryName: category.name }));
   }, [category]);
 
@@ -204,7 +221,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
       menus.flatMap((m) =>
         (m.items || [])
           // Hide out-of-stock items across search + all lists
-          .filter((i) => i && i.isAvailable !== false && inSchedule(i.schedule))
+          .filter((i) => i && (i.isAvailable !== false || i.visibleOnPosWhenOff === true) && inSchedule(i.schedule))
           .map((i) => ({ ...i, categoryId: m._id, categoryName: m.name }))
       ),
     [menus]
@@ -232,7 +249,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
   const popular = useMemo(
     () =>
       (popRes?.data?.data || []).filter(
-        (i) => i && i.isAvailable !== false && inSchedule(i.schedule),
+        (i) => i && (i.isAvailable !== false || i.visibleOnPosWhenOff === true) && inSchedule(i.schedule),
       ),
     [popRes]
   );
@@ -319,7 +336,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
 
   const calculatedPosUnitPrice = useMemo(() => {
     if (!customizingItem) return 0;
-    let basePrice = activePrice(customizingItem);
+    let basePrice = activePrice(customizingItem, orderType);
     if (customizingItem.variants?.length) {
       const v = customizingItem.variants.find((v) => String(v._id || v.id || v.name) === selectedVariantId);
       if (v) basePrice = v.price;
@@ -352,7 +369,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
       }
     }
 
-    let basePrice = activePrice(customizingItem);
+    let basePrice = activePrice(customizingItem, orderType);
     let variantObj = null;
     if (customizingItem.variants?.length) {
       variantObj = customizingItem.variants.find((v) => String(v._id || v.id || v.name) === selectedVariantId) || customizingItem.variants[0];
@@ -420,7 +437,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
       return;
     }
 
-    let price = activePrice(item);
+    let price = activePrice(item, orderType);
     let label = "";
     let variant = null;
     if ((item.variants || []).length === 1) {
@@ -659,7 +676,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
               const img = item.imageThumbnailUrl || item.imageUrl || item.image;
               const price = item.variants?.length
                 ? item.variants[0].price
-                : activePrice(item);
+                : activePrice(item, orderType);
               const inCart = cart.find((c) => c.menuItemId === item._id);
               const off = item.isAvailable === false;
               return (
@@ -711,7 +728,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
           <div className="space-y-2">
             {products.map((item) => {
               const img = item.imageThumbnailUrl || item.imageUrl || item.image;
-              const price = item.variants?.length ? item.variants[0].price : activePrice(item);
+              const price = item.variants?.length ? item.variants[0].price : activePrice(item, orderType);
               const off = item.isAvailable === false;
               const inCart = cart.find((c) => c.menuItemId === item._id);
               return (

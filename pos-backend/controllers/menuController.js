@@ -165,6 +165,28 @@ const updateCategory = async (req, res, next) => {
     if (showOnPos !== undefined) menu.showOnPos = Boolean(showOnPos);
     if (showOnWebsite !== undefined) menu.showOnWebsite = Boolean(showOnWebsite);
 
+    // Category-level Display Status and Dispatch Type cascade to every product
+    // in the category. Setting a category to delivery-only, or hiding it, and
+    // then finding its products still individually flagged otherwise was a
+    // reliable way to end up with a catalogue nobody could explain.
+    //
+    // Only applied when the operator actually changed the field on this
+    // request, so an unrelated rename never rewrites every product.
+    if (dispatchType !== undefined && Array.isArray(menu.items)) {
+      menu.items.forEach((item) => {
+        item.dispatchType = {
+          collection: dispatchType.collection !== false,
+          delivery: dispatchType.delivery !== false,
+          table: dispatchType.table !== false,
+        };
+      });
+    }
+    if (published !== undefined && Array.isArray(menu.items)) {
+      menu.items.forEach((item) => {
+        item.isAvailable = Boolean(published);
+      });
+    }
+
     // If category name changed, update items
     if (oldName !== newName && Array.isArray(menu.items)) {
       menu.items.forEach((item) => {
@@ -324,6 +346,8 @@ const addDish = async (req, res, next) => {
       imageUrl: imageUrl || "",
       imageThumbnailUrl: imageUrl || "",
       schedule: schedule || { enabled: false, startTime: "09:00", endTime: "23:00", daysOfWeek: [0,1,2,3,4,5,6] },
+      visibleOnPosWhenOff: Boolean(req.body?.visibleOnPosWhenOff),
+      visibleOnWebsiteWhenOff: Boolean(req.body?.visibleOnWebsiteWhenOff),
     });
     await menu.save();
     res.status(201).json({ success: true, message: "Dish added!", data: menu });
@@ -348,6 +372,8 @@ const updateDish = async (req, res, next) => {
       displayTarget,
       imageUrl,
       isAvailable,
+      visibleOnPosWhenOff,
+      visibleOnWebsiteWhenOff,
       schedule,
       modifierGroups,
     } = req.body;
@@ -392,6 +418,8 @@ const updateDish = async (req, res, next) => {
       item.image = imageUrl;
     }
     if (isAvailable !== undefined) item.isAvailable = Boolean(isAvailable);
+    if (visibleOnPosWhenOff !== undefined) item.visibleOnPosWhenOff = Boolean(visibleOnPosWhenOff);
+    if (visibleOnWebsiteWhenOff !== undefined) item.visibleOnWebsiteWhenOff = Boolean(visibleOnWebsiteWhenOff);
     if (schedule !== undefined) item.schedule = schedule;
     if (Array.isArray(modifierGroups)) item.modifierGroups = modifierGroups;
 
@@ -1225,6 +1253,65 @@ const deleteDish = async (req, res, next) => {
   }
 };
 
+/**
+ * DELETE /api/menu/:menuId/dishes  { itemIds: [...] }
+ *
+ * Bulk delete, in ONE atomic write.
+ *
+ * The UI used to loop over the selection and fire a separate deleteDish
+ * request per product. Every one of those loaded the SAME Menu document,
+ * spliced one item and saved — so the first save bumped the document's `__v`
+ * and every other request in flight failed Mongoose's optimistic-concurrency
+ * check with a VersionError, surfacing as a 500. The visible result was
+ * exactly one product deleted and a server error for the rest.
+ *
+ * A single `$pull … $in` removes them all without reading the document into
+ * memory first, so there is no version to race on and no partial outcome.
+ */
+const deleteDishes = async (req, res, next) => {
+  try {
+    const { menuId } = req.params;
+    const rawIds = Array.isArray(req.body?.itemIds) ? req.body.itemIds : [];
+
+    if (!mongoose.Types.ObjectId.isValid(menuId)) {
+      return next(createHttpError(404, "Invalid id!"));
+    }
+    if (!rawIds.length) {
+      return next(createHttpError(400, "Select at least one product to delete."));
+    }
+    if (rawIds.length > 500) {
+      return next(createHttpError(400, "Too many products selected at once."));
+    }
+
+    const itemIds = rawIds.filter((id) => mongoose.Types.ObjectId.isValid(String(id)));
+    if (!itemIds.length) {
+      return next(createHttpError(400, "No valid product ids supplied."));
+    }
+
+    const menu = await Menu.findOne({ _id: menuId, ...menuScopeFor(req.user) });
+    if (!menu) return next(createHttpError(404, "Category not found!"));
+
+    const before = menu.items.length;
+
+    await Menu.updateOne(
+      { _id: menu._id },
+      { $pull: { items: { _id: { $in: itemIds.map((id) => new mongoose.Types.ObjectId(String(id))) } } } },
+    );
+
+    const updated = await Menu.findById(menu._id);
+    const deleted = before - updated.items.length;
+
+    res.status(200).json({
+      success: true,
+      message: `${deleted} product${deleted === 1 ? "" : "s"} deleted!`,
+      data: updated,
+      meta: { requested: itemIds.length, deleted },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const reorderItems = async (req, res, next) => {
   try {
     const { menuId } = req.params;
@@ -1389,6 +1476,7 @@ module.exports = {
   deleteMenu,
 
   deleteDish,
+  deleteDishes,
   reorderItems,
   reorderMenus,
   toggleDishAvailability,
