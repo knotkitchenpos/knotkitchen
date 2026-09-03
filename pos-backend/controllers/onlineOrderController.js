@@ -263,8 +263,13 @@ const resolveAddedItems = async (req, res, next) => {
       return next(createHttpError(404, "Invalid order id."));
     }
 
-    const scope = await tenantScope(req);
-    const order = await Order.findOne({ _id: req.params.id, ...scope, isDeleted: { $ne: true } });
+    // tenantScope returns { tenant, scope } - spreading the WRAPPER put
+    // literal "tenant"/"scope" keys into the filter, so the lookup matched
+    // nothing and every request 404'd.
+    const scoped = await tenantScope(req);
+    if (!scoped) return next(createHttpError(400, "Your account is not linked to a store yet."));
+
+    const order = await Order.findOne({ _id: req.params.id, ...scoped.scope });
     if (!order) return next(createHttpError(404, "Order not found."));
 
     const pending = (order.items || []).filter((i) => i.status === "pending");

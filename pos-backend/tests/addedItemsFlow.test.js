@@ -37,7 +37,21 @@ const loadController = (order) => {
   const Module = require("module");
   const orig = Module._load;
   Module._load = function (r) {
-    if (r === "../models/orderModel") return { findOne: async () => order };
+    if (r === "../models/orderModel") {
+      return {
+        // Honour the filter. A mock that returns the order regardless cannot
+        // catch a malformed query - which is exactly how a bad tenant scope
+        // reached production and 404'd every request.
+        findOne: async (filter = {}) => {
+          if (!order) return null;
+          if (filter.tenant !== undefined || filter.scope !== undefined) {
+            throw new Error("tenantScope wrapper leaked into the query filter");
+          }
+          if (filter.restaurantId && String(filter.restaurantId) !== String(order.restaurantId)) return null;
+          return order;
+        },
+      };
+    }
     if (r === "../services/socket") return { emitOrderStatusChanged: () => {} };
     if (r === "../services/tenantContext") {
       return { resolveTenantFromUser: async () => ({ restaurantId: RESTAURANT_ID, storeId: "123456" }) };
