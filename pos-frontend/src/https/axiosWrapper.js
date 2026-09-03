@@ -66,6 +66,8 @@ axiosWrapper.interceptors.response.use(
       url.includes("/api/user/store/login") ||
       url.includes("/api/user/store/setup-password") ||
       url.includes("/api/user/store/status") ||
+      url.includes("/api/user/store/account-status") ||
+      url.includes("/api/user/store/set-password") ||
       url.includes("/api/user/impersonate");
 
     if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isAuthEndpoint) {

@@ -146,6 +146,16 @@ userSchema.methods.toSafeJSON = function () {
 // Per-tenant phone uniqueness. Two different stores may each have a user
 // with the same phone (owner or shared staff), but within one storeId the
 // phone is the login handle and must appear at most once.
+//
+// LIVE users only. Deleting a staff member soft-deletes the row, and the
+// index used to keep counting it — so the number stayed occupied forever and
+// re-adding the same person failed with a duplicate-key error surfaced as
+// "A record with that Store ID already exists". Excluding deleted rows
+// releases the number while the row stays for the audit trail.
+//
+// `$eq: false` rather than `$ne: true`: partialFilterExpression does not
+// support $ne. That means a row with no `isDeleted` field at all is not
+// indexed, so migration 004 backfills the field before this index is built.
 userSchema.index(
   { storeId: 1, phone: 1 },
   {
@@ -153,8 +163,9 @@ userSchema.index(
     partialFilterExpression: {
       storeId: { $type: "string" },
       phone: { $type: "string" },
+      isDeleted: { $eq: false },
     },
-    name: "storeId_1_phone_1_unique",
+    name: "storeId_1_phone_1_live_unique",
   }
 );
 

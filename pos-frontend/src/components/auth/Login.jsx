@@ -2,7 +2,13 @@ import React, { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { FiKey, FiPhone, FiLock, FiArrowRight, FiArrowLeft, FiAlertCircle } from "react-icons/fi";
 import { useMutation } from "@tanstack/react-query";
-import { checkStoreStatus, setupStorePassword, storeLogin } from "../../https/index";
+import {
+  checkStoreStatus,
+  checkStoreAccountStatus,
+  setStoreAccountPassword,
+  setupStorePassword,
+  storeLogin,
+} from "../../https/index";
 import { enqueueSnackbar } from "notistack";
 import { useDispatch } from "react-redux";
 import { setUser } from "../../redux/slices/userSlice";
@@ -36,8 +42,14 @@ const Login = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
 
-  // "storeId" → "login" | "setup"
+  // storeId -> phone -> ("password" | "createPassword"), or "setup" for a
+  // store that has never been claimed at all.
+  //
+  // The phone step exists because a staff account created by the owner has no
+  // password yet: asking for one before we know who is signing in would show
+  // a field they cannot fill.
   const [step, setStep] = useState("storeId");
+  const [accountName, setAccountName] = useState("");
 
   const [storeId, setStoreId] = useState("");
   const [storeInfo, setStoreInfo] = useState(null); // { storeName, ownerPhoneHint }
@@ -76,7 +88,7 @@ const Login = () => {
       if (!data) return;
       setStoreInfo(data);
       setErrorMessage("");
-      setStep(data.hasPassword ? "login" : "setup");
+      setStep(data.hasPassword ? "phone" : "setup");
     },
     onError: (error) => {
       const msg = error.response?.data?.message || "Invalid Store ID. Please check and try again.";
@@ -101,12 +113,61 @@ const Login = () => {
       // (e.g. race between status check and login). Route the user to setup
       // rather than showing "wrong password" for a store they never set one on.
       if (status === 409) {
+        const code = error.response?.data?.code;
+        if (code === "ACCOUNT_NO_PASSWORD") {
+          // This person has never set one; send them to Create Password
+          // rather than telling them their password is wrong.
+          setErrorMessage("");
+          setPassword("");
+          setStep("createPassword");
+          return;
+        }
         setErrorMessage("This store has no password yet — please set one up.");
         setStep("setup");
         setPassword("");
         return;
       }
       setErrorMessage(error.response?.data?.message || "Invalid credentials.");
+    },
+  });
+
+  // --- Step 2: who is signing in? -----------------------------------------
+  // Decides between a password field and Create Password, so a staff member
+  // on their first shift is never asked for a password that does not exist.
+  const accountMutation = useMutation({
+    mutationFn: (reqData) => checkStoreAccountStatus(reqData),
+    onSuccess: (res) => {
+      const data = res.data?.data || {};
+      setErrorMessage("");
+      setAccountName(data.name || "");
+      if (!data.exists) {
+        setErrorMessage("No account with that phone number at this store.");
+        return;
+      }
+      setStep(data.needsPasswordSetup ? "createPassword" : "password");
+    },
+    onError: (error) => {
+      setErrorMessage(error.response?.data?.message || "Could not check that number.");
+    },
+  });
+
+  // --- Step 3b: create the password on a first sign-in --------------------
+  const createPasswordMutation = useMutation({
+    mutationFn: (reqData) => setStoreAccountPassword(reqData),
+    onSuccess: (res) => {
+      const data = res.data?.data;
+      if (data) handleLoggedIn(data);
+    },
+    onError: (error) => {
+      // The account gained a password between the check and the submit.
+      if (error.response?.data?.code === "ACCOUNT_HAS_PASSWORD") {
+        setErrorMessage("This account already has a password. Please sign in.");
+        setPassword("");
+        setConfirmPw("");
+        setStep("password");
+        return;
+      }
+      setErrorMessage(error.response?.data?.message || "Could not create the password.");
     },
   });
 
@@ -130,6 +191,35 @@ const Login = () => {
       return;
     }
     statusMutation.mutate({ storeId: storeId.trim() });
+  };
+
+  const handlePhoneSubmit = (e) => {
+    e.preventDefault();
+    setErrorMessage("");
+    const cleanPhone = ownerPhone.replace(/\D/g, "");
+    if (cleanPhone.length !== 10) {
+      setErrorMessage("Enter your 10-digit phone number.");
+      return;
+    }
+    accountMutation.mutate({ storeId: storeId.trim(), phone: cleanPhone });
+  };
+
+  const handleCreatePasswordSubmit = (e) => {
+    e.preventDefault();
+    setErrorMessage("");
+    if (password.length < 8) {
+      setErrorMessage("Password must be at least 8 characters.");
+      return;
+    }
+    if (password !== confirmPw) {
+      setErrorMessage("The two passwords do not match.");
+      return;
+    }
+    createPasswordMutation.mutate({
+      storeId: storeId.trim(),
+      phone: ownerPhone.replace(/\D/g, ""),
+      password,
+    });
   };
 
   const handleLoginSubmit = (e) => {
@@ -167,7 +257,11 @@ const Login = () => {
   };
 
   const busy =
-    statusMutation.isPending || loginMutation.isPending || setupMutation.isPending;
+    statusMutation.isPending ||
+    loginMutation.isPending ||
+    setupMutation.isPending ||
+    accountMutation.isPending ||
+    createPasswordMutation.isPending;
 
   return (
     <div className="w-full">
@@ -222,13 +316,13 @@ const Login = () => {
           </motion.form>
         )}
 
-        {step === "login" && (
+        {step === "phone" && (
           <motion.form
-            key="login"
+            key="phone"
             initial={{ opacity: 0, x: 10 }}
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -10 }}
-            onSubmit={handleLoginSubmit}
+            onSubmit={handlePhoneSubmit}
             className="space-y-6"
           >
             <div className="p-3 bg-[#1E293B]/60 border border-[#26344B] rounded-xl flex items-center justify-between">
@@ -270,6 +364,63 @@ const Login = () => {
               </span>
             </label>
 
+            <button
+              type="submit"
+              disabled={busy || ownerPhone.replace(/\D/g, "").length !== 10}
+              className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#FF5A00] py-3.5 font-semibold text-white disabled:opacity-60 hover:bg-[#FF7A2A] transition"
+            >
+              {accountMutation.isPending ? "Checking…" : "Continue"}
+              {!accountMutation.isPending && <FiArrowRight aria-hidden="true" />}
+            </button>
+          </motion.form>
+        )}
+
+        {step === "password" && (
+          <motion.form
+            key="password"
+            initial={{ opacity: 0, x: 10 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -10 }}
+            onSubmit={handleLoginSubmit}
+            className="space-y-6"
+          >
+            <div className="p-3 bg-[#1E293B]/60 border border-[#26344B] rounded-xl flex items-center justify-between">
+              <div>
+                <div className="text-xs text-[#77839A]">
+                  Signing in to <span className="font-semibold text-[#F5F7FA]">{storeInfo?.storeName}</span>
+                </div>
+                <div className="text-xs text-[#77839A] mt-0.5">Store ID {storeId}</div>
+              </div>
+              <button
+                type="button"
+                onClick={goBack}
+                className="text-xs text-[#FF5A00] hover:underline shrink-0 inline-flex items-center gap-1"
+              >
+                <FiArrowLeft size={12} aria-hidden="true" /> Change
+              </button>
+            </div>
+
+            <div className="text-xs text-[#77839A]">
+              {accountName ? (
+                <>
+                  Signing in as <span className="font-semibold text-[#F5F7FA]">{accountName}</span>
+                  {" · "}
+                </>
+              ) : null}
+              {ownerPhone}
+              <button
+                type="button"
+                onClick={() => {
+                  setStep("phone");
+                  setPassword("");
+                  setErrorMessage("");
+                }}
+                className="ml-2 text-[#FF5A00] hover:underline"
+              >
+                Change
+              </button>
+            </div>
+
             <label className="block">
               <span className="text-xs font-semibold text-[#AEB8CA] uppercase tracking-wider">Password</span>
               <div className="mt-2.5 flex items-center gap-3 bg-[#0D1526] border-[#26344B] focus-within:border-[#FF5A00] group rounded-xl px-4 py-3.5 border transition-all duration-200 shadow-sm focus-within:shadow-[0_0_0_3px_rgba(255,90,0,0.15)]">
@@ -277,7 +428,9 @@ const Login = () => {
                 <input
                   type="password"
                   autoComplete="current-password"
+                  autoFocus
                   required
+                  minLength={8}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={busy}
@@ -289,7 +442,7 @@ const Login = () => {
 
             <button
               type="submit"
-              disabled={busy || !password || ownerPhone.replace(/\D/g, "").length !== 10}
+              disabled={busy || !password}
               className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#FF5A00] py-3.5 font-semibold text-white disabled:opacity-60 hover:bg-[#FF7A2A] transition"
             >
               {loginMutation.isPending ? "Signing in…" : "Sign in"}
@@ -299,6 +452,88 @@ const Login = () => {
             <p className="text-[11px] text-[#77839A] text-center">
               Forgot your password? Contact KnotKitchen support.
             </p>
+          </motion.form>
+        )}
+
+        {step === "createPassword" && (
+          <motion.form
+            key="createPassword"
+            initial={{ opacity: 0, x: 10 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -10 }}
+            onSubmit={handleCreatePasswordSubmit}
+            className="space-y-5"
+          >
+            <div className="p-3 bg-[#1E293B]/60 border border-[#26344B] rounded-xl flex items-center justify-between">
+              <div>
+                <div className="text-xs text-[#77839A]">
+                  Signing in to <span className="font-semibold text-[#F5F7FA]">{storeInfo?.storeName}</span>
+                </div>
+                <div className="text-xs text-[#77839A] mt-0.5">Store ID {storeId}</div>
+              </div>
+              <button
+                type="button"
+                onClick={goBack}
+                className="text-xs text-[#FF5A00] hover:underline shrink-0 inline-flex items-center gap-1"
+              >
+                <FiArrowLeft size={12} aria-hidden="true" /> Change
+              </button>
+            </div>
+
+            <div className="p-3 bg-[#1E293B]/60 border border-[#26344B] rounded-xl">
+              <div className="text-xs text-[#F5F7FA] font-semibold">Create your password</div>
+              <div className="text-xs text-[#77839A] mt-1">
+                {accountName ? <>Welcome, {accountName}. </> : null}
+                This is your first sign-in, so choose a password now. From next
+                time you will use the Store ID, your phone and this password.
+              </div>
+            </div>
+
+            <label className="block">
+              <span className="text-xs font-semibold text-[#AEB8CA] uppercase tracking-wider">Create new password</span>
+              <div className="mt-2.5 flex items-center gap-3 bg-[#0D1526] border-[#26344B] focus-within:border-[#FF5A00] group rounded-xl px-4 py-3.5 border transition-all duration-200 shadow-sm focus-within:shadow-[0_0_0_3px_rgba(255,90,0,0.15)]">
+                <FiLock size={18} className="text-[#77839A] group-focus-within:text-[#FF5A00] transition-colors shrink-0" />
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  autoFocus
+                  required
+                  minLength={8}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  disabled={busy}
+                  placeholder="At least 8 characters"
+                  className="w-full bg-transparent text-[#F5F7FA] text-base placeholder:text-[#77839A] outline-none"
+                />
+              </div>
+            </label>
+
+            <label className="block">
+              <span className="text-xs font-semibold text-[#AEB8CA] uppercase tracking-wider">Confirm password</span>
+              <div className="mt-2.5 flex items-center gap-3 bg-[#0D1526] border-[#26344B] focus-within:border-[#FF5A00] group rounded-xl px-4 py-3.5 border transition-all duration-200 shadow-sm focus-within:shadow-[0_0_0_3px_rgba(255,90,0,0.15)]">
+                <FiLock size={18} className="text-[#77839A] group-focus-within:text-[#FF5A00] transition-colors shrink-0" />
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  minLength={8}
+                  value={confirmPw}
+                  onChange={(e) => setConfirmPw(e.target.value)}
+                  disabled={busy}
+                  placeholder="Re-enter the password"
+                  className="w-full bg-transparent text-[#F5F7FA] text-base placeholder:text-[#77839A] outline-none"
+                />
+              </div>
+            </label>
+
+            <button
+              type="submit"
+              disabled={busy || !password || !confirmPw}
+              className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#FF5A00] py-3.5 font-semibold text-white disabled:opacity-60 hover:bg-[#FF7A2A] transition"
+            >
+              {createPasswordMutation.isPending ? "Saving…" : "Create password & sign in"}
+              {!createPasswordMutation.isPending && <FiArrowRight aria-hidden="true" />}
+            </button>
           </motion.form>
         )}
 

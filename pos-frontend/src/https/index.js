@@ -17,6 +17,13 @@ export const validateStoreOwner = (data) => axiosWrapper.post("/api/user/store/v
 export const checkStoreStatus = (data) => axiosWrapper.post("/api/user/store/status", data);
 export const setupStorePassword = (data) => axiosWrapper.post("/api/user/store/setup-password", data);
 export const storeLogin = (data) => axiosWrapper.post("/api/user/store/login", data);
+
+// Staff first sign-in: does this phone already have a password on this store,
+// and the one-shot endpoint that creates it if not.
+export const checkStoreAccountStatus = (data) =>
+  axiosWrapper.post("/api/user/store/account-status", data);
+export const setStoreAccountPassword = (data) =>
+  axiosWrapper.post("/api/user/store/set-password", data);
 export const impersonateWithSupportToken = (token) =>
   axiosWrapper.post("/api/user/impersonate", { token });
 

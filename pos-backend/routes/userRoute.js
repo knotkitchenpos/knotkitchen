@@ -6,7 +6,8 @@ const {
   setupMFA, verifyMFA, disableMFA,
   getSessions, revokeSession,
   validateStoreId, validateStoreOwner,
-  checkStoreStatus, setupStorePassword, storeLoginWithPassword, changePassword,
+  checkStoreStatus, checkStoreAccountStatus, setStoreAccountPassword,
+  setupStorePassword, storeLoginWithPassword, changePassword,
   impersonateWithSupportToken,
 } = require("../controllers/userController");
 const { isVerifiedUser } = require("../middlewares/tokenVerification");
@@ -85,6 +86,13 @@ const storeLookupLimiter = rateLimit({
 // ---------------------------------------------------------------------------
 router.route("/store/status").post(storeLookupLimiter, checkStoreStatus);
 router.route("/store/setup-password").post(storeSetupLimiter, setupStorePassword);
+
+// Staff first sign-in. account-status tells the client whether to show a
+// password field or Create Password; set-password is one-shot and only works
+// while the account still has the placeholder the owner created it with.
+// Both carry the same per-storeId + IP limits as the other lookups.
+router.route("/store/account-status").post(storeLookupLimiter, checkStoreAccountStatus);
+router.route("/store/set-password").post(storeSetupLimiter, setStoreAccountPassword);
 router.route("/store/login").post(storeLoginLimiter, storeLoginWithPassword);
 
 // One-shot support handoff. Consumes a token minted by CSD's

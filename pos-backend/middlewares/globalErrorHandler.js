@@ -95,6 +95,14 @@ const globalErrorHandler = (rawErr, req, res, next) => { // eslint-disable-line 
     payload.fieldErrors = err.fieldErrors;
   }
 
+  // A stable machine-readable tag for clients that must branch on WHICH 4xx
+  // this is, e.g. two different 409s on sign-in that need different screens.
+  // Message text is for humans and may be reworded; this is the contract.
+  // 4xx only, for the same reason as fieldErrors.
+  if (!isServerError && typeof err?.code === "string") {
+    payload.code = err.code;
+  }
+
   if (!config.isProduction && err?.stack) {
     payload.errorStack = err.stack;
   }

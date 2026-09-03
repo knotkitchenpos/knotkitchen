@@ -622,8 +622,13 @@ const addStaffMember = async (req, res, next) => {
       return next(createHttpError(400, "A staff member with this phone number already exists."));
     }
 
-    // Default password / pin setup
-    const randomPassword = bcrypt.hashSync(phone + "KnotKitchenPass", 10);
+    // The staff member chooses their own password at first sign-in, so the
+    // row is seeded with an unusable random value and flagged as a
+    // placeholder. It used to be seeded with bcrypt(phone + "KnotKitchenPass")
+    // assigned to `password`, which the pre-save hook then hashed AGAIN --
+    // so it was neither guessable nor knowable, and staff could not sign in
+    // at all.
+    const randomPassword = require("crypto").randomBytes(32).toString("hex");
     const defaultPinHash = bcrypt.hashSync(DEFAULT_PIN, 10);
 
     const staff = await User.create({
@@ -635,6 +640,10 @@ const addStaffMember = async (req, res, next) => {
       restaurantId,
       storeId: req.user.storeId,
       isActive: true,
+      // Nobody holds this password: /store/login sends them to Create
+      // Password instead of failing them, and the flag is cleared the moment
+      // they set one.
+      passwordPlaceholder: true,
       permissions: ["orders.read", "orders.write"], // Basic non-privileged permissions
     });
 

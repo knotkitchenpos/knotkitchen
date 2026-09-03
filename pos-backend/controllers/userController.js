@@ -1169,6 +1169,116 @@ const setupStorePassword = async (req, res, next) => {
 };
 
 /**
+ * POST /api/user/store/account-status  { storeId, phone }  - public
+ *
+ * Does this phone have a usable password on this store yet?
+ *
+ * Staff are created by the owner with an unusable random password, so a new
+ * staff member has nothing to type on their first sign-in. The client asks
+ * this after the phone step and shows Create Password instead of a password
+ * field, which is the flow Manage Staff describes.
+ *
+ * Security: this does confirm whether a phone is registered at a store, so
+ * it is rate limited per storeId + IP like the other lookups. The caller
+ * must already know a valid 6-digit storeId, and /store/status already
+ * exposes comparable information. It never reveals a name, a role, or
+ * anything about the password itself.
+ */
+const checkStoreAccountStatus = async (req, res, next) => {
+  try {
+    const storeId = toSafeString(req.body.storeId).trim();
+    const phone = toSafeString(req.body.phone).replace(/\D/g, "").slice(-10);
+    if (!/^\d{6}$/.test(storeId)) return next(createHttpError(400, "Store ID must be a 6-digit number."));
+    if (!/^\d{10}$/.test(phone)) return next(createHttpError(400, "Enter a 10-digit phone number."));
+
+    const { restaurant, store } = await findRestaurantOrStore(storeId);
+    if (!store) return next(createHttpError(404, "Invalid Store ID"));
+
+    const unavailable = getStoreUnavailableReason(restaurant, store);
+    if (unavailable) return next(createHttpError(400, unavailable));
+
+    const user = await User.findOne({
+      storeId,
+      phone,
+      isActive: true,
+      isDeleted: { $ne: true },
+    });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        exists: Boolean(user),
+        // True only for an account that has never had a password chosen.
+        needsPasswordSetup: Boolean(user && user.passwordPlaceholder === true),
+        name: user ? user.name || "" : "",
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/user/store/set-password  { storeId, phone, password }  - public
+ *
+ * First-time password for a staff account. Deliberately ONE-SHOT: it works
+ * only while the account still carries the placeholder password the owner
+ * created it with. Once a password exists this returns 409 and the only way
+ * to change it is signing in and using Change Password, or the owner
+ * resetting it - so this cannot be used to take over a live account.
+ */
+const setStoreAccountPassword = async (req, res, next) => {
+  try {
+    const storeId = toSafeString(req.body.storeId).trim();
+    const phone = toSafeString(req.body.phone).replace(/\D/g, "").slice(-10);
+    const password = typeof req.body.password === "string" ? req.body.password : "";
+
+    if (!/^\d{6}$/.test(storeId)) return next(createHttpError(400, "Store ID must be a 6-digit number."));
+    if (!/^\d{10}$/.test(phone)) return next(createHttpError(400, "Enter a 10-digit phone number."));
+    if (password.length < 8) return next(createHttpError(400, "Password must be at least 8 characters."));
+
+    const { restaurant, store } = await findRestaurantOrStore(storeId);
+    if (!store) return next(createHttpError(404, "Invalid Store ID"));
+
+    const unavailable = getStoreUnavailableReason(restaurant, store);
+    if (unavailable) return next(createHttpError(400, unavailable));
+
+    const user = await User.findOne({
+      storeId,
+      phone,
+      isActive: true,
+      isDeleted: { $ne: true },
+    });
+    if (!user) return next(createHttpError(404, "No account with that phone number at this store."));
+
+    if (user.passwordPlaceholder !== true) {
+      return next(
+        createHttpError(409, "This account already has a password. Please sign in instead.", {
+          code: "ACCOUNT_HAS_PASSWORD",
+        })
+      );
+    }
+
+    user.password = password; // hashed by the pre-save hook
+    user.passwordPlaceholder = false;
+    user.mustChangePassword = false;
+    user.loginAttempts = 0;
+    user.lockedUntil = undefined;
+    user.sessions = [];        // nothing legitimate can be holding one yet
+    await user.save();
+
+    await signTokensAndSetCookies(user, req, res);
+
+    res.status(200).json({
+      success: true,
+      message: "Password created. You are signed in.",
+      data: user.toSafeJSON(),
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+/**
  * POST /api/user/store/login  { storeId, phone, password }  — public
  *
  * Multi-user POS sign-in. A store has ONE Owner plus any number of staff
@@ -1208,7 +1318,7 @@ const storeLoginWithPassword = async (req, res, next) => {
     const anyUserExists = await findClaimedStoreUser({ storeId, restaurant });
     if (!anyUserExists) {
       return next(
-        createHttpError(409, "This store has no password yet. Please set one up first.")
+        createHttpError(409, "This store has no password yet. Please set one up first.", { code: "STORE_NO_PASSWORD" })
       );
     }
 
@@ -1229,7 +1339,7 @@ const storeLoginWithPassword = async (req, res, next) => {
     // attempt would burn a login attempt toward lockout for no reason.
     if (user.passwordPlaceholder === true) {
       return next(
-        createHttpError(409, "This account has no password yet. Please set one up first.")
+        createHttpError(409, "This account has no password yet. Please set one up first.", { code: "ACCOUNT_NO_PASSWORD" })
       );
     }
     if (user.lockedUntil && user.lockedUntil > new Date()) {
@@ -1434,6 +1544,8 @@ module.exports = {
   requestPasswordReset,
   resetPassword,
   checkStoreStatus,
+  checkStoreAccountStatus,
+  setStoreAccountPassword,
   setupStorePassword,
   storeLoginWithPassword,
   changePassword,
