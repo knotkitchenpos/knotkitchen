@@ -668,7 +668,7 @@ const bulkRemoveGroupFromDishes = async (req, res, next) => {
 
 const saveModifierGroupToDishes = async (req, res, next) => {
   try {
-    const { groupName, required, maxSelections, options, dishIds } = req.body;
+    const { groupName, required, maxSelections, maxSelectionEnabled, options, dishIds } = req.body;
     if (!groupName || !String(groupName).trim()) {
       return next(createHttpError(400, "Group Name is required!"));
     }
@@ -722,17 +722,28 @@ const saveModifierGroupToDishes = async (req, res, next) => {
         if (!dishIdSet.has(itemIdStr)) continue;
 
         item.modifierGroups = item.modifierGroups || [];
+        // A cap only means anything when the operator switched it on; OFF is
+        // "as many as you like".
+        const capOn = Boolean(maxSelectionEnabled);
+        const cap = capOn ? Math.max(1, Number(maxSelections) || 1) : 1;
+
         const existing = item.modifierGroups.find((g) => g.name === groupName);
         if (existing) {
           existing.required = Boolean(required);
-          existing.maxSelections = Number(maxSelections) || 1;
+          existing.maxSelectionEnabled = capOn;
+          existing.maxSelections = cap;
           existing.options = validatedOptions;
+          // isActive and sortOrder are owned by their own endpoints — saving a
+          // group's contents must not silently switch it back on or move it.
         } else {
           item.modifierGroups.push({
             name: groupName,
             required: Boolean(required),
-            maxSelections: Number(maxSelections) || 1,
+            maxSelectionEnabled: capOn,
+            maxSelections: cap,
             options: validatedOptions,
+            // Land new groups at the end of the existing order.
+            sortOrder: item.modifierGroups.length,
           });
         }
         modified = true;

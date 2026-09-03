@@ -156,9 +156,15 @@ const ManageMenu = () => {
   const [groupName, setGroupName] = useState("");
   const [groupRequired, setGroupRequired] = useState(false);
   const [groupMax, setGroupMax] = useState("1");
-  const [extrasList, setExtrasList] = useState([{ name: "Extra Cheese", price: "20" }]);
+  // OFF by default: the customer may pick as many options as they like. ON
+  // caps them at groupMax. Previously a "multiple" group always carried a
+  // number, so there was no way to express "no limit".
+  const [groupMaxEnabled, setGroupMaxEnabled] = useState(false);
+  // Starts EMPTY. A group used to open with a placeholder component already
+  // in the list, which then had to be noticed and deleted.
+  const [extrasList, setExtrasList] = useState([]);
   const [extraNameInput, setExtraNameInput] = useState("");
-  const [extraPriceInput, setExtraPriceInput] = useState("20");
+  const [extraPriceInput, setExtraPriceInput] = useState("0");
   const [assignedDishIds, setAssignedDishIds] = useState(new Set());
 
   // Form states for Category/Subcategory
@@ -302,7 +308,10 @@ const ManageMenu = () => {
       map.set(g.name, {
         name: g.name,
         required: Boolean(g.required),
+        maxSelectionEnabled: g.maxSelectionEnabled === true,
         maxSelections: g.maxSelections || 1,
+        isActive: g.isActive !== false,
+        sortOrder: Number(g.sortOrder) || 0,
         options: Array.isArray(g.options) ? g.options : [],
         dishIds: new Set(),
       });
@@ -321,7 +330,14 @@ const ManageMenu = () => {
             map.set(group.name, {
               name: group.name,
               required: Boolean(group.required),
+              maxSelectionEnabled: group.maxSelectionEnabled === true,
               maxSelections: group.maxSelections || 1,
+              // Read from the stored group. These used to live only in React
+              // state, so switching a group off survived until the next
+              // refetch — including the one after publishing a cache — and it
+              // silently came back on.
+              isActive: group.isActive !== false,
+              sortOrder: Number(group.sortOrder) || 0,
               options: options,
               dishIds: new Set([String(item._id)]),
             });
@@ -330,7 +346,11 @@ const ManageMenu = () => {
             entry.dishIds.add(String(item._id));
             if (options.length) entry.options = options;
             entry.required = Boolean(group.required);
+            entry.maxSelectionEnabled = group.maxSelectionEnabled === true;
             entry.maxSelections = group.maxSelections || entry.maxSelections;
+            // Off anywhere means off — a group is one thing to the operator.
+            if (group.isActive === false) entry.isActive = false;
+            if (Number(group.sortOrder)) entry.sortOrder = Number(group.sortOrder);
           }
         });
       });
@@ -338,7 +358,12 @@ const ManageMenu = () => {
     return map;
   }, [menus, customCreatedGroups]);
 
-  const groupsList = Array.from(allGroupsMap.values());
+  // Ordered by the persisted sortOrder the reorder endpoint writes. The list
+  // used to come out in Map-insertion order, so a reorder reported success and
+  // the UI rebuilt itself in the old sequence.
+  const groupsList = Array.from(allGroupsMap.values()).sort(
+    (a, b) => (a.sortOrder || 0) - (b.sortOrder || 0) || a.name.localeCompare(b.name),
+  );
 
   const saveGroupMut = useMutation({
     mutationFn: saveGroupToDishes,
@@ -383,8 +408,17 @@ const ManageMenu = () => {
 
   const toggleGroupActiveMut = useMutation({
     mutationFn: toggleGroupActive,
-    onSuccess: (res) => {
+    onSuccess: (res, variables) => {
       enqueueSnackbar(res?.data?.message || "Group status updated!", { variant: "success" });
+      // Drop the optimistic local override so the refetched value — which is
+      // now genuinely persisted — becomes the single source of truth.
+      if (variables?.groupName) {
+        setGroupActiveStates((prev) => {
+          const next = { ...prev };
+          delete next[variables.groupName];
+          return next;
+        });
+      }
       invalidate();
     },
     onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to update group status", { variant: "error" }),
@@ -808,11 +842,26 @@ const ManageMenu = () => {
     return categoryDishes;
   }, [activeTab, activeGroup, activeCategory, activeSubcategory, safeMenus, groupsList]);
 
+  /**
+   * What a row is keyed by in `selectedIds`.
+   *
+   * Groups are derived by name and have no _id, and their rows check
+   * `selectedIds.has(group.name)`. Select All mapped `i._id` regardless, so
+   * for groups it built a Set of `undefined` and selected nothing — while
+   * clicking rows individually worked, because that path used the name.
+   */
+  // True while the Groups tab is showing the LIST of groups (not the products
+  // inside one). That list is what the bulk bar acts on.
+  const isGroupsList = activeTab === "groups" && !activeGroup;
+
+  const selectionKey = (entry) => (entry?._id ? String(entry._id) : entry?.name);
+
   const toggleSelectAll = () => {
-    if (selectedIds.size === currentItems.length) {
+    const keys = currentItems.map(selectionKey).filter(Boolean);
+    if (keys.length > 0 && keys.every((k) => selectedIds.has(k))) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(currentItems.map((i) => i._id)));
+      setSelectedIds(new Set(keys));
     }
   };
 
@@ -823,20 +872,53 @@ const ManageMenu = () => {
     setSelectedIds(next);
   };
 
-  const isAllSelected = currentItems.length > 0 && selectedIds.size === currentItems.length;
+  const isAllSelected =
+    currentItems.length > 0 &&
+    currentItems.map(selectionKey).filter(Boolean).every((k) => selectedIds.has(k));
+
+  /**
+   * What kind of thing is currently selected. The bulk bar used to assume
+   * "category unless we're inside one", so selecting GROUPS offered to
+   * "delete selected categories" and then passed group names to the category
+   * endpoint, which rejected them as an Invalid ID.
+   */
+  const selectionScope = isGroupsList ? "group" : activeCategory ? "product" : "category";
+
+  const SCOPE_LABEL = {
+    group: { one: "Group", many: "Groups" },
+    product: { one: "Product", many: "Products" },
+    category: { one: "Category", many: "Categories" },
+  };
+
+  const scopeLabel = (n) => (n === 1 ? SCOPE_LABEL[selectionScope].one : SCOPE_LABEL[selectionScope].many);
+
+  /** Turn every selected group on or off in one go. */
+  const handleBulkGroupActive = (isActive) => {
+    selectedIds.forEach((groupName) => {
+      setGroupActiveStates((prev) => ({ ...prev, [groupName]: isActive }));
+      toggleGroupActiveMut.mutate({ groupName, isActive });
+    });
+    setSelectedIds(new Set());
+    setShowBulkMenu(false);
+  };
 
   const handleBulkDelete = () => {
     const count = selectedIds.size;
-    const scope = activeCategory ? "product" : "category";
     askConfirm({
-      title: `Delete ${count} selected ${scope}${count === 1 ? "" : scope === "product" ? "s" : "ies"}?`,
-      message: activeCategory
-        ? `These products will be removed from "${activeCategory.name}". Existing orders that referenced them are not affected.`
-        : `The selected categories and every product they contain will be removed. Existing orders that referenced them are not affected.`,
-      confirmLabel: `Delete ${count} item${count === 1 ? "" : "s"}`,
+      title: `Delete ${count} selected ${scopeLabel(count)}?`,
+      message:
+        selectionScope === "group"
+          ? `The selected ${scopeLabel(count).toLowerCase()} will be removed from every product they are attached to.`
+          : selectionScope === "product"
+          ? `These products will be removed from "${activeCategory?.name}". Existing orders that referenced them are not affected.`
+          : `The selected categories and every product they contain will be removed. Existing orders that referenced them are not affected.`,
+      confirmLabel: `Delete ${count} ${scopeLabel(count)}`,
       tone: "danger",
       onConfirm: () => {
-        if (activeCategory) {
+        if (selectionScope === "group") {
+          // Groups are keyed by name and deleted through their own endpoint.
+          selectedIds.forEach((groupName) => deleteGroupMut.mutate({ groupName }));
+        } else if (selectionScope === "product") {
           // ONE request. Firing a delete per id raced the same Menu document
           // and 500'd on everything after the first.
           bulkDeleteDishesMut.mutate({
@@ -1240,23 +1322,48 @@ const ManageMenu = () => {
 
                 {showBulkMenu && (
                   <div className="absolute right-0 mt-2 w-56 bg-white border border-[#E2E8F0] rounded-xl shadow-xl z-50 py-1 text-[13px]">
-                    <button
-                      onClick={handleBulkAddGroup}
-                      className="w-full text-left px-4 py-2 hover:bg-[#F8FAFC] font-semibold text-[#334155]"
-                    >
-                      + Add Group to Selected
-                    </button>
-                    <button
-                      onClick={handleBulkRemoveGroup}
-                      className="w-full text-left px-4 py-2 hover:bg-[#F8FAFC] font-semibold text-[#64748B]"
-                    >
-                      - Remove Group from Selected
-                    </button>
+                    {/* Attaching or detaching a group only makes sense for a
+                        selection of PRODUCTS. On the groups list those two
+                        actions had nothing to act on. */}
+                    {!isGroupsList && (
+                      <>
+                        <button
+                          onClick={handleBulkAddGroup}
+                          className="w-full text-left px-4 py-2 hover:bg-[#F8FAFC] font-semibold text-[#334155]"
+                        >
+                          + Add Group to Selected
+                        </button>
+                        <button
+                          onClick={handleBulkRemoveGroup}
+                          className="w-full text-left px-4 py-2 hover:bg-[#F8FAFC] font-semibold text-[#64748B]"
+                        >
+                          - Remove Group from Selected
+                        </button>
+                      </>
+                    )}
+
+                    {isGroupsList && (
+                      <>
+                        <button
+                          onClick={() => handleBulkGroupActive(true)}
+                          className="w-full text-left px-4 py-2 hover:bg-[#F8FAFC] font-semibold text-[#334155]"
+                        >
+                          Turn On ({selectedIds.size})
+                        </button>
+                        <button
+                          onClick={() => handleBulkGroupActive(false)}
+                          className="w-full text-left px-4 py-2 hover:bg-[#F8FAFC] font-semibold text-[#64748B]"
+                        >
+                          Turn Off ({selectedIds.size})
+                        </button>
+                      </>
+                    )}
+
                     <button
                       onClick={handleBulkDelete}
                       className="w-full text-left px-4 py-2 hover:bg-[#FEF2F2] font-semibold text-[#DC2626] border-t border-[#E2E8F0]"
                     >
-                      Delete Items ({selectedIds.size})
+                      Delete {selectedIds.size} {scopeLabel(selectedIds.size)}
                     </button>
                   </div>
                 )}
@@ -1326,7 +1433,8 @@ const ManageMenu = () => {
                   setGroupName("");
                   setGroupRequired(false);
                   setGroupMax("1");
-                  setExtrasList([{ name: "", price: "0" }]);
+                  setExtrasList([]);
+                  setGroupMaxEnabled(false);
                   setAssignedDishIds(new Set());
                   setShowManageGroup(true);
                 }}
@@ -1375,6 +1483,7 @@ const ManageMenu = () => {
                         setGroupName(activeGroup.name);
                         setGroupRequired(activeGroup.required);
                         setGroupMax(String(activeGroup.maxSelections || 1));
+                        setGroupMaxEnabled(activeGroup.maxSelectionEnabled === true);
                         setExtrasList((activeGroup.options || []).map((o) => ({ name: o?.name || "", price: String(o?.price ?? "0") })));
                         setAssignedDishIds(new Set(activeGroup.dishIds));
                         setShowManageGroup(true);
@@ -1413,6 +1522,7 @@ const ManageMenu = () => {
                                 setGroupName(activeGroup.name);
                                 setGroupRequired(activeGroup.required);
                                 setGroupMax(String(activeGroup.maxSelections || 1));
+                                setGroupMaxEnabled(activeGroup.maxSelectionEnabled === true);
                                 setExtrasList((activeGroup.options || []).map((o) => ({ name: o?.name || "", price: String(o?.price ?? "0") })));
                                 setAssignedDishIds(new Set(activeGroup.dishIds));
                                 setExtraNameInput(opt.name);
@@ -1489,7 +1599,8 @@ const ManageMenu = () => {
                         setGroupName("");
                         setGroupRequired(false);
                         setGroupMax("1");
-                        setExtrasList([{ name: "", price: "0" }]);
+                        setExtrasList([]);
+                        setGroupMaxEnabled(false);
                         setAssignedDishIds(new Set());
                         setEditingGroup(null);
                         setShowManageGroup(true);
@@ -1502,7 +1613,10 @@ const ManageMenu = () => {
                 ) : (
                   groupsList.map((group, index) => {
                     const selected = selectedIds.has(group.name);
-                    const isOpen = groupActiveStates[group.name] !== undefined ? groupActiveStates[group.name] : true;
+                    const isOpen =
+                      groupActiveStates[group.name] !== undefined
+                        ? groupActiveStates[group.name]
+                        : group.isActive !== false;
 
                     return (
                       <div
@@ -1577,6 +1691,7 @@ const ManageMenu = () => {
                               setGroupName(group.name);
                               setGroupRequired(group.required);
                               setGroupMax(String(group.maxSelections || 1));
+                              setGroupMaxEnabled(group.maxSelectionEnabled === true);
                               setExtrasList((group.options || []).map((o) => ({ name: o?.name || "", price: String(o?.price ?? "0") })));
                               setAssignedDishIds(new Set(group.dishIds));
                               setShowManageGroup(true);
@@ -2344,27 +2459,54 @@ const ManageMenu = () => {
                 </div>
 
                 {selectionType === "multiple" && (
-                  <div className="flex items-center justify-between pt-2.5 mt-1 border-t border-dashed border-[#E2E8F0]">
-                    <div>
-                      <span className="text-[12px] font-extrabold text-[#334155] block">Max Selections Allowed</span>
-                      <span className="text-[11px] font-semibold text-[#64748B]">Maximum items selectable by customer</span>
+                  <div className="pt-2.5 mt-1 border-t border-dashed border-[#E2E8F0] space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <span className="text-[12px] font-extrabold text-[#334155] block">Maximum Selection</span>
+                        <span className="text-[11px] font-semibold text-[#64748B]">
+                          {groupMaxEnabled ? "Cap how many the customer may pick" : "Off — customer may pick any number"}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const next = !groupMaxEnabled;
+                          setGroupMaxEnabled(next);
+                          if (next && Number(groupMax) < 2) setGroupMax("2");
+                        }}
+                        className={`w-11 h-6 rounded-full transition-colors relative shrink-0 ${
+                          groupMaxEnabled ? "bg-[#22C55E]" : "bg-[#CBD5E1]"
+                        }`}
+                      >
+                        <span
+                          className={`absolute top-1 w-4 h-4 rounded-full bg-white transition-transform ${
+                            groupMaxEnabled ? "right-1" : "left-1"
+                          }`}
+                        />
+                      </button>
                     </div>
-                    <input
-                      type="number"
-                      min={2}
-                      step={1}
-                      value={groupMax}
-                      onChange={(e) => {
-                        const v = e.target.value;
-                        if (v === "") { setGroupMax(""); return; }
-                        const n = Math.max(2, Math.floor(Number(v) || 2));
-                        setGroupMax(String(n));
-                      }}
-                      onBlur={() => {
-                        if (!groupMax || Number(groupMax) < 2) setGroupMax("2");
-                      }}
-                      className="w-[80px] h-[36px] px-2 text-center rounded-xl border border-[#E2E8F0] font-extrabold text-[13.5px]"
-                    />
+
+                    {groupMaxEnabled && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-[12px] font-bold text-[#64748B]">Max selections allowed</span>
+                        <input
+                          type="number"
+                          min={2}
+                          step={1}
+                          value={groupMax}
+                          onChange={(e) => {
+                            const v = e.target.value;
+                            if (v === "") { setGroupMax(""); return; }
+                            const n = Math.max(2, Math.floor(Number(v) || 2));
+                            setGroupMax(String(n));
+                          }}
+                          onBlur={() => {
+                            if (!groupMax || Number(groupMax) < 2) setGroupMax("2");
+                          }}
+                          className="w-[80px] h-[36px] px-2 text-center rounded-xl border border-[#E2E8F0] font-extrabold text-[13.5px]"
+                        />
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -2416,7 +2558,10 @@ const ManageMenu = () => {
                       setExtrasList([...extrasList, { name: extraNameInput.trim(), price: String(numPrice) }]);
                     }
                     setExtraNameInput("");
-                    setExtraPriceInput("50");
+                    // Carry the price forward: the next component defaults to
+                    // whatever was just entered, so a run of same-priced
+                    // components is typed once.
+                    setExtraPriceInput(String(numPrice));
                   }}
                   className="w-full h-[36px] rounded-xl bg-[#5B42F3] text-white text-[12.5px] font-bold hover:bg-[#4A32E0]"
                 >
@@ -2523,7 +2668,12 @@ const ManageMenu = () => {
                   // Group" picker — the operator can attach them later
                   // from Products → Select → Manage → Add Group.
                   const trimmedName = groupName.trim();
-                  const normalizedMax = selectionType === "single" ? 1 : Math.max(1, Number(groupMax) || 1);
+                  // "Single" is a cap of one by definition. "Multiple" only
+                  // carries a cap when Maximum Selection is switched on;
+                  // otherwise the customer may pick any number.
+                  const capOn = selectionType === "single" || groupMaxEnabled;
+                  const normalizedMax =
+                    selectionType === "single" ? 1 : Math.max(1, Number(groupMax) || 1);
                   const normalizedOptions = extrasList.map((e) => ({
                     name: e.name.trim(),
                     price: Number(e.price) || 0,
@@ -2543,6 +2693,7 @@ const ManageMenu = () => {
                       next[trimmedName] = {
                         name: trimmedName,
                         required: Boolean(groupRequired),
+                        maxSelectionEnabled: capOn,
                         maxSelections: normalizedMax,
                         options: normalizedOptions,
                       };
@@ -2563,6 +2714,7 @@ const ManageMenu = () => {
                     groupName: trimmedName,
                     oldGroupName: editingGroup ? editingGroup.name : undefined,
                     required: groupRequired,
+                    maxSelectionEnabled: capOn,
                     maxSelections: normalizedMax,
                     options: normalizedOptions,
                     dishIds: Array.from(assignedDishIds),

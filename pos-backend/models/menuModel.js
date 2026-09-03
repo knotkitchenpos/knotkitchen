@@ -11,6 +11,21 @@ const modifierGroupSchema = new mongoose.Schema({
     required: { type: Boolean, default: false },
     minSelections: { type: Number, default: 0 },
     maxSelections: { type: Number, default: 1 },
+
+    // Whether maxSelections means anything. OFF (the default) lets the
+    // customer pick as many options as they like; ON caps them at
+    // maxSelections. Without this a group had no way to express "no limit",
+    // because maxSelections defaults to 1.
+    maxSelectionEnabled: { type: Boolean, default: false },
+
+    // These two were being WRITTEN by the group reorder and active-toggle
+    // endpoints but did not exist on the schema. Mongoose subdocuments are
+    // strict, so both assignments were silently dropped on save: reordering
+    // reported success and changed nothing, and a group switched off came
+    // back on as soon as the data was refetched or the cache republished.
+    isActive: { type: Boolean, default: true },
+    sortOrder: { type: Number, default: 0 },
+
     groupType: { type: String, enum: ["addon", "choice"], default: "addon" },
     options: [modifierOptionSchema],
 });
