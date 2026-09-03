@@ -228,8 +228,13 @@ const calculateUnitPrice = ({
       throw err;
     }
 
+    // "Maximum Selection" OFF means no cap. Only an EXPLICIT false counts:
+    // groups that predate the flag have it undefined and must keep their old
+    // behaviour, or a group the operator built as "choose 1" would silently
+    // start accepting five.
+    const capEnabled = group.maxSelectionEnabled !== false;
     const maxSelections = Math.max(1, Number(group.maxSelections) || 1);
-    if (totalSelectedQty > maxSelections) {
+    if (capEnabled && totalSelectedQty > maxSelections) {
       const err = new Error(`Maximum ${maxSelections} selection(s) for "${group.name}".`);
       err.status = 400;
       throw err;

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams, useParams } from "react-router-dom";
+import ProductOptionsSheet from "../components/qr/ProductOptionsSheet";
 import {
   qrGetTable,
   qrPlaceOrder,
@@ -43,7 +44,12 @@ export default function OrderOnline() {
   const [session, setSession] = useState(null);
   const [cat, setCat] = useState("all");
   const [query, setQuery] = useState("");
-  const [cart, setCart] = useState({}); // { [itemId]: { item, qty } }
+  // { [lineKey]: { key, item, qty, variant, modifiers, unitPrice } } — keyed by
+  // product AND chosen options, so two configurations of the same product are
+  // two lines.
+  const [cart, setCart] = useState({});
+  // The product whose options the customer is currently choosing, if any.
+  const [optionsItem, setOptionsItem] = useState(null);
   const [cust, setCust] = useState({ name: "", phone: "", guests: 1 });
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
@@ -112,7 +118,12 @@ export default function OrderOnline() {
 
   const cartList = useMemo(() => Object.values(cart), [cart]);
   const cartCount = cartList.reduce((s, x) => s + x.qty, 0);
-  const cartTotal = cartList.reduce((s, { item, qty }) => s + Number(item.price || 0) * qty, 0);
+  // Each line carries its own unitPrice, because a chosen size or paid extra
+  // changes what the line costs — item.price alone under-charged them.
+  const cartTotal = cartList.reduce(
+    (s, line) => s + Number(line.unitPrice ?? line.item.price ?? 0) * line.qty,
+    0,
+  );
 
   const sessionTotal = session?.bills?.totalWithTax || 0;
   const sessionItems = session?.items || [];
@@ -121,18 +132,64 @@ export default function OrderOnline() {
   const currency = restaurant?.currency === "USD" ? "$" : "₹";
   const money = (n) => `${currency}${Number(n || 0).toFixed(2)}`;
 
-  const add = (item) =>
-    setCart((p) => ({ ...p, [item._id]: { item, qty: (p[item._id]?.qty || 0) + 1 } }));
+  /** A product needs a choice before it can be ordered. */
+  const hasOptions = (item) =>
+    (Array.isArray(item?.variants) && item.variants.length > 0) ||
+    (Array.isArray(item?.modifierGroups) &&
+      item.modifierGroups.filter((g) => g?.isActive !== false).length > 0);
 
-  const sub = (itemId) =>
+  /**
+   * Cart lines are keyed by the product AND its chosen options, so "Large, no
+   * onion" and "Small, extra cheese" are two lines rather than one that
+   * silently overwrites the other.
+   */
+  const lineKeyFor = (item, variant, modifiers) => {
+    if (!variant && (!modifiers || modifiers.length === 0)) return String(item._id);
+    const mods = (modifiers || [])
+      .map((m) => `${m.groupName || ""}:${m.optionName || m.optionId || ""}`)
+      .sort()
+      .join("|");
+    return `${item._id}::${variant?.variantId || ""}::${mods}`;
+  };
+
+  const addLine = ({ item, qty = 1, variant = null, modifiers = [], unitPrice }) => {
+    const key = lineKeyFor(item, variant, modifiers);
+    setCart((p) => ({
+      ...p,
+      [key]: {
+        key,
+        item,
+        variant,
+        modifiers,
+        unitPrice: unitPrice ?? (Number(item.price) || 0),
+        qty: (p[key]?.qty || 0) + qty,
+      },
+    }));
+  };
+
+  // Tapping a product with options opens the chooser; a plain product still
+  // goes straight in, exactly as before.
+  const add = (item) => {
+    if (hasOptions(item)) {
+      setOptionsItem(item);
+      return;
+    }
+    addLine({ item, qty: 1, unitPrice: Number(item.price) || 0 });
+  };
+
+  const sub = (key) =>
     setCart((p) => {
       const n = { ...p };
-      if (!n[itemId]) return p;
-      const q = n[itemId].qty - 1;
-      if (q <= 0) delete n[itemId];
-      else n[itemId] = { ...n[itemId], qty: q };
+      if (!n[key]) return p;
+      const q = n[key].qty - 1;
+      if (q <= 0) delete n[key];
+      else n[key] = { ...n[key], qty: q };
       return n;
     });
+
+  /** Total across every line of this product, however it was configured. */
+  const qtyOfItem = (itemId) =>
+    cartList.reduce((s, l) => (String(l.item._id) === String(itemId) ? s + l.qty : s), 0);
 
   const checkout = async () => {
     setErr("");
@@ -143,11 +200,15 @@ export default function OrderOnline() {
     }
     setPlacing(true);
     try {
-      const items = cartList.map(({ item, qty }) => ({
+      const items = cartList.map(({ item, qty, variant, modifiers, unitPrice }) => ({
         menuItemId: item._id,
         name: item.name,
-        price: item.price,
+        price: unitPrice ?? item.price,
         quantity: qty,
+        // The server re-prices from these and rejects a missing required
+        // choice, so they must travel with the line, not be inferred.
+        ...(variant ? { variantId: variant.variantId } : {}),
+        ...(modifiers && modifiers.length ? { modifierSelections: modifiers } : {}),
       }));
       await qrPlaceOrder(token, {
         items,
@@ -378,7 +439,8 @@ export default function OrderOnline() {
           </div>
         ) : (
           filtered.map((item) => {
-            const qty = cart[item._id]?.qty || 0;
+            const qty = qtyOfItem(item._id);
+            const itemHasOptions = hasOptions(item);
             return (
               <article
                 key={item._id}
@@ -407,10 +469,10 @@ export default function OrderOnline() {
                   )}
                   <div className="mt-auto pt-1.5 flex justify-between items-center">
                     <span className="font-extrabold text-slate-900 text-sm">{money(item.price)}</span>
-                    {qty > 0 ? (
+                    {qty > 0 && !itemHasOptions ? (
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => sub(item._id)}
+                          onClick={() => sub(String(item._id))}
                           className="w-7 h-7 rounded-full bg-slate-100 text-slate-700 font-bold"
                           aria-label={`Remove one ${item.name}`}
                         >
@@ -434,7 +496,7 @@ export default function OrderOnline() {
                         className="text-[12px] font-bold text-white rounded-full px-3 py-1"
                         style={{ background: primary }}
                       >
-                        + Add
+                        {itemHasOptions ? (qty > 0 ? `Add more · ${qty}` : "Choose") : "+ Add"}
                       </button>
                     )}
                   </div>
@@ -484,31 +546,47 @@ export default function OrderOnline() {
             </div>
 
             <ul className="max-h-64 overflow-y-auto divide-y divide-slate-100 px-5">
-              {cartList.map(({ item, qty }) => (
-                <li key={item._id} className="py-3 flex items-center gap-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="font-semibold text-sm text-slate-900 truncate">{item.name}</p>
-                    <p className="text-[11px] text-slate-500">{money(item.price)} each</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => sub(item._id)}
-                      className="w-7 h-7 rounded-full bg-slate-100 text-slate-700 font-bold"
-                    >
-                      −
-                    </button>
-                    <span className="min-w-[18px] text-center font-bold text-sm">{qty}</span>
-                    <button
-                      onClick={() => add(item)}
-                      className="w-7 h-7 rounded-full text-white font-bold"
-                      style={{ background: primary }}
-                    >
-                      +
-                    </button>
-                  </div>
-                  <span className="font-bold text-sm w-16 text-right">{money(item.price * qty)}</span>
-                </li>
-              ))}
+              {cartList.map((line) => {
+                const { key, item, qty, variant, modifiers, unitPrice } = line;
+                // Spell the chosen options out, so the customer can tell two
+                // lines of the same product apart before they pay for them.
+                const chosen = [
+                  variant?.name,
+                  ...(modifiers || []).map((m) => m.optionName).filter(Boolean),
+                ].filter(Boolean);
+                return (
+                  <li key={key} className="py-3 flex items-center gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-sm text-slate-900 truncate">{item.name}</p>
+                      {chosen.length > 0 && (
+                        <p className="text-[11px] text-slate-500 truncate">{chosen.join(" · ")}</p>
+                      )}
+                      <p className="text-[11px] text-slate-500">{money(unitPrice)} each</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={() => sub(key)}
+                        className="w-7 h-7 rounded-full bg-slate-100 text-slate-700 font-bold"
+                        aria-label={`Remove one ${item.name}`}
+                      >
+                        −
+                      </button>
+                      <span className="min-w-[18px] text-center font-bold text-sm">{qty}</span>
+                      <button
+                        onClick={() =>
+                          addLine({ item, qty: 1, variant, modifiers, unitPrice })
+                        }
+                        className="w-7 h-7 rounded-full text-white font-bold"
+                        style={{ background: primary }}
+                        aria-label={`Add one more ${item.name}`}
+                      >
+                        +
+                      </button>
+                    </div>
+                    <span className="font-bold text-sm w-16 text-right">{money(unitPrice * qty)}</span>
+                  </li>
+                );
+              })}
             </ul>
 
             <div className="p-5 pt-3 border-t border-slate-100 space-y-3">
@@ -557,6 +635,19 @@ export default function OrderOnline() {
             </div>
           </div>
         </div>
+      )}
+
+      {optionsItem && (
+        <ProductOptionsSheet
+          item={optionsItem}
+          currency={currency}
+          primary={primary}
+          onClose={() => setOptionsItem(null)}
+          onAdd={(line) => {
+            addLine(line);
+            setOptionsItem(null);
+          }}
+        />
       )}
 
       <style>{`
