@@ -78,3 +78,19 @@ test("REGRESSION: hashing a password twice makes it unusable", async () => {
   const hashedTwice = await bcrypt.hash(hashedOnce, 4);
   assert.equal(await bcrypt.compare(plain, hashedTwice), false, "two hashes never verify");
 });
+
+test("REGRESSION: only role Staff is unlocked by migration 005", () => {
+  // 005 flips passwordPlaceholder to true so staff created by the broken path
+  // can choose a password. Widening that filter beyond role:"Staff" would let
+  // anyone re-set an OWNER password from an unauthenticated endpoint.
+  const src = require("fs").readFileSync(
+    require("path").join(__dirname, "..", "migrations", "005-unlock-existing-staff-accounts.js"),
+    "utf8",
+  );
+  const roles = [...src.matchAll(/role:\s*"([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(roles.length > 0, "migration filters on role");
+  for (const role of roles) {
+    assert.equal(role, "Staff", `migration must only touch Staff, found "${role}"`);
+  }
+  assert.ok(!/role:\s*\{/.test(src), "role must be an exact match, never an operator");
+});
