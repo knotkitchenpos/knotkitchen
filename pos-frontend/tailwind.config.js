@@ -12,7 +12,34 @@ export default {
           hover: "#4A32E0",
           light: "#EEF0FE",
         },
-        surface: "#FFFFFF",
+        // The Manage Table modals were written against a token set that was
+        // never added to this config — bg-surface-secondary, text-content,
+        // border-border, bg-accent/5 and friends. Tailwind silently generates
+        // nothing for an unknown token, so those panels had NO background at
+        // all and rendered as a near-invisible sheet over the blurred
+        // backdrop. Defining them here fixes every such modal at once and
+        // cannot affect anything else, because nothing could have been using
+        // classes that did not exist.
+        surface: {
+          DEFAULT: "#FFFFFF",
+          secondary: "#FFFFFF",
+          input: "#F8FAFC",
+          tertiary: "#F1F5F9",
+        },
+        content: {
+          DEFAULT: "#0F172A",
+          muted: "#64748B",
+        },
+        border: {
+          DEFAULT: "#E2E8F0",
+        },
+        accent: {
+          DEFAULT: "#5B42F3",
+          red: "#DC2626",
+          green: "#16A34A",
+          blue: "#2563EB",
+          amber: "#F59E0B",
+        },
         canvas: "#F8FAFC",
         ink: "#0F172A",
         "ink-2": "#475569",

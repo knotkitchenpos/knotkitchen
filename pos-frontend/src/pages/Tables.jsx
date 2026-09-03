@@ -48,7 +48,11 @@ const IconQr = ({ size = 13 }) => (
   </svg>
 );
 
-const DEFAULT_AREAS = ["Ground Floor", "First Floor", "Rooftop", "Garden", "Terrace", "VIP Area", "Outdoor"];
+// No default floors or areas. The list used to be seeded with Ground Floor,
+// Rooftop, VIP Area and friends, which every store had to look at whether or
+// not they meant anything to it — and none of them could be removed. Areas now
+// come only from what the operator creates, plus whatever their existing
+// tables already sit in.
 
 const Tables = () => {
   const navigate = useNavigate();
@@ -174,7 +178,6 @@ const Tables = () => {
   // Derive unique floor/area names from server tables + custom created areas
   const allAreas = Array.from(
     new Set([
-      ...DEFAULT_AREAS,
       ...customAreas,
       ...tables.map((t) => t.area || t.floor || t.zone).filter(Boolean),
     ])
@@ -435,12 +438,12 @@ const Tables = () => {
             {allAreas.map((a) => {
               const count = tables.filter((t) => (t.area || t.floor || t.zone) === a).length;
               const isActive = selectedArea === a;
-              // A floor/area is deletable when it's an operator-created
-              // custom area AND it has zero tables in it. Default areas
-              // (Ground Floor, Rooftop, …) are never deletable because
-              // they're baked in as sensible starter options.
-              const isCustom = customAreas.includes(a);
-              const canDelete = isCustom && count === 0;
+              // Every area the operator can see is one they made, so the only
+              // thing that should stop a delete is tables still sitting in it.
+              // The old rule also required membership of the local
+              // customAreas list, so an area created on another device — or
+              // before that list existed — could never be removed.
+              const canDelete = count === 0;
               return (
                 <div
                   key={a}
