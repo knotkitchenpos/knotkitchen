@@ -99,6 +99,11 @@ export const getTableById = (tableId) => axiosWrapper.get(`/api/table/${tableId}
 // The legacy Table.qrToken (32-hex from crypto.randomBytes(16)) is not
 // valid for scanning; opening the QR modal should always fetch/mint a
 // modern secure token via this endpoint.
+// Manage Table settings. Separate from Store Properties, which is PIN-gated:
+// how long a table rests after payment is an everyday floor setting.
+export const getTableSettings = () => axiosWrapper.get("/api/table/settings");
+export const updateTableSettings = (data) => axiosWrapper.put("/api/table/settings", data);
+
 export const getOrCreateTableQr = (tableId) =>
   axiosWrapper.get(`/api/table-qr/table/${tableId}`);
 export const regenerateTableQr = (tableId) =>

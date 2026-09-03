@@ -16,12 +16,28 @@ const TableModal = ({ tables = [], busy, onClose, onConfirm }) => {
   const [guests, setGuests] = useState(1);
   const [q, setQ] = useState("");
   const [err, setErr] = useState("");
+  const [area, setArea] = useState("all");
+
+  const areaOf = (t) => t.area || t.floor || t.zone || "";
+
+  // Floors and areas actually in use, so the biller can jump to a section
+  // instead of hunting through every table in the building.
+  const areas = useMemo(() => {
+    const seen = new Map();
+    tables.forEach((t) => {
+      const name = areaOf(t);
+      if (!name) return;
+      seen.set(name, (seen.get(name) || 0) + 1);
+    });
+    return Array.from(seen.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [tables]);
 
   const list = useMemo(() => {
     const s = q.trim();
-    const arr = [...tables].sort((a, b) => (a.tableNumber || 0) - (b.tableNumber || 0));
+    let arr = [...tables].sort((a, b) => (a.tableNumber || 0) - (b.tableNumber || 0));
+    if (area !== "all") arr = arr.filter((t) => areaOf(t) === area);
     return s ? arr.filter((t) => String(t.tableNumber).includes(s)) : arr;
-  }, [tables, q]);
+  }, [tables, q, area]);
 
   const available = list.filter((t) => !isOccupied(t)).length;
 
@@ -57,12 +73,30 @@ const TableModal = ({ tables = [], busy, onClose, onConfirm }) => {
           className="w-full h-[44px] px-3.5 rounded-xl border border-[#E2E8F0] text-[14px] focus:border-[#5B42F3]"
         />
 
+        {areas.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+            <AreaChip active={area === "all"} onClick={() => setArea("all")}>
+              All Tables ({tables.length})
+            </AreaChip>
+            {areas.map(([name, count]) => (
+              <AreaChip key={name} active={area === name} onClick={() => setArea(name)}>
+                {name} ({count})
+              </AreaChip>
+            ))}
+          </div>
+        )}
+
         {tables.length === 0 ? (
           <p className="text-center text-[13.5px] text-[#94A3B8] py-10">
             No tables configured for this store yet.
           </p>
         ) : (
           <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5 max-h-[280px] overflow-y-auto pr-1">
+            {list.length === 0 && (
+              <p className="col-span-full text-center text-[13px] text-[#94A3B8] py-6">
+                No tables in {area === "all" ? "this store" : `"${area}"`}.
+              </p>
+            )}
             {list.map((t) => {
               const off = isOccupied(t);
               const on = picked?._id === t._id;
@@ -86,8 +120,9 @@ const TableModal = ({ tables = [], busy, onClose, onConfirm }) => {
                   <p className={`text-[15px] font-extrabold ${on ? "text-white" : "text-[#0F172A]"}`}>
                     Table {t.tableNumber}
                   </p>
-                  <p className={`text-[11px] mt-0.5 ${on ? "text-white/80" : "text-[#94A3B8]"}`}>
+                  <p className={`text-[11px] mt-0.5 truncate ${on ? "text-white/80" : "text-[#94A3B8]"}`}>
                     Seats {t.capacity}
+                    {area === "all" && areaOf(t) ? ` · ${areaOf(t)}` : ""}
                   </p>
                   <span
                     className={`inline-block mt-1.5 px-1.5 py-[2px] rounded text-[10px] font-bold ${
@@ -98,7 +133,11 @@ const TableModal = ({ tables = [], busy, onClose, onConfirm }) => {
                         : "bg-[#DCFCE7] text-[#15803D]"
                     }`}
                   >
-                    {off ? "Occupied" : "Available"}
+                    {String(t.status || "").toLowerCase() === "cleaning"
+                      ? "Cleaning"
+                      : off
+                      ? "Occupied"
+                      : "Available"}
                   </span>
                 </button>
               );
@@ -147,5 +186,19 @@ const TableModal = ({ tables = [], busy, onClose, onConfirm }) => {
     </ModalShell>
   );
 };
+
+const AreaChip = ({ active, onClick, children }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={`shrink-0 px-3.5 py-1.5 rounded-full text-[12.5px] font-extrabold transition-colors ${
+      active
+        ? "bg-[#5B42F3] text-white"
+        : "bg-[#F8FAFC] border border-[#E2E8F0] text-[#64748B] hover:text-[#0F172A]"
+    }`}
+  >
+    {children}
+  </button>
+);
 
 export default TableModal;

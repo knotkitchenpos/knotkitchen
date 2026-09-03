@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { buildCooldownUpdate } = require("../services/tableCooldownService");
 const Table = require("../models/tableModel");
 const TableSession = require("../models/tableSessionModel");
 const Order = require("../models/orderModel");
@@ -860,9 +861,13 @@ const recordSessionPayment = async (req, res, next) => {
       session.closedBy = req.user?._id;
       addTimeline(session, "SESSION_CLOSED", "Session closed after payment", "POS", req.user?._id);
 
+      // A paid table goes into its cooldown rather than straight back into
+      // service, so the next party is not seated onto a table nobody has
+      // cleared. The update frees it immediately when the restaurant has the
+      // wait set to 0.
       await Table.findOneAndUpdate(
         { _id: session.tableId },
-        { status: "available", currentOrderId: null, currentOccupancy: 0 },
+        await buildCooldownUpdate(session.restaurantId),
         { session: mongoSession }
       );
     } else {

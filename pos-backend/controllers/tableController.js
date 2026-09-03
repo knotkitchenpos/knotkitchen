@@ -352,4 +352,60 @@ const regenerateQr = async (req, res, next) => {
   }
 };
 
-module.exports = { addTable, getTables, getTableById, updateTable, deleteTable, regenerateQr };
+/**
+ * GET /api/table/settings - Manage Table's own settings.
+ *
+ * Kept separate from Store Properties, which is PIN-gated and owner-scoped:
+ * how long a table rests after payment is an everyday floor setting, not a
+ * change of business details.
+ */
+const getTableSettings = async (req, res, next) => {
+  try {
+    const Restaurant = require("../models/restaurantModel");
+    const restaurant = await Restaurant.findOne({
+      ...(req.user.restaurantId ? { _id: req.user.restaurantId } : { ownerId: req.user._id }),
+      isDeleted: { $ne: true },
+    }).select("tableSettings").lean();
+
+    res.status(200).json({
+      success: true,
+      data: { cooldownMinutes: Number(restaurant?.tableSettings?.cooldownMinutes ?? 2) },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** PUT /api/table/settings  { cooldownMinutes } */
+const updateTableSettings = async (req, res, next) => {
+  try {
+    const minutes = Number(req.body?.cooldownMinutes);
+    if (!Number.isFinite(minutes) || minutes < 0 || minutes > 120) {
+      return next(createHttpError(400, "Cooldown must be a whole number of minutes between 0 and 120."));
+    }
+
+    const Restaurant = require("../models/restaurantModel");
+    const restaurant = await Restaurant.findOneAndUpdate(
+      {
+        ...(req.user.restaurantId ? { _id: req.user.restaurantId } : { ownerId: req.user._id }),
+        isDeleted: { $ne: true },
+      },
+      { $set: { "tableSettings.cooldownMinutes": Math.round(minutes) } },
+      { new: true },
+    ).select("tableSettings");
+
+    if (!restaurant) return next(createHttpError(404, "Restaurant not found!"));
+
+    res.status(200).json({
+      success: true,
+      message: `Tables will be free ${Math.round(minutes)} minute(s) after payment.`,
+      data: { cooldownMinutes: Number(restaurant.tableSettings.cooldownMinutes) },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = {
+  getTableSettings,
+  updateTableSettings, addTable, getTables, getTableById, updateTable, deleteTable, regenerateQr };

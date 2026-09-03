@@ -67,6 +67,11 @@ const tableSchema = new mongoose.Schema(
     qrCode: { type: String, default: "" },
     qrToken: { type: String, default: "" },
     qrEnabled: { type: Boolean, default: true },
+    // Set when a settled table enters its post-payment cooldown. The sweeper
+    // in services/tableCooldownService flips it back to "available" once this
+    // passes; null means the table is not waiting on anything.
+    availableAt: { type: Date, default: null },
+
     // Waiter calling
     waiterCallActive: { type: Boolean, default: false },
     waiterCallRequestedAt: Date,

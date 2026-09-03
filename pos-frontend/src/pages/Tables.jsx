@@ -17,6 +17,8 @@ import {
   getTableSessionById,
   regenerateQr,
   getOrCreateTableQr,
+  getTableSettings,
+  updateTableSettings,
 } from "../https";
 import { enqueueSnackbar } from "notistack";
 // NOTE: `FiQrCode` does not exist in the `react-icons/fi` set — it was a
@@ -91,6 +93,27 @@ const Tables = () => {
   const [printModalTable, setPrintModalTable] = useState(null);
   const [isAreaModalOpen, setIsAreaModalOpen] = useState(false);
   const [newAreaInput, setNewAreaInput] = useState("");
+  const [cooldownInput, setCooldownInput] = useState("");
+
+  // How long a table rests after its bill is settled before it can be seated
+  // again. Lives on the restaurant, not the browser, so every till agrees.
+  const { data: tableSettingsRes } = useQuery({
+    queryKey: ["table-settings"],
+    queryFn: getTableSettings,
+  });
+  const cooldownMinutes = Number(tableSettingsRes?.data?.data?.cooldownMinutes ?? 2);
+
+  const cooldownMut = useMutation({
+    mutationFn: updateTableSettings,
+    onSuccess: (res) => {
+      enqueueSnackbar(res?.data?.message || "Cooldown updated.", { variant: "success" });
+      queryClient.invalidateQueries({ queryKey: ["table-settings"] });
+    },
+    onError: (e) =>
+      enqueueSnackbar(e?.response?.data?.message || "Could not update the cooldown.", {
+        variant: "error",
+      }),
+  });
 
   // Add/Edit Form State
   const [displayId, setDisplayId] = useState("");
@@ -416,12 +439,34 @@ const Tables = () => {
               <FiLayers size={16} className="text-[#5B42F3]" />
               <span>Floors & Areas</span>
             </div>
-            <button
-              onClick={() => setIsAreaModalOpen(true)}
-              className="text-xs font-bold text-[#5B42F3] hover:underline flex items-center gap-1"
-            >
-              + Add Custom Area
-            </button>
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2 text-xs font-bold text-[#475569]">
+                <span title="A settled table stays out of service for this long so staff can clear it. 0 frees it immediately.">
+                  Free table after payment
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  max={120}
+                  value={cooldownInput === "" ? cooldownMinutes : cooldownInput}
+                  onChange={(e) => setCooldownInput(e.target.value)}
+                  onBlur={() => {
+                    if (cooldownInput === "") return;
+                    const next = Math.max(0, Math.min(120, Math.round(Number(cooldownInput) || 0)));
+                    setCooldownInput("");
+                    if (next !== cooldownMinutes) cooldownMut.mutate({ cooldownMinutes: next });
+                  }}
+                  className="w-[62px] h-[32px] px-2 text-center rounded-lg border border-[#E2E8F0] font-extrabold text-[12.5px]"
+                />
+                <span className="text-[#94A3B8]">min</span>
+              </label>
+              <button
+                onClick={() => setIsAreaModalOpen(true)}
+                className="text-xs font-bold text-[#5B42F3] hover:underline flex items-center gap-1"
+              >
+                + Add Custom Area
+              </button>
+            </div>
           </div>
 
           <div className="flex gap-2 overflow-x-auto pb-1 no-scrollbar">

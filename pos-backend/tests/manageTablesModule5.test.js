@@ -220,6 +220,7 @@ test("Manage Tables Module 5: Table settlement releases table to Available and p
 
   assert.ok(resData);
   assert.equal(sessionDoc.status, "CLOSED"); // Session marked CLOSED
-  assert.equal(updatedTableStatus, "available"); // Table released to available
+  // Released into the post-payment cooldown, not straight back into service.
+  assert.equal(updatedTableStatus, "cleaning");
   assert.equal(orderStatusUpdated, "paid"); // Historical kitchen order marked paid (never deleted)
 });

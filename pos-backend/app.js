@@ -275,6 +275,18 @@ try {
     console.warn("Auto-ready scheduler failed to start:", err.message);
 }
 
+/**
+ * Returns settled tables to service once their post-payment cooldown elapses.
+ * A sweep rather than a per-table timer, so a restart mid-service does not
+ * strand tables in "cleaning" forever — the deadline lives on the row.
+ */
+try {
+    const { startTableCooldownSweeper } = require("./services/tableCooldownService");
+    startTableCooldownSweeper();
+} catch (err) {
+    console.warn("Table cooldown sweeper failed to start:", err.message);
+}
+
 // Server
 server.listen(PORT, () => {
     console.log(`☑️  POS Server is listening on port ${PORT}`);

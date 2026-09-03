@@ -1,11 +1,15 @@
 const express = require("express");
-const { addTable, getTables, getTableById, updateTable, deleteTable, regenerateQr } = require("../controllers/tableController");
+const { addTable, getTables, getTableById, updateTable, deleteTable, regenerateQr, getTableSettings, updateTableSettings } = require("../controllers/tableController");
 const router = express.Router();
 const { isVerifiedUser } = require("../middlewares/tokenVerification");
 const { requireProtectedAction } = require("../middlewares/requirePermission");
 
 router.route("/").post(isVerifiedUser, requireProtectedAction, addTable);
 router.route("/").get(isVerifiedUser, getTables);
+// Declared BEFORE /:id, or "settings" would be read as a table id.
+router.route("/settings").get(isVerifiedUser, getTableSettings);
+router.route("/settings").put(isVerifiedUser, requireProtectedAction, updateTableSettings);
+
 router.route("/:id").get(isVerifiedUser, getTableById);
 router.route("/:id/qr/regenerate").put(isVerifiedUser, requireProtectedAction, regenerateQr);
 router.route("/:id").put(isVerifiedUser, requireProtectedAction, updateTable);

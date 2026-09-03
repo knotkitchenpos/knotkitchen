@@ -86,6 +86,13 @@ const restaurantSchema = new mongoose.Schema(
       websiteLink: { type: String, default: "" },
     },
 
+    // How long a table stays out of service after its bill is settled, so
+    // staff can clear and reset it before the next party is seated. 0 frees
+    // the table immediately. Configurable from Manage Table.
+    tableSettings: {
+      cooldownMinutes: { type: Number, default: 2, min: 0, max: 120 },
+    },
+
     // Module 7 §4 — Order Type Toggles
     orderTypeToggles: {
       collection: { type: Boolean, default: true },
