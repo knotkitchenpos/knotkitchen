@@ -967,8 +967,13 @@ const getPopularItems = async (req, res, next) => {
     const Menu = getMenuModel();
     const menus = await Menu.find({
 
+      // Same rule as menuScopeFor(): the tenant ALONE, with createdBy only
+      // as a fallback for a user that has no restaurantId. The $or that
+      // used to be here was a union, so a creator with two takeaways got
+      // the other one's dishes suggested here -- exactly what the comment
+      // above promises can never happen.
       ...(req.user?.restaurantId
-        ? { $or: [{ restaurantId: req.user.restaurantId }, { createdBy: req.user._id }] }
+        ? { restaurantId: req.user.restaurantId }
         : { createdBy: req.user?._id }),
       isDeleted: { $ne: true },
       published: { $ne: false },

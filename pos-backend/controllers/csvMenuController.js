@@ -2,12 +2,31 @@ const Menu = require("../models/menuModel");
 const createHttpError = require("http-errors");
 const { publishAllMenusForUser } = require("./menuController");
 
+/**
+ * Menu tenancy scope.
+ *
+ * A takeaway's menus, categories, products, groups and every menu setting
+ * belong to that takeaway ALONE. This helper is the single chokepoint every
+ * menu read and write goes through, so it is the one place that guarantees it.
+ *
+ * It used to be an $or -- restaurantId OR createdBy -- to keep single-user
+ * legacy installs working. That is a UNION, not a fallback: whoever created
+ * menus for two takeaways then saw both sets merged into one. Because every
+ * group operation keys off the group NAME across every menu in scope
+ * (rename / delete / toggle-active / reorder), renaming "Sauce" in one
+ * takeaway renamed it in the other, and a CSV "replace all" could delete the
+ * other takeaway's menus outright.
+ *
+ * createdBy is now only a FALLBACK, for a user with no restaurantId at all --
+ * matching tenantScopeFor() in orderController. Staff still reach menus their
+ * owner created, because they share the restaurantId.
+ *
+ * outletId is deliberately NOT part of this scope: menus are store-wide and no
+ * menu carries an outletId. Adding the clause would hide every existing menu
+ * the moment anyone set a user's outletId.
+ */
 const menuScopeFor = (user) => {
-  if (user?.restaurantId) {
-    const clauses = [{ restaurantId: user.restaurantId }];
-    if (user._id) clauses.push({ createdBy: user._id });
-    return { $or: clauses };
-  }
+  if (user?.restaurantId) return { restaurantId: user.restaurantId };
   return { createdBy: user?._id };
 };
 
@@ -352,6 +371,8 @@ const confirmCsvImport = async (req, res, next) => {
 };
 
 module.exports = {
+  // Exposed for tests: takeaway isolation lives or dies on this helper.
+  __menuScopeForTest: menuScopeFor,
   downloadCsvTemplate,
   exportCsv,
   previewCsvImport,

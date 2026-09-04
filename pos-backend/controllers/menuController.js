@@ -4,21 +4,30 @@ const mongoose = require("mongoose");
 const { logActivity } = require("../services/auditService");
 
 /**
- * Menu tenancy scope (§3).
+ * Menu tenancy scope.
  *
- * Every mutation on this file goes through menuScopeFor() so that an
- * employee/manager can edit menus belonging to their restaurant even if the
- * menu was originally created by a different POS user (the pre-multi-tenant
- * "createdBy" scoping made staff invisible to owner-created menus and
- * vice-versa — the addition of restaurantId here fixes it while remaining
- * backwards compatible with single-user legacy installs).
+ * A takeaway's menus, categories, products, groups and every menu setting
+ * belong to that takeaway ALONE. This helper is the single chokepoint every
+ * menu read and write goes through, so it is the one place that guarantees it.
+ *
+ * It used to be an $or -- restaurantId OR createdBy -- to keep single-user
+ * legacy installs working. That is a UNION, not a fallback: whoever created
+ * menus for two takeaways then saw both sets merged into one. Because every
+ * group operation keys off the group NAME across every menu in scope
+ * (rename / delete / toggle-active / reorder), renaming "Sauce" in one
+ * takeaway renamed it in the other, and a CSV "replace all" could delete the
+ * other takeaway's menus outright.
+ *
+ * createdBy is now only a FALLBACK, for a user with no restaurantId at all --
+ * matching tenantScopeFor() in orderController. Staff still reach menus their
+ * owner created, because they share the restaurantId.
+ *
+ * outletId is deliberately NOT part of this scope: menus are store-wide and no
+ * menu carries an outletId. Adding the clause would hide every existing menu
+ * the moment anyone set a user's outletId.
  */
 const menuScopeFor = (user) => {
-  if (user?.restaurantId) {
-    const clauses = [{ restaurantId: user.restaurantId }];
-    if (user._id) clauses.push({ createdBy: user._id });
-    return { $or: clauses };
-  }
+  if (user?.restaurantId) return { restaurantId: user.restaurantId };
   return { createdBy: user?._id };
 };
 
@@ -1475,6 +1484,8 @@ const publishWebsiteCache = (req, res, next) =>
   publishToTarget(req, res, "website").catch(next);
 
 module.exports = {
+  // Exposed for tests: takeaway isolation lives or dies on this helper.
+  __menuScopeForTest: menuScopeFor,
   getMenus,
   addCategory,
   updateCategory,
