@@ -3,7 +3,11 @@ import { verifyStaffPin } from "../../utils/security";
 
 /**
  * Reusable Centralized Security PIN Modal.
- * Prompts Staff members for the Security PIN (Default: 8796).
+ * Prompts Staff members for the Security PIN.
+ *
+ * The default PIN is deliberately NOT shown anywhere here. Printing it beside
+ * the field told every member of staff the value that gates the POS's
+ * protected actions, which defeats the point of having the prompt.
  * On successful verification, stores a short-lived PIN session token and triggers callback.
  */
 const SecurityPinModal = ({ isOpen, onClose, onSuccess, title = "Security Authorization Required", actionLabel = "Proceed" }) => {
@@ -28,7 +32,7 @@ const SecurityPinModal = ({ isOpen, onClose, onSuccess, title = "Security Author
       onSuccess?.();
       onClose?.();
     } catch (err) {
-      setError(err.response?.data?.message || "Invalid Security PIN. Default PIN is 8796.");
+      setError(err.response?.data?.message || "Invalid Security PIN.");
     } finally {
       setLoading(false);
     }
@@ -49,7 +53,7 @@ const SecurityPinModal = ({ isOpen, onClose, onSuccess, title = "Security Author
         </div>
 
         <p className="text-xs text-[#64748B] leading-relaxed">
-          This protected action requires Staff Security PIN authorization (Default: <strong className="text-[#0F172A]">8796</strong>).
+          This protected action requires Staff Security PIN authorization.
         </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -60,7 +64,7 @@ const SecurityPinModal = ({ isOpen, onClose, onSuccess, title = "Security Author
               maxLength={8}
               value={pin}
               onChange={(e) => setPin(e.target.value)}
-              placeholder="e.g. 8796"
+              placeholder="Enter PIN"
               autoFocus
               className="w-full h-11 px-3 rounded-xl border border-[#E2E8F0] font-bold text-center text-lg tracking-widest text-[#0F172A] focus:outline-none focus:border-[#FD5302]"
             />

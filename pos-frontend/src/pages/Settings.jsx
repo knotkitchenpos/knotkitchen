@@ -572,7 +572,7 @@ const StorePropertiesView = () => {
                   maxLength={8}
                   value={currentPinInput}
                   onChange={(e) => setCurrentPinInput(e.target.value)}
-                  placeholder="8796"
+                  placeholder="Current PIN"
                   className="w-full h-[38px] px-3 mt-1 rounded-xl border border-[#E2E8F0] font-bold"
                 />
               </div>

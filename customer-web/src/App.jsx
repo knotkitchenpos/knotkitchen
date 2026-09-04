@@ -24,7 +24,7 @@ export default function App() {
 
   useEffect(() => {
     if (debug) {
-      // eslint-disable-next-line no-console
+       
       console.info("[customer-web] hostname resolution", resolution);
     }
   }, [debug, resolution]);

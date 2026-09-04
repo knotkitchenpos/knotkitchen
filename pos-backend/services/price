@@ -181,6 +181,11 @@ const calculateUnitPrice = ({
   const selectedModifiers = [];
   let modifierTotal = 0;
   for (const group of item.modifierGroups || []) {
+    // A group switched OFF is not sold: it is hidden from the customer, so
+    // validating it would demand a choice they were never shown, and
+    // pricing it would charge for an option that is not on offer. Only an
+    // EXPLICIT false counts -- groups predating the flag have it undefined.
+    if (group.isActive === false) continue;
     const groupObjIdStr = group._id ? String(group._id) : "";
     const groupNameStr = group.name ? String(group.name).toLowerCase() : "";
 

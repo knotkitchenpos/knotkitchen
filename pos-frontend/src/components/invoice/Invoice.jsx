@@ -1,5 +1,5 @@
 /* API receipt data is intentionally flexible; this component accepts the server payload. */
-/* eslint-disable react/prop-types */
+ 
 import { useState } from "react";
 import { motion } from "framer-motion";
 import { FaCheck } from "react-icons/fa6";

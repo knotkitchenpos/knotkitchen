@@ -699,7 +699,7 @@ const ManageMenu = () => {
             };
           }
         }
-        // eslint-disable-next-line no-await-in-loop
+         
         await mutation.mutateAsync(payload);
       }
       enqueueSnackbar(

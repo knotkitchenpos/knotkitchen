@@ -324,7 +324,9 @@ const verifyPin = async (req, res, next) => {
     if (!restaurant) return next(createHttpError(404, "Restaurant not found!"));
 
     const ok = await verifyPinHelper(restaurant, pin);
-    if (!ok) return next(createHttpError(401, "Invalid Security PIN. Default PIN is 8796."));
+    // Never name the default in a FAILURE response: that hands the value
+    // gating every protected action to whoever is guessing at it.
+    if (!ok) return next(createHttpError(401, "Invalid Security PIN."));
 
     const jwt = require("jsonwebtoken");
     const config = require("../config/config");

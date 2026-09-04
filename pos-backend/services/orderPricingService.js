@@ -120,6 +120,8 @@ const priceLine = (line, itemIndex, timezone, pricingContext = {}) => {
   for (const sel of rawSelections) {
     const group = (item.modifierGroups || []).find((g) => idsMatch(g._id, sel?.groupId));
     if (!group) throw new PricingError(`Invalid selection for ${item.name}.`);
+    // Selecting from a group that is switched off is not a valid order.
+    if (group.isActive === false) throw new PricingError(`Invalid selection for ${item.name}.`);
     const option = (group.options || []).find((o) => idsMatch(o._id, sel?.optionId));
     // Enforces "option belongs to that product's group" — cross-group or
     // cross-product option ids are rejected here.
@@ -140,6 +142,11 @@ const priceLine = (line, itemIndex, timezone, pricingContext = {}) => {
 
   // Validate min/max per group, including required groups the client omitted.
   for (const group of item.modifierGroups || []) {
+    // A group switched OFF is not sold: it is hidden from the customer, so
+    // validating it would demand a choice they were never shown, and
+    // pricing it would charge for an option that is not on offer. Only an
+    // EXPLICIT false counts -- groups predating the flag have it undefined.
+    if (group.isActive === false) continue;
     const chosen = byGroup.get(String(group._id)) || [];
     const min = group.required ? Math.max(1, Number(group.minSelections) || 1) : Number(group.minSelections) || 0;
     const max = Number(group.maxSelections) || 1;

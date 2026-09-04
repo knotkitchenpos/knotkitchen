@@ -177,7 +177,7 @@ const DefaultRestaurantTheme = ({ data, cart, onSelectProduct, onOpenCart }) => 
               <img
                 src={branding.coverImage}
                 alt={branding.coverImageAlt || `${store.name} cover`}
-                fetchpriority="high"
+                fetchPriority="high"
                 className="absolute inset-0 w-full h-full object-cover"
               />
             ) : (

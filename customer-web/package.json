@@ -3,11 +3,12 @@
   "private": true,
   "version": "1.0.0",
   "type": "module",
-  "description": "Knot Kitchen customer-facing restaurant website. One application, served for every store under <slug>.knotkitchen.online. The store is resolved at runtime from the browser hostname — no per-restaurant build.",
+  "description": "Knot Kitchen customer-facing restaurant website. One application, served for every store under <slug>.knotkitchen.online. The store is resolved at runtime from the browser hostname \u00e2\u20ac\u201d no per-restaurant build.",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview --host 0.0.0.0 --port 4173"
+    "preview": "vite preview --host 0.0.0.0 --port 4173",
+    "lint": "eslint ."
   },
   "dependencies": {
     "axios": "^1.7.9",
@@ -16,8 +17,14 @@
     "react-router-dom": "^7.1.3"
   },
   "devDependencies": {
+    "@eslint/js": "^9.17.0",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
+    "eslint": "^9.17.0",
+    "eslint-plugin-react": "^7.37.2",
+    "eslint-plugin-react-hooks": "^5.0.0",
+    "eslint-plugin-react-refresh": "^0.4.16",
+    "globals": "^15.14.0",
     "postcss": "^8.5.1",
     "tailwindcss": "^3.4.17",
     "vite": "^6.0.5"
