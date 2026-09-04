@@ -98,11 +98,17 @@ const settings = {
   },
 };
 
-const priceIt = (items, orderType = "pickup", customSettings = settings) =>
+// GST now needs a registered store, not just a rate -- see gstApplicability.
+// These tests are about the tax ARITHMETIC, so they price for a store that
+// is registered; whether GST applies at all is covered separately.
+const GST_REGISTERED = { taxId: "19AAACH7409R1ZZ" };
+
+const priceIt = (items, orderType = "pickup", customSettings = settings, restaurant = GST_REGISTERED) =>
   calculateOrderTotals({
     items,
     menus: [storeAMenu],
     settings: customSettings,
+    restaurant,
     orderType,
     timezone: "Asia/Kolkata",
   });

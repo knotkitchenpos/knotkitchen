@@ -9,7 +9,19 @@ const { getChannelPrice } = require("./businessHours");
 // Never trust browser-supplied prices or totals.
 // ============================================================
 
-const TAX_RATE = 0.05; // 5% GST — matches existing QR flow
+/**
+ * No GST unless the store is actually chargeable.
+ *
+ * This was 0.05, applied to every table, QR and POS bill regardless of
+ * whether the store was GST registered -- and none of them were. The rate now
+ * comes from the caller, which resolves it through services/gst from the
+ * store's GST number and the rate set under Rules & Charges.
+ *
+ * Zero is the right default precisely because a wrong default is invisible:
+ * charging nothing is a missing line on a bill, charging 5% is money taken
+ * from customers that the business never owed.
+ */
+const TAX_RATE = 0;
 const SERVICE_CHARGE_RATE = 0; // configurable per restaurant in future
 
 const currentTimeInMinutes = () => {
@@ -286,6 +298,9 @@ const calculateUnitPrice = ({
 
 /**
  * Calculate bill totals for a list of (price, quantity) pairs.
+ *
+ * `taxRate` is a FRACTION (0.05 for 5%), and defaults to none. Callers get
+ * it from services/gst rather than assuming one.
  */
 const calculateBill = ({ items, taxRate = TAX_RATE, discount = 0, additionalCharges = 0 }) => {
   const subtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);

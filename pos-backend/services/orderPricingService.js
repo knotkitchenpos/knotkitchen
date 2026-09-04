@@ -1,6 +1,7 @@
 const { isItemAvailableNow, getEffectivePrice } = require("./businessHours");
 const { calculateDistanceKm, computeDeliveryFeeFromSlabs } = require("./distanceService");
 const { capFor } = require("./modifierGroups");
+const { resolveGst } = require("./gst");
 
 
 /**
@@ -279,6 +280,9 @@ const calculateOrderTotals = ({
   items,
   menus,
   settings,
+  // The store itself, for its GST number. Without it a rate alone was
+  // enough to charge GST, even for a business that is not registered.
+  restaurant,
   orderType = "pickup",
   source = "WEBSITE",
   customerAddress,
@@ -423,25 +427,26 @@ const calculateOrderTotals = ({
     packagingFee = Number(ordering.packagingFee) || 0;
   }
 
-  // ---- Module 8 §3: Tax / GST Applicability ----
+  // ---- Tax / GST Applicability ----
+  // One resolver, shared with the table/QR path: a rate is not enough on its
+  // own, the store must also carry a GST number.
   let tax = 0;
-  const gstApply = ordering.gstApplyTo || "both";
-  if (gstApply === "both" || gstApply === environment) {
-    const taxPercent = Number(ordering.taxPercent) || 0;
+  const gst = resolveGst({ restaurant, ordering, environment });
+  if (gst.applicable) {
     const postDiscount = Math.max(0, round2(subtotal - discount));
     const taxableBase = round2(postDiscount + packagingFee);
-    if (taxPercent > 0) {
-      tax = ordering.taxInclusive
-        ? round2(taxableBase - taxableBase / (1 + taxPercent / 100))
-        : round2((taxableBase * taxPercent) / 100);
-    }
+    tax = gst.inclusive
+      ? round2(taxableBase - taxableBase / (1 + gst.percent / 100))
+      : round2((taxableBase * gst.percent) / 100);
   }
 
   // Module 8 §7: Deterministic Total calculation preventing negative totals
   const postDiscount = Math.max(0, round2(subtotal - discount));
   const totalWithTax = Math.max(
     0,
-    round2(postDiscount + packagingFee + deliveryFee + (ordering.taxInclusive ? 0 : tax))
+    // Use the resolved flag, not the raw setting: when GST is not applicable
+    // tax is 0 anyway, but reading the same source keeps the two in step.
+    round2(postDiscount + packagingFee + deliveryFee + (gst.inclusive ? 0 : tax))
   );
 
   return {

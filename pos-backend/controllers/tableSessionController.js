@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const { buildCooldownUpdate, cooldownMinutesFor } = require("../services/tableCooldownService");
+const { resolveGstForRestaurant } = require("../services/gst");
 const Table = require("../models/tableModel");
 const TableSession = require("../models/tableSessionModel");
 const Order = require("../models/orderModel");
@@ -140,12 +141,17 @@ const assertCanTransition = (session, allowedFrom, to) => {
 const assertActiveForItems = (session) => assertNotSettled(session);
 
 const recalculateSessionBill = async (session) => {
+  // A table order is on the "system" channel. GST is charged only if this
+  // store has a GST number and a rate; otherwise the rate is zero.
+  const gst = await resolveGstForRestaurant(session.restaurantId, "system");
+
   const bills = priceService.calculateBill({
     items: session.items
       .filter((i) => i.status !== "cancelled")
       .map((i) => ({ price: i.price, quantity: i.quantity })),
     discount: session.bills?.discount || 0,
     additionalCharges: session.bills?.charges || 0,
+    taxRate: gst.rate,
   });
   session.bills = bills;
   await session.save();
@@ -748,10 +754,12 @@ const getSessionBill = async (req, res, next) => {
       }));
 
     // Server-side total calculation — never trusts client figures
+    const billGst = await resolveGstForRestaurant(session.restaurantId, "system");
     const totals = priceService.calculateBill({
       items: items.map((i) => ({ price: i.price, quantity: i.quantity })),
       discount: session.bills?.discount || 0,
       additionalCharges: session.bills?.charges || 0,
+      taxRate: billGst.rate,
     });
 
     const isSettled = session.status === "PAID" || session.status === "CLOSED";

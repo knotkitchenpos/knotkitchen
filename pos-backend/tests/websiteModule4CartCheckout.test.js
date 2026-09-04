@@ -38,6 +38,8 @@ test("Website Module 4: calculateOrderTotals enforces authoritative pricing and 
     ],
     menus: [mockMenu],
     settings: mockSettings,
+    // A rate alone no longer charges GST: the store must be registered.
+    restaurant: { taxId: "19AAACH7409R1ZZ" },
     orderType: "pickup",
   };
 
@@ -47,6 +49,12 @@ test("Website Module 4: calculateOrderTotals enforces authoritative pricing and 
   assert.equal(priced.bills.subtotal, 500); // 250 * 2 = 500 (₹1 ignored)
   assert.equal(priced.bills.tax, 25); // 5% GST = 25
   assert.equal(priced.bills.totalWithTax, 525);
+
+  // ...and the same cart for a store with no GST number is not taxed.
+  const unregistered = calculateOrderTotals({ ...clientSubmission, restaurant: { taxId: "" } });
+  assert.equal(unregistered.bills.subtotal, 500);
+  assert.equal(unregistered.bills.tax, 0, "an unregistered store must not be charged GST");
+  assert.equal(unregistered.bills.totalWithTax, 500);
 });
 
 test("Website Module 4: Minimum order value requirement is strictly enforced on backend", () => {

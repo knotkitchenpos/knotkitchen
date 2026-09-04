@@ -843,10 +843,19 @@ const buildReportBuckets = (orders) => {
     inc(summary.total, amount);
 
     // ---- Source (mutually exclusive) ----
+    //
+    // "Outside" means a third-party delivery platform -- Swiggy, Zomato --
+    // and nothing else. It used to be the catch-all `else`, so every table
+    // QR order and every phone order was reported as an outside order
+    // alongside genuine marketplace ones.
+    //
+    // QR and PHONE are our own channels and belong with the till. An
+    // unrecognised source counts as ours too: a new internal source added
+    // later must not silently inflate the marketplace figure the way QR did.
     const source = String(o.source || "").toUpperCase();
-    if (source === "POS") inc(summary.system, amount);
+    if (source === "MARKETPLACE") inc(summary.outside, amount);
     else if (source === "WEBSITE") inc(summary.website, amount);
-    else inc(summary.outside, amount);
+    else inc(summary.system, amount);
 
     // ---- Type (mutually exclusive) ----
     const type = String(o.orderType || "").toLowerCase();

@@ -454,7 +454,12 @@ router.route("/order/:token").post(resolveTableScope, async (req, res, next) => 
     }
 
     const validatedItems = await enrichItems({ items, restaurantId, outletId, addedBy: "QR" });
-    const bills = priceService.calculateBill({ items: validatedItems.map((i) => ({ price: i.price, quantity: i.quantity })) });
+    // GST only where the store is registered and has a rate configured.
+    const qrGst = await require("../services/gst").resolveGstForRestaurant(restaurantId, "system");
+    const bills = priceService.calculateBill({
+      items: validatedItems.map((i) => ({ price: i.price, quantity: i.quantity })),
+      taxRate: qrGst.rate,
+    });
     // See the note on the other QR order-creation path above.
     const readyDueAt = await computeReadyDueAt({ restaurantId, orderType: "dine-in" });
     const order = await Order.create({

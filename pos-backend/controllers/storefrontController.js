@@ -430,6 +430,7 @@ const createStorefrontOrder = async (req, res, next) => {
         items: body.items,
         menus,
         settings,
+        restaurant: ctx.restaurant,
         orderType: requestedType,
         source: "WEBSITE",
         customerAddress: deliveryAddress,

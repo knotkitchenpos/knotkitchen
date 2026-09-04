@@ -1607,6 +1607,14 @@ const RulesChargesView = () => {
   const ordering = settings.ordering || {};
 
   const [gstApply, setGstApply] = useState(ordering.gstApplyTo || "both");
+  // The rate itself had no field anywhere, so GST could never be configured
+  // -- which is why a hardcoded 5% was being charged instead.
+  const [gstPercent, setGstPercent] = useState(
+    ordering.taxPercent === undefined || ordering.taxPercent === null
+      ? ""
+      : String(ordering.taxPercent),
+  );
+  const [taxInclusive, setTaxInclusive] = useState(ordering.taxInclusive === true);
   const [packApply, setPackApply] = useState(ordering.packingApplyTo || "both");
   const [maxDist, setMaxDist] = useState(ordering.deliverySlabsConfig?.maxDistanceKm ?? 7);
   const [slabs, setSlabs] = useState(ordering.deliverySlabsConfig?.slabs || []);
@@ -1628,8 +1636,37 @@ const RulesChargesView = () => {
     <div className="space-y-6">
       {/* §3 GST & Packing */}
       <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
-        <h4 className="text-[15px] font-extrabold text-[#0F172A]">GST & Packing Applicability</h4>
+        <h4 className="text-[15px] font-extrabold text-[#0F172A]">GST & Packing</h4>
+        <p className="text-[12px] text-[#94A3B8]">
+          GST is charged only when this store has a GST Number saved under Store
+          Properties <span className="font-bold">and</span> a rate above 0 here.
+          Leave the rate at 0 to charge no GST.
+        </p>
         <div className="grid grid-cols-2 gap-4 text-[13px]">
+          <div>
+            <label className="text-[11.5px] font-bold text-[#94A3B8]">GST rate (%)</label>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step="0.01"
+              value={gstPercent}
+              onChange={(e) => setGstPercent(e.target.value)}
+              placeholder="0 (no GST)"
+              className="w-full h-[38px] px-3 mt-1 rounded-xl border border-[#E2E8F0] font-bold"
+            />
+          </div>
+          <div>
+            <label className="text-[11.5px] font-bold text-[#94A3B8]">Price includes GST</label>
+            <select
+              value={taxInclusive ? "yes" : "no"}
+              onChange={(e) => setTaxInclusive(e.target.value === "yes")}
+              className="w-full h-[38px] px-3 mt-1 rounded-xl border border-[#E2E8F0] font-bold"
+            >
+              <option value="no">No, add GST on top</option>
+              <option value="yes">Yes, prices already include it</option>
+            </select>
+          </div>
           <div>
             <label className="text-[11.5px] font-bold text-[#94A3B8]">GST applies to</label>
             <select value={gstApply} onChange={(e)=>setGstApply(e.target.value)} className="w-full h-[38px] px-3 mt-1 rounded-xl border border-[#E2E8F0] font-bold">
@@ -1644,7 +1681,22 @@ const RulesChargesView = () => {
           </div>
         </div>
         <div className="flex justify-end">
-          <button onClick={()=>mut.mutate({ordering:{gstApplyTo:gstApply,packingApplyTo:packApply}})} disabled={mut.isPending} className="h-[38px] px-4 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold">Save</button>
+          <button
+            onClick={() =>
+              mut.mutate({
+                ordering: {
+                  gstApplyTo: gstApply,
+                  packingApplyTo: packApply,
+                  taxPercent: Math.min(100, Math.max(0, Number(gstPercent) || 0)),
+                  taxInclusive,
+                },
+              })
+            }
+            disabled={mut.isPending}
+            className="h-[38px] px-4 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold"
+          >
+            Save
+          </button>
         </div>
       </div>
 
