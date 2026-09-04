@@ -396,22 +396,19 @@ const OrderDetailsModal = ({ order, onClose }) => {
 
 /* ---------- Printed report renderer (Module 5 §8) ---------- */
 
-const buildPrintHtml = ({ header, summary, orders, windowLabel }) => {
+/**
+ * The printed report is a SUMMARY. It deliberately omits the per-order
+ * listing, and the "Waiting / Preparing" and "Cash Orders" lines, all of
+ * which remain on screen -- printing them was noise on a paper handout.
+ * "Unpaid / Cash Orders" is a different line and is still printed.
+ */
+const buildPrintHtml = ({ header, summary, windowLabel }) => {
   const row = (label, value) => `
     <tr>
       <td style="padding:4px 8px;border-bottom:1px solid #E2E8F0;font-weight:600;">${label}</td>
       <td style="padding:4px 8px;border-bottom:1px solid #E2E8F0;text-align:right;font-weight:700;">${value}</td>
     </tr>`;
   const bkt = (b) => `${b?.count || 0} · ${money(b?.amount)}`;
-
-  const orderRows = (orders || []).map((o) => `
-    <tr>
-      <td style="padding:4px 8px;border-bottom:1px solid #F1F5F9;">#${o.orderNumber || o._id.slice(-6).toUpperCase()}</td>
-      <td style="padding:4px 8px;border-bottom:1px solid #F1F5F9;">${fmtTime(o.createdAt)}</td>
-      <td style="padding:4px 8px;border-bottom:1px solid #F1F5F9;">${orderTypeLabel(o.orderType)}</td>
-      <td style="padding:4px 8px;border-bottom:1px solid #F1F5F9;">${sourceLabel(o.source)}</td>
-      <td style="padding:4px 8px;border-bottom:1px solid #F1F5F9;text-align:right;">${money(o.bills?.totalWithTax || o.bills?.total)}</td>
-    </tr>`).join("");
 
   return `<!doctype html>
 <html><head><meta charset="utf-8"><title>Report — ${header.name}</title>
@@ -423,8 +420,6 @@ const buildPrintHtml = ({ header, summary, orders, windowLabel }) => {
   .section h2 { font-size:14px; margin:0 0 8px; border-bottom:2px solid #0F172A; padding-bottom:4px; }
   table { width:100%; border-collapse:collapse; font-size:12px; }
   .kv td { font-size:12.5px; }
-  .list th { text-align:left; padding:4px 8px; background:#F8FAFC; border-bottom:1px solid #E2E8F0; font-size:11.5px; }
-  .list td:last-child { text-align:right; }
 </style></head>
 <body>
   <div>
@@ -443,20 +438,10 @@ const buildPrintHtml = ({ header, summary, orders, windowLabel }) => {
       ${row("Outside Orders", bkt(summary.outside))}
       ${row("Paid Orders", bkt(summary.paid))}
       ${row("Unpaid / Cash Orders", bkt(summary.unpaidCash))}
-      ${row("Waiting / Preparing Orders", bkt(summary.preparing))}
       ${row("Collection Orders", bkt(summary.collection))}
       ${row("Delivery Orders", bkt(summary.delivery))}
       ${row("Table Orders", bkt(summary.table))}
-      ${row("Cash Orders", bkt(summary.cash))}
       ${row("Pay by Link Orders", bkt(summary.payByLink))}
-    </table>
-  </div>
-
-  <div class="section">
-    <h2>Orders (${(orders || []).length})</h2>
-    <table class="list">
-      <thead><tr><th>ID</th><th>Time</th><th>Type</th><th>Source</th><th>Amount</th></tr></thead>
-      <tbody>${orderRows || `<tr><td colspan="5" style="padding:8px;text-align:center;color:#94A3B8;">No orders in this period.</td></tr>`}</tbody>
     </table>
   </div>
 </body></html>`;
@@ -628,7 +613,6 @@ const Reports = () => {
     const html = buildPrintHtml({
       header: { name: restaurantName, address: restaurantAddress },
       summary,
-      orders,
       windowLabel,
     });
     printHtmlDocument(html);
