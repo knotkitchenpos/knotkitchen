@@ -24,7 +24,7 @@ import {
 import { getWebsiteSettings, updateWebsiteSettings } from "../https/storefrontApi";
 import { removeUser } from "../redux/slices/userSlice";
 import SecurityPinModal from "../components/common/SecurityPinModal";
-import { isOwner, checkActionAuthorization } from "../utils/security";
+import { checkActionAuthorization } from "../utils/security";
 import ActivityLogView from "../components/dashboard/ActivityLogView";
 
 /* ---------- Icons ---------- */
@@ -116,6 +116,22 @@ const I = {
 
 /* ---------- Manage Cache ---------- */
 const ManageCacheView = () => {
+  const user = useSelector((state) => state.user);
+  const [pinModalOpen, setPinModalOpen] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null);
+
+  // Publishing is a protected action: the owner passes straight through,
+  // a staff member is asked for the Security PIN first.
+  const executeProtected = (actionFn) => {
+    const auth = checkActionAuthorization(user, { isOwnerOnly: false });
+    if (auth.status === "REQUIRE_PIN") {
+      setPendingAction(() => actionFn);
+      setPinModalOpen(true);
+      return;
+    }
+    actionFn();
+  };
+
   const sysMutation = useMutation({
     mutationFn: publishSystemCache,
     onSuccess: (res) => enqueueSnackbar(res.data?.message || "System cache updated", { variant: "success" }),
@@ -143,7 +159,7 @@ const ManageCacheView = () => {
             </p>
           </div>
           <button
-            onClick={() => webMutation.mutate()}
+            onClick={() => executeProtected(() => webMutation.mutate())}
             disabled={webMutation.isPending}
             className="h-[40px] px-4 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold shrink-0 hover:bg-[#D64502] disabled:opacity-50"
           >
@@ -159,7 +175,7 @@ const ManageCacheView = () => {
             </p>
           </div>
           <button
-            onClick={() => sysMutation.mutate()}
+            onClick={() => executeProtected(() => sysMutation.mutate())}
             disabled={sysMutation.isPending}
             className="h-[40px] px-4 rounded-xl border border-[#FD5302] text-[#C2410C] text-[13px] font-bold shrink-0 hover:bg-[#FFF1E8] disabled:opacity-50"
           >
@@ -167,6 +183,21 @@ const ManageCacheView = () => {
           </button>
         </div>
       </div>
+
+      <SecurityPinModal
+        isOpen={pinModalOpen}
+        onClose={() => {
+          setPinModalOpen(false);
+          setPendingAction(null);
+        }}
+        onSuccess={() => {
+          setPinModalOpen(false);
+          if (pendingAction) pendingAction();
+          setPendingAction(null);
+        }}
+        title="Publish requires authorization"
+        actionLabel="Publish"
+      />
     </div>
   );
 };

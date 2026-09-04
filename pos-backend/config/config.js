@@ -148,6 +148,21 @@ const config = Object.freeze({
     storefrontReadRateMax: parseInt(process.env.STOREFRONT_READ_RATE_MAX) || 300,
     storefrontReadRateWindowMs: parseInt(process.env.STOREFRONT_READ_RATE_WINDOW_MS) || 60 * 1000,
 
+    // Table QR rate limits.
+    //
+    // Every write endpoint on the QR router is unauthenticated and gated only
+    // by a table's QR token — which anyone who has sat at that table, or
+    // photographed the card stuck to it, keeps indefinitely. Without these,
+    // order placement and the waiter alarm were both unthrottled.
+    qrReadRateMax: parseInt(process.env.QR_READ_RATE_MAX) || 240,
+    qrReadRateWindowMs: parseInt(process.env.QR_READ_RATE_WINDOW_MS) || 60 * 1000,
+    qrOrderRateMax: parseInt(process.env.QR_ORDER_RATE_MAX) || 20,
+    qrOrderRateWindowMs: parseInt(process.env.QR_ORDER_RATE_WINDOW_MS) || 10 * 60 * 1000,
+    // Deliberately the tightest limit in the app: this one makes a noise the
+    // floor staff cannot ignore until somebody walks over and clears it.
+    qrWaiterCallRateMax: parseInt(process.env.QR_WAITER_CALL_RATE_MAX) || 5,
+    qrWaiterCallRateWindowMs: parseInt(process.env.QR_WAITER_CALL_RATE_WINDOW_MS) || 5 * 60 * 1000,
+
     // Auth-specific rate limits (§13)
     authLoginRateMax: parseInt(process.env.AUTH_LOGIN_RATE_MAX) || 10,
     authLoginRateWindowMs: parseInt(process.env.AUTH_LOGIN_RATE_WINDOW_MS) || 15 * 60 * 1000,

@@ -22,10 +22,18 @@ const sweep = (now) => {
   }
 };
 
+/**
+ * Best-effort client IP.
+ *
+ * Every field is optional-chained: a limiter must never be the thing that
+ * throws. Express always populates `headers`, but this middleware is also
+ * reached from tests and from internal calls that pass a bare object, and a
+ * crash here would take down the endpoint it was added to protect.
+ */
 const clientIp = (req) =>
-  (req.headers["x-forwarded-for"] || "").split(",")[0].trim() ||
-  req.ip ||
-  req.socket?.remoteAddress ||
+  (req?.headers?.["x-forwarded-for"] || "").split(",")[0].trim() ||
+  req?.ip ||
+  req?.socket?.remoteAddress ||
   "unknown";
 
 /**
@@ -49,14 +57,21 @@ const rateLimit = ({ windowMs = 60_000, max = 60, keyGenerator, message } = {}) 
 
   entry.count += 1;
 
+  // The X-RateLimit-* headers are advisory. Setting them must never be able to
+  // break the request: this middleware guards endpoints, and a limiter that
+  // throws takes down the very thing it was added to protect.
+  const setHeader = (name, value) => {
+    if (typeof res?.setHeader === "function") res.setHeader(name, value);
+  };
+
   const remaining = Math.max(0, max - entry.count);
-  res.setHeader("X-RateLimit-Limit", max);
-  res.setHeader("X-RateLimit-Remaining", remaining);
-  res.setHeader("X-RateLimit-Reset", Math.ceil(entry.resetAt / 1000));
+  setHeader("X-RateLimit-Limit", max);
+  setHeader("X-RateLimit-Remaining", remaining);
+  setHeader("X-RateLimit-Reset", Math.ceil(entry.resetAt / 1000));
 
   if (entry.count > max) {
     const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
-    res.setHeader("Retry-After", retryAfter);
+    setHeader("Retry-After", retryAfter);
     return next(
       createHttpError(429, message || "Too many requests. Please slow down and try again shortly.")
     );

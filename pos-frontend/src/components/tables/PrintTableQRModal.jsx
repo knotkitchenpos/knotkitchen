@@ -1,7 +1,8 @@
-import React, { useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import React, { useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { QRCodeCanvas } from "qrcode.react";
-import { getStoreProperties } from "../../https";
+import { enqueueSnackbar } from "notistack";
+import { getStoreProperties, regenerateTableQr } from "../../https";
 
 /**
  * Print-Ready Table QR Card (§Manage Tables Module 2).
@@ -26,6 +27,32 @@ import { getStoreProperties } from "../../https";
  */
 const PrintTableQRModal = ({ isOpen, onClose, table }) => {
   const cardRef = useRef(null);
+  const queryClient = useQueryClient();
+  const [confirmingReplace, setConfirmingReplace] = useState(false);
+
+  /**
+   * Replace this table's QR, revoking the old one.
+   *
+   * The endpoint existed and the client wrapper existed, but nothing in the
+   * UI ever called either -- so a QR card that leaked (photographed, or
+   * printed and thrown away) could not be revoked from the POS at all. That
+   * is what made an abused token permanent rather than momentary.
+   */
+  const regenerate = useMutation({
+    mutationFn: () => regenerateTableQr(table?._id),
+    onSuccess: () => {
+      enqueueSnackbar("New QR generated. The previous code no longer works.", {
+        variant: "success",
+      });
+      setConfirmingReplace(false);
+      queryClient.invalidateQueries({ queryKey: ["tables"] });
+      onClose?.();
+    },
+    onError: (e) =>
+      enqueueSnackbar(e.response?.data?.message || "Could not regenerate this QR.", {
+        variant: "error",
+      }),
+  });
 
   // The store's real name. Cached, and harmless if it fails — the card simply
   // falls back to the table's own labelling rather than a made-up brand.
@@ -354,6 +381,45 @@ const PrintTableQRModal = ({ isOpen, onClose, table }) => {
 
           <p className="text-[10px] text-[#94A3B8] font-bold">Powered by KnotKitchen</p>
         </div>
+
+        {/* Replace the code. Destructive to every printed copy, so it asks. */}
+        {confirmingReplace ? (
+          <div className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] p-3 space-y-2.5">
+            <p className="text-[12.5px] font-bold text-[#991B1B]">
+              Replace this QR code?
+            </p>
+            <p className="text-[11.5px] text-[#B91C1C] leading-relaxed">
+              The current code stops working immediately. Every printed card for
+              this table must be replaced with the new one.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmingReplace(false)}
+                disabled={regenerate.isPending}
+                className="flex-1 py-2 rounded-lg border border-[#E2E8F0] bg-white text-[12px] font-bold text-[#475569] disabled:opacity-60"
+              >
+                Keep current code
+              </button>
+              <button
+                type="button"
+                onClick={() => regenerate.mutate()}
+                disabled={regenerate.isPending}
+                className="flex-1 py-2 rounded-lg bg-[#DC2626] text-white text-[12px] font-bold disabled:opacity-60"
+              >
+                {regenerate.isPending ? "Replacing…" : "Replace it"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setConfirmingReplace(true)}
+            className="w-full py-2 rounded-xl border border-[#E2E8F0] text-[11.5px] font-bold text-[#64748B] hover:border-[#FECACA] hover:text-[#B91C1C]"
+          >
+            Replace QR code (revokes the current one)
+          </button>
+        )}
 
         {/* Actions */}
         <div className="flex gap-2">

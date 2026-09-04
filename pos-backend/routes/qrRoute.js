@@ -22,7 +22,46 @@ const { PREPARING, SETTLED_STATUSES, CANCELLED_STATUSES } = require("../constant
 // tests that mock mongoose before the models are loaded.
 const computeReadyDueAt = (args) => require("../services/autoReadyService").computeReadyDueAt(args);
 const { AUDIENCES, ORDER_TYPES, projectMenus, allowsOrderType } = require("../services/menuCache");
+const config = require("../config/config");
+const { rateLimit, clientIp } = require("../middlewares/rateLimiter");
 const router = express.Router();
+
+/**
+ * Rate limits for the PUBLIC half of this router.
+ *
+ * Every endpoint below that takes a `:token` is unauthenticated. The token is
+ * a table's QR, which anyone who has eaten at that table — or photographed the
+ * card stuck to it — keeps indefinitely. None of them were throttled, so a
+ * single person could place unlimited orders onto a live table's bill, or hold
+ * the waiter alarm on permanently.
+ *
+ * Reads are keyed per IP and generous: a diner's phone polls the session while
+ * they sit there, and throttling that would break the page for a paying
+ * customer. Writes are keyed per TABLE as well as per IP, so one table cannot
+ * exhaust another's allowance, and switching networks does not reset the count
+ * for the table being abused.
+ */
+const qrReadLimiter = rateLimit({
+  windowMs: config.qrReadRateWindowMs,
+  max: config.qrReadRateMax,
+});
+
+const qrWriteLimiter = rateLimit({
+  windowMs: config.qrOrderRateWindowMs,
+  max: config.qrOrderRateMax,
+  keyGenerator: (req) => `qr:${req.params.token}:${clientIp(req)}`,
+  message: "Too many requests for this table. Please wait a moment, or ask a member of staff.",
+});
+
+// The waiter call rings until somebody walks over and clears it, so this is
+// the tightest limit in the app — and keyed on the TABLE alone, because the
+// harm is to the staff, not to the caller.
+const qrWaiterLimiter = rateLimit({
+  windowMs: config.qrWaiterCallRateWindowMs,
+  max: config.qrWaiterCallRateMax,
+  keyGenerator: (req) => `qr-waiter:${req.params.token}`,
+  message: "Your table has already called for a waiter. Someone is on their way.",
+});
 
 /**
  * The in-restaurant menu a diner sees after scanning their table QR.
@@ -109,7 +148,7 @@ router.route("/tables/:tableId/generate").post(isVerifiedUser, requirePermission
 // Public: table info + restaurant info + menu + active session detail.
 // Tenant is resolved server-side from the secure QR token — the client can
 // never change restaurant/outlet/table through URL or body manipulation.
-router.route("/table/:token").get(resolveTableScope, async (req, res, next) => {
+router.route("/table/:token").get(qrReadLimiter, resolveTableScope, async (req, res, next) => {
   try {
     const { table, restaurantId, outletId } = req.scope;
     const menu = await scopedMenu(restaurantId, outletId);
@@ -148,7 +187,7 @@ router.route("/table/:token").get(resolveTableScope, async (req, res, next) => {
 // Public: full active session detail for a table (re-scan / "continue ordering").
 // Token-scoped: the session is always resolved from the QR's tableId —
 // a customer can never request another table's session.
-router.route("/session/:token").get(resolveTableScope, async (req, res, next) => {
+router.route("/session/:token").get(qrReadLimiter, resolveTableScope, async (req, res, next) => {
   try {
     const { table, restaurantId } = req.scope;
     const activeSession = await getActiveSessionForTable({ tableId: table._id, restaurantId });
@@ -164,7 +203,7 @@ router.route("/session/:token").get(resolveTableScope, async (req, res, next) =>
 // tableId in the URL/body is NEVER trusted.
 // Transactional + E11000 retry prevents concurrent duplicate session creation,
 // so repeated scans during an active session reuse the SAME session.
-router.route("/session/items/:token").post(resolveTableScope, async (req, res, next) => {
+router.route("/session/items/:token").post(qrWriteLimiter, resolveTableScope, async (req, res, next) => {
   try {
     const { table, restaurantId, outletId } = req.scope;
     const { items, customerCount, customerName, customerPhone, requestId } = req.body;
@@ -365,7 +404,7 @@ router.route("/session/items/:token").post(resolveTableScope, async (req, res, n
 // Token-scoped — the session is resolved from the QR token's table,
 // never from a client-supplied sessionId (prevents IDOR / cross-table bills).
 // Transitions OCCUPIED/PROCESSING → BILL_REQUESTED.
-router.route("/request-bill/:token").post(resolveTableScope, async (req, res, next) => {
+router.route("/request-bill/:token").post(qrWriteLimiter, resolveTableScope, async (req, res, next) => {
   try {
     const { table, restaurantId } = req.scope;
     const session = await getActiveSessionForTable({ tableId: table._id, restaurantId });
@@ -409,7 +448,7 @@ router.route("/request-bill/:token").post(resolveTableScope, async (req, res, ne
 // Transitions BILL_REQUESTED → PAYMENT_PENDING. Full payment capture is
 // handled separately by the POS — this only moves the bill to payment-pending
 // and returns what the customer page needs to render the payment section.
-router.route("/payment-intent/:token").post(resolveTableScope, async (req, res, next) => {
+router.route("/payment-intent/:token").post(qrWriteLimiter, resolveTableScope, async (req, res, next) => {
   try {
     const { table, restaurantId } = req.scope;
     const session = await getActiveSessionForTable({ tableId: table._id, restaurantId });
@@ -442,7 +481,7 @@ router.route("/payment-intent/:token").post(resolveTableScope, async (req, res, 
 });
 
 // Legacy single-shot QR order — tenant-scoped + server-priced + idempotent
-router.route("/order/:token").post(resolveTableScope, async (req, res, next) => {
+router.route("/order/:token").post(qrWriteLimiter, resolveTableScope, async (req, res, next) => {
   try {
     const { table, restaurantId, outletId } = req.scope;
     const { items, customerName, phone, guests, requestId } = req.body;
@@ -480,7 +519,7 @@ router.route("/order/:token").post(resolveTableScope, async (req, res, next) => 
 // the POS, so the only way a cashier learned a table wanted service was to
 // happen to reload the Tables screen. It now emits on the restaurant's socket
 // room so the till can raise an alert the moment the customer taps.
-router.route("/waiter-call/:token").post(resolveTableScope, async (req, res, next) => {
+router.route("/waiter-call/:token").post(qrWaiterLimiter, resolveTableScope, async (req, res, next) => {
   try {
     const { table, restaurantId, outletId } = req.scope;
     const requestedAt = new Date();
@@ -510,7 +549,7 @@ router.route("/waiter-call/:token").post(resolveTableScope, async (req, res, nex
 });
 
 // Public: request payment (session-aware)
-router.route("/pay-request/:token").post(resolveTableScope, async (req, res, next) => {
+router.route("/pay-request/:token").post(qrWriteLimiter, resolveTableScope, async (req, res, next) => {
   try {
     const { table, restaurantId } = req.scope;
     const session = await findActiveSessionByTable({ tableId: table._id, restaurantId });
