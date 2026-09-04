@@ -1,5 +1,6 @@
 import axios from "axios";
 import { isPublicPath } from "../utils/publicRoutes";
+import { getActiveStoreId } from "../utils/storeSession";
 
 const defaultHeader = {
   "Content-Type": "application/json",
@@ -15,6 +16,12 @@ export const axiosWrapper = axios.create({
 // Attach short-lived Staff Security PIN authorization token if active
 axiosWrapper.interceptors.request.use(
   (config) => {
+    // Tell the API which takeaway this tab is acting as, so it reads that
+    // store's session cookie and not another one signed in from the same
+    // browser. Without this every takeaway shares one session.
+    const storeId = getActiveStoreId();
+    if (storeId) config.headers["x-store-id"] = storeId;
+
     const pinToken = sessionStorage.getItem("staffPinToken");
     const pinExpiry = sessionStorage.getItem("staffPinTokenExpiry");
     if (pinToken && pinExpiry && Number(pinExpiry) > Date.now()) {

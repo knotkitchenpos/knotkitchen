@@ -4,6 +4,7 @@ import { useDispatch } from "react-redux";
 import { enqueueSnackbar } from "notistack";
 import { impersonateWithSupportToken } from "../https";
 import { setUser } from "../redux/slices/userSlice";
+import { setActiveStoreId } from "../utils/storeSession";
 import KnotLogo from "../components/shared/KnotLogo";
 
 /**
@@ -33,6 +34,10 @@ const Impersonate = () => {
         const data = res.data?.data;
         if (!data?.user) throw new Error("Malformed response.");
         const { _id, name, address, email, phone, role, restaurantId, storeId } = data.user;
+        // Same tab binding as a normal sign-in, so "Open POS" from CSD
+        // lands on the right takeaway even when other takeaways (or the
+        // owner's own account) are signed in in other tabs.
+        setActiveStoreId(storeId);
         dispatch(setUser({ _id, name, address, email, phone, role, restaurantId, storeId }));
         enqueueSnackbar(
           `Signed in as ${name || role} · CSD support session${

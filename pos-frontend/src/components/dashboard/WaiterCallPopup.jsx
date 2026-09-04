@@ -4,6 +4,7 @@ import { io } from "socket.io-client";
 import { enqueueSnackbar } from "notistack";
 import { dismissWaiterCall } from "../../https/newModules";
 import useAlertBeep from "../../hooks/useAlertBeep";
+import { getActiveStoreId } from "../../utils/storeSession";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, "") || "";
 
@@ -34,7 +35,7 @@ const WaiterCallPopup = () => {
     const socket = io(BACKEND_URL, {
       withCredentials: true,
       transports: ["websocket", "polling"],
-      query: { restaurantId },
+      query: { restaurantId, storeId: getActiveStoreId() },
     });
     socketRef.current = socket;
 

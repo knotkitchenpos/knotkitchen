@@ -8,6 +8,7 @@ const bcrypt = require("bcrypt");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const config = require("../config/config");
+const sessionCookies = require("../services/sessionCookies");
 const AuditLog = require("../models/auditLogModel");
 const { provisionWebsiteForStore } = require("../services/websiteProvisioningService");
 
@@ -158,7 +159,9 @@ const signTokensAndSetCookies = async (user, req, res) => {
   // the cookie usable at all.
   const sameSite = config.cookieSameSite === "none" && !secureCookie ? "lax" : config.cookieSameSite;
 
-  res.cookie("accessToken", accessToken, {
+  // Namespaced by store, so a second takeaway signed in from the same
+  // browser gets its own jar entry instead of overwriting this one.
+  res.cookie(sessionCookies.accessCookieName(user.storeId), accessToken, {
     maxAge: 1000 * 60 * 15,
     httpOnly: true,
     sameSite,
@@ -166,7 +169,7 @@ const signTokensAndSetCookies = async (user, req, res) => {
     path: "/",
   });
 
-  res.cookie("refreshToken", refreshToken, {
+  res.cookie(sessionCookies.refreshCookieName(user.storeId), refreshToken, {
     maxAge: SESSION_LIFETIME_MS,
     httpOnly: true,
     sameSite,
@@ -604,7 +607,7 @@ const login = async (req, res, next) => {
 
 const refreshToken = async (req, res, next) => {
   try {
-    const token = toSafeString(req.cookies?.refreshToken);
+    const token = toSafeString(sessionCookies.readRefreshToken(req));
     if (!token) return next(createHttpError(401, "No refresh token provided!"));
 
     const decoded = jwt.verify(token, config.refreshTokenSecret, { algorithms: ["HS256"] });
@@ -636,14 +639,16 @@ const refreshToken = async (req, res, next) => {
 
     const secureCookie = config.cookieSecure;
     const sameSite = config.cookieSameSite === "none" && !secureCookie ? "lax" : config.cookieSameSite;
-    res.cookie("accessToken", accessToken, {
+    // Re-set under the SAME name the session was issued under, so a
+    // refresh never migrates one takeaway's session onto another's cookie.
+    res.cookie(sessionCookies.accessCookieName(user.storeId), accessToken, {
       maxAge: 1000 * 60 * 15,
       httpOnly: true,
       sameSite,
       secure: secureCookie,
       path: "/",
     });
-    res.cookie("refreshToken", token, {
+    res.cookie(sessionCookies.refreshCookieName(user.storeId), token, {
       maxAge: SESSION_LIFETIME_MS,
       httpOnly: true,
       sameSite,
@@ -668,7 +673,7 @@ const getUserData = async (req, res, next) => {
 
 const logout = async (req, res, next) => {
   try {
-    const token = toSafeString(req.cookies?.refreshToken);
+    const token = toSafeString(sessionCookies.readRefreshToken(req));
     if (token && req.user?._id) {
       const user = await User.findById(req.user._id);
       if (user) {
@@ -687,8 +692,11 @@ const logout = async (req, res, next) => {
 
     const secureCookie = config.cookieSecure;
     const sameSite = config.cookieSameSite === "none" && !secureCookie ? "lax" : config.cookieSameSite;
-    res.clearCookie("accessToken", { sameSite, secure: secureCookie, path: "/" });
-    res.clearCookie("refreshToken", { sameSite, secure: secureCookie, path: "/api/user" });
+    // Clear ONLY the takeaway this request belongs to. Clearing every
+    // accessToken* cookie here is what would sign the other takeaways out.
+    for (const c of sessionCookies.cookieNamesToClear(req, req.user?.storeId)) {
+      res.clearCookie(c.name, { sameSite, secure: secureCookie, path: c.path });
+    }
     res.status(200).json({ success: true, message: "User logout successfully!" });
   } catch (error) {
     next(error);

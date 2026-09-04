@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { listOnlineOrders } from "../https/storefrontApi";
+import { getActiveStoreId } from "../utils/storeSession";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, "") || "";
 
@@ -69,7 +70,7 @@ export function useOnlineOrders(restaurantId) {
       // join a tenant room.
       withCredentials: true,
       transports: ["websocket", "polling"],
-      query: { restaurantId },
+      query: { restaurantId, storeId: getActiveStoreId() },
     });
     socketRef.current = socket;
 

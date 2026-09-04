@@ -2,6 +2,7 @@ const createHttpError = require("http-errors");
 const jwt = require("jsonwebtoken");
 const config = require("../config/config");
 const User = require("../models/userModel");
+const sessionCookies = require("../services/sessionCookies");
 
 /**
  * Access-token guard for all authenticated POS/API routes.
@@ -22,7 +23,10 @@ const User = require("../models/userModel");
  */
 const isVerifiedUser = async (req, res, next) => {
   try {
-    const { accessToken } = req.cookies || {};
+    // Which takeaway is this tab acting as? Cookies are namespaced per
+    // store, so the browser may be holding several sessions at once and
+    // only the declared one may be used.
+    const accessToken = sessionCookies.readAccessToken(req);
     if (!accessToken || typeof accessToken !== "string") {
       return next(createHttpError(401, "Please provide token!"));
     }
@@ -61,6 +65,18 @@ const isVerifiedUser = async (req, res, next) => {
       if (!session || session.isRevoked || (session.expiresAt && session.expiresAt < new Date())) {
         return next(createHttpError(401, "Session has ended. Please sign in again."));
       }
+    }
+
+    // Belt and braces: even if cookie selection ever picked the wrong
+    // entry, a tab that names a store may only act as THAT store.
+    //
+    // Only enforced when the resolved user actually HAS a store. A user
+    // without one (legacy or platform-level) would otherwise be locked out
+    // permanently by a stale value in a tab, with no way to recover.
+    const declaredStore = sessionCookies.storeKeyFromRequest(req);
+    const usersStore = String(user.storeId || "");
+    if (declaredStore && usersStore && usersStore !== declaredStore) {
+      return next(createHttpError(401, "Session has ended. Please sign in again."));
     }
 
     req.user = user;

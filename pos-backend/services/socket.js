@@ -22,7 +22,20 @@ const parseCookies = (header = "") =>
  */
 const authenticateSocket = async (socket, next) => {
   try {
-    const token = parseCookies(socket.handshake.headers?.cookie || "").accessToken;
+    // Session cookies are namespaced per takeaway (services/sessionCookies),
+    // so pick the one for the store this socket declares. Socket.IO has no
+    // custom headers on the handshake, so the store arrives in the query.
+    const jar = parseCookies(socket.handshake.headers?.cookie || "");
+    const declared = String(socket.handshake.query?.storeId || "").trim();
+    const storeKey = /^\d{6}$/.test(declared) ? declared : "";
+
+    let token = storeKey ? jar[`accessToken_${storeKey}`] : "";
+    if (!token) token = jar.accessToken; // session predating the namespacing
+    if (!token && !storeKey) {
+      // No store declared: only safe when exactly one takeaway is signed in.
+      const scoped = Object.keys(jar).filter((n) => /^accessToken_\d{6}$/.test(n));
+      if (scoped.length === 1) token = jar[scoped[0]];
+    }
     if (!token) return next(new Error("Authentication required"));
 
     const claims = jwt.verify(token, config.accessTokenSecret);
@@ -40,6 +53,10 @@ const authenticateSocket = async (socket, next) => {
     };
     if (!socket.tenant.restaurantId && !socket.tenant.storeId) {
       return next(new Error("Tenant is not configured"));
+    }
+    // A socket that names a store may only ever be that store.
+    if (storeKey && socket.tenant.storeId !== storeKey) {
+      return next(new Error("Authentication required"));
     }
     return next();
   } catch (error) {

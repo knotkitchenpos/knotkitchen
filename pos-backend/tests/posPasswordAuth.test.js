@@ -307,7 +307,10 @@ test("setup: correct owner phone creates the User and issues a session", async (
   assert.ifError(err);
   assert.equal(res.statusCode, 201);
   assert.equal(res._j.success, true);
-  assert.ok(res._cookies.accessToken, "session cookie must be set");
+  // Namespaced per takeaway, so two stores signed in from one browser do
+  // not share (and overwrite) a single session cookie.
+  assert.ok(res._cookies.accessToken_200011, "store-scoped session cookie must be set");
+  assert.equal(res._cookies.accessToken, undefined, "must not set an unscoped cookie");
   // Password is bcrypt-hashed, not stored raw.
   const created = Object.values(usersByPhoneAndRestaurant)[0];
   assert.ok(created.password.startsWith("$2"), "password must be a bcrypt hash");
@@ -366,7 +369,9 @@ test("login: correct phone + password succeeds and issues session", async () => 
   });
   assert.ifError(err);
   assert.equal(res.statusCode, 200);
-  assert.ok(res._cookies.accessToken);
+  assert.ok(res._cookies.accessToken_200021, "store-scoped session cookie must be set");
+  assert.ok(res._cookies.refreshToken_200021, "store-scoped refresh cookie must be set");
+  assert.equal(res._cookies.accessToken, undefined, "must not set an unscoped cookie");
 });
 
 test("login: wrong password returns 401 with the generic message", async () => {

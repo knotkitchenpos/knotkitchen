@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { clearActiveStoreId } from "../utils/storeSession";
 import { useDispatch, useSelector } from "react-redux";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
@@ -1738,6 +1739,9 @@ const Settings = () => {
   const logoutMutation = useMutation({
     mutationFn: () => logout(),
     onSuccess: () => {
+      // Releases this tab only. Other takeaways open elsewhere keep their
+      // own sessionStorage and their own session cookie.
+      clearActiveStoreId();
       dispatch(removeUser());
       navigate("/auth");
     },

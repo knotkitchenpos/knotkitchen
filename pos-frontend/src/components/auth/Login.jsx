@@ -12,6 +12,7 @@ import {
 import { enqueueSnackbar } from "notistack";
 import { useDispatch } from "react-redux";
 import { setUser } from "../../redux/slices/userSlice";
+import { setActiveStoreId } from "../../utils/storeSession";
 import { useNavigate } from "react-router-dom";
 
 /**
@@ -69,6 +70,10 @@ const Login = () => {
   const handleLoggedIn = (data) => {
     if (!data) return;
     const { _id, name, address, email, phone, role, restaurantId, storeId: sid, mustChangePassword } = data;
+    // Bind THIS TAB to this takeaway before anything else fires, so every
+    // request from here reads this store's session cookie and not one
+    // belonging to another takeaway signed in from the same browser.
+    setActiveStoreId(sid);
     dispatch(setUser({ _id, name, address, email, phone, role, restaurantId, storeId: sid }));
     enqueueSnackbar(`Welcome back to ${storeInfo?.storeName || "KnotKitchen POS"}!`, { variant: "success" });
     // mustChangePassword is a follow-up screen; until it ships, land on home
