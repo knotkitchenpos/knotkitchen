@@ -146,8 +146,8 @@ const Dashboard = () => {
               key={tab}
               className={`px-4 py-2.5 rounded-t-xl border border-b-0 text-sm font-bold transition-colors ${
                 activeTab === tab
-                  ? "bg-[#5B42F3] border-[#5B42F3] text-white"
-                  : "bg-white border-[#E2E8F0] text-[#475569] hover:border-[#5B42F3] hover:text-[#5B42F3]"
+                  ? "bg-[#FD5302] border-[#FD5302] text-white"
+                  : "bg-white border-[#E2E8F0] text-[#475569] hover:border-[#FD5302] hover:text-[#C2410C]"
               }`}
               onClick={() => setActiveTab(tab)}
             >
@@ -170,7 +170,7 @@ const Dashboard = () => {
                 <p className="text-sm text-content-muted">Total Online Payments</p>
                 <p className="text-3xl font-bold mt-2">₹{totalOnline.toLocaleString("en-IN")}</p>
               </div>
-              <div className="rounded-xl border border-[#4A32E0] bg-[#5B42F3] p-6 text-white">
+              <div className="rounded-xl border border-[#D64502] bg-[#FD5302] p-6 text-white">
                 <p className="text-sm text-white/80">Total Revenue</p>
                 <p className="text-3xl font-bold mt-2">
                   ₹{(totalCash + totalOnline).toLocaleString("en-IN")}
@@ -212,7 +212,7 @@ const Dashboard = () => {
                     type="text"
                     name="categoryName"
                     placeholder="e.g. Starters, Main Course"
-                    className="w-full h-[46px] px-3.5 rounded-xl border border-[#E2E8F0] bg-white text-[#0F172A] focus:outline-none focus:border-[#5B42F3]"
+                    className="w-full h-[46px] px-3.5 rounded-xl border border-[#E2E8F0] bg-white text-[#0F172A] focus:outline-none focus:border-[#FD5302]"
                     required
                   />
                 </div>
@@ -220,7 +220,7 @@ const Dashboard = () => {
               <button
                 type="submit"
                 disabled={addCategoryMutation.isPending}
-                className="w-full h-[48px] rounded-xl bg-[#5B42F3] text-white font-bold text-base hover:bg-[#4A32E0] disabled:opacity-50"
+                className="w-full h-[48px] rounded-xl bg-[#FD5302] text-white font-bold text-base hover:bg-[#D64502] disabled:opacity-50"
               >
                 {addCategoryMutation.isPending ? "Adding..." : "Add Category"}
               </button>
@@ -252,7 +252,7 @@ const Dashboard = () => {
                     type="text"
                     name="dishName"
                     placeholder="e.g. Butter Chicken"
-                    className="w-full h-[46px] px-3.5 rounded-xl border border-[#E2E8F0] bg-white text-[#0F172A] focus:outline-none focus:border-[#5B42F3]"
+                    className="w-full h-[46px] px-3.5 rounded-xl border border-[#E2E8F0] bg-white text-[#0F172A] focus:outline-none focus:border-[#FD5302]"
                     required
                   />
                 </div>
@@ -266,7 +266,7 @@ const Dashboard = () => {
                     type="number"
                     name="dishPrice"
                     placeholder="e.g. 250"
-                    className="w-full h-[46px] px-3.5 rounded-xl border border-[#E2E8F0] bg-white text-[#0F172A] focus:outline-none focus:border-[#5B42F3]"
+                    className="w-full h-[46px] px-3.5 rounded-xl border border-[#E2E8F0] bg-white text-[#0F172A] focus:outline-none focus:border-[#FD5302]"
                     required
                   />
                 </div>
@@ -277,7 +277,7 @@ const Dashboard = () => {
                 </label>
                 <select
                   name="dishCategory"
-                  className="w-full h-[46px] bg-white border border-[#E2E8F0] rounded-xl px-3.5 text-[#0F172A] focus:outline-none focus:border-[#5B42F3]"
+                  className="w-full h-[46px] bg-white border border-[#E2E8F0] rounded-xl px-3.5 text-[#0F172A] focus:outline-none focus:border-[#FD5302]"
                   defaultValue=""
                   required
                 >
@@ -293,7 +293,7 @@ const Dashboard = () => {
               <button
                 type="submit"
                 disabled={addDishMutation.isPending || menus.length === 0}
-                className="w-full h-[48px] rounded-xl bg-[#5B42F3] text-white font-bold text-base hover:bg-[#4A32E0] disabled:opacity-50"
+                className="w-full h-[48px] rounded-xl bg-[#FD5302] text-white font-bold text-base hover:bg-[#D64502] disabled:opacity-50"
               >
                 {addDishMutation.isPending ? "Adding..." : "Add Dish"}
               </button>

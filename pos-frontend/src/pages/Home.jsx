@@ -56,7 +56,7 @@ const Home = () => {
 
   return (
     <div className="relative flex-1 min-h-0 overflow-y-auto bg-[#F8FAFC] no-scrollbar">
-      <div className="pointer-events-none absolute inset-x-0 top-0 h-64 bg-[radial-gradient(circle_at_top_right,rgba(91,66,243,0.10),transparent_42%),radial-gradient(circle_at_top_left,rgba(255,106,31,0.07),transparent_36%)]" />
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-64 bg-[radial-gradient(circle_at_top_right,rgba(253,83,2,0.10),transparent_42%),radial-gradient(circle_at_top_left,rgba(255,106,31,0.07),transparent_36%)]" />
       <div className="relative mx-auto max-w-7xl px-4 py-5 sm:px-6 sm:py-7 lg:px-8">
         <Greetings />
 
@@ -73,7 +73,7 @@ const Home = () => {
               <p className="text-content-muted text-sm font-semibold">Active Orders</p>
               <p className="font-display text-3xl font-bold mt-1">{metrics.activeOrders}</p>
             </div>
-            <div className="rounded-2xl bg-[#EEF0FE] p-3.5 text-[#5B42F3] shadow-soft">
+            <div className="rounded-2xl bg-[#FFF1E8] p-3.5 text-[#C2410C] shadow-soft">
               <FiClipboard size={24} />
             </div>
           </div>

@@ -77,7 +77,7 @@ const typeMeta = (t) => {
   const k = String(t || "").toLowerCase();
   if (k === "delivery") return { label: "Delivery", Icon: I.scooter, bg: "#EFF6FF", fg: "#2563EB" };
   if (k === "dine-in") return { label: "Table", Icon: I.table, bg: "#FFF7ED", fg: "#EA580C" };
-  return { label: "Collection", Icon: I.bag, bg: "#F5F3FF", fg: "#5B42F3" };
+  return { label: "Collection", Icon: I.bag, bg: "#FFF6F0", fg: "#FD5302" };
 };
 
 /**
@@ -346,7 +346,7 @@ const Orders = () => {
                 key={t.key}
                 onClick={() => setTab(t.key)}
                 className={`h-[38px] px-4 rounded-lg text-[13.5px] font-bold flex items-center gap-2 transition-colors ${
-                  on ? "bg-[#5B42F3] text-white" : "bg-white text-[#475569] border border-[#E2E8F0] hover:border-[#CBD5E1]"
+                  on ? "bg-[#FD5302] text-white" : "bg-white text-[#475569] border border-[#E2E8F0] hover:border-[#CBD5E1]"
                 }`}
               >
                 {t.key}
@@ -369,7 +369,7 @@ const Orders = () => {
               onClick={() => setDateMode(m.key)}
               className={`h-[32px] px-3 rounded-lg text-[12.5px] font-bold border ${
                 dateMode === m.key
-                  ? "bg-[#5B42F3] text-white border-[#5B42F3]"
+                  ? "bg-[#FD5302] text-white border-[#FD5302]"
                   : "bg-white text-[#475569] border-[#E2E8F0] hover:border-[#CBD5E1]"
               }`}
             >
@@ -382,7 +382,7 @@ const Orders = () => {
               value={singleDate}
               max={localDateInput()}
               onChange={(e) => setSingleDate(e.target.value)}
-              className="h-[32px] px-2 rounded-lg border border-[#E2E8F0] text-[12.5px] font-semibold text-[#334155] focus:border-[#5B42F3]"
+              className="h-[32px] px-2 rounded-lg border border-[#E2E8F0] text-[12.5px] font-semibold text-[#334155] focus:border-[#FD5302]"
             />
           )}
           {dateMode === "range" && (
@@ -392,7 +392,7 @@ const Orders = () => {
                 value={fromDate}
                 max={toDate || localDateInput()}
                 onChange={(e) => setFromDate(e.target.value)}
-                className="h-[32px] px-2 rounded-lg border border-[#E2E8F0] text-[12.5px] font-semibold text-[#334155] focus:border-[#5B42F3]"
+                className="h-[32px] px-2 rounded-lg border border-[#E2E8F0] text-[12.5px] font-semibold text-[#334155] focus:border-[#FD5302]"
               />
               <span className="text-[12.5px] text-[#94A3B8]">to</span>
               <input
@@ -401,7 +401,7 @@ const Orders = () => {
                 min={fromDate}
                 max={localDateInput()}
                 onChange={(e) => setToDate(e.target.value)}
-                className="h-[32px] px-2 rounded-lg border border-[#E2E8F0] text-[12.5px] font-semibold text-[#334155] focus:border-[#5B42F3]"
+                className="h-[32px] px-2 rounded-lg border border-[#E2E8F0] text-[12.5px] font-semibold text-[#334155] focus:border-[#FD5302]"
               />
             </>
           )}
@@ -420,13 +420,13 @@ const Orders = () => {
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search by order ID, customer name, phone number…"
-              className="w-full h-[40px] pl-10 pr-3 rounded-xl border border-[#E2E8F0] text-[13.5px] placeholder:text-[#94A3B8] focus:border-[#5B42F3]"
+              className="w-full h-[40px] pl-10 pr-3 rounded-xl border border-[#E2E8F0] text-[13.5px] placeholder:text-[#94A3B8] focus:border-[#FD5302]"
             />
           </div>
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
-            className="h-[40px] px-3 rounded-xl border border-[#E2E8F0] text-[13.5px] font-semibold text-[#475569] focus:border-[#5B42F3]"
+            className="h-[40px] px-3 rounded-xl border border-[#E2E8F0] text-[13.5px] font-semibold text-[#475569] focus:border-[#FD5302]"
           >
             <option value="all">Order Type</option>
             <option value="collection">Collection</option>
@@ -436,7 +436,7 @@ const Orders = () => {
           </select>
           <button
             onClick={() => refetch()}
-            className="w-[40px] h-[40px] rounded-xl border border-[#E2E8F0] text-[#475569] flex items-center justify-center hover:border-[#5B42F3] hover:text-[#5B42F3]"
+            className="w-[40px] h-[40px] rounded-xl border border-[#E2E8F0] text-[#475569] flex items-center justify-center hover:border-[#FD5302] hover:text-[#C2410C]"
             title="Refresh"
           >
             <span className={isFetching ? "animate-spin" : ""}><I.refresh /></span>
@@ -447,7 +447,7 @@ const Orders = () => {
         <div className="flex-1 min-h-0 overflow-y-auto px-7 pb-6">
           {isLoading ? (
             <div className="flex justify-center py-20">
-              <div className="w-9 h-9 rounded-full border-[3px] border-[#5B42F3] border-t-transparent animate-spin" />
+              <div className="w-9 h-9 rounded-full border-[3px] border-[#FD5302] border-t-transparent animate-spin" />
             </div>
           ) : list.length === 0 ? (
             <p className="text-center text-[14px] text-[#94A3B8] py-20">No orders found for the selected period.</p>
@@ -473,8 +473,8 @@ const Orders = () => {
                         setSelectedId(o._id);
                       }
                     }}
-                    className={`w-full text-left flex items-center gap-4 px-4 py-3 rounded-xl border-l-[3px] border transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#5B42F3]/40 ${
-                      on ? "border-[#5B42F3] bg-[#F5F3FF]" : "border-[#E2E8F0] bg-white hover:border-[#CBD5E1]"
+                    className={`w-full text-left flex items-center gap-4 px-4 py-3 rounded-xl border-l-[3px] border transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#FD5302]/40 ${
+                      on ? "border-[#FD5302] bg-[#FFF6F0]" : "border-[#E2E8F0] bg-white hover:border-[#CBD5E1]"
                     }`}
                     style={{ borderLeftColor: ring }}
                   >
@@ -552,7 +552,7 @@ const Orders = () => {
                             ?.scrollIntoView({ behavior: "smooth", block: "start" });
                         }
                       }}
-                      className="h-[32px] px-3.5 rounded-lg border border-[#5B42F3] text-[#5B42F3] text-[12.5px] font-bold flex items-center shrink-0 hover:bg-[#EEF0FE]"
+                      className="h-[32px] px-3.5 rounded-lg border border-[#FD5302] text-[#C2410C] text-[12.5px] font-bold flex items-center shrink-0 hover:bg-[#FFF1E8]"
                     >
                       View
                     </button>
@@ -671,7 +671,7 @@ const Orders = () => {
                   )}
                   {(selected.customerDetails?.deliveryNote ||
                     selected.deliveryAddress?.instructions) && (
-                    <p className="text-[11.5px] italic text-[#5B42F3] leading-snug">
+                    <p className="text-[11.5px] italic text-[#C2410C] leading-snug">
                       Note: {selected.customerDetails?.deliveryNote || selected.deliveryAddress?.instructions}
                     </p>
                   )}
@@ -701,7 +701,7 @@ const Orders = () => {
                             {it.modifierSelections.map((m) => m.optionName).join(", ")}
                           </p>
                         )}
-                        {it.note && <p className="text-[11px] text-[#5B42F3] truncate">Note: {it.note}</p>}
+                        {it.note && <p className="text-[11px] text-[#C2410C] truncate">Note: {it.note}</p>}
                       </div>
                       <span className="px-2.5 py-[3px] rounded-md border border-[#E2E8F0] text-[12px] font-bold text-[#334155] shrink-0">
                         x {it.quantity}
@@ -748,7 +748,7 @@ const Orders = () => {
                   </div>
                   <div className="flex justify-between pt-2 mt-1 border-t border-[#E2E8F0]">
                     <span className="text-[16px] font-extrabold text-[#0F172A]">Total</span>
-                    <span className="text-[19px] font-extrabold text-[#5B42F3]">
+                    <span className="text-[19px] font-extrabold text-[#C2410C]">
                       {money(selected.bills?.totalWithTax || selected.bills?.total)}
                     </span>
                   </div>
@@ -889,7 +889,7 @@ const Orders = () => {
                 <button
                   disabled={readyMutation.isPending}
                   onClick={() => readyMutation.mutate(selected._id)}
-                  className="h-[46px] rounded-xl bg-[#5B42F3] text-white text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#4A32E0] disabled:opacity-40"
+                  className="h-[46px] rounded-xl bg-[#FD5302] text-white text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#D64502] disabled:opacity-40"
                 >
                   <I.check s={16} />
                   Mark Ready

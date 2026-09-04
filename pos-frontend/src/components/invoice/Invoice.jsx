@@ -489,7 +489,7 @@ const Invoice = ({
                     )}
                     <button
                         onClick={() => setShowInvoice(false)}
-                        className="h-11 rounded-xl bg-[#5B42F3] text-white text-[13px] font-bold hover:bg-[#4A32E0] transition-colors"
+                        className="h-11 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold hover:bg-[#D64502] transition-colors"
                     >
                         Close
                     </button>

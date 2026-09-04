@@ -53,7 +53,7 @@ const Greetings = () => {
             <p>{formatDate(dateTime)}</p>
           </div>
         </div>
-        <div className="hidden h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-[#5B42F3] to-[#7C3AED] text-2xl shadow-purple sm:flex">
+        <div className="hidden h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-[#FD5302] to-[#C2410C] text-2xl shadow-purple sm:flex">
           <FiClock className="text-white" size={24} />
         </div>
       </div>

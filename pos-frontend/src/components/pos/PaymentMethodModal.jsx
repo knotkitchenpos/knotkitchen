@@ -72,7 +72,7 @@ const MethodTile = ({ Icon, title, subtitle, tint, onClick, disabled }) => (
         className={`w-full flex items-center gap-3 rounded-xl border p-3.5 text-left transition-all ${
             disabled
                 ? "opacity-50 cursor-not-allowed border-[#E2E8F0]"
-                : "border-[#E2E8F0] hover:border-[#5B42F3] hover:shadow-sm active:scale-[0.99]"
+                : "border-[#E2E8F0] hover:border-[#FD5302] hover:shadow-sm active:scale-[0.99]"
         }`}
     >
         <span
@@ -132,7 +132,7 @@ const PaymentMethodModal = ({
                 <div className="border-t border-[#E2E8F0] pt-2 mt-2">
                     <div className="flex items-center justify-between">
                         <span className="text-[15px] font-extrabold text-[#0F172A]">Total payable</span>
-                        <span className="text-[20px] font-extrabold text-[#5B42F3]">
+                        <span className="text-[20px] font-extrabold text-[#C2410C]">
                             {money(totalWithTax)}
                         </span>
                     </div>
@@ -153,7 +153,7 @@ const PaymentMethodModal = ({
                     Icon={IconQR}
                     title="QR / Online"
                     subtitle="Customer scans the in-store QR or pays via UPI."
-                    tint={{ bg: "#EEF0FE", fg: "#5B42F3" }}
+                    tint={{ bg: "#FFF1E8", fg: "#FD5302" }}
                     disabled={busy}
                     onClick={() => onSelect("qr")}
                 />

@@ -720,7 +720,7 @@ const OrderPanel = () => {
               onClick={() => dispatch(setOrderType(key))}
               className={`flex-1 min-w-[90px] h-[46px] rounded-xl flex items-center justify-center gap-2 text-[13.5px] font-bold border transition-all ${
                 on
-                  ? "bg-[#5B42F3] text-white border-[#5B42F3] shadow-[0_6px_16px_-6px_rgba(91,66,243,0.6)]"
+                  ? "bg-[#FD5302] text-white border-[#FD5302] shadow-[0_6px_16px_-6px_rgba(253,83,2,0.6)]"
                   : "bg-white text-[#334155] border-[#E2E8F0] hover:border-[#CBD5E1]"
               }`}
             >
@@ -762,7 +762,7 @@ const OrderPanel = () => {
                   }
                   placeholder="Customer Name"
                   maxLength={120}
-                  className="w-full h-[36px] px-3 bg-white rounded-lg border border-[#E2E8F0] text-[13px] font-medium text-[#0F172A] placeholder-[#94A3B8] focus:border-[#5B42F3] focus:ring-1 focus:ring-[#5B42F3] outline-none transition-all"
+                  className="w-full h-[36px] px-3 bg-white rounded-lg border border-[#E2E8F0] text-[13px] font-medium text-[#0F172A] placeholder-[#94A3B8] focus:border-[#FD5302] focus:ring-1 focus:ring-[#FD5302] outline-none transition-all"
                 />
               </div>
 
@@ -781,7 +781,7 @@ const OrderPanel = () => {
                   }
                   placeholder="Phone Number (+91…)"
                   maxLength={20}
-                  className="w-full h-[36px] px-3 bg-white rounded-lg border border-[#E2E8F0] text-[13px] font-medium text-[#0F172A] placeholder-[#94A3B8] focus:border-[#5B42F3] focus:ring-1 focus:ring-[#5B42F3] outline-none transition-all"
+                  className="w-full h-[36px] px-3 bg-white rounded-lg border border-[#E2E8F0] text-[13px] font-medium text-[#0F172A] placeholder-[#94A3B8] focus:border-[#FD5302] focus:ring-1 focus:ring-[#FD5302] outline-none transition-all"
                 />
               </div>
             </div>
@@ -797,7 +797,7 @@ const OrderPanel = () => {
           {heldOrders.length > 0 && (
             <button
               onClick={() => setShowHeldOrders(true)}
-              className="text-[12.5px] font-bold text-[#5B42F3] flex items-center gap-1 hover:text-[#4A32E0]"
+              className="text-[12.5px] font-bold text-[#C2410C] flex items-center gap-1 hover:text-[#C2410C]"
             >
               <IconClock /> Held ({heldOrders.length})
             </button>
@@ -927,7 +927,7 @@ const OrderPanel = () => {
 
                   {/* Note row */}
                   {item.note && (
-                    <div className="pl-6 text-[11.5px] text-[#5B42F3] font-semibold truncate">
+                    <div className="pl-6 text-[11.5px] text-[#C2410C] font-semibold truncate">
                       Note: {item.note}
                     </div>
                   )}
@@ -970,7 +970,7 @@ const OrderPanel = () => {
                         setNoteFor(item);
                         setNoteText(item.note || "");
                       }}
-                      className="w-7 h-7 rounded-full border-2 border-[#5B42F3] text-[#5B42F3] flex items-center justify-center text-[13px] hover:bg-[#EEF0FE] transition-colors"
+                      className="w-7 h-7 rounded-full border-2 border-[#FD5302] text-[#C2410C] flex items-center justify-center text-[13px] hover:bg-[#FFF1E8] transition-colors"
                       title="Item settings / add note"
                       aria-label="Item settings"
                     >
@@ -993,7 +993,7 @@ const OrderPanel = () => {
               setNoteFor(last);
               setNoteText(last.note || "");
             }}
-            className="text-[13px] font-bold text-[#5B42F3] flex items-center gap-1.5 hover:underline"
+            className="text-[13px] font-bold text-[#C2410C] flex items-center gap-1.5 hover:underline"
           >
             <IconPencil /> Add Item Note
           </button>
@@ -1019,7 +1019,7 @@ const OrderPanel = () => {
             <IconTag />
             <span className="font-semibold">Discount</span>
             {discountLabel && (
-              <span className="px-1.5 py-0.5 rounded-md bg-[#EEF0FE] text-[#5B42F3] text-[11px] font-extrabold">
+              <span className="px-1.5 py-0.5 rounded-md bg-[#FFF1E8] text-[#C2410C] text-[11px] font-extrabold">
                 {discountLabel}
               </span>
             )}
@@ -1058,7 +1058,7 @@ const OrderPanel = () => {
 
         <div className="flex items-center justify-between pt-2 border-t border-[#E2E8F0]">
           <span className="text-[17px] font-extrabold text-[#0F172A]">Total</span>
-          <span className="text-[22px] font-extrabold text-[#5B42F3]">{money(totalWithTax)}</span>
+          <span className="text-[22px] font-extrabold text-[#C2410C]">{money(totalWithTax)}</span>
         </div>
         {minOrderValue > 0 && postDiscount < minOrderValue && cart.length > 0 && (
           <p className="text-[11px] font-semibold text-[#EF4444]">
@@ -1071,14 +1071,14 @@ const OrderPanel = () => {
       <div className="px-4 pb-4 shrink-0 grid grid-cols-[1fr_1.35fr] gap-2.5">
         <button
           onClick={hold}
-          className="h-[50px] rounded-xl border border-[#5B42F3] bg-white text-[#5B42F3] text-[14px] font-bold flex items-center justify-center gap-2 hover:bg-[#EEF0FE] transition-colors"
+          className="h-[50px] rounded-xl border border-[#FD5302] bg-white text-[#C2410C] text-[14px] font-bold flex items-center justify-center gap-2 hover:bg-[#FFF1E8] transition-colors"
         >
           <IconClock /> Hold Order
         </button>
         <button
           onClick={finish}
           disabled={busy || cart.length === 0}
-          className="h-[50px] rounded-xl bg-[#5B42F3] text-white text-[14.5px] font-bold flex items-center justify-center gap-2 shadow-[0_8px_20px_-8px_rgba(91,66,243,0.7)] hover:bg-[#4A32E0] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="h-[50px] rounded-xl bg-[#FD5302] text-white text-[14.5px] font-bold flex items-center justify-center gap-2 shadow-[0_8px_20px_-8px_rgba(253,83,2,0.7)] hover:bg-[#D64502] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {busy ? "Processing…" : "Finish Order"} {!busy && <IconArrowRight />}
         </button>
@@ -1097,7 +1097,7 @@ const OrderPanel = () => {
               value={noteText}
               onChange={(e) => setNoteText(e.target.value)}
               placeholder="e.g. Extra spicy, no onions…"
-              className="w-full rounded-xl border border-[#E2E8F0] p-3 text-[13.5px] resize-none focus:border-[#5B42F3]"
+              className="w-full rounded-xl border border-[#E2E8F0] p-3 text-[13.5px] resize-none focus:border-[#FD5302]"
             />
             <div className="grid grid-cols-2 gap-2.5 mt-4">
               <button
@@ -1111,7 +1111,7 @@ const OrderPanel = () => {
                   dispatch(updateItemNote({ id: noteFor.id, note: noteText.trim() }));
                   setNoteFor(null);
                 }}
-                className="h-[44px] rounded-xl bg-[#5B42F3] text-white text-[14px] font-bold hover:bg-[#4A32E0]"
+                className="h-[44px] rounded-xl bg-[#FD5302] text-white text-[14px] font-bold hover:bg-[#D64502]"
               >
                 Save Note
               </button>
@@ -1265,7 +1265,7 @@ const OrderPanel = () => {
                       </div>
                       <button
                         onClick={() => resumeHeldOrder(heldOrder)}
-                        className="h-9 rounded-lg bg-[#5B42F3] px-3 text-[12px] font-bold text-white hover:bg-[#4A32E0]"
+                        className="h-9 rounded-lg bg-[#FD5302] px-3 text-[12px] font-bold text-white hover:bg-[#D64502]"
                       >
                         Resume
                       </button>

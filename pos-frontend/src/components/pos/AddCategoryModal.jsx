@@ -39,7 +39,7 @@ const AddCategoryModal = ({ submitting, onClose, onSubmit }) => {
           <button
             type="submit"
             disabled={submitting}
-            className="h-[48px] rounded-xl bg-[#5B42F3] text-white text-[14px] font-bold hover:bg-[#4A32E0] disabled:opacity-50"
+            className="h-[48px] rounded-xl bg-[#FD5302] text-white text-[14px] font-bold hover:bg-[#D64502] disabled:opacity-50"
           >
             {submitting ? "Adding…" : "Add Category"}
           </button>

@@ -144,7 +144,7 @@ const ManageCacheView = () => {
           <button
             onClick={() => webMutation.mutate()}
             disabled={webMutation.isPending}
-            className="h-[40px] px-4 rounded-xl bg-[#5B42F3] text-white text-[13px] font-bold shrink-0 hover:bg-[#4A32E0] disabled:opacity-50"
+            className="h-[40px] px-4 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold shrink-0 hover:bg-[#D64502] disabled:opacity-50"
           >
             {webMutation.isPending ? "Publishing…" : "Publish Website"}
           </button>
@@ -160,7 +160,7 @@ const ManageCacheView = () => {
           <button
             onClick={() => sysMutation.mutate()}
             disabled={sysMutation.isPending}
-            className="h-[40px] px-4 rounded-xl border border-[#5B42F3] text-[#5B42F3] text-[13px] font-bold shrink-0 hover:bg-[#EEF0FE] disabled:opacity-50"
+            className="h-[40px] px-4 rounded-xl border border-[#FD5302] text-[#C2410C] text-[13px] font-bold shrink-0 hover:bg-[#FFF1E8] disabled:opacity-50"
           >
             {sysMutation.isPending ? "Publishing…" : "Publish System"}
           </button>
@@ -226,7 +226,7 @@ const DeviceConfigurationView = () => {
               type="checkbox"
               checked={autoPrint}
               onChange={(e) => setAutoPrint(e.target.checked)}
-              className="w-5 h-5 accent-[#5B42F3]"
+              className="w-5 h-5 accent-[#FD5302]"
             />
           </div>
 
@@ -239,7 +239,7 @@ const DeviceConfigurationView = () => {
               type="checkbox"
               checked={autoEBill}
               onChange={(e) => setAutoEBill(e.target.checked)}
-              className="w-5 h-5 accent-[#5B42F3]"
+              className="w-5 h-5 accent-[#FD5302]"
             />
           </div>
         </div>
@@ -270,7 +270,7 @@ const DeviceConfigurationView = () => {
           <button
             onClick={save}
             disabled={posMutation.isPending}
-            className="h-[40px] px-5 rounded-xl bg-[#5B42F3] text-white text-[13px] font-bold hover:bg-[#4A32E0] disabled:opacity-50"
+            className="h-[40px] px-5 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold hover:bg-[#D64502] disabled:opacity-50"
           >
             {posMutation.isPending ? "Saving…" : "Save Receipt Settings"}
           </button>
@@ -382,7 +382,7 @@ const StorePropertiesView = () => {
               <button
                 onClick={() => verifyMutation.mutate(pin)}
                 disabled={verifyMutation.isPending}
-                className="h-[36px] px-3.5 rounded-xl bg-[#5B42F3] text-white text-[12.5px] font-bold hover:bg-[#4A32E0]"
+                className="h-[36px] px-3.5 rounded-xl bg-[#FD5302] text-white text-[12.5px] font-bold hover:bg-[#D64502]"
               >
                 Unlock
               </button>
@@ -538,7 +538,7 @@ const StorePropertiesView = () => {
             <button
               onClick={handleSave}
               disabled={updateMutation.isPending}
-              className="h-[42px] px-6 rounded-xl bg-[#5B42F3] text-white text-[13.5px] font-bold hover:bg-[#4A32E0] disabled:opacity-50"
+              className="h-[42px] px-6 rounded-xl bg-[#FD5302] text-white text-[13.5px] font-bold hover:bg-[#D64502] disabled:opacity-50"
             >
               {updateMutation.isPending ? "Saving Changes…" : "Save Store Properties"}
             </button>
@@ -590,7 +590,7 @@ const StorePropertiesView = () => {
                 <button
                   onClick={() => changePinMutation.mutate({ currentPin: currentPinInput, newPin: newPinInput })}
                   disabled={changePinMutation.isPending}
-                  className="h-[38px] px-5 rounded-xl bg-[#5B42F3] text-white text-[13px] font-bold hover:bg-[#4A32E0] disabled:opacity-50"
+                  className="h-[38px] px-5 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold hover:bg-[#D64502] disabled:opacity-50"
                 >
                   {changePinMutation.isPending ? "Updating…" : "Update PIN"}
                 </button>
@@ -740,7 +740,7 @@ const OrderTypesAutoReadyView = () => {
               type="checkbox"
               checked={colToggle}
               onChange={(e) => setColToggle(e.target.checked)}
-              className="w-5 h-5 accent-[#5B42F3]"
+              className="w-5 h-5 accent-[#FD5302]"
             />
           </div>
 
@@ -753,7 +753,7 @@ const OrderTypesAutoReadyView = () => {
               type="checkbox"
               checked={delToggle}
               onChange={(e) => setDelToggle(e.target.checked)}
-              className="w-5 h-5 accent-[#5B42F3]"
+              className="w-5 h-5 accent-[#FD5302]"
             />
           </div>
 
@@ -766,7 +766,7 @@ const OrderTypesAutoReadyView = () => {
               type="checkbox"
               checked={tblToggle}
               onChange={(e) => setTblToggle(e.target.checked)}
-              className="w-5 h-5 accent-[#5B42F3]"
+              className="w-5 h-5 accent-[#FD5302]"
             />
           </div>
         </div>
@@ -775,7 +775,7 @@ const OrderTypesAutoReadyView = () => {
           <button
             onClick={saveToggles}
             disabled={toggleMutation.isPending}
-            className="h-[40px] px-5 rounded-xl bg-[#5B42F3] text-white text-[13px] font-bold hover:bg-[#4A32E0] disabled:opacity-50"
+            className="h-[40px] px-5 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold hover:bg-[#D64502] disabled:opacity-50"
           >
             {toggleMutation.isPending ? "Saving…" : "Save Order Toggles"}
           </button>
@@ -823,7 +823,7 @@ const OrderTypesAutoReadyView = () => {
           <button
             onClick={saveAutoReady}
             disabled={autoReadyMutation.isPending}
-            className="h-[40px] px-5 rounded-xl bg-[#5B42F3] text-white text-[13px] font-bold hover:bg-[#4A32E0] disabled:opacity-50"
+            className="h-[40px] px-5 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold hover:bg-[#D64502] disabled:opacity-50"
           >
             {autoReadyMutation.isPending ? "Saving…" : "Save Auto-Ready Settings"}
           </button>
@@ -921,7 +921,7 @@ const OrderTypesAutoReadyView = () => {
           <button
             onClick={saveAutoComplete}
             disabled={autoCompleteMutation.isPending}
-            className="h-[40px] px-5 rounded-xl bg-[#5B42F3] text-white text-[13px] font-bold hover:bg-[#4A32E0] disabled:opacity-50"
+            className="h-[40px] px-5 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold hover:bg-[#D64502] disabled:opacity-50"
           >
             {autoCompleteMutation.isPending ? "Saving…" : "Save Auto-Complete Settings"}
           </button>
@@ -1158,7 +1158,7 @@ const TimingsHolidaysView = () => {
                   onClick={() => setActiveChannel(tab.key)}
                   className={`pb-2 transition-all cursor-pointer whitespace-nowrap ${
                     active
-                      ? "text-[#1E293B] font-extrabold border-b-2 border-[#5B42F3]"
+                      ? "text-[#1E293B] font-extrabold border-b-2 border-[#FD5302]"
                       : "text-[#64748B] font-semibold hover:text-[#0F172A]"
                   }`}
                 >
@@ -1176,7 +1176,7 @@ const TimingsHolidaysView = () => {
             id="sameTiming"
             checked={sameTimingAllDays}
             onChange={(e) => setSameTimingAllDays(e.target.checked)}
-            className="w-4 h-4 accent-[#5B42F3] cursor-pointer"
+            className="w-4 h-4 accent-[#FD5302] cursor-pointer"
           />
           <label htmlFor="sameTiming" className="cursor-pointer">Same timing for all days</label>
         </div>
@@ -1233,18 +1233,18 @@ const TimingsHolidaysView = () => {
                         type="time"
                         value={dayData.openTime}
                         onChange={(e) => handleTimeChange(key, "openTime", e.target.value)}
-                        className="w-[125px] h-[38px] px-3 rounded-lg border border-[#E2E8F0] font-semibold text-[13.5px] text-[#334155] bg-white focus:border-[#5B42F3]"
+                        className="w-[125px] h-[38px] px-3 rounded-lg border border-[#E2E8F0] font-semibold text-[13.5px] text-[#334155] bg-white focus:border-[#FD5302]"
                       />
 
                       {/* Connector Arrow */}
-                      <span className="text-[#5B42F3] font-extrabold text-sm px-1">→</span>
+                      <span className="text-[#C2410C] font-extrabold text-sm px-1">→</span>
 
                       {/* End Day Selector Dropdown */}
                       <div className="flex items-center gap-1.5">
                         <select
                           value={dayData.closeDay !== undefined && dayData.closeDay !== null ? dayData.closeDay : (overnight ? (dayIndex + 1) % 7 : dayIndex)}
                           onChange={(e) => handleTimeChange(key, "closeDay", Number(e.target.value))}
-                          className="w-[145px] h-[38px] px-2.5 rounded-lg border border-[#E2E8F0] font-semibold text-[13px] text-[#334155] bg-white focus:border-[#5B42F3] cursor-pointer"
+                          className="w-[145px] h-[38px] px-2.5 rounded-lg border border-[#E2E8F0] font-semibold text-[13px] text-[#334155] bg-white focus:border-[#FD5302] cursor-pointer"
                           title="Select End Day"
                         >
                           {DAYS.map((d) => (
@@ -1259,7 +1259,7 @@ const TimingsHolidaysView = () => {
                           type="time"
                           value={dayData.closeTime}
                           onChange={(e) => handleTimeChange(key, "closeTime", e.target.value)}
-                          className="w-[125px] h-[38px] px-3 rounded-lg border border-[#E2E8F0] font-semibold text-[13.5px] text-[#334155] bg-white focus:border-[#5B42F3]"
+                          className="w-[125px] h-[38px] px-3 rounded-lg border border-[#E2E8F0] font-semibold text-[13.5px] text-[#334155] bg-white focus:border-[#FD5302]"
                         />
                       </div>
 
@@ -1278,7 +1278,7 @@ const TimingsHolidaysView = () => {
                       with every other row. */}
                   <div className="w-[104px] shrink-0">
                     {isOpen && (Number(dayData.closeDay) !== dayIndex || overnight) && (
-                      <span className="px-2.5 py-1 rounded-md bg-[#EEF0FE] text-[#5B42F3] text-[11px] font-extrabold flex items-center gap-1 w-fit">
+                      <span className="px-2.5 py-1 rounded-md bg-[#FFF1E8] text-[#C2410C] text-[11px] font-extrabold flex items-center gap-1 w-fit">
                         <span>🌙</span> Overnight
                       </span>
                     )}
@@ -1446,7 +1446,7 @@ const TimingsHolidaysView = () => {
               setReason("Store Closed for Holiday");
             }}
             disabled={holidayMutation.isPending}
-            className="h-[38px] px-4 rounded-xl bg-[#5B42F3] text-white text-[13px] font-bold hover:bg-[#4A32E0] disabled:opacity-50"
+            className="h-[38px] px-4 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold hover:bg-[#D64502] disabled:opacity-50"
           >
             Add Holiday
           </button>
@@ -1560,7 +1560,7 @@ const ManageStaffView = () => {
           <button
             onClick={() => addMutation.mutate({ name, phone })}
             disabled={addMutation.isPending}
-            className="h-[40px] px-5 rounded-xl bg-[#5B42F3] text-white text-[13px] font-bold hover:bg-[#4A32E0] disabled:opacity-50"
+            className="h-[40px] px-5 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold hover:bg-[#D64502] disabled:opacity-50"
           >
             {addMutation.isPending ? "Adding…" : "Add Staff Member"}
           </button>
@@ -1643,7 +1643,7 @@ const RulesChargesView = () => {
           </div>
         </div>
         <div className="flex justify-end">
-          <button onClick={()=>mut.mutate({ordering:{gstApplyTo:gstApply,packingApplyTo:packApply}})} disabled={mut.isPending} className="h-[38px] px-4 rounded-xl bg-[#5B42F3] text-white text-[13px] font-bold">Save</button>
+          <button onClick={()=>mut.mutate({ordering:{gstApplyTo:gstApply,packingApplyTo:packApply}})} disabled={mut.isPending} className="h-[38px] px-4 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold">Save</button>
         </div>
       </div>
 
@@ -1656,7 +1656,7 @@ const RulesChargesView = () => {
           <div><label className="text-[11px] font-bold text-[#94A3B8]">Min km</label><input type="number" value={sMin} onChange={(e)=>setSMin(e.target.value)} placeholder="0" className="w-full h-[36px] px-2 mt-1 rounded-xl border border-[#E2E8F0] font-bold"/></div>
           <div><label className="text-[11px] font-bold text-[#94A3B8]">Max km</label><input type="number" value={sMax} onChange={(e)=>setSMax(e.target.value)} placeholder="3" className="w-full h-[36px] px-2 mt-1 rounded-xl border border-[#E2E8F0] font-bold"/></div>
           <div className="flex gap-2"><div className="flex-1"><label className="text-[11px] font-bold text-[#94A3B8]">Fee ₹</label><input type="number" value={sFee} onChange={(e)=>setSFee(e.target.value)} placeholder="30" className="w-full h-[36px] px-2 mt-1 rounded-xl border border-[#E2E8F0] font-bold"/></div>
-            <button onClick={()=>{if(!sMin||!sMax||!sFee){enqueueSnackbar("Fill all slab fields",{variant:"warning"});return;}const u=[...slabs,{minKm:+sMin,maxKm:+sMax,fee:+sFee}];setSlabs(u);setSMin("");setSMax("");setSFee("");mut.mutate({ordering:{deliverySlabsConfig:{maxDistanceKm:+maxDist||7,slabs:u}}});}} className="mt-5 h-[36px] px-3 rounded-xl bg-[#5B42F3] text-white text-[12px] font-bold shrink-0">Add</button>
+            <button onClick={()=>{if(!sMin||!sMax||!sFee){enqueueSnackbar("Fill all slab fields",{variant:"warning"});return;}const u=[...slabs,{minKm:+sMin,maxKm:+sMax,fee:+sFee}];setSlabs(u);setSMin("");setSMax("");setSFee("");mut.mutate({ordering:{deliverySlabsConfig:{maxDistanceKm:+maxDist||7,slabs:u}}});}} className="mt-5 h-[36px] px-3 rounded-xl bg-[#FD5302] text-white text-[12px] font-bold shrink-0">Add</button>
           </div>
         </div>
         {slabs.length>0&&<div className="pt-2 border-t border-[#E2E8F0] space-y-2 text-[13px]">{slabs.map((s,i)=><div key={i} className="flex justify-between p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]"><span className="font-bold">{s.minKm}–{s.maxKm} km → ₹{s.fee}</span><button onClick={()=>{const u=slabs.filter((_,j)=>j!==i);setSlabs(u);mut.mutate({ordering:{deliverySlabsConfig:{maxDistanceKm:+maxDist||7,slabs:u}}});}} className="text-[#DC2626] font-bold text-[12px]">Remove</button></div>)}</div>}
@@ -1670,7 +1670,7 @@ const RulesChargesView = () => {
           <div><label className="text-[11px] font-bold text-[#94A3B8]">Type</label><select value={cType} onChange={(e)=>setCType(e.target.value)} className="w-full h-[36px] px-2 mt-1 rounded-xl border border-[#E2E8F0] font-bold"><option value="percent">%</option><option value="fixed">₹</option></select></div>
           <div><label className="text-[11px] font-bold text-[#94A3B8]">Value</label><input type="number" value={cVal} onChange={(e)=>setCVal(e.target.value)} className="w-full h-[36px] px-2 mt-1 rounded-xl border border-[#E2E8F0] font-bold"/></div>
           <div className="flex gap-2"><div className="flex-1"><label className="text-[11px] font-bold text-[#94A3B8]">Min Order ₹</label><input type="number" value={cMin} onChange={(e)=>setCMin(e.target.value)} className="w-full h-[36px] px-2 mt-1 rounded-xl border border-[#E2E8F0] font-bold"/></div>
-            <button onClick={()=>{if(!cCode||!cVal){enqueueSnackbar("Code & value required",{variant:"warning"});return;}const u=[...coupons,{code:cCode.toUpperCase().trim(),type:cType,value:+cVal,minOrderAmount:+cMin||0,isActive:true}];setCoupons(u);setCCode("");setCVal("");setCMin("");mut.mutate({couponsConfig:u});}} className="mt-5 h-[36px] px-3 rounded-xl bg-[#5B42F3] text-white text-[12px] font-bold shrink-0">Add</button>
+            <button onClick={()=>{if(!cCode||!cVal){enqueueSnackbar("Code & value required",{variant:"warning"});return;}const u=[...coupons,{code:cCode.toUpperCase().trim(),type:cType,value:+cVal,minOrderAmount:+cMin||0,isActive:true}];setCoupons(u);setCCode("");setCVal("");setCMin("");mut.mutate({couponsConfig:u});}} className="mt-5 h-[36px] px-3 rounded-xl bg-[#FD5302] text-white text-[12px] font-bold shrink-0">Add</button>
           </div>
         </div>
         {coupons.length>0&&<div className="pt-2 border-t border-[#E2E8F0] space-y-2 text-[13px]">{coupons.map((c,i)=><div key={i} className="flex justify-between p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]"><span className="font-bold">{c.code} → {c.type==="percent"?`${c.value}%`:`₹${c.value}`} (min ₹{c.minOrderAmount||0})</span><button onClick={()=>{const u=coupons.filter((_,j)=>j!==i);setCoupons(u);mut.mutate({couponsConfig:u});}} className="text-[#DC2626] font-bold text-[12px]">Remove</button></div>)}</div>}
@@ -1683,7 +1683,7 @@ const RulesChargesView = () => {
         <div className="grid grid-cols-3 gap-3 text-[13px] items-end">
           <div><label className="text-[11px] font-bold text-[#94A3B8]">Item Name</label><input value={fName} onChange={(e)=>setFName(e.target.value)} placeholder="Free Gulab Jamun" className="w-full h-[36px] px-2 mt-1 rounded-xl border border-[#E2E8F0] font-bold"/></div>
           <div><label className="text-[11px] font-bold text-[#94A3B8]">Min Order ₹</label><input type="number" value={fMin} onChange={(e)=>setFMin(e.target.value)} placeholder="500" className="w-full h-[36px] px-2 mt-1 rounded-xl border border-[#E2E8F0] font-bold"/></div>
-          <button onClick={()=>{if(!fName){enqueueSnackbar("Item name required",{variant:"warning"});return;}const u=[...freeRules,{itemName:fName.trim(),minOrderAmount:+fMin||0,applyTo:"both",isActive:true}];setFreeRules(u);setFName("");setFMin("");mut.mutate({freeItemConfig:u});}} className="h-[36px] px-4 rounded-xl bg-[#5B42F3] text-white text-[12px] font-bold">Add Rule</button>
+          <button onClick={()=>{if(!fName){enqueueSnackbar("Item name required",{variant:"warning"});return;}const u=[...freeRules,{itemName:fName.trim(),minOrderAmount:+fMin||0,applyTo:"both",isActive:true}];setFreeRules(u);setFName("");setFMin("");mut.mutate({freeItemConfig:u});}} className="h-[36px] px-4 rounded-xl bg-[#FD5302] text-white text-[12px] font-bold">Add Rule</button>
         </div>
         {freeRules.length>0&&<div className="pt-2 border-t border-[#E2E8F0] space-y-2 text-[13px]">{freeRules.map((r,i)=><div key={i} className="flex justify-between p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]"><span className="font-bold">{r.itemName} (min ₹{r.minOrderAmount||0})</span><button onClick={()=>{const u=freeRules.filter((_,j)=>j!==i);setFreeRules(u);mut.mutate({freeItemConfig:u});}} className="text-[#DC2626] font-bold text-[12px]">Remove</button></div>)}</div>}
       </div>
@@ -1813,12 +1813,12 @@ const Settings = () => {
                   className={`w-full text-left p-4 rounded-2xl border transition-all flex items-center gap-4 bg-white ${
                     isLogout
                       ? "border-[#FECACA] hover:border-[#EF4444] hover:bg-[#FEF2F2]"
-                      : "border-[#E2E8F0] hover:border-[#5B42F3] hover:shadow-md"
+                      : "border-[#E2E8F0] hover:border-[#FD5302] hover:shadow-md"
                   }`}
                 >
                   <span
                     className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${
-                      isLogout ? "bg-[#FEF2F2] text-[#DC2626]" : "bg-[#F5F3FF] text-[#5B42F3]"
+                      isLogout ? "bg-[#FEF2F2] text-[#DC2626]" : "bg-[#FFF6F0] text-[#C2410C]"
                     }`}
                   >
                     <Icon />

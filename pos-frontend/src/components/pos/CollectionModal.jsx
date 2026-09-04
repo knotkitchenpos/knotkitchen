@@ -59,7 +59,7 @@ const CollectionModal = ({ initialName = "", initialPhone = "", total = 0, busy,
 
         <div className="flex items-center justify-between px-4 py-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
           <span className="text-[13.5px] font-bold text-[#475569]">Order Total</span>
-          <span className="text-[19px] font-extrabold text-[#5B42F3]">₹{Number(total).toFixed(2)}</span>
+          <span className="text-[19px] font-extrabold text-[#C2410C]">₹{Number(total).toFixed(2)}</span>
         </div>
 
         <div className="grid grid-cols-2 gap-3 pt-1">
@@ -74,7 +74,7 @@ const CollectionModal = ({ initialName = "", initialPhone = "", total = 0, busy,
           <button
             type="submit"
             disabled={busy}
-            className="h-[46px] rounded-xl bg-[#5B42F3] text-white text-[14px] font-bold hover:bg-[#4A32E0] disabled:opacity-50"
+            className="h-[46px] rounded-xl bg-[#FD5302] text-white text-[14px] font-bold hover:bg-[#D64502] disabled:opacity-50"
           >
             {busy ? "Completing…" : "Complete Order"}
           </button>

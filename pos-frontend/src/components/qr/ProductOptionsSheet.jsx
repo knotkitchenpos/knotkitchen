@@ -18,7 +18,7 @@ import { useMemo, useState } from "react";
  *     is explicitly off (`maxSelectionEnabled === false`), which means any
  *     number. Groups predating that flag keep their cap.
  */
-const ProductOptionsSheet = ({ item, currency = "₹", primary = "#5B42F3", onClose, onAdd }) => {
+const ProductOptionsSheet = ({ item, currency = "₹", primary = "#FD5302", onClose, onAdd }) => {
   const variants = useMemo(() => (Array.isArray(item?.variants) ? item.variants : []), [item]);
   const groups = useMemo(
     () => (Array.isArray(item?.modifierGroups) ? item.modifierGroups : []).filter((g) => g?.isActive !== false),

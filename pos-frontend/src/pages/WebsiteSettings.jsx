@@ -37,7 +37,7 @@ const Field = ({ label, hint, children }) => (
 );
 
 const inputClass =
-  "w-full px-3 py-2 rounded-xl bg-white border border-[#E2E8F0] text-sm text-[#0F172A] placeholder:text-[#94A3B8] focus:outline-none focus:border-[#5B42F3] focus:ring-2 focus:ring-[#5B42F3]/10";
+  "w-full px-3 py-2 rounded-xl bg-white border border-[#E2E8F0] text-sm text-[#0F172A] placeholder:text-[#94A3B8] focus:outline-none focus:border-[#FD5302] focus:ring-2 focus:ring-[#FD5302]/10";
 
 const Toggle = ({ checked, onChange, label, hint }) => (
   <div className="flex items-start justify-between gap-4 py-3 border-b border-[#E2E8F0] last:border-0">
@@ -52,7 +52,7 @@ const Toggle = ({ checked, onChange, label, hint }) => (
       aria-label={label}
       onClick={() => onChange(!checked)}
       className={`relative block h-6 w-12 min-w-[3rem] shrink-0 cursor-pointer rounded-full transition-colors ${
-        checked ? "bg-[#5B42F3]" : "bg-[#CBD5E1]"
+        checked ? "bg-[#FD5302]" : "bg-[#CBD5E1]"
       }`}
     >
       <span
@@ -85,7 +85,7 @@ const ImagePicker = ({ label, value, onPick, folder }) => {
             <button
               type="button"
               onClick={() => setOpen(true)}
-              className="px-3 py-2 rounded-xl border border-[#E2E8F0] bg-white text-sm font-bold text-[#475569] hover:border-[#C7C2FF] hover:text-[#5B42F3]"
+              className="px-3 py-2 rounded-xl border border-[#E2E8F0] bg-white text-sm font-bold text-[#475569] hover:border-[#C7C2FF] hover:text-[#C2410C]"
             >
               {value?.url ? "Change" : "Choose Image"}
             </button>
@@ -259,7 +259,7 @@ const WebsiteSettings = () => {
             href={storefrontUrl}
             target="_blank"
             rel="noreferrer"
-            className="text-sm text-[#5B42F3] hover:underline break-all"
+            className="text-sm text-[#C2410C] hover:underline break-all"
           >
             {storefrontUrl}
           </a>
@@ -278,7 +278,7 @@ const WebsiteSettings = () => {
             href="/website/preview"
             target="_blank"
             rel="noreferrer"
-            className="px-4 py-2 rounded-xl border border-[#E2E8F0] bg-white text-sm font-bold text-[#475569] hover:border-[#C7C2FF] hover:text-[#5B42F3]"
+            className="px-4 py-2 rounded-xl border border-[#E2E8F0] bg-white text-sm font-bold text-[#475569] hover:border-[#C7C2FF] hover:text-[#C2410C]"
           >
             👁 Preview
           </a>
@@ -286,7 +286,7 @@ const WebsiteSettings = () => {
             type="button"
             onClick={save}
             disabled={saving}
-            className="px-5 py-2 rounded-xl bg-[#5B42F3] text-white text-sm font-bold disabled:opacity-60 hover:bg-[#4A32E0]"
+            className="px-5 py-2 rounded-xl bg-[#FD5302] text-white text-sm font-bold disabled:opacity-60 hover:bg-[#D64502]"
           >
             {saving ? "Saving…" : "Save Changes"}
             {dirty && !saving ? (
@@ -325,7 +325,7 @@ const WebsiteSettings = () => {
             onClick={() => setTab(t.key)}
             className={`shrink-0 px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors ${
               tab === t.key
-                ? "border-[#5B42F3] text-[#5B42F3]"
+                ? "border-[#FD5302] text-[#C2410C]"
                 : "border-transparent text-[#94A3B8] hover:text-[#475569]"
             }`}
           >
@@ -380,7 +380,7 @@ const WebsiteSettings = () => {
                       href={`https://${settings.customDomain}`}
                       target="_blank"
                       rel="noreferrer"
-                      className="text-[#5B42F3] hover:underline font-extrabold"
+                      className="text-[#C2410C] hover:underline font-extrabold"
                     >
                       https://{settings.customDomain}
                     </a>
@@ -531,7 +531,7 @@ const WebsiteSettings = () => {
                       { title: `Slide ${currentBanners.length + 1}`, description: "Special promotion details", buttonText: "Order Now", isActive: true },
                     ]);
                   }}
-                  className="px-3.5 py-1.5 rounded-xl bg-[#5B42F3] text-white text-xs font-bold hover:bg-[#4A32E0]"
+                  className="px-3.5 py-1.5 rounded-xl bg-[#FD5302] text-white text-xs font-bold hover:bg-[#D64502]"
                 >
                   + Add Slide / Banner
                 </button>
@@ -843,7 +843,7 @@ const WebsiteSettings = () => {
             <div className="p-4 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-3">
               <div className="flex items-center justify-between">
                 <h4 className="font-extrabold text-sm text-[#0F172A]">Active Payment Gateway</h4>
-                <span className="px-3 py-1 rounded-full bg-[#5B42F3]/10 text-[#5B42F3] font-extrabold text-xs uppercase">
+                <span className="px-3 py-1 rounded-full bg-[#FD5302]/10 text-[#C2410C] font-extrabold text-xs uppercase">
                   Current: {settings.paymentGateways?.activeGateway || "razorpay"}
                 </span>
               </div>
@@ -923,7 +923,7 @@ const WebsiteSettings = () => {
                       setMessage({ type: "error", text: err.response?.data?.message || "Validation failed." });
                     }
                   }}
-                  className="px-3.5 py-1.5 rounded-xl border border-[#5B42F3] text-[#5B42F3] text-xs font-bold hover:bg-[#5B42F3]/5"
+                  className="px-3.5 py-1.5 rounded-xl border border-[#FD5302] text-[#C2410C] text-xs font-bold hover:bg-[#FD5302]/5"
                 >
                   Verify & Save Razorpay Credentials
                 </button>
@@ -990,7 +990,7 @@ const WebsiteSettings = () => {
                       setMessage({ type: "error", text: err.response?.data?.message || "Validation failed." });
                     }
                   }}
-                  className="px-3.5 py-1.5 rounded-xl border border-[#5B42F3] text-[#5B42F3] text-xs font-bold hover:bg-[#5B42F3]/5"
+                  className="px-3.5 py-1.5 rounded-xl border border-[#FD5302] text-[#C2410C] text-xs font-bold hover:bg-[#FD5302]/5"
                 >
                   Verify & Save Cashfree Credentials
                 </button>
@@ -1066,7 +1066,7 @@ const WebsiteSettings = () => {
                       setMessage({ type: "error", text: err.response?.data?.message || "Validation failed." });
                     }
                   }}
-                  className="px-3.5 py-1.5 rounded-xl border border-[#5B42F3] text-[#5B42F3] text-xs font-bold hover:bg-[#5B42F3]/5"
+                  className="px-3.5 py-1.5 rounded-xl border border-[#FD5302] text-[#C2410C] text-xs font-bold hover:bg-[#FD5302]/5"
                 >
                   Verify & Save PhonePe Credentials
                 </button>

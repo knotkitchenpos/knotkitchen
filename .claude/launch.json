@@ -4,9 +4,22 @@
     {
       "name": "csd-web",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev"],
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
       "cwd": "csd-web",
       "port": 5175
+    },
+    {
+      "name": "pos-frontend",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "cwd": "pos-frontend",
+      "port": 5173
     }
   ]
 }

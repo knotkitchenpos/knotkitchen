@@ -121,7 +121,7 @@ const Sidebar = ({ mobileOpen = false, onMobileClose }) => {
                 isCollapsed ? "justify-center py-3.5" : "gap-4 px-4 py-3.5"
               } ${
                 active
-                  ? "bg-[#5B42F3] text-white font-bold"
+                  ? "bg-[#FD5302] text-white font-bold"
                   : "text-[#9AA3B8] hover:bg-[#161C33] hover:text-white font-semibold"
               }`}
             >
@@ -138,7 +138,7 @@ const Sidebar = ({ mobileOpen = false, onMobileClose }) => {
           onClick={() => go("/settings")}
           title={isCollapsed ? "Settings" : undefined}
           className={`w-full flex items-center rounded-xl border border-white/10 ${
-            isActive("/settings") ? "bg-[#5B42F3] text-white font-bold" : "bg-[#111729] text-[#9AA3B8] hover:text-white hover:bg-[#161C33]"
+            isActive("/settings") ? "bg-[#FD5302] text-white font-bold" : "bg-[#111729] text-[#9AA3B8] hover:text-white hover:bg-[#161C33]"
           } transition-colors ${
             isCollapsed ? "justify-center py-3.5" : "gap-4 px-4 py-3.5"
           }`}

@@ -17,7 +17,10 @@ const addressSchema = new mongoose.Schema(
 const brandingSchema = new mongoose.Schema(
   {
     logo: { type: String, default: "" },
-    primaryColor: { type: String, default: "#5b45b0" },
+    // KnotKitchen brand orange, sampled from the logo. This drives the
+    // QR / table-ordering site, so a purple default themed every new
+    // store off-brand until someone changed it by hand.
+    primaryColor: { type: String, default: "#FD5302" },
     secondaryColor: { type: String, default: "" },
     accentColor: { type: String, default: "" },
     customDomain: { type: String, default: "" },

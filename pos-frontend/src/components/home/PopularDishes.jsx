@@ -72,7 +72,7 @@ const PopularDishes = () => {
               className="flex items-center gap-4 p-3 rounded-xl bg-surface-input border border-border hover:border-accent/40 hover:shadow-md transition-all group cursor-pointer"
             >
               <span className="font-bold text-lg text-content-muted w-7">{String(index + 1).padStart(2, "0")}</span>
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-[#5B42F3] to-[#7C3AED] text-lg font-bold text-white transition-transform group-hover:scale-110">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br from-[#FD5302] to-[#C2410C] text-lg font-bold text-white transition-transform group-hover:scale-110">
                 {dish.name?.[0]?.toUpperCase() || "D"}
               </div>
               <div className="flex-1">

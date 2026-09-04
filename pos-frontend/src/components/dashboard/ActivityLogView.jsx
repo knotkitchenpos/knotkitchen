@@ -68,7 +68,7 @@ const ActivityLogView = () => {
           <div className="flex justify-end">
             <button
               onClick={() => { setDate(""); setPhone(""); setAction(""); setPage(1); }}
-              className="text-xs font-bold text-[#5B42F3] hover:underline"
+              className="text-xs font-bold text-[#C2410C] hover:underline"
             >
               Clear Filters
             </button>
@@ -105,7 +105,7 @@ const ActivityLogView = () => {
                     <td className="py-3 px-2">
                       <span className={`inline-block px-2.5 py-0.5 rounded-full font-bold text-[11px] ${
                         log.role === "Owner" || log.role === "owner"
-                          ? "bg-[#F5F3FF] text-[#5B42F3]"
+                          ? "bg-[#FFF6F0] text-[#C2410C]"
                           : "bg-[#F1F5F9] text-[#475569]"
                       }`}>
                         {log.role || "Staff"}
@@ -117,7 +117,7 @@ const ActivityLogView = () => {
                     <td className="py-3 px-2 text-right">
                       <button
                         onClick={() => setSelectedLog(log)}
-                        className="px-3 py-1 rounded-xl border border-[#E2E8F0] text-[#5B42F3] font-bold text-[12px] hover:bg-[#EEF0FE]"
+                        className="px-3 py-1 rounded-xl border border-[#E2E8F0] text-[#C2410C] font-bold text-[12px] hover:bg-[#FFF1E8]"
                       >
                         View Diff
                       </button>
@@ -196,7 +196,7 @@ const ActivityLogView = () => {
             <div className="flex justify-end pt-2">
               <button
                 onClick={() => setSelectedLog(null)}
-                className="px-5 py-2 rounded-xl bg-[#5B42F3] text-white font-bold text-xs"
+                className="px-5 py-2 rounded-xl bg-[#FD5302] text-white font-bold text-xs"
               >
                 Close
               </button>

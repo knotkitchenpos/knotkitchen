@@ -1089,7 +1089,7 @@ const ManageMenu = () => {
               }}
               className={`w-full text-left px-5 py-3 text-[13.5px] font-semibold flex items-center justify-between transition-colors ${
                 active
-                  ? "text-[#5B42F3] bg-[#EEF0FE] border-r-4 border-[#5B42F3] font-bold"
+                  ? "text-[#C2410C] bg-[#FFF1E8] border-r-4 border-[#FD5302] font-bold"
                   : "text-[#64748B] hover:text-[#0F172A] hover:bg-[#F8FAFC]"
               }`}
             >
@@ -1208,7 +1208,7 @@ const ManageMenu = () => {
                   type="checkbox"
                   checked={isAllSelected}
                   onChange={toggleSelectAll}
-                  className="w-4 h-4 rounded border-[#CBD5E1] accent-[#5B42F3]"
+                  className="w-4 h-4 rounded border-[#CBD5E1] accent-[#FD5302]"
                 />
                 <span>Select All</span>
               </label>
@@ -1287,7 +1287,7 @@ const ManageMenu = () => {
               Export CSV
             </button>
 
-            <label className="h-[36px] px-3.5 rounded-xl border border-[#5B42F3] text-[#5B42F3] bg-white text-[12.5px] font-bold flex items-center gap-1 cursor-pointer hover:bg-[#EEF0FE]">
+            <label className="h-[36px] px-3.5 rounded-xl border border-[#FD5302] text-[#C2410C] bg-white text-[12.5px] font-bold flex items-center gap-1 cursor-pointer hover:bg-[#FFF1E8]">
               <span>Import CSV</span>
               <input
                 type="file"
@@ -1378,7 +1378,7 @@ const ManageMenu = () => {
                     resetCategoryForm();
                     setShowCreateCategory(true);
                   }}
-                  className="h-[36px] px-3.5 rounded-xl bg-[#5B42F3] text-white text-[12.5px] font-bold hover:bg-[#4A32E0]"
+                  className="h-[36px] px-3.5 rounded-xl bg-[#FD5302] text-white text-[12.5px] font-bold hover:bg-[#D64502]"
                   title="Add Category"
                 >
                   + Add Category
@@ -1406,7 +1406,7 @@ const ManageMenu = () => {
                       resetCategoryForm();
                       setShowCreateSubcategory(true);
                     }}
-                    className="h-[36px] px-3 rounded-xl border border-[#5B42F3] text-[#5B42F3] text-[12.5px] font-bold hover:bg-[#EEF0FE]"
+                    className="h-[36px] px-3 rounded-xl border border-[#FD5302] text-[#C2410C] text-[12.5px] font-bold hover:bg-[#FFF1E8]"
                   >
                     + Add Subcategory
                   </button>
@@ -1421,7 +1421,7 @@ const ManageMenu = () => {
                       resetProductForm();
                       setShowCreateProduct(true);
                     }}
-                    className="h-[36px] px-3 rounded-xl bg-[#5B42F3] text-white text-[12.5px] font-bold hover:bg-[#4A32E0]"
+                    className="h-[36px] px-3 rounded-xl bg-[#FD5302] text-white text-[12.5px] font-bold hover:bg-[#D64502]"
                   >
                     + Add Product
                   </button>
@@ -1438,7 +1438,7 @@ const ManageMenu = () => {
                   setAssignedDishIds(new Set());
                   setShowManageGroup(true);
                 }}
-                className="h-[36px] px-3.5 rounded-xl bg-[#5B42F3] text-white text-[12.5px] font-bold hover:bg-[#4A32E0]"
+                className="h-[36px] px-3.5 rounded-xl bg-[#FD5302] text-white text-[12.5px] font-bold hover:bg-[#D64502]"
               >
                 + Add Group
               </button>
@@ -1513,7 +1513,7 @@ const ManageMenu = () => {
                         <div key={idx} className="p-3 rounded-xl border border-[#E2E8F0] bg-white flex items-center justify-between text-[13px]">
                           <div className="min-w-0 flex-1">
                             <span className="font-bold text-[#0F172A] block truncate">{opt.name}</span>
-                            <span className="font-extrabold text-[#5B42F3]">₹{opt.price}</span>
+                            <span className="font-extrabold text-[#C2410C]">₹{opt.price}</span>
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
                             <button
@@ -1530,7 +1530,7 @@ const ManageMenu = () => {
                                 setEditingCompIndex(idx);
                                 setShowManageGroup(true);
                               }}
-                              className="h-[28px] px-2 rounded-lg border border-[#E2E8F0] text-[11px] font-bold text-[#334155] hover:bg-[#EEF0FE]"
+                              className="h-[28px] px-2 rounded-lg border border-[#E2E8F0] text-[11px] font-bold text-[#334155] hover:bg-[#FFF1E8]"
                             >
                               Edit
                             </button>
@@ -1605,7 +1605,7 @@ const ManageMenu = () => {
                         setEditingGroup(null);
                         setShowManageGroup(true);
                       }}
-                      className="h-[36px] px-4 rounded-xl bg-[#5B42F3] text-white text-[13px] font-bold hover:bg-[#4A32E0]"
+                      className="h-[36px] px-4 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold hover:bg-[#D64502]"
                     >
                       + Add Group
                     </button>
@@ -1634,7 +1634,7 @@ const ManageMenu = () => {
                           }
                         }}
                         className={`px-6 py-3.5 flex items-center justify-between gap-4 transition-colors ${
-                          selected ? "bg-[#EEF0FE]/40" : "hover:bg-[#F8FAFC]"
+                          selected ? "bg-[#FFF1E8]/40" : "hover:bg-[#F8FAFC]"
                         }`}
                       >
                         {/* Left elements: ON/OFF toggle, Checkbox, Group Name */}
@@ -1666,7 +1666,7 @@ const ManageMenu = () => {
                             checked={selected}
                             onClick={(e) => e.stopPropagation()}
                             onChange={() => toggleSelectItem(group.name)}
-                            className="w-4 h-4 rounded border-[#CBD5E1] accent-[#5B42F3] shrink-0 cursor-pointer"
+                            className="w-4 h-4 rounded border-[#CBD5E1] accent-[#FD5302] shrink-0 cursor-pointer"
                           />
 
                           {/* Group Name (Clicking opens Group Contents) */}
@@ -1675,7 +1675,7 @@ const ManageMenu = () => {
                               setActiveGroup(group);
                               setSelectedIds(new Set());
                             }}
-                            className="font-medium text-[14.5px] text-[#1E293B] cursor-pointer hover:text-[#5B42F3] truncate"
+                            className="font-medium text-[14.5px] text-[#1E293B] cursor-pointer hover:text-[#C2410C] truncate"
                           >
                             {group.name}
                           </span>
@@ -1767,7 +1767,7 @@ const ManageMenu = () => {
                     setSelectedIds(new Set());
                   }}
                   className={`px-6 py-4 flex items-center justify-between gap-4 transition-colors cursor-pointer ${
-                    selected ? "bg-[#EEF0FE]/40" : "hover:bg-[#F8FAFC]"
+                    selected ? "bg-[#FFF1E8]/40" : "hover:bg-[#F8FAFC]"
                   } ${draggedCategoryIndex === catIndex ? "opacity-50" : ""}`}
                 >
                   <div className="flex items-center gap-4 min-w-0 flex-1">
@@ -1777,7 +1777,7 @@ const ManageMenu = () => {
                       checked={selected}
                       onClick={(e) => e.stopPropagation()}
                       onChange={() => toggleSelectItem(menu._id)}
-                      className="w-4 h-4 rounded border-[#CBD5E1] accent-[#5B42F3] shrink-0"
+                      className="w-4 h-4 rounded border-[#CBD5E1] accent-[#FD5302] shrink-0"
                     />
 
                     {/* Status Toggle Switch */}
@@ -1826,7 +1826,7 @@ const ManageMenu = () => {
                         setTextColor(menu.textColor || "#ffffff");
                         setShowCreateCategory(true);
                       }}
-                      className="h-[34px] px-3.5 rounded-xl border border-[#CBD5E1] text-[#334155] text-[12px] font-bold hover:bg-[#EEF0FE]"
+                      className="h-[34px] px-3.5 rounded-xl border border-[#CBD5E1] text-[#334155] text-[12px] font-bold hover:bg-[#FFF1E8]"
                     >
                       Manage
                     </button>
@@ -1912,7 +1912,7 @@ const ManageMenu = () => {
                     onDragEnd={() => setDraggedProductIndex(null)}
                     onClick={() => setViewingProduct(item)}
                     className={`px-6 py-4 flex items-center justify-between gap-4 transition-colors cursor-pointer ${
-                      selected ? "bg-[#EEF0FE]/40" : "hover:bg-[#F8FAFC]"
+                      selected ? "bg-[#FFF1E8]/40" : "hover:bg-[#F8FAFC]"
                     } ${draggedProductIndex === prodIndex ? "opacity-50" : ""}`}
                   >
                     <div className="flex items-center gap-4 min-w-0 flex-1">
@@ -1921,7 +1921,7 @@ const ManageMenu = () => {
                         checked={selected}
                         onClick={(e) => e.stopPropagation()}
                         onChange={() => toggleSelectItem(item._id)}
-                        className="w-4 h-4 rounded border-[#CBD5E1] accent-[#5B42F3] shrink-0 cursor-pointer"
+                        className="w-4 h-4 rounded border-[#CBD5E1] accent-[#FD5302] shrink-0 cursor-pointer"
                       />
 
                       <button
@@ -1960,7 +1960,7 @@ const ManageMenu = () => {
                           </span>
                         </div>
                         {item.subcategory && (
-                          <p className="text-[11.5px] font-bold text-[#5B42F3] truncate mt-0.5">
+                          <p className="text-[11.5px] font-bold text-[#C2410C] truncate mt-0.5">
                             {item.subcategory}
                           </p>
                         )}
@@ -1970,7 +1970,7 @@ const ManageMenu = () => {
                             {item.modifierGroups.map((g) => (
                               <span
                                 key={g.name}
-                                className="px-2 py-0.5 rounded-md bg-[#EEF0FE] text-[#5B42F3] text-[10.5px] font-extrabold"
+                                className="px-2 py-0.5 rounded-md bg-[#FFF1E8] text-[#C2410C] text-[10.5px] font-extrabold"
                               >
                                 🧩 {g.name} ({(g.options || []).length})
                               </span>
@@ -1988,7 +1988,7 @@ const ManageMenu = () => {
                           e.stopPropagation();
                           populateProductForm(item);
                         }}
-                        className="h-[34px] px-3.5 rounded-xl border border-[#CBD5E1] text-[#334155] text-[12px] font-bold hover:bg-[#EEF0FE]"
+                        className="h-[34px] px-3.5 rounded-xl border border-[#CBD5E1] text-[#334155] text-[12px] font-bold hover:bg-[#FFF1E8]"
                       >
                         Manage
                       </button>
@@ -2087,16 +2087,16 @@ const ManageMenu = () => {
                                 setActiveSubcategory(subcat);
                                 setSelectedIds(new Set());
                               }}
-                              className="relative p-3 pl-4 rounded-xl border border-[#C7D2FE] bg-gradient-to-br from-[#EEF2FF] to-white shadow-sm hover:border-[#5B42F3] hover:shadow-md cursor-pointer transition-all flex items-center justify-between gap-3 overflow-hidden"
+                              className="relative p-3 pl-4 rounded-xl border border-[#FFD5BE] bg-gradient-to-br from-[#EEF2FF] to-white shadow-sm hover:border-[#FD5302] hover:shadow-md cursor-pointer transition-all flex items-center justify-between gap-3 overflow-hidden"
                             >
                               {/* Left accent strip — the strongest single cue
                                   that this is a subcategory card, not a product row. */}
                               <span
                                 aria-hidden="true"
-                                className="absolute left-0 top-0 bottom-0 w-1.5 bg-[#5B42F3]"
+                                className="absolute left-0 top-0 bottom-0 w-1.5 bg-[#FD5302]"
                               />
                               <div className="flex items-center gap-3 min-w-0 flex-1">
-                                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#5B42F3]/12 text-[#5B42F3]">
+                                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#FD5302]/12 text-[#C2410C]">
                                   <IconFolder />
                                 </span>
                                 <div className="min-w-0 flex-1">
@@ -2126,7 +2126,7 @@ const ManageMenu = () => {
                                     setTextColor(typeof subcatObj === "object" ? subcatObj?.textColor || "#ffffff" : "#ffffff");
                                     setShowCreateSubcategory(true);
                                   }}
-                                  className="h-[28px] px-2.5 rounded-lg border border-[#CBD5E1] text-[11.5px] font-bold text-[#334155] hover:bg-[#EEF0FE] hover:border-[#5B42F3]"
+                                  className="h-[28px] px-2.5 rounded-lg border border-[#CBD5E1] text-[11.5px] font-bold text-[#334155] hover:bg-[#FFF1E8] hover:border-[#FD5302]"
                                 >
                                   Manage
                                 </button>
@@ -2302,7 +2302,7 @@ const ManageMenu = () => {
                         type="checkbox"
                         checked={dispatchCol}
                         onChange={(e) => setDispatchCol(e.target.checked)}
-                        className="accent-[#5B42F3]"
+                        className="accent-[#FD5302]"
                       />
                       <span>Collection</span>
                     </label>
@@ -2312,7 +2312,7 @@ const ManageMenu = () => {
                         type="checkbox"
                         checked={dispatchDel}
                         onChange={(e) => setDispatchDel(e.target.checked)}
-                        className="accent-[#5B42F3]"
+                        className="accent-[#FD5302]"
                       />
                       <span>Delivery</span>
                     </label>
@@ -2322,7 +2322,7 @@ const ManageMenu = () => {
                         type="checkbox"
                         checked={dispatchTbl}
                         onChange={(e) => setDispatchTbl(e.target.checked)}
-                        className="accent-[#5B42F3]"
+                        className="accent-[#FD5302]"
                       />
                       <span>Table</span>
                     </label>
@@ -2434,7 +2434,7 @@ const ManageMenu = () => {
                     }}
                     className={`h-[40px] px-3 rounded-xl border text-[13px] font-extrabold flex items-center justify-center gap-2 transition-all ${
                       selectionType === "single"
-                        ? "bg-[#5B42F3] text-white border-[#5B42F3] shadow-xs"
+                        ? "bg-[#FD5302] text-white border-[#FD5302] shadow-xs"
                         : "bg-white text-[#334155] border-[#E2E8F0] hover:border-[#CBD5E1]"
                     }`}
                   >
@@ -2449,7 +2449,7 @@ const ManageMenu = () => {
                     }}
                     className={`h-[40px] px-3 rounded-xl border text-[13px] font-extrabold flex items-center justify-center gap-2 transition-all ${
                       selectionType === "multiple"
-                        ? "bg-[#5B42F3] text-white border-[#5B42F3] shadow-xs"
+                        ? "bg-[#FD5302] text-white border-[#FD5302] shadow-xs"
                         : "bg-white text-[#334155] border-[#E2E8F0] hover:border-[#CBD5E1]"
                     }`}
                   >
@@ -2563,7 +2563,7 @@ const ManageMenu = () => {
                     // components is typed once.
                     setExtraPriceInput(String(numPrice));
                   }}
-                  className="w-full h-[36px] rounded-xl bg-[#5B42F3] text-white text-[12.5px] font-bold hover:bg-[#4A32E0]"
+                  className="w-full h-[36px] rounded-xl bg-[#FD5302] text-white text-[12.5px] font-bold hover:bg-[#D64502]"
                 >
                   {editingCompIndex !== null ? "Update Component" : "+ Add Component"}
                 </button>
@@ -2581,7 +2581,7 @@ const ManageMenu = () => {
                               setExtraPriceInput(String(extra.price));
                               setEditingCompIndex(idx);
                             }}
-                            className="text-[#5B42F3] font-bold hover:underline text-[11.5px]"
+                            className="text-[#C2410C] font-bold hover:underline text-[11.5px]"
                           >
                             Edit
                           </button>
@@ -2633,7 +2633,7 @@ const ManageMenu = () => {
                               else next.add(String(item._id));
                               setAssignedDishIds(next);
                             }}
-                            className="w-4 h-4 accent-[#5B42F3]"
+                            className="w-4 h-4 accent-[#FD5302]"
                           />
                           <span>{item.name}</span>
                         </label>
@@ -2834,7 +2834,7 @@ const ManageMenu = () => {
               <div className="grid grid-cols-2 gap-3 pt-2 border-t border-[#E2E8F0]">
                 <div className="p-3 rounded-xl bg-[#F8FAFC] border">
                   <span className="text-[#64748B] text-[11px] font-bold">Standard Price</span>
-                  <p className="text-lg font-extrabold text-[#5B42F3]">₹{viewingProduct?.price || 0}</p>
+                  <p className="text-lg font-extrabold text-[#C2410C]">₹{viewingProduct?.price || 0}</p>
                 </div>
                 <div className="p-3 rounded-xl bg-[#F8FAFC] border">
                   <span className="text-[#64748B] text-[11px] font-bold">Display Status</span>
@@ -2853,7 +2853,7 @@ const ManageMenu = () => {
                       <div key={g?.name || g?._id || idx} className="p-2.5 rounded-lg bg-white border border-[#E2E8F0]">
                         <div className="flex items-center justify-between font-extrabold text-[#0F172A]">
                           <span>🧩 {g?.name || "Group"}</span>
-                          <span className="text-[10.5px] font-bold text-[#5B42F3] bg-[#EEF0FE] px-2 py-0.5 rounded-md">
+                          <span className="text-[10.5px] font-bold text-[#C2410C] bg-[#FFF1E8] px-2 py-0.5 rounded-md">
                             {g?.required ? "Required" : "Optional"} · max {g?.maxSelections || 1}
                           </span>
                         </div>
@@ -2889,7 +2889,7 @@ const ManageMenu = () => {
               {viewingProduct.schedule?.enabled && (
                 <div className="p-3 rounded-xl bg-[#F8FAFC] border text-[12px] space-y-1">
                   <p className="font-extrabold text-[#0F172A]">Product Time Schedule</p>
-                  <p className="font-bold text-[#5B42F3]">
+                  <p className="font-bold text-[#C2410C]">
                     {viewingProduct.schedule.startTime || "09:00"} – {viewingProduct.schedule.endTime || "23:00"}
                   </p>
                 </div>
@@ -2909,7 +2909,7 @@ const ManageMenu = () => {
                   setViewingProduct(null);
                   populateProductForm(item);
                 }}
-                className="flex-1 h-[42px] rounded-xl bg-[#5B42F3] text-white font-bold shadow-md hover:bg-[#4A32E0]"
+                className="flex-1 h-[42px] rounded-xl bg-[#FD5302] text-white font-bold shadow-md hover:bg-[#D64502]"
               >
                 Edit Product
               </button>
@@ -2998,7 +2998,7 @@ const ManageMenu = () => {
                           type="checkbox"
                           checked={on}
                           onChange={(e) => set(e.target.checked)}
-                          className="accent-[#5B42F3]"
+                          className="accent-[#FD5302]"
                         />
                         <span>{label}</span>
                       </label>
@@ -3021,7 +3021,7 @@ const ManageMenu = () => {
                     </button>
                   )}
                 </div>
-                <label className="mt-1 w-full h-[110px] rounded-xl border-2 border-dashed border-[#CBD5E1] bg-[#F8FAFC] flex flex-col items-center justify-center cursor-pointer hover:border-[#5B42F3] hover:bg-[#EEF0FE]/30 transition-all text-center p-2 relative overflow-hidden">
+                <label className="mt-1 w-full h-[110px] rounded-xl border-2 border-dashed border-[#CBD5E1] bg-[#F8FAFC] flex flex-col items-center justify-center cursor-pointer hover:border-[#FD5302] hover:bg-[#FFF1E8]/30 transition-all text-center p-2 relative overflow-hidden">
                   <input
                     type="file"
                     accept="image/png,image/jpeg,image/webp,image/jpg"
@@ -3062,7 +3062,7 @@ const ManageMenu = () => {
                     }}
                   />
                   {uploadingImg ? (
-                    <span className="text-[12px] font-bold text-[#5B42F3] animate-pulse">Uploading image…</span>
+                    <span className="text-[12px] font-bold text-[#C2410C] animate-pulse">Uploading image…</span>
                   ) : prodImageUrl ? (
                     <div className="relative h-full w-full flex items-center justify-center">
                       <img src={prodImageUrl} alt="Product" className="h-full object-contain rounded-lg" />
@@ -3073,7 +3073,7 @@ const ManageMenu = () => {
                   ) : (
                     <>
                       <span className="text-2xl">📸</span>
-                      <span className="text-[11.5px] font-bold text-[#5B42F3] mt-1">Click to upload or replace product image</span>
+                      <span className="text-[11.5px] font-bold text-[#C2410C] mt-1">Click to upload or replace product image</span>
                       <span className="text-[10px] text-[#94A3B8] font-semibold">PNG, JPG, WEBP up to 5MB</span>
                     </>
                   )}
@@ -3201,11 +3201,11 @@ const ManageMenu = () => {
                                     setProdAssignedGroupNames([...prodAssignedGroupNames, g.name]);
                                   }
                                 }}
-                                className="w-4 h-4 accent-[#5B42F3] shrink-0"
+                                className="w-4 h-4 accent-[#FD5302] shrink-0"
                               />
                               <span className="truncate">{g.name}</span>
                               {checked && (
-                                <span className="px-1.5 py-0.2 rounded-full bg-[#5B42F3] text-white text-[10px] font-extrabold shrink-0">
+                                <span className="px-1.5 py-0.2 rounded-full bg-[#FD5302] text-white text-[10px] font-extrabold shrink-0">
                                   #{orderIndex + 1}
                                 </span>
                               )}
@@ -3217,8 +3217,8 @@ const ManageMenu = () => {
                     </div>
 
                     {prodAssignedGroupNames.length > 0 && (
-                      <div className="p-2.5 rounded-xl bg-[#EEF0FE]/60 border border-[#C7D2FE] space-y-1">
-                        <span className="text-[11px] font-extrabold text-[#5B42F3] uppercase tracking-wider block">
+                      <div className="p-2.5 rounded-xl bg-[#FFF1E8]/60 border border-[#FFD5BE] space-y-1">
+                        <span className="text-[11px] font-extrabold text-[#C2410C] uppercase tracking-wider block">
                           Attached Order ({prodAssignedGroupNames.length})
                         </span>
                         <div className="space-y-1">
@@ -3237,7 +3237,7 @@ const ManageMenu = () => {
                                       next[idx] = temp;
                                       setProdAssignedGroupNames(next);
                                     }}
-                                    className="w-4 h-4 rounded text-[#5B42F3] hover:bg-[#EEF0FE] text-[10px]"
+                                    className="w-4 h-4 rounded text-[#C2410C] hover:bg-[#FFF1E8] text-[10px]"
                                   >▲</button>
                                 )}
                                 {idx < prodAssignedGroupNames.length - 1 && (
@@ -3251,7 +3251,7 @@ const ManageMenu = () => {
                                       next[idx] = temp;
                                       setProdAssignedGroupNames(next);
                                     }}
-                                    className="w-4 h-4 rounded text-[#5B42F3] hover:bg-[#EEF0FE] text-[10px]"
+                                    className="w-4 h-4 rounded text-[#C2410C] hover:bg-[#FFF1E8] text-[10px]"
                                   >▼</button>
                                 )}
                               </div>
@@ -3316,7 +3316,7 @@ const ManageMenu = () => {
                                 else setProdDaysOfWeek([...prodDaysOfWeek, idx].sort());
                               }}
                               className={`flex-1 h-[28px] rounded text-[10.5px] font-extrabold border ${
-                                active ? "bg-[#5B42F3] text-white border-[#5B42F3]" : "bg-white text-[#64748B] border-[#CBD5E1]"
+                                active ? "bg-[#FD5302] text-white border-[#FD5302]" : "bg-white text-[#64748B] border-[#CBD5E1]"
                               }`}
                             >
                               {dayName}
@@ -3354,7 +3354,7 @@ const ManageMenu = () => {
                   </div>
                 ) : (
                   <div className="space-y-3 p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
-                    <p className="text-[11.5px] font-bold text-[#5B42F3]">Separate Prices (POS vs Website)</p>
+                    <p className="text-[11.5px] font-bold text-[#C2410C]">Separate Prices (POS vs Website)</p>
                     <div className="grid grid-cols-3 gap-2 text-[11px]">
                       <div>
                         <label className="font-bold text-[#64748B]">POS Collection</label>
@@ -3486,7 +3486,7 @@ const ManageMenu = () => {
                         onClick={() =>
                           setBulkPickedGroups(new Set(groupsList.map((g) => g.name)))
                         }
-                        className="text-[#5B42F3] hover:underline"
+                        className="text-[#C2410C] hover:underline"
                       >
                         Select all
                       </button>
@@ -3507,7 +3507,7 @@ const ManageMenu = () => {
                           key={g.name}
                           className={`flex items-center justify-between p-2.5 rounded-xl border cursor-pointer text-[13px] font-bold transition-colors ${
                             checked
-                              ? "border-[#5B42F3] bg-[#EEF0FE]/40"
+                              ? "border-[#FD5302] bg-[#FFF1E8]/40"
                               : "border-[#E2E8F0] hover:bg-[#F8FAFC]"
                           }`}
                         >
@@ -3521,7 +3521,7 @@ const ManageMenu = () => {
                                 else next.add(g.name);
                                 setBulkPickedGroups(next);
                               }}
-                              className="w-4 h-4 accent-[#5B42F3] shrink-0"
+                              className="w-4 h-4 accent-[#FD5302] shrink-0"
                             />
                             <span className="truncate text-[#0F172A]">{g.name}</span>
                           </div>
@@ -3559,7 +3559,7 @@ const ManageMenu = () => {
                 className={`h-[40px] px-5 rounded-xl text-white text-[13px] font-extrabold shadow-md disabled:opacity-50 ${
                   bulkGroupPickerMode === "remove"
                     ? "bg-[#DC2626] hover:bg-[#B91C1C]"
-                    : "bg-[#5B42F3] hover:bg-[#4A32E0]"
+                    : "bg-[#FD5302] hover:bg-[#D64502]"
                 }`}
               >
                 {bulkAddGroupMut.isPending || bulkRemoveGroupMut.isPending
@@ -3600,7 +3600,7 @@ const ManageMenu = () => {
                 className={`w-10 h-10 rounded-full flex items-center justify-center text-[18px] font-extrabold shrink-0 ${
                   confirmState.tone === "danger"
                     ? "bg-[#FEE2E2] text-[#DC2626]"
-                    : "bg-[#EEF0FE] text-[#5B42F3]"
+                    : "bg-[#FFF1E8] text-[#C2410C]"
                 }`}
                 aria-hidden="true"
               >
@@ -3639,7 +3639,7 @@ const ManageMenu = () => {
                 className={`h-[40px] px-5 rounded-xl text-white text-[13px] font-extrabold shadow-md ${
                   confirmState.tone === "danger"
                     ? "bg-[#DC2626] hover:bg-[#B91C1C]"
-                    : "bg-[#5B42F3] hover:bg-[#4A32E0]"
+                    : "bg-[#FD5302] hover:bg-[#D64502]"
                 }`}
                 autoFocus
               >

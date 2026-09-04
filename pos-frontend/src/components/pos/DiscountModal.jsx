@@ -90,7 +90,7 @@ const DiscountModal = ({
                             key={pct}
                             type="button"
                             onClick={() => applyPreset("percent", pct)}
-                            className="h-[48px] rounded-xl bg-[#EEF0FE] text-[#5B42F3] text-[14px] font-extrabold hover:bg-[#5B42F3] hover:text-white transition-colors"
+                            className="h-[48px] rounded-xl bg-[#FFF1E8] text-[#C2410C] text-[14px] font-extrabold hover:bg-[#FD5302] hover:text-white transition-colors"
                         >
                             {pct}%
                         </button>
@@ -105,7 +105,7 @@ const DiscountModal = ({
                     onClick={() => setManual((v) => !v)}
                     className={`w-full h-[42px] rounded-xl border text-[13.5px] font-bold transition-colors ${
                         manual
-                            ? "bg-[#5B42F3] text-white border-[#5B42F3]"
+                            ? "bg-[#FD5302] text-white border-[#FD5302]"
                             : "bg-white text-[#334155] border-[#E2E8F0] hover:border-[#CBD5E1]"
                     }`}
                 >
@@ -123,7 +123,7 @@ const DiscountModal = ({
                             onClick={() => setType("percent")}
                             className={`h-[40px] rounded-lg text-[13px] font-extrabold transition-colors ${
                                 type === "percent"
-                                    ? "bg-white text-[#5B42F3] shadow-sm"
+                                    ? "bg-white text-[#C2410C] shadow-sm"
                                     : "text-[#64748B] hover:text-[#0F172A]"
                             }`}
                             aria-pressed={type === "percent"}
@@ -135,7 +135,7 @@ const DiscountModal = ({
                             onClick={() => setType("fixed")}
                             className={`h-[40px] rounded-lg text-[13px] font-extrabold transition-colors ${
                                 type === "fixed"
-                                    ? "bg-white text-[#5B42F3] shadow-sm"
+                                    ? "bg-white text-[#C2410C] shadow-sm"
                                     : "text-[#64748B] hover:text-[#0F172A]"
                             }`}
                             aria-pressed={type === "fixed"}
@@ -151,7 +151,7 @@ const DiscountModal = ({
                                 key={v}
                                 type="button"
                                 onClick={() => setValue(String(v))}
-                                className="h-[42px] rounded-xl border border-[#E2E8F0] text-[13px] font-bold text-[#334155] hover:border-[#5B42F3] hover:text-[#5B42F3]"
+                                className="h-[42px] rounded-xl border border-[#E2E8F0] text-[13px] font-bold text-[#334155] hover:border-[#FD5302] hover:text-[#C2410C]"
                             >
                                 {type === "percent" ? `${v}%` : `₹${v}`}
                             </button>
@@ -201,7 +201,7 @@ const DiscountModal = ({
 
                     <button
                         type="submit"
-                        className="w-full h-[46px] rounded-xl bg-[#5B42F3] text-white text-[14px] font-extrabold hover:bg-[#4A32E0] transition-colors"
+                        className="w-full h-[46px] rounded-xl bg-[#FD5302] text-white text-[14px] font-extrabold hover:bg-[#D64502] transition-colors"
                     >
                         Apply Discount
                     </button>

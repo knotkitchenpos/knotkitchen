@@ -21,7 +21,7 @@ const MiniCard = ({ title, icon, number, footerNum }) => {
           whileTap={{ scale: 0.9 }}
           onClick={() => navigate("/orders")}
           title={`View ${title}`}
-          className={`${isEarnings ? "bg-[#16A34A]" : "bg-gradient-to-br from-[#5B42F3] to-[#7C3AED]"} rounded-xl p-3 text-xl text-white shadow-purple`}
+          className={`${isEarnings ? "bg-[#16A34A]" : "bg-gradient-to-br from-[#FD5302] to-[#C2410C]"} rounded-xl p-3 text-xl text-white shadow-purple`}
         >
           {icon}
         </motion.button>

@@ -36,7 +36,7 @@ export const Field = ({ label, error, children }) => (
 
 export const inputCls = (bad) =>
   `w-full h-[46px] px-3.5 rounded-xl border text-[14px] text-[#0F172A] placeholder:text-[#94A3B8] transition-colors ${
-    bad ? "border-[#EF4444] bg-[#FEF2F2]" : "border-[#E2E8F0] focus:border-[#5B42F3]"
+    bad ? "border-[#EF4444] bg-[#FEF2F2]" : "border-[#E2E8F0] focus:border-[#FD5302]"
   }`;
 
 export default ModalShell;

@@ -199,7 +199,7 @@ const CalendarModal = ({ initialMode, initialFrom, initialTo, onClose, onProceed
               }}
               className={`h-[34px] px-3 rounded-lg text-[12.5px] font-bold border ${
                 mode === opt.key
-                  ? "bg-[#5B42F3] text-white border-[#5B42F3]"
+                  ? "bg-[#FD5302] text-white border-[#FD5302]"
                   : "bg-white text-[#475569] border-[#E2E8F0] hover:border-[#CBD5E1]"
               }`}
             >{opt.label}</button>
@@ -209,13 +209,13 @@ const CalendarModal = ({ initialMode, initialFrom, initialTo, onClose, onProceed
         <div className="px-5 pb-2 flex items-center justify-between">
           <button
             onClick={() => shiftMonth(-1)}
-            className="w-8 h-8 rounded-lg border border-[#E2E8F0] text-[#475569] hover:border-[#5B42F3] hover:text-[#5B42F3]"
+            className="w-8 h-8 rounded-lg border border-[#E2E8F0] text-[#475569] hover:border-[#FD5302] hover:text-[#C2410C]"
             aria-label="Previous month"
           >‹</button>
           <span className="text-[13.5px] font-extrabold text-[#0F172A]">{monthLabel}</span>
           <button
             onClick={() => shiftMonth(1)}
-            className="w-8 h-8 rounded-lg border border-[#E2E8F0] text-[#475569] hover:border-[#5B42F3] hover:text-[#5B42F3]"
+            className="w-8 h-8 rounded-lg border border-[#E2E8F0] text-[#475569] hover:border-[#FD5302] hover:text-[#C2410C]"
             aria-label="Next month"
           >›</button>
         </div>
@@ -242,16 +242,16 @@ const CalendarModal = ({ initialMode, initialFrom, initialTo, onClose, onProceed
                     ? "opacity-0"
                     : on
                     ? isRangeEndpoint
-                      ? "bg-[#5B42F3] text-white"
-                      : "bg-[#EEF0FE] text-[#5B42F3]"
+                      ? "bg-[#FD5302] text-white"
+                      : "bg-[#FFF1E8] text-[#C2410C]"
                     : isTodayCell
-                    ? "border-2 border-[#5B42F3] text-[#5B42F3] bg-[#F5F3FF] font-extrabold"
+                    ? "border-2 border-[#FD5302] text-[#C2410C] bg-[#FFF6F0] font-extrabold"
                     : "text-[#334155] hover:bg-[#F8FAFC]"
                 }`}
               >
                 <span>{d?.getDate() || ""}</span>
                 {isTodayCell && (
-                  <span className={`w-1 h-1 rounded-full mt-0.5 ${on && isRangeEndpoint ? "bg-white" : "bg-[#5B42F3]"}`} />
+                  <span className={`w-1 h-1 rounded-full mt-0.5 ${on && isRangeEndpoint ? "bg-white" : "bg-[#FD5302]"}`} />
                 )}
               </button>
             );
@@ -271,7 +271,7 @@ const CalendarModal = ({ initialMode, initialFrom, initialTo, onClose, onProceed
           >Cancel</button>
           <button
             onClick={proceed}
-            className="h-[44px] rounded-xl bg-[#5B42F3] text-white text-[13.5px] font-bold hover:bg-[#4A32E0]"
+            className="h-[44px] rounded-xl bg-[#FD5302] text-white text-[13.5px] font-bold hover:bg-[#D64502]"
           >Proceed</button>
         </div>
       </div>
@@ -374,7 +374,7 @@ const OrderDetailsModal = ({ order, onClose }) => {
             <div className="flex justify-between"><span className="text-[#475569]">Delivery charge</span><span className="font-bold">{money(order.bills?.deliveryFee)}</span></div>
             <div className="flex justify-between pt-2 mt-1 border-t border-[#E2E8F0]">
               <span className="text-[14px] font-extrabold text-[#0F172A]">Total</span>
-              <span className="text-[15px] font-extrabold text-[#5B42F3]">
+              <span className="text-[15px] font-extrabold text-[#C2410C]">
                 {money(order.bills?.totalWithTax || order.bills?.total)}
               </span>
             </div>
@@ -675,7 +675,7 @@ const Reports = () => {
             </button>
             <button
               onClick={() => setShowCalendar(true)}
-              className="h-[40px] px-4 rounded-xl bg-[#5B42F3] text-white text-[13px] font-bold flex items-center gap-1.5 hover:bg-[#4A32E0]"
+              className="h-[40px] px-4 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold flex items-center gap-1.5 hover:bg-[#D64502]"
             >
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <rect x="3" y="4" width="18" height="18" rx="2" /><path d="M16 2v4M8 2v4M3 10h18" />
@@ -700,11 +700,11 @@ const Reports = () => {
                 }}
                 className={`h-[34px] px-3 rounded-lg text-[12.5px] font-extrabold border transition-all flex items-center gap-1.5 ${
                   mode === "single" && selectedDate === today
-                    ? "bg-[#5B42F3] text-white border-[#5B42F3] shadow-xs"
+                    ? "bg-[#FD5302] text-white border-[#FD5302] shadow-xs"
                     : "bg-[#F8FAFC] text-[#334155] border-[#E2E8F0] hover:border-[#CBD5E1]"
                 }`}
               >
-                <span className={`w-2 h-2 rounded-full ${mode === "single" && selectedDate === today ? "bg-white animate-pulse" : "bg-[#5B42F3]"}`} />
+                <span className={`w-2 h-2 rounded-full ${mode === "single" && selectedDate === today ? "bg-white animate-pulse" : "bg-[#FD5302]"}`} />
                 Today
               </button>
 
@@ -719,7 +719,7 @@ const Reports = () => {
                 }}
                 className={`h-[34px] px-3 rounded-lg text-[12.5px] font-bold border transition-all ${
                   mode === "single" && selectedDate === localDay(new Date(Date.now() - 86400000))
-                    ? "bg-[#5B42F3] text-white border-[#5B42F3] shadow-xs"
+                    ? "bg-[#FD5302] text-white border-[#FD5302] shadow-xs"
                     : "bg-[#F8FAFC] text-[#334155] border-[#E2E8F0] hover:border-[#CBD5E1]"
                 }`}
               >
@@ -737,7 +737,7 @@ const Reports = () => {
                 }}
                 className={`h-[34px] px-3 rounded-lg text-[12.5px] font-bold border transition-all ${
                   mode === "range" && rangeTo === today && rangeFrom === localDay(new Date(Date.now() - 6 * 86400000))
-                    ? "bg-[#5B42F3] text-white border-[#5B42F3] shadow-xs"
+                    ? "bg-[#FD5302] text-white border-[#FD5302] shadow-xs"
                     : "bg-[#F8FAFC] text-[#334155] border-[#E2E8F0] hover:border-[#CBD5E1]"
                 }`}
               >
@@ -755,7 +755,7 @@ const Reports = () => {
                 }}
                 className={`h-[34px] px-3 rounded-lg text-[12.5px] font-bold border transition-all ${
                   mode === "range" && rangeTo === today && rangeFrom === localDay(new Date(Date.now() - 29 * 86400000))
-                    ? "bg-[#5B42F3] text-white border-[#5B42F3] shadow-xs"
+                    ? "bg-[#FD5302] text-white border-[#FD5302] shadow-xs"
                     : "bg-[#F8FAFC] text-[#334155] border-[#E2E8F0] hover:border-[#CBD5E1]"
                 }`}
               >
@@ -766,7 +766,7 @@ const Reports = () => {
             <button
               type="button"
               onClick={() => setShowCalendar(true)}
-              className="h-[34px] px-3 rounded-lg bg-[#F1F5F9] text-[#334155] hover:bg-[#EEF0FE] hover:text-[#5B42F3] text-[12.5px] font-bold flex items-center gap-1.5 transition-colors"
+              className="h-[34px] px-3 rounded-lg bg-[#F1F5F9] text-[#334155] hover:bg-[#FFF1E8] hover:text-[#C2410C] text-[12.5px] font-bold flex items-center gap-1.5 transition-colors"
             >
               <span>Select Date / Range</span>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -780,7 +780,7 @@ const Reports = () => {
           <button
             type="button"
             onClick={() => scrollStrip("left")}
-            className="absolute left-1 z-10 w-7 h-7 rounded-full bg-white/90 border border-[#CBD5E1] shadow-md flex items-center justify-center text-[#334155] hover:bg-[#5B42F3] hover:text-white hover:border-[#5B42F3] transition-all opacity-80 group-hover:opacity-100"
+            className="absolute left-1 z-10 w-7 h-7 rounded-full bg-white/90 border border-[#CBD5E1] shadow-md flex items-center justify-center text-[#334155] hover:bg-[#FD5302] hover:text-white hover:border-[#FD5302] transition-all opacity-80 group-hover:opacity-100"
             aria-label="Scroll left"
           >
             ‹
@@ -814,23 +814,23 @@ const Reports = () => {
                   }}
                   className={`shrink-0 h-[48px] px-3.5 rounded-xl border text-left transition-all flex items-center gap-2.5 ${
                     isSelected
-                      ? "bg-[#5B42F3] text-white border-[#5B42F3] shadow-xs"
+                      ? "bg-[#FD5302] text-white border-[#FD5302] shadow-xs"
                       : isToday
-                      ? "bg-[#F5F3FF] text-[#5B42F3] border-[#5B42F3] shadow-xs ring-1 ring-[#5B42F3]/40 font-bold"
+                      ? "bg-[#FFF6F0] text-[#C2410C] border-[#FD5302] shadow-xs ring-1 ring-[#FD5302]/40 font-bold"
                       : "bg-white text-[#334155] border-[#E2E8F0] hover:border-[#CBD5E1]"
                   }`}
                 >
                   <div>
-                    <p className={`text-[13px] font-extrabold leading-tight ${isSelected ? "text-white" : isToday ? "text-[#5B42F3]" : "text-[#0F172A]"}`}>
+                    <p className={`text-[13px] font-extrabold leading-tight ${isSelected ? "text-white" : isToday ? "text-[#C2410C]" : "text-[#0F172A]"}`}>
                       {parts.day} {parts.month}
                     </p>
-                    <p className={`text-[10.5px] font-medium leading-none mt-0.5 ${isSelected ? "text-white/80" : isToday ? "text-[#5B42F3]/80" : "text-[#94A3B8]"}`}>
+                    <p className={`text-[10.5px] font-medium leading-none mt-0.5 ${isSelected ? "text-white/80" : isToday ? "text-[#C2410C]/80" : "text-[#94A3B8]"}`}>
                       {parts.weekday}
                     </p>
                   </div>
                   {isToday && (
                     <span className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded-full uppercase tracking-wider ${
-                      isSelected ? "bg-white/25 text-white" : "bg-[#5B42F3] text-white shadow-xs"
+                      isSelected ? "bg-white/25 text-white" : "bg-[#FD5302] text-white shadow-xs"
                     }`}>
                       Today
                     </span>
@@ -843,7 +843,7 @@ const Reports = () => {
           <button
             type="button"
             onClick={() => scrollStrip("right")}
-            className="absolute right-1 z-10 w-7 h-7 rounded-full bg-white/90 border border-[#CBD5E1] shadow-md flex items-center justify-center text-[#334155] hover:bg-[#5B42F3] hover:text-white hover:border-[#5B42F3] transition-all opacity-80 group-hover:opacity-100"
+            className="absolute right-1 z-10 w-7 h-7 rounded-full bg-white/90 border border-[#CBD5E1] shadow-md flex items-center justify-center text-[#334155] hover:bg-[#FD5302] hover:text-white hover:border-[#FD5302] transition-all opacity-80 group-hover:opacity-100"
             aria-label="Scroll right"
           >
             ›
@@ -858,14 +858,14 @@ const Reports = () => {
             {isFetching && !isLoading ? " · updating…" : ""}
             <button
               onClick={() => refetch()}
-              className="ml-3 text-[12px] font-bold text-[#5B42F3] hover:underline"
+              className="ml-3 text-[12px] font-bold text-[#C2410C] hover:underline"
             >Refresh</button>
           </p>
         )}
 
         {/* ===== Summary (Module 5 §5) ===== */}
         <div className="mt-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-          <SummaryCard label="Total Orders" count={s.total.count} amount={s.total.amount} tint="#5B42F3" />
+          <SummaryCard label="Total Orders" count={s.total.count} amount={s.total.amount} tint="#FD5302" />
           <SummaryCard label="System Orders" count={s.system.count} amount={s.system.amount} />
           <SummaryCard label="Website Orders" count={s.website.count} amount={s.website.amount} />
           <SummaryCard label="Outside Orders" count={s.outside.count} amount={s.outside.amount} />
@@ -886,7 +886,7 @@ const Reports = () => {
           </div>
           {isLoading ? (
             <div className="flex justify-center py-16">
-              <div className="w-8 h-8 rounded-full border-[3px] border-[#5B42F3] border-t-transparent animate-spin" />
+              <div className="w-8 h-8 rounded-full border-[3px] border-[#FD5302] border-t-transparent animate-spin" />
             </div>
           ) : orders.length === 0 ? (
             <p className="text-center text-[13.5px] text-[#94A3B8] py-14">
@@ -909,7 +909,7 @@ const Reports = () => {
                   <span className="text-[12px] font-bold px-2 py-[3px] rounded-md bg-[#F1F5F9] text-[#334155] shrink-0">
                     {orderTypeLabel(o.orderType)}
                   </span>
-                  <span className="text-[11.5px] font-bold px-2 py-[3px] rounded-md bg-[#EEF0FE] text-[#5B42F3] shrink-0">
+                  <span className="text-[11.5px] font-bold px-2 py-[3px] rounded-md bg-[#FFF1E8] text-[#C2410C] shrink-0">
                     {sourceLabel(o.source)}
                   </span>
                   <span className="text-[11.5px] text-[#64748B] flex-1 truncate">

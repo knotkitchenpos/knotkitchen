@@ -72,13 +72,13 @@ const PaymentLinkResultModal = ({ result, onClose }) => {
                     <input
                         readOnly
                         value={url}
-                        className="flex-1 h-[44px] px-3.5 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] text-[13px] text-[#0F172A] font-mono truncate focus:border-[#5B42F3]"
+                        className="flex-1 h-[44px] px-3.5 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] text-[13px] text-[#0F172A] font-mono truncate focus:border-[#FD5302]"
                         onFocus={(e) => e.target.select()}
                     />
                     <button
                         type="button"
                         onClick={copy}
-                        className="h-[44px] px-4 rounded-xl bg-[#5B42F3] text-white text-[13px] font-extrabold hover:bg-[#4A32E0]"
+                        className="h-[44px] px-4 rounded-xl bg-[#FD5302] text-white text-[13px] font-extrabold hover:bg-[#D64502]"
                     >
                         {copied ? "Copied!" : "Copy"}
                     </button>
@@ -108,7 +108,7 @@ const PaymentLinkResultModal = ({ result, onClose }) => {
                     href={url}
                     target="_blank"
                     rel="noreferrer"
-                    className="h-[46px] rounded-xl border border-[#5B42F3] bg-white text-[#5B42F3] text-[13.5px] font-bold flex items-center justify-center hover:bg-[#EEF0FE]"
+                    className="h-[46px] rounded-xl border border-[#FD5302] bg-white text-[#C2410C] text-[13.5px] font-bold flex items-center justify-center hover:bg-[#FFF1E8]"
                 >
                     Open link
                 </a>

@@ -135,7 +135,7 @@ const Metrics = () => {
         <div className="relative" ref={dropdownRef}>
           <button
             onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-            className="flex items-center gap-1 px-4 py-2 rounded-xl text-[#0F172A] bg-white border border-[#E2E8F0] hover:border-[#5B42F3] transition-colors"
+            className="flex items-center gap-1 px-4 py-2 rounded-xl text-[#0F172A] bg-white border border-[#E2E8F0] hover:border-[#FD5302] transition-colors"
           >
             {selectedRange}
             <svg
@@ -160,7 +160,7 @@ const Metrics = () => {
                   }}
                   className={`w-full flex items-center justify-between px-4 py-2.5 text-sm font-medium bg-white hover:bg-[#F8FAFC] transition-colors ${
                     selectedRange === range.label
-                      ? "text-[#5B42F3]"
+                      ? "text-[#C2410C]"
                       : "text-[#334155]"
                   }`}
                 >

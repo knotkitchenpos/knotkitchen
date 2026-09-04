@@ -22,7 +22,7 @@ const SupportIllustration = () => (
     <circle cx="150" cy="100" r="1.5" fill="#94A3B8" />
     <circle cx="160" cy="100" r="1.5" fill="#94A3B8" />
     <circle cx="130" cy="110" r="1.5" fill="#94A3B8" />
-    <circle cx="140" cy="110" r="1.5" fill="#5B42F3" />
+    <circle cx="140" cy="110" r="1.5" fill="#FD5302" />
     <circle cx="150" cy="110" r="1.5" fill="#94A3B8" />
 
     {/* Shelf books */}
@@ -203,7 +203,7 @@ const Support = () => {
             <p className="text-[13px] font-bold text-[#64748B]">Support Helpline</p>
             <a
               href="tel:+919876543210"
-              className="text-[16px] font-extrabold text-[#0F172A] hover:text-[#5B42F3] transition-colors block"
+              className="text-[16px] font-extrabold text-[#0F172A] hover:text-[#C2410C] transition-colors block"
             >
               +91 98765 43210
             </a>
@@ -216,14 +216,14 @@ const Support = () => {
             <div
               key={option.id}
               onClick={() => handleOptionClick(option)}
-              className="p-5 rounded-2xl bg-[#F8F5FA] border border-[#F1EBF5] hover:border-[#E2D6EE] hover:bg-[#F3EDF7] cursor-pointer transition-all shadow-sm group"
+              className="p-5 rounded-2xl bg-[#FDF6F2] border border-[#FBEDE4] hover:border-[#F7E5D8] hover:bg-[#FBEDE4] cursor-pointer transition-all shadow-sm group"
             >
               <div className="flex items-start gap-4">
                 <div className="w-10 h-10 rounded-xl bg-white flex items-center justify-center shrink-0 shadow-sm group-hover:scale-105 transition-transform">
                   {option.icon}
                 </div>
                 <div className="min-w-0 flex-1 space-y-1">
-                  <h3 className="text-[15px] font-extrabold text-[#0F172A] group-hover:text-[#5B42F3] transition-colors">
+                  <h3 className="text-[15px] font-extrabold text-[#0F172A] group-hover:text-[#C2410C] transition-colors">
                     {option.title}
                   </h3>
                   <p className="text-[13px] text-[#64748B] font-medium leading-relaxed">
@@ -242,7 +242,7 @@ const Support = () => {
           <div className="w-full max-w-[440px] bg-white rounded-2xl p-6 shadow-2xl space-y-5 text-[#0F172A]">
             <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
               <h3 className="text-[18px] font-extrabold flex items-center gap-2">
-                <FiPhoneCall className="text-[#5B42F3]" />
+                <FiPhoneCall className="text-[#C2410C]" />
                 Request A Call Back
               </h3>
               <button
@@ -268,7 +268,7 @@ const Support = () => {
                   value={phoneInput}
                   onChange={(e) => setPhoneInput(e.target.value)}
                   placeholder="e.g. 9876543210"
-                  className="w-full h-[40px] px-3 rounded-xl border border-[#E2E8F0] font-bold text-[#0F172A] focus:border-[#5B42F3]"
+                  className="w-full h-[40px] px-3 rounded-xl border border-[#E2E8F0] font-bold text-[#0F172A] focus:border-[#FD5302]"
                 />
               </div>
 
@@ -328,7 +328,7 @@ const Support = () => {
           <div className="w-full max-w-[460px] bg-white rounded-2xl p-6 shadow-2xl space-y-5 text-[#0F172A]">
             <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-[#F8F5FA] flex items-center justify-center">
+                <div className="w-9 h-9 rounded-xl bg-[#FDF6F2] flex items-center justify-center">
                   {selectedIssue.icon}
                 </div>
                 <h3 className="text-[17px] font-extrabold">{selectedIssue.title}</h3>

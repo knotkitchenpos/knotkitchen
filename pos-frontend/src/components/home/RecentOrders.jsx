@@ -28,7 +28,7 @@ const RecentOrders = () => {
         </div>
         <button
           onClick={() => navigate("/orders")}
-          className="flex items-center gap-2 text-sm font-semibold text-[#5B42F3] transition-all hover:gap-3"
+          className="flex items-center gap-2 text-sm font-semibold text-[#C2410C] transition-all hover:gap-3"
         >
           View all <FiArrowRight />
         </button>

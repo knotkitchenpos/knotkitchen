@@ -97,7 +97,7 @@ const PrintTableQRModal = ({ isOpen, onClose, table }) => {
       }
       .qr-frame img { display: block; width: 176px; height: 176px; }
       .scan {
-        margin: 14px 0 0; font-size: 11px; font-weight: 800; color: #5B42F3;
+        margin: 14px 0 0; font-size: 11px; font-weight: 800; color: #FD5302;
         text-transform: uppercase; letter-spacing: 0.14em;
       }
       .footer { margin: 18px 0 0; font-size: 9px; font-weight: 700; color: #94A3B8; }
@@ -212,7 +212,7 @@ const PrintTableQRModal = ({ isOpen, onClose, table }) => {
                 </div>
               )}
             </div>
-            <p className="mt-3 text-xs font-black text-[#5B42F3] uppercase tracking-widest">
+            <p className="mt-3 text-xs font-black text-[#C2410C] uppercase tracking-widest">
               Scan Code To View Menu &amp; Order
             </p>
           </div>
@@ -232,7 +232,7 @@ const PrintTableQRModal = ({ isOpen, onClose, table }) => {
           <button
             type="button"
             onClick={handlePrint}
-            className="flex-1 py-2.5 rounded-xl bg-[#5B42F3] text-white text-xs font-bold hover:bg-[#4A32E0]"
+            className="flex-1 py-2.5 rounded-xl bg-[#FD5302] text-white text-xs font-bold hover:bg-[#D64502]"
           >
             🖨️ Print QR Card
           </button>

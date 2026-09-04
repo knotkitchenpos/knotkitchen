@@ -62,7 +62,7 @@ const SecurityPinModal = ({ isOpen, onClose, onSuccess, title = "Security Author
               onChange={(e) => setPin(e.target.value)}
               placeholder="e.g. 8796"
               autoFocus
-              className="w-full h-11 px-3 rounded-xl border border-[#E2E8F0] font-bold text-center text-lg tracking-widest text-[#0F172A] focus:outline-none focus:border-[#5B42F3]"
+              className="w-full h-11 px-3 rounded-xl border border-[#E2E8F0] font-bold text-center text-lg tracking-widest text-[#0F172A] focus:outline-none focus:border-[#FD5302]"
             />
           </div>
 
@@ -83,7 +83,7 @@ const SecurityPinModal = ({ isOpen, onClose, onSuccess, title = "Security Author
             <button
               type="submit"
               disabled={loading}
-              className="px-5 py-2.5 rounded-xl bg-[#5B42F3] text-white text-xs font-bold hover:bg-[#4A32E0] disabled:opacity-50"
+              className="px-5 py-2.5 rounded-xl bg-[#FD5302] text-white text-xs font-bold hover:bg-[#D64502] disabled:opacity-50"
             >
               {loading ? "Verifying…" : actionLabel}
             </button>

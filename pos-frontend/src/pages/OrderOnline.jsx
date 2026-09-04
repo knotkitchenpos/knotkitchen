@@ -290,14 +290,14 @@ export default function OrderOnline() {
   }
 
   const brandName = restaurant?.name || "KnotKitchen";
-  const primary = restaurant?.branding?.primaryColor || "#FF5A00";
+  const primary = restaurant?.branding?.primaryColor || "#FD5302";
 
   return (
     <div className="min-h-screen bg-slate-50 pb-32">
       {/* ── Sticky brand header ─────────────────────────────────────── */}
       <header
         className="sticky top-0 z-30 text-white shadow-sm"
-        style={{ background: `linear-gradient(135deg, ${primary} 0%, #0F172A 130%)` }}
+        style={{ background: `linear-gradient(135deg, ${primary} 0%, #021E49 130%)` }}
       >
         <div className="max-w-3xl mx-auto px-4 pt-4 pb-3">
           <div className="flex items-start justify-between gap-3">

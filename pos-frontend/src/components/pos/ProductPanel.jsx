@@ -12,7 +12,7 @@ const TILE_COLORS = [
   "#F97316", "#F97316", "#F97316", "#F4511E", "#EF4444",
   "#2563EB", "#2563EB", "#2563EB", "#2563EB", "#2563EB",
   "#F0A020", "#F0A020", "#16A34A", "#16A34A", "#16A34A",
-  "#5B21B6", "#5B21B6", "#5B21B6", "#5B21B6",
+  "#9A3412", "#9A3412", "#9A3412", "#9A3412",
 ];
 
 /* ---------- Schedule + pricing helpers (business logic preserved) ---------- */
@@ -492,7 +492,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Search product or category..."
-            className="w-full h-[40px] pl-10 pr-9 rounded-xl border border-[#E2E8F0] bg-white text-[13.5px] text-[#0F172A] placeholder:text-[#94A3B8] focus:border-[#5B42F3]"
+            className="w-full h-[40px] pl-10 pr-9 rounded-xl border border-[#E2E8F0] bg-white text-[13.5px] text-[#0F172A] placeholder:text-[#94A3B8] focus:border-[#FD5302]"
           />
           {q && (
             <button
@@ -506,14 +506,14 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
 
         <button
           onClick={onAddCategory}
-          className="h-[40px] px-3.5 rounded-xl border border-[#5B42F3] text-[#5B42F3] bg-white text-[13px] font-bold flex items-center gap-1.5 hover:bg-[#EEF0FE] transition-colors"
+          className="h-[40px] px-3.5 rounded-xl border border-[#FD5302] text-[#C2410C] bg-white text-[13px] font-bold flex items-center gap-1.5 hover:bg-[#FFF1E8] transition-colors"
         >
           <IconPlus size={14} /> Add Category
         </button>
 
         <button
           onClick={onAddProduct}
-          className="h-[40px] px-3.5 rounded-xl bg-[#5B42F3] text-white text-[13px] font-bold flex items-center gap-1.5 hover:bg-[#4A32E0] transition-colors"
+          className="h-[40px] px-3.5 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold flex items-center gap-1.5 hover:bg-[#D64502] transition-colors"
         >
           <IconPlus size={14} /> Add Product
         </button>
@@ -522,7 +522,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
           <button
             onClick={() => setView("grid")}
             className={`w-[40px] h-full flex items-center justify-center transition-colors ${
-              view === "grid" ? "bg-[#5B42F3] text-white" : "bg-white text-[#94A3B8] hover:text-[#0F172A]"
+              view === "grid" ? "bg-[#FD5302] text-white" : "bg-white text-[#94A3B8] hover:text-[#0F172A]"
             }`}
             title="Grid view"
           >
@@ -531,7 +531,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
           <button
             onClick={() => setView("list")}
             className={`w-[40px] h-full flex items-center justify-center border-l border-[#E2E8F0] transition-colors ${
-              view === "list" ? "bg-[#5B42F3] text-white" : "bg-white text-[#94A3B8] hover:text-[#0F172A]"
+              view === "list" ? "bg-[#FD5302] text-white" : "bg-white text-[#94A3B8] hover:text-[#0F172A]"
             }`}
             title="List view"
           >
@@ -568,7 +568,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
 
             <button
               onClick={onAddCategory}
-              className="h-[38px] px-3.5 rounded-lg border border-dashed border-[#CBD5E1] bg-[#F8FAFC] text-[#475569] text-[12.5px] font-bold flex items-center gap-1 hover:border-[#5B42F3] hover:text-[#5B42F3] transition-colors"
+              className="h-[38px] px-3.5 rounded-lg border border-dashed border-[#CBD5E1] bg-[#F8FAFC] text-[#475569] text-[12.5px] font-bold flex items-center gap-1 hover:border-[#FD5302] hover:text-[#C2410C] transition-colors"
             >
               <IconPlus size={13} /> Add Category
             </button>
@@ -576,20 +576,20 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
 
           {category && (
             <div className="mt-2.5 flex items-center gap-1.5 text-[12px]">
-              <button onClick={() => setCatId(null)} className="text-[#94A3B8] font-semibold hover:text-[#5B42F3]">
+              <button onClick={() => setCatId(null)} className="text-[#94A3B8] font-semibold hover:text-[#C2410C]">
                 All Categories
               </button>
               <span className="text-[#CBD5E1]"><IconChevron /></span>
               <button
                 onClick={() => setSubcat(null)}
-                className={`font-bold ${subcat ? "text-[#94A3B8] hover:text-[#5B42F3]" : "text-[#5B42F3]"}`}
+                className={`font-bold ${subcat ? "text-[#94A3B8] hover:text-[#C2410C]" : "text-[#C2410C]"}`}
               >
                 {category.name}
               </button>
               {subcat && (
                 <>
                   <span className="text-[#CBD5E1]"><IconChevron /></span>
-                  <span className="font-bold text-[#5B42F3]">{subcat}</span>
+                  <span className="font-bold text-[#C2410C]">{subcat}</span>
                 </>
               )}
             </div>
@@ -603,7 +603,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
         {showPopular && menus.length > 0 && (
           <button
             onClick={() => setCatId(menus[0]._id)}
-            className="text-[12.5px] font-bold text-[#5B42F3] underline underline-offset-2"
+            className="text-[12.5px] font-bold text-[#C2410C] underline underline-offset-2"
           >
             View All
           </button>
@@ -611,7 +611,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
         {subcat && (
           <button
             onClick={() => setSubcat(null)}
-            className="text-[12.5px] font-bold text-[#5B42F3] underline underline-offset-2"
+            className="text-[12.5px] font-bold text-[#C2410C] underline underline-offset-2"
           >
             Back to {category.name}
           </button>
@@ -622,13 +622,13 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
       <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-5">
         {isLoading ? (
           <div className="flex justify-center py-20">
-            <div className="w-9 h-9 rounded-full border-[3px] border-[#5B42F3] border-t-transparent animate-spin" />
+            <div className="w-9 h-9 rounded-full border-[3px] border-[#FD5302] border-t-transparent animate-spin" />
           </div>
         ) : menus.length === 0 ? (
           <div className="text-center py-20">
             <p className="text-[15px] font-bold text-[#0F172A]">No categories yet</p>
             <p className="text-[13px] text-[#94A3B8] mt-1">Create your first category to start adding products.</p>
-            <button onClick={onAddCategory} className="mt-4 h-[42px] px-5 rounded-xl bg-[#5B42F3] text-white text-[14px] font-bold">
+            <button onClick={onAddCategory} className="mt-4 h-[42px] px-5 rounded-xl bg-[#FD5302] text-white text-[14px] font-bold">
               Add Category
             </button>
           </div>
@@ -642,7 +642,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
                 <button
                   key={s}
                   onClick={() => setSubcat(s)}
-                  className="text-left p-4 rounded-xl border border-[#E2E8F0] bg-white hover:border-[#5B42F3] hover:shadow-md transition-all"
+                  className="text-left p-4 rounded-xl border border-[#E2E8F0] bg-white hover:border-[#FD5302] hover:shadow-md transition-all"
                 >
                   <p className="text-[15px] font-extrabold text-[#0F172A]">{s}</p>
                   <p className="text-[12px] text-[#94A3B8] mt-1">{n} items</p>
@@ -652,7 +652,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
           </div>
         ) : popLoading && showPopular ? (
           <div className="flex justify-center py-16">
-            <div className="w-8 h-8 rounded-full border-[3px] border-[#5B42F3] border-t-transparent animate-spin" />
+            <div className="w-8 h-8 rounded-full border-[3px] border-[#FD5302] border-t-transparent animate-spin" />
           </div>
         ) : products.length === 0 ? (
           <div className="text-center py-16 text-[14px] text-[#94A3B8]">
@@ -689,7 +689,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
                   className={`group text-left rounded-xl border border-[#E2E8F0] bg-white overflow-hidden transition-all ${
                     off
                       ? "opacity-55 cursor-not-allowed"
-                      : "hover:border-[#5B42F3] hover:shadow-md active:scale-[0.98]"
+                      : "hover:border-[#FD5302] hover:shadow-md active:scale-[0.98]"
                   }`}
                 >
                   {/* Image with veg mark overlay (top-left) */}
@@ -740,7 +740,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
                   className={`w-full text-left flex items-center gap-3 p-2.5 rounded-xl border border-[#E2E8F0] bg-white transition-all ${
                     off
                       ? "opacity-55 cursor-not-allowed"
-                      : "hover:border-[#5B42F3] hover:shadow-sm active:scale-[0.99]"
+                      : "hover:border-[#FD5302] hover:shadow-sm active:scale-[0.99]"
                   }`}
                 >
                   <div className="relative w-11 h-11 rounded-lg overflow-hidden bg-[#F1F5F9] shrink-0 flex items-center justify-center">
@@ -789,7 +789,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
                       onClick={() => setSelectedVariantId(v._id || v.id || v.name)}
                       className={`p-2.5 rounded-xl border text-[12.5px] font-bold text-left transition-all ${
                         selectedVariantId === (v._id || v.id || v.name)
-                          ? "border-[#5B42F3] bg-[#EEF0FE] text-[#5B42F3]"
+                          ? "border-[#FD5302] bg-[#FFF1E8] text-[#C2410C]"
                           : "border-[#E2E8F0] hover:bg-[#F8FAFC]"
                       }`}
                     >
@@ -846,7 +846,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
                   <div className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-[13px] font-extrabold text-[#0F172A] truncate">{group?.name || "Group"}</span>
-                      <span className="text-[10.5px] font-extrabold px-2 py-0.5 rounded-full bg-[#EEF0FE] text-[#5B42F3] shrink-0">
+                      <span className="text-[10.5px] font-extrabold px-2 py-0.5 rounded-full bg-[#FFF1E8] text-[#C2410C] shrink-0">
                         {groupTotalQty} / {groupMax}
                       </span>
                     </div>
@@ -887,21 +887,21 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
                           aria-pressed={chosen}
                           className={`h-[52px] px-2.5 rounded-xl border text-left transition-all flex flex-col justify-center min-w-0 ${
                             chosen
-                              ? "border-[#5B42F3] bg-[#EEF0FE] shadow-sm"
-                              : "border-[#E2E8F0] bg-white hover:border-[#5B42F3] hover:bg-[#F8FAFC]"
+                              ? "border-[#FD5302] bg-[#FFF1E8] shadow-sm"
+                              : "border-[#E2E8F0] bg-white hover:border-[#FD5302] hover:bg-[#F8FAFC]"
                           } ${atCap ? "opacity-50 cursor-not-allowed" : ""}`}
                           title={opt?.name || ""}
                         >
                           <span
                             className={`text-[12.5px] font-extrabold leading-tight truncate ${
-                              chosen ? "text-[#5B42F3]" : "text-[#0F172A]"
+                              chosen ? "text-[#C2410C]" : "text-[#0F172A]"
                             }`}
                           >
                             {opt?.name || ""}
                           </span>
                           <span
                             className={`text-[11.5px] font-bold leading-tight mt-0.5 ${
-                              chosen ? "text-[#5B42F3]" : "text-[#475569]"
+                              chosen ? "text-[#C2410C]" : "text-[#475569]"
                             }`}
                           >
                             ₹{opt.price}
@@ -923,7 +923,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
               <button
                 type="button"
                 onClick={handlePosCustomizedAdd}
-                className="h-[42px] px-6 rounded-xl bg-[#5B42F3] text-white text-[13.5px] font-extrabold shadow-md hover:bg-[#4A32E0]"
+                className="h-[42px] px-6 rounded-xl bg-[#FD5302] text-white text-[13.5px] font-extrabold shadow-md hover:bg-[#D64502]"
               >
                 Add to Cart
               </button>

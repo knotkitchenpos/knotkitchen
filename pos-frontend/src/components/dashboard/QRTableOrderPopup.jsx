@@ -127,7 +127,7 @@ const QRTableOrderPopup = () => {
   return (
     <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
       <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl overflow-hidden border border-[#E2E8F0]">
-        <div className="px-6 py-5 bg-gradient-to-r from-[#5B42F3] to-[#7C3AED] text-white flex items-center justify-between">
+        <div className="px-6 py-5 bg-gradient-to-r from-[#FD5302] to-[#C2410C] text-white flex items-center justify-between">
           <div>
             <p className="text-[11px] font-bold uppercase tracking-widest text-white/80">
               New Table Order · Scanned QR
@@ -161,7 +161,7 @@ const QRTableOrderPopup = () => {
             </div>
             <div className="text-right shrink-0">
               <p className="text-[11px] font-bold text-[#94A3B8] uppercase tracking-wide">Total</p>
-              <p className="text-[22px] font-extrabold text-[#5B42F3]">
+              <p className="text-[22px] font-extrabold text-[#C2410C]">
                 ₹{total.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
             </div>
@@ -184,7 +184,7 @@ const QRTableOrderPopup = () => {
                       </p>
                     )}
                     {it.note && (
-                      <p className="text-[11px] text-[#5B42F3] font-semibold truncate">Note: {it.note}</p>
+                      <p className="text-[11px] text-[#C2410C] font-semibold truncate">Note: {it.note}</p>
                     )}
                   </div>
                   <span className="shrink-0 font-extrabold text-[#0F172A]">
@@ -221,7 +221,7 @@ const QRTableOrderPopup = () => {
               dismiss();
               navigate("/orders");
             }}
-            className="w-full text-[12px] font-bold text-[#64748B] hover:text-[#5B42F3]"
+            className="w-full text-[12px] font-bold text-[#64748B] hover:text-[#C2410C]"
           >
             View in Orders
           </button>

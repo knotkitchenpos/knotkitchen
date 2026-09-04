@@ -13,7 +13,7 @@ const FullScreenLoader = () => {
         {/* Animated Rings */}
         <div className="relative w-16 h-16 flex items-center justify-center">
           <div className="absolute inset-0 rounded-full border-4 border-t-[#FF6A1F] border-r-transparent border-b-transparent border-l-transparent animate-spin" />
-          <div className="absolute inset-2 rounded-full border-4 border-t-transparent border-r-[#5B42F3] border-b-transparent border-l-transparent animate-spin [animation-duration:1.5s]" />
+          <div className="absolute inset-2 rounded-full border-4 border-t-transparent border-r-[#FD5302] border-b-transparent border-l-transparent animate-spin [animation-duration:1.5s]" />
           <div className="w-4 h-4 rounded-full bg-[#FF6A1F]" />
         </div>
 

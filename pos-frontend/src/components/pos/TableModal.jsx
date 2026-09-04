@@ -70,7 +70,7 @@ const TableModal = ({ tables = [], busy, onClose, onConfirm }) => {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search table number…"
-          className="w-full h-[44px] px-3.5 rounded-xl border border-[#E2E8F0] text-[14px] focus:border-[#5B42F3]"
+          className="w-full h-[44px] px-3.5 rounded-xl border border-[#E2E8F0] text-[14px] focus:border-[#FD5302]"
         />
 
         {areas.length > 0 && (
@@ -112,8 +112,8 @@ const TableModal = ({ tables = [], busy, onClose, onConfirm }) => {
                     off
                       ? "bg-[#FEF2F2] border-[#FECACA] cursor-not-allowed opacity-70"
                       : on
-                      ? "bg-[#5B42F3] border-[#5B42F3] text-white shadow-md"
-                      : "bg-white border-[#E2E8F0] hover:border-[#5B42F3]"
+                      ? "bg-[#FD5302] border-[#FD5302] text-white shadow-md"
+                      : "bg-white border-[#E2E8F0] hover:border-[#FD5302]"
                   }`}
                   title={off ? "Table is occupied" : `Seats ${t.capacity}`}
                 >
@@ -156,7 +156,7 @@ const TableModal = ({ tables = [], busy, onClose, onConfirm }) => {
               max={picked.capacity || 4}
               value={guests}
               onChange={(e) => setGuests(e.target.value)}
-              className="w-full h-[46px] px-3.5 rounded-xl border border-[#E2E8F0] text-[14px] focus:border-[#5B42F3]"
+              className="w-full h-[46px] px-3.5 rounded-xl border border-[#E2E8F0] text-[14px] focus:border-[#FD5302]"
             />
             <p className="text-[11.5px] text-[#94A3B8] mt-1">
               Table {picked.tableNumber} seats up to {picked.capacity} customers.
@@ -177,7 +177,7 @@ const TableModal = ({ tables = [], busy, onClose, onConfirm }) => {
           <button
             onClick={confirm}
             disabled={busy || !picked}
-            className="h-[48px] rounded-xl bg-[#5B42F3] text-white text-[14px] font-bold hover:bg-[#4A32E0] disabled:opacity-50"
+            className="h-[48px] rounded-xl bg-[#FD5302] text-white text-[14px] font-bold hover:bg-[#D64502] disabled:opacity-50"
           >
             {busy ? "Completing…" : "Complete Order"}
           </button>
@@ -193,7 +193,7 @@ const AreaChip = ({ active, onClick, children }) => (
     onClick={onClick}
     className={`shrink-0 px-3.5 py-1.5 rounded-full text-[12.5px] font-extrabold transition-colors ${
       active
-        ? "bg-[#5B42F3] text-white"
+        ? "bg-[#FD5302] text-white"
         : "bg-[#F8FAFC] border border-[#E2E8F0] text-[#64748B] hover:text-[#0F172A]"
     }`}
   >

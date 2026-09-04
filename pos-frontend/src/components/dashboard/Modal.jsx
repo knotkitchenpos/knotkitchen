@@ -79,7 +79,7 @@ const Modal = ({ setIsTableModalOpen }) => {
                 name="tableNo"
                 value={tableData.tableNo}
                 onChange={handleInputChange}
-              className="w-full h-[46px] px-3.5 rounded-xl border border-[#E2E8F0] bg-white text-[#0F172A] focus:outline-none focus:border-[#5B42F3]"
+              className="w-full h-[46px] px-3.5 rounded-xl border border-[#E2E8F0] bg-white text-[#0F172A] focus:outline-none focus:border-[#FD5302]"
                 required
               />
             </div>
@@ -94,13 +94,13 @@ const Modal = ({ setIsTableModalOpen }) => {
                 name="seats"
                 value={tableData.seats}
                 onChange={handleInputChange}
-              className="w-full h-[46px] px-3.5 rounded-xl border border-[#E2E8F0] bg-white text-[#0F172A] focus:outline-none focus:border-[#5B42F3]"
+              className="w-full h-[46px] px-3.5 rounded-xl border border-[#E2E8F0] bg-white text-[#0F172A] focus:outline-none focus:border-[#FD5302]"
                 required
               />
             </div>
           </div>
 
-          <button type="submit" className="w-full h-[46px] mt-6 rounded-xl bg-[#5B42F3] text-white font-bold hover:bg-[#4A32E0] transition-colors">
+          <button type="submit" className="w-full h-[46px] mt-6 rounded-xl bg-[#FD5302] text-white font-bold hover:bg-[#D64502] transition-colors">
             Add Table
           </button>
         </form>

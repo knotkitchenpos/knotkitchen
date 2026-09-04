@@ -81,7 +81,7 @@ function Layout() {
         {/* Mobile menu button */}
         <button
           onClick={() => setMobileOpen(true)}
-          className="lg:hidden fixed bottom-5 left-5 z-30 w-12 h-12 rounded-full bg-[#5B42F3] text-white shadow-lg flex items-center justify-center"
+          className="lg:hidden fixed bottom-5 left-5 z-30 w-12 h-12 rounded-full bg-[#FD5302] text-white shadow-lg flex items-center justify-center"
           aria-label="Open menu"
         >
           <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">

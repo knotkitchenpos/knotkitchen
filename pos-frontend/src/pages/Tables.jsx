@@ -425,7 +425,7 @@ const Tables = () => {
                 resetForm();
                 setIsAddModalOpen(true);
               }}
-              className="px-4 py-2.5 rounded-xl bg-[#5B42F3] text-white text-xs font-bold hover:bg-[#4A32E0] flex items-center gap-2"
+              className="px-4 py-2.5 rounded-xl bg-[#FD5302] text-white text-xs font-bold hover:bg-[#D64502] flex items-center gap-2"
             >
               <FiPlus size={16} /> Add Table
             </button>
@@ -436,7 +436,7 @@ const Tables = () => {
         <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2 text-xs font-bold text-[#475569]">
-              <FiLayers size={16} className="text-[#5B42F3]" />
+              <FiLayers size={16} className="text-[#C2410C]" />
               <span>Floors & Areas</span>
             </div>
             <div className="flex items-center gap-4">
@@ -462,7 +462,7 @@ const Tables = () => {
               </label>
               <button
                 onClick={() => setIsAreaModalOpen(true)}
-                className="text-xs font-bold text-[#5B42F3] hover:underline flex items-center gap-1"
+                className="text-xs font-bold text-[#C2410C] hover:underline flex items-center gap-1"
               >
                 + Add Custom Area
               </button>
@@ -474,7 +474,7 @@ const Tables = () => {
               onClick={() => setSelectedArea("all")}
               className={`px-4 py-2 rounded-xl text-xs font-extrabold transition-colors shrink-0 ${
                 selectedArea === "all"
-                  ? "bg-[#5B42F3] text-white shadow-sm"
+                  ? "bg-[#FD5302] text-white shadow-sm"
                   : "bg-[#F8FAFC] border border-[#E2E8F0] text-[#64748B] hover:text-[#0F172A]"
               }`}
             >
@@ -494,7 +494,7 @@ const Tables = () => {
                   key={a}
                   className={`inline-flex items-stretch rounded-xl overflow-hidden shrink-0 ${
                     isActive
-                      ? "bg-[#5B42F3] text-white shadow-sm"
+                      ? "bg-[#FD5302] text-white shadow-sm"
                       : "bg-[#F8FAFC] border border-[#E2E8F0] text-[#64748B]"
                   }`}
                 >
@@ -565,7 +565,7 @@ const Tables = () => {
                       e.stopPropagation();
                       setQrModalTable(table);
                     }}
-                    className="p-1.5 rounded-lg bg-white border border-[#E2E8F0] text-[#5B42F3] shadow-md hover:scale-105"
+                    className="p-1.5 rounded-lg bg-white border border-[#E2E8F0] text-[#C2410C] shadow-md hover:scale-105"
                     title="View QR Code"
                   >
                     <IconQr size={13} />
@@ -619,7 +619,7 @@ const Tables = () => {
                 if (selectedArea !== "all") setArea(selectedArea);
                 setIsAddModalOpen(true);
               }}
-              className="mt-4 px-4 py-2 rounded-xl bg-[#5B42F3] text-white text-xs font-bold hover:bg-[#4A32E0]"
+              className="mt-4 px-4 py-2 rounded-xl bg-[#FD5302] text-white text-xs font-bold hover:bg-[#D64502]"
             >
               + Add Table
             </button>
@@ -694,7 +694,7 @@ const Tables = () => {
                   value={displayId}
                   onChange={(e) => setDisplayId(e.target.value)}
                   placeholder="e.g. GF-T1"
-                  className="w-full h-11 px-3 rounded-xl border border-[#E2E8F0] font-bold text-sm text-[#0F172A] focus:outline-none focus:border-[#5B42F3]"
+                  className="w-full h-11 px-3 rounded-xl border border-[#E2E8F0] font-bold text-sm text-[#0F172A] focus:outline-none focus:border-[#FD5302]"
                   required
                 />
               </div>
@@ -706,7 +706,7 @@ const Tables = () => {
                 <select
                   value={area}
                   onChange={(e) => setArea(e.target.value)}
-                  className="w-full h-11 px-3 rounded-xl border border-[#E2E8F0] font-bold text-sm text-[#0F172A] focus:outline-none focus:border-[#5B42F3]"
+                  className="w-full h-11 px-3 rounded-xl border border-[#E2E8F0] font-bold text-sm text-[#0F172A] focus:outline-none focus:border-[#FD5302]"
                 >
                   {allAreas.map((a) => (
                     <option key={a} value={a}>{a}</option>
@@ -724,7 +724,7 @@ const Tables = () => {
                   max="100"
                   value={capacity}
                   onChange={(e) => setCapacity(e.target.value)}
-                  className="w-full h-11 px-3 rounded-xl border border-[#E2E8F0] font-bold text-sm text-[#0F172A] focus:outline-none focus:border-[#5B42F3]"
+                  className="w-full h-11 px-3 rounded-xl border border-[#E2E8F0] font-bold text-sm text-[#0F172A] focus:outline-none focus:border-[#FD5302]"
                   required
                 />
               </div>
@@ -735,7 +735,7 @@ const Tables = () => {
                   type="checkbox"
                   checked={isEnabled}
                   onChange={(e) => setIsEnabled(e.target.checked)}
-                  className="w-5 h-5 accent-[#5B42F3]"
+                  className="w-5 h-5 accent-[#FD5302]"
                 />
               </div>
 
@@ -753,7 +753,7 @@ const Tables = () => {
                 <button
                   type="submit"
                   disabled={addTableMutation.isPending || updateTableMutation.isPending}
-                  className="px-5 py-2.5 rounded-xl bg-[#5B42F3] text-white font-bold hover:bg-[#4A32E0] disabled:opacity-50"
+                  className="px-5 py-2.5 rounded-xl bg-[#FD5302] text-white font-bold hover:bg-[#D64502] disabled:opacity-50"
                 >
                   {editingTable ? "Save Changes" : "Create Table"}
                 </button>
@@ -804,7 +804,7 @@ const Tables = () => {
                       enqueueSnackbar(`Area "${newAreaInput.trim()}" created!`, { variant: "success" });
                     }
                   }}
-                  className="px-4 py-2 rounded-xl bg-[#5B42F3] text-white font-bold"
+                  className="px-4 py-2 rounded-xl bg-[#FD5302] text-white font-bold"
                 >
                   Add Area
                 </button>
@@ -832,7 +832,7 @@ const Tables = () => {
 
             <div className="p-4 bg-[#F8FAFC] rounded-2xl border border-[#E2E8F0] space-y-3">
               <p className="text-xs font-bold text-[#475569]">Area: {qrModalTable.area || qrModalTable.floor}</p>
-              <p className="text-xs text-[#94A3B8]">Token: <code className="font-mono text-[#5B42F3]">{qrModalTable.qrToken ? qrModalTable.qrToken.slice(0, 16) + "…" : "N/A"}</code></p>
+              <p className="text-xs text-[#94A3B8]">Token: <code className="font-mono text-[#C2410C]">{qrModalTable.qrToken ? qrModalTable.qrToken.slice(0, 16) + "…" : "N/A"}</code></p>
 
               {/* Scannable QR rendered locally (no external API).
                   We always render the modern /t/:token URL so scanning
@@ -841,7 +841,7 @@ const Tables = () => {
               <div className="flex justify-center">
                 <div className="p-3 bg-white rounded-xl border border-[#E2E8F0] shadow-sm">
                   {qrFetching ? (
-                    <div className="w-[180px] h-[180px] flex items-center justify-center text-[11px] text-[#5B42F3] font-bold text-center px-3">
+                    <div className="w-[180px] h-[180px] flex items-center justify-center text-[11px] text-[#C2410C] font-bold text-center px-3">
                       Generating secure QR…
                     </div>
                   ) : qrModalTable.qrToken ? (
@@ -880,7 +880,7 @@ const Tables = () => {
                   navigator.clipboard.writeText(url);
                   enqueueSnackbar("QR Link copied to clipboard!", { variant: "success" });
                 }}
-                className="flex-1 py-2.5 rounded-xl border border-[#5B42F3] text-[#5B42F3] text-xs font-bold"
+                className="flex-1 py-2.5 rounded-xl border border-[#FD5302] text-[#C2410C] text-xs font-bold"
               >
                 Copy Link
               </button>
@@ -889,7 +889,7 @@ const Tables = () => {
                   setPrintModalTable(qrModalTable);
                   setQrModalTable(null);
                 }}
-                className="flex-1 py-2.5 rounded-xl bg-[#5B42F3] text-white text-xs font-bold"
+                className="flex-1 py-2.5 rounded-xl bg-[#FD5302] text-white text-xs font-bold"
               >
                 🖨️ Print QR Card
               </button>
