@@ -784,14 +784,11 @@ const OrderTypesAutoReadyView = () => {
 
       {/* Module 7 §5: Auto-Ready Settings */}
       <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
-        <div>
-          <h4 className="text-[15px] font-extrabold text-[#0F172A]">Auto-Ready Durations</h4>
-          <p className="text-[12px] text-[#94A3B8]">Server-authoritative timer to automatically transition Preparing → Ready</p>
-        </div>
+        <h4 className="text-[15px] font-extrabold text-[#0F172A]">Auto-Ready Durations</h4>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[13px]">
           <div>
-            <label className="text-[11.5px] font-bold text-[#94A3B8]">Collection (Default: 20m)</label>
+            <label className="text-[11.5px] font-bold text-[#94A3B8]">Collection</label>
             <input
               type="number"
               min={0}
@@ -801,7 +798,7 @@ const OrderTypesAutoReadyView = () => {
             />
           </div>
           <div>
-            <label className="text-[11.5px] font-bold text-[#94A3B8]">Delivery (Default: 45m)</label>
+            <label className="text-[11.5px] font-bold text-[#94A3B8]">Delivery</label>
             <input
               type="number"
               min={0}
@@ -811,7 +808,7 @@ const OrderTypesAutoReadyView = () => {
             />
           </div>
           <div>
-            <label className="text-[11.5px] font-bold text-[#94A3B8]">Table (Default: 20m)</label>
+            <label className="text-[11.5px] font-bold text-[#94A3B8]">Table</label>
             <input
               type="number"
               min={0}
@@ -835,12 +832,7 @@ const OrderTypesAutoReadyView = () => {
 
       {/* Auto-Complete Duration Settings */}
       <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
-        <div>
-          <h4 className="text-[15px] font-extrabold text-[#0F172A]">Auto-Complete Duration</h4>
-          <p className="text-[12px] text-[#94A3B8]">
-            Set how long an order remains active before it is automatically marked as Completed (e.g. 15m, 30m, 1h, 2h or Custom). Leave Disabled for manual POS completion.
-          </p>
-        </div>
+        <h4 className="text-[15px] font-extrabold text-[#0F172A]">Auto-Complete Duration</h4>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[13px]">
           {/* Collection */}
