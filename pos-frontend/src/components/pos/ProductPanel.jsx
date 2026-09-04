@@ -140,6 +140,9 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
   const [view, setView] = useState("grid");
   const [q, setQ] = useState("");
   const [catId, setCatId] = useState(null);
+  // "View All" under Popular Items. Without a mode of its own it used to
+  // just select menus[0], so it showed the FIRST category rather than all.
+  const [viewAll, setViewAll] = useState(false);
   const [subcat, setSubcat] = useState(null);
 
   // POS Product Customization Modal (Module 8)
@@ -183,6 +186,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
   useEffect(() => {
     const id = location.state?.selectedCategoryId;
     if (id && menus.some((m) => m._id === id)) {
+      setViewAll(false);
       setCatId(id);
       setSubcat(null);
     }
@@ -240,7 +244,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
     );
   }, [q, allItems]);
 
-  const showPopular = !searching && !category;
+  const showPopular = !searching && !category && !viewAll;
   const { data: popRes, isLoading: popLoading } = useQuery({
     queryKey: ["popular-items"],
     queryFn: () => getPopularItems({ limit: 12, days: 30 }),
@@ -263,7 +267,13 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
     );
   }, [category, hasSubcats, subcat, categoryItems]);
 
-  const products = searching ? searchResults : showPopular ? popular : catProducts;
+  const products = searching
+    ? searchResults
+    : viewAll
+    ? allItems
+    : showPopular
+    ? popular
+    : catProducts;
 
   /**
    * Click-to-add (§3).
@@ -468,6 +478,8 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
 
   const heading = searching
     ? `Search Results (${searchResults.length})`
+    : viewAll
+    ? `All Products (${allItems.length})`
     : showPopular
     ? "Popular Items"
     : hasSubcats && !subcat
@@ -556,7 +568,10 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
               return (
                 <button
                   key={m._id}
-                  onClick={() => setCatId(on ? null : m._id)}
+                  onClick={() => {
+                    setViewAll(false);
+                    setCatId(on ? null : m._id);
+                  }}
                   style={{ background: TILE_COLORS[i % TILE_COLORS.length] }}
                   className={`h-[38px] px-3.5 rounded-lg text-white text-[12.5px] font-bold leading-tight max-w-[220px] truncate transition-all ${
                     on ? "ring-[3px] ring-[#0F172A]/25 shadow-md scale-[1.02]" : "hover:brightness-110"
@@ -604,10 +619,18 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
         <h2 className="text-[16px] font-extrabold text-[#0F172A]">{heading}</h2>
         {showPopular && menus.length > 0 && (
           <button
-            onClick={() => setCatId(menus[0]._id)}
+            onClick={() => setViewAll(true)}
             className="text-[12.5px] font-bold text-[#C2410C] underline underline-offset-2"
           >
             View All
+          </button>
+        )}
+        {viewAll && (
+          <button
+            onClick={() => setViewAll(false)}
+            className="text-[12.5px] font-bold text-[#C2410C] underline underline-offset-2"
+          >
+            Back to Popular Items
           </button>
         )}
         {subcat && (
@@ -660,6 +683,8 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
           <div className="text-center py-16 text-[14px] text-[#94A3B8]">
             {searching
               ? "No products match your search."
+              : viewAll
+              ? "No products in any category yet."
               : showPopular
               ? "No popular items yet — pick a category above."
               : "No products in this section."}

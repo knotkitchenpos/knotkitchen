@@ -1,6 +1,5 @@
 const Menu = require("../models/menuModel");
 const createHttpError = require("http-errors");
-const { publishAllMenusForUser } = require("./menuController");
 
 /**
  * Menu tenancy scope.
@@ -356,14 +355,20 @@ const confirmCsvImport = async (req, res, next) => {
       createdProducts += items.length;
     }
 
-    // CSV Import Requirement: Automatically publish live to both System and Website caches immediately
-    await publishAllMenusForUser(req.user, "system");
-    await publishAllMenusForUser(req.user, "website");
-
+    // An import lands in the DRAFT and stops there.
+    //
+    // This used to call publishAllMenusForUser for "system" and "website"
+    // right here, so a CSV went live on the tills and the website the
+    // instant it was uploaded, with no chance to check it. Worse, it
+    // published EVERY menu the user owns, not just the imported ones, so an
+    // import also pushed out unrelated edits that were still being worked
+    // on. Publishing is the operator's decision, taken in Manage Cache.
     res.status(200).json({
       success: true,
-      message: `Menu imported and published live! Added ${createdCategories} categories and ${createdProducts} products.`,
-      data: { createdCategories, createdProducts },
+      message:
+        `Imported ${createdCategories} categories and ${createdProducts} products into your draft menu. ` +
+        `Publish from Manage Cache to make them live on the POS and website.`,
+      data: { createdCategories, createdProducts, published: false },
     });
   } catch (error) {
     next(error);
