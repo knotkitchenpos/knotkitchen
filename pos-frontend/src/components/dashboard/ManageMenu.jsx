@@ -1820,7 +1820,7 @@ const ManageMenu = () => {
                         setDispatchCol(Boolean(dt.collection));
                         setDispatchDel(Boolean(dt.delivery));
                         setDispatchTbl(Boolean(dt.table));
-                        setBgColor(menu.bgColor || "#5b45b0");
+                        setBgColor(menu.bgColor || "#FD5302");
                         setCatShowOnPos(menu.showOnPos === true);
                         setCatShowOnWebsite(menu.showOnWebsite === true);
                         setTextColor(menu.textColor || "#ffffff");
