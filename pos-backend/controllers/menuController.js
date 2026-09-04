@@ -2,6 +2,7 @@ const Menu = require("../models/menuModel");
 const createHttpError = require("http-errors");
 const mongoose = require("mongoose");
 const { logActivity } = require("../services/auditService");
+const { normalizeCap } = require("../services/modifierGroups");
 
 /**
  * Menu tenancy scope.
@@ -614,7 +615,7 @@ const bulkAddGroupToDishes = async (req, res, next) => {
             item.modifierGroups.push({
               name: groupName,
               required: Boolean(required),
-              maxSelections: Number(maxSelections) || 1,
+              ...normalizeCap(req.body),
               options: normalizedOptions,
             });
             count++;
@@ -626,7 +627,7 @@ const bulkAddGroupToDishes = async (req, res, next) => {
             if (existingOptsEmpty) {
               existing.options = normalizedOptions;
               existing.required = Boolean(required);
-              existing.maxSelections = Number(maxSelections) || existing.maxSelections || 1;
+              Object.assign(existing, normalizeCap(req.body));
               count++;
               modified = true;
             }
@@ -732,15 +733,14 @@ const saveModifierGroupToDishes = async (req, res, next) => {
 
         item.modifierGroups = item.modifierGroups || [];
         // A cap only means anything when the operator switched it on; OFF is
-        // "as many as you like".
-        const capOn = Boolean(maxSelectionEnabled);
-        const cap = capOn ? Math.max(1, Number(maxSelections) || 1) : 1;
+        // "as many as you like". The number is kept either way, so turning
+        // the cap back on restores the figure instead of resetting it to 1.
+        const cap = normalizeCap(req.body);
 
         const existing = item.modifierGroups.find((g) => g.name === groupName);
         if (existing) {
           existing.required = Boolean(required);
-          existing.maxSelectionEnabled = capOn;
-          existing.maxSelections = cap;
+          Object.assign(existing, cap);
           existing.options = validatedOptions;
           // isActive and sortOrder are owned by their own endpoints — saving a
           // group's contents must not silently switch it back on or move it.
@@ -748,8 +748,7 @@ const saveModifierGroupToDishes = async (req, res, next) => {
           item.modifierGroups.push({
             name: groupName,
             required: Boolean(required),
-            maxSelectionEnabled: capOn,
-            maxSelections: cap,
+            ...cap,
             options: validatedOptions,
             // Land new groups at the end of the existing order.
             sortOrder: item.modifierGroups.length,
@@ -923,7 +922,7 @@ const addModifierGroup = async (req, res, next) => {
     item.modifierGroups.push({
       name,
       required: Boolean(required),
-      maxSelections: Number(maxSelections || 1),
+      ...normalizeCap(req.body),
       options: Array.isArray(options) ? options.map((o) => ({ name: o.name, price: Number(o.price || 0) })) : [],
     });
     await menu.save();

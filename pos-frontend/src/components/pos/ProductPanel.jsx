@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 import { enqueueSnackbar } from "notistack";
+import { capOf } from "../../utils/modifierGroups";
 import { getMenus, getPopularItems } from "../../https";
 import { addItems } from "../../redux/slices/cartSlice";
 import { ModalShell } from "./ModalShell";
@@ -305,7 +306,8 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
       // Enforce group-level maxSelections when INCREASING (a decrement can
       // never violate the cap).
       if (delta > 0) {
-        const max = Math.max(1, Number(group.maxSelections) || 1);
+        // Infinity when Maximum Selection is off, so the cap simply never bites.
+        const max = capOf(group);
         const totalForGroup = Object.values(groupMap).reduce(
           (s, q) => s + (Number(q) || 0),
           0,
@@ -822,7 +824,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
                 (s, q) => s + (Number(q) || 0),
                 0,
               );
-              const groupMax = Math.max(1, Number(group.maxSelections) || 1);
+              const groupMax = capOf(group);
               const singleChoice = groupMax === 1;
 
               const toggleOption = (opt, optId, currentlyChosen) => {

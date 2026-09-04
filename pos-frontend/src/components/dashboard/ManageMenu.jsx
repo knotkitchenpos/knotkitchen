@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
+import { selectionTypeOf } from "../../utils/modifierGroups";
 import {
   addCategory,
   updateCategory,
@@ -1433,6 +1434,7 @@ const ManageMenu = () => {
                   setGroupName("");
                   setGroupRequired(false);
                   setGroupMax("1");
+                  setSelectionType("single");
                   setExtrasList([]);
                   setGroupMaxEnabled(false);
                   setAssignedDishIds(new Set());
@@ -1484,6 +1486,7 @@ const ManageMenu = () => {
                         setGroupRequired(activeGroup.required);
                         setGroupMax(String(activeGroup.maxSelections || 1));
                         setGroupMaxEnabled(activeGroup.maxSelectionEnabled === true);
+                        setSelectionType(selectionTypeOf(activeGroup));
                         setExtrasList((activeGroup.options || []).map((o) => ({ name: o?.name || "", price: String(o?.price ?? "0") })));
                         setAssignedDishIds(new Set(activeGroup.dishIds));
                         setShowManageGroup(true);
@@ -1523,6 +1526,7 @@ const ManageMenu = () => {
                                 setGroupRequired(activeGroup.required);
                                 setGroupMax(String(activeGroup.maxSelections || 1));
                                 setGroupMaxEnabled(activeGroup.maxSelectionEnabled === true);
+                                setSelectionType(selectionTypeOf(activeGroup));
                                 setExtrasList((activeGroup.options || []).map((o) => ({ name: o?.name || "", price: String(o?.price ?? "0") })));
                                 setAssignedDishIds(new Set(activeGroup.dishIds));
                                 setExtraNameInput(opt.name);
@@ -1599,6 +1603,7 @@ const ManageMenu = () => {
                         setGroupName("");
                         setGroupRequired(false);
                         setGroupMax("1");
+                        setSelectionType("single");
                         setExtrasList([]);
                         setGroupMaxEnabled(false);
                         setAssignedDishIds(new Set());
@@ -1692,6 +1697,7 @@ const ManageMenu = () => {
                               setGroupRequired(group.required);
                               setGroupMax(String(group.maxSelections || 1));
                               setGroupMaxEnabled(group.maxSelectionEnabled === true);
+                              setSelectionType(selectionTypeOf(group));
                               setExtrasList((group.options || []).map((o) => ({ name: o?.name || "", price: String(o?.price ?? "0") })));
                               setAssignedDishIds(new Set(group.dishIds));
                               setShowManageGroup(true);

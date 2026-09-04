@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { capOf } from "../../utils/modifierGroups";
 
 /**
  * Options a diner must pick before a product can go in the cart.
@@ -14,9 +15,10 @@ import { useMemo, useState } from "react";
  * fact:
  *   - variants: exactly one, and mandatory whenever the product has any;
  *   - a `required` group needs at least one option;
- *   - a group caps its selections at `maxSelections` UNLESS Maximum Selection
- *     is explicitly off (`maxSelectionEnabled === false`), which means any
- *     number. Groups predating that flag keep their cap.
+ *   - a group caps its selections at `maxSelections` only when Maximum
+ *     Selection is explicitly ON; off means any number. The rule lives in
+ *     utils/modifierGroups so this sheet, the till, the storefront and the
+ *     server cannot drift apart again.
  */
 const ProductOptionsSheet = ({ item, currency = "₹", primary = "#FD5302", onClose, onAdd }) => {
   const variants = useMemo(() => (Array.isArray(item?.variants) ? item.variants : []), [item]);
@@ -36,11 +38,6 @@ const ProductOptionsSheet = ({ item, currency = "₹", primary = "#FD5302", onCl
   const money = (n) => `${currency}${Number(n || 0).toFixed(2)}`;
   const groupKey = (g, i) => String(g._id || g.name || i);
   const optionKey = (o, i) => String(o._id || o.name || i);
-
-  const capOf = (g) => {
-    if (g.maxSelectionEnabled === false) return Infinity;
-    return Math.max(1, Number(g.maxSelections) || 1);
-  };
 
   const toggleOption = (g, gi, o, oi) => {
     const gk = groupKey(g, gi);

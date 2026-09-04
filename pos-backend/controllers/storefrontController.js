@@ -86,6 +86,9 @@ const toPublicProduct = (item, menu, timezone) => {
       required: Boolean(g.required),
       minSelections: Number(g.minSelections) || 0,
       maxSelections: Number(g.maxSelections) || 1,
+      // Without this the storefront cannot tell a capped group from an
+      // uncapped one, so it capped everything.
+      maxSelectionEnabled: g.maxSelectionEnabled === true,
       groupType: g.groupType || "addon",
       options: (g.options || [])
         .filter((o) => o.isAvailable !== false)

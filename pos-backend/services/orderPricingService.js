@@ -1,5 +1,6 @@
 const { isItemAvailableNow, getEffectivePrice } = require("./businessHours");
 const { calculateDistanceKm, computeDeliveryFeeFromSlabs } = require("./distanceService");
+const { capFor } = require("./modifierGroups");
 
 
 /**
@@ -149,11 +150,13 @@ const priceLine = (line, itemIndex, timezone, pricingContext = {}) => {
     if (group.isActive === false) continue;
     const chosen = byGroup.get(String(group._id)) || [];
     const min = group.required ? Math.max(1, Number(group.minSelections) || 1) : Number(group.minSelections) || 0;
-    const max = Number(group.maxSelections) || 1;
+    // Honour Maximum Selection. This used to cap at maxSelections no matter
+    // what the flag said, so a group switched to "no limit" still refused.
+    const max = capFor(group);
     if (chosen.length < min) {
       throw new PricingError(`Please choose ${min} option(s) for "${group.name}" on ${item.name}.`);
     }
-    if (max > 0 && chosen.length > max) {
+    if (chosen.length > max) {
       throw new PricingError(`You may choose at most ${max} option(s) for "${group.name}".`);
     }
     modifierSelections.push(...chosen);

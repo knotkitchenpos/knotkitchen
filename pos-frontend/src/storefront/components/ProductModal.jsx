@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { formatPrice } from "../theme";
+import { capOf } from "../../utils/modifierGroups";
 
 /**
  * Product customization sheet (§9).
@@ -59,7 +60,8 @@ const ProductModal = ({ product, currencySymbol, allowNotes = true, onClose, onA
   const toggleOption = (group, optionId) => {
     setSelections((prev) => {
       const chosen = prev[group.id] || [];
-      const max = group.maxSelections || 1;
+      // Infinity when Maximum Selection is off -- "no limit" means no limit.
+      const max = capOf(group);
 
       if (chosen.includes(optionId)) {
         return { ...prev, [group.id]: chosen.filter((o) => o !== optionId) };
@@ -183,8 +185,10 @@ const ProductModal = ({ product, currencySymbol, allowNotes = true, onClose, onA
                 {group.required ? <span className="text-red-500">*</span> : null}
               </legend>
               <p className="text-xs text-[var(--sf-muted)] mb-2">
-                {group.maxSelections > 1
-                  ? `Choose up to ${group.maxSelections}`
+                {capOf(group) === Infinity
+                  ? "Choose any"
+                  : capOf(group) > 1
+                  ? `Choose up to ${capOf(group)}`
                   : "Choose 1"}
               </p>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
