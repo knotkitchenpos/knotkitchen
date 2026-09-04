@@ -770,32 +770,59 @@ const saveModifierGroupToDishes = async (req, res, next) => {
   }
 };
 
+/**
+ * Remove one or more groups from every product they are attached to.
+ *
+ * Accepts `groupNames: []` for a bulk delete, or `groupName` for a single
+ * one. Deleting several used to mean one request PER group, fired in
+ * parallel by the client. Each request loaded the same Menu documents and
+ * called save(); the first bumped __v and every later save hit a
+ * VersionError, so the first group vanished and the rest returned 500.
+ *
+ * The removal is now a single atomic $pull across all named groups. No
+ * document is loaded to be written back, so there is no version to conflict
+ * over even if two operators delete at the same moment.
+ *
+ * Only the DRAFT (`items`) is touched, matching the previous behaviour and
+ * Manage Cache: the tills and website keep serving their published snapshot
+ * until someone republishes.
+ */
 const deleteGroupFromDishes = async (req, res, next) => {
   try {
-    const { groupName } = req.body;
-    if (!groupName || !String(groupName).trim()) {
+    const raw = Array.isArray(req.body?.groupNames)
+      ? req.body.groupNames
+      : [req.body?.groupName];
+
+    const names = [...new Set(raw.map((n) => String(n || "").trim()).filter(Boolean))];
+    if (names.length === 0) {
       return next(createHttpError(400, "Group Name is required!"));
     }
 
-    const menus = await Menu.find(menuScopeFor(req.user));
-    let count = 0;
+    const scope = menuScopeFor(req.user);
 
-    for (const menu of menus) {
-      let modified = false;
-      for (const item of menu.items) {
-        if (item.modifierGroups && item.modifierGroups.length > 0) {
-          const initialLen = item.modifierGroups.length;
-          item.modifierGroups = item.modifierGroups.filter((g) => g.name !== groupName.trim());
-          if (item.modifierGroups.length < initialLen) {
-            count++;
-            modified = true;
-          }
+    // Counted from a read-only copy purely so the response can say how many
+    // attachments went. lean() means no document is tracked for saving.
+    const before = await Menu.find(scope).lean();
+    let count = 0;
+    for (const menu of before) {
+      for (const item of menu.items || []) {
+        for (const g of item.modifierGroups || []) {
+          if (names.includes(String(g?.name || "").trim())) count += 1;
         }
       }
-      if (modified) await menu.save();
     }
 
-    res.status(200).json({ success: true, message: `Group "${groupName}" deleted successfully!`, count });
+    await Menu.updateMany(scope, {
+      $pull: { "items.$[].modifierGroups": { name: { $in: names } } },
+    });
+
+    const label = names.length === 1 ? `Group "${names[0]}"` : `${names.length} groups`;
+    res.status(200).json({
+      success: true,
+      message: `${label} deleted successfully!`,
+      count,
+      deleted: names,
+    });
   } catch (error) {
     next(error);
   }

@@ -392,10 +392,16 @@ const ManageMenu = () => {
     mutationFn: deleteGroupFromDishes,
     onSuccess: (res, variables) => {
       enqueueSnackbar(res?.data?.message || "Group deleted!", { variant: "success" });
-      if (variables?.groupName) {
+      // Bulk sends groupNames, the single Delete button sends groupName.
+      // Missing the array form here left deleted groups showing in the list
+      // until the next refetch.
+      const removed = Array.isArray(variables?.groupNames)
+        ? variables.groupNames
+        : [variables?.groupName].filter(Boolean);
+      if (removed.length > 0) {
         setCustomCreatedGroups((prev) => {
           const next = { ...prev };
-          delete next[variables.groupName];
+          removed.forEach((name) => delete next[name]);
           return next;
         });
       }
@@ -917,8 +923,10 @@ const ManageMenu = () => {
       tone: "danger",
       onConfirm: () => {
         if (selectionScope === "group") {
-          // Groups are keyed by name and deleted through their own endpoint.
-          selectedIds.forEach((groupName) => deleteGroupMut.mutate({ groupName }));
+          // ONE request, for the same reason as products below: a delete per
+          // group raced the same Menu document, so the first succeeded and
+          // every one after it came back 500.
+          deleteGroupMut.mutate({ groupNames: Array.from(selectedIds) });
         } else if (selectionScope === "product") {
           // ONE request. Firing a delete per id raced the same Menu document
           // and 500'd on everything after the first.
