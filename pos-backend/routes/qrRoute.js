@@ -131,6 +131,11 @@ router.route("/table/:token").get(resolveTableScope, async (req, res, next) => {
               currency: restaurant.currency || "INR",
               branding: restaurant.branding || {},
               address: restaurant.address || {},
+              // Whether this store can take money online at all. The diner
+              // must not be offered "Pay online" against a store with no
+              // gateway -- the button would simply fail. Only the boolean is
+              // exposed; keys never leave the server.
+              onlinePaymentEnabled: Boolean(restaurant.razorpay && restaurant.razorpay.isConfigured),
             }
           : null,
         menu,

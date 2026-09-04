@@ -4,6 +4,7 @@ import { useDispatch, useSelector } from "react-redux";
 import TableCard from "../components/tables/TableCard";
 import GuestCountModal from "../components/tables/GuestCountModal";
 import SessionDetailModal from "../components/tables/SessionDetailModal";
+import TableSettleModal from "../components/tables/TableSettleModal";
 import SecurityPinModal from "../components/common/SecurityPinModal";
 import PrintTableQRModal from "../components/tables/PrintTableQRModal";
 import { checkActionAuthorization } from "../utils/security";
@@ -15,6 +16,7 @@ import {
   deleteTable,
   getTableById,
   getTableSessionById,
+  recordTableSessionPayment,
   regenerateQr,
   getOrCreateTableQr,
   getTableSettings,
@@ -89,6 +91,7 @@ const Tables = () => {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [editingTable, setEditingTable] = useState(null);
   const [qrModalTable, setQrModalTable] = useState(null);
+  const [settleTarget, setSettleTarget] = useState(null);
   const [qrFetching, setQrFetching] = useState(false);
   const [printModalTable, setPrintModalTable] = useState(null);
   const [isAreaModalOpen, setIsAreaModalOpen] = useState(false);
@@ -215,6 +218,41 @@ const Tables = () => {
     }
     actionFn();
   };
+
+  /**
+   * Settle a table and let it go.
+   *
+   * The server marks the session PAID, then CLOSED, then puts the table into
+   * its cooldown; the sweeper returns it to "available" once the configured
+   * wait has passed. Because the closed session no longer counts as active,
+   * the next customer to scan the same QR gets a fresh order page -- the QR
+   * itself never changes.
+   */
+  const settleMutation = useMutation({
+    mutationFn: ({ sessionId, method, amount }) =>
+      recordTableSessionPayment(sessionId, {
+        method,
+        amount,
+        // A double-tap on a slow connection must not take payment twice.
+        idempotencyKey: `settle-${sessionId}-${method}-${amount}`,
+      }),
+    onSuccess: (res) => {
+      const mins = res?.data?.data?.cooldownMinutes;
+      enqueueSnackbar(
+        res?.data?.message ||
+          `Paid. The table frees up${mins ? ` in ${mins} min` : " shortly"}.`,
+        { variant: "success" },
+      );
+      setSettleTarget(null);
+      setSessionTable(null);
+      setSessionData(null);
+      queryClient.invalidateQueries({ queryKey: ["tables"] });
+    },
+    onError: (e) =>
+      enqueueSnackbar(e.response?.data?.message || "Could not complete this table.", {
+        variant: "error",
+      }),
+  });
 
   const addTableMutation = useMutation({
     mutationFn: addTable,
@@ -559,7 +597,10 @@ const Tables = () => {
             {filteredTables.map((table) => (
               <div key={table._id} className="relative group">
                 {/* Table Control Overlays */}
-                <div className="absolute top-2 right-2 z-20 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                {/* Hidden-until-hover ONLY where a pointer can hover. A phone or
+                    tablet has no hover state, so these controls were simply
+                    invisible there -- QR, Edit and Delete were unreachable. */}
+                <div className="absolute top-2 right-2 z-20 flex gap-1.5 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -641,6 +682,7 @@ const Tables = () => {
         <SessionDetailModal
           table={sessionTable}
           session={sessionData}
+          onComplete={() => setSettleTarget({ table: sessionTable, session: sessionData })}
           onClose={() => {
             setSessionTable(null);
             setSessionData(null);
@@ -903,6 +945,22 @@ const Tables = () => {
         onClose={() => setPrintModalTable(null)}
         table={printModalTable}
       />
+
+      {settleTarget && (
+        <TableSettleModal
+          table={settleTarget.table}
+          session={settleTarget.session}
+          busy={settleMutation.isPending}
+          onClose={() => setSettleTarget(null)}
+          onConfirm={({ method, amount }) =>
+            settleMutation.mutate({
+              sessionId: settleTarget.session?._id,
+              method,
+              amount,
+            })
+          }
+        />
+      )}
 
       <SecurityPinModal
         isOpen={pinModalOpen}

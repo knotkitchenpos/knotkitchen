@@ -15,10 +15,10 @@ import { useEffect, useRef } from "react";
  *
  * @param {boolean} active  beep while true, stop the moment it goes false
  * @param {object}  [opts]
- * @param {number}  [opts.intervalMs=1600]  gap between beeps
- * @param {number}  [opts.frequency=880]    tone in Hz
+ * @param {number}  [opts.intervalMs=900]  gap between bursts
+ * @param {number}  [opts.frequency=988]   first tone in Hz
  */
-export default function useAlertBeep(active, { intervalMs = 1600, frequency = 880 } = {}) {
+export default function useAlertBeep(active, { intervalMs = 900, frequency = 988 } = {}) {
   const ctxRef = useRef(null);
   const timerRef = useRef(null);
 
@@ -38,25 +38,45 @@ export default function useAlertBeep(active, { intervalMs = 1600, frequency = 88
       return ctxRef.current;
     };
 
-    /** One short two-tone chirp — carries across a noisy room. */
+    /**
+     * A three-pulse rising burst.
+     *
+     * This was two soft sine tones a second and a half apart, which reads as
+     * a notification chime rather than something demanding attention -- easy
+     * to miss over a busy counter. Three things changed:
+     *
+     *   - a square wave, whose harmonics cut through kitchen noise where a
+     *     pure sine gets absorbed;
+     *   - three quick pulses on a RISING pitch, which the ear reads as an
+     *     alarm rather than a chime;
+     *   - a shorter gap between bursts, so it nags.
+     *
+     * Still ramped rather than switched, or each pulse ends in a click.
+     */
     const chirp = () => {
       const ctx = getCtx();
       if (!ctx) return;
       if (ctx.state === "suspended") ctx.resume().catch(() => {});
 
       const now = ctx.currentTime;
-      [0, 0.18].forEach((offset, i) => {
+      const steps = [
+        { at: 0.00, hz: frequency },
+        { at: 0.13, hz: frequency * 1.335 },
+        { at: 0.26, hz: frequency * 1.587 },
+      ];
+
+      steps.forEach(({ at, hz }) => {
         const osc = ctx.createOscillator();
         const gain = ctx.createGain();
-        osc.type = "sine";
-        osc.frequency.value = i === 0 ? frequency : frequency * 1.25;
-        // Ramped rather than switched, so it doesn't click.
-        gain.gain.setValueAtTime(0.0001, now + offset);
-        gain.gain.exponentialRampToValueAtTime(0.32, now + offset + 0.02);
-        gain.gain.exponentialRampToValueAtTime(0.0001, now + offset + 0.15);
+        osc.type = "square";
+        osc.frequency.value = hz;
+        gain.gain.setValueAtTime(0.0001, now + at);
+        gain.gain.exponentialRampToValueAtTime(0.22, now + at + 0.008);
+        gain.gain.setValueAtTime(0.22, now + at + 0.075);
+        gain.gain.exponentialRampToValueAtTime(0.0001, now + at + 0.11);
         osc.connect(gain).connect(ctx.destination);
-        osc.start(now + offset);
-        osc.stop(now + offset + 0.16);
+        osc.start(now + at);
+        osc.stop(now + at + 0.12);
       });
     };
 

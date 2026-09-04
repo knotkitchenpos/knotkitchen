@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const { buildCooldownUpdate } = require("../services/tableCooldownService");
+const { buildCooldownUpdate, cooldownMinutesFor } = require("../services/tableCooldownService");
 const Table = require("../models/tableModel");
 const TableSession = require("../models/tableSessionModel");
 const Order = require("../models/orderModel");
@@ -181,6 +181,27 @@ const validateCapacity = (table, customerCount) => {
  * Shared item enrichment — server-side price resolution.
  * Never trusts browser prices.
  */
+/**
+ * Is this payment settled the moment the operator picks the method?
+ *
+ * Methods taken in person are: the staff member has the cash in hand, or has
+ * watched the UPI or card payment succeed on their own device. Choosing one
+ * IS the confirmation -- the POS has no terminal integration to ask.
+ *
+ * Rails that settle asynchronously somewhere else (ONLINE, PAYMENT_LINK) wait
+ * for an explicit success, because at the moment of choosing them no money
+ * has moved.
+ *
+ * UPI and CARD used to be missing, so choosing either recorded the payment as
+ * FAILED and left the session PAYMENT_PENDING -- which meant the table never
+ * closed and never freed itself.
+ */
+const COUNTER_SETTLED_METHODS = ["CASH", "UPI", "CARD", "QR_CODE"];
+
+const isPaidOnSelection = ({ method, paymentStatus } = {}) =>
+  paymentStatus === "success" ||
+  COUNTER_SETTLED_METHODS.includes(String(method || "").toUpperCase());
+
 const enrichItems = async ({ items, restaurantId, outletId, addedBy = "SYSTEM" }) => {
   if (!items || !items.length) throw createHttpError(400, "At least one item is required!");
 
@@ -824,7 +845,7 @@ const recordSessionPayment = async (req, res, next) => {
       throw createHttpError(400, `Payment amount mismatch. Expected ₹${payableAmount}.`);
     }
 
-    const paid = paymentStatus === "success" || normalizedMethod === "CASH" || normalizedMethod === "QR_CODE";
+    const paid = isPaidOnSelection({ method: normalizedMethod, paymentStatus });
 
     const paymentRecord = {
       method: normalizedMethod,
@@ -957,10 +978,18 @@ const recordSessionPayment = async (req, res, next) => {
     await session.save({ session: mongoSession });
     await mongoSession.commitTransaction();
 
+    // Tell the operator when the table comes back, rather than leaving them
+    // to wonder why it still shows as occupied.
+    const cooldownMinutes = paid ? await cooldownMinutesFor(session.restaurantId) : null;
+
     res.status(200).json({
       success: true,
-      message: paid ? "Payment recorded! Session closed." : "Payment failed.",
-      data: session,
+      message: paid
+        ? cooldownMinutes
+          ? `Paid via ${normalizedMethod}. Table frees up in ${cooldownMinutes} min.`
+          : `Paid via ${normalizedMethod}. Table is available again.`
+        : "Payment failed.",
+      data: paid ? { ...(session.toObject ? session.toObject() : session), cooldownMinutes } : session,
     });
   } catch (error) {
     await mongoSession.abortTransaction();
@@ -1023,6 +1052,8 @@ module.exports = {
   recalculateSessionBill,
   validateCapacity,
   enrichItems,
+  isPaidOnSelection,
+  COUNTER_SETTLED_METHODS,
   runWithSessionRetry,
   generateSessionCode,
   formatDuration,

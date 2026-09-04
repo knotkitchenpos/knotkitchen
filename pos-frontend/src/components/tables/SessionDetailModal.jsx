@@ -1,7 +1,7 @@
 import React from "react";
 import { FaLongArrowAltRight } from "react-icons/fa";
 
-const SessionDetailModal = ({ table, session, onClose, onAddItem }) => {
+const SessionDetailModal = ({ table, session, onClose, onAddItem, onComplete }) => {
   if (!session) return null;
   const statusColor = { OCCUPIED: "text-accent-amber", OPEN: "text-accent-green", PROCESSING: "text-accent-blue", BILL_REQUESTED: "text-accent-blue", PAYMENT_PENDING: "text-accent-red" };
 
@@ -45,9 +45,22 @@ const SessionDetailModal = ({ table, session, onClose, onAddItem }) => {
           <p className="font-display text-lg font-bold text-accent">₹{(session.bills?.totalWithTax || 0).toFixed(2)}</p>
         </div>
 
-        <button onClick={onAddItem} className="btn-primary w-full !py-3 flex items-center justify-center gap-2">
-          Add Item <FaLongArrowAltRight size={14} />
-        </button>
+        <div className="flex flex-col gap-2">
+          <button onClick={onAddItem} className="btn-primary w-full !py-3 flex items-center justify-center gap-2">
+            Add Item <FaLongArrowAltRight size={14} />
+          </button>
+          {/* Completing a table was simply not offered anywhere, so a table
+              order could be taken but never finished. */}
+          {onComplete && (
+            <button
+              onClick={onComplete}
+              disabled={!(session.bills?.totalWithTax > 0)}
+              className="w-full py-3 rounded-xl bg-[#16A34A] text-white text-sm font-bold hover:bg-[#15803D] disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Complete Order &amp; Take Payment
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

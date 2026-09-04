@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useParams } from "react-router-dom";
 import ProductOptionsSheet from "../components/qr/ProductOptionsSheet";
 import {
@@ -58,6 +58,9 @@ export default function OrderOnline() {
   const [placing, setPlacing] = useState(false);
   const [paymentInfo, setPaymentInfo] = useState(null);
   const [loadingPayment, setLoadingPayment] = useState(false);
+  // Declared with the other hooks: the loading and error early returns are
+  // below, and a hook after one of those runs conditionally.
+  const menuRef = useRef(null);
 
   const refetch = () => {
     if (!token) return;
@@ -291,6 +294,22 @@ export default function OrderOnline() {
 
   const brandName = restaurant?.name || "KnotKitchen";
   const primary = restaurant?.branding?.primaryColor || "#FD5302";
+  // Whether this store can actually take money online. Offering "Pay online"
+  // to a store with no gateway would just hand the diner a button that fails.
+  const onlinePaymentEnabled = Boolean(restaurant?.onlinePaymentEnabled);
+
+  /**
+   * Online checkout is NOT implemented yet, and deliberately so: no store has
+   * a payment gateway configured, so there is nothing to integrate against or
+   * test with. The button that reaches this is only rendered when a gateway
+   * exists, so today it is unreachable -- but if one is configured before the
+   * checkout is built, the diner gets an honest message rather than silence.
+   */
+  const payOnline = () => {
+    setErr(
+      "Online payment is not switched on for this store yet. Please pay at the counter.",
+    );
+  };
 
   return (
     <div className="min-h-screen bg-slate-50 pb-32">
@@ -403,27 +422,68 @@ export default function OrderOnline() {
                 🧾 Bill requested — your server will be with you shortly.
               </div>
             )}
-            <div className="p-3">
+            {/* Two things a diner can do once they have ordered: eat more, or
+                settle up. "View Payment Summary" told them neither. */}
+            <div className="p-3 space-y-2">
               {!paymentInfo ? (
-                <button
-                  onClick={preparePayment}
-                  disabled={loadingPayment}
-                  className="w-full text-sm bg-slate-100 hover:bg-slate-200 text-slate-800 py-2 rounded-xl font-semibold disabled:opacity-50"
-                >
-                  {loadingPayment ? "Preparing…" : "View Payment Summary"}
-                </button>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() =>
+                      menuRef.current?.scrollIntoView({ behavior: "smooth", block: "start" })
+                    }
+                    className="text-sm py-2.5 rounded-xl font-semibold border border-slate-200 bg-white text-slate-800 hover:bg-slate-50"
+                  >
+                    + Add more items
+                  </button>
+                  <button
+                    onClick={preparePayment}
+                    disabled={loadingPayment}
+                    className="text-sm py-2.5 rounded-xl font-bold text-white disabled:opacity-50"
+                    style={{ background: primary }}
+                  >
+                    {loadingPayment ? "Preparing…" : "Pay"}
+                  </button>
+                </div>
               ) : (
-                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm">
-                  <div className="flex justify-between font-semibold mb-1">
+                <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm space-y-2">
+                  <div className="flex justify-between font-semibold">
                     <span>Payable</span>
                     <span>{money(paymentInfo.amount)}</span>
                   </div>
-                  <p className="text-xs text-slate-500">
-                    Status: {session.status} · Payment: {paymentInfo.paymentStatus}
+
+                  {onlinePaymentEnabled ? (
+                    <button
+                      onClick={payOnline}
+                      className="w-full text-sm py-2.5 rounded-xl font-bold text-white"
+                      style={{ background: primary }}
+                    >
+                      Pay online now
+                    </button>
+                  ) : null}
+
+                  <button
+                    onClick={requestBill}
+                    className="w-full text-sm py-2.5 rounded-xl font-semibold border border-slate-200 bg-white text-slate-800 hover:bg-slate-50"
+                  >
+                    Pay at the counter (cash / UPI)
+                  </button>
+
+                  <p className="text-[11px] text-slate-400">
+                    Payment: {paymentInfo.paymentStatus}
+                    {onlinePaymentEnabled
+                      ? null
+                      : " \u00b7 This store takes payment at the counter."}
                   </p>
-                  <p className="text-[11px] text-slate-400 mt-1">
-                    Payment is settled by staff at the counter.
-                  </p>
+
+                  <button
+                    onClick={() => {
+                      setPaymentInfo(null);
+                      menuRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }}
+                    className="w-full text-[12px] text-slate-500 font-semibold py-1"
+                  >
+                    Actually, add more items
+                  </button>
                 </div>
               )}
             </div>
@@ -432,7 +492,10 @@ export default function OrderOnline() {
       )}
 
       {/* ── Menu grid ───────────────────────────────────────────────── */}
-      <main className="max-w-3xl mx-auto px-4 pt-4 grid grid-cols-1 sm:grid-cols-2 gap-3">
+      <main
+        ref={menuRef}
+        className="max-w-3xl mx-auto px-4 pt-4 grid grid-cols-1 sm:grid-cols-2 gap-3"
+      >
         {filtered.length === 0 ? (
           <div className="col-span-full text-center text-slate-400 py-16">
             <p className="text-sm font-semibold">No dishes match your search.</p>

@@ -118,6 +118,15 @@ export const regenerateTableQr = (tableId) =>
 
 export const requestBillForSession = (sessionId) =>
   axiosWrapper.post(`/api/table-session/${sessionId}/request-bill`);
+// Settle a table session at the counter. There was no wrapper for this at
+// all, which is why the POS had no way to complete a table order: the
+// session never reached PAID/CLOSED, so the table never entered its
+// cooldown and the QR kept serving the previous customer their old order.
+export const recordTableSessionPayment = (sessionId, data) =>
+  axiosWrapper.post(`/api/table-session/${sessionId}/payment`, data);
+
+export const closeTableSessionWithoutPayment = (sessionId, data) =>
+  axiosWrapper.post(`/api/table-session/${sessionId}/close`, data);
 
 // Menu Endpoints
 export const getMenus = (params) => axiosWrapper.get("/api/menu", params ? { params } : undefined);

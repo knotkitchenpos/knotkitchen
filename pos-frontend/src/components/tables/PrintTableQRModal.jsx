@@ -56,6 +56,141 @@ const PrintTableQRModal = ({ isOpen, onClose, table }) => {
    * The QR is a <canvas>; canvases do not survive being copied as HTML, so it
    * is exported to a data URL and embedded as an <img>.
    */
+
+  /**
+   * Save the card as an image file.
+   *
+   * "Print QR Card" hands the card to the browser's print dialog, where the
+   * only way to keep a copy is "Save as PDF" -- a PDF is what you got. This
+   * draws the same card onto a canvas and downloads it directly.
+   *
+   * PNG rather than JPEG deliberately: JPEG's compression softens the hard
+   * edges between QR modules, and a QR that scans on screen can fail once it
+   * has been printed small. Drawn at 3x so it stays sharp on paper.
+   */
+  const handleDownloadImage = async () => {
+    const qrCanvas = cardRef.current?.querySelector("canvas");
+
+    const S = 3;                 // export scale
+    const W = 360;               // card width in CSS px
+    const PAD = 26;
+    const cx = W / 2;            // horizontal centre
+
+    // Optional logo. Loaded separately with CORS so a remote image cannot
+    // taint the canvas and make toDataURL throw -- if it will not load we
+    // simply fall back to the plate mark, rather than failing the download.
+    const logo = await new Promise((resolve) => {
+      if (!restaurantLogo) return resolve(null);
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => resolve(img);
+      img.onerror = () => resolve(null);
+      img.src = restaurantLogo;
+    });
+
+    // Measure first so the card is exactly as tall as its content.
+    const logoH = logo ? 46 : 30;
+    const nameH = restaurantName ? 26 : 0;
+    const qrBox = 214;
+    const H = PAD + logoH + nameH + 18 + 34 + 16 + qrBox + 30 + 26 + PAD;
+
+    const c = document.createElement("canvas");
+    c.width = W * S;
+    c.height = H * S;
+    const g = c.getContext("2d");
+    g.scale(S, S);
+    g.textAlign = "center";
+    g.textBaseline = "middle";
+
+    const roundRect = (x, y, w, h, r) => {
+      g.beginPath();
+      g.moveTo(x + r, y);
+      g.arcTo(x + w, y, x + w, y + h, r);
+      g.arcTo(x + w, y + h, x, y + h, r);
+      g.arcTo(x, y + h, x, y, r);
+      g.arcTo(x, y, x + w, y, r);
+      g.closePath();
+    };
+
+    // Card ground + border, matching the preview.
+    g.fillStyle = "#FFFFFF";
+    g.fillRect(0, 0, W, H);
+    g.fillStyle = "#FAFAFA";
+    roundRect(1, 1, W - 2, H - 2, 16);
+    g.fill();
+    g.strokeStyle = "#0F172A";
+    g.lineWidth = 2;
+    g.stroke();
+
+    let y = PAD;
+
+    if (logo) {
+      const h = 40;
+      const w = Math.min(140, (logo.width / logo.height) * h || h);
+      g.drawImage(logo, cx - w / 2, y, w, h);
+      y += logoH;
+    } else {
+      g.font = "24px system-ui, sans-serif";
+      g.fillText("\u{1F37D}\uFE0F", cx, y + 14);
+      y += logoH;
+    }
+
+    if (restaurantName) {
+      g.fillStyle = "#0F172A";
+      g.font = "800 19px system-ui, -apple-system, Segoe UI, sans-serif";
+      g.fillText(String(restaurantName).toUpperCase(), cx, y + 10);
+      y += nameH;
+    }
+
+    g.fillStyle = "#64748B";
+    g.font = "800 11px system-ui, sans-serif";
+    g.fillText(String(areaName).toUpperCase(), cx, y + 8);
+    y += 18;
+
+    // Table pill.
+    const pillText = String(tableDisplay).toUpperCase();
+    g.font = "900 14px system-ui, sans-serif";
+    const pillW = Math.min(W - 2 * PAD, g.measureText(pillText).width + 34);
+    g.fillStyle = "#0F172A";
+    roundRect(cx - pillW / 2, y, pillW, 30, 10);
+    g.fill();
+    g.fillStyle = "#FFFFFF";
+    g.fillText(pillText, cx, y + 16);
+    y += 34 + 16;
+
+    // QR, in its white surround.
+    g.fillStyle = "#FFFFFF";
+    roundRect(cx - qrBox / 2, y, qrBox, qrBox, 14);
+    g.fill();
+    g.strokeStyle = "#E2E8F0";
+    g.lineWidth = 2;
+    g.stroke();
+    if (qrCanvas) {
+      const q = qrBox - 24;
+      g.drawImage(qrCanvas, cx - q / 2, y + 12, q, q);
+    } else {
+      g.fillStyle = "#94A3B8";
+      g.font = "700 11px system-ui, sans-serif";
+      g.fillText("QR unavailable", cx, y + qrBox / 2);
+    }
+    y += qrBox + 22;
+
+    g.fillStyle = "#C2410C";
+    g.font = "900 11px system-ui, sans-serif";
+    g.fillText("SCAN CODE TO VIEW MENU & ORDER", cx, y);
+    y += 24;
+
+    g.fillStyle = "#94A3B8";
+    g.font = "700 10px system-ui, sans-serif";
+    g.fillText("Powered by KnotKitchen", cx, y);
+
+    const safe = String(tableDisplay).replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    const link = document.createElement("a");
+    link.download = `knotkitchen-qr-${safe || "table"}.png`;
+    link.href = c.toDataURL("image/png");
+    link.click();
+  };
+
   const handlePrint = () => {
     const canvas = cardRef.current?.querySelector("canvas");
     const qrImage = canvas ? canvas.toDataURL("image/png") : "";
@@ -231,10 +366,17 @@ const PrintTableQRModal = ({ isOpen, onClose, table }) => {
           </button>
           <button
             type="button"
+            onClick={handleDownloadImage}
+            className="flex-1 py-2.5 rounded-xl border border-[#FD5302] text-[#C2410C] text-xs font-bold hover:bg-[#FFF1E8]"
+          >
+            ⬇ Download PNG
+          </button>
+          <button
+            type="button"
             onClick={handlePrint}
             className="flex-1 py-2.5 rounded-xl bg-[#FD5302] text-white text-xs font-bold hover:bg-[#D64502]"
           >
-            🖨️ Print QR Card
+            🖨️ Print
           </button>
         </div>
       </div>
