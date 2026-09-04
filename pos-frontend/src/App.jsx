@@ -8,7 +8,7 @@ import {
 import { useState } from "react";
 import { useSelector } from "react-redux";
 import {
-  Home, Auth, Orders, Tables, Menu, Dashboard, KDS, OrderOnline, PaymentLink,
+  Home, Auth, Orders, Tables, Menu, KDS, OrderOnline, PaymentLink,
   Storefront, WebsiteSettings, OnlineOrders, Reports, Settings, ManageMenuPage, Support,
   Impersonate,
 } from "./pages";
@@ -52,7 +52,6 @@ function Layout() {
       <Route path="/reports" element={<ProtectedRoutes><Reports /></ProtectedRoutes>} />
       <Route path="/home" element={<ProtectedRoutes><Home /></ProtectedRoutes>} />
       <Route path="/tables" element={<ProtectedRoutes><Tables /></ProtectedRoutes>} />
-      <Route path="/dashboard" element={<ProtectedRoutes><Dashboard /></ProtectedRoutes>} />
       <Route path="/kds" element={<ProtectedRoutes><KDS /></ProtectedRoutes>} />
       <Route path="/online-orders" element={<ProtectedRoutes><OnlineOrders /></ProtectedRoutes>} />
       <Route path="/settings" element={<ProtectedRoutes><Settings /></ProtectedRoutes>} />

@@ -23,14 +23,6 @@ const IconChart = ({ active }) => (
     <path d="M7 15v3M12 10v8M17 6v12" />
   </svg>
 );
-const IconDashboard = ({ active }) => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.9} strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="3" width="7" height="9" rx="1.5" />
-    <rect x="14" y="3" width="7" height="5" rx="1.5" />
-    <rect x="14" y="12" width="7" height="9" rx="1.5" />
-    <rect x="3" y="16" width="7" height="5" rx="1.5" />
-  </svg>
-);
 const IconHeadset = ({ active }) => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.9} strokeLinecap="round" strokeLinejoin="round">
     <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
@@ -73,7 +65,6 @@ const NAV = [
   { path: "/menu", label: "Product", Icon: IconBag },
   { path: "/orders", label: "Orders", Icon: IconClipboard },
   { path: "/reports", label: "Reports", Icon: IconChart },
-  { path: "/dashboard", label: "Dashboard", Icon: IconDashboard },
 ];
 
 const Sidebar = ({ mobileOpen = false, onMobileClose }) => {
