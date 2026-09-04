@@ -171,8 +171,14 @@ const calculateUnitPrice = ({
     price += a.price || 0;
   }
 
-  // Modifiers
-  const modifierLabels = [];
+  // Modifiers.
+  //
+  // Shaped as { name, price } objects, NOT bare strings: every schema that
+  // stores this -- TableSession.items.modifiers and Order.items.modifiers --
+  // declares [{ name: String, price: Number }]. Returning strings made
+  // Mongoose throw "Cast to embedded failed" on save, so ANY table or QR
+  // order for a product with a selected modifier group failed outright.
+  const selectedModifiers = [];
   let modifierTotal = 0;
   for (const group of item.modifierGroups || []) {
     const groupObjIdStr = group._id ? String(group._id) : "";
@@ -258,8 +264,9 @@ const calculateUnitPrice = ({
         }
         const qty = Number(matchedSel.quantity) || 1;
         modifierTotal += (opt.price || 0) * qty;
+        // One entry per unit, so "2x Extra Cheese" bills and prints twice.
         for (let q = 0; q < qty; q++) {
-          modifierLabels.push(opt.name);
+          selectedModifiers.push({ name: opt.name, price: opt.price || 0 });
         }
       }
     }
@@ -271,7 +278,7 @@ const calculateUnitPrice = ({
     unitPrice: price,
     variant: variant ? { name: variant.name, price: variant.price } : null,
     addons: selectedAddons.map((a) => ({ name: a.name, price: a.price || 0 })),
-    modifiers: modifierLabels,
+    modifiers: selectedModifiers,
   };
 };
 

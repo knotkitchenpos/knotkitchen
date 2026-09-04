@@ -86,7 +86,14 @@ export default function KDS() {
                         {badge(i.status)}
                       </div>
                       {(i.modifiers || []).length > 0 && (
-                        <div className="text-xs text-content-muted">{i.modifiers.join(", ")}</div>
+                        <div className="text-xs text-content-muted">
+                          {/* Stored as { name, price }; older tickets may hold bare
+                              strings, and join() on the objects printed [object Object]. */}
+                          {i.modifiers
+                            .map((m) => (typeof m === "string" ? m : m?.name))
+                            .filter(Boolean)
+                            .join(", ")}
+                        </div>
                       )}
                     </div>
                     <div className="flex gap-1">
