@@ -294,18 +294,32 @@ const webHookVerification = async (req, res, next) => {
     // configuration — so there is nothing to verify against even in principle.
     //
     // Acknowledging (200) without acting is the correct inert behaviour: it
-    // stops provider retries without granting unauthenticated writes. When
-    // either gateway is genuinely integrated, restore the branch TOGETHER WITH
-    // its signature verification, never before.
+    // stops provider retries without granting unauthenticated writes.
+    //
+    // Cashfree IS integrated now, and its webhook is verifiable -- but it is
+    // verified somewhere else. Its signature is computed differently (Base64
+    // over timestamp + raw body, not hex over the body) and arrives in
+    // different headers, so it has its own endpoint at
+    // /api/payment/cashfree/webhook with its own trust chain. Anything
+    // Cashfree-shaped reaching THIS endpoint is misconfigured, not authorised;
+    // point the operator at the right URL rather than trying to handle it.
+    //
+    // PhonePe remains uninitegrated: no PHONEPE_ secret exists anywhere in the
+    // configuration, so there is nothing to verify against even in principle.
     if (
       req.body.type === "PAYMENT_SUCCESS_WEBHOOK" ||
-      req.body.data?.order?.order_id ||
-      req.body.response ||
-      req.body.code === "PAYMENT_SUCCESS"
+      req.body.data?.order?.order_id
     ) {
       console.warn(
-        "[webhook] Received a Cashfree/PhonePe-shaped payload. These gateways are " +
-          "not integrated and their webhooks are NOT verifiable; ignoring."
+        "[webhook] Cashfree-shaped payload on the Razorpay endpoint. Point the " +
+          "Cashfree dashboard at /api/payment/cashfree/webhook instead; ignoring."
+      );
+      return res.status(200).json({ success: true, skipped: true });
+    }
+    if (req.body.response || req.body.code === "PAYMENT_SUCCESS") {
+      console.warn(
+        "[webhook] Received a PhonePe-shaped payload. That gateway is not " +
+          "integrated and its webhooks are NOT verifiable; ignoring."
       );
       return res.status(200).json({ success: true, skipped: true });
     }

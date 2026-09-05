@@ -250,3 +250,71 @@ test("Fast2SmsError is still the type callers catch", () => {
   assert.equal(e.retryable, true);
   assert.equal(e.name, "Fast2SmsError");
 });
+
+// ---------------------------------------------------------------------------
+// The webhook: the safety net when the browser never comes back
+// ---------------------------------------------------------------------------
+
+test("the webhook settles nothing it cannot trace back to an order WE opened", () => {
+  const src = read("controllers", "cashfreeWebhookController.js");
+  // A forged event naming an order we never created must find nothing.
+  const lookup = src.indexOf("TableSession.findOne");
+  const verify = src.indexOf("cashfree.verifyWebhook");
+  const settle = src.indexOf("settleSessionFromGateway");
+  assert.ok(lookup > 0 && verify > lookup, "look up the order, THEN verify");
+  assert.ok(settle > verify, "and never settle before verifying");
+  assert.match(src, /"payment\.gatewayOrderId": orderId/);
+});
+
+test("the signature is checked against the tenant that owns the order", () => {
+  // A signature valid under some other store's secret must not settle this
+  // store's table.
+  const src = read("controllers", "cashfreeWebhookController.js");
+  assert.match(src, /resolveGateway\(\{ restaurantId: session\.restaurantId \}\)/);
+  assert.match(src, /secretKey: gw\.webhookSecret/);
+});
+
+test("even a correctly signed event is not believed about the money", () => {
+  const src = read("controllers", "cashfreeWebhookController.js");
+  assert.match(src, /cashfree\.isOrderPaid/);
+  assert.match(src, /if \(!status\.paid\) return ack/);
+  assert.match(src, /status\.amount.*payable|Math\.abs\(Number\(status\.amount\)/s);
+});
+
+test("it verifies over the RAW bytes, never a re-serialised body", () => {
+  const src = read("controllers", "cashfreeWebhookController.js");
+  assert.match(src, /req\.rawBody/);
+  assert.ok(!/JSON\.stringify\(req\.body\)/.test(src));
+});
+
+test("the webhook never answers 5xx, and 4xx only for a bad signature", () => {
+  // Anything else would be retried for days over our own bug.
+  const src = read("controllers", "cashfreeWebhookController.js");
+  const statuses = [...src.matchAll(/status\((\d{3})\)/g)].map((m) => m[1]);
+  assert.ok(statuses.includes("401"), "a rejected signature is worth refusing");
+  assert.ok(!statuses.includes("500"), "never 500 at a webhook");
+  assert.ok(
+    statuses.every((c) => c === "200" || c === "401"),
+    `only 200 and 401, found ${statuses.join(",")}`,
+  );
+});
+
+test("browser and webhook share one idempotency key, so whichever loses is a no-op", () => {
+  const hook = read("controllers", "cashfreeWebhookController.js");
+  const qr = read("routes", "qrRoute.js");
+  assert.match(hook, /idempotencyKey: `qr-online-\$\{status\.cfOrderId \|\| orderId\}`/);
+  assert.match(qr, /idempotencyKey: `qr-online-\$\{transactionId\}`/);
+});
+
+test("Cashfree payloads on the Razorpay endpoint are refused, not handled", () => {
+  // Its signature scheme and headers are different; a branch here could only
+  // ever be a second, weaker implementation.
+  const src = read("controllers", "paymentController.js");
+  assert.match(src, /cashfree\/webhook/);
+  assert.ok(
+    !/finalizePaymentLinkFromGateway/.test(
+      src.slice(src.indexOf("PAYMENT_SUCCESS_WEBHOOK"), src.indexOf("Razorpay Webhook Handling")),
+    ),
+    "the disabled branch must not start acting again",
+  );
+});
