@@ -156,8 +156,11 @@ const QRTableOrderPopup = () => {
               {customer.phone && (
                 <p className="text-[12px] text-[#64748B] truncate">{customer.phone}</p>
               )}
-              {customer.guests > 0 && (
-                <p className="text-[11px] text-[#94A3B8]">{customer.guests} guest(s)</p>
+              {/* Only shown when somebody actually set it. The diner is no
+                  longer asked for a guest count, so it defaults to 1 -- and a
+                  fabricated "1 guest(s)" on the till reads as fact. */}
+              {customer.guests > 1 && (
+                <p className="text-[11px] text-[#94A3B8]">{customer.guests} guests</p>
               )}
             </div>
             <div className="text-right shrink-0">
