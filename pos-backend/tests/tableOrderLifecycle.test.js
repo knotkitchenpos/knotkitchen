@@ -276,7 +276,47 @@ test("the gateway secret never reaches the browser", () => {
     QR_ROUTE.indexOf('router.route("/payment-intent/:token")'),
     QR_ROUTE.indexOf('router.route("/payment-verify/:token")'),
   );
-  const checkout = block.slice(block.indexOf("checkout = {"), block.indexOf("};", block.indexOf("checkout = {")));
-  assert.match(checkout, /keyId: gw\.keyId/, "the public key id is legitimately needed");
-  assert.ok(!/gw\.secret/.test(checkout), "the secret is not part of the response");
+
+  // Everything assigned into `checkout` is handed to the diner's phone. Each
+  // provider needs something different there -- Razorpay the PUBLIC key id,
+  // Cashfree a payment_session_id it minted -- and neither is the secret.
+  const payloads = block
+    .split("checkout = {")
+    .slice(1)
+    .map((chunk) => chunk.slice(0, chunk.indexOf("};")));
+  assert.equal(payloads.length, 2, "one browser payload per provider");
+  for (const p of payloads) {
+    assert.ok(!/gw\.secret/.test(p), "the secret is not part of the response");
+    assert.ok(!/secretKey/.test(p), "nor under another name");
+  }
+  assert.ok(
+    payloads.some((p) => /keyId: gw\.keyId/.test(p)),
+    "Razorpay needs its public key id in the browser",
+  );
+  assert.ok(
+    payloads.some((p) => /paymentSessionId: order\.paymentSessionId/.test(p)),
+    "Cashfree needs the payment session it minted",
+  );
+});
+
+test("Cashfree is verified by asking Cashfree, not by trusting the browser", () => {
+  const block = QR_ROUTE.slice(QR_ROUTE.indexOf('router.route("/payment-verify/:token")'));
+  const cf = block.slice(block.indexOf("PROVIDERS.CASHFREE"), block.indexOf("} else {"));
+
+  // The order id must come from OUR session. A browser that could name the
+  // order would be able to settle this table with any paid order on the same
+  // merchant account.
+  assert.match(cf, /session\.payment\?\.gatewayOrderId/);
+  assert.ok(!/req\.body/.test(cf), "nothing in the Cashfree path reads the request body");
+  assert.match(cf, /cashfree\.isOrderPaid/);
+  assert.match(cf, /if \(!result\.paid\)/, "an unpaid order must not settle");
+  assert.match(cf, /result\.amount/, "and the gateway is authoritative on the amount too");
+});
+
+test("a failed Cashfree status check does not report the payment as failed", () => {
+  // The money may well have moved. Telling the diner it failed invites them
+  // to pay twice.
+  const block = QR_ROUTE.slice(QR_ROUTE.indexOf('router.route("/payment-verify/:token")'));
+  assert.match(block, /status\(502\)/);
+  assert.match(block, /could not confirm that payment/i);
 });

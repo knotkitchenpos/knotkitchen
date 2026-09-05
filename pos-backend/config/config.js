@@ -70,6 +70,18 @@ const config = Object.freeze({
     razorpaySecretKey: process.env.RAZORPAY_KEY_SECRET,
     razorpayWebhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET,
 
+    // Cashfree PG. Platform-wide credentials, used by any store that has
+    // not brought its own in Website Settings. CASHFREE_ENV picks the
+    // base URL: TEST = sandbox.cashfree.com, PROD = api.cashfree.com.
+    cashfreeAppId: process.env.CASHFREE_APP_ID,
+    cashfreeSecretKey: process.env.CASHFREE_SECRET_KEY,
+    cashfreeEnv: process.env.CASHFREE_ENV || "TEST",
+    cashfreeWebhookSecret: process.env.CASHFREE_WEBHOOK_SECRET,
+    // Server-to-server payment notification. Cashfree requires HTTPS and
+    // rejects anything else, so it is dropped from the order when unset
+    // or plain http -- the verify-on-return path still settles the bill.
+    cashfreeNotifyUrl: process.env.CASHFREE_NOTIFY_URL || "",
+
     // Rate limiting
     rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
     rateLimitMax: parseInt(process.env.RATE_LIMIT_MAX) || 100,

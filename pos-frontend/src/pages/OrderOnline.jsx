@@ -12,13 +12,30 @@ import {
 
 /** Razorpay Checkout, loaded on demand. Resolves null if it cannot load. */
 function loadRazorpay() {
+  return loadScript("https://checkout.razorpay.com/v1/checkout.js", () => window.Razorpay);
+}
+
+/** Cashfree JS v3, loaded on demand. Resolves null if it cannot load. */
+function loadCashfree() {
+  return loadScript("https://sdk.cashfree.com/js/v3/cashfree.js", () => window.Cashfree);
+}
+
+/**
+ * Load a third-party script once and hand back whatever global it defines.
+ *
+ * Deliberately resolves null rather than rejecting: a diner on a hotel wifi
+ * that blocks the gateway CDN should get "we couldn't open the payment page",
+ * not an unhandled rejection and a blank screen.
+ */
+function loadScript(src, pick) {
   return new Promise((resolve) => {
-    if (window.Razorpay) return resolve(window.Razorpay);
-    const s = document.createElement("script");
-    s.src = "https://checkout.razorpay.com/v1/checkout.js";
-    s.onload = () => resolve(window.Razorpay);
-    s.onerror = () => resolve(null);
-    document.body.appendChild(s);
+    const existing = pick();
+    if (existing) return resolve(existing);
+    const el = document.createElement("script");
+    el.src = src;
+    el.onload = () => resolve(pick() || null);
+    el.onerror = () => resolve(null);
+    document.body.appendChild(el);
   });
 }
 
@@ -343,11 +360,11 @@ export default function OrderOnline() {
     String(table?.displayId || table?.tableName || "").trim() ||
     (table?.tableNumber != null ? `Table ${table.tableNumber}` : "Your table");
   /**
-   * Pay the table's bill through the gateway.
+   * Pay the table's bill through whichever gateway the store uses.
    *
    * The amount is never sent from here: the server opened the gateway order
-   * against the session's own bill, and re-checks the signature before it
-   * settles anything. This browser only carries the gateway's answer back.
+   * against the session's own bill, and re-checks with the gateway before it
+   * settles anything. This browser only says "checkout finished, please look".
    */
   const payOnline = async () => {
     const checkout = paymentInfo?.checkout;
@@ -358,48 +375,77 @@ export default function OrderOnline() {
 
     setPaying(true);
     setErr("");
-    const Razorpay = await loadRazorpay();
-    if (!Razorpay) {
-      setErr("The payment page could not be loaded. Please check your connection.");
-      setPaying(false);
-      return;
-    }
+
+    /** Ask the server what really happened, and reflect its answer. */
+    const confirm = async (payload) => {
+      try {
+        await qrVerifyPayment(token, payload || {});
+        setPaymentInfo(null);
+        setBanner("Payment received. Thank you!");
+        await refetch();
+      } catch (e) {
+        setErr(
+          e.response?.data?.message ||
+            "We could not confirm that payment. Please show this screen to a member of staff.",
+        );
+      }
+    };
 
     try {
-      await new Promise((resolve) => {
-        const rzp = new Razorpay({
-          key: checkout.keyId,
-          order_id: checkout.gatewayOrderId,
-          amount: Math.round(Number(checkout.amount) * 100),
-          currency: checkout.currency || "INR",
-          name: brandName,
-          description: `${tableName} · ${session?.sessionCode || ""}`,
-          prefill: {
-            name: session?.customerName || "",
-            contact: session?.customerPhone || "",
-          },
-          handler: async (res) => {
-            try {
-              await qrVerifyPayment(token, res);
-              setPaymentInfo(null);
-              setBanner("Payment received. Thank you!");
-              await refetch();
-            } catch (e) {
-              setErr(
-                e.response?.data?.message ||
-                  "We could not confirm that payment. Please show this screen to a member of staff.",
-              );
-            }
+      if (checkout.provider === "cashfree") {
+        const Cashfree = await loadCashfree();
+        if (!Cashfree) {
+          setErr("The payment page could not be loaded. Please check your connection.");
+          return;
+        }
+        const cashfree = Cashfree({ mode: checkout.mode || "sandbox" });
+        // Cashfree hands back nothing we would trust anyway, so whatever the
+        // modal resolves with we just ask our own server to check the order.
+        // That covers the case where the diner paid and then closed the modal
+        // before it could report back.
+        const result = await cashfree.checkout({
+          paymentSessionId: checkout.paymentSessionId,
+          redirectTarget: "_modal",
+        });
+        if (result?.error && !result?.paymentDetails) {
+          // A genuine refusal from the gateway (declined card, cancelled).
+          // Still worth a server check -- but say something if it comes back
+          // unpaid, rather than leaving the diner staring at the bill.
+          await confirm();
+          return;
+        }
+        await confirm();
+      } else {
+        const Razorpay = await loadRazorpay();
+        if (!Razorpay) {
+          setErr("The payment page could not be loaded. Please check your connection.");
+          return;
+        }
+        await new Promise((resolve) => {
+          const rzp = new Razorpay({
+            key: checkout.keyId,
+            order_id: checkout.gatewayOrderId,
+            amount: Math.round(Number(checkout.amount) * 100),
+            currency: checkout.currency || "INR",
+            name: brandName,
+            description: `${tableName} · ${session?.sessionCode || ""}`,
+            prefill: {
+              name: session?.customerName || "",
+              contact: session?.customerPhone || "",
+            },
+            handler: async (res) => {
+              await confirm(res);
+              resolve();
+            },
+            modal: { ondismiss: () => resolve() },
+          });
+          rzp.on("payment.failed", () => {
+            setErr("That payment did not go through. Please try again.");
             resolve();
-          },
-          modal: { ondismiss: () => resolve() },
+          });
+          rzp.open();
         });
-        rzp.on("payment.failed", () => {
-          setErr("That payment did not go through. Please try again.");
-          resolve();
-        });
-        rzp.open();
-      });
+      }
     } catch {
       setErr("Payment could not be completed.");
     } finally {
@@ -596,8 +642,9 @@ export default function OrderOnline() {
                         {paying ? "Opening payment…" : `Pay ${money(paymentInfo.amount)}`}
                       </button>
                       <p className="text-[11px] text-slate-400 text-center">
-                        Secured by Razorpay · your table is settled automatically once payment
-                        succeeds.
+                        Secured by{" "}
+                        {paymentInfo.checkout?.provider === "cashfree" ? "Cashfree" : "Razorpay"}{" "}
+                        · your table is settled automatically once payment succeeds.
                       </p>
                     </>
                   ) : (

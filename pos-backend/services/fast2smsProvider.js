@@ -51,21 +51,9 @@ const toIndianTenDigit = (phone) => {
  * side, and a hanging OTP endpoint would tie up Node's event loop for every
  * concurrent login attempt.
  */
-const callFast2Sms = async ({ apiKey, phone, otp, route, otpId }) => {
+const postToFast2Sms = async ({ apiKey, body: reqBody }) => {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
-
-  const reqBody = {
-    route: route || DEFAULT_ROUTE,
-    variables_values: String(otp),
-    numbers: String(phone),
-  };
-
-  // If a DLT OTP template ID is configured, pass it in the payload for
-  // Fast2SMS DLT-route accounts.
-  if (otpId || process.env.FAST2SMS_OTP_ID) {
-    reqBody.message = otpId || process.env.FAST2SMS_OTP_ID;
-  }
 
   let response;
   try {
@@ -118,6 +106,41 @@ const callFast2Sms = async ({ apiKey, phone, otp, route, otpId }) => {
 };
 
 /**
+ * One automatic retry on retryable errors (network hiccup / 5xx). Everything
+ * that sends through this provider wants the same policy, and three copies of
+ * it is how they drift apart.
+ */
+const withRetry = async (fn) => {
+  try {
+    return await fn();
+  } catch (err) {
+    if (err instanceof Fast2SmsError && err.retryable) {
+      // One short retry -- Fast2SMS is generally back within a few hundred ms.
+      await new Promise((r) => setTimeout(r, 400));
+      return fn();
+    }
+    throw err;
+  }
+};
+
+/** The OTP route, which takes the code as its only template variable. */
+const callFast2Sms = async ({ apiKey, phone, otp, route, otpId }) => {
+  const reqBody = {
+    route: route || DEFAULT_ROUTE,
+    variables_values: String(otp),
+    numbers: String(phone),
+  };
+
+  // If a DLT OTP template ID is configured, pass it in the payload for
+  // Fast2SMS DLT-route accounts.
+  if (otpId || process.env.FAST2SMS_OTP_ID) {
+    reqBody.message = otpId || process.env.FAST2SMS_OTP_ID;
+  }
+
+  return postToFast2Sms({ apiKey, body: reqBody });
+};
+
+/**
  * Public entry point. One automatic retry on retryable errors (network hiccup
  * / 5xx). Non-retryable errors bubble immediately.
  */
@@ -140,4 +163,78 @@ const sendOtp = async ({ phone, otp, apiKey, route, otpId }) => {
   }
 };
 
-module.exports = { sendOtp, Fast2SmsError, toIndianTenDigit };
+/**
+ * Send an approved DLT template.
+ *
+ * India requires transactional SMS to go out against a template registered on
+ * the DLT platform: you send the TEMPLATE ID as `message` and the values that
+ * fill its `{#var#}` placeholders as a pipe-separated `variables_values`, in
+ * the order they appear in the template. Free-text transactional SMS (the
+ * `v3`/`q` routes) is not DLT-compliant and operators drop it.
+ *
+ *   route            "dlt"
+ *   sender_id        the 3-6 char approved header, e.g. "KNOTKT"
+ *   message          the approved Message ID from DLT MANAGER, e.g. "187654"
+ *   variables_values "Asha|1042|450"   <- order matters, ours to get right
+ *   numbers          10-digit Indian number(s)
+ *
+ * A `|` inside a value would silently shift every later variable by one, so
+ * they are stripped rather than escaped -- there is no escape.
+ *
+ * https://docs.fast2sms.com/reference/dlt-sms
+ */
+const sendDlt = async ({ phone, senderId, templateId, variables = [], apiKey }) => {
+  if (!apiKey) throw new Fast2SmsError("Fast2SMS API key is not configured.");
+  if (!senderId) throw new Fast2SmsError("Fast2SMS sender ID (DLT header) is not configured.");
+  if (!templateId) throw new Fast2SmsError("Fast2SMS DLT template ID is not configured.");
+
+  const number = toIndianTenDigit(phone);
+  if (number.length !== 10) {
+    throw new Fast2SmsError("Fast2SMS requires a 10-digit Indian phone number.");
+  }
+
+  const values = (Array.isArray(variables) ? variables : [variables])
+    .map((v) => String(v === null || v === undefined ? "" : v).replace(/\|/g, " ").trim())
+    .join("|");
+
+  return withRetry(() =>
+    postToFast2Sms({
+      apiKey,
+      body: {
+        route: "dlt",
+        sender_id: senderId,
+        message: String(templateId),
+        variables_values: values,
+        numbers: number,
+      },
+    }),
+  );
+};
+
+/**
+ * Free-text send on the non-DLT routes. Kept for development and for accounts
+ * that have not finished DLT registration; it is NOT compliant for
+ * transactional messages to Indian numbers and operators may drop it.
+ */
+const sendText = async ({ phone, message, senderId, apiKey, route = "v3" }) => {
+  if (!apiKey) throw new Fast2SmsError("Fast2SMS API key is not configured.");
+  const number = toIndianTenDigit(phone);
+  if (number.length !== 10) {
+    throw new Fast2SmsError("Fast2SMS requires a 10-digit Indian phone number.");
+  }
+
+  return withRetry(() =>
+    postToFast2Sms({
+      apiKey,
+      body: {
+        route,
+        sender_id: senderId || "TXTIND",
+        message: String(message || ""),
+        language: "english",
+        numbers: number,
+      },
+    }),
+  );
+};
+
+module.exports = { sendOtp, sendDlt, sendText, Fast2SmsError, toIndianTenDigit };

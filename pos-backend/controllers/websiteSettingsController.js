@@ -559,12 +559,25 @@ const validateGatewayCredentials = async (req, res, next) => {
       if (!clientId || !clientSecret) {
         return next(createHttpError(400, "Cashfree Client ID and Client Secret are required!"));
       }
-      if (clientId.length >= 6 && clientSecret.length >= 6) {
-        isVerified = true;
-        message = "Cashfree credentials validated successfully!";
-      } else {
-        return next(createHttpError(400, "Cashfree credentials validation failed."));
+      // Actually ask Cashfree, rather than measuring the string length.
+      //
+      // "Validated successfully" used to mean nothing more than "both fields
+      // are at least six characters", so a typo'd secret was saved as
+      // verified and only failed later, in front of a customer at checkout.
+      const probe = await require("../services/gateways/cashfree").verifyCredentials({
+        appId: clientId,
+        secretKey: clientSecret,
+        environment: environment || "TEST",
+      });
+      if (!probe.ok) {
+        return next(
+          createHttpError(400, probe.reason || "Cashfree rejected these credentials."),
+        );
       }
+      isVerified = true;
+      message = `Cashfree credentials verified against ${
+        String(environment || "TEST").toUpperCase() === "PROD" ? "production" : "sandbox"
+      }.`;
     } else if (gateway === "phonepe") {
       if (!merchantId || !saltKey) {
         return next(createHttpError(400, "PhonePe Merchant ID and Salt Key are required!"));

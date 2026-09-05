@@ -71,6 +71,17 @@ const tableSessionSchema = new mongoose.Schema(
       transactionId: { type: String, default: "" },
       paidAt: Date,
       recordedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+
+      // The gateway order this session's online payment was opened against.
+      //
+      // Stored so payment-verify asks the gateway about OUR order rather than
+      // one the browser named -- without it a caller could hand back any paid
+      // order id from the same merchant account and settle this table with
+      // someone else's money. Subdocuments are strict, so these have to exist
+      // here or the assignment is silently dropped and the check has nothing
+      // to compare against.
+      gatewayProvider: { type: String, default: "" },
+      gatewayOrderId: { type: String, default: "" },
     },
 
     paymentHistory: [
