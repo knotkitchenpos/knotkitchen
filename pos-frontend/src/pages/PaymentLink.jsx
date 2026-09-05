@@ -2,15 +2,30 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { paymentLinkGet, paymentLinkVerify } from "../https/publicApi";
 
-function loadRazorpay() {
+/**
+ * Load a gateway SDK once and hand back whatever global it defines.
+ *
+ * Resolves null rather than rejecting: a customer whose network blocks the
+ * gateway CDN should get "could not be loaded", not a blank screen.
+ */
+function loadScript(src, pick) {
   return new Promise((resolve) => {
-    if (window.Razorpay) return resolve(window.Razorpay);
+    const existing = pick();
+    if (existing) return resolve(existing);
     const s = document.createElement("script");
-    s.src = "https://checkout.razorpay.com/v1/checkout.js";
-    s.onload = () => resolve(window.Razorpay);
+    s.src = src;
+    s.onload = () => resolve(pick() || null);
     s.onerror = () => resolve(null);
     document.body.appendChild(s);
   });
+}
+
+function loadRazorpay() {
+  return loadScript("https://checkout.razorpay.com/v1/checkout.js", () => window.Razorpay);
+}
+
+function loadCashfree() {
+  return loadScript("https://sdk.cashfree.com/js/v3/cashfree.js", () => window.Cashfree);
 }
 
 export default function PaymentLink() {
@@ -31,39 +46,83 @@ export default function PaymentLink() {
   const pay = async () => {
     setProcessing(true);
     setErr("");
-    const Razorpay = await loadRazorpay();
-    if (!Razorpay) { setErr("Payment gateway could not be loaded."); setProcessing(false); return; }
-    try {
-      const rzp = await new Promise((resolve, reject) => {
-        const r = new Razorpay({
-          key: import.meta.env.VITE_RAZORPAY_KEY_ID,
-          order_id: link.gatewayOrderId,
-          amount: Math.round(link.amount * 100),
-          currency: link.currency || "INR",
-          name: "Knot Kitchen",
-          description: `Bill ${link.billNumber || ""}`,
-          handler: async (res) => {
-            // `res` carries razorpay_order_id / _payment_id / _signature. All
-            // three are now REQUIRED by the capture endpoint — it no longer
-            // settles a link on unverified input.
-            //
-            // paymentMethod is sent explicitly rather than relying on the
-            // server default: that default was "RAZORPAY", a provider name the
-            // PaymentTransaction.method enum rejects, so every genuine capture
-            // used to abort with a ValidationError.
-            await paymentLinkVerify(token, {
-              ...res,
-              paymentMethod: "ONLINE",
-              idempotencyKey: `${res.razorpay_order_id}_${res.razorpay_payment_id}`,
-            });
-            setDone(true);
-            resolve(r);
-          },
-          modal: { ondismiss: () => resolve(r) },
+
+    /**
+     * Ask our own server what really happened, and reflect its answer.
+     *
+     * For Cashfree there is nothing in `payload` worth sending -- the server
+     * asks Cashfree directly about the order it opened. For Razorpay the
+     * signature triple is required, and the capture endpoint refuses without
+     * it.
+     */
+    const confirm = async (payload) => {
+      try {
+        await paymentLinkVerify(token, {
+          ...(payload || {}),
+          // Sent explicitly rather than relying on the server default: that
+          // default was "RAZORPAY", a provider name the PaymentTransaction
+          // method enum rejects, so every genuine capture used to abort with
+          // a ValidationError.
+          paymentMethod: "ONLINE",
         });
-        r.on("payment.failed", () => { setErr("Payment failed. Please try again."); resolve(r); });
-        r.open();
-      });
+        setDone(true);
+      } catch (e) {
+        setErr(
+          e.response?.data?.message ||
+            "We could not confirm that payment. Please contact the restaurant.",
+        );
+      }
+    };
+
+    try {
+      if (String(link.gatewayName || "").toUpperCase() === "CASHFREE") {
+        const Cashfree = await loadCashfree();
+        if (!Cashfree) {
+          setErr("Payment gateway could not be loaded.");
+          return;
+        }
+        const cashfree = Cashfree({ mode: link.gatewayMode || "sandbox" });
+        // Whatever the modal resolves with, we still ask our server. That
+        // covers the diner who paid and then closed it before it reported.
+        await cashfree.checkout({
+          paymentSessionId: link.paymentSessionId,
+          redirectTarget: "_modal",
+        });
+        await confirm();
+      } else {
+        const Razorpay = await loadRazorpay();
+        if (!Razorpay) {
+          setErr("Payment gateway could not be loaded.");
+          return;
+        }
+        await new Promise((resolve) => {
+          const r = new Razorpay({
+            // The link carries its store's own public key id. This used to
+            // read a build-time env var, so a store paying through its OWN
+            // Razorpay account had the PLATFORM key put in front of the
+            // customer and the order id would not match it.
+            key: link.gatewayKeyId || import.meta.env.VITE_RAZORPAY_KEY_ID,
+            order_id: link.gatewayOrderId,
+            amount: Math.round(link.amount * 100),
+            currency: link.currency || "INR",
+            name: link.restaurantName || "Knot Kitchen",
+            description: `Bill ${link.billNumber || ""}`,
+            handler: async (res) => {
+              await confirm({
+                ...res,
+                idempotencyKey: `${res.razorpay_order_id}_${res.razorpay_payment_id}`,
+              });
+              resolve();
+            },
+            modal: { ondismiss: () => resolve() },
+          });
+          r.on("payment.failed", () => {
+            setErr("Payment failed. Please try again.");
+            resolve();
+          });
+          r.open();
+        });
+      }
     } catch {
       setErr("Payment could not be completed.");
     } finally {

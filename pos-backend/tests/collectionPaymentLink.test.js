@@ -67,6 +67,28 @@ test("createPaymentLink requires valid phone number for collection order", async
     if (r === "../models/restaurantModel") return RestaurantMock;
     if (r === "../models/websiteSettingsModel") return { findOne: async () => null };
     if (r === "../models/paymentTransactionModel") return {};
+    // Creating a link now REQUIRES a usable gateway: one nobody can pay is
+    // worse than no link, so the controller refuses rather than minting a
+    // token against nothing. Give it one, and stub the SDK so the test
+    // never reaches the network.
+    if (r === "../services/paymentGateway")
+      return {
+        PROVIDERS: { RAZORPAY: "razorpay", CASHFREE: "cashfree", PHONEPE: "phonepe" },
+        resolveGateway: async () => ({
+          enabled: true,
+          provider: "razorpay",
+          keyId: "rzp_test_mock",
+          secret: "mock_secret",
+          environment: "TEST",
+          source: "platform",
+        }),
+      };
+    if (r === "razorpay")
+      return class {
+        constructor() {
+          this.orders = { create: async () => ({ id: "order_mock123" }) };
+        }
+      };
     if (r === "../models/tableSessionModel") return {};
     return orig.apply(this, arguments);
   };
@@ -170,7 +192,28 @@ test("createPaymentLink is idempotent: returns existing active link for same ord
     if (r === "../models/billModel") return BillMock;
     if (r === "../models/paymentLinkModel") return PaymentLinkMock;
     if (r === "../models/restaurantModel") return { findById: async () => ({ name: "Test" }) };
-    if (r === "../models/websiteSettingsModel") return { findOne: async () => null };
+    // A store WITH a usable gateway. Creating a link now requires one:
+    // a link nobody can pay is worse than no link, so the controller
+    // refuses rather than minting a token against nothing.
+    if (r === "../models/websiteSettingsModel")
+      return {
+        findOne: () => ({
+          select: () => ({
+            lean: async () => ({
+              paymentGateways: {
+                activeGateway: "razorpay",
+                razorpay: {
+                  isConfigured: true,
+                  keyId: "rzp_test_mock",
+                  keySecretEncrypted: Buffer.from("mock_secret").toString("base64"),
+                  environment: "TEST",
+                },
+              },
+            }),
+          }),
+          $or: [],
+        }),
+      };
     if (r === "../models/paymentTransactionModel") return {};
     if (r === "../models/tableSessionModel") return {};
     return orig.apply(this, arguments);

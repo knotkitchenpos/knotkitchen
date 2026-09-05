@@ -9,6 +9,7 @@ const Order = require("../models/orderModel");
 const TableSession = require("../models/tableSessionModel");
 const Restaurant = require("../models/restaurantModel");
 const { sendPaymentLinkMessage } = require("../services/messagingService");
+const { resolveGateway, PROVIDERS } = require("../services/paymentGateway");
 const { COMPLETED, SETTLED_STATUSES } = require("../constants/orderStatus");
 const { normalizePaymentMethod, toOrderPaymentMethod } = require("../constants/paymentMethods");
 
@@ -157,50 +158,51 @@ const createPaymentLink = async (req, res, next) => {
 
     // Module 5 §1 — Active Payment Gateway Resolution
     const WebsiteSettings = require("../models/websiteSettingsModel");
-    const settings = await WebsiteSettings.findOne({
-      $or: [{ restaurantId: req.user.restaurantId }, { storeId: req.user.storeId }],
+    // Which gateway, and whose credentials. This used to be a fourth
+    // hand-written copy of that resolution -- the QR page, the storefront and
+    // paymentGateway.js each had their own, and they disagreed. One answer.
+    const gw = await resolveGateway({
+      restaurantId: req.user.restaurantId,
+      storeId: req.user.storeId,
     });
 
-    const activeGw = (settings?.paymentGateways?.activeGateway || "razorpay").toLowerCase();
-    const gwConfig = settings?.paymentGateways?.[activeGw];
-
     let gatewayOrderId = "";
-    let gatewayKeyId = config.razorpayKeyId;
-    let gatewaySecret = config.razorpaySecretKey;
+    let paymentSessionId = "";
 
-    if (gwConfig && gwConfig.isConfigured) {
-      if (activeGw === "razorpay" && gwConfig.keyId) {
-        gatewayKeyId = gwConfig.keyId;
-        if (gwConfig.keySecretEncrypted) {
-          gatewaySecret = Buffer.from(gwConfig.keySecretEncrypted, "base64").toString("utf-8");
-        }
-      } else if (activeGw === "cashfree" && gwConfig.clientId) {
-        gatewayKeyId = gwConfig.clientId;
-        if (gwConfig.clientSecretEncrypted) {
-          gatewaySecret = Buffer.from(gwConfig.clientSecretEncrypted, "base64").toString("utf-8");
-        }
-      } else if (activeGw === "phonepe" && gwConfig.merchantId) {
-        gatewayKeyId = gwConfig.merchantId;
-        if (gwConfig.saltKeyEncrypted) {
-          gatewaySecret = Buffer.from(gwConfig.saltKeyEncrypted, "base64").toString("utf-8");
-        }
-      }
-    }
-
-    if (activeGw === "razorpay" && gatewayKeyId && gatewaySecret) {
-      try {
-        const razorpay = new Razorpay({ key_id: gatewayKeyId, key_secret: gatewaySecret });
-        const order = await razorpay.orders.create({
-          amount: Math.round(calculatedAmount * 100),
-          currency: targetBill?.currency || "INR",
-          receipt: `link_${linkToken.slice(0, 10)}`,
-        });
-        gatewayOrderId = order.id;
-      } catch (err) {
-        console.warn("Razorpay order creation skipped:", err.message);
-      }
-    } else if (activeGw === "cashfree" || activeGw === "phonepe") {
-      gatewayOrderId = `${activeGw.toUpperCase()}_LINK_${Date.now().toString(36)}`;
+    if (gw.enabled && gw.provider === PROVIDERS.CASHFREE) {
+      // A REAL Cashfree order. This branch used to mint a synthetic
+      // `CASHFREE_LINK_<ts>` id without ever calling the provider, which meant
+      // the link could be opened, could not be paid, and could not have been
+      // verified even if it had been.
+      const cashfree = require("../services/gateways/cashfree");
+      const order = await cashfree.createOrder({
+        appId: gw.keyId,
+        secretKey: gw.secret,
+        environment: gw.environment,
+        amount: calculatedAmount,
+        currency: targetBill?.currency || "INR",
+        orderId: `lnk_${linkToken.slice(0, 24)}`,
+        customer: { id: `lnk_${linkToken.slice(0, 20)}`, phone: validatedPhone },
+        notifyUrl: config.cashfreeNotifyUrl,
+      });
+      gatewayOrderId = order.orderId;
+      paymentSessionId = order.paymentSessionId;
+    } else if (gw.enabled && gw.provider === PROVIDERS.RAZORPAY) {
+      const razorpay = new Razorpay({ key_id: gw.keyId, key_secret: gw.secret });
+      const order = await razorpay.orders.create({
+        amount: Math.round(calculatedAmount * 100),
+        currency: targetBill?.currency || "INR",
+        receipt: `link_${linkToken.slice(0, 10)}`,
+      });
+      gatewayOrderId = order.id;
+    } else {
+      // No usable gateway. Refusing here is the honest outcome: a link the
+      // customer cannot pay is worse than no link, and the operator finds out
+      // now rather than after they have sent it.
+      throw createHttpError(
+        503,
+        "No payment gateway is configured for this store, so a payment link cannot be created.",
+      );
     }
 
     // 7. Save Payment Link to Database with Active Gateway Association (Module 5 §6)
@@ -215,8 +217,10 @@ const createPaymentLink = async (req, res, next) => {
       linkToken,
       amount: calculatedAmount,
       currency: targetBill?.currency || "INR",
-      gatewayName: activeGw.toUpperCase(),
+      gatewayName: gw.provider.toUpperCase(),
       gatewayOrderId,
+      paymentSessionId,
+      gatewayMode: gw.environment === "PROD" ? "production" : "sandbox",
       expiresAt,
       createdBy: req.user._id,
     });
@@ -272,6 +276,10 @@ const getPaymentLink = async (req, res, next) => {
     const order = link.orderId;
     const restaurant = link.restaurantId;
 
+    // The store whose gateway this link was opened against. Only the
+    // PUBLIC half is read out below.
+    const linkGw = await resolveGateway({ restaurantId: restaurant?._id || restaurant });
+
     const orderedItems = (order?.items || []).map((item) => ({
       name: item.name,
       quantity: item.quantity,
@@ -298,6 +306,12 @@ const getPaymentLink = async (req, res, next) => {
         // this exact value.
         gatewayOrderId: link.gatewayOrderId || "",
         gatewayName: link.gatewayName || "RAZORPAY",
+        // The browser needs these; none of them is a secret. Razorpay
+        // Checkout takes a PUBLIC key id, Cashfree a payment session it
+        // minted plus which environment to open against.
+        gatewayKeyId: linkGw.provider === PROVIDERS.RAZORPAY ? linkGw.keyId : "",
+        paymentSessionId: link.paymentSessionId || "",
+        gatewayMode: link.gatewayMode || "sandbox",
         restaurantName: restaurant?.name || "Knot Kitchen",
         orderNumber: order?.marketplaceOrderId || order?._id?.toString() || bill?.billNumber || "N/A",
         orderedItems,
@@ -356,44 +370,89 @@ const verifyAndCaptureLinkPayment = async (req, res, next) => {
     // the "mark everything paid" code below. `POST /:token/verify` with a body
     // of `{"paymentMethod":"UPI"}` settled any bill for free.
     //
-    // Verification is now required, and failure to verify is fatal.
-    if (!config.razorpaySecretKey) {
-      // Refuse rather than trust: with no secret we cannot tell a real payment
-      // from a forged one. Genuine payments still reconcile via the webhook.
-      throw createHttpError(503, "Payment verification is unavailable. Please contact the restaurant.");
-    }
-
-    // Only Razorpay is actually integrated. The cashfree/phonepe branches in
-    // createPaymentLink mint a synthetic gatewayOrderId and never create a real
-    // gateway order, so a "capture" for them would be unverifiable by
-    // construction. Reject instead of pretending.
+    // Verification is required, and failure to verify is fatal.
+    //
+    // Which check runs depends on the gateway the link was opened against --
+    // read from the LINK, not from the request, so a caller cannot pick the
+    // weaker path by naming a different gateway.
     const linkGateway = String(link.gatewayName || "RAZORPAY").toUpperCase();
-    if (linkGateway !== "RAZORPAY") {
+    const gw = await resolveGateway({ restaurantId: link.restaurantId });
+
+    let transactionId = "";
+    let gatewayOrder = "";
+
+    if (linkGateway === "CASHFREE") {
+      // Cashfree hands the browser nothing worth trusting, so ask Cashfree.
+      // No client-supplied value is in this decision at all.
+      if (gw.provider !== PROVIDERS.CASHFREE || !gw.enabled) {
+        throw createHttpError(503, "Payment verification is unavailable. Please contact the restaurant.");
+      }
+      if (!link.gatewayOrderId) {
+        throw createHttpError(400, "This payment link was never opened with the gateway.");
+      }
+
+      const cashfree = require("../services/gateways/cashfree");
+      let status;
+      try {
+        status = await cashfree.isOrderPaid({
+          appId: gw.keyId,
+          secretKey: gw.secret,
+          environment: gw.environment,
+          orderId: link.gatewayOrderId,
+        });
+      } catch (cfErr) {
+        // Could not find out. NOT treated as unpaid: the money may have moved,
+        // and telling the customer it failed invites them to pay twice.
+        console.warn("[paymentLink] cashfree status check failed:", cfErr?.message || cfErr);
+        throw createHttpError(
+          502,
+          "We could not confirm that payment yet. Please contact the restaurant before paying again.",
+        );
+      }
+
+      if (!status.paid) {
+        throw createHttpError(400, "That payment has not completed.");
+      }
+      if (Math.abs(Number(status.amount) - Number(link.amount)) > 0.01) {
+        throw createHttpError(409, "The amount paid does not match this bill. Please contact the restaurant.");
+      }
+
+      transactionId = status.cfOrderId || link.gatewayOrderId;
+      gatewayOrder = link.gatewayOrderId;
+    } else if (linkGateway === "RAZORPAY") {
+      if (!gw.enabled || gw.provider !== PROVIDERS.RAZORPAY) {
+        // Refuse rather than trust: with no secret we cannot tell a real
+        // payment from a forged one. Genuine payments still reconcile via the
+        // webhook.
+        throw createHttpError(503, "Payment verification is unavailable. Please contact the restaurant.");
+      }
+      if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+        throw createHttpError(400, "Invalid payment signature!");
+      }
+
+      // Bind the signed payload to THIS link. Without this a valid signature
+      // from any other Razorpay order on the same account would settle it.
+      if (link.gatewayOrderId && razorpay_order_id !== link.gatewayOrderId) {
+        throw createHttpError(400, "Invalid payment signature!");
+      }
+
+      const expected = crypto
+        .createHmac("sha256", gw.secret)
+        .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+        .digest("hex");
+
+      // Constant-time: a plain !== leaks how much of the signature matched.
+      if (!timingSafeEquals(expected, String(razorpay_signature))) {
+        throw createHttpError(400, "Invalid payment signature!");
+      }
+
+      transactionId = razorpay_payment_id;
+      gatewayOrder = razorpay_order_id || link.gatewayOrderId || "";
+    } else {
+      // PhonePe and anything else: no secret exists for it anywhere in the
+      // configuration, so a "capture" would be unverifiable by construction.
       throw createHttpError(501, "This payment method cannot be confirmed here.");
     }
-
-    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-      throw createHttpError(400, "Invalid payment signature!");
-    }
-
-    // Bind the signed payload to THIS link. Without this a valid signature from
-    // any other Razorpay order on the same account would settle this link.
-    if (link.gatewayOrderId && razorpay_order_id !== link.gatewayOrderId) {
-      throw createHttpError(400, "Invalid payment signature!");
-    }
-
-    const expected = crypto
-      .createHmac("sha256", config.razorpaySecretKey)
-      .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-      .digest("hex");
-
-    // Constant-time: a plain !== leaks how much of the signature matched.
-    if (!timingSafeEquals(expected, String(razorpay_signature))) {
-      throw createHttpError(400, "Invalid payment signature!");
-    }
-
-    const transactionId = razorpay_payment_id || `txn_${crypto.randomBytes(12).toString("hex")}`;
-    const gatewayOrder = razorpay_order_id || link.gatewayOrderId || "";
 
     // Idempotency check
     const effectiveIdempotencyKey = idempotencyKey || `pay-link-${link._id}-${transactionId}`;

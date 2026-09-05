@@ -30,6 +30,13 @@ const paymentLinkSchema = new mongoose.Schema(
     // Gateway
     gatewayName: { type: String, default: "RAZORPAY" },
     gatewayOrderId: { type: String, default: "" },
+    // Cashfree gives the browser a payment_session_id rather than an order
+    // id plus a public key, and the SDK has to be told sandbox vs
+    // production or it silently fails to open. Both live here because the
+    // public link page is anonymous and cannot resolve the tenant itself.
+    // Neither is a secret.
+    paymentSessionId: { type: String, default: "" },
+    gatewayMode: { type: String, default: "" },
 
     expiresAt: { type: Date, required: true },
     paidAt: Date,

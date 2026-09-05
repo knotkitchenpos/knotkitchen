@@ -318,3 +318,69 @@ test("Cashfree payloads on the Razorpay endpoint are refused, not handled", () =
     "the disabled branch must not start acting again",
   );
 });
+
+// ---------------------------------------------------------------------------
+// Payment links
+// ---------------------------------------------------------------------------
+
+test("a payment link is never created without a usable gateway", () => {
+  // It used to mint a synthetic `CASHFREE_LINK_<ts>` id without calling the
+  // provider: the link opened, could not be paid, and could not have been
+  // verified even if it had been. A link nobody can pay is worse than none.
+  const src = read("controllers", "paymentLinkController.js");
+  assert.match(src, /No payment gateway is configured for this store/);
+  assert.match(src, /createHttpError\(\s*503/);
+});
+
+test("a Cashfree payment link opens a REAL gateway order", () => {
+  const src = read("controllers", "paymentLinkController.js");
+  assert.match(src, /cashfree\.createOrder/);
+  // Comments may still describe the old behaviour -- one does, explaining
+  // exactly this. Only executable code is in question.
+  const code = src
+    .split(String.fromCharCode(10))
+    .filter((line) => !line.trim().startsWith("//") && !line.trim().startsWith("*"))
+    .join(String.fromCharCode(10));
+  assert.ok(
+    !/CASHFREE_LINK_/.test(code),
+    "the synthetic order id that could never be verified is gone",
+  );
+  assert.ok(!/PHONEPE_LINK_/.test(code));
+});
+
+test("capture picks its check from the LINK, not from the request", () => {
+  // Reading the gateway off the request would let a caller choose the weaker
+  // verification path by naming a different gateway.
+  const src = read("controllers", "paymentLinkController.js");
+  assert.match(src, /const linkGateway = String\(link\.gatewayName \|\| "RAZORPAY"\)\.toUpperCase\(\)/);
+  const capture = src.slice(src.indexOf("const linkGateway"), src.indexOf("// Idempotency check"));
+  assert.match(capture, /if \(linkGateway === "CASHFREE"\)/);
+  assert.match(capture, /cashfree\.isOrderPaid/);
+  assert.match(capture, /timingSafeEquals/, "Razorpay still verifies its signature");
+  assert.match(capture, /501/, "an unintegrated gateway is refused, not guessed at");
+});
+
+test("an unconfirmable Cashfree capture is not reported as a failed payment", () => {
+  const src = read("controllers", "paymentLinkController.js");
+  const capture = src.slice(src.indexOf('if (linkGateway === "CASHFREE")'), src.indexOf('} else if (linkGateway === "RAZORPAY")'));
+  assert.match(capture, /502/);
+  assert.match(capture, /could not confirm that payment/i);
+  assert.match(capture, /status\.amount/, "and the amount is checked against the link");
+});
+
+test("the link page is given public values only", () => {
+  const src = read("controllers", "paymentLinkController.js");
+  const payload = src.slice(src.indexOf("gatewayKeyId:"), src.indexOf("restaurantName:"));
+  assert.match(payload, /gatewayKeyId: linkGw\.provider === PROVIDERS\.RAZORPAY \? linkGw\.keyId : ""/);
+  assert.ok(!/linkGw\.secret/.test(payload), "never the secret");
+  assert.ok(!/\.secret/.test(payload));
+});
+
+test("the link page uses the STORE's key, not a build-time platform key", () => {
+  // A store paying into its own Razorpay account had the platform key put in
+  // front of the customer, against an order id that key does not own.
+  const src = read("..", "pos-frontend", "src", "pages", "PaymentLink.jsx");
+  assert.match(src, /key: link\.gatewayKeyId \|\| import\.meta\.env\.VITE_RAZORPAY_KEY_ID/);
+  assert.match(src, /loadCashfree/);
+  assert.match(src, /paymentSessionId: link\.paymentSessionId/);
+});
