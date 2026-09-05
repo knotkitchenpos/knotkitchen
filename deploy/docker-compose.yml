@@ -114,9 +114,6 @@ services:
       CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
 
       # === Payments / SMS ===
-      RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
-      RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
-      RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
 
       # Cashfree PG. Platform-wide fallback for stores that have not entered
       # their own credentials under Website Settings.
@@ -188,7 +185,6 @@ services:
       args:
         # Vite bakes these into the JS bundle at build time.
         VITE_BACKEND_URL: https://api.${BASE_DOMAIN}
-        VITE_RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
     image: knotkitchen/pos-web:latest
     restart: unless-stopped
     networks: [knot]

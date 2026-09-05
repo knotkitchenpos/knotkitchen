@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 
 const paymentSchema = new mongoose.Schema({
-    // Gateway payment identifier (Razorpay's `id`). Unique so webhook replays
+    // The gateway's own payment identifier. Unique so webhook replays
     // are rejected at the DB layer — see paymentController.webHookVerification
     // for the corresponding E11000 handler (§20).
     paymentId: { type: String, unique: true, sparse: true },

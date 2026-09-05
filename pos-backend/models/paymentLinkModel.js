@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 
 /**
  * Payment links — shareable URLs that settle a bill/order.
- * Customers open the link, pay via Razorpay/Card/UPI, and the
+ * Customers open the link, pay by card/UPI/netbanking, and the
  * transaction is recorded in PaymentTransaction + Bill + Order.
  * Each link is scoped to a restaurant, never cross-tenant.
  */
@@ -28,7 +28,7 @@ const paymentLinkSchema = new mongoose.Schema(
     paidAmount: { type: Number, default: 0 },
 
     // Gateway
-    gatewayName: { type: String, default: "RAZORPAY" },
+    gatewayName: { type: String, default: "CASHFREE" },
     gatewayOrderId: { type: String, default: "" },
     // Cashfree gives the browser a payment_session_id rather than an order
     // id plus a public key, and the SDK has to be told sandbox vs

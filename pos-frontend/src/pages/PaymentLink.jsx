@@ -20,10 +20,6 @@ function loadScript(src, pick) {
   });
 }
 
-function loadRazorpay() {
-  return loadScript("https://checkout.razorpay.com/v1/checkout.js", () => window.Razorpay);
-}
-
 function loadCashfree() {
   return loadScript("https://sdk.cashfree.com/js/v3/cashfree.js", () => window.Cashfree);
 }
@@ -51,18 +47,17 @@ export default function PaymentLink() {
      * Ask our own server what really happened, and reflect its answer.
      *
      * For Cashfree there is nothing in `payload` worth sending -- the server
-     * asks Cashfree directly about the order it opened. For Razorpay the
-     * signature triple is required, and the capture endpoint refuses without
-     * it.
+     * asks Cashfree directly about the order it opened, so there is nothing
+     * from the browser in that decision at all.
      */
     const confirm = async (payload) => {
       try {
         await paymentLinkVerify(token, {
           ...(payload || {}),
-          // Sent explicitly rather than relying on the server default: that
-          // default was "RAZORPAY", a provider name the PaymentTransaction
-          // method enum rejects, so every genuine capture used to abort with
-          // a ValidationError.
+          // Sent explicitly rather than relying on a server default: a
+          // provider NAME is not an instrument, and the PaymentTransaction
+          // method enum rejects one, so every genuine capture used to abort
+          // with a ValidationError.
           paymentMethod: "ONLINE",
         });
         setDone(true);
@@ -75,54 +70,19 @@ export default function PaymentLink() {
     };
 
     try {
-      if (String(link.gatewayName || "").toUpperCase() === "CASHFREE") {
-        const Cashfree = await loadCashfree();
-        if (!Cashfree) {
-          setErr("Payment gateway could not be loaded.");
-          return;
-        }
-        const cashfree = Cashfree({ mode: link.gatewayMode || "sandbox" });
-        // Whatever the modal resolves with, we still ask our server. That
-        // covers the diner who paid and then closed it before it reported.
-        await cashfree.checkout({
-          paymentSessionId: link.paymentSessionId,
-          redirectTarget: "_modal",
-        });
-        await confirm();
-      } else {
-        const Razorpay = await loadRazorpay();
-        if (!Razorpay) {
-          setErr("Payment gateway could not be loaded.");
-          return;
-        }
-        await new Promise((resolve) => {
-          const r = new Razorpay({
-            // The link carries its store's own public key id. This used to
-            // read a build-time env var, so a store paying through its OWN
-            // Razorpay account had the PLATFORM key put in front of the
-            // customer and the order id would not match it.
-            key: link.gatewayKeyId || import.meta.env.VITE_RAZORPAY_KEY_ID,
-            order_id: link.gatewayOrderId,
-            amount: Math.round(link.amount * 100),
-            currency: link.currency || "INR",
-            name: link.restaurantName || "Knot Kitchen",
-            description: `Bill ${link.billNumber || ""}`,
-            handler: async (res) => {
-              await confirm({
-                ...res,
-                idempotencyKey: `${res.razorpay_order_id}_${res.razorpay_payment_id}`,
-              });
-              resolve();
-            },
-            modal: { ondismiss: () => resolve() },
-          });
-          r.on("payment.failed", () => {
-            setErr("Payment failed. Please try again.");
-            resolve();
-          });
-          r.open();
-        });
+      const Cashfree = await loadCashfree();
+      if (!Cashfree) {
+        setErr("Payment gateway could not be loaded.");
+        return;
       }
+      const cashfree = Cashfree({ mode: link.gatewayMode || "sandbox" });
+      // Whatever the modal resolves with, we still ask our server. That
+      // covers the diner who paid and then closed it before it reported.
+      await cashfree.checkout({
+        paymentSessionId: link.paymentSessionId,
+        redirectTarget: "_modal",
+      });
+      await confirm();
     } catch {
       setErr("Payment could not be completed.");
     } finally {
@@ -170,7 +130,7 @@ export default function PaymentLink() {
           {processing ? "Processing…" : "Pay Now"}
         </button>
         <p className="text-xs text-gray-400 text-center mt-4">
-          Secured by Razorpay · You will receive a confirmation after payment.
+          Secured by Cashfree · You will receive a confirmation after payment.
         </p>
       </div>
     </div>

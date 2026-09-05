@@ -30,7 +30,7 @@ const OrderCounter = require("../models/orderCounterModel");
  *   - `Bill.orderId`, `Payment.orderId`, `PaymentLink.orderId`, etc.
  *     — all continue to reference `Order._id`, so all existing DB
  *     relationships keep working.
- *   - `paymentData.razorpay_*`  (gateway identifiers)
+ *   - `paymentData.gateway*`    (gateway identifiers)
  *   - The Order.orderNumber unique partial index in orderModel.js — a
  *     duplicate would still fail with E11000, giving us defence-in-depth
  *     collision protection.

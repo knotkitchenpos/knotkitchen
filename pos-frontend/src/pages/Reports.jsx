@@ -382,7 +382,7 @@ const OrderDetailsModal = ({ order, onClose }) => {
               method yet, and printing one made unpaid orders look settled. */}
           <DetailRow label="Payment Method" value={(order.paymentMethod || payment?.method || "—").toString()} />
           <DetailRow label="Payment Status" value={(payment?.status || "pending").toString()} />
-          <DetailRow label="Payment ID" value={payment?.transactionId || order.paymentData?.razorpay_payment_id || "—"} />
+          <DetailRow label="Payment ID" value={payment?.transactionId || order.paymentData?.gatewayPaymentId || "—"} />
           <DetailRow label="Status" value={statusLabel(order.orderStatus)} />
         </div>
       </div>

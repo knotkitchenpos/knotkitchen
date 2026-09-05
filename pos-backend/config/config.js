@@ -66,9 +66,6 @@ const config = Object.freeze({
     accessTokenExpiry: process.env.ACCESS_TOKEN_EXPIRY || "15m",
     refreshTokenExpiry: process.env.REFRESH_TOKEN_EXPIRY || "30d",
 
-    razorpayKeyId: process.env.RAZORPAY_KEY_ID,
-    razorpaySecretKey: process.env.RAZORPAY_KEY_SECRET,
-    razorpayWebhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET,
 
     // Cashfree PG. Platform-wide credentials, used by any store that has
     // not brought its own in Website Settings. CASHFREE_ENV picks the

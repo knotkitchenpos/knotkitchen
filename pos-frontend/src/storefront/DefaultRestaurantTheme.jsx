@@ -561,8 +561,8 @@ const DefaultRestaurantTheme = ({ data, cart, onSelectProduct, onOpenCart }) => 
             <h4 className="font-semibold mb-3">Accepted Payment Methods</h4>
             <div className="flex flex-wrap gap-2 text-xs font-bold text-white/90">
               <span className="px-2.5 py-1 bg-white/10 rounded-lg">💵 Cash</span>
-              {(data.paymentGateways?.razorpayConfigured || ordering?.razorpayEnabled) && (
-                <span className="px-2.5 py-1 bg-blue-600/40 rounded-lg border border-blue-400/30">💳 Razorpay</span>
+              {data.paymentGateways?.onlinePaymentEnabled && (
+                <span className="px-2.5 py-1 bg-blue-600/40 rounded-lg border border-blue-400/30">💳 Card / UPI</span>
               )}
               {(data.paymentGateways?.cashfreeConfigured || ordering?.cashfreeEnabled) && (
                 <span className="px-2.5 py-1 bg-purple-600/40 rounded-lg border border-purple-400/30">💳 Cashfree</span>

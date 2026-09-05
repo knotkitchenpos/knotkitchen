@@ -46,18 +46,16 @@ const sanitizeSettings = (doc) => {
   if (!doc) return doc;
   const obj = typeof doc.toObject === "function" ? doc.toObject() : JSON.parse(JSON.stringify(doc));
   if (obj.paymentGateways) {
-    for (const gwKey of ["cashfree", "phonepe", "razorpay"]) {
+    for (const gwKey of ["cashfree", "phonepe"]) {
       if (obj.paymentGateways[gwKey]) {
-        delete obj.paymentGateways[gwKey].keySecretEncrypted;
         delete obj.paymentGateways[gwKey].clientSecretEncrypted;
         delete obj.paymentGateways[gwKey].saltKeyEncrypted;
       }
     }
   }
   if (obj.draft && obj.draft.paymentGateways) {
-    for (const gwKey of ["cashfree", "phonepe", "razorpay"]) {
+    for (const gwKey of ["cashfree", "phonepe"]) {
       if (obj.draft.paymentGateways[gwKey]) {
-        delete obj.draft.paymentGateways[gwKey].keySecretEncrypted;
         delete obj.draft.paymentGateways[gwKey].clientSecretEncrypted;
         delete obj.draft.paymentGateways[gwKey].saltKeyEncrypted;
       }
@@ -324,15 +322,15 @@ const updateWebsiteSettings = async (req, res, next) => {
     // their logo. Both guards below must therefore fire on an actual CHANGE,
     // never on the client echoing back what it was already given — otherwise
     // a store that has not set up a gateway can never save anything on this
-    // page at all. `activeGateway` defaults to "razorpay" with
-    // isConfigured=false, which made that the default state for every new
-    // store: the whole page 400'd before it ever reached settings.save().
+    // page at all. `activeGateway` has a default with isConfigured=false,
+    // which is the state of every new store: the whole page 400'd before it
+    // ever reached settings.save().
     if (body.paymentGateways) {
       const pg = body.paymentGateways;
       const currentActive = settings.paymentGateways?.activeGateway;
       const activeGatewayChanging =
         pg.activeGateway !== undefined && pg.activeGateway !== currentActive;
-      const credentialsSubmitted = ["cashfree", "phonepe", "razorpay"].some((k) => pg[k]);
+      const credentialsSubmitted = ["cashfree", "phonepe"].some((k) => pg[k]);
 
       if (activeGatewayChanging || credentialsSubmitted) {
         if (req.user?.role !== "Owner" && req.user?.role !== "owner" && req.user?.role !== "superadmin") {
@@ -340,7 +338,7 @@ const updateWebsiteSettings = async (req, res, next) => {
         }
       }
 
-      if (activeGatewayChanging && ["cashfree", "phonepe", "razorpay"].includes(pg.activeGateway)) {
+      if (activeGatewayChanging && ["cashfree", "phonepe"].includes(pg.activeGateway)) {
         // A gateway may only be switched ON once it has credentials.
         const targetGw = settings.paymentGateways[pg.activeGateway];
         if (targetGw && targetGw.isConfigured !== false) {
@@ -350,13 +348,12 @@ const updateWebsiteSettings = async (req, res, next) => {
         }
       }
 
-      for (const gwKey of ["cashfree", "phonepe", "razorpay"]) {
+      for (const gwKey of ["cashfree", "phonepe"]) {
         if (pg[gwKey]) {
           const gw = pg[gwKey];
           const dest = settings.paymentGateways[gwKey] || {};
 
           if (gw.clientId !== undefined) dest.clientId = clampText(gw.clientId, 100);
-          if (gw.keyId !== undefined) dest.keyId = clampText(gw.keyId, 100);
           if (gw.merchantId !== undefined) dest.merchantId = clampText(gw.merchantId, 100);
           if (gw.saltIndex !== undefined) dest.saltIndex = clampText(gw.saltIndex, 10);
           if (gw.environment !== undefined && ["TEST", "PROD", "UAT"].includes(gw.environment)) {
@@ -364,7 +361,7 @@ const updateWebsiteSettings = async (req, res, next) => {
           }
 
           // Secret masking security check (Module 4 §5): Store raw secret encrypted & masked representation
-          const secretInput = gw.clientSecret || gw.keySecret || gw.saltKey;
+          const secretInput = gw.clientSecret || gw.saltKey;
           if (secretInput && typeof secretInput === "string" && !secretInput.includes("••••")) {
             const trimmedSecret = secretInput.trim();
             const masked = trimmedSecret.length > 4
@@ -373,13 +370,10 @@ const updateWebsiteSettings = async (req, res, next) => {
 
             if (gwKey === "cashfree") {
               dest.clientSecretMasked = masked;
-              dest.clientSecretEncrypted = Buffer.from(trimmedSecret).toString("base64");
+              dest.clientSecretEncrypted = seal(trimmedSecret);
             } else if (gwKey === "phonepe") {
               dest.saltKeyMasked = masked;
-              dest.saltKeyEncrypted = Buffer.from(trimmedSecret).toString("base64");
-            } else if (gwKey === "razorpay") {
-              dest.keySecretMasked = masked;
-              dest.keySecretEncrypted = Buffer.from(trimmedSecret).toString("base64");
+              dest.saltKeyEncrypted = seal(trimmedSecret);
             }
             dest.isConfigured = true;
           }
@@ -437,7 +431,7 @@ const updateWebsiteSettings = async (req, res, next) => {
 
     const domainChanged = body.customDomain !== undefined && body.customDomain !== prevSnapshot.customDomain;
     const activeGatewayChanged = body.paymentGateways?.activeGateway && body.paymentGateways.activeGateway !== prevSnapshot.paymentGateways?.activeGateway;
-    const gatewayUpdated = Boolean(body.paymentGateways?.cashfree || body.paymentGateways?.phonepe || body.paymentGateways?.razorpay);
+    const gatewayUpdated = Boolean(body.paymentGateways?.cashfree || body.paymentGateways?.phonepe);
     const homepageChanged = Boolean(body.banners || body.sectionTitles || body.branding);
 
     settings.version += 1;
@@ -460,9 +454,9 @@ const updateWebsiteSettings = async (req, res, next) => {
         req,
         action: "Active Payment Gateway Changed",
         resource: "Payment Gateway",
-        previousValue: prevSnapshot.paymentGateways?.activeGateway || "razorpay",
+        previousValue: prevSnapshot.paymentGateways?.activeGateway || "cashfree",
         newValue: settings.paymentGateways?.activeGateway,
-        description: `Active payment gateway changed from '${prevSnapshot.paymentGateways?.activeGateway || "razorpay"}' to '${settings.paymentGateways?.activeGateway}'`,
+        description: `Active payment gateway changed from '${prevSnapshot.paymentGateways?.activeGateway || "cashfree"}' to '${settings.paymentGateways?.activeGateway}'`,
       });
     }
 
@@ -537,26 +531,16 @@ const previewWebsite = async (req, res, next) => {
 const validateGatewayCredentials = async (req, res, next) => {
   try {
     const { tenant, settings } = await loadOwnSettings(req);
-    const { gateway, keyId, keySecret, clientId, clientSecret, merchantId, saltKey, saltIndex, environment } = req.body || {};
+    const { gateway, clientId, clientSecret, merchantId, saltKey, saltIndex, environment } = req.body || {};
 
-    if (!["cashfree", "phonepe", "razorpay"].includes(gateway)) {
+    if (!["cashfree", "phonepe"].includes(gateway)) {
       return next(createHttpError(400, "Invalid payment gateway type!"));
     }
 
     let isVerified = false;
     let message = "";
 
-    if (gateway === "razorpay") {
-      if (!keyId || !keySecret) {
-        return next(createHttpError(400, "Razorpay Key ID and Key Secret are required!"));
-      }
-      if (keyId.length >= 6 && keySecret.length >= 6) {
-        isVerified = true;
-        message = "Razorpay credentials validated successfully!";
-      } else {
-        return next(createHttpError(400, "Razorpay credentials validation failed."));
-      }
-    } else if (gateway === "cashfree") {
+    if (gateway === "cashfree") {
       if (!clientId || !clientSecret) {
         return next(createHttpError(400, "Cashfree Client ID and Client Secret are required!"));
       }
@@ -593,7 +577,7 @@ const validateGatewayCredentials = async (req, res, next) => {
 
     if (isVerified) {
       settings.paymentGateways = settings.paymentGateways || {};
-      const secretInput = keySecret || clientSecret || saltKey;
+      const secretInput = clientSecret || saltKey;
       const masked = secretInput.length > 4 ? "••••••••" + secretInput.trim().slice(-4) : "••••••••";
 
       // The *Encrypted fields held plain Base64 -- an encoding, not
@@ -602,9 +586,6 @@ const validateGatewayCredentials = async (req, res, next) => {
       // CREDENTIALS_SECRET is set, and falls back to the old Base64 when
       // it is not, so a missing key cannot take payments offline.
       const gwData = {
-        keyId: clampText(keyId, 100) || "",
-        keySecretMasked: masked,
-        keySecretEncrypted: seal(secretInput.trim()),
         clientId: clampText(clientId, 100) || "",
         clientSecretMasked: masked,
         clientSecretEncrypted: seal(secretInput.trim()),

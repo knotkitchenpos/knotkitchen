@@ -34,8 +34,8 @@ test("Website Module 9: Public storefront payload never leaks internal employee 
     slug: "royal-palace",
     displayName: "Royal Palace",
     paymentGateways: {
-      activeGateway: "Razorpay",
-      razorpayKeySecret: "SECRET_KEY_NEVER_LEAK", // Private secret key
+      activeGateway: "Cashfree",
+      cashfreeClientSecret: "SECRET_KEY_NEVER_LEAK", // Private secret key
     },
   };
 

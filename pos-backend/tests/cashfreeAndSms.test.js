@@ -270,7 +270,8 @@ test("the signature is checked against the tenant that owns the order", () => {
   // A signature valid under some other store's secret must not settle this
   // store's table.
   const src = read("controllers", "cashfreeWebhookController.js");
-  assert.match(src, /resolveGateway\(\{ restaurantId: session\.restaurantId \}\)/);
+  assert.match(src, /const restaurantId = session \? session\.restaurantId : link\.restaurantId;/);
+  assert.match(src, /resolveGateway\(\{ restaurantId \}\)/);
   assert.match(src, /secretKey: gw\.webhookSecret/);
 });
 
@@ -306,18 +307,6 @@ test("browser and webhook share one idempotency key, so whichever loses is a no-
   assert.match(qr, /idempotencyKey: `qr-online-\$\{transactionId\}`/);
 });
 
-test("Cashfree payloads on the Razorpay endpoint are refused, not handled", () => {
-  // Its signature scheme and headers are different; a branch here could only
-  // ever be a second, weaker implementation.
-  const src = read("controllers", "paymentController.js");
-  assert.match(src, /cashfree\/webhook/);
-  assert.ok(
-    !/finalizePaymentLinkFromGateway/.test(
-      src.slice(src.indexOf("PAYMENT_SUCCESS_WEBHOOK"), src.indexOf("Razorpay Webhook Handling")),
-    ),
-    "the disabled branch must not start acting again",
-  );
-});
 
 // ---------------------------------------------------------------------------
 // Payment links
@@ -352,17 +341,20 @@ test("capture picks its check from the LINK, not from the request", () => {
   // Reading the gateway off the request would let a caller choose the weaker
   // verification path by naming a different gateway.
   const src = read("controllers", "paymentLinkController.js");
-  assert.match(src, /const linkGateway = String\(link\.gatewayName \|\| "RAZORPAY"\)\.toUpperCase\(\)/);
+  assert.match(src, /const linkGateway = String\(link\.gatewayName \|\| "CASHFREE"\)\.toUpperCase\(\)/);
   const capture = src.slice(src.indexOf("const linkGateway"), src.indexOf("// Idempotency check"));
   assert.match(capture, /if \(linkGateway === "CASHFREE"\)/);
   assert.match(capture, /cashfree\.isOrderPaid/);
-  assert.match(capture, /timingSafeEquals/, "Razorpay still verifies its signature");
   assert.match(capture, /501/, "an unintegrated gateway is refused, not guessed at");
 });
 
 test("an unconfirmable Cashfree capture is not reported as a failed payment", () => {
   const src = read("controllers", "paymentLinkController.js");
-  const capture = src.slice(src.indexOf('if (linkGateway === "CASHFREE")'), src.indexOf('} else if (linkGateway === "RAZORPAY")'));
+  const capture = src.slice(
+    src.indexOf('if (linkGateway === "CASHFREE")'),
+    src.indexOf("// Idempotency check"),
+  );
+  assert.ok(capture.length > 0 && capture.length < src.length, "the slice must be bounded");
   assert.match(capture, /502/);
   assert.match(capture, /could not confirm that payment/i);
   assert.match(capture, /status\.amount/, "and the amount is checked against the link");
@@ -370,20 +362,13 @@ test("an unconfirmable Cashfree capture is not reported as a failed payment", ()
 
 test("the link page is given public values only", () => {
   const src = read("controllers", "paymentLinkController.js");
-  const payload = src.slice(src.indexOf("gatewayKeyId:"), src.indexOf("restaurantName:"));
-  assert.match(payload, /gatewayKeyId: linkGw\.provider === PROVIDERS\.RAZORPAY \? linkGw\.keyId : ""/);
-  assert.ok(!/linkGw\.secret/.test(payload), "never the secret");
-  assert.ok(!/\.secret/.test(payload));
+  const payload = src.slice(src.indexOf("gatewayOrderId: link.gatewayOrderId"), src.indexOf("restaurantName:"));
+  assert.match(payload, /paymentSessionId: link\.paymentSessionId/);
+  assert.match(payload, /gatewayMode: link\.gatewayMode/);
+  assert.ok(!/\.secret/.test(payload), "never the secret");
+  assert.ok(!/keyId/.test(payload), "and no key id: Cashfree checkout needs none");
 });
 
-test("the link page uses the STORE's key, not a build-time platform key", () => {
-  // A store paying into its own Razorpay account had the platform key put in
-  // front of the customer, against an order id that key does not own.
-  const src = read("..", "pos-frontend", "src", "pages", "PaymentLink.jsx");
-  assert.match(src, /key: link\.gatewayKeyId \|\| import\.meta\.env\.VITE_RAZORPAY_KEY_ID/);
-  assert.match(src, /loadCashfree/);
-  assert.match(src, /paymentSessionId: link\.paymentSessionId/);
-});
 
 // ---------------------------------------------------------------------------
 // Credentials at rest
@@ -443,9 +428,11 @@ test("an unreadable credential reads as 'not configured', it does not throw", ()
 
 test("saving a gateway encrypts the secret instead of Base64-ing it", () => {
   const src = read("controllers", "websiteSettingsController.js");
-  assert.match(src, /keySecretEncrypted: seal\(secretInput\.trim\(\)\)/);
   assert.match(src, /clientSecretEncrypted: seal\(secretInput\.trim\(\)\)/);
   assert.match(src, /saltKeyEncrypted: seal\(secretInput\.trim\(\)\)/);
+  // The other save path base64-ed them too, and was missed the first time.
+  assert.match(src, /dest\.clientSecretEncrypted = seal\(trimmedSecret\)/);
+  assert.match(src, /dest\.saltKeyEncrypted = seal\(trimmedSecret\)/);
   const code = src
     .split(String.fromCharCode(10))
     .filter((line) => !line.trim().startsWith("//") && !line.trim().startsWith("*"))

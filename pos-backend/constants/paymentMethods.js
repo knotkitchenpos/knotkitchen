@@ -5,19 +5,19 @@
  * --------------------
  * `PaymentTransaction.method` is an enum of payment *instruments* — how the
  * customer paid: CASH, CARD, UPI, WALLET. Which *provider* processed it is a
- * separate field (`provider`: RAZORPAY, CASHFREE, SECURE_LINK, ...).
+ * separate field (`provider`: CASHFREE, SECURE_LINK, ...).
  *
  * Two call sites conflated the two and wrote a provider name into the method
  * field, which the enum rejected at validation time:
  *
  *   1. paymentLinkController.verifyAndCaptureLinkPayment defaults
- *      `paymentMethod` to "RAZORPAY". The customer-facing page never sends the
+ *      `paymentMethod` to a PROVIDER name. The customer-facing page never sends the
  *      field, so every genuine capture hit the default, threw a
  *      ValidationError and aborted the whole transaction — the pay-by-link
  *      flow could not complete.
  *
- *   2. paymentController's webhook path forwards Razorpay's own
- *      `payment.method` uppercased. Razorpay sends "netbanking" for a large
+ *   2. the gateway webhook forwards the provider's own
+ *      `payment.method` uppercased. Gateways send "netbanking" for a large
  *      share of Indian payments, and "NETBANKING" is not in the enum either.
  *      That error was caught and logged, so those payments silently never
  *      reconciled.
@@ -50,7 +50,6 @@ const PAYMENT_METHODS = [
  */
 const METHOD_ALIASES = new Map([
   // Providers — these belong in `provider`, not `method`.
-  ["razorpay", "ONLINE"],
   ["cashfree", "ONLINE"],
   ["phonepe", "ONLINE"],
   ["secure_link", "PAYMENT_LINK"],
@@ -75,7 +74,7 @@ const METHOD_ALIASES = new Map([
  * loses the record of a payment that really happened. The raw value is still
  * preserved on `provider` / `gatewayResponse`.
  *
- * @param {string} value  e.g. "RAZORPAY", "netbanking", "upi"
+ * @param {string} value  e.g. "ONLINE", "netbanking", "upi"
  * @param {string} [fallback="ONLINE"]
  * @returns {string} a member of PAYMENT_METHODS
  */
@@ -97,7 +96,7 @@ const normalizePaymentMethod = (value, fallback = "ONLINE") => {
  * (cash|card|upi|wallet|online|split) declared in models/orderModel.js. Writing
  * a PaymentTransaction method straight into it fails validation for QR_CODE and
  * PAYMENT_LINK, and writing a raw gateway name fails for everything except the
- * six it lists — `"razorpay".toLowerCase()` is not a member.
+ * six it lists — a provider name is not a member.
  *
  * @param {string} value  any provider/instrument string
  * @returns {string} a member of the Order payment enum

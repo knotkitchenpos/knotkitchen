@@ -48,7 +48,7 @@ const paymentStatusOf = (order) => {
 
 const transactionIdOf = (order) =>
   (order.payments || []).find((p) => p.transactionId)?.transactionId ||
-  order.paymentData?.razorpay_payment_id ||
+  order.paymentData?.gatewayPaymentId ||
   "";
 
 const customerAddressOf = (o) => {
@@ -147,7 +147,7 @@ const searchOrders = async (req, res, next) => {
       const rx = new RegExp(escapeRegex(transactionId), "i");
       filters.$and = [
         ...(filters.$and || []),
-        { $or: [{ "payments.transactionId": rx }, { "paymentData.razorpay_payment_id": rx }] },
+        { $or: [{ "payments.transactionId": rx }, { "paymentData.gatewayPaymentId": rx }] },
       ];
       applied.push("transactionId");
     }

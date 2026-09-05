@@ -8,7 +8,6 @@ router.route("/catalog").get(isVerifiedUser, async (req, res) => {
   const catalog = [
     { name: "swiggy", category: "delivery", provider: "Swiggy" },
     { name: "zomato", category: "delivery", provider: "Zomato" },
-    { name: "razorpay", category: "payment", provider: "Razorpay" },
     { name: "stripe", category: "payment", provider: "Stripe" },
     { name: "twilio-sms", category: "sms", provider: "Twilio" },
     { name: "msg91", category: "sms", provider: "MSG91" },

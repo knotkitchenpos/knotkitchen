@@ -188,7 +188,11 @@ const orderSchema = new mongoose.Schema({
   isOffline: { type: Boolean, default: false },
   syncStatus: { type: String, enum: ["synced", "pending", "failed"], default: "synced" },
   paymentMethod: { type: String, default: "" },
-  paymentData: { razorpay_order_id: String, razorpay_payment_id: String },
+  // The gateway's own identifiers for this order's payment, when one went
+  // through a gateway. Named for the role rather than the provider: they were
+  // called razorpay_* and had to be renamed the moment the provider changed,
+  // touching every reader.
+  paymentData: { gatewayOrderId: String, gatewayPaymentId: String },
   // Customer-created (QR) orders have no POS user — createdBy is null
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   isDeleted: { type: Boolean, default: false },

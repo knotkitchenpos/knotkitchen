@@ -30,11 +30,11 @@ test("Manage Website Security: Secret keys are NEVER exposed in GET /settings pa
     restaurantId: RESTAURANT_ID,
     slug: "my-store",
     paymentGateways: {
-      activeGateway: "razorpay",
-      razorpay: {
-        keyId: "rzp_test_123",
-        keySecretMasked: "••••••••1234",
-        keySecretEncrypted: "c2VjcmV0X2tleV9kYXRh", // Sensitive encrypted secret
+      activeGateway: "cashfree",
+      cashfree: {
+        clientId: "cf_test_123",
+        clientSecretMasked: "••••••••1234",
+        clientSecretEncrypted: "c2VjcmV0X2tleV9kYXRh", // Sensitive encrypted secret
         isConfigured: true,
       },
     },
@@ -75,16 +75,16 @@ test("Manage Website Security: Secret keys are NEVER exposed in GET /settings pa
 
   assert.ok(resData);
   const settings = resData.data.settings;
-  assert.equal(settings.paymentGateways.razorpay.keyId, "rzp_test_123");
-  assert.equal(settings.paymentGateways.razorpay.keySecretMasked, "••••••••1234");
+  assert.equal(settings.paymentGateways.cashfree.clientId, "cf_test_123");
+  assert.equal(settings.paymentGateways.cashfree.clientSecretMasked, "••••••••1234");
   // Encrypted secret key MUST NOT be returned
-  assert.equal(settings.paymentGateways.razorpay.keySecretEncrypted, undefined);
+  assert.equal(settings.paymentGateways.cashfree.clientSecretEncrypted, undefined);
 });
 
 test("Manage Website Security: Staff cannot configure payment gateway credentials (Owner Only)", async () => {
   const mockSettings = {
     storeId: "123456",
-    paymentGateways: { activeGateway: "razorpay" },
+    paymentGateways: { activeGateway: "cashfree" },
     save: async () => {},
   };
 
@@ -240,7 +240,7 @@ test("Manage Website Activity Log: Website publish logs Website Published event"
  * The editor PUTs the whole settings object, so `paymentGateways` rides along
  * on every save — including one where the operator only picked a logo. The
  * active-gateway guard fired on that unchanged echo: activeGateway defaults to
- * "razorpay" with isConfigured=false, so every new store's save 400'd before
+ * a gateway with isConfigured=false, so every new store's save 400'd before
  * ever reaching settings.save(). The symptom was "I upload a logo and it never
  * sticks", with no audit entry to show for it.
  *
@@ -254,8 +254,8 @@ test("Website settings: an unchanged unconfigured activeGateway does not block a
     version: 4,
     branding: {},
     paymentGateways: {
-      activeGateway: "razorpay",
-      razorpay: { keyId: "", isConfigured: false },
+      activeGateway: "cashfree",
+      cashfree: { keyId: "", isConfigured: false },
       cashfree: { isConfigured: false },
       phonepe: { isConfigured: false },
     },
@@ -301,8 +301,8 @@ test("Website settings: an unchanged unconfigured activeGateway does not block a
     body: {
       branding: { logo: { mediaId: "6a973d0555809ad56442458e" } },
       paymentGateways: {
-        activeGateway: "razorpay",
-        razorpay: { keyId: "", isConfigured: false },
+        activeGateway: "cashfree",
+        cashfree: { clientId: "", isConfigured: false },
       },
     },
   };
@@ -329,8 +329,8 @@ test("Website settings: switching TO an unconfigured gateway is still refused", 
     version: 1,
     branding: {},
     paymentGateways: {
-      activeGateway: "razorpay",
-      razorpay: { isConfigured: true },
+      activeGateway: "cashfree",
+      cashfree: { isConfigured: true },
       phonepe: { isConfigured: false },
     },
     save: async () => {},

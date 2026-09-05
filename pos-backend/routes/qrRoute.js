@@ -232,11 +232,11 @@ router.route("/table/:token").get(qrReadLimiter, resolveTableScope, async (req, 
               // gateway -- the button would simply fail. Only the boolean is
               // exposed; keys never leave the server.
               //
-              // This used to read `restaurant.razorpay.isConfigured`. There is
-              // no `razorpay` field on the Restaurant model, so it was always
-              // false and no store could ever take a QR payment. The gateway
-              // lives on WebsiteSettings (or the platform env keys) --
-              // services/paymentGateway is the one place that knows.
+              // This used to read a field that does not exist on the
+              // Restaurant model, so it was always false and no store could
+              // ever take a QR payment. The gateway lives on WebsiteSettings
+              // (or the platform env keys) -- services/paymentGateway is the
+              // one place that knows.
               onlinePaymentEnabled: await isOnlinePaymentEnabled({ restaurantId }),
             }
           : null,
@@ -581,77 +581,50 @@ router.route("/payment-intent/:token").post(qrWriteLimiter, resolveTableScope, a
     // checkout. The amount comes from the session's own bill -- never from
     // the request -- so a tampered browser cannot pay less than it owes.
     //
-    // The two providers hand the browser different things: Razorpay wants a
-    // gateway order id plus the PUBLIC key id, Cashfree wants a
-    // payment_session_id. Neither carries a secret.
+    // What reaches the browser is a payment_session_id Cashfree minted. It
+    // carries no secret and cannot be used against any other order.
     let checkout = null;
     const gw = await resolveGateway({ restaurantId });
     if (gw.enabled && payable > 0) {
       try {
-        if (gw.provider === PROVIDERS.CASHFREE) {
-          const cashfree = require("../services/gateways/cashfree");
-          const order = await cashfree.createOrder({
-            appId: gw.keyId,
-            secretKey: gw.secret,
-            environment: gw.environment,
-            amount: payable,
-            currency: "INR",
-            // Their order_id is what we read back to decide whether the bill
-            // was paid, so it must be unique per attempt: a diner who
-            // abandons checkout and starts again must not reuse an order
-            // Cashfree has already terminated.
-            orderId: `tbl_${session.sessionCode}_${Date.now().toString(36)}`,
-            customer: {
-              id: `sess_${session._id}`,
-              phone: session.customerPhone,
-              name: session.customerName,
-            },
-            notifyUrl: config.cashfreeNotifyUrl,
-            tags: { tableSessionId: String(session._id), restaurantId: String(restaurantId) },
-          });
-          // Remembered so payment-verify knows which order to ask about, and
-          // so a browser cannot name an order of its own choosing.
-          session.payment = session.payment || {};
-          session.payment.gatewayOrderId = order.orderId;
-          session.payment.gatewayProvider = PROVIDERS.CASHFREE;
-          await session.save();
+        const cashfree = require("../services/gateways/cashfree");
+        const order = await cashfree.createOrder({
+          appId: gw.keyId,
+          secretKey: gw.secret,
+          environment: gw.environment,
+          amount: payable,
+          currency: "INR",
+          // Their order_id is what we read back to decide whether the bill
+          // was paid, so it must be unique per attempt: a diner who
+          // abandons checkout and starts again must not reuse an order
+          // Cashfree has already terminated.
+          orderId: `tbl_${session.sessionCode}_${Date.now().toString(36)}`,
+          customer: {
+            id: `sess_${session._id}`,
+            phone: session.customerPhone,
+            name: session.customerName,
+          },
+          notifyUrl: config.cashfreeNotifyUrl,
+          tags: { tableSessionId: String(session._id), restaurantId: String(restaurantId) },
+        });
+        // Remembered so payment-verify knows which order to ask about, and
+        // so a browser cannot name an order of its own choosing.
+        session.payment = session.payment || {};
+        session.payment.gatewayOrderId = order.orderId;
+        session.payment.gatewayProvider = PROVIDERS.CASHFREE;
+        await session.save();
 
-          checkout = {
-            provider: PROVIDERS.CASHFREE,
-            gateway: PROVIDERS.CASHFREE,
-            paymentSessionId: order.paymentSessionId,
-            gatewayOrderId: order.orderId,
-            // "sandbox" or "production" — the Cashfree JS SDK needs to be
-            // told which, and getting it wrong silently fails to open.
-            mode: order.environment === "PROD" ? "production" : "sandbox",
-            amount: payable,
-            currency: "INR",
-          };
-        } else {
-          const Razorpay = require("razorpay");
-          const client = new Razorpay({ key_id: gw.keyId, key_secret: gw.secret });
-          const gatewayOrder = await client.orders.create({
-            amount: Math.round(payable * 100), // paisa
-            currency: "INR",
-            receipt: `tbl_${session.sessionCode}`.slice(0, 40),
-            notes: { tableSessionId: String(session._id) },
-          });
-          session.payment = session.payment || {};
-          session.payment.gatewayOrderId = gatewayOrder.id;
-          session.payment.gatewayProvider = PROVIDERS.RAZORPAY;
-          await session.save();
-
-          checkout = {
-            provider: PROVIDERS.RAZORPAY,
-            gateway: PROVIDERS.RAZORPAY,
-            gatewayOrderId: gatewayOrder.id,
-            // The PUBLIC key id. Razorpay Checkout needs it in the browser;
-            // the secret never leaves this process.
-            keyId: gw.keyId,
-            amount: payable,
-            currency: "INR",
-          };
-        }
+        checkout = {
+          provider: PROVIDERS.CASHFREE,
+          gateway: PROVIDERS.CASHFREE,
+          paymentSessionId: order.paymentSessionId,
+          gatewayOrderId: order.orderId,
+          // "sandbox" or "production" — the Cashfree JS SDK needs to be
+          // told which, and getting it wrong silently fails to open.
+          mode: order.environment === "PROD" ? "production" : "sandbox",
+          amount: payable,
+          currency: "INR",
+        };
       } catch (gwErr) {
         // A gateway that will not open an order is not a reason to fail the
         // whole request -- the diner still needs to see their bill and be
@@ -678,14 +651,10 @@ router.route("/payment-intent/:token").post(qrWriteLimiter, resolveTableScope, a
 
 // Public: the diner's browser reports back from the gateway.
 //
-// NOTHING here trusts the browser about whether money moved.
-//
-//   Razorpay  re-computes the signature over (order_id|payment_id) with the
-//             store's own secret; only a signature we can reproduce settles.
-//   Cashfree  hands the browser nothing worth trusting, so we ask Cashfree
-//             directly what happened to the order WE opened. That is the
-//             stronger of the two: no client-supplied token is in the
-//             decision at all.
+// NOTHING here trusts the browser about whether money moved. Cashfree hands
+// it nothing worth trusting anyway, so the server asks Cashfree directly what
+// happened to the order WE opened: no client-supplied token is in the
+// decision at all.
 //
 // On success the session goes through exactly the same settle path the till
 // uses, so the table closes, the orders are marked paid and the cooldown
@@ -705,85 +674,57 @@ router.route("/payment-verify/:token").post(qrWriteLimiter, resolveTableScope, a
     const payable = session.bills?.totalWithTax || 0;
     let transactionId = "";
 
-    if (gw.provider === PROVIDERS.CASHFREE) {
-      // The order id comes from OUR session, never from the request. A
-      // browser that named its own order could otherwise settle this table
-      // with any paid order on the same merchant account.
-      const orderId = session.payment?.gatewayOrderId || "";
-      if (!orderId) {
-        return res.status(400).json({
-          success: false,
-          message: "No payment was started for this table. Please try again.",
-        });
-      }
-
-      const cashfree = require("../services/gateways/cashfree");
-      let result;
-      try {
-        result = await cashfree.isOrderPaid({
-          appId: gw.keyId,
-          secretKey: gw.secret,
-          environment: gw.environment,
-          orderId,
-        });
-      } catch (cfErr) {
-        // Could not find out. Deliberately NOT treated as unpaid-and-final:
-        // the money may well have moved, so say so and let staff settle it
-        // rather than telling the diner their payment failed.
-        console.warn("[qrRoute] cashfree status check failed:", cfErr?.message || cfErr);
-        return res.status(502).json({
-          success: false,
-          message:
-            "We could not confirm that payment yet. Please show this screen to a member of staff before paying again.",
-        });
-      }
-
-      if (!result.paid) {
-        return res.status(400).json({
-          success: false,
-          message: "That payment has not completed. Please try again, or pay at the counter.",
-        });
-      }
-
-      // The gateway is authoritative on the amount too. A bill that grew
-      // after the order was opened (the diner added a round while checkout
-      // was on screen) must not be closed by the smaller payment.
-      if (Math.abs(Number(result.amount) - Number(payable)) > 0.01) {
-        return res.status(409).json({
-          success: false,
-          message:
-            "Your bill changed after payment was started. Please ask a member of staff to settle the difference.",
-        });
-      }
-
-      transactionId = result.cfOrderId || orderId;
-    } else {
-      const orderId = String(req.body?.razorpay_order_id || "");
-      const paymentId = String(req.body?.razorpay_payment_id || "");
-      const signature = String(req.body?.razorpay_signature || "");
-      if (!orderId || !paymentId || !signature) {
-        return res.status(400).json({ success: false, message: "Incomplete payment confirmation." });
-      }
-
-      // Bind the signed payload to the order we opened for THIS session.
-      if (session.payment?.gatewayOrderId && orderId !== session.payment.gatewayOrderId) {
-        return res.status(400).json({ success: false, message: "Payment could not be verified." });
-      }
-
-      const crypto = require("crypto");
-      const expected = crypto
-        .createHmac("sha256", gw.secret)
-        .update(`${orderId}|${paymentId}`)
-        .digest("hex");
-
-      const a = Buffer.from(expected, "utf8");
-      const b = Buffer.from(signature, "utf8");
-      if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
-        return res.status(400).json({ success: false, message: "Payment could not be verified." });
-      }
-      transactionId = paymentId;
+    // The order id comes from OUR session, never from the request. A
+    // browser that named its own order could otherwise settle this table
+    // with any paid order on the same merchant account.
+    const orderId = session.payment?.gatewayOrderId || "";
+    if (!orderId) {
+      return res.status(400).json({
+        success: false,
+        message: "No payment was started for this table. Please try again.",
+      });
     }
 
+    const cashfree = require("../services/gateways/cashfree");
+    let result;
+    try {
+      result = await cashfree.isOrderPaid({
+        appId: gw.keyId,
+        secretKey: gw.secret,
+        environment: gw.environment,
+        orderId,
+      });
+    } catch (cfErr) {
+      // Could not find out. Deliberately NOT treated as unpaid-and-final:
+      // the money may well have moved, so say so and let staff settle it
+      // rather than telling the diner their payment failed.
+      console.warn("[qrRoute] cashfree status check failed:", cfErr?.message || cfErr);
+      return res.status(502).json({
+        success: false,
+        message:
+          "We could not confirm that payment yet. Please show this screen to a member of staff before paying again.",
+      });
+    }
+
+    if (!result.paid) {
+      return res.status(400).json({
+        success: false,
+        message: "That payment has not completed. Please try again, or pay at the counter.",
+      });
+    }
+
+    // The gateway is authoritative on the amount too. A bill that grew
+    // after the order was opened (the diner added a round while checkout
+    // was on screen) must not be closed by the smaller payment.
+    if (Math.abs(Number(result.amount) - Number(payable)) > 0.01) {
+      return res.status(409).json({
+        success: false,
+        message:
+          "Your bill changed after payment was started. Please ask a member of staff to settle the difference.",
+      });
+    }
+
+    transactionId = result.cfOrderId || orderId;
     const { settleSessionFromGateway } = require("../controllers/tableSessionController");
     await settleSessionFromGateway({
       sessionId: session._id,

@@ -109,7 +109,7 @@ app.use((req, res, next) => {
 // Slightly larger limit than the default 100kb so base64 image uploads and
 // multi-item storefront carts fit comfortably.
 // `verify` hands us the EXACT bytes received, before parsing. Gateway webhook
-// signatures (Razorpay et al.) are computed over the raw request body, so
+// signatures are computed over the raw request body, so
 // verifying against JSON.stringify(req.body) — a re-serialisation — is only
 // accidentally correct: it breaks on any non-ASCII character, different number
 // formatting, or key ordering the gateway did not use. Stored only for the

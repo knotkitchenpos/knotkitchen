@@ -28,7 +28,7 @@ const paymentTransactionSchema = new mongoose.Schema(
     },
 
     // Gateway fields
-    provider: { type: String, default: "RAZORPAY" },
+    provider: { type: String, default: "CASHFREE" },
     transactionId: { type: String, default: "" },
     gatewayOrderId: { type: String, default: "" },
     gatewayPaymentId: { type: String, default: "" },

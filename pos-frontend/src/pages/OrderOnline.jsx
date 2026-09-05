@@ -10,11 +10,6 @@ import {
   qrVerifyPayment,
 } from "../https/publicApi";
 
-/** Razorpay Checkout, loaded on demand. Resolves null if it cannot load. */
-function loadRazorpay() {
-  return loadScript("https://checkout.razorpay.com/v1/checkout.js", () => window.Razorpay);
-}
-
 /** Cashfree JS v3, loaded on demand. Resolves null if it cannot load. */
 function loadCashfree() {
   return loadScript("https://sdk.cashfree.com/js/v3/cashfree.js", () => window.Cashfree);
@@ -392,60 +387,28 @@ export default function OrderOnline() {
     };
 
     try {
-      if (checkout.provider === "cashfree") {
-        const Cashfree = await loadCashfree();
-        if (!Cashfree) {
-          setErr("The payment page could not be loaded. Please check your connection.");
-          return;
-        }
-        const cashfree = Cashfree({ mode: checkout.mode || "sandbox" });
-        // Cashfree hands back nothing we would trust anyway, so whatever the
-        // modal resolves with we just ask our own server to check the order.
-        // That covers the case where the diner paid and then closed the modal
-        // before it could report back.
-        const result = await cashfree.checkout({
-          paymentSessionId: checkout.paymentSessionId,
-          redirectTarget: "_modal",
-        });
-        if (result?.error && !result?.paymentDetails) {
-          // A genuine refusal from the gateway (declined card, cancelled).
-          // Still worth a server check -- but say something if it comes back
-          // unpaid, rather than leaving the diner staring at the bill.
-          await confirm();
-          return;
-        }
-        await confirm();
-      } else {
-        const Razorpay = await loadRazorpay();
-        if (!Razorpay) {
-          setErr("The payment page could not be loaded. Please check your connection.");
-          return;
-        }
-        await new Promise((resolve) => {
-          const rzp = new Razorpay({
-            key: checkout.keyId,
-            order_id: checkout.gatewayOrderId,
-            amount: Math.round(Number(checkout.amount) * 100),
-            currency: checkout.currency || "INR",
-            name: brandName,
-            description: `${tableName} · ${session?.sessionCode || ""}`,
-            prefill: {
-              name: session?.customerName || "",
-              contact: session?.customerPhone || "",
-            },
-            handler: async (res) => {
-              await confirm(res);
-              resolve();
-            },
-            modal: { ondismiss: () => resolve() },
-          });
-          rzp.on("payment.failed", () => {
-            setErr("That payment did not go through. Please try again.");
-            resolve();
-          });
-          rzp.open();
-        });
+      const Cashfree = await loadCashfree();
+      if (!Cashfree) {
+        setErr("The payment page could not be loaded. Please check your connection.");
+        return;
       }
+      const cashfree = Cashfree({ mode: checkout.mode || "sandbox" });
+      // Cashfree hands back nothing we would trust anyway, so whatever the
+      // modal resolves with we just ask our own server to check the order.
+      // That covers the case where the diner paid and then closed the modal
+      // before it could report back.
+      const result = await cashfree.checkout({
+        paymentSessionId: checkout.paymentSessionId,
+        redirectTarget: "_modal",
+      });
+      if (result?.error && !result?.paymentDetails) {
+        // A genuine refusal from the gateway (declined card, cancelled).
+        // Still worth a server check -- but say something if it comes back
+        // unpaid, rather than leaving the diner staring at the bill.
+        await confirm();
+        return;
+      }
+      await confirm();
     } catch {
       setErr("Payment could not be completed.");
     } finally {
@@ -642,9 +605,8 @@ export default function OrderOnline() {
                         {paying ? "Opening payment…" : `Pay ${money(paymentInfo.amount)}`}
                       </button>
                       <p className="text-[11px] text-slate-400 text-center">
-                        Secured by{" "}
-                        {paymentInfo.checkout?.provider === "cashfree" ? "Cashfree" : "Razorpay"}{" "}
-                        · your table is settled automatically once payment succeeds.
+                        Secured by Cashfree · your table is settled
+                        automatically once payment succeeds.
                       </p>
                     </>
                   ) : (

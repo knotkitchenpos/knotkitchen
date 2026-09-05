@@ -243,20 +243,10 @@ test("the gateway resolver falls back to the platform keys, never to nothing", a
   const { resolveGateway } = require("../services/paymentGateway");
   const gw = await resolveGateway({});
   assert.equal(typeof gw.enabled, "boolean");
-  assert.equal(gw.gateway, "razorpay");
+  assert.equal(gw.gateway, "cashfree");
   assert.equal(gw.source, "platform");
 });
 
-test("the QR verify endpoint checks the signature before settling anything", () => {
-  const block = QR_ROUTE.slice(QR_ROUTE.indexOf('router.route("/payment-verify/:token")'));
-  assert.match(block, /createHmac\("sha256", gw\.secret\)/);
-  assert.match(block, /timingSafeEqual/, "signature comparison must be constant-time");
-  // The settle must come AFTER the check, not before it.
-  assert.ok(
-    block.indexOf("timingSafeEqual") < block.indexOf("settleSessionFromGateway"),
-    "nothing may be settled ahead of verification",
-  );
-});
 
 test("the QR payment amount comes from the session's own bill", () => {
   const block = QR_ROUTE.slice(
@@ -264,44 +254,24 @@ test("the QR payment amount comes from the session's own bill", () => {
     QR_ROUTE.indexOf('router.route("/payment-verify/:token")'),
   );
   assert.match(block, /const payable = session\.bills\?\.totalWithTax \|\| 0/);
-  assert.match(block, /amount: Math\.round\(payable \* 100\)/);
+  assert.match(block, /amount: payable/, "the gateway order is opened for the bill");
   assert.ok(
     !/req\.body\?\.amount/.test(block),
     "a tampered browser must not be able to name its own price",
   );
+  // Nothing that reaches the diner's phone is a secret: a payment session id
+  // Cashfree minted, and which environment to open it against.
+  const checkout = block.slice(block.indexOf("checkout = {"), block.indexOf("};", block.indexOf("checkout = {")));
+  assert.match(checkout, /paymentSessionId: order\.paymentSessionId/);
+  assert.ok(!/gw\.secret/.test(checkout) && !/secretKey/.test(checkout));
 });
 
-test("the gateway secret never reaches the browser", () => {
-  const block = QR_ROUTE.slice(
-    QR_ROUTE.indexOf('router.route("/payment-intent/:token")'),
-    QR_ROUTE.indexOf('router.route("/payment-verify/:token")'),
-  );
-
-  // Everything assigned into `checkout` is handed to the diner's phone. Each
-  // provider needs something different there -- Razorpay the PUBLIC key id,
-  // Cashfree a payment_session_id it minted -- and neither is the secret.
-  const payloads = block
-    .split("checkout = {")
-    .slice(1)
-    .map((chunk) => chunk.slice(0, chunk.indexOf("};")));
-  assert.equal(payloads.length, 2, "one browser payload per provider");
-  for (const p of payloads) {
-    assert.ok(!/gw\.secret/.test(p), "the secret is not part of the response");
-    assert.ok(!/secretKey/.test(p), "nor under another name");
-  }
-  assert.ok(
-    payloads.some((p) => /keyId: gw\.keyId/.test(p)),
-    "Razorpay needs its public key id in the browser",
-  );
-  assert.ok(
-    payloads.some((p) => /paymentSessionId: order\.paymentSessionId/.test(p)),
-    "Cashfree needs the payment session it minted",
-  );
-});
 
 test("Cashfree is verified by asking Cashfree, not by trusting the browser", () => {
-  const block = QR_ROUTE.slice(QR_ROUTE.indexOf('router.route("/payment-verify/:token")'));
-  const cf = block.slice(block.indexOf("PROVIDERS.CASHFREE"), block.indexOf("} else {"));
+  const cf = QR_ROUTE.slice(
+    QR_ROUTE.indexOf('router.route("/payment-verify/:token")'),
+    QR_ROUTE.indexOf("settleSessionFromGateway"),
+  );
 
   // The order id must come from OUR session. A browser that could name the
   // order would be able to settle this table with any paid order on the same

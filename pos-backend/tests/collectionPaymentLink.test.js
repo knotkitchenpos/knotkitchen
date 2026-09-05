@@ -73,21 +73,22 @@ test("createPaymentLink requires valid phone number for collection order", async
     // never reaches the network.
     if (r === "../services/paymentGateway")
       return {
-        PROVIDERS: { RAZORPAY: "razorpay", CASHFREE: "cashfree", PHONEPE: "phonepe" },
+        PROVIDERS: { CASHFREE: "cashfree", PHONEPE: "phonepe" },
         resolveGateway: async () => ({
           enabled: true,
-          provider: "razorpay",
+          provider: "cashfree",
           keyId: "rzp_test_mock",
           secret: "mock_secret",
           environment: "TEST",
           source: "platform",
         }),
       };
-    if (r === "razorpay")
-      return class {
-        constructor() {
-          this.orders = { create: async () => ({ id: "order_mock123" }) };
-        }
+    if (r === "../services/gateways/cashfree")
+      return {
+        createOrder: async () => ({
+          orderId: "lnk_mock123",
+          paymentSessionId: "session_mock123",
+        }),
       };
     if (r === "../models/tableSessionModel") return {};
     return orig.apply(this, arguments);
@@ -201,8 +202,8 @@ test("createPaymentLink is idempotent: returns existing active link for same ord
           select: () => ({
             lean: async () => ({
               paymentGateways: {
-                activeGateway: "razorpay",
-                razorpay: {
+                activeGateway: "cashfree",
+                cashfree: {
                   isConfigured: true,
                   keyId: "rzp_test_mock",
                   keySecretEncrypted: Buffer.from("mock_secret").toString("base64"),
@@ -323,7 +324,7 @@ test("getPaymentLink returns all 10 required payment page fields and rejects exp
   assert.equal(data.charges, 10);
   assert.equal(data.total, 500);
   assert.equal(data.paymentStatus, "ACTIVE");
-  assert.deepEqual(data.availablePaymentMethods, ["RAZORPAY", "CARD", "UPI", "NETBANKING"]);
+  assert.deepEqual(data.availablePaymentMethods, ["CARD", "UPI", "NETBANKING"]);
 
   // Now test expired link
   mockLink.expiresAt = new Date(Date.now() - 3600000); // 1 hour ago

@@ -23,8 +23,8 @@ test("Website Module 2: Storefront endpoint returns complete dynamic Homepage se
       email: "contact@royalpalace.com",
     },
     paymentGateways: {
-      activeGateway: "Razorpay",
-      razorpayConfigured: true,
+      activeGateway: "Cashfree",
+      cashfreeConfigured: true,
       cashfreeConfigured: false,
       phonepeConfigured: false,
     },

@@ -1,36 +1,24 @@
 /**
- * Where a store's payment-gateway credentials actually live, and which
- * provider they belong to.
+ * Where a store's payment-gateway credentials actually live.
  *
- * There were two different answers to "can this store take money online?",
- * and they disagreed:
- *
- *   - paymentLinkController read WebsiteSettings.paymentGateways.<gw>, and
- *     fell back to the platform-wide RAZORPAY_* env keys when the store had
- *     not brought its own. That one works.
- *
- *   - the QR table page read `restaurant.razorpay.isConfigured`. The
- *     Restaurant model has no `razorpay` field, so that expression was
- *     `undefined && …` — permanently false for every store that will ever
- *     exist.
- *
- * This module is the single answer. Read it; do not re-derive the rule.
+ * This module is the single answer. Read it; do not re-derive the rule --
+ * four places used to, and they disagreed with each other. One of them read
+ * `restaurant.razorpay.isConfigured` from a model that has no such field, so
+ * online payment was permanently off for every store that would ever exist.
  *
  * Resolution order, per tenant:
  *   1. the store's own credentials in WebsiteSettings, if isConfigured and
- *      the secret actually decodes;
- *   2. the platform-wide env credentials for the SAME provider the store
- *      selected as active;
- *   3. any platform provider that is configured at all.
+ *      the secret actually decrypts;
+ *   2. the platform-wide env credentials.
  *
  * Secrets never leave here except on the server-side `secret` field. Callers
- * that hand something to a browser must use `keyId` (Razorpay) or a
- * `payment_session_id` minted by the provider — never `secret`.
+ * that hand something to a browser must use a `payment_session_id` minted by
+ * the provider -- never `secret`.
  */
 
 const config = require("../config/config");
 
-const PROVIDERS = Object.freeze({ RAZORPAY: "razorpay", CASHFREE: "cashfree", PHONEPE: "phonepe" });
+const PROVIDERS = Object.freeze({ CASHFREE: "cashfree", PHONEPE: "phonepe" });
 
 // Stored credentials are encrypted at rest when CREDENTIALS_SECRET is set,
 // and plain Base64 when it is not. secretBox reads both, so this keeps
@@ -51,22 +39,10 @@ const platformGateway = () => {
       source: "platform",
     };
   }
-  if (config.razorpayKeyId && config.razorpaySecretKey) {
-    return {
-      enabled: true,
-      provider: PROVIDERS.RAZORPAY,
-      gateway: PROVIDERS.RAZORPAY,
-      keyId: config.razorpayKeyId,
-      secret: config.razorpaySecretKey,
-      environment: "PROD",
-      webhookSecret: config.razorpayWebhookSecret || "",
-      source: "platform",
-    };
-  }
   return {
     enabled: false,
-    provider: PROVIDERS.RAZORPAY,
-    gateway: PROVIDERS.RAZORPAY,
+    provider: PROVIDERS.CASHFREE,
+    gateway: PROVIDERS.CASHFREE,
     keyId: "",
     secret: "",
     environment: "TEST",
@@ -84,21 +60,6 @@ const fromStoredGateway = (name, gw) => {
   if (!gw || !gw.isConfigured) return null;
   const environment = String(gw.environment || "TEST").toUpperCase();
 
-  if (name === PROVIDERS.RAZORPAY && gw.keyId) {
-    const secret = decodeSecret(gw.keySecretEncrypted);
-    if (secret) {
-      return {
-        enabled: true,
-        provider: PROVIDERS.RAZORPAY,
-        gateway: PROVIDERS.RAZORPAY,
-        keyId: gw.keyId,
-        secret,
-        environment,
-        webhookSecret: secret,
-        source: "store",
-      };
-    }
-  }
   if (name === PROVIDERS.CASHFREE && gw.clientId) {
     const secret = decodeSecret(gw.clientSecretEncrypted);
     if (secret) {
@@ -165,7 +126,7 @@ const resolveGateway = async ({ restaurantId, storeId } = {}) => {
     const gateways = settings?.paymentGateways;
     if (!gateways) return platform;
 
-    const active = String(gateways.activeGateway || PROVIDERS.RAZORPAY).toLowerCase();
+    const active = String(gateways.activeGateway || PROVIDERS.CASHFREE).toLowerCase();
 
     // The store's chosen provider first.
     const chosen = fromStoredGateway(active, gateways[active]);
@@ -198,5 +159,5 @@ module.exports = {
   PROVIDERS,
   resolveGateway,
   isOnlinePaymentEnabled,
-  DEFAULT_GATEWAY: PROVIDERS.RAZORPAY,
+  DEFAULT_GATEWAY: PROVIDERS.CASHFREE,
 };

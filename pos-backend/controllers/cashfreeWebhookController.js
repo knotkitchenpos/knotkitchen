@@ -24,6 +24,7 @@
  */
 
 const TableSession = require("../models/tableSessionModel");
+const PaymentLink = require("../models/paymentLinkModel");
 const { resolveGateway, PROVIDERS } = require("../services/paymentGateway");
 const cashfree = require("../services/gateways/cashfree");
 
@@ -50,15 +51,24 @@ const cashfreeWebhook = async (req, res) => {
 
     // Step 2 — is this an order WE opened? A forged event naming an order we
     // never created finds nothing and stops here.
+    //
+    // Two things open Cashfree orders: a table session paying its own bill,
+    // and a payment link sent to a customer. Either may be the one the
+    // browser never came back from.
     const session = await TableSession.findOne({
       "payment.gatewayOrderId": orderId,
       "payment.gatewayProvider": PROVIDERS.CASHFREE,
       isDeleted: { $ne: true },
     });
-    if (!session) return ack(res, `no session for gateway order ${orderId}`);
+    const link = session
+      ? null
+      : await PaymentLink.findOne({ gatewayOrderId: orderId, isDeleted: { $ne: true } });
+
+    if (!session && !link) return ack(res, `nothing opened gateway order ${orderId}`);
 
     // Step 3 — the secret of the tenant that owns it, and only that one.
-    const gw = await resolveGateway({ restaurantId: session.restaurantId });
+    const restaurantId = session ? session.restaurantId : link.restaurantId;
+    const gw = await resolveGateway({ restaurantId });
     if (gw.provider !== PROVIDERS.CASHFREE || !gw.webhookSecret) {
       return ack(res, "no Cashfree secret for this tenant");
     }
@@ -79,9 +89,10 @@ const cashfreeWebhook = async (req, res) => {
 
     // Already settled — by the browser getting back first, or by an earlier
     // delivery of this same event. Nothing to do, and saying so is correct.
-    if (["PAID", "CLOSED"].includes(session.status)) {
-      return ack(res, null, { alreadySettled: true });
-    }
+    const settledAlready = session
+      ? ["PAID", "CLOSED"].includes(session.status)
+      : link.status === "PAID";
+    if (settledAlready) return ack(res, null, { alreadySettled: true });
 
     // Step 4 — even a correctly signed event does not get to assert that money
     // moved. Ask.
@@ -93,36 +104,50 @@ const cashfreeWebhook = async (req, res) => {
     });
     if (!status.paid) return ack(res, `order ${orderId} is ${status.orderStatus}, not PAID`);
 
-    const payable = session.bills?.totalWithTax || 0;
-    if (Math.abs(Number(status.amount) - Number(payable)) > 0.01) {
-      // The bill moved after checkout opened. Settling it here would close the
-      // table for less than it owes; leave it for staff.
-      return ack(
-        res,
-        `amount mismatch on ${orderId}: paid ${status.amount}, bill ${payable}`,
-        { mismatch: true },
-      );
+    if (session) {
+      const payable = session.bills?.totalWithTax || 0;
+      if (Math.abs(Number(status.amount) - Number(payable)) > 0.01) {
+        // The bill moved after checkout opened. Settling it here would close
+        // the table for less than it owes; leave it for staff.
+        return ack(
+          res,
+          `amount mismatch on ${orderId}: paid ${status.amount}, bill ${payable}`,
+          { mismatch: true },
+        );
+      }
+
+      const { settleSessionFromGateway } = require("./tableSessionController");
+      try {
+        await settleSessionFromGateway({
+          sessionId: session._id,
+          restaurantId: session.restaurantId,
+          method: "ONLINE",
+          amount: payable,
+          transactionId: status.cfOrderId || orderId,
+          // The same key the browser path uses, so whichever arrives second is
+          // a no-op rather than a second payment.
+          idempotencyKey: `qr-online-${status.cfOrderId || orderId}`,
+        });
+      } catch (settleErr) {
+        // The browser almost certainly won the race between the two paths.
+        console.warn(`[cashfree-webhook] settle skipped for ${orderId}: ${settleErr.message}`);
+        return ack(res, null, { settled: false });
+      }
+      return ack(res, null, { settled: "session" });
     }
 
-    const { settleSessionFromGateway } = require("./tableSessionController");
-    try {
-      await settleSessionFromGateway({
-        sessionId: session._id,
-        restaurantId: session.restaurantId,
-        method: "ONLINE",
-        amount: payable,
-        transactionId: status.cfOrderId || orderId,
-        // The same key the browser path uses, so whichever arrives second is
-        // a no-op rather than a second payment.
-        idempotencyKey: `qr-online-${status.cfOrderId || orderId}`,
-      });
-    } catch (settleErr) {
-      // The browser almost certainly won the race between the two paths.
-      console.warn(`[cashfree-webhook] settle skipped for ${orderId}: ${settleErr.message}`);
-      return ack(res, null, { settled: false });
-    }
-
-    return ack(res, null, { settled: true });
+    // A payment link. finalizePaymentLinkFromGateway does its own amount
+    // comparison against the amount locked when the link was created, and is
+    // idempotent throughout, so the browser winning this race is a no-op.
+    const { finalizePaymentLinkFromGateway } = require("../services/paymentLinkSettlement");
+    const result = await finalizePaymentLinkFromGateway({
+      gatewayOrderId: orderId,
+      gatewayPaymentId: status.cfOrderId || orderId,
+      amount: status.amount,
+      method: "ONLINE",
+    });
+    if (result.skipped) return ack(res, `link ${orderId}: ${result.skipped}`, { settled: false });
+    return ack(res, null, { settled: "link" });
   } catch (error) {
     // Never 500 at a webhook: it would be retried for days over what is
     // probably our own bug.

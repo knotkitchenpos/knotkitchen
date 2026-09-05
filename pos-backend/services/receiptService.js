@@ -9,7 +9,7 @@ const formatPaymentMethod = (method) => {
   const m = String(method || "").trim().toUpperCase();
   if (m === "CASH") return "Paid by Cash";
   if (m === "QR" || m === "QR_CODE" || m === "TABLE_QR") return "Paid by QR Code";
-  if (m === "ONLINE" || m === "CARD" || m === "UPI" || m === "NETBANKING" || m === "RAZORPAY") return "Paid Online";
+  if (m === "ONLINE" || m === "CARD" || m === "UPI" || m === "NETBANKING") return "Paid Online";
   if (m === "PAYMENT_LINK" || m === "PAYMENTLINK") return "Paid by Payment Link";
   return method ? `Paid by ${method}` : "Paid by Cash";
 };

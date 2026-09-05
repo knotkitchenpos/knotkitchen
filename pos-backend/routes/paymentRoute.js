@@ -1,15 +1,19 @@
 const express = require("express");
 const router = express.Router();
-const { isVerifiedUser } = require("../middlewares/tokenVerification");
-const { createOrder, verifyPayment, webHookVerification } = require("../controllers/paymentController");
 const { cashfreeWebhook } = require("../controllers/cashfreeWebhookController");
- 
-router.route("/create-order").post(isVerifiedUser , createOrder);
-router.route("/verify-payment").post(isVerifiedUser , verifyPayment);
-router.route("/webhook-verification").post(webHookVerification);
-// Cashfree posts here. Its signature scheme and headers are its own, so it
-// gets its own handler rather than another branch inside the Razorpay one.
-router.route("/cashfree/webhook").post(cashfreeWebhook);
 
+/**
+ * Payments.
+ *
+ * Razorpay is gone. Its /create-order and /verify-payment endpoints were dead
+ * code -- nothing in the POS ever called them -- and its webhook was the only
+ * other thing here. What remains is Cashfree's webhook, which needs no auth
+ * (the provider posts to it) and authenticates itself by signature instead.
+ *
+ * Payment links are created and captured under /api/payment-link; table
+ * payments under /api/qr. Both resolve their gateway through
+ * services/paymentGateway.
+ */
+router.route("/cashfree/webhook").post(cashfreeWebhook);
 
 module.exports = router;

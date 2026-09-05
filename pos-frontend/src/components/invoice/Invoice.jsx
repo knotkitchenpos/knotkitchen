@@ -20,7 +20,7 @@ import { sendEBill } from "../../https";
  *   - Full bill breakdown: subtotal, discount, packing, delivery, GST,
  *     total, order id, payment id, payment method. Anything the server
  *     didn't populate is quietly omitted (e.g. no "Discount: ₹0" clutter).
- *   - Payment ID (`razorpay_payment_id` for online, or the first
+ *   - Payment ID (the gateway's own id for online, or the first
  *     `payments[].transactionId` if present) is displayed and PERSISTED
  *     server-side against the order/payment record — no separate
  *     frontend-only Payment ID exists.
@@ -68,11 +68,11 @@ const Invoice = ({
         safeOrder._id ||
         `#${Math.floor(new Date(safeOrder.orderDate || Date.now()).getTime())}`;
 
-    // Payment ID: Razorpay's gateway payment id if present, else the first
+    // Payment ID: the gateway's own payment id if present, else the first
     // ledger transactionId, else null (Cash orders may legitimately have
     // no gateway payment id — Module 3 §3 explicitly permits this).
     const paymentId =
-        safeOrder.paymentData?.razorpay_payment_id ||
+        safeOrder.paymentData?.gatewayPaymentId ||
         (Array.isArray(safeOrder.payments) &&
             safeOrder.payments.find((p) => p?.transactionId)?.transactionId) ||
         "";

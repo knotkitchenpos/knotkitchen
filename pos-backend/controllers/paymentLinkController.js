@@ -1,6 +1,5 @@
 const crypto = require("crypto");
 const createHttpError = require("http-errors");
-const Razorpay = require("razorpay");
 const config = require("../config/config");
 const PaymentLink = require("../models/paymentLinkModel");
 const PaymentTransaction = require("../models/paymentTransactionModel");
@@ -187,14 +186,6 @@ const createPaymentLink = async (req, res, next) => {
       });
       gatewayOrderId = order.orderId;
       paymentSessionId = order.paymentSessionId;
-    } else if (gw.enabled && gw.provider === PROVIDERS.RAZORPAY) {
-      const razorpay = new Razorpay({ key_id: gw.keyId, key_secret: gw.secret });
-      const order = await razorpay.orders.create({
-        amount: Math.round(calculatedAmount * 100),
-        currency: targetBill?.currency || "INR",
-        receipt: `link_${linkToken.slice(0, 10)}`,
-      });
-      gatewayOrderId = order.id;
     } else {
       // No usable gateway. Refusing here is the honest outcome: a link the
       // customer cannot pay is worse than no link, and the operator finds out
@@ -298,18 +289,14 @@ const getPaymentLink = async (req, res, next) => {
       success: true,
       data: {
         linkToken: link.linkToken,
-        // The customer page passes this to Razorpay Checkout as `order_id`
-        // (pos-frontend/src/pages/PaymentLink.jsx). It was missing from this
-        // payload, so checkout opened with order_id: undefined. Not a secret —
-        // it is a gateway order handle that is useless without a valid
-        // signature, and the capture endpoint now requires one that matches
-        // this exact value.
+        // A gateway order handle, not a secret: it is useless on its own,
+        // and capture re-reads the order's status from the gateway rather
+        // than believing anything the browser says about it.
         gatewayOrderId: link.gatewayOrderId || "",
-        gatewayName: link.gatewayName || "RAZORPAY",
-        // The browser needs these; none of them is a secret. Razorpay
-        // Checkout takes a PUBLIC key id, Cashfree a payment session it
-        // minted plus which environment to open against.
-        gatewayKeyId: linkGw.provider === PROVIDERS.RAZORPAY ? linkGw.keyId : "",
+        gatewayName: link.gatewayName || "CASHFREE",
+        // What the browser needs to open checkout: the payment session
+        // Cashfree minted, and which environment to open it against. Getting
+        // the mode wrong makes the SDK fail silently.
         paymentSessionId: link.paymentSessionId || "",
         gatewayMode: link.gatewayMode || "sandbox",
         restaurantName: restaurant?.name || "Knot Kitchen",
@@ -323,7 +310,7 @@ const getPaymentLink = async (req, res, next) => {
         amount: link.amount,
         currency: link.currency || "INR",
         paymentStatus: link.status,
-        availablePaymentMethods: ["RAZORPAY", "CARD", "UPI", "NETBANKING"],
+        availablePaymentMethods: ["CARD", "UPI", "NETBANKING"],
         expiresAt: link.expiresAt,
         billNumber: bill?.billNumber,
         customerPhone: link.customerPhone,
@@ -344,7 +331,7 @@ const verifyAndCaptureLinkPayment = async (req, res, next) => {
   mongoSession.startTransaction();
   try {
     const { token } = req.params;
-    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, idempotencyKey, paymentMethod = "RAZORPAY" } = req.body;
+    const { idempotencyKey, paymentMethod = "ONLINE" } = req.body;
 
     const link = await PaymentLink.findOne({ linkToken: token, isDeleted: { $ne: true } }).session(mongoSession);
     if (!link) throw createHttpError(404, "Payment link not found.");
@@ -361,21 +348,16 @@ const verifyAndCaptureLinkPayment = async (req, res, next) => {
     // bill and the order paid and closes the table session, so it must never
     // run on unverified input.
     //
-    // The previous guard was:
+    // The guard here once depended on request-body fields, so simply OMITTING
+    // them skipped verification entirely and fell through to the "mark
+    // everything paid" code below: `POST /:token/verify` with a body of
+    // `{"paymentMethod":"UPI"}` settled any bill for free. Nothing the caller
+    // sends may influence whether verification happens.
     //
-    //   if (config.razorpaySecretKey && razorpay_order_id && razorpay_payment_id)
-    //
-    // Two of those three operands are attacker-controlled request-body fields,
-    // so simply OMITTING them skipped verification entirely and fell through to
-    // the "mark everything paid" code below. `POST /:token/verify` with a body
-    // of `{"paymentMethod":"UPI"}` settled any bill for free.
-    //
-    // Verification is required, and failure to verify is fatal.
-    //
-    // Which check runs depends on the gateway the link was opened against --
-    // read from the LINK, not from the request, so a caller cannot pick the
-    // weaker path by naming a different gateway.
-    const linkGateway = String(link.gatewayName || "RAZORPAY").toUpperCase();
+    // Verification is required, and failure to verify is fatal. Which check
+    // runs is read from the LINK, never from the request, so a caller cannot
+    // pick a weaker path by naming a different gateway.
+    const linkGateway = String(link.gatewayName || "CASHFREE").toUpperCase();
     const gw = await resolveGateway({ restaurantId: link.restaurantId });
 
     let transactionId = "";
@@ -419,35 +401,6 @@ const verifyAndCaptureLinkPayment = async (req, res, next) => {
 
       transactionId = status.cfOrderId || link.gatewayOrderId;
       gatewayOrder = link.gatewayOrderId;
-    } else if (linkGateway === "RAZORPAY") {
-      if (!gw.enabled || gw.provider !== PROVIDERS.RAZORPAY) {
-        // Refuse rather than trust: with no secret we cannot tell a real
-        // payment from a forged one. Genuine payments still reconcile via the
-        // webhook.
-        throw createHttpError(503, "Payment verification is unavailable. Please contact the restaurant.");
-      }
-      if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
-        throw createHttpError(400, "Invalid payment signature!");
-      }
-
-      // Bind the signed payload to THIS link. Without this a valid signature
-      // from any other Razorpay order on the same account would settle it.
-      if (link.gatewayOrderId && razorpay_order_id !== link.gatewayOrderId) {
-        throw createHttpError(400, "Invalid payment signature!");
-      }
-
-      const expected = crypto
-        .createHmac("sha256", gw.secret)
-        .update(`${razorpay_order_id}|${razorpay_payment_id}`)
-        .digest("hex");
-
-      // Constant-time: a plain !== leaks how much of the signature matched.
-      if (!timingSafeEquals(expected, String(razorpay_signature))) {
-        throw createHttpError(400, "Invalid payment signature!");
-      }
-
-      transactionId = razorpay_payment_id;
-      gatewayOrder = razorpay_order_id || link.gatewayOrderId || "";
     } else {
       // PhonePe and anything else: no secret exists for it anywhere in the
       // configuration, so a "capture" would be unverifiable by construction.
@@ -481,14 +434,14 @@ const verifyAndCaptureLinkPayment = async (req, res, next) => {
           customerId: link.customerId,
           paymentLinkId: link._id,
           // `method` is the payment INSTRUMENT and its enum does not include
-          // provider names. `paymentMethod` defaults to "RAZORPAY" and the
-          // customer page never sends the field, so this previously threw a
-          // ValidationError on every genuine capture and aborted the
-          // transaction. See constants/paymentMethods.js.
+          // provider names, so it has to be normalised. Passing a provider
+          // name straight through threw a ValidationError on every genuine
+          // capture and aborted the transaction. See
+          // constants/paymentMethods.js.
           method: normalizePaymentMethod(paymentMethod),
           amount: lockedAmount,
           status: "PAID",
-          provider: link.gatewayName || "RAZORPAY",
+          provider: link.gatewayName || "CASHFREE",
           transactionId,
           gatewayOrderId: gatewayOrder,
           gatewayPaymentId: transactionId,

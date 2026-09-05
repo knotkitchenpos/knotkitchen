@@ -38,10 +38,6 @@ export const regenerateQr = (tableId) =>
   axiosWrapper.put(`/api/table/${tableId}/qr/regenerate`);
 
 // Payment Endpoints
-export const createOrderRazorpay = (data) =>
-  axiosWrapper.post("/api/payment/create-order", data);
-export const verifyPaymentRazorpay = (data) =>
-  axiosWrapper.post("/api/payment/verify-payment", data);
 
 // Order Endpoints
 export const addOrder = (data) => axiosWrapper.post("/api/order/", data);
@@ -274,7 +270,7 @@ export const uploadMediaAsset = (formData) =>
 
 // Payment Link Endpoints (POS "Pay via Link" flow — Module 2 §5)
 // The backend controller (paymentLinkController.createPaymentLink) generates
-// a secure hex token, creates a Razorpay order (if configured), records a
+// a secure hex token, opens a gateway order, records a
 // Bill + PaymentLink and — critically — leaves the underlying Order in
 // "Pending" until the customer actually pays via /pay/:token. We NEVER mark
 // the order as paid at creation time.

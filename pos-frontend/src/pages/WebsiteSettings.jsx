@@ -835,7 +835,7 @@ const WebsiteSettings = () => {
             <div>
               <h3 className="font-bold text-[#0F172A] text-base mb-1">Payment Gateways & Pay by Link</h3>
               <p className="text-xs text-[#94A3B8]">
-                Configure Cashfree, PhonePe, and Razorpay gateway credentials. Only ONE gateway can be active at a time for website ordering & Pay by Link.
+                Configure Cashfree or PhonePe gateway credentials. Only ONE gateway can be active at a time for website ordering & Pay by Link.
               </p>
             </div>
 
@@ -844,16 +844,15 @@ const WebsiteSettings = () => {
               <div className="flex items-center justify-between">
                 <h4 className="font-extrabold text-sm text-[#0F172A]">Active Payment Gateway</h4>
                 <span className="px-3 py-1 rounded-full bg-[#FD5302]/10 text-[#C2410C] font-extrabold text-xs uppercase">
-                  Current: {settings.paymentGateways?.activeGateway || "razorpay"}
+                  Current: {settings.paymentGateways?.activeGateway || "cashfree"}
                 </span>
               </div>
               <Field label="Select Active Gateway" hint="Pay by Link and storefront payments will use this gateway.">
                 <select
                   className={inputClass}
-                  value={settings.paymentGateways?.activeGateway || "razorpay"}
+                  value={settings.paymentGateways?.activeGateway || "cashfree"}
                   onChange={(e) => patch("paymentGateways.activeGateway", e.target.value)}
                 >
-                  <option value="razorpay">Razorpay {settings.paymentGateways?.razorpay?.isConfigured ? "(Configured)" : "(Not Configured)"}</option>
                   <option value="cashfree">Cashfree {settings.paymentGateways?.cashfree?.isConfigured ? "(Configured)" : "(Not Configured)"}</option>
                   <option value="phonepe">PhonePe {settings.paymentGateways?.phonepe?.isConfigured ? "(Configured)" : "(Not Configured)"}</option>
                 </select>
@@ -862,73 +861,6 @@ const WebsiteSettings = () => {
 
             {/* Gateway Credentials Management */}
             <div className="space-y-5 pt-2">
-              {/* Razorpay Gateway Card */}
-              <div className="p-4 rounded-2xl border border-[#E2E8F0] bg-white space-y-3 shadow-xs">
-                <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl">💳</span>
-                    <div>
-                      <h4 className="font-extrabold text-sm text-[#0F172A]">Razorpay</h4>
-                      <p className="text-xs text-[#94A3B8]">Accept Cards, UPI, NetBanking & Wallets</p>
-                    </div>
-                  </div>
-                  {settings.paymentGateways?.razorpay?.isConfigured ? (
-                    <span className="px-2.5 py-1 rounded-full bg-[#DCFCE7] text-[#15803D] text-xs font-bold">Configured</span>
-                  ) : (
-                    <span className="px-2.5 py-1 rounded-full bg-[#F1F5F9] text-[#64748B] text-xs font-bold">Unconfigured</span>
-                  )}
-                </div>
-                <div className="grid sm:grid-cols-2 gap-3 text-xs">
-                  <Field label="Key ID">
-                    <input
-                      className={inputClass}
-                      placeholder="rzp_test_..."
-                      value={settings.paymentGateways?.razorpay?.keyId || ""}
-                      onChange={(e) => patch("paymentGateways.razorpay.keyId", e.target.value)}
-                    />
-                  </Field>
-                  <Field label="Key Secret" hint={settings.paymentGateways?.razorpay?.keySecretMasked ? `Masked: ${settings.paymentGateways.razorpay.keySecretMasked}` : "Encrypted at rest"}>
-                    <input
-                      type="password"
-                      className={inputClass}
-                      placeholder="Enter new secret or leave unchanged"
-                      value={settings.paymentGateways?.razorpay?.keySecret || ""}
-                      onChange={(e) => patch("paymentGateways.razorpay.keySecret", e.target.value)}
-                    />
-                  </Field>
-                  <Field label="Environment">
-                    <select
-                      className={inputClass}
-                      value={settings.paymentGateways?.razorpay?.environment || "TEST"}
-                      onChange={(e) => patch("paymentGateways.razorpay.environment", e.target.value)}
-                    >
-                      <option value="TEST">TEST (Sandbox)</option>
-                      <option value="PROD">PROD (Live)</option>
-                    </select>
-                  </Field>
-                </div>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      const res = await validateGatewayCredentials({
-                        gateway: "razorpay",
-                        keyId: settings.paymentGateways?.razorpay?.keyId,
-                        keySecret: settings.paymentGateways?.razorpay?.keySecret || "existing_secret_token",
-                        environment: settings.paymentGateways?.razorpay?.environment || "TEST",
-                      });
-                      setMessage({ type: "success", text: res.data?.message || "Razorpay credentials validated!" });
-                      save();
-                    } catch (err) {
-                      setMessage({ type: "error", text: err.response?.data?.message || "Validation failed." });
-                    }
-                  }}
-                  className="px-3.5 py-1.5 rounded-xl border border-[#FD5302] text-[#C2410C] text-xs font-bold hover:bg-[#FD5302]/5"
-                >
-                  Verify & Save Razorpay Credentials
-                </button>
-              </div>
-
               {/* Cashfree Gateway Card */}
               <div className="p-4 rounded-2xl border border-[#E2E8F0] bg-white space-y-3 shadow-xs">
                 <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">

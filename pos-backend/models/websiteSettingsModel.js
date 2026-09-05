@@ -48,9 +48,6 @@ const mediaRefSchema = new mongoose.Schema(
 
 const gatewayCredentialsSchema = new mongoose.Schema(
   {
-    keyId: { type: String, default: "", trim: true },
-    keySecretMasked: { type: String, default: "", trim: true },
-    keySecretEncrypted: { type: String, default: "" },
     environment: { type: String, enum: ["TEST", "PROD", "UAT"], default: "TEST" },
     isConfigured: { type: Boolean, default: false },
 
@@ -70,10 +67,9 @@ const gatewayCredentialsSchema = new mongoose.Schema(
 
 const paymentGatewaysSchema = new mongoose.Schema(
   {
-    activeGateway: { type: String, enum: ["cashfree", "phonepe", "razorpay"], default: "razorpay" },
+    activeGateway: { type: String, enum: ["cashfree", "phonepe"], default: "cashfree" },
     cashfree: { type: gatewayCredentialsSchema, default: () => ({}) },
     phonepe: { type: gatewayCredentialsSchema, default: () => ({}) },
-    razorpay: { type: gatewayCredentialsSchema, default: () => ({}) },
   },
   { _id: false }
 );
