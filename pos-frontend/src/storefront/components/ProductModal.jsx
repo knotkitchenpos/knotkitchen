@@ -97,6 +97,9 @@ const ProductModal = ({ product, currencySymbol, allowNotes = true, onClose, onA
       menuId: product.menuId,
       itemId: product.id,
       name: product.name,
+      // Carried onto the cart line so the basket can flag one that does not
+      // suit the fulfilment the customer settles on.
+      dispatchType: product.dispatchType || null,
       quantity,
       unitPrice,
       image: product.thumbnail || product.image,

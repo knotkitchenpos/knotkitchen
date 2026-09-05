@@ -1,4 +1,5 @@
 import React from "react";
+import { dispatchLabel } from "../lib/dispatch";
 
 /**
  * Small self-contained product card. Delegates the add-to-cart flow up to
@@ -7,6 +8,9 @@ import React from "react";
  */
 export default function ProductCard({ product, symbol, onSelect }) {
   const soldOut = product.isAvailable === false;
+  // "Collection Only" and friends. Null when the product can be bought
+  // through every order type, which is the usual case.
+  const dispatch = dispatchLabel(product.dispatchType);
   const hasDiscount = product.originalPrice && product.originalPrice > product.price;
   const base =
     "text-left group bg-white rounded-2xl shadow-sm hover:shadow-md transition overflow-hidden flex flex-col";
@@ -43,6 +47,11 @@ export default function ProductCard({ product, symbol, onSelect }) {
         </div>
         {product.description ? (
           <p className="mt-1 text-sm text-slate-500 line-clamp-2">{product.description}</p>
+        ) : null}
+        {dispatch ? (
+          <span className="mt-2 self-start inline-block text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+            {dispatch}
+          </span>
         ) : null}
         <div className="mt-3 flex items-baseline gap-2">
           <span className="font-semibold text-slate-900">

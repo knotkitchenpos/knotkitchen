@@ -13,6 +13,7 @@ const {
   menuViewFor,
   projectMenus,
   allowsOrderType,
+  dispatchLabel,
   WEBSITE_VISIBLE_QUERY,
 } = require("../services/menuCache");
 const { getTheme } = require("../services/themeRegistry");
@@ -71,6 +72,19 @@ const toPublicProduct = (item, menu, timezone) => {
     thumbnail: item.imageThumbnailUrl || item.imageUrl || item.image || "",
     imageAlt: item.imageAlt || item.name,
     isVegetarian: Boolean(item.isVegetarian),
+    // Which order types this product can actually be bought through.
+    //
+    // It is the CATEGORY's dispatch type -- that is what the order-time check
+    // enforces -- carried onto the product so the site can say "Collection
+    // only" on the card, in the product sheet and in the cart. Without it the
+    // customer's first news of the restriction was a refusal at checkout.
+    dispatchType: menu.dispatchType
+      ? {
+          collection: menu.dispatchType.collection !== false,
+          delivery: menu.dispatchType.delivery !== false,
+          table: menu.dispatchType.table !== false,
+        }
+      : { collection: true, delivery: true, table: true },
     isAvailable: isItemAvailableNow(item, timezone, "website"),
     isFeatured: Boolean(item.isFeatured),
     isCombo: Boolean(item.isCombo),
@@ -423,14 +437,41 @@ const createStorefrontOrder = async (req, res, next) => {
     });
     // Dispatch Type is authoritative here. The website asks for pickup vs
     // delivery at checkout rather than before browsing, so a delivery-only
-    // category cannot be filtered out of the catalogue up front — instead a
-    // category that does not allow the chosen order type is dropped from the
-    // priced menu, and ordering from it fails the same way an unavailable
-    // item does. "pickup" on the website is a collection order.
+    // category cannot be filtered out of the catalogue up front.
+    //
+    // A restricted category is still dropped from the priced menu, so a line
+    // from one can never be billed. But being dropped was ALL that happened:
+    // its items were simply missing from the index and the customer got "One
+    // or more items are no longer available", which named neither the item nor
+    // the reason and read like the dish had sold out. Name it first.
+    //
+    // "pickup" on the website is a collection order.
     const dispatchKey = requestedType === "delivery" ? ORDER_TYPES.DELIVERY : ORDER_TYPES.COLLECTION;
-    const menus = projectMenus(menuDocs, AUDIENCES.WEBSITE).filter((m) =>
-      allowsOrderType(m, dispatchKey),
-    );
+    const projectedMenus = projectMenus(menuDocs, AUDIENCES.WEBSITE);
+
+    const blockedMenus = projectedMenus.filter((m) => !allowsOrderType(m, dispatchKey));
+    if (blockedMenus.length) {
+      const byId = new Map(blockedMenus.map((m) => [String(m._id), m]));
+      const offending = (Array.isArray(body.items) ? body.items : []).find((line) =>
+        byId.has(String(line?.menuId)),
+      );
+      if (offending) {
+        const menu = byId.get(String(offending.menuId));
+        const item = (menu.items || []).find((i) => String(i._id) === String(offending.itemId));
+        const what = item?.name || menu.name;
+        const label = dispatchLabel(menu.dispatchType);
+        return next(
+          createHttpError(
+            400,
+            label
+              ? `${what} is ${label.toLowerCase()}. Please change your order type or remove it from your basket.`
+              : `${what} is not available for ${dispatchKey} orders.`,
+          ),
+        );
+      }
+    }
+
+    const menus = projectedMenus.filter((m) => allowsOrderType(m, dispatchKey));
 
     let priced;
     try {

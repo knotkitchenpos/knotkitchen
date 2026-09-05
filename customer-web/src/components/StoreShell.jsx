@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import ProductCard from "./ProductCard";
+import { dispatchLabel } from "../lib/dispatch";
 import ProductModal from "./ProductModal";
 import CartDrawer from "./CartDrawer";
 import OrderConfirmation from "./OrderConfirmation";
@@ -75,11 +76,23 @@ export default function StoreShell({
         ) : (s.categories || []).length === 0 ? (
           <Notice>This restaurant hasn't published a menu yet. Please check back later.</Notice>
         ) : (
-          (s.categories || []).map((category) => (
+          (s.categories || []).map((category) => {
+            // A category the restaurant has restricted to one order type says
+            // so here, so the customer knows before they add anything rather
+            // than being refused at the payment step.
+            const dispatch = dispatchLabel(category.dispatchType);
+            return (
             <section key={category.id} className="mt-8">
-              <h2 className="text-lg font-semibold text-slate-900 mb-3">
-                {category.icon ? <span className="mr-2">{category.icon}</span> : null}
-                {category.name}
+              <h2 className="text-lg font-semibold text-slate-900 mb-3 flex flex-wrap items-center gap-2">
+                <span>
+                  {category.icon ? <span className="mr-2">{category.icon}</span> : null}
+                  {category.name}
+                </span>
+                {dispatch ? (
+                  <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                    {dispatch}
+                  </span>
+                ) : null}
               </h2>
               <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
                 {category.products.map((product) => (
@@ -92,7 +105,8 @@ export default function StoreShell({
                 ))}
               </div>
             </section>
-          ))
+            );
+          })
         )}
 
         {s.contact ? <Footer contact={s.contact} openingHours={s.openingHours} /> : null}

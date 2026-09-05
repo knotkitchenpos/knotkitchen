@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import ProductCard from "./components/ProductCard";
 import { formatPrice } from "./theme";
+import { dispatchLabel } from "./dispatch";
 
 /**
  * "default-restaurant" theme renderer.
@@ -396,6 +397,14 @@ const DefaultRestaurantTheme = ({ data, cart, onSelectProduct, onOpenCart }) => 
               <span className="text-sm font-normal text-[var(--sf-muted)]">
                 ({category.products.length})
               </span>
+              {/* A category the restaurant sells through only some order
+                  types says so here, rather than letting the customer find
+                  out when checkout refuses the item. */}
+              {dispatchLabel(category.dispatchType) ? (
+                <span className="text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+                  {dispatchLabel(category.dispatchType)}
+                </span>
+              ) : null}
             </h3>
 
             <div className={gridClass}>

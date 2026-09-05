@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { allowsFulfilment, dispatchLabel } from "../lib/dispatch";
 
 /**
  * Cart / checkout drawer.
@@ -34,11 +35,19 @@ export default function CartDrawer({
   const total = taxable + taxAmount;
 
   const minReached = cart.subtotal >= Number(ordering?.minOrderValue || 0);
+
+  // Lines the restaurant does not sell through the fulfilment now selected.
+  // The backend refuses these at checkout; catching them here means the
+  // customer is told which item and why, while they can still do something
+  // about it, instead of after they have filled in their address.
+  const conflicting = cart.items.filter((l) => !allowsFulfilment(l.dispatchType, orderType));
+
   const canSubmit =
     cart.items.length > 0 &&
     customer.name.trim() &&
     customer.phone.trim().length >= 7 &&
     minReached &&
+    conflicting.length === 0 &&
     !placing &&
     (orderType === "pickup" || address.line1.trim());
 
@@ -101,6 +110,17 @@ export default function CartDrawer({
                       </div>
                     ) : null}
                     {line.note ? <div className="text-xs italic text-slate-500 mt-0.5">“{line.note}”</div> : null}
+                    {dispatchLabel(line.dispatchType) ? (
+                      <div
+                        className={`text-[11px] mt-0.5 font-medium ${
+                          allowsFulfilment(line.dispatchType, orderType)
+                            ? "text-amber-700"
+                            : "text-red-600"
+                        }`}
+                      >
+                        {dispatchLabel(line.dispatchType)}
+                      </div>
+                    ) : null}
                     <div className="text-sm mt-1 text-slate-700">
                       {symbol}
                       {(Number(line.unitPrice || line.price) * line.quantity).toFixed(2)}
@@ -234,6 +254,23 @@ export default function CartDrawer({
             {!storeOpen ? (
               <div className="text-xs text-slate-600 bg-slate-100 rounded-lg p-2">
                 Restaurant is currently closed — your order will be scheduled for the next opening.
+              </div>
+            ) : null}
+            {conflicting.length ? (
+              <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2 space-y-1">
+                <p className="font-semibold">
+                  {conflicting.length === 1
+                    ? "One item is not available for this order type:"
+                    : `${conflicting.length} items are not available for this order type:`}
+                </p>
+                <ul className="list-disc pl-4">
+                  {conflicting.map((l) => (
+                    <li key={cart.lineSignature(l)}>
+                      {l.name} — {dispatchLabel(l.dispatchType)}
+                    </li>
+                  ))}
+                </ul>
+                <p>Switch order type above, or remove them from your basket.</p>
               </div>
             ) : null}
             {error ? <div className="text-sm text-red-600">{error}</div> : null}

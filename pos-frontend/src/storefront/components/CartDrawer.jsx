@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { formatPrice } from "../theme";
 import { estimateTotals } from "../useCart";
+import { allowsFulfilment, dispatchLabel } from "../dispatch";
 
 /**
  * Slide-over cart + checkout (§10, §11).
@@ -44,6 +45,11 @@ const CartDrawer = ({
 
   const belowMinimum = ordering?.minOrderValue > 0 && cart.subtotal < ordering.minOrderValue;
 
+  // Lines the restaurant does not sell through the fulfilment now selected.
+  // Checkout refuses these anyway; catching them here tells the customer
+  // WHICH item and WHY, while they can still change something about it.
+  const conflicting = cart.items.filter((i) => !allowsFulfilment(i.dispatchType, orderType));
+
   const submit = (e) => {
     e.preventDefault();
     setFormError("");
@@ -54,6 +60,14 @@ const CartDrawer = ({
     }
     if (orderType === "delivery" && !address.line1.trim()) {
       return setFormError("Please enter your delivery address.");
+    }
+    if (conflicting.length) {
+      return setFormError(
+        `${conflicting.map((i) => i.name).join(", ")} ${
+          conflicting.length === 1 ? "is" : "are"
+        } not available for ${orderType === "delivery" ? "delivery" : "collection"}. ` +
+          "Change your order type, or remove it from your basket.",
+      );
     }
 
     onPlaceOrder({
@@ -130,6 +144,17 @@ const CartDrawer = ({
 
                       <div className="flex-1 min-w-0">
                         <p className="font-semibold text-[var(--sf-text)] text-sm">{item.name}</p>
+                        {dispatchLabel(item.dispatchType) ? (
+                          <p
+                            className={`text-[11px] font-medium ${
+                              allowsFulfilment(item.dispatchType, orderType)
+                                ? "text-amber-700"
+                                : "text-red-600"
+                            }`}
+                          >
+                            {dispatchLabel(item.dispatchType)}
+                          </p>
+                        ) : null}
 
                         {/* Configured options summary */}
                         {item.variantName ? (
@@ -200,12 +225,18 @@ const CartDrawer = ({
 
                 <button
                   type="button"
-                  disabled={belowMinimum || !storeOpen || !canCheckout}
+                  disabled={belowMinimum || !storeOpen || !canCheckout || conflicting.length > 0}
                   onClick={() => setPane("checkout")}
                   className="w-full py-3 font-semibold bg-[var(--sf-button)] text-[var(--sf-button-text)] disabled:opacity-50 disabled:cursor-not-allowed hover:opacity-90 transition-all"
                   style={{ borderRadius: "var(--sf-radius)" }}
                 >
-                  {!canCheckout ? "Preview — ordering disabled" : storeOpen ? "Continue to Checkout" : "Restaurant Closed"}
+                  {!canCheckout
+                    ? "Preview — ordering disabled"
+                    : conflicting.length
+                    ? "Some items don’t suit this order type"
+                    : storeOpen
+                    ? "Continue to Checkout"
+                    : "Restaurant Closed"}
                 </button>
               </footer>
             ) : null}

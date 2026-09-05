@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { dispatchLabel } from "../lib/dispatch";
 
 /**
  * Product detail sheet.
@@ -64,6 +65,9 @@ export default function ProductModal({ product, symbol, onClose, onAdd, allowNot
       menuId: product.menuId,
       itemId: product.id,
       name: product.name,
+      // Carried onto the cart line so the basket can warn about a line that
+      // does not suit the fulfilment the customer ends up choosing.
+      dispatchType: product.dispatchType || null,
       quantity,
       unitPrice,
       price: unitPrice,
@@ -103,6 +107,11 @@ export default function ProductModal({ product, symbol, onClose, onAdd, allowNot
 
         <div className="p-5 overflow-y-auto">
           <h2 className="text-xl font-semibold">{product.name}</h2>
+          {dispatchLabel(product.dispatchType) ? (
+            <span className="mt-1 inline-block text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
+              {dispatchLabel(product.dispatchType)}
+            </span>
+          ) : null}
           {product.description ? (
             <p className="mt-1 text-sm text-slate-500">{product.description}</p>
           ) : null}

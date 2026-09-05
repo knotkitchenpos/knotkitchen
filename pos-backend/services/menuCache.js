@@ -161,6 +161,34 @@ const allowsOrderType = (menu, orderType) => {
   return true;
 };
 
+/**
+ * How to say a category's dispatch restriction to a customer.
+ *
+ * Returns null when there is no restriction worth mentioning -- all three
+ * order types allowed, or none set (which allowsOrderType treats as
+ * unrestricted). Otherwise a label the storefront can print next to the
+ * category name, on the product card and in the basket:
+ *
+ *     "Collection Only"   "Delivery Only"   "Table Orders Only"
+ *     "Collection & Delivery Only"
+ *
+ * customer-web carries its own copy of this (it cannot import from the
+ * backend). If the wording changes here, change it there too -- the checkout
+ * refusal and the label the customer read while browsing must agree.
+ */
+const DISPATCH_LABELS = { collection: "Collection", delivery: "Delivery", table: "Table Orders" };
+
+const dispatchLabel = (dispatchType) => {
+  if (!dispatchType) return null;
+  const dt = typeof dispatchType.toObject === "function" ? dispatchType.toObject() : dispatchType;
+  const allowed = ["collection", "delivery", "table"].filter((k) => dt[k] !== false);
+  // All three, or none at all, is not a restriction -- see allowsOrderType.
+  if (allowed.length === 3 || allowed.length === 0) return null;
+  const names = allowed.map((k) => DISPATCH_LABELS[k]);
+  const joined = names.length === 1 ? names[0] : `${names.slice(0, -1).join(", ")} & ${names[names.length - 1]}`;
+  return `${joined} Only`;
+};
+
 module.exports = {
   AUDIENCES,
   ORDER_TYPES,
@@ -169,6 +197,7 @@ module.exports = {
   POS_VISIBLE_QUERY,
   WEBSITE_VISIBLE_QUERY,
   allowsOrderType,
+  dispatchLabel,
   menuViewFor,
   projectMenu,
   projectMenus,
