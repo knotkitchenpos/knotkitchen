@@ -231,13 +231,26 @@ router.route("/session/items/:token").post(qrWriteLimiter, resolveTableScope, as
 
         let created = false;
         if (!session) {
+          // OPENING the table: this is the diner's first scan, and the only
+          // moment their details are asked for. Enforced here rather than
+          // trusted from the browser, and ONLY on creation -- a later scan
+          // joins the open session and must never be asked again.
+          const name = String(customerName || "").trim();
+          const phone = String(customerPhone || "").replace(/\D/g, "").slice(-10);
+          if (!name) throw createHttpError(400, "Please enter your name to start the table.");
+          if (!/^\d{10}$/.test(phone)) {
+            throw createHttpError(400, "Please enter a valid 10-digit phone number to start the table.");
+          }
+
           session = await TableSession.create(
             [
               {
                 sessionCode: generateSessionCode(),
                 restaurantId, outletId, tableId: tableInTxn._id, status: "OCCUPIED", source: "QR",
+                // Guests is no longer collected from the diner. Absent, this
+                // resolves to 1; the till can still set a real count.
                 customerCount: validateCapacity(tableInTxn, customerCount),
-                customerName: customerName || "", customerPhone: customerPhone || "",
+                customerName: name, customerPhone: phone,
                 items: [], bills: { subtotal: 0, tax: 0, discount: 0, charges: 0, totalWithTax: 0 },
                 payment: { method: "", status: "PENDING", transactionId: "", paidAt: null },
                 openedAt: new Date(),

@@ -916,9 +916,16 @@ test("REGRESSION: a second QR round appends to the SAME order, never a new one",
   const token = await createQrForTable(TABLES[5]._id);
   const before = orderStore.length;
 
+  // Opening the table carries the diner's details; the second round below
+  // deliberately carries none, because a scan that JOINS an open session is
+  // never asked for them again.
   const first = await callRoute(router, "/session/items/:token", "post", {
     params: { token },
-    body: { items: [{ menuItemId: "menu_biryani", quantity: 1 }], customerCount: 2 },
+    body: {
+      items: [{ menuItemId: "menu_biryani", quantity: 1 }],
+      customerName: "Asmit",
+      customerPhone: "9876543210",
+    },
   });
   assert.equal(first.statusCode, 201);
   const createdOrders = orderStore.length - before;

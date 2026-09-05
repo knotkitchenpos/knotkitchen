@@ -50,7 +50,10 @@ export default function OrderOnline() {
   const [cart, setCart] = useState({});
   // The product whose options the customer is currently choosing, if any.
   const [optionsItem, setOptionsItem] = useState(null);
-  const [cust, setCust] = useState({ name: "", phone: "", guests: 1 });
+  // Number of people is not asked for: the diner does not reliably know it,
+  // it was never used for anything the customer sees, and the till can set a
+  // real count. The server defaults it to 1.
+  const [cust, setCust] = useState({ name: "", phone: "" });
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [banner, setBanner] = useState(""); // in-page success/info banner
@@ -197,9 +200,19 @@ export default function OrderOnline() {
   const checkout = async () => {
     setErr("");
     if (cartList.length === 0) return;
-    if (!/^\d{10}$/.test(String(cust.phone).replace(/\D/g, "").slice(-10))) {
-      setErr("Please enter a valid 10-digit phone so the kitchen can reach you if needed.");
-      return;
+
+    // Details are asked for ONCE, when this scan opens the table. A later
+    // scan joins the session that is already running, and the diner who
+    // opened it has already given them.
+    if (!session) {
+      if (!String(cust.name).trim()) {
+        setErr("Please enter your name.");
+        return;
+      }
+      if (!/^\d{10}$/.test(String(cust.phone).replace(/\D/g, "").slice(-10))) {
+        setErr("Please enter a valid 10-digit phone number.");
+        return;
+      }
     }
     setPlacing(true);
     try {
@@ -215,9 +228,14 @@ export default function OrderOnline() {
       }));
       await qrPlaceOrder(token, {
         items,
-        customerName: cust.name,
-        customerPhone: String(cust.phone).replace(/\D/g, "").slice(-10),
-        customerCount: Math.max(1, Number(cust.guests) || 1),
+        // Sent only when opening the table. Adding to a running session must
+        // not overwrite whoever opened it with a later diner's details.
+        ...(session
+          ? {}
+          : {
+              customerName: String(cust.name).trim(),
+              customerPhone: String(cust.phone).replace(/\D/g, "").slice(-10),
+            }),
         requestId: `${token.slice(0, 8)}-${Date.now()}`,
       });
       setCart({});
@@ -389,8 +407,13 @@ export default function OrderOnline() {
                 <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
                   Your Table Order
                 </p>
+                {/* Guest count is no longer collected from the diner, so
+                    showing "1 guest(s)" here would just be a wrong number. */}
                 <p className="text-sm font-bold text-slate-900">
-                  {sessionItemCount} item(s) · {session.customerCount || 1} guest(s)
+                  {sessionItemCount} item(s)
+                  {session.customerName ? (
+                    <span className="font-medium text-slate-500"> · {session.customerName}</span>
+                  ) : null}
                 </p>
               </div>
               <div className="text-right">
@@ -653,30 +676,51 @@ export default function OrderOnline() {
             </ul>
 
             <div className="p-5 pt-3 border-t border-slate-100 space-y-3">
-              <div className="grid grid-cols-3 gap-2">
-                <input
-                  placeholder="Name"
-                  value={cust.name}
-                  onChange={(e) => setCust({ ...cust, name: e.target.value })}
-                  className="px-3 py-2.5 rounded-xl bg-slate-100 text-sm outline-none focus:bg-white focus:ring-2 focus:ring-slate-200"
-                />
-                <input
-                  placeholder="Phone*"
-                  inputMode="numeric"
-                  maxLength={10}
-                  value={cust.phone}
-                  onChange={(e) => setCust({ ...cust, phone: e.target.value.replace(/\D/g, "").slice(0, 10) })}
-                  className="px-3 py-2.5 rounded-xl bg-slate-100 text-sm outline-none focus:bg-white focus:ring-2 focus:ring-slate-200"
-                />
-                <input
-                  placeholder="Guests"
-                  type="number"
-                  min="1"
-                  value={cust.guests}
-                  onChange={(e) => setCust({ ...cust, guests: e.target.value })}
-                  className="px-3 py-2.5 rounded-xl bg-slate-100 text-sm outline-none focus:bg-white focus:ring-2 focus:ring-slate-200"
-                />
-              </div>
+              {/* Asked once, on the scan that OPENS the table. A later scan
+                  joins the running session and goes straight to ordering. */}
+              {session ? (
+                <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
+                  <span className="text-slate-400 text-sm">🪑</span>
+                  <p className="text-[12.5px] text-slate-600">
+                    Adding to the open order on{" "}
+                    <span className="font-bold text-slate-800">
+                      Table {table?.tableNumber}
+                    </span>
+                    {session.customerName ? (
+                      <span className="text-slate-500"> · {session.customerName}</span>
+                    ) : null}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  <p className="text-[12.5px] font-semibold text-slate-700">
+                    Your details
+                    <span className="font-normal text-slate-400">
+                      {" "}· asked once, when you open the table
+                    </span>
+                  </p>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      placeholder="Name"
+                      autoComplete="name"
+                      value={cust.name}
+                      onChange={(e) => setCust({ ...cust, name: e.target.value })}
+                      className="px-3 py-2.5 rounded-xl bg-slate-100 text-sm outline-none focus:bg-white focus:ring-2 focus:ring-slate-200"
+                    />
+                    <input
+                      placeholder="Phone"
+                      inputMode="numeric"
+                      autoComplete="tel"
+                      maxLength={10}
+                      value={cust.phone}
+                      onChange={(e) =>
+                        setCust({ ...cust, phone: e.target.value.replace(/\D/g, "").slice(0, 10) })
+                      }
+                      className="px-3 py-2.5 rounded-xl bg-slate-100 text-sm outline-none focus:bg-white focus:ring-2 focus:ring-slate-200"
+                    />
+                  </div>
+                </div>
+              )}
               {err && (
                 <p className="text-red-600 text-xs font-semibold">{err}</p>
               )}
