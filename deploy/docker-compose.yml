@@ -117,7 +117,27 @@ services:
       RAZORPAY_KEY_ID: ${RAZORPAY_KEY_ID:-}
       RAZORPAY_KEY_SECRET: ${RAZORPAY_KEY_SECRET:-}
       RAZORPAY_WEBHOOK_SECRET: ${RAZORPAY_WEBHOOK_SECRET:-}
+
+      # Cashfree PG. Platform-wide fallback for stores that have not entered
+      # their own credentials under Website Settings.
+      # CASHFREE_ENV: TEST = sandbox.cashfree.com, PROD = api.cashfree.com.
+      # Anything unrecognised is treated as sandbox on purpose -- a typo here
+      # should cost a failed test payment, not a real one.
+      CASHFREE_APP_ID: ${CASHFREE_APP_ID:-}
+      CASHFREE_SECRET_KEY: ${CASHFREE_SECRET_KEY:-}
+      CASHFREE_ENV: ${CASHFREE_ENV:-TEST}
+      CASHFREE_WEBHOOK_SECRET: ${CASHFREE_WEBHOOK_SECRET:-}
+      CASHFREE_NOTIFY_URL: ${CASHFREE_NOTIFY_URL:-}
+
       FAST2SMS_API_KEY: ${FAST2SMS_API_KEY:-}
+      # DLT: the approved header, and the Message ID per template. With a
+      # template id absent the message falls back to free text on route v3,
+      # which is NOT DLT-compliant and which operators may drop.
+      FAST2SMS_SENDER_ID: ${FAST2SMS_SENDER_ID:-}
+      FAST2SMS_OTP_ID: ${FAST2SMS_OTP_ID:-}
+      FAST2SMS_EBILL_TEMPLATE_ID: ${FAST2SMS_EBILL_TEMPLATE_ID:-}
+      FAST2SMS_ORDER_READY_TEMPLATE_ID: ${FAST2SMS_ORDER_READY_TEMPLATE_ID:-}
+      FAST2SMS_PAYMENT_LINK_TEMPLATE_ID: ${FAST2SMS_PAYMENT_LINK_TEMPLATE_ID:-}
 
       # Realtime
       SOCKET_ENABLED: "true"
