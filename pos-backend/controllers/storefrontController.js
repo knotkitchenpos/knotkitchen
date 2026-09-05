@@ -7,7 +7,14 @@ const { resolveStorefront, REASON_MESSAGES } = require("../services/storefrontRe
 const { AWAITING_ACCEPTANCE } = require("../constants/orderStatus");
 const { isStoreOpen, isClosedForToday, isItemAvailableNow, getEffectivePrice } = require("../services/businessHours");
 const { calculateOrderTotals, PricingError } = require("../services/orderPricingService");
-const { AUDIENCES, ORDER_TYPES, menuViewFor, projectMenus, allowsOrderType } = require("../services/menuCache");
+const {
+  AUDIENCES,
+  ORDER_TYPES,
+  menuViewFor,
+  projectMenus,
+  allowsOrderType,
+  WEBSITE_VISIBLE_QUERY,
+} = require("../services/menuCache");
 const { getTheme } = require("../services/themeRegistry");
 const { emitOrderCreated } = require("../services/socket");
 const { generateOrderNumberSafe } = require("../services/orderNumberService");
@@ -108,15 +115,11 @@ const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezon
     ? await Menu.find({
         restaurantId,
         isDeleted: { $ne: true },
-        // Older menus used isPublished; new menus use published. Accept both
-        // so a legacy POS menu does not silently disappear from the website.
-        // `showOnWebsite` is the per-surface override: it lets a category with
-        // Display Status OFF still appear here and nowhere else.
-        $or: [
-          { published: true },
-          { published: { $exists: false }, isPublished: true },
-          { showOnWebsite: true },
-        ],
+        // One rule, from services/menuCache, shared with the checkout query
+        // below and with publicStoreController. Three hand-written copies of
+        // "is this category on the website?" had drifted apart -- see the
+        // note on the checkout query.
+        ...WEBSITE_VISIBLE_QUERY,
       }).sort({ createdAt: 1 })
     : [];
 
@@ -411,7 +414,12 @@ const createStorefrontOrder = async (req, res, next) => {
     const menuDocs = await Menu.find({
       restaurantId,
       isDeleted: { $ne: true },
-      $or: [{ published: true }, { published: { $exists: false }, isPublished: true }],
+      // This clause was missing `showOnWebsite` entirely, while the browse
+      // query above had it. A category with Display Status OFF and Website
+      // Visibility ON was therefore shown to the customer and then refused at
+      // checkout: they could see the dish, add it, and have the order fail to
+      // price. Both now read the same rule.
+      ...WEBSITE_VISIBLE_QUERY,
     });
     // Dispatch Type is authoritative here. The website asks for pickup vs
     // delivery at checkout rather than before browsing, so a delivery-only

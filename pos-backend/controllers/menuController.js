@@ -32,7 +32,7 @@ const menuScopeFor = (user) => {
   return { createdBy: user?._id };
 };
 
-const { AUDIENCES, projectMenu } = require("../services/menuCache");
+const { AUDIENCES, projectMenu, isVisibleOnPos } = require("../services/menuCache");
 
 const getMenus = async (req, res, next) => {
   try {
@@ -53,7 +53,21 @@ const getMenus = async (req, res, next) => {
     const isSystemSource = req.query.source === "system" || req.headers["x-pos-source"] === "system";
     const audience = isSystemSource ? AUDIENCES.SYSTEM : AUDIENCES.DRAFT;
 
-    const projected = menus.map((menu) => {
+    // Per-surface category visibility, applied HERE rather than by rewriting
+    // the catalogue.
+    //
+    // `isVisibleOnPos` existed and was exported but nothing ever called it, so
+    // the tills showed every category no matter what Display Status or POS
+    // Visibility said. Hiding a category "worked" only because updateCategory
+    // went round and switched off every product inside it — which is why the
+    // category still appeared on the till with nothing in it, and why the same
+    // products then showed as Sold Out on the website.
+    //
+    // Manage Menu (draft) deliberately keeps showing everything: you cannot
+    // edit a category you cannot see.
+    const visible = isSystemSource ? menus.filter((menu) => isVisibleOnPos(menu)) : menus;
+
+    const projected = visible.map((menu) => {
       const obj = projectMenu(menu, audience);
       // Also sort the items array by their sortOrder so drag-reordered
       // products come back in the biller's chosen order (existing
@@ -67,7 +81,15 @@ const getMenus = async (req, res, next) => {
       return obj;
     });
 
-    res.status(200).json({ success: true, data: projected });
+    // A category the till cannot sell anything from is noise on the screen.
+    // For SYSTEM that means one whose snapshot is empty — either nothing has
+    // been published to the tills yet, or every product in it is gone. This
+    // matches what projectMenus already does for the other system callers.
+    const payload = isSystemSource
+      ? projected.filter((m) => Array.isArray(m.items) && m.items.length > 0)
+      : projected;
+
+    res.status(200).json({ success: true, data: payload });
   } catch (error) {
     next(error);
   }
@@ -175,11 +197,7 @@ const updateCategory = async (req, res, next) => {
     if (showOnPos !== undefined) menu.showOnPos = Boolean(showOnPos);
     if (showOnWebsite !== undefined) menu.showOnWebsite = Boolean(showOnWebsite);
 
-    // Category-level Display Status and Dispatch Type cascade to every product
-    // in the category. Setting a category to delivery-only, or hiding it, and
-    // then finding its products still individually flagged otherwise was a
-    // reliable way to end up with a catalogue nobody could explain.
-    //
+    // Category-level Dispatch Type cascades to every product in the category.
     // Only applied when the operator actually changed the field on this
     // request, so an unrelated rename never rewrites every product.
     if (dispatchType !== undefined && Array.isArray(menu.items)) {
@@ -191,11 +209,25 @@ const updateCategory = async (req, res, next) => {
         };
       });
     }
-    if (published !== undefined && Array.isArray(menu.items)) {
-      menu.items.forEach((item) => {
-        item.isAvailable = Boolean(published);
-      });
-    }
+
+    // Display Status does NOT cascade onto `item.isAvailable`.
+    //
+    // It used to, and that is the whole bug. The two fields mean different
+    // things: Display Status is "show this category on these surfaces",
+    // isAvailable is "this dish is in stock". Writing one into the other
+    //
+    //   - destroyed the operator's per-product stock state, irreversibly:
+    //     hide a category and re-show it and every product that had been
+    //     deliberately marked out of stock came back as available;
+    //   - could not express the per-surface flags at all, because a product
+    //     switched off is off on BOTH surfaces. A category set to "POS only"
+    //     therefore had all its products hidden on the POS too;
+    //   - and left those same products showing as Sold Out on the website
+    //     rather than simply absent.
+    //
+    // The category rule is now applied where it belongs: at read time, by
+    // isVisibleOnPos / WEBSITE_VISIBLE_QUERY. Hiding a category hides it and
+    // everything in it, and nothing about the products is rewritten.
 
     // If category name changed, update items
     if (oldName !== newName && Array.isArray(menu.items)) {
@@ -1463,9 +1495,16 @@ const publishAllMenusForUser = async (user, target) => {
       menu.lastPublishedToWebsiteAt = now;
       menu.websiteVersion = (menu.websiteVersion || 0) + 1;
       menu.websiteSnapshot = { name: menu.name, items: snapshotItems };
-      if (menu.published === false) {
-        menu.published = true;
-      }
+      // Publishing does NOT switch Display Status back on.
+      //
+      // This block used to do exactly that, contradicting the comment on this
+      // function ("it does not toggle `published` — that would be a footgun,
+      // the store owner already had it off for a reason"). The effect was that
+      // every attempt to hide a category was undone by the next Publish Web,
+      // while the products inside it stayed switched off by the old cascade.
+      //
+      // Publishing copies the draft to a surface. It is not an opinion about
+      // what the operator wants shown.
     }
 
     try {
