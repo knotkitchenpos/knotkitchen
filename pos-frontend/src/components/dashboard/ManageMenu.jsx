@@ -2344,27 +2344,10 @@ const ManageMenu = () => {
                 )}
               </div>
 
-              <div className="space-y-3 pt-2 border-t border-[#E2E8F0]">
-                {/* Background Color removed from the category form. `bgColor`
-                    is still sent (unchanged) so existing category colours are
-                    preserved rather than reset on the next save. */}
-                <div>
-                  <label className="text-[12px] font-extrabold text-[#334155]">Text Color</label>
-                  <div className="flex items-center gap-2 mt-1">
-                    <input
-                      value={textColor}
-                      onChange={(e) => setTextColor(e.target.value)}
-                      className="flex-1 h-[38px] px-3 rounded-xl border border-[#E2E8F0] font-bold"
-                    />
-                    <input
-                      type="color"
-                      value={textColor}
-                      onChange={(e) => setTextColor(e.target.value)}
-                      className="w-9 h-9 rounded-lg cursor-pointer border"
-                    />
-                  </div>
-                </div>
-              </div>
+              {/* Background Color and Text Color are both gone from the
+                  category form. Each is still LOADED from the category and
+                  sent back unchanged on save, so existing colours survive an
+                  edit instead of being reset to the defaults. */}
             </div>
 
             <div className="pt-4 border-t border-[#E2E8F0]">
