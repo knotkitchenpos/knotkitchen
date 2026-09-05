@@ -17,6 +17,7 @@ import {
   getTableById,
   getTableSessionById,
   recordTableSessionPayment,
+  cancelTableSessionItem,
   regenerateQr,
   getOrCreateTableQr,
   getTableSettings,
@@ -193,6 +194,11 @@ const Tables = () => {
     placeholderData: keepPreviousData,
     refetchOnMount: "always",
     refetchOnWindowFocus: true,
+    // A settled table comes back to service on a server sweep, and the
+    // cleaning countdown on each card is only as fresh as the last fetch.
+    // Without this the floor view sat on a stale board until someone
+    // reloaded the page. Matches the server sweep interval.
+    refetchInterval: 20000,
   });
 
   if (isError) {
@@ -253,6 +259,38 @@ const Tables = () => {
         variant: "error",
       }),
   });
+
+  /**
+   * Pull one dish off a live table order.
+   *
+   * A table order was write-only once placed: if the kitchen ran out of
+   * something the only way to remove it was to void the whole session. The
+   * cancellation lands on the session, the kitchen order and the bill, and
+   * the diner sees it on their own QR page on the next poll.
+   */
+  const cancelItemMut = useMutation({
+    mutationFn: ({ sessionId, itemId, reason }) =>
+      cancelTableSessionItem(sessionId, itemId, { reason }),
+    onSuccess: (res) => {
+      enqueueSnackbar(res?.data?.message || "Item cancelled.", { variant: "success" });
+      // Show the operator the recalculated bill straight away.
+      if (res?.data?.data) setSessionData(res.data.data);
+      queryClient.invalidateQueries({ queryKey: ["tables"] });
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
+    onError: (e) =>
+      enqueueSnackbar(e.response?.data?.message || "Could not cancel that item.", {
+        variant: "error",
+      }),
+  });
+
+  const handleCancelSessionItem = (item) => {
+    const sessionId = sessionData?._id;
+    if (!sessionId || !item?._id) return;
+    if (!window.confirm(`Cancel "${item.name}" from this table's order?`)) return;
+    const reason = (window.prompt("Reason (optional) — the customer will see this:", "") || "").trim();
+    cancelItemMut.mutate({ sessionId, itemId: item._id, reason });
+  };
 
   const addTableMutation = useMutation({
     mutationFn: addTable,
@@ -640,6 +678,7 @@ const Tables = () => {
                   initials={table?.currentOrderId?.customerDetails?.name}
                   seats={table.capacity}
                   occupancy={table.currentOccupancy}
+                  availableAt={table.availableAt}
                   activeSessionId={table.activeSessionId}
                   session={table.session}
                   onClick={() => handleTableClick(table)}
@@ -683,6 +722,8 @@ const Tables = () => {
           table={sessionTable}
           session={sessionData}
           onComplete={() => setSettleTarget({ table: sessionTable, session: sessionData })}
+          onCancelItem={handleCancelSessionItem}
+          cancelBusy={cancelItemMut.isPending}
           onClose={() => {
             setSessionTable(null);
             setSessionData(null);

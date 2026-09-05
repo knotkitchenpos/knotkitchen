@@ -7,7 +7,20 @@ import {
   qrRequestBill,
   qrCallWaiter,
   qrGetPaymentIntent,
+  qrVerifyPayment,
 } from "../https/publicApi";
+
+/** Razorpay Checkout, loaded on demand. Resolves null if it cannot load. */
+function loadRazorpay() {
+  return new Promise((resolve) => {
+    if (window.Razorpay) return resolve(window.Razorpay);
+    const s = document.createElement("script");
+    s.src = "https://checkout.razorpay.com/v1/checkout.js";
+    s.onload = () => resolve(window.Razorpay);
+    s.onerror = () => resolve(null);
+    document.body.appendChild(s);
+  });
+}
 
 /**
  * Customer-facing table-QR menu (mobile-first).
@@ -31,6 +44,17 @@ const ITEM_STATUS_STYLE = {
   served: "bg-emerald-100 text-emerald-800",
   cancelled: "bg-red-50 text-red-600 line-through",
   refunded: "bg-red-100 text-red-700 line-through",
+};
+
+/** The kitchen's status for the whole table, mirrored from the POS. */
+const ORDER_STATUS_STYLE = {
+  Preparing: "bg-amber-50 text-amber-700",
+  Ready: "bg-emerald-100 text-emerald-800",
+  Completed: "bg-slate-200 text-slate-700",
+  Served: "bg-emerald-100 text-emerald-800",
+  Delivered: "bg-emerald-100 text-emerald-800",
+  Cancelled: "bg-red-50 text-red-600",
+  paid: "bg-slate-200 text-slate-700",
 };
 
 export default function OrderOnline() {
@@ -61,6 +85,7 @@ export default function OrderOnline() {
   const [placing, setPlacing] = useState(false);
   const [paymentInfo, setPaymentInfo] = useState(null);
   const [loadingPayment, setLoadingPayment] = useState(false);
+  const [paying, setPaying] = useState(false);
   // Declared with the other hooks: the loading and error early returns are
   // below, and a hook after one of those runs conditionally.
   const menuRef = useRef(null);
@@ -240,7 +265,7 @@ export default function OrderOnline() {
       });
       setCart({});
       setCartOpen(false);
-      setBanner(`Sent to kitchen · Table ${table?.tableNumber}`);
+      setBanner(`Sent to kitchen · ${tableName}`);
       setTimeout(() => setBanner(""), 4000);
       await refetch();
     } catch (e) {
@@ -312,21 +337,74 @@ export default function OrderOnline() {
 
   const brandName = restaurant?.name || "KnotKitchen";
   const primary = restaurant?.branding?.primaryColor || "#FD5302";
-  // Whether this store can actually take money online. Offering "Pay online"
-  // to a store with no gateway would just hand the diner a button that fails.
-  const onlinePaymentEnabled = Boolean(restaurant?.onlinePaymentEnabled);
-
+  // What the restaurant calls this table ("GF1"), not its row number. The
+  // diner sees the same name the staff use when they come over.
+  const tableName =
+    String(table?.displayId || table?.tableName || "").trim() ||
+    (table?.tableNumber != null ? `Table ${table.tableNumber}` : "Your table");
   /**
-   * Online checkout is NOT implemented yet, and deliberately so: no store has
-   * a payment gateway configured, so there is nothing to integrate against or
-   * test with. The button that reaches this is only rendered when a gateway
-   * exists, so today it is unreachable -- but if one is configured before the
-   * checkout is built, the diner gets an honest message rather than silence.
+   * Pay the table's bill through the gateway.
+   *
+   * The amount is never sent from here: the server opened the gateway order
+   * against the session's own bill, and re-checks the signature before it
+   * settles anything. This browser only carries the gateway's answer back.
    */
-  const payOnline = () => {
-    setErr(
-      "Online payment is not switched on for this store yet. Please pay at the counter.",
-    );
+  const payOnline = async () => {
+    const checkout = paymentInfo?.checkout;
+    if (!checkout) {
+      setErr("Online payment is not available for this table right now.");
+      return;
+    }
+
+    setPaying(true);
+    setErr("");
+    const Razorpay = await loadRazorpay();
+    if (!Razorpay) {
+      setErr("The payment page could not be loaded. Please check your connection.");
+      setPaying(false);
+      return;
+    }
+
+    try {
+      await new Promise((resolve) => {
+        const rzp = new Razorpay({
+          key: checkout.keyId,
+          order_id: checkout.gatewayOrderId,
+          amount: Math.round(Number(checkout.amount) * 100),
+          currency: checkout.currency || "INR",
+          name: brandName,
+          description: `${tableName} · ${session?.sessionCode || ""}`,
+          prefill: {
+            name: session?.customerName || "",
+            contact: session?.customerPhone || "",
+          },
+          handler: async (res) => {
+            try {
+              await qrVerifyPayment(token, res);
+              setPaymentInfo(null);
+              setBanner("Payment received. Thank you!");
+              await refetch();
+            } catch (e) {
+              setErr(
+                e.response?.data?.message ||
+                  "We could not confirm that payment. Please show this screen to a member of staff.",
+              );
+            }
+            resolve();
+          },
+          modal: { ondismiss: () => resolve() },
+        });
+        rzp.on("payment.failed", () => {
+          setErr("That payment did not go through. Please try again.");
+          resolve();
+        });
+        rzp.open();
+      });
+    } catch {
+      setErr("Payment could not be completed.");
+    } finally {
+      setPaying(false);
+    }
   };
 
   return (
@@ -342,7 +420,7 @@ export default function OrderOnline() {
               <h1 className="text-lg font-extrabold leading-tight truncate">{brandName}</h1>
               <div className="flex items-center gap-2 mt-1 text-[11px] font-semibold uppercase tracking-wider text-white/85">
                 <span className="inline-flex items-center gap-1.5 bg-white/15 backdrop-blur rounded-full px-2 py-0.5">
-                  <span>🍽️</span> Table {table?.tableNumber}
+                  <span>🍽️</span> {tableName}
                 </span>
                 <span className="text-white/60">·</span>
                 <span>Seats {table?.capacity}</span>
@@ -407,6 +485,19 @@ export default function OrderOnline() {
                 <p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">
                   Your Table Order
                 </p>
+                {/* The kitchen's own status for this table. It used to be
+                    invisible here: the page showed each item as "pending"
+                    forever while the POS had long since marked the order
+                    Ready. */}
+                {session.orderStatus ? (
+                  <span
+                    className={`inline-block mt-1 mb-0.5 text-[10px] font-bold uppercase tracking-wider rounded-full px-2 py-0.5 ${
+                      ORDER_STATUS_STYLE[session.orderStatus] || "bg-slate-100 text-slate-600"
+                    }`}
+                  >
+                    {session.orderStatus}
+                  </span>
+                ) : null}
                 {/* Guest count is no longer collected from the diner, so
                     showing "1 guest(s)" here would just be a wrong number. */}
                 <p className="text-sm font-bold text-slate-900">
@@ -425,7 +516,11 @@ export default function OrderOnline() {
               {sessionItems.map((it) => (
                 <li key={it._id} className="flex justify-between items-center gap-3 px-4 py-2.5 text-sm">
                   <div className="min-w-0">
-                    <p className="font-semibold text-slate-800 truncate">
+                    <p
+                      className={`font-semibold truncate ${
+                        it.status === "cancelled" ? "text-slate-400 line-through" : "text-slate-800"
+                      }`}
+                    >
                       {it.name} <span className="text-slate-400 font-normal">× {it.quantity}</span>
                     </p>
                     <span
@@ -435,8 +530,20 @@ export default function OrderOnline() {
                     >
                       {it.status || "pending"}
                     </span>
+                    {/* Why the kitchen pulled it, if they said. Without this
+                        a dish just disappeared off the total with no
+                        explanation. */}
+                    {it.status === "cancelled" && it.cancelReason ? (
+                      <span className="ml-1.5 text-[11px] text-red-600">{it.cancelReason}</span>
+                    ) : null}
                   </div>
-                  <span className="font-bold text-slate-900 shrink-0">{money(it.total)}</span>
+                  <span
+                    className={`font-bold shrink-0 ${
+                      it.status === "cancelled" ? "text-slate-400 line-through" : "text-slate-900"
+                    }`}
+                  >
+                    {money(it.total)}
+                  </span>
                 </li>
               ))}
             </ul>
@@ -474,29 +581,43 @@ export default function OrderOnline() {
                     <span>{money(paymentInfo.amount)}</span>
                   </div>
 
-                  {onlinePaymentEnabled ? (
-                    <button
-                      onClick={payOnline}
-                      className="w-full text-sm py-2.5 rounded-xl font-bold text-white"
-                      style={{ background: primary }}
-                    >
-                      Pay online now
-                    </button>
-                  ) : null}
-
-                  <button
-                    onClick={requestBill}
-                    className="w-full text-sm py-2.5 rounded-xl font-semibold border border-slate-200 bg-white text-slate-800 hover:bg-slate-50"
-                  >
-                    Pay at the counter (cash / UPI)
-                  </button>
-
-                  <p className="text-[11px] text-slate-400">
-                    Payment: {paymentInfo.paymentStatus}
-                    {onlinePaymentEnabled
-                      ? null
-                      : " \u00b7 This store takes payment at the counter."}
-                  </p>
+                  {/* A QR order is paid through the gateway. Cash and UPI are
+                      counter methods that only a member of staff can confirm,
+                      so offering them to the diner as buttons let them mark
+                      their own bill settled. They are not choices here. */}
+                  {paymentInfo.onlinePaymentEnabled ? (
+                    <>
+                      <button
+                        onClick={payOnline}
+                        disabled={paying}
+                        className="w-full text-sm py-2.5 rounded-xl font-bold text-white disabled:opacity-50"
+                        style={{ background: primary }}
+                      >
+                        {paying ? "Opening payment…" : `Pay ${money(paymentInfo.amount)}`}
+                      </button>
+                      <p className="text-[11px] text-slate-400 text-center">
+                        Secured by Razorpay · your table is settled automatically once payment
+                        succeeds.
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      {/* No gateway on this store: the diner cannot pay from
+                          their phone at all, so the honest action is to ask
+                          for the bill rather than to offer a payment method
+                          they cannot complete. */}
+                      <button
+                        onClick={requestBill}
+                        className="w-full text-sm py-2.5 rounded-xl font-bold text-white"
+                        style={{ background: primary }}
+                      >
+                        Ask for the bill
+                      </button>
+                      <p className="text-[11px] text-slate-400 text-center">
+                        This store takes payment at the counter.
+                      </p>
+                    </>
+                  )}
 
                   <button
                     onClick={() => {
@@ -618,7 +739,7 @@ export default function OrderOnline() {
             <div className="px-5 pt-4 pb-3 border-b border-slate-100 flex items-center justify-between">
               <div>
                 <p className="text-[11px] uppercase tracking-wider font-bold text-slate-500">
-                  Your order · Table {table?.tableNumber}
+                  Your order · {tableName}
                 </p>
                 <h2 className="text-lg font-extrabold text-slate-900">{cartCount} item(s) · {money(cartTotal)}</h2>
               </div>
@@ -684,7 +805,7 @@ export default function OrderOnline() {
                   <p className="text-[12.5px] text-slate-600">
                     Adding to the open order on{" "}
                     <span className="font-bold text-slate-800">
-                      Table {table?.tableNumber}
+                      {tableName}
                     </span>
                     {session.customerName ? (
                       <span className="text-slate-500"> · {session.customerName}</span>
@@ -733,7 +854,7 @@ export default function OrderOnline() {
                 {placing
                   ? "Sending…"
                   : session
-                    ? `Add to Table ${table?.tableNumber} · ${money(cartTotal)}`
+                    ? `Add to ${tableName} · ${money(cartTotal)}`
                     : `Send to Kitchen · ${money(cartTotal)}`}
               </button>
               <p className="text-[11px] text-center text-slate-400">

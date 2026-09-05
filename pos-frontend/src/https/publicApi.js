@@ -21,7 +21,11 @@ export const qrRequestBill = (token) =>
   publicApi.post(`/api/qr/request-bill/${token}`); // token-scoped; no client sessionId
 export const qrCallWaiter = (token) => publicApi.post(`/api/qr/waiter-call/${token}`);
 export const qrGetPaymentIntent = (token) =>
-  publicApi.post(`/api/qr/payment-intent/${token}`); // payment UI prep (no capture yet)
+  publicApi.post(`/api/qr/payment-intent/${token}`); // opens a gateway order for the table's bill
+// The browser reports back from the gateway. The server re-computes the
+// signature before it believes any of it, then settles the table.
+export const qrVerifyPayment = (token, data) =>
+  publicApi.post(`/api/qr/payment-verify/${token}`, data);
 
 // --- Payment links (customer side) ---
 export const paymentLinkGet = (token) => publicApi.get(`/api/payment-link/${token}`);

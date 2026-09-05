@@ -11,8 +11,8 @@ const priceService = require("../services/price");
 const { emitOrderCreated, emitOrderStatusChanged } = require("../services/socket");
 
 const createHttpError = require("http-errors");
-const { PREPARING, PAID } = require("../constants/orderStatus");
-const { computeReadyDueAt } = require("../services/autoReadyService");
+const { PREPARING, PAID, CANCELLED, isFinished } = require("../constants/orderStatus");
+const { computeReadyDueAt, computeCompleteDueAt } = require("../services/autoReadyService");
 
 const SESSION_CODE_PREFIX = "TS";
 
@@ -204,6 +204,28 @@ const validateCapacity = (table, customerCount) => {
  */
 const COUNTER_SETTLED_METHODS = ["CASH", "UPI", "CARD", "QR_CODE"];
 
+/**
+ * How a settled method should read on the order, the receipt and Reports.
+ *
+ * The session stores the rail it was taken on (CASH, ONLINE, …); the order
+ * shows the operator-facing name. Anything paid through the gateway reads
+ * "Pay by Link", which is what the rest of the POS already calls a payment
+ * the customer made themselves rather than at the counter.
+ */
+const PAYMENT_METHOD_LABELS = {
+  CASH: "Cash",
+  UPI: "UPI",
+  CARD: "Card",
+  QR_CODE: "UPI",
+  ONLINE: "Pay by Link",
+  PAYMENT_LINK: "Pay by Link",
+  WALLET: "Wallet",
+  SPLIT: "Split",
+};
+
+const displayPaymentMethod = (method) =>
+  PAYMENT_METHOD_LABELS[String(method || "").toUpperCase()] || String(method || "");
+
 const isPaidOnSelection = ({ method, paymentStatus } = {}) =>
   paymentStatus === "success" ||
   COUNTER_SETTLED_METHODS.includes(String(method || "").toUpperCase());
@@ -346,9 +368,13 @@ const addItemsToSession = async (req, res, next) => {
             },
             orderType: "dine-in",
             orderStatus: PREPARING,
-            // Module 4 �4: table orders are auto-ready eligible. Without a
+            // Module 4 �4: table orders are auto-ready eligible. Without a
             // readyDueAt the sweep skips them and they sit in Preparing forever.
             readyDueAt: await computeReadyDueAt({ restaurantId: session.restaurantId, orderType: "dine-in" }),
+            // Same for Auto-Complete: a table order that never gets a
+            // completeDueAt can never be swept, so the configured "table"
+            // auto-complete duration silently did nothing.
+            completeDueAt: await computeCompleteDueAt({ restaurantId: session.restaurantId, orderType: "dine-in" }),
             bills: session.bills,
             items: validatedItems.map((it) => ({
               menuItemId: it.menuItemId,
@@ -484,9 +510,13 @@ const addItemsToExistingSession = async (req, res, next) => {
             },
             orderType: "dine-in",
             orderStatus: PREPARING,
-            // Module 4 �4: table orders are auto-ready eligible. Without a
+            // Module 4 �4: table orders are auto-ready eligible. Without a
             // readyDueAt the sweep skips them and they sit in Preparing forever.
             readyDueAt: await computeReadyDueAt({ restaurantId: session.restaurantId, orderType: "dine-in" }),
+            // Same for Auto-Complete: a table order that never gets a
+            // completeDueAt can never be swept, so the configured "table"
+            // auto-complete duration silently did nothing.
+            completeDueAt: await computeCompleteDueAt({ restaurantId: session.restaurantId, orderType: "dine-in" }),
             bills: session.bills,
             items: validatedItems.map((it) => ({
               menuItemId: it.menuItemId,
@@ -974,11 +1004,36 @@ const recordSessionPayment = async (req, res, next) => {
       );
     }
 
-    // Preserve historical kitchen orders — mark them paid, never delete them
+    // Preserve historical kitchen orders — mark them paid, never delete them.
+    //
+    // The status alone was not enough. Payment Status on the Orders screen is
+    // read from `payments[0].status` and Payment Method from `paymentMethod`,
+    // and a table order carried neither — so a table the operator had just
+    // settled in cash still displayed "Pending" with no method against it.
+    // Both are written here, from the method that was actually taken.
     if (paid) {
       await Order.updateMany(
         { tableSessionId: session._id, isDeleted: { $ne: true } },
-        { $set: { orderStatus: PAID, "bills.totalWithTax": payableAmount } },
+        {
+          $set: {
+            orderStatus: PAID,
+            "bills.totalWithTax": payableAmount,
+            paymentMethod: displayPaymentMethod(normalizedMethod),
+            completedAt: new Date(),
+            // Nothing is left to sweep once the bill is settled.
+            completeDueAt: null,
+            payments: [
+              {
+                method: normalizedMethod.toLowerCase(),
+                amount: payableAmount,
+                status: "paid",
+                transactionId: transactionId || "",
+                paidAt: new Date(),
+                ...(req.user?._id ? { paidBy: req.user._id } : {}),
+              },
+            ],
+          },
+        },
         { session: mongoSession }
       );
     }
@@ -1038,6 +1093,169 @@ const closeSessionWithoutPayment = async (req, res, next) => {
   }
 };
 
+/**
+ * Settle a table session that a DINER paid online, through exactly the same
+ * code path the till uses.
+ *
+ * Deliberately an adapter over `recordSessionPayment` rather than a second
+ * implementation. Settling a table touches seven things — payment, history,
+ * session state, the Bill, the ledger, every kitchen order, and the table's
+ * cooldown — and a parallel copy of that for QR payments would drift the
+ * first time one of them changed. The money path stays singular; this only
+ * supplies a caller that is a customer instead of a staff member.
+ *
+ * `recordedBy` is left unset on purpose: nobody at the counter recorded this.
+ * The gateway's transaction id is the record.
+ */
+const settleSessionFromGateway = async ({
+  sessionId,
+  restaurantId,
+  method = "ONLINE",
+  amount,
+  transactionId,
+  idempotencyKey,
+}) => {
+  const req = {
+    params: { id: String(sessionId) },
+    body: { method, amount, transactionId, idempotencyKey, paymentStatus: "success" },
+    user: { restaurantId },
+  };
+
+  let payload = null;
+  const res = {
+    status() {
+      return this;
+    },
+    json(body) {
+      payload = body;
+      return this;
+    },
+  };
+
+  let failure = null;
+  await recordSessionPayment(req, res, (err) => {
+    failure = err;
+  });
+  if (failure) throw failure;
+  return payload;
+};
+
+// ============================================================
+// Cancel ONE item on a live table session (POST /:id/items/:itemId/cancel)
+//
+// The floor needs this the moment the kitchen runs out of something: the
+// dish has to come off the bill AND off the diner's own QR page, which is
+// reading the same session. Until now a table order was write-only once
+// placed — the only way to remove a dish was to void the whole session.
+//
+// The cancellation is written in three places because three things read it:
+// the session item (the diner's page), the matching kitchen order item (the
+// POS ticket and KDS), and the recalculated bill (which already excludes
+// cancelled items).
+// ============================================================
+const cancelSessionItem = async (req, res, next) => {
+  try {
+    const { id, itemId } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) throw createHttpError(404, "Invalid session id!");
+
+    const session = await TableSession.findOne({
+      _id: id,
+      ...getScopeQuery(req),
+      isDeleted: { $ne: true },
+    });
+    if (!session) throw createHttpError(404, "Table session not found!");
+
+    // A settled bill is history. Removing a dish after the money is taken
+    // would silently change what the customer already paid for.
+    if (["PAID", "CLOSED"].includes(session.status)) {
+      throw createHttpError(409, "This table has already been settled — its items can no longer be changed.");
+    }
+
+    const item = session.items.id(itemId);
+    if (!item) throw createHttpError(404, "That item is not on this table's order.");
+    if (item.status === "cancelled") {
+      throw createHttpError(409, "That item has already been cancelled.");
+    }
+
+    const reason = String(req.body?.reason || "").trim().slice(0, 200);
+
+    item.status = "cancelled";
+    item.cancelledAt = new Date();
+    item.cancelReason = reason;
+
+    addTimeline(
+      session,
+      "ITEM_CANCELLED",
+      `${item.name} × ${item.quantity} cancelled${reason ? ` — ${reason}` : ""}`,
+      "POS",
+      req.user?._id,
+    );
+
+    // recalculateSessionBill saves the session and already drops cancelled
+    // items from the total.
+    await recalculateSessionBill(session);
+
+    // Mirror onto the kitchen order so the ticket, the KDS and the Orders
+    // list agree with the bill. Without this the POS would keep cooking it.
+    let cancelledOrder = null;
+    if (item.orderId) {
+      const order = await Order.findOne({
+        _id: item.orderId,
+        restaurantId: session.restaurantId,
+        isDeleted: { $ne: true },
+      });
+      if (order) {
+        const orderItem =
+          (item.kdsItemId && order.items.id(item.kdsItemId)) ||
+          order.items.find(
+            (oi) => oi.status !== "cancelled" && String(oi.name) === String(item.name),
+          );
+        if (orderItem) orderItem.status = "cancelled";
+
+        order.bills = session.bills;
+
+        // Every dish pulled means there is no order left to cook.
+        const anyLive = order.items.some((oi) => oi.status !== "cancelled");
+        if (!anyLive && !isFinished(order.orderStatus)) {
+          order.orderStatus = CANCELLED;
+          order.timeline = order.timeline || [];
+          order.timeline.push({
+            status: CANCELLED,
+            timestamp: new Date(),
+            user: req.user?.name || "POS",
+          });
+          // A cancelled order must not be picked up by the auto sweeps.
+          order.readyDueAt = null;
+          order.completeDueAt = null;
+        }
+
+        await order.save();
+        cancelledOrder = order;
+      }
+    }
+
+    if (cancelledOrder) {
+      try {
+        emitOrderStatusChanged({
+          restaurantId: cancelledOrder.restaurantId,
+          outletId: cancelledOrder.outletId,
+          order: cancelledOrder,
+        });
+      } catch (err) {
+        console.warn("emitOrderStatusChanged failed:", err.message);
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `${item.name} cancelled.`,
+      data: session,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const findActiveSessionByTable = async ({ tableId, restaurantId }) =>
   TableSession.findOne({
     tableId,
@@ -1056,6 +1274,8 @@ module.exports = {
   getSessionBill,
   recordSessionPayment,
   closeSessionWithoutPayment,
+  cancelSessionItem,
+  settleSessionFromGateway,
   findActiveSessionByTable,
   recalculateSessionBill,
   validateCapacity,

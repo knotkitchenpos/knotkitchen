@@ -131,7 +131,16 @@ const computeReadyDueAt = async ({ restaurantId, storeId, orderType, from = new 
 const computeCompleteDueAt = async ({ restaurantId, storeId, orderType, from = new Date() }) => {
   const minutes = await getAutoCompleteMinutes({ restaurantId, storeId, orderType });
   if (!minutes || minutes <= 0) return null;
-  return new Date(from.getTime() + minutes * 60 * 1000);
+
+  // Both clocks start when the order is created, so a shorter auto-complete
+  // than auto-ready would finish the order before the kitchen was ever told
+  // it was ready — the order would jump Preparing → Completed and the Ready
+  // step (and its customer notification) would never happen. Hold the
+  // complete deadline to the ready one so the sequence always survives a
+  // careless pair of settings.
+  const readyMinutes = await getAutoReadyMinutes({ restaurantId, storeId, orderType });
+  const effective = readyMinutes > 0 ? Math.max(minutes, readyMinutes) : minutes;
+  return new Date(from.getTime() + effective * 60 * 1000);
 };
 
 // Kept as a named local for readability; the vocabulary itself now lives in

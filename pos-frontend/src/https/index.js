@@ -128,6 +128,11 @@ export const recordTableSessionPayment = (sessionId, data) =>
 export const closeTableSessionWithoutPayment = (sessionId, data) =>
   axiosWrapper.post(`/api/table-session/${sessionId}/close`, data);
 
+// Pull one dish off a live table order — the kitchen ran out, or it went
+// back. The diner's QR page reads the same session, so they see it too.
+export const cancelTableSessionItem = (sessionId, itemId, data) =>
+  axiosWrapper.post(`/api/table-session/${sessionId}/items/${itemId}/cancel`, data);
+
 // Menu Endpoints
 export const getMenus = (params) => axiosWrapper.get("/api/menu", params ? { params } : undefined);
 

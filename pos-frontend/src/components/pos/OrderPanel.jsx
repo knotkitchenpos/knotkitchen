@@ -430,14 +430,19 @@ const OrderPanel = () => {
       // paymentMethod tells the backend which channel the order came from,
       // but the actual "paid" vs "pending" state lives in `payments[]` and
       // for Pay-by-Link is only set to paid by verifyAndCaptureLinkPayment.
-      paymentMethod:
-        paymentMethod === "cash"
-          ? "Cash"
-          : paymentMethod === "qr"
-          ? "UPI"
-          : paymentMethod === "link"
-          ? "PaymentLink"
-          : "Cash",
+      //
+      // No default. This used to fall back to "Cash" when no method had been
+      // chosen, and the backend treats Cash as taken at the till: the order
+      // was created Completed with a paid cash payment against it, for money
+      // nobody had collected. An order with no method chosen must reach the
+      // server with none, and show a blank payment method until it is paid.
+      ...(paymentMethod === "cash"
+        ? { paymentMethod: "Cash" }
+        : paymentMethod === "qr"
+        ? { paymentMethod: "UPI" }
+        : paymentMethod === "link"
+        ? { paymentMethod: "PaymentLink" }
+        : {}),
       ...(deliveryAddress ? { deliveryAddress } : {}),
       ...(table ? { table } : {}),
     };

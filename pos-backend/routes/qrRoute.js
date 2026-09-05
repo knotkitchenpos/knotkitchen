@@ -16,12 +16,14 @@ const priceService = require("../services/price");
 const getSocket = () => require("../services/socket");
 const crypto = require("crypto");
 const mongoose = require("mongoose");
-const { PREPARING, SETTLED_STATUSES, CANCELLED_STATUSES } = require("../constants/orderStatus");
+const { PREPARING, SETTLED_STATUSES, CANCELLED_STATUSES, canonicalStatus } = require("../constants/orderStatus");
 // Lazy for the same reason as getSocket above: autoReadyService pulls in the
 // Order/WebsiteSettings models, and requiring them at module load breaks the
 // tests that mock mongoose before the models are loaded.
 const computeReadyDueAt = (args) => require("../services/autoReadyService").computeReadyDueAt(args);
+const computeCompleteDueAt = (args) => require("../services/autoReadyService").computeCompleteDueAt(args);
 const { AUDIENCES, ORDER_TYPES, projectMenus, allowsOrderType } = require("../services/menuCache");
+const { resolveGateway, isOnlinePaymentEnabled } = require("../services/paymentGateway");
 const config = require("../config/config");
 const { rateLimit, clientIp } = require("../middlewares/rateLimiter");
 const router = express.Router();
@@ -93,13 +95,17 @@ const scopedMenu = async (restaurantId, outletId) => {
 // Public session sanitizer — strips internal fields before returning to the
 // customer browser. Never exposes restaurantId/outletId-driven internals
 // beyond what the customer page needs.
-const sanitizeSession = (session) => {
+const sanitizeSession = (session, extra = {}) => {
   if (!session) return null;
   const plain = session.toObject ? session.toObject() : { ...session };
   return {
     _id: plain._id,
     sessionCode: plain.sessionCode,
     status: plain.status,
+    // The kitchen's own status for this table, so the diner sees Preparing →
+    // Ready on their phone instead of a page that says "pending" forever.
+    // Resolved by the caller because it lives on the Order, not the session.
+    orderStatus: extra.orderStatus ?? null,
     customerCount: plain.customerCount,
     customerName: plain.customerName,
     customerPhone: plain.customerPhone,
@@ -114,6 +120,10 @@ const sanitizeSession = (session) => {
       note: it.note || "",
       status: it.status,
       addedBy: it.addedBy,
+      // A dish the kitchen pulled (out of stock, say) must be visible as
+      // cancelled on the diner's own screen, with the reason they were given.
+      cancelledAt: it.cancelledAt || null,
+      cancelReason: it.cancelReason || "",
     })),
     bills: plain.bills || { subtotal: 0, tax: 0, discount: 0, charges: 0, totalWithTax: 0 },
     openedAt: plain.openedAt,
@@ -134,6 +144,33 @@ const getActiveSessionForTable = async ({ tableId, restaurantId }) =>
     status: { $in: ["OPEN", "OCCUPIED", "PROCESSING", "BILL_REQUESTED", "PAYMENT_PENDING"] },
     isDeleted: { $ne: true },
   });
+
+/**
+ * The kitchen status the diner should see for their table.
+ *
+ * The session carries a per-item status, but nothing ever advanced it past
+ * "pending" — the auto-ready sweep and the POS both write to the ORDER. So a
+ * table the till had already marked Ready still read "pending" on the phone.
+ * Read it from the order that actually owns the status.
+ */
+const kitchenStatusForSession = async (session) => {
+  if (!session?._id) return null;
+  try {
+    const order = await Order.findOne({
+      tableSessionId: session._id,
+      isDeleted: { $ne: true },
+      orderStatus: { $nin: CANCELLED_STATUSES },
+    })
+      .sort({ createdAt: -1 })
+      .select("orderStatus")
+      .lean();
+    return order ? canonicalStatus(order.orderStatus) : null;
+  } catch {
+    // A status the diner cannot see is a cosmetic loss; failing their whole
+    // page over it is not. Fall back to "no status yet".
+    return null;
+  }
+};
 
 router.route("/tables/:tableId/generate").post(isVerifiedUser, requirePermission("TABLE_UPDATE"), async (req, res, next) => {
   try {
@@ -162,7 +199,22 @@ router.route("/table/:token").get(qrReadLimiter, resolveTableScope, async (req, 
     res.status(200).json({
       success: true,
       data: {
-        table: { _id: table._id, tableNumber: table.tableNumber, capacity: table.capacity, restaurantId, outletId },
+        table: {
+          _id: table._id,
+          tableNumber: table.tableNumber,
+          // The name the restaurant actually gave this table ("GF1"). The
+          // diner's page only ever had the number, so it could only say
+          // "Table 1" while the staff called it something else.
+          displayId: table.displayId || "",
+          tableName: table.tableName || "",
+          capacity: table.capacity,
+          // "cleaning" means the previous party has paid and staff are
+          // clearing the table. Exposed so the page can say so rather than
+          // silently refusing the first order.
+          status: table.status,
+          restaurantId,
+          outletId,
+        },
         restaurant: restaurant
           ? {
               _id: restaurant._id,
@@ -174,11 +226,19 @@ router.route("/table/:token").get(qrReadLimiter, resolveTableScope, async (req, 
               // must not be offered "Pay online" against a store with no
               // gateway -- the button would simply fail. Only the boolean is
               // exposed; keys never leave the server.
-              onlinePaymentEnabled: Boolean(restaurant.razorpay && restaurant.razorpay.isConfigured),
+              //
+              // This used to read `restaurant.razorpay.isConfigured`. There is
+              // no `razorpay` field on the Restaurant model, so it was always
+              // false and no store could ever take a QR payment. The gateway
+              // lives on WebsiteSettings (or the platform env keys) --
+              // services/paymentGateway is the one place that knows.
+              onlinePaymentEnabled: await isOnlinePaymentEnabled({ restaurantId }),
             }
           : null,
         menu,
-        activeSession: sanitizeSession(activeSession),
+        activeSession: sanitizeSession(activeSession, {
+          orderStatus: await kitchenStatusForSession(activeSession),
+        }),
       },
     });
   } catch (error) { next(error); }
@@ -194,7 +254,14 @@ router.route("/session/:token").get(qrReadLimiter, resolveTableScope, async (req
     if (!activeSession) {
       return res.status(404).json({ success: false, message: "No active session for this table." });
     }
-    res.status(200).json({ success: true, data: { session: sanitizeSession(activeSession) } });
+    res.status(200).json({
+      success: true,
+      data: {
+        session: sanitizeSession(activeSession, {
+          orderStatus: await kitchenStatusForSession(activeSession),
+        }),
+      },
+    });
   } catch (error) { next(error); }
 });
 
@@ -231,6 +298,19 @@ router.route("/session/items/:token").post(qrWriteLimiter, resolveTableScope, as
 
         let created = false;
         if (!session) {
+          // The party that was here has paid and the table has not been
+          // cleared yet. Their browser still holds the QR page, so without
+          // this the same link would happily open a SECOND session on a
+          // table that is mid-reset — a paid order followed by a fresh one
+          // nobody at the till expected. The QR itself is unchanged; it
+          // simply has nothing to join until staff have turned the table.
+          if (tableInTxn.status === "cleaning") {
+            throw createHttpError(
+              409,
+              "This table has just been settled and is being prepared. Please ask a member of staff, or scan again in a moment.",
+            );
+          }
+
           // OPENING the table: this is the diner's first scan, and the only
           // moment their details are asked for. Enforced here rather than
           // trusted from the browser, and ONLY on creation -- a later scan
@@ -279,6 +359,12 @@ router.route("/session/items/:token").post(qrWriteLimiter, resolveTableScope, as
         // readyDueAt the sweep's `readyDueAt: { $ne: null }` filter skips the
         // order entirely, so a QR order would sit in Preparing forever.
         const readyDueAt = await computeReadyDueAt({ restaurantId, orderType: "dine-in" });
+        // ...and the same for Auto-Complete. This was missing, so the "table"
+        // auto-complete duration an operator configured had no effect at all:
+        // with completeDueAt left null the sweep's `completeDueAt: { $ne: null }`
+        // filter never matched a table order. Collection and delivery orders
+        // got their clock from orderController; table orders got none.
+        const completeDueAt = await computeCompleteDueAt({ restaurantId, orderType: "dine-in" });
 
         // A table that is already mid-meal has an open kitchen order. Extra
         // items belong ON that order, not on a second one: the spec is
@@ -319,6 +405,7 @@ router.route("/session/items/:token").post(qrWriteLimiter, resolveTableScope, as
               requestId: requestId || "",
               customerDetails: { name: session.customerName || "Guest", phone: session.customerPhone || "", guests: session.customerCount || 1 },
               orderType: "dine-in", orderStatus: PREPARING, bills: session.bills, readyDueAt,
+              ...(completeDueAt ? { completeDueAt } : {}),
               items: validatedItems.map((it) => ({ menuItemId: it.menuItemId, name: it.name, quantity: it.quantity, price: it.price, total: it.total, modifiers: it.modifiers || [], note: it.note || "", status: "pending" })),
               table: tableInTxn._id, restaurantId, outletId, createdBy: null, tableSessionId: session._id, orderDate: new Date(),
               // Origin tag → POS UI can distinguish QR-scan orders from
@@ -405,7 +492,9 @@ router.route("/session/items/:token").post(qrWriteLimiter, resolveTableScope, as
     res.status(201).json({
       success: true,
       data: {
-        session: sanitizeSession(result.session),
+        session: sanitizeSession(result.session, {
+          orderStatus: canonicalStatus(result.kitchenOrder?.orderStatus),
+        }),
         order: result.kitchenOrder,
         created: result.created,
       },
@@ -453,7 +542,10 @@ router.route("/request-bill/:token").post(qrWriteLimiter, resolveTableScope, asy
     }
 
     await session.save();
-    res.status(200).json({ success: true, data: sanitizeSession(session) });
+    res.status(200).json({
+      success: true,
+      data: sanitizeSession(session, { orderStatus: await kitchenStatusForSession(session) }),
+    });
   } catch (error) { next(error); }
 });
 
@@ -479,6 +571,39 @@ router.route("/payment-intent/:token").post(qrWriteLimiter, resolveTableScope, a
     }
 
     const payable = session.bills?.totalWithTax || 0;
+
+    // Open a real gateway order so the diner can be handed straight to
+    // checkout. The amount comes from the session's own bill -- never from
+    // the request -- so a tampered browser cannot pay less than it owes.
+    let checkout = null;
+    const gw = await resolveGateway({ restaurantId });
+    if (gw.enabled && payable > 0) {
+      try {
+        const Razorpay = require("razorpay");
+        const client = new Razorpay({ key_id: gw.keyId, key_secret: gw.secret });
+        const gatewayOrder = await client.orders.create({
+          amount: Math.round(payable * 100), // paisa
+          currency: "INR",
+          receipt: `tbl_${session.sessionCode}`.slice(0, 40),
+          notes: { tableSessionId: String(session._id) },
+        });
+        checkout = {
+          gateway: gw.gateway,
+          gatewayOrderId: gatewayOrder.id,
+          // The PUBLIC key id. Razorpay Checkout needs it in the browser;
+          // the secret never leaves this process.
+          keyId: gw.keyId,
+          amount: payable,
+          currency: "INR",
+        };
+      } catch (gwErr) {
+        // A gateway that will not open an order is not a reason to fail the
+        // whole request -- the diner still needs to see their bill and be
+        // able to call a member of staff.
+        console.warn("[qrRoute] gateway order failed:", gwErr?.message || gwErr);
+      }
+    }
+
     res.status(200).json({
       success: true,
       data: {
@@ -488,7 +613,67 @@ router.route("/payment-intent/:token").post(qrWriteLimiter, resolveTableScope, a
         amount: payable,
         currency: "INR",
         paymentStatus: session.payment?.status || "PENDING",
+        onlinePaymentEnabled: Boolean(checkout),
+        checkout,
       },
+    });
+  } catch (error) { next(error); }
+});
+
+// Public: the diner's browser reports back from the gateway.
+//
+// NOTHING here trusts the browser about whether money moved. The signature is
+// re-computed from the gateway order id + payment id with the store's own
+// secret; only a signature we can reproduce settles the table. On success the
+// session goes through exactly the same settle path the till uses, so the
+// table closes, the orders are marked paid and the cooldown starts.
+router.route("/payment-verify/:token").post(qrWriteLimiter, resolveTableScope, async (req, res, next) => {
+  try {
+    const { table, restaurantId } = req.scope;
+    const orderId = String(req.body?.razorpay_order_id || "");
+    const paymentId = String(req.body?.razorpay_payment_id || "");
+    const signature = String(req.body?.razorpay_signature || "");
+    if (!orderId || !paymentId || !signature) {
+      return res.status(400).json({ success: false, message: "Incomplete payment confirmation." });
+    }
+
+    const session = await getActiveSessionForTable({ tableId: table._id, restaurantId });
+    if (!session) return res.status(404).json({ success: false, message: "No active session for this table!" });
+
+    const gw = await resolveGateway({ restaurantId });
+    if (!gw.enabled) {
+      return res.status(400).json({ success: false, message: "Online payment is not available for this store." });
+    }
+
+    const crypto = require("crypto");
+    const expected = crypto
+      .createHmac("sha256", gw.secret)
+      .update(`${orderId}|${paymentId}`)
+      .digest("hex");
+
+    const a = Buffer.from(expected, "utf8");
+    const b = Buffer.from(signature, "utf8");
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+      return res.status(400).json({ success: false, message: "Payment could not be verified." });
+    }
+
+    const payable = session.bills?.totalWithTax || 0;
+    const { settleSessionFromGateway } = require("../controllers/tableSessionController");
+    await settleSessionFromGateway({
+      sessionId: session._id,
+      restaurantId,
+      method: "ONLINE",
+      amount: payable,
+      transactionId: paymentId,
+      // A double-submit from a flaky phone must not settle twice.
+      idempotencyKey: `qr-online-${paymentId}`,
+    });
+
+    const settled = await TableSession.findById(session._id);
+    res.status(200).json({
+      success: true,
+      message: "Payment received. Thank you!",
+      data: sanitizeSession(settled, { orderStatus: await kitchenStatusForSession(settled) }),
     });
   } catch (error) { next(error); }
 });
@@ -514,10 +699,12 @@ router.route("/order/:token").post(qrWriteLimiter, resolveTableScope, async (req
     });
     // See the note on the other QR order-creation path above.
     const readyDueAt = await computeReadyDueAt({ restaurantId, orderType: "dine-in" });
+    const completeDueAt = await computeCompleteDueAt({ restaurantId, orderType: "dine-in" });
     const order = await Order.create({
       requestId: requestId || "",
       customerDetails: { name: customerName || "Guest", phone: phone || "", guests: guests || 1 },
       orderType: "dine-in", orderStatus: PREPARING, bills, readyDueAt,
+      ...(completeDueAt ? { completeDueAt } : {}),
       items: validatedItems.map((it) => ({ menuItemId: it.menuItemId, name: it.name, quantity: it.quantity, price: it.price, total: it.total, modifiers: it.modifiers || [], note: it.note || "", status: "pending" })),
       table: table._id, restaurantId, outletId, orderDate: new Date(), createdBy: null,
     });

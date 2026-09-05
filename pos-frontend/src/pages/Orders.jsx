@@ -3,10 +3,19 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSelector } from "react-redux";
 import { enqueueSnackbar } from "notistack";
 import KnotLogo from "../components/shared/KnotLogo";
-import { getOrders, getStoreProperties, markOrderReady, updateOrderStatus } from "../https";
+import {
+  getOrders,
+  getStoreProperties,
+  getTableSessionById,
+  markOrderReady,
+  recordTableSessionPayment,
+  updateOrderStatus,
+} from "../https";
+import TableSettleModal from "../components/tables/TableSettleModal";
 import { getMyRestaurant } from "../https/newModules";
 import { printReceipt } from "../utils/printReceipt";
 import { isPreparing, isReady, isSettled, isCancelled, statusLabel, COMPLETED, CANCELLED } from "../constants/orderStatus";
+import { sourceLabel, tableLabel } from "../utils/orderLabels";
 
 /* ---------- Icons ---------- */
 const I = {
@@ -94,7 +103,10 @@ const TABS = [
   { key: "All", statuses: null },
   { key: "Preparing", statuses: ["Preparing", "Pending", "In Progress"] },
   { key: "Ready", statuses: ["Ready"] },
-  { key: "Completed", statuses: ["Completed"] },
+  // "paid" is what a settled table session writes onto its kitchen orders.
+  // Without it a table the operator had just completed vanished from the
+  // one tab they would look in for it.
+  { key: "Completed", statuses: ["Completed", "Served", "Delivered", "paid"] },
   { key: "Cancelled", statuses: ["Cancelled"] },
 ];
 
@@ -237,6 +249,58 @@ const Orders = () => {
       enqueueSnackbar(e.response?.data?.message || "Failed to update order", { variant: "error" }),
   });
 
+  /* ---------- Completing a TABLE order ----------
+   *
+   * A table order is not finished by a status change: the money has not been
+   * taken and the table is still occupied. Pressing Complete on one used to
+   * set orderStatus and stop there, which left the bill unpaid, the session
+   * open and the table unavailable to the next party.
+   *
+   * So for a table order Complete asks how it was paid, then settles the
+   * session — which closes it, marks every kitchen order paid, and starts the
+   * table's cooldown. Non-table orders keep the plain status change.
+   */
+  const [settleFor, setSettleFor] = useState(null); // { order, session }
+  const [settleLoading, setSettleLoading] = useState(false);
+
+  const openSettle = async (order) => {
+    setSettleLoading(true);
+    try {
+      const res = await getTableSessionById(order.tableSessionId);
+      setSettleFor({ order, session: res?.data?.data || null });
+    } catch (e) {
+      enqueueSnackbar(e.response?.data?.message || "Could not load this table's bill.", {
+        variant: "error",
+      });
+    } finally {
+      setSettleLoading(false);
+    }
+  };
+
+  const settleMutation = useMutation({
+    mutationFn: ({ sessionId, method, amount }) =>
+      recordTableSessionPayment(sessionId, {
+        method,
+        amount,
+        // A double-tap on a slow connection must not take payment twice.
+        idempotencyKey: `settle-${sessionId}-${method}-${amount}`,
+      }),
+    onSuccess: (res) => {
+      const mins = res?.data?.data?.cooldownMinutes;
+      enqueueSnackbar(
+        res?.data?.message || `Paid. The table frees up${mins ? ` in ${mins} min` : " shortly"}.`,
+        { variant: "success" },
+      );
+      setSettleFor(null);
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      qc.invalidateQueries({ queryKey: ["tables"] });
+    },
+    onError: (e) =>
+      enqueueSnackbar(e.response?.data?.message || "Could not complete this table.", {
+        variant: "error",
+      }),
+  });
+
   /* ---------- Stats ---------- */
   // Note: "today" numbers on the stat cards are computed from the CURRENT
   // window's orders. When the user filters by an older date the cards
@@ -292,7 +356,8 @@ const Orders = () => {
   const orderTitle = (o) => {
     const t = String(o.orderType).toLowerCase();
     if (t === "delivery") return o.customerDetails?.name || o.deliveryAddress?.line1 || "Delivery Order";
-    if (t === "dine-in") return o.table ? `Table ${o.table.tableNumber ?? ""}`.trim() : "Table Order";
+    // The restaurant's own name for the table ("GF1"), not its row number.
+    if (t === "dine-in") return o.table ? tableLabel(o.table, "Table Order") : "Table Order";
     return o.customerDetails?.name || "Walk-in Customer";
   };
 
@@ -517,7 +582,7 @@ const Orders = () => {
                         </span>
                       </div>
                       <p className="text-[11.5px] text-[#94A3B8] mt-0.5">
-                        {o.source === "WEBSITE" ? "Website" : "POS"} · {o.items?.length || 0} Items
+                        {sourceLabel(o.source)} · {o.items?.length || 0} Items
                       </p>
                     </div>
 
@@ -768,7 +833,7 @@ const Orders = () => {
                   <div>
                     <p className="text-[#94A3B8]">Source</p>
                     <p className="font-bold text-[#0F172A] mt-0.5">
-                      {selected.source === "WEBSITE" ? "Website" : "POS"}
+                      {sourceLabel(selected.source)}
                     </p>
                   </div>
                   <div>
@@ -784,7 +849,10 @@ const Orders = () => {
                   <div>
                     <p className="text-[#94A3B8]">Payment Method</p>
                     <p className="font-bold text-[#0F172A] mt-0.5 capitalize">
-                      {selected.paymentMethod || selected.payments?.[0]?.method || "Cash"}
+                      {/* Blank until a payment is actually taken. Defaulting
+                          to "Cash" told the operator an unpaid order had been
+                          settled in cash. */}
+                      {selected.paymentMethod || selected.payments?.[0]?.method || "—"}
                     </p>
                   </div>
                   <div>
@@ -896,9 +964,14 @@ const Orders = () => {
                 </button>
               ) : isReady(selected.orderStatus) ? (
                 <button
-                  disabled={statusMutation.isPending}
+                  disabled={statusMutation.isPending || settleLoading}
                   onClick={() =>
-                    statusMutation.mutate({ orderId: selected._id, orderStatus: COMPLETED })
+                    // A table order has money outstanding and a table still
+                    // occupied, so completing it means settling the session,
+                    // not flipping a status.
+                    selected.tableSessionId
+                      ? openSettle(selected)
+                      : statusMutation.mutate({ orderId: selected._id, orderStatus: COMPLETED })
                   }
                   className="h-[46px] rounded-xl bg-[#16A34A] text-white text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#15803D] disabled:opacity-40"
                 >
@@ -926,6 +999,19 @@ const Orders = () => {
           </>
         )}
       </aside>
+
+      {/* Complete a table order: close the table, then take the payment. */}
+      {settleFor?.session && (
+        <TableSettleModal
+          table={settleFor.order?.table}
+          session={settleFor.session}
+          busy={settleMutation.isPending}
+          onClose={() => setSettleFor(null)}
+          onConfirm={({ method, amount }) =>
+            settleMutation.mutate({ sessionId: settleFor.session._id, method, amount })
+          }
+        />
+      )}
     </div>
   );
 };

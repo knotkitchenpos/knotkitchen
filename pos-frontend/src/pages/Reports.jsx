@@ -6,6 +6,7 @@ import { getMyRestaurant } from "../https/newModules";
 import { getWebsiteSettings } from "../https/storefrontApi";
 import { printHtmlDocument } from "../utils/printDocument";
 import { isPreparing, isReady, isCancelled, statusLabel } from "../constants/orderStatus";
+import { sourceLabel, tableLabel } from "../utils/orderLabels";
 
 /**
  * Module 5 — Reports.
@@ -58,14 +59,6 @@ const orderTypeLabel = (t) => {
   return t || "Other";
 };
 
-const sourceLabel = (src) => {
-  const s = String(src || "").toUpperCase();
-  if (s === "POS") return "System";
-  if (s === "WEBSITE") return "Website";
-  if (!s) return "Outside";
-  // MARKETPLACE / QR / PHONE all fall into "Outside" per the spec.
-  return "Outside";
-};
 
 /**
  * Build a horizontal strip of dates centred on the currently-viewed day
@@ -384,7 +377,10 @@ const OrderDetailsModal = ({ order, onClose }) => {
         <div className="px-5 pb-5 grid grid-cols-2 gap-3 border-t border-[#E2E8F0] pt-3">
           <DetailRow label="Source" value={sourceLabel(order.source)} />
           <DetailRow label="Order Type" value={orderTypeLabel(order.orderType)} />
-          <DetailRow label="Payment Method" value={(order.paymentMethod || payment?.method || "Cash").toString()} />
+          {order.table ? <DetailRow label="Table" value={tableLabel(order.table, "—")} /> : null}
+          {/* No default of "Cash". An order that has not been paid has no
+              method yet, and printing one made unpaid orders look settled. */}
+          <DetailRow label="Payment Method" value={(order.paymentMethod || payment?.method || "—").toString()} />
           <DetailRow label="Payment Status" value={(payment?.status || "pending").toString()} />
           <DetailRow label="Payment ID" value={payment?.transactionId || order.paymentData?.razorpay_payment_id || "—"} />
           <DetailRow label="Status" value={statusLabel(order.orderStatus)} />
