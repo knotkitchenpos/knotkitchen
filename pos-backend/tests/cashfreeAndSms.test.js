@@ -384,3 +384,74 @@ test("the link page uses the STORE's key, not a build-time platform key", () => 
   assert.match(src, /loadCashfree/);
   assert.match(src, /paymentSessionId: link\.paymentSessionId/);
 });
+
+// ---------------------------------------------------------------------------
+// Credentials at rest
+// ---------------------------------------------------------------------------
+
+test("a sealed secret round-trips, and a tampered one yields nothing", () => {
+  // Isolated require: secretBox reads the key through config at load time.
+  const before = process.env.CREDENTIALS_SECRET;
+  process.env.CREDENTIALS_SECRET = "unit-test-key";
+  delete require.cache[require.resolve("../config/config")];
+  delete require.cache[require.resolve("../services/secretBox")];
+  const box = require("../services/secretBox");
+
+  try {
+    const sealed = box.seal("cf_live_secret_value");
+    assert.ok(box.isSealed(sealed), "written in the v1 envelope");
+    assert.equal(sealed.split(":").length, 4, "prefix, iv, tag, ciphertext");
+    assert.ok(!sealed.includes("cf_live_secret_value"));
+    assert.equal(box.open(sealed), "cf_live_secret_value");
+
+    // GCM authenticates: a flipped byte must not decrypt to anything.
+    assert.equal(box.open(`${sealed.slice(0, -4)}AAAA`), "");
+    assert.equal(box.open("v1:bad:bad:bad"), "");
+  } finally {
+    if (before === undefined) delete process.env.CREDENTIALS_SECRET;
+    else process.env.CREDENTIALS_SECRET = before;
+    delete require.cache[require.resolve("../config/config")];
+    delete require.cache[require.resolve("../services/secretBox")];
+  }
+});
+
+test("credentials stored before this existed are still readable", () => {
+  // No migration, no downtime: legacy Base64 keeps working, and re-saving in
+  // Settings upgrades that row in place.
+  const box = require("../services/secretBox");
+  const legacy = Buffer.from("old_stored_secret", "utf-8").toString("base64");
+  assert.equal(box.open(legacy), "old_stored_secret");
+  assert.equal(box.isSealed(legacy), false);
+});
+
+test("a missing key degrades to the old behaviour rather than breaking payments", () => {
+  const box = require("../services/secretBox");
+  if (box.isEnabled()) return; // a key is configured in this environment
+  const out = box.seal("some_secret");
+  assert.equal(out, Buffer.from("some_secret", "utf-8").toString("base64"));
+  assert.equal(box.open(out), "some_secret");
+});
+
+test("an unreadable credential reads as 'not configured', it does not throw", () => {
+  // Mid-checkout is the worst possible place for an exception; the caller
+  // must fall through to the platform gateway instead.
+  const box = require("../services/secretBox");
+  assert.equal(box.open(null), "");
+  assert.equal(box.open(""), "");
+  assert.equal(box.open("v1:"), "");
+});
+
+test("saving a gateway encrypts the secret instead of Base64-ing it", () => {
+  const src = read("controllers", "websiteSettingsController.js");
+  assert.match(src, /keySecretEncrypted: seal\(secretInput\.trim\(\)\)/);
+  assert.match(src, /clientSecretEncrypted: seal\(secretInput\.trim\(\)\)/);
+  assert.match(src, /saltKeyEncrypted: seal\(secretInput\.trim\(\)\)/);
+  const code = src
+    .split(String.fromCharCode(10))
+    .filter((line) => !line.trim().startsWith("//") && !line.trim().startsWith("*"))
+    .join(String.fromCharCode(10));
+  assert.ok(
+    !/Encrypted: Buffer\.from\(secretInput/.test(code),
+    "the field named Encrypted must not hold a plain encoding",
+  );
+});

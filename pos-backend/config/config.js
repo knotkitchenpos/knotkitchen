@@ -82,6 +82,11 @@ const config = Object.freeze({
     // or plain http -- the verify-on-return path still settles the bill.
     cashfreeNotifyUrl: process.env.CASHFREE_NOTIFY_URL || "",
 
+    // Encrypts gateway credentials at rest (services/secretBox). Absent,
+    // they are stored Base64 exactly as before -- a missing key must not
+    // take payments offline.
+    credentialsSecret: process.env.CREDENTIALS_SECRET || "",
+
     // Rate limiting
     rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
     rateLimitMax: parseInt(process.env.RATE_LIMIT_MAX) || 100,

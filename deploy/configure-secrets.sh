@@ -67,6 +67,27 @@ ask() {
 }
 
 echo "=============================================="
+echo " Credential encryption at rest"
+echo "=============================================="
+echo
+if grep -q "^CREDENTIALS_SECRET=." "$ENV_FILE"; then
+  echo "  CREDENTIALS_SECRET is already set. Leaving it alone."
+  echo "  (Changing it would make every credential already stored in the"
+  echo "   database unreadable, so it is never rotated automatically.)"
+else
+  # $(...) strips trailing newlines, so no tr pipeline is needed.
+  generated="$(openssl rand -hex 32)"
+  set_var CREDENTIALS_SECRET "$generated"
+  unset generated
+  echo "  Generated one. Gateway secrets in the database are now encrypted"
+  echo "  with AES-256-GCM instead of being Base64-encoded."
+  echo
+  echo "  KEEP THE .env BACKUP SAFE. Losing this value means every stored"
+  echo "  gateway credential has to be re-entered in Settings."
+fi
+echo
+
+echo "=============================================="
 echo " Cashfree"
 echo "=============================================="
 echo

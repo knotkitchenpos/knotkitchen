@@ -4,6 +4,7 @@ const WebsiteSettings = require("../models/websiteSettingsModel");
 const MediaAsset = require("../models/mediaAssetModel");
 const Store = require("../models/storeModel");
 const { resolveTenantFromUser } = require("../services/tenantContext");
+const { seal } = require("../services/secretBox");
 const { provisionWebsiteForStore, buildStorefrontUrl } = require("../services/websiteProvisioningService");
 const { listThemes, isSelectableTheme } = require("../services/themeRegistry");
 const { slugify, isValidSlug, RESERVED_SLUGS } = require("../services/slugService");
@@ -595,16 +596,21 @@ const validateGatewayCredentials = async (req, res, next) => {
       const secretInput = keySecret || clientSecret || saltKey;
       const masked = secretInput.length > 4 ? "••••••••" + secretInput.trim().slice(-4) : "••••••••";
 
+      // The *Encrypted fields held plain Base64 -- an encoding, not
+      // encryption -- so anyone with read access to the database had the
+      // plaintext secret. seal() encrypts with AES-256-GCM when
+      // CREDENTIALS_SECRET is set, and falls back to the old Base64 when
+      // it is not, so a missing key cannot take payments offline.
       const gwData = {
         keyId: clampText(keyId, 100) || "",
         keySecretMasked: masked,
-        keySecretEncrypted: Buffer.from(secretInput.trim()).toString("base64"),
+        keySecretEncrypted: seal(secretInput.trim()),
         clientId: clampText(clientId, 100) || "",
         clientSecretMasked: masked,
-        clientSecretEncrypted: Buffer.from(secretInput.trim()).toString("base64"),
+        clientSecretEncrypted: seal(secretInput.trim()),
         merchantId: clampText(merchantId, 100) || "",
         saltKeyMasked: masked,
-        saltKeyEncrypted: Buffer.from(secretInput.trim()).toString("base64"),
+        saltKeyEncrypted: seal(secretInput.trim()),
         saltIndex: clampText(saltIndex, 10) || "1",
         environment: environment || "TEST",
         isConfigured: true,

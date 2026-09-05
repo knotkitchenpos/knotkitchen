@@ -123,6 +123,11 @@ services:
       # CASHFREE_ENV: TEST = sandbox.cashfree.com, PROD = api.cashfree.com.
       # Anything unrecognised is treated as sandbox on purpose -- a typo here
       # should cost a failed test payment, not a real one.
+      # Encrypts stored gateway credentials at rest. Absent, they are
+      # stored Base64 exactly as before -- a missing key must not take
+      # payments offline. configure-secrets.sh generates one.
+      CREDENTIALS_SECRET: ${CREDENTIALS_SECRET:-}
+
       CASHFREE_APP_ID: ${CASHFREE_APP_ID:-}
       CASHFREE_SECRET_KEY: ${CASHFREE_SECRET_KEY:-}
       CASHFREE_ENV: ${CASHFREE_ENV:-TEST}

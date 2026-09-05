@@ -32,14 +32,10 @@ const config = require("../config/config");
 
 const PROVIDERS = Object.freeze({ RAZORPAY: "razorpay", CASHFREE: "cashfree", PHONEPE: "phonepe" });
 
-const decodeSecret = (encoded) => {
-  if (!encoded) return "";
-  try {
-    return Buffer.from(encoded, "base64").toString("utf-8");
-  } catch {
-    return "";
-  }
-};
+// Stored credentials are encrypted at rest when CREDENTIALS_SECRET is set,
+// and plain Base64 when it is not. secretBox reads both, so this keeps
+// working across the changeover with no migration.
+const { open: decodeSecret } = require("./secretBox");
 
 /** The platform's own credentials, for stores that have not brought theirs. */
 const platformGateway = () => {
