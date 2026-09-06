@@ -151,3 +151,62 @@ test("SOURCE: nobody hand-rolls the address join any more", () => {
     );
   }
 });
+
+// ---------------------------------------------------------------------------
+// The order number
+// ---------------------------------------------------------------------------
+
+test("REGRESSION: the e-bill quotes the number the POS shows", () => {
+  // Every POS screen shows `order.orderNumber` -- a 6-digit id like #834180 --
+  // but this chain never read it, so the bill quoted six hex characters of the
+  // Mongo ObjectId instead. Two different identifiers for one order: nobody
+  // could match a customer's bill back to anything on the Orders screen.
+  const mongoose = require("mongoose");
+  const _id = new mongoose.Types.ObjectId();
+
+  const receipt = buildReceipt({
+    order: { _id, orderNumber: "834180", orderStatus: "Completed", bills: {}, items: [] },
+  });
+  assert.equal(receipt.orderNumber, "834180");
+});
+
+test("with no order number, the fallback matches the POS fallback exactly", () => {
+  // The screens render `o.orderNumber || o._id.slice(-6).toUpperCase()`.
+  const mongoose = require("mongoose");
+  const _id = new mongoose.Types.ObjectId();
+
+  const receipt = buildReceipt({
+    order: { _id, orderStatus: "Completed", bills: {}, items: [] },
+  });
+  assert.equal(receipt.orderNumber, _id.toString().slice(-6).toUpperCase());
+});
+
+test("a marketplace order is still quoted by OUR number, as the POS shows it", () => {
+  const mongoose = require("mongoose");
+  const receipt = buildReceipt({
+    order: {
+      _id: new mongoose.Types.ObjectId(),
+      orderNumber: "834180",
+      marketplaceOrderId: "SWIGGY-99",
+      orderStatus: "Completed",
+      bills: {},
+      items: [],
+    },
+  });
+  assert.equal(receipt.orderNumber, "834180", "the operator cannot look up a Swiggy id");
+});
+
+test("a table session is still quoted by its session code", () => {
+  const receipt = buildReceipt({
+    tableSession: { sessionCode: "GF1-0007", items: [], bills: {} },
+  });
+  assert.equal(receipt.orderNumber, "GF1-0007");
+});
+
+test("SOURCE: the receipt reads orderNumber before anything else on an order", () => {
+  const chain = stripComments(SRC("services/receiptService.js"));
+  const orderNum = chain.indexOf("order?.orderNumber");
+  const marketplace = chain.indexOf("order?.marketplaceOrderId");
+  assert.ok(orderNum !== -1, "the receipt must read the number the POS shows");
+  assert.ok(orderNum < marketplace, "our own number comes first, as on the POS screens");
+});

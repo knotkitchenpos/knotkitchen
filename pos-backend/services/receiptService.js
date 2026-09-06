@@ -116,11 +116,21 @@ const buildReceipt = ({
   }
 
   // Order number & date/time
+  // The number the CUSTOMER is quoted has to be the one the operator can look
+  // up. Every POS screen shows `order.orderNumber` (a 6-digit id from
+  // orderNumberService, e.g. #834180) falling back to the tail of the Mongo
+  // id -- but this chain never read orderNumber at all, so an e-bill quoted
+  // six hex characters of the ObjectId instead. Nobody could match a bill to
+  // an order.
+  //
+  // Order of preference mirrors the POS exactly, including for marketplace
+  // orders, where the screens also show our own number rather than Swiggy's.
   const orderNumber =
     tableSession?.sessionCode ||
+    order?.orderNumber ||
     order?.marketplaceOrderId ||
     bill?.billNumber ||
-    (order?._id ? order._id.toString().slice(-6) : "N/A");
+    (order?._id ? order._id.toString().slice(-6).toUpperCase() : "N/A");
 
   const dateTime =
     tableSession?.openedAt ||
