@@ -237,4 +237,140 @@ const sendText = async ({ phone, message, senderId, apiKey, route = "v3" }) => {
   );
 };
 
-module.exports = { sendOtp, sendDlt, sendText, Fast2SmsError, toIndianTenDigit };
+/* ---------------------------------------------------------------------------
+ * WhatsApp
+ *
+ * A different product with a different endpoint: template messages go out
+ * over the WhatsApp Business API as a GET, identified by the Fast2SMS
+ * "Message ID" of an approved template, and the reply says `status` where the
+ * SMS API says `return`.
+ *
+ * Header vs body variables
+ * ------------------------
+ * A Meta template numbers its header and body variables SEPARATELY -- a
+ * template can have a header {{1}} and a body {{1}} that mean different
+ * things. `variables_values` is one flat pipe-separated list, and Fast2SMS
+ * does not document which end the header goes on. So the caller passes an
+ * already-ordered array and owns that decision; see services/messagingService.js,
+ * where the order is written down next to the template it belongs to.
+ *
+ * Getting it wrong is SILENT -- Fast2SMS answers 200 and the customer simply
+ * reads their order number where the total should be. It has to be confirmed
+ * against a real delivered message, not assumed.
+ * ------------------------------------------------------------------------ */
+
+const WHATSAPP_ENDPOINT = "https://www.fast2sms.com/dev/whatsapp";
+
+const getFromFast2Sms = async ({ url, apiKey }) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+  let response;
+  try {
+    response = await fetch(url, {
+      method: "GET",
+      headers: { authorization: apiKey },
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err.name === "AbortError") {
+      throw new Fast2SmsError("Fast2SMS request timed out.", { retryable: true });
+    }
+    throw new Fast2SmsError(`Fast2SMS network error: ${err.message}`, { retryable: true });
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const body = await response.json().catch(() => ({}));
+
+  if (response.status >= 500) {
+    throw new Fast2SmsError(`Fast2SMS ${response.status}`, {
+      status: response.status,
+      statusCode: body && body.status_code,
+      retryable: true,
+      providerBody: body,
+    });
+  }
+
+  // The WhatsApp API reports success as `status: true`; the SMS API uses
+  // `return: true`. Accept either so one helper can serve both shapes.
+  const rejected =
+    !response.ok || body.status === false || body.return === false;
+
+  if (rejected) {
+    throw new Fast2SmsError(
+      (body && body.message) || `Fast2SMS rejected the request (HTTP ${response.status})`,
+      {
+        status: response.status,
+        statusCode: body && body.status_code,
+        retryable: false,
+        providerBody: body,
+      },
+    );
+  }
+
+  return { ok: true, requestId: (body && body.request_id) || "" };
+};
+
+/**
+ * Send one approved WhatsApp template.
+ *
+ * `variables` must already be in the order the template expects, flattened
+ * across header and body. Empty strings are not allowed through: WhatsApp
+ * rejects a template parameter that is blank, and a bill with a missing total
+ * should fail loudly here rather than arrive half-written.
+ */
+const sendWhatsAppTemplate = async ({
+  phone,
+  messageId,
+  phoneNumberId,
+  variables = [],
+  mediaUrl,
+  apiKey,
+}) => {
+  if (!apiKey) throw new Fast2SmsError("Fast2SMS API key is not configured.");
+  if (!messageId) throw new Fast2SmsError("Fast2SMS WhatsApp Message ID is not configured.");
+  if (!phoneNumberId) {
+    throw new Fast2SmsError("Fast2SMS WhatsApp phone_number_id is not configured.");
+  }
+
+  const number = toIndianTenDigit(phone);
+  if (number.length !== 10) {
+    throw new Fast2SmsError("Fast2SMS requires a 10-digit Indian phone number.");
+  }
+
+  const values = (Array.isArray(variables) ? variables : [variables]).map((v) =>
+    String(v === null || v === undefined ? "" : v)
+      // A pipe would be read as the next variable and shift every value after
+      // it by one, so it can never survive into the payload.
+      .replace(/\|/g, " ")
+      // WhatsApp rejects newlines and runs of spaces inside a parameter.
+      .replace(/\s+/g, " ")
+      .trim(),
+  );
+
+  const blank = values.findIndex((v) => v === "");
+  if (blank !== -1) {
+    throw new Fast2SmsError(
+      `WhatsApp template variable ${blank + 1} is empty; WhatsApp rejects blank parameters.`,
+    );
+  }
+
+  const url = new URL(WHATSAPP_ENDPOINT);
+  url.searchParams.set("message_id", String(messageId));
+  url.searchParams.set("phone_number_id", String(phoneNumberId));
+  url.searchParams.set("numbers", number);
+  if (values.length) url.searchParams.set("variables_values", values.join("|"));
+  if (mediaUrl) url.searchParams.set("media_url", String(mediaUrl));
+
+  return withRetry(() => getFromFast2Sms({ url: url.toString(), apiKey }));
+};
+
+module.exports = {
+  sendOtp,
+  sendDlt,
+  sendText,
+  sendWhatsAppTemplate,
+  Fast2SmsError,
+  toIndianTenDigit,
+};

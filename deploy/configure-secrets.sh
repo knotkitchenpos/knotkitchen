@@ -114,6 +114,27 @@ ask FAST2SMS_PAYMENT_LINK_TEMPLATE_ID "Payment-link DLT Message ID (optional)"
 ask FAST2SMS_OTP_ID                   "OTP DLT Message ID (optional)"
 
 echo "=============================================="
+echo " Fast2SMS (WhatsApp)"
+echo "=============================================="
+echo
+echo "  E-bills go out over WhatsApp when these two are set, because the"
+echo "  template carries a tappable bill link that SMS cannot."
+echo "  Both come from the Fast2SMS WhatsApp panel; neither is a secret."
+echo "  Leave them blank to keep e-bills on SMS."
+echo
+ask FAST2SMS_WHATSAPP_PHONE_NUMBER_ID  "WhatsApp phone_number_id (WABA number ID)"
+ask FAST2SMS_EBILL_WHATSAPP_MESSAGE_ID "E-bill WhatsApp Message ID"
+
+echo "=============================================="
+echo " Public receipt links"
+echo "=============================================="
+echo
+echo "  The origin the bill link is built from. Must be reachable by a"
+echo "  customer with no login -- normally https://api.knotkitchen.online"
+echo
+ask PUBLIC_API_URL "Public API origin for /r/<token> links"
+
+echo "=============================================="
 echo " Restarting the API"
 echo "=============================================="
 cd "$COMPOSE_DIR"
@@ -138,6 +159,8 @@ const names = [
   "CASHFREE_APP_ID","CASHFREE_SECRET_KEY","CASHFREE_ENV","CASHFREE_NOTIFY_URL",
   "FAST2SMS_API_KEY","FAST2SMS_SENDER_ID","FAST2SMS_EBILL_TEMPLATE_ID",
   "FAST2SMS_ORDER_READY_TEMPLATE_ID","FAST2SMS_PAYMENT_LINK_TEMPLATE_ID","FAST2SMS_OTP_ID",
+  "FAST2SMS_WHATSAPP_PHONE_NUMBER_ID","FAST2SMS_EBILL_WHATSAPP_MESSAGE_ID",
+  "PUBLIC_API_URL","RECEIPT_LINK_SECRET","CREDENTIALS_SECRET",
 ];
 for (const n of names) {
   const v = process.env[n];

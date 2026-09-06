@@ -229,6 +229,11 @@ app.use("/api/customer", require("./routes/customerRoute"));
 app.use("/api/payment-link", require("./routes/paymentLinkRoute"));
 app.use("/api/receipts", require("./routes/receiptRoute"));
 
+// Public, unauthenticated, and deliberately NOT under /api: this is the link a
+// customer taps in their e-bill, so it is kept short and human-sized. The
+// signed token in the path is the whole authorisation.
+app.use("/r", require("./routes/publicReceiptRoute"));
+
 // Global Error Handler
 app.use(globalErrorHandler);
 

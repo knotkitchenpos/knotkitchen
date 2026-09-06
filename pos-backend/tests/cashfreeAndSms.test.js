@@ -216,15 +216,37 @@ test("each message declares the variable order its template expects", () => {
 });
 
 test("with no template configured a message still goes out as free text", () => {
-  // A store mid-DLT-registration must keep working exactly as it did.
-  const src = read("services", "messagingService.js");
-  assert.match(src, /templateId && sender\s*\?\s*await sendDlt/);
-  assert.match(src, /:\s*await sendText/);
+  // A store mid-DLT-registration must keep working exactly as it did. This
+  // used to pin the exact `templateId && sender ? sendDlt : sendText` ternary,
+  // which said nothing once a third channel (WhatsApp) joined; assert the
+  // decision itself instead of the shape it happens to be written in.
+  const { MESSAGES, channelFor } = require("../services/messagingService");
+  const saved = { ...process.env };
+  try {
+    for (const k of Object.keys(process.env)) {
+      if (k.startsWith("FAST2SMS_")) delete process.env[k];
+    }
+    for (const [name, spec] of Object.entries(MESSAGES)) {
+      assert.equal(channelFor(spec), "v3", `${name} must still have a free-text fallback`);
+    }
+  } finally {
+    process.env = saved;
+  }
+  assert.match(read("services", "messagingService.js"), /await sendText\(/);
 });
 
 test("an unconfigured provider reports failure rather than pretending", () => {
   const src = read("services", "messagingService.js");
-  const block = src.slice(src.indexOf("if (!key) {"), src.indexOf("const templateId = spec.templateId()"));
+  const start = src.indexOf("if (!key) {");
+  const end = src.indexOf("const route = channelFor(spec);");
+
+  // Both anchors must exist. A missing one gives indexOf -1, and slice(a, -1)
+  // quietly returns almost the whole file -- so the assertions below would
+  // pass against unrelated code and this guard would stop guarding anything.
+  assert.ok(start !== -1 && end > start, "anchors moved; retarget this guard");
+
+  const block = src.slice(start, end);
+  assert.ok(block.length < 800, "the block should be the unconfigured branch, not the file");
   assert.match(block, /sent: false/);
   assert.match(block, /deliveryStatus: "FAILED"/);
 });

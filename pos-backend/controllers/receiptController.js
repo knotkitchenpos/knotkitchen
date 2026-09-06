@@ -5,6 +5,7 @@ const TableSession = require("../models/tableSessionModel");
 const Restaurant = require("../models/restaurantModel");
 const { buildReceipt } = require("../services/receiptService");
 const { sendEBillMessage } = require("../services/messagingService");
+const { urlForOrder, urlForSession } = require("../services/receiptLink");
 
 /**
  * GET /api/receipts/order/:orderId
@@ -137,14 +138,39 @@ const sendEBill = async (req, res, next) => {
       });
     }
 
-    // Call messaging infrastructure
+    // The link the customer taps. Signed and keyed by document id -- the old
+    // `${FRONTEND_URL}/receipt/${orderNumber}` pointed at a route that did not
+    // exist, behind an API that required a staff login, keyed by a SEQUENTIAL
+    // number. See services/receiptLink.js.
+    //
+    // Building it can fail -- no signing key, or no public origin configured.
+    // That is a misconfiguration, not a server fault, and it must not surface
+    // as a 500 on the operator's Send E-Bill button. Report it the same way
+    // every other non-delivery is reported here, naming what to fix.
+    let billUrl;
+    try {
+      billUrl = tableSession ? urlForSession(tableSession._id) : urlForOrder(order._id);
+    } catch (linkErr) {
+      return res.status(200).json({
+        success: false,
+        sent: false,
+        deliveryStatus: "FAILED",
+        message: `E-bill not sent: ${linkErr.message}`,
+        data: { receipt },
+      });
+    }
+
+    // The template renders "Total: Rs {{2}}", so the variable is the bare
+    // amount -- no symbol, always two decimals.
+    const totalForTemplate = Number(receipt.total || 0).toFixed(2);
+
     const messagingResult = await sendEBillMessage({
       phone: targetPhone,
       orderNumber: receipt.orderNumber,
       restaurantName: receipt.restaurant.name,
-      total: receipt.total,
+      total: totalForTemplate,
       itemsCount: receipt.quantities,
-      receiptUrl: `${process.env.FRONTEND_URL || "http://localhost:5173"}/receipt/${receipt.orderNumber}`,
+      receiptUrl: billUrl,
     });
 
     return res.status(200).json({
@@ -154,6 +180,7 @@ const sendEBill = async (req, res, next) => {
       message: messagingResult.sent ? "E-bill sent successfully." : (messagingResult.error || "E-bill delivery failed."),
       data: {
         receipt,
+        billUrl,
         messagingDetails: messagingResult,
       },
     });
