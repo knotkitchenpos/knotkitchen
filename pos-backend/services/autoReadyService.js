@@ -32,6 +32,7 @@
 const Order = require("../models/orderModel");
 const WebsiteSettings = require("../models/websiteSettingsModel");
 const { notifyOrderReady } = require("./readyNotificationService");
+const { fireAutoEBill } = require("./eBillService");
 const {
   READY, SERVED, DELIVERED, COMPLETED,
   PREPARING_STATUSES, SETTLED_STATUSES, CANCELLED_STATUSES, REFUNDED_STATUSES,
@@ -287,6 +288,11 @@ const runAutoCompleteTick = async (now = new Date()) => {
         });
         await order.save();
         completedCount += 1;
+
+        // Auto-completed by the timer rather than by a person, but the bill is
+        // no less final. Same fire-and-forget contract; no-op unless the
+        // restaurant has autoEBill on.
+        fireAutoEBill({ orderId: order._id });
 
         if (emitter && order.restaurantId) {
           try {

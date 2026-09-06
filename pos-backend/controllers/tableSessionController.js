@@ -13,6 +13,7 @@ const { emitOrderCreated, emitOrderStatusChanged } = require("../services/socket
 const createHttpError = require("http-errors");
 const { PREPARING, PAID, CANCELLED, isFinished } = require("../constants/orderStatus");
 const { computeReadyDueAt, computeCompleteDueAt } = require("../services/autoReadyService");
+const { fireAutoEBill } = require("../services/eBillService");
 
 const SESSION_CODE_PREFIX = "TS";
 
@@ -1040,6 +1041,12 @@ const recordSessionPayment = async (req, res, next) => {
 
     await session.save({ session: mongoSession });
     await mongoSession.commitTransaction();
+
+    // AFTER the commit, never inside it -- an e-bill means an outbound HTTP
+    // call to Fast2SMS, and holding a Mongo transaction open across a network
+    // round trip to a third party is how a busy till starts timing out.
+    // No-op unless the restaurant has autoEBill on.
+    if (paid) fireAutoEBill({ tableSessionId: session._id });
 
     // Tell the operator when the table comes back, rather than leaving them
     // to wonder why it still shows as occupied.

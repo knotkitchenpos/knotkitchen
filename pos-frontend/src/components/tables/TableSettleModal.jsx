@@ -59,6 +59,13 @@ const TableSettleModal = ({ table, session, busy, onClose, onConfirm }) => {
   const bills = session?.bills || {};
   const payable = Number(bills.totalWithTax || 0);
 
+  // A table order had no way to send an e-bill at all. The only button lived
+  // in the counter invoice, which is never rendered for a table session -- so
+  // every QR order, which is exactly where a phone number IS on file, could
+  // never be sent one.
+  const phone = String(session?.customerPhone || "").trim();
+  const [alsoEBill, setAlsoEBill] = useState(true);
+
   const label = table?.displayId || table?.tableName || `Table ${table?.tableNumber ?? "?"}`;
   const chosen = METHODS.find((m) => m.id === method);
 
@@ -139,6 +146,27 @@ const TableSettleModal = ({ table, session, busy, onClose, onConfirm }) => {
             <p className="mt-2 text-[11.5px] text-[#94A3B8]">{chosen?.hint}</p>
           </div>
 
+          {/* E-bill. Offered only when there is somewhere to send it — an
+              unticked box next to "no phone on file" just reads as broken. */}
+          {phone ? (
+            <label className="flex items-start gap-2.5 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3.5 py-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={alsoEBill}
+                onChange={(e) => setAlsoEBill(e.target.checked)}
+                className="mt-0.5 w-4 h-4 accent-[#FD5302]"
+              />
+              <span className="text-[12.5px] leading-snug">
+                <span className="font-bold text-[#0F172A]">Send the e-bill</span>
+                <span className="text-[#64748B]"> to {phone} on WhatsApp</span>
+              </span>
+            </label>
+          ) : (
+            <p className="text-[11.5px] text-[#94A3B8] px-1">
+              No phone number on this session, so no e-bill can be sent.
+            </p>
+          )}
+
           {payable <= 0 && (
             <p className="text-[12.5px] font-bold text-[#B45309] bg-[#FEF3C7] border border-[#FDE68A] rounded-lg px-3 py-2">
               This session has nothing to pay yet. Add items before completing it.
@@ -157,7 +185,9 @@ const TableSettleModal = ({ table, session, busy, onClose, onConfirm }) => {
           </button>
           <button
             type="button"
-            onClick={() => onConfirm({ method, amount: payable })}
+            onClick={() =>
+              onConfirm({ method, amount: payable, sendEBill: Boolean(phone && alsoEBill), phone })
+            }
             disabled={busy || payable <= 0}
             className="flex-[2] h-[44px] rounded-xl bg-[#FD5302] text-white text-[13.5px] font-extrabold hover:bg-[#D64502] disabled:opacity-60"
           >

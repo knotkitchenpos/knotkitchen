@@ -10,6 +10,7 @@ const { default: mongoose } = require("mongoose");
 const { generateOrderNumberSafe } = require("../services/orderNumberService");
 const { computeReadyDueAt, computeCompleteDueAt } = require("../services/autoReadyService");
 const { notifyOrderReady } = require("../services/readyNotificationService");
+const { fireAutoEBill } = require("../services/eBillService");
 const { emitOrderStatusChanged } = require("../services/socket");
 
 
@@ -647,11 +648,13 @@ const updateOrder = async (req, res, next) => {
     }
 
     const lowerNext = String(nextStatus).toLowerCase();
+    let settledTransition = false;
     if (["completed", "delivered", "served", "cancelled", "refunded"].includes(lowerNext)) {
       order.completeDueAt = null;
       if (["completed", "delivered", "served"].includes(lowerNext) && !order.completedAt) {
         order.completedAt = new Date();
         order.completedBy = "STAFF";
+        settledTransition = true;
       }
     } else if (!order.completeDueAt && !order.completedAt) {
       const computed = await computeCompleteDueAt({
@@ -680,6 +683,12 @@ const updateOrder = async (req, res, next) => {
         console.warn("notifyOrderReady failed:", err.message);
       });
     }
+
+    // The order is finished, so the bill is final. Fire-and-forget for the
+    // same reason as the ready SMS: the operator is being told their status
+    // change worked, and a messaging problem must not turn that into an error.
+    // Does nothing unless posSettings.autoEBill is on for this restaurant.
+    if (settledTransition) fireAutoEBill({ orderId: order._id });
 
     // Return canonical status to the client too.
     const projected = order.toObject();

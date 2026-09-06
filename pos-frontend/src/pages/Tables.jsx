@@ -5,6 +5,7 @@ import TableCard from "../components/tables/TableCard";
 import GuestCountModal from "../components/tables/GuestCountModal";
 import SessionDetailModal from "../components/tables/SessionDetailModal";
 import TableSettleModal from "../components/tables/TableSettleModal";
+import { sendTableEBill } from "../utils/sendTableEBill";
 import SecurityPinModal from "../components/common/SecurityPinModal";
 import PrintTableQRModal from "../components/tables/PrintTableQRModal";
 import { checkActionAuthorization } from "../utils/security";
@@ -242,13 +243,17 @@ const Tables = () => {
         // A double-tap on a slow connection must not take payment twice.
         idempotencyKey: `settle-${sessionId}-${method}-${amount}`,
       }),
-    onSuccess: (res) => {
+    onSuccess: (res, vars) => {
       const mins = res?.data?.data?.cooldownMinutes;
       enqueueSnackbar(
         res?.data?.message ||
           `Paid. The table frees up${mins ? ` in ${mins} min` : " shortly"}.`,
         { variant: "success" },
       );
+      // Reported separately from the payment on purpose -- see the helper.
+      if (vars?.sendEBill && vars?.phone) {
+        sendTableEBill({ sessionId: vars.sessionId, phone: vars.phone, notify: enqueueSnackbar });
+      }
       setSettleTarget(null);
       setSessionTable(null);
       setSessionData(null);
@@ -993,11 +998,13 @@ const Tables = () => {
           session={settleTarget.session}
           busy={settleMutation.isPending}
           onClose={() => setSettleTarget(null)}
-          onConfirm={({ method, amount }) =>
+          onConfirm={({ method, amount, sendEBill: alsoEBill, phone }) =>
             settleMutation.mutate({
               sessionId: settleTarget.session?._id,
               method,
               amount,
+              sendEBill: alsoEBill,
+              phone,
             })
           }
         />

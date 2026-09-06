@@ -330,9 +330,10 @@ test("the e-bill variable order matches the registered WhatsApp template", () =>
 });
 
 test("the total is a bare amount -- the template supplies the currency symbol", () => {
-  const src = SRC("controllers/receiptController.js");
+  // Lives in eBillService now, so the manual button and the automatic send
+  // format it identically rather than each doing their own.
   assert.match(
-    src,
+    SRC("services/eBillService.js"),
     /Number\(receipt\.total \|\| 0\)\.toFixed\(2\)/,
     "'Total: Rs {{2}}' must not become 'Total: Rs Rs525'",
   );
@@ -367,12 +368,19 @@ test("the public receipt escapes operator- and diner-supplied text", () => {
 });
 
 test("SOURCE: the dead FRONTEND_URL receipt link is gone", () => {
-  const src = CODE("controllers/receiptController.js");
-  assert.ok(
-    !/FRONTEND_URL.*\/receipt\//.test(src),
-    "that URL had no route, needed a staff login, and was keyed by a sequential number",
+  // The link is built in the service both senders share; neither of them may
+  // reintroduce the old one.
+  for (const file of ["controllers/receiptController.js", "services/eBillService.js"]) {
+    assert.ok(
+      !/FRONTEND_URL.*\/receipt\//.test(CODE(file)),
+      `${file}: that URL had no route, needed a staff login, and was keyed by a sequential number`,
+    );
+  }
+  assert.match(
+    CODE("services/eBillService.js"),
+    /urlForSession|urlForOrder/,
+    "the signed link builder is used instead",
   );
-  assert.match(src, /urlForSession|urlForOrder/, "the signed link builder is used instead");
 });
 
 test("SOURCE: the public receipt route is mounted and unauthenticated", () => {

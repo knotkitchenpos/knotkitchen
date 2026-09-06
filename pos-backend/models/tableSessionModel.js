@@ -53,6 +53,13 @@ const tableSessionSchema = new mongoose.Schema(
     customerName: { type: String, default: "" },
     customerPhone: { type: String, default: "" },
     customerId: { type: mongoose.Schema.Types.ObjectId, ref: "Customer" },
+    // When the automatic e-bill was sent, and the lock that stops it going
+    // twice. A settle can be retried -- a webhook redelivery, a double-tap on
+    // Mark Paid -- and the customer must not be messaged again. Claimed with a
+    // conditional update; cleared again if the send fails, so a real failure
+    // stays retryable. Queried as `{ eBillSentAt: null }`, which in MongoDB
+    // also matches documents written before this field existed.
+    eBillSentAt: { type: Date, default: null },
 
     items: [tableSessionItemSchema],
     originalItemsCount: { type: Number, default: 0 }, // snapshot of count of initial items

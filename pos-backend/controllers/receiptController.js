@@ -4,8 +4,7 @@ const Bill = require("../models/billModel");
 const TableSession = require("../models/tableSessionModel");
 const Restaurant = require("../models/restaurantModel");
 const { buildReceipt } = require("../services/receiptService");
-const { sendEBillMessage } = require("../services/messagingService");
-const { urlForOrder, urlForSession } = require("../services/receiptLink");
+const { loadEBillSubject, deliverEBill } = require("../services/eBillService");
 
 /**
  * GET /api/receipts/order/:orderId
@@ -92,43 +91,21 @@ const sendEBill = async (req, res, next) => {
       throw createHttpError(400, "Either orderId or tableSessionId is required to send e-bill.");
     }
 
-    const scopeQuery = req.user?.restaurantId
-      ? { restaurantId: req.user.restaurantId }
-      : {};
+    const scopeQuery = req.user?.restaurantId ? { restaurantId: req.user.restaurantId } : {};
 
-    let order = null;
-    let tableSession = null;
-    let bill = null;
-    let restaurant = null;
-
-    if (orderId) {
-      order = await Order.findOne({ _id: orderId, ...scopeQuery, isDeleted: { $ne: true } });
-      if (!order) throw createHttpError(404, "Order not found.");
-      bill = await Bill.findOne({ orderId: order._id, isDeleted: { $ne: true } });
-      restaurant = await Restaurant.findById(order.restaurantId);
+    // Loading and sending both live in services/eBillService so this button
+    // and the automatic send on payment produce the identical message. Two
+    // copies would drift, and the drift would be invisible -- both paths
+    // would keep answering 200 while one sent the wrong thing.
+    const subject = await loadEBillSubject({ orderId, tableSessionId, scopeQuery });
+    if (!subject) {
+      throw createHttpError(404, tableSessionId ? "Table session not found." : "Order not found.");
     }
 
-    if (tableSessionId) {
-      tableSession = await TableSession.findOne({ _id: tableSessionId, ...scopeQuery, isDeleted: { $ne: true } })
-        .populate("tableId");
-      if (!tableSession) throw createHttpError(404, "Table session not found.");
-      if (tableSession.billId) {
-        bill = await Bill.findById(tableSession.billId);
-      }
-      restaurant = await Restaurant.findById(tableSession.restaurantId);
-    }
+    const { receipt, billUrl, result } = await deliverEBill({ ...subject, phone });
 
-    const receipt = buildReceipt({
-      order,
-      tableSession,
-      bill,
-      restaurant,
-    });
-
-    // Resolve customer phone
-    const targetPhone = phone || receipt.customerInformation.phone;
-
-    if (!targetPhone) {
+    // A missing phone is the operator's problem to fix, not a server error.
+    if (result.deliveryStatus === "SKIPPED") {
       return res.status(400).json({
         success: false,
         sent: false,
@@ -138,50 +115,18 @@ const sendEBill = async (req, res, next) => {
       });
     }
 
-    // The link the customer taps. Signed and keyed by document id -- the old
-    // `${FRONTEND_URL}/receipt/${orderNumber}` pointed at a route that did not
-    // exist, behind an API that required a staff login, keyed by a SEQUENTIAL
-    // number. See services/receiptLink.js.
-    //
-    // Building it can fail -- no signing key, or no public origin configured.
-    // That is a misconfiguration, not a server fault, and it must not surface
-    // as a 500 on the operator's Send E-Bill button. Report it the same way
-    // every other non-delivery is reported here, naming what to fix.
-    let billUrl;
-    try {
-      billUrl = tableSession ? urlForSession(tableSession._id) : urlForOrder(order._id);
-    } catch (linkErr) {
-      return res.status(200).json({
-        success: false,
-        sent: false,
-        deliveryStatus: "FAILED",
-        message: `E-bill not sent: ${linkErr.message}`,
-        data: { receipt },
-      });
-    }
-
-    // The template renders "Total: Rs {{2}}", so the variable is the bare
-    // amount -- no symbol, always two decimals.
-    const totalForTemplate = Number(receipt.total || 0).toFixed(2);
-
-    const messagingResult = await sendEBillMessage({
-      phone: targetPhone,
-      orderNumber: receipt.orderNumber,
-      restaurantName: receipt.restaurant.name,
-      total: totalForTemplate,
-      itemsCount: receipt.quantities,
-      receiptUrl: billUrl,
-    });
-
+    // `billUrl` goes back even when delivery failed, so the POS can show the
+    // operator a link to read out or copy rather than only telling them it
+    // did not work.
     return res.status(200).json({
-      success: messagingResult.success,
-      sent: messagingResult.sent,
-      deliveryStatus: messagingResult.deliveryStatus,
-      message: messagingResult.sent ? "E-bill sent successfully." : (messagingResult.error || "E-bill delivery failed."),
+      success: result.success,
+      sent: result.sent,
+      deliveryStatus: result.deliveryStatus,
+      message: result.sent ? "E-bill sent successfully." : result.error || "E-bill delivery failed.",
       data: {
         receipt,
         billUrl,
-        messagingDetails: messagingResult,
+        messagingDetails: result,
       },
     });
   } catch (err) {

@@ -95,6 +95,13 @@ const orderSchema = new mongoose.Schema({
   readyBy: { type: String, enum: ["STAFF", "AUTO", "KDS", "SYSTEM", ""], default: "" },
   readyDueAt: { type: Date, default: null, index: true },
   readyNotifiedAt: { type: Date, default: null },
+  // When the automatic e-bill was sent, and the lock that stops it going
+  // twice. A settle can be retried -- a webhook redelivery, a double-tap on
+  // Mark Paid -- and the customer must not be messaged again. Claimed with a
+  // conditional update; cleared again if the send fails, so a real failure
+  // stays retryable. Queried as `{ eBillSentAt: null }`, which in MongoDB
+  // also matches documents written before this field existed.
+  eBillSentAt: { type: Date, default: null },
 
   /**
    * Auto-Complete state tracking.

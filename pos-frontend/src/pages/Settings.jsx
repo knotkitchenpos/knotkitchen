@@ -265,7 +265,10 @@ const DeviceConfigurationView = () => {
           <div className="flex items-center justify-between pt-2 border-t border-[#E2E8F0]">
             <div>
               <p className="text-[#334155] font-semibold">Auto E-Bill</p>
-              <p className="text-[11.5px] text-[#94A3B8]">Automatically send digital receipt SMS on complete</p>
+              <p className="text-[11.5px] text-[#94A3B8]">
+                Send the bill to the customer automatically when an order is paid or
+                completed. Needs a phone number on the order; sent once per order.
+              </p>
             </div>
             <input
               type="checkbox"
