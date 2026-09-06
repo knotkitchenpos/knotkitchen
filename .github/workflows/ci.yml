@@ -41,6 +41,14 @@ jobs:
         working-directory: pos-backend
         run: npm ci
 
+      # Narrow on purpose: no-undef and friends. A refactor that removed a
+      # binding while later lines still read it shipped to production and 500'd
+      # the CSD store list -- valid syntax, so node --check saw nothing and no
+      # test called the function.
+      - name: Lint (undefined names, duplicate keys, unreachable code)
+        working-directory: pos-backend
+        run: npm run lint
+
       - name: Test (tenant isolation, slugs, media, pricing, ...)
         working-directory: pos-backend
         # Ephemeral secrets so the config loader doesn't refuse to start.

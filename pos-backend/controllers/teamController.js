@@ -113,6 +113,12 @@ const removeMemberFromTeam = async (req, res, next) => {
 const addStaff = async (req, res, next) => {
   try {
     const { name, email, phone, password, role, permissions } = req.body;
+
+    // Both were referenced below but never declared, so adding a staff member
+    // threw ReferenceError and answered 500. Taken from the authenticated user,
+    // never from the body -- see the note on createTeam above.
+    const { restaurantId, outletId } = req.user;
+
     if (!name || !phone || !password || !role) {
       const error = createHttpError(400, "Name, phone, password and role are required!");
       return next(error);

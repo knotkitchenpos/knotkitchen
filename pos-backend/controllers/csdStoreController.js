@@ -13,7 +13,8 @@ const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** Present a Store + its Restaurant as one flat row for the results table. */
 const toResultRow = (store, restaurant, website = "") => {
-  const address = formatAddress(restaurant?.address);
+  const a = restaurant?.address || {};
+  const address = formatAddress(a);
 
   return {
     storeId: store.storeId,
