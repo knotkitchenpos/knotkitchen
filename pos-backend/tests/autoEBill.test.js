@@ -258,6 +258,58 @@ test("the manual button and the automatic send share one implementation", () => 
   );
 });
 
+test("REGRESSION: a counter order paid at the till fires the e-bill too", () => {
+  // It is created ALREADY "Completed", so it never passes through
+  // updateOrderStatus. Hooking only the status change silently missed the most
+  // common order in the system -- someone paying at the counter.
+  const src = SRC("controllers/orderController.js");
+
+  assert.match(
+    src,
+    /const initialStatus = isPaidAtTill \? "Completed"/,
+    "anchor moved; retarget this guard",
+  );
+  assert.match(
+    src,
+    /if \(isPaidAtTill\) fireAutoEBill\(\{ orderId: order\._id \}\);/,
+    "a till-paid order must send its e-bill at creation",
+  );
+
+  // ...and the two hooks are distinct: creation, and the later status change.
+  assert.equal(
+    (src.match(/fireAutoEBill\(/g) || []).length,
+    2,
+    "both the creation and the completion paths must fire",
+  );
+});
+
+test("EVERY way a bill gets settled fires the e-bill", () => {
+  // The point of the feature is that a customer always gets their bill. A new
+  // settle path that forgets to fire is invisible: the money still moves, the
+  // order still closes, and only the customer notices nothing arrived.
+  //
+  // Each entry is one way an order or table session reaches a settled state.
+  const paths = [
+    // Counter order paid at the till. Created ALREADY "Completed", so it never
+    // reaches updateOrderStatus -- the most common order in the system.
+    ["controllers/orderController.js", /if \(isPaidAtTill\) fireAutoEBill\(/],
+    // Counter order completed later by a person.
+    ["controllers/orderController.js", /if \(settledTransition\) fireAutoEBill\(/],
+    // Finished by the auto-complete timer instead of a person.
+    ["services/autoReadyService.js", /fireAutoEBill\(\{ orderId: order\._id \}\)/],
+    // Table session settled at the POS -- and, through settleSessionFromGateway,
+    // every QR and online table payment too.
+    ["controllers/tableSessionController.js", /if \(paid\) fireAutoEBill\(\{ tableSessionId/],
+    // Pay-by-link. Writes Completed straight onto the order, so it is settled
+    // here and nowhere else.
+    ["services/paymentLinkSettlement.js", /if \(updatedOrder\) fireAutoEBill\(/],
+  ];
+
+  for (const [file, pattern] of paths) {
+    assert.match(SRC(file), pattern, `${file}: a settle path does not send the e-bill`);
+  }
+});
+
 test("the auto-send fires only AFTER the payment transaction commits", () => {
   // Inside the transaction it would hold a Mongo transaction open across an
   // outbound HTTP call to Fast2SMS.

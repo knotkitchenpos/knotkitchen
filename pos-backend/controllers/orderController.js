@@ -469,6 +469,16 @@ const addOrder = async (req, res, next) => {
       );
     }
 
+    // A counter order paid at the till is created ALREADY "Completed" (see
+    // initialStatus above), so it never passes through updateOrderStatus and
+    // would never have fired the automatic e-bill -- silently missing the most
+    // common order in the whole system. One that is not paid yet is
+    // "Preparing", and fires later when it is completed or swept.
+    //
+    // Fire-and-forget, and a no-op unless posSettings.autoEBill is on and the
+    // order carries a phone number.
+    if (isPaidAtTill) fireAutoEBill({ orderId: order._id });
+
     res
       .status(201)
       .json({ success: true, message: "Order created!", data: order });

@@ -52,6 +52,20 @@ Off by default, per restaurant, in **Settings → Auto E-Bill**. Deliberately no
 enabled for anyone — it flips a live store from sending nothing to messaging
 every paying customer. Do 1.1 first.
 
+Once on, it fires on every settle path: counter orders paid at the till,
+counter orders completed later, the auto-complete sweep, table sessions
+(including QR and online payments), and pay-by-link. A test pins all five.
+
+### 1.5 Decide whether a phone number is compulsory at the POS · **your call**
+
+The one remaining reason a customer would not get a bill: **nobody asked for
+their number**. Phone is optional on counter orders today (required only for
+delivery), so a walk-in with no number recorded cannot be sent anything.
+
+Making it required would guarantee coverage at the cost of slowing the counter
+queue and collecting junk numbers from people who decline. Not changed
+unilaterally — say the word either way.
+
 **Verified working:** the WhatsApp transport, the signed `/r/<token>` receipt
 page, channel selection, idempotency, and the settle hooks. 620 backend + 18
 frontend tests pass.

@@ -13,6 +13,7 @@
  */
 
 const { COMPLETED } = require("../constants/orderStatus");
+const { fireAutoEBill } = require("./eBillService");
 const { normalizePaymentMethod, toOrderPaymentMethod } = require("../constants/paymentMethods");
 const Order = require("../models/orderModel");
 const Bill = require("../models/billModel");
@@ -149,6 +150,15 @@ const finalizePaymentLinkFromGateway = async ({
       { new: true },
     );
   }
+
+  // A pay-by-link customer settles here and NOWHERE else -- this writes
+  // Completed straight onto the order rather than going through
+  // updateOrderStatus, so without this they would never get an e-bill.
+  //
+  // Guarded on updatedOrder: the findOneAndUpdate above only matches while the
+  // order is unpaid, so a webhook redelivery returns null here and cannot send
+  // a second one. (eBillSentAt makes that safe twice over.)
+  if (updatedOrder) fireAutoEBill({ orderId: updatedOrder._id });
 
   return { link: updatedLink || link, txn, order: updatedOrder };
 };
