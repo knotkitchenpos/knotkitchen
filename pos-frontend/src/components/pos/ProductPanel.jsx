@@ -143,7 +143,9 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
   // "View All" under Popular Items. Without a mode of its own it used to
   // just select menus[0], so it showed the FIRST category rather than all.
   const [viewAll, setViewAll] = useState(false);
-  const [subcat, setSubcat] = useState(null);
+  // Raw state. Never read this directly for rendering -- read the derived
+  // `subcat` below, which cannot outlive the category it belongs to.
+  const [selectedSubcat, setSubcat] = useState(null);
 
   // POS Product Customization Modal (Module 8)
   const [customizingItem, setCustomizingItem] = useState(null);
@@ -192,7 +194,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
     }
   }, [location.state, menus]);
 
-  const category = catId ? menus.find((m) => m._id === catId) : null;
+  const category = (catId ? menus.find((m) => m._id === catId) : null) || null;
 
   const categoryItems = useMemo(() => {
     if (!category?.items) return [];
@@ -217,9 +219,11 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
 
   const hasSubcats = subcats.length > 0;
 
-  useEffect(() => {
-    setSubcat(null);
-  }, [catId]);
+  // A subcategory only exists inside a category. Deriving it -- rather than
+  // clearing it from an effect after the render that already went wrong --
+  // makes the invalid combination unrepresentable: no category (or a different
+  // one) means no subcategory, in the very same render.
+  const subcat = subcats.includes(selectedSubcat) ? selectedSubcat : null;
 
   const allItems = useMemo(
     () =>
@@ -483,9 +487,9 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
     : showPopular
     ? "Popular Items"
     : hasSubcats && !subcat
-    ? `${category.name} · Subcategories`
+    ? `${category?.name} · Subcategories`
     : subcat
-    ? `${category.name} · ${subcat}`
+    ? `${category?.name} · ${subcat}`
     : category?.name || "";
 
   return (
@@ -601,7 +605,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
                 onClick={() => setSubcat(null)}
                 className={`font-bold ${subcat ? "text-[#94A3B8] hover:text-[#C2410C]" : "text-[#C2410C]"}`}
               >
-                {category.name}
+                {category?.name}
               </button>
               {subcat && (
                 <>
@@ -638,7 +642,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
             onClick={() => setSubcat(null)}
             className="text-[12.5px] font-bold text-[#C2410C] underline underline-offset-2"
           >
-            Back to {category.name}
+            Back to {category?.name}
           </button>
         )}
       </div>
