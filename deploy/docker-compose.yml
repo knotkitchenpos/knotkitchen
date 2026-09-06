@@ -141,6 +141,21 @@ services:
       FAST2SMS_ORDER_READY_TEMPLATE_ID: ${FAST2SMS_ORDER_READY_TEMPLATE_ID:-}
       FAST2SMS_PAYMENT_LINK_TEMPLATE_ID: ${FAST2SMS_PAYMENT_LINK_TEMPLATE_ID:-}
 
+      # WhatsApp. The approved e-bill template is a WhatsApp template, not a
+      # DLT SMS one, so this is the live channel for e-bills. Both are needed
+      # together -- with either missing, messagingService falls back to SMS.
+      FAST2SMS_WHATSAPP_PHONE_NUMBER_ID: ${FAST2SMS_WHATSAPP_PHONE_NUMBER_ID:-}
+      FAST2SMS_EBILL_WHATSAPP_MESSAGE_ID: ${FAST2SMS_EBILL_WHATSAPP_MESSAGE_ID:-}
+
+      # Public receipt links (/r/<token>) sent to customers in the e-bill.
+      # PUBLIC_API_URL is the origin they are built from; without it the link
+      # cannot be built and the e-bill refuses to send rather than deliver a
+      # broken one. RECEIPT_LINK_SECRET signs them -- unset, it falls back to
+      # CREDENTIALS_SECRET and then JWT_SECRET. Changing whichever one is in
+      # use invalidates every link already sent.
+      PUBLIC_API_URL: ${PUBLIC_API_URL:-https://api.${BASE_DOMAIN}}
+      RECEIPT_LINK_SECRET: ${RECEIPT_LINK_SECRET:-}
+
       # Realtime
       SOCKET_ENABLED: "true"
 

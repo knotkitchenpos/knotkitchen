@@ -8,15 +8,31 @@
 # list.
 #
 #   ssh root@93.127.194.80
-#   bash /docker/knotkitchen/configure-secrets.sh
+#   bash /docker/knotkitchen/deploy/configure-secrets.sh
 #
 # It is safe to re-run: press Enter at any prompt to leave that value alone.
 # The previous .env is backed up before anything is written.
 
 set -euo pipefail
 
-ENV_FILE="${ENV_FILE:-/docker/knotkitchen/.env}"
-COMPOSE_DIR="$(dirname "$ENV_FILE")"
+# Work out where everything is from the script's OWN location, rather than
+# hardcoding a path. This script ships in the repo at deploy/, so the compose
+# file and the env file are its neighbours wherever the checkout happens to
+# live -- and the deploy path is a CI secret this script cannot read.
+#
+# It previously assumed /docker/knotkitchen/.env. The real file is
+# deploy/.env, one directory further down, so every prompt would have written
+# to a file nothing reads.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(dirname "$SCRIPT_DIR")"
+
+ENV_FILE="${ENV_FILE:-$SCRIPT_DIR/.env}"
+COMPOSE_FILE="$SCRIPT_DIR/docker-compose.yml"
+
+# Every compose call needs both flags; the project is not the default one.
+compose() {
+  docker compose -f "$COMPOSE_FILE" --env-file "$ENV_FILE" "$@"
+}
 
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "No env file at $ENV_FILE" >&2
@@ -42,21 +58,39 @@ set_var() {
   chmod 600 "$ENV_FILE"
 }
 
-# $1 key, $2 human label, $3 "secret" to hide input
+# $1 key, $2 human label, $3 "secret" to hide input, $4 suggested value.
+#
+# A suggestion is offered only when the key is NOT already set, and only for
+# values that are not secrets -- ids and URLs that are already known. Enter
+# accepts it. Anything already in the file is left alone unless you type over
+# it, so re-running this is still safe.
 ask() {
-  local key="$1" label="$2" hide="${3:-}" value
+  local key="$1" label="$2" hide="${3:-}" suggested="${4:-}" value
   local current="" state="not set"
   current="$(grep "^${key}=" "$ENV_FILE" | head -1 | cut -d= -f2- || true)"
   [[ -n "$current" ]] && state="currently set (${#current} chars)"
 
+  local offer=""
+  [[ -n "$suggested" && -z "$current" ]] && offer="$suggested"
+
   echo "  $label"
   echo "    key: $key   [$state]"
+  [[ -n "$offer" ]] && echo "    suggested: $offer"
+
   if [[ "$hide" == "secret" ]]; then
     read -rs -p "    value (hidden, Enter to keep): " value
     echo
+  elif [[ -n "$offer" ]]; then
+    read -r -p "    value (Enter to accept the suggestion): " value
   else
     read -r -p "    value (Enter to keep): " value
   fi
+
+  if [[ -z "$value" && -n "$offer" ]]; then
+    value="$offer"
+    echo "    -> using the suggested value"
+  fi
+
   if [[ -n "$value" ]]; then
     set_var "$key" "$value"
     echo "    -> saved (${#value} chars)"
@@ -122,8 +156,8 @@ echo "  template carries a tappable bill link that SMS cannot."
 echo "  Both come from the Fast2SMS WhatsApp panel; neither is a secret."
 echo "  Leave them blank to keep e-bills on SMS."
 echo
-ask FAST2SMS_WHATSAPP_PHONE_NUMBER_ID  "WhatsApp phone_number_id (WABA number ID)"
-ask FAST2SMS_EBILL_WHATSAPP_MESSAGE_ID "E-bill WhatsApp Message ID"
+ask FAST2SMS_WHATSAPP_PHONE_NUMBER_ID  "WhatsApp phone_number_id (WABA number ID)" "" "1186508304555187"
+ask FAST2SMS_EBILL_WHATSAPP_MESSAGE_ID "E-bill WhatsApp Message ID" "" "31172"
 
 echo "=============================================="
 echo " Public receipt links"
@@ -132,13 +166,13 @@ echo
 echo "  The origin the bill link is built from. Must be reachable by a"
 echo "  customer with no login -- normally https://api.knotkitchen.online"
 echo
-ask PUBLIC_API_URL "Public API origin for /r/<token> links"
+ask PUBLIC_API_URL "Public API origin for /r/<token> links" "" "https://api.knotkitchen.online"
 
 echo "=============================================="
 echo " Restarting the API"
 echo "=============================================="
-cd "$COMPOSE_DIR"
-docker compose up -d pos-api
+cd "$REPO_DIR"
+compose up -d pos-api
 
 echo
 echo "Waiting for the API to come back..."
@@ -154,7 +188,7 @@ echo
 echo "=============================================="
 echo " What the container can now see (lengths only)"
 echo "=============================================="
-docker exec knotkitchen-pos-api-1 node -e '
+compose exec -T pos-api node -e '
 const names = [
   "CASHFREE_APP_ID","CASHFREE_SECRET_KEY","CASHFREE_ENV","CASHFREE_NOTIFY_URL",
   "FAST2SMS_API_KEY","FAST2SMS_SENDER_ID","FAST2SMS_EBILL_TEMPLATE_ID",
@@ -173,3 +207,44 @@ for (const n of names) {
 echo
 echo "Nothing above prints a value. If something reads DECLARED BUT EMPTY,"
 echo "the variable reached the container with no content -- re-run and set it."
+
+echo
+echo "=============================================="
+echo " What an e-bill will actually do"
+echo "=============================================="
+compose exec -T pos-api node -e '
+const { MESSAGES, channelFor } = require("/app/services/messagingService");
+const link = require("/app/services/receiptLink");
+
+const channel = channelFor(MESSAGES.eBill);
+const explain = {
+  whatsapp: "WhatsApp template (what the approved e-bill template needs)",
+  dlt:      "DLT SMS -- WhatsApp is NOT configured, check the two WhatsApp values",
+  v3:       "plain SMS -- no template configured at all, and operators may drop it",
+};
+console.log("channel :", channel, "--", explain[channel]);
+
+// A real, signed link for a made-up id, so the shape can be eyeballed.
+try {
+  console.log("link    :", link.urlForOrder("000000000000000000000000"));
+} catch (err) {
+  console.log("link    : NOT BUILDABLE --", err.message);
+}
+
+if (channel === "whatsapp") {
+  const vars = MESSAGES.eBill.whatsapp.variables({
+    restaurantName: "Your Restaurant",
+    orderNumber: "A-1042",
+    total: "525.00",
+    receiptUrl: "https://api.knotkitchen.online/r/o_x_y",
+  });
+  console.log("");
+  console.log("Variables, in the order they will be sent:");
+  vars.forEach((v, i) => console.log("  " + (i + 1) + ".", v));
+  console.log("");
+  console.log("Expected in the message: header shows the restaurant, then");
+  console.log("Order No / Total / View Bill. If they come out shuffled, the");
+  console.log("header belongs at the OTHER end of the list -- say so and it");
+  console.log("is a one-line change.");
+}
+'
