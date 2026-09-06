@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Install Cashfree / Fast2SMS credentials into /docker/knotkitchen/.env.
+# Install Cashfree / Fast2SMS credentials into the deploy env file.
 #
 # Run this ON THE SERVER. It prompts for each value and reads it silently, so
 # the secrets go from your keyboard into the env file and nowhere else -- not
@@ -8,7 +8,7 @@
 # list.
 #
 #   ssh root@93.127.194.80
-#   bash /docker/knotkitchen/deploy/configure-secrets.sh
+#   bash /srv/knot/deploy/configure-secrets.sh
 #
 # It is safe to re-run: press Enter at any prompt to leave that value alone.
 # The previous .env is backed up before anything is written.
@@ -20,9 +20,9 @@ set -euo pipefail
 # file and the env file are its neighbours wherever the checkout happens to
 # live -- and the deploy path is a CI secret this script cannot read.
 #
-# It previously assumed /docker/knotkitchen/.env. The real file is
-# deploy/.env, one directory further down, so every prompt would have written
-# to a file nothing reads.
+# It previously assumed a hardcoded /docker/knotkitchen/.env. The checkout is
+# actually at /srv/knot (DEPLOY_APP_PATH), and the env file is deploy/.env
+# inside it, so every prompt would have written to a file nothing reads.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DIR="$(dirname "$SCRIPT_DIR")"
 
