@@ -39,6 +39,7 @@ import {
 import { getMyRestaurant } from "../../https/newModules";
 import { getWebsiteSettings } from "../../https/storefrontApi";
 import Invoice from "../invoice/Invoice";
+import { receiptAddress } from "../../utils/address";
 import CollectionModal from "./CollectionModal";
 import DeliveryModal from "./DeliveryModal";
 import DiscountModal from "./DiscountModal";
@@ -1212,19 +1213,7 @@ const OrderPanel = () => {
             websiteSettings?.contact?.phone ||
             ""
           }
-          restaurantAddress={
-            storeProps.fullAddress ||
-            [
-              storeProps.secondAddress,
-              storeProps.city,
-              storeProps.postalCode,
-            ]
-              .filter(Boolean)
-              .join(", ") ||
-            restaurant?.address?.line1 ||
-            websiteSettings?.contact?.address ||
-            ""
-          }
+          restaurantAddress={receiptAddress({ storeProps, restaurant, websiteSettings })}
         />
       )}
 

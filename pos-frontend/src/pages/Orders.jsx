@@ -17,6 +17,7 @@ import { printReceipt } from "../utils/printReceipt";
 import { isPreparing, isReady, isSettled, isCancelled, statusLabel, COMPLETED, CANCELLED } from "../constants/orderStatus";
 import { sourceLabel, tableLabel } from "../utils/orderLabels";
 import { sendTableEBill } from "../utils/sendTableEBill";
+import { receiptAddress } from "../utils/address";
 
 /* ---------- Icons ---------- */
 const I = {
@@ -934,15 +935,7 @@ const Orders = () => {
                     // logged-in user's name (see BUG 6 in the QA
                     // report).
                     restaurantName: storeDisplayName,
-                    restaurantAddress:
-                      storeProps.fullAddress ||
-                      [
-                        restaurant?.address?.line1,
-                        restaurant?.address?.city,
-                        restaurant?.address?.postalCode,
-                      ]
-                        .filter(Boolean)
-                        .join(", "),
+                    restaurantAddress: receiptAddress({ storeProps, restaurant }),
                     restaurantPhone:
                       storeProps.ownerPhone ||
                       storeProps.contactPersonPhone ||

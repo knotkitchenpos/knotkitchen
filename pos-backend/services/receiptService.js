@@ -4,6 +4,7 @@
  */
 
 const { isSettled } = require("../constants/orderStatus");
+const { formatAddress } = require("./address");
 
 const formatPaymentMethod = (method) => {
   const m = String(method || "").trim().toUpperCase();
@@ -25,7 +26,10 @@ const buildReceipt = ({
   const restaurantInfo = {
     id: restaurant?._id || restaurant?.storeId || "N/A",
     name: restaurant?.storeName || restaurant?.name || "Knot Kitchen",
-    address: restaurant?.address || "Main Street",
+    // Flattened here, once, rather than by each thing that renders a
+    // receipt. Empty when unset -- renderers omit the line; the old
+    // "Main Street" default printed a fictional address on real bills.
+    address: formatAddress(restaurant?.address),
     phone: restaurant?.ownerPhone || restaurant?.phone || "N/A",
   };
 

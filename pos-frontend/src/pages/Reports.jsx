@@ -7,6 +7,7 @@ import { getWebsiteSettings } from "../https/storefrontApi";
 import { printHtmlDocument } from "../utils/printDocument";
 import { isPreparing, isReady, isCancelled, statusLabel } from "../constants/orderStatus";
 import { sourceLabel, tableLabel } from "../utils/orderLabels";
+import { receiptAddress } from "../utils/address";
 
 /**
  * Module 5 — Reports.
@@ -525,25 +526,10 @@ const Reports = () => {
     websiteSettings?.branding?.siteTitle ||
     websiteSettings?.branding?.storeName ||
     "KnotKitchen Store";
-  const restaurantAddress = useMemo(() => {
-    const parts = [
-      restaurant?.address?.line1,
-      restaurant?.address?.line2,
-      restaurant?.address?.city,
-      restaurant?.address?.state,
-      restaurant?.address?.postalCode,
-    ]
-      .filter(Boolean);
-    if (parts.length) return parts.join(", ");
-    const web = websiteSettings?.contact;
-    const w = [
-      web?.addressLine1,
-      web?.addressLine2,
-      web?.city,
-      web?.postalCode,
-    ].filter(Boolean);
-    return w.join(", ");
-  }, [restaurant, websiteSettings]);
+  const restaurantAddress = useMemo(
+    () => receiptAddress({ restaurant, websiteSettings }),
+    [restaurant, websiteSettings],
+  );
 
   const windowLabel = useMemo(() => {
     if (!responseWindow) return "";

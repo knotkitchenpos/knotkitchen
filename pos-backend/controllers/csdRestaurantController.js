@@ -16,6 +16,7 @@ const { isStoreOpen } = require("../services/businessHours");
 const { buildStorefrontUrl } = require("../services/websiteProvisioningService");
 const { csdAudit } = require("../services/csdAuditService");
 const config = require("../config/config");
+const { formatAddress } = require("../services/address");
 
 const str = (v) => String(v ?? "").trim();
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -39,7 +40,9 @@ const addressOf = (restaurant) => {
   return {
     line1: a.line1 || "", line2: a.line2 || "", city: a.city || "",
     state: a.state || "", postalCode: a.postalCode || "", country: a.country || "",
-    full: [a.line1, a.line2, a.city, a.state, a.postalCode].filter(Boolean).join(", "),
+    // Shared with the receipt and the CSD store list, so one restaurant's
+    // address reads the same wherever it is shown.
+    full: formatAddress(a),
   };
 };
 

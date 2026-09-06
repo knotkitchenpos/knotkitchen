@@ -6,17 +6,14 @@ const CsdAgreementLink = require("../models/csdAgreementLinkModel");
 const { buildStorefrontUrl } = require("../services/websiteProvisioningService");
 const { csdAudit } = require("../services/csdAuditService");
 const onboardPortalService = require("../services/onboardPortalService");
+const { formatAddress } = require("../services/address");
 
 /** Escape user input before it reaches a RegExp — otherwise "(" or "*" throws. */
 const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /** Present a Store + its Restaurant as one flat row for the results table. */
 const toResultRow = (store, restaurant, website = "") => {
-  const a = restaurant?.address || {};
-  const address = [a.line1, a.line2, a.city, a.state, a.postalCode]
-    .map((p) => (p || "").trim())
-    .filter(Boolean)
-    .join(", ");
+  const address = formatAddress(restaurant?.address);
 
   return {
     storeId: store.storeId,
