@@ -7,6 +7,7 @@ import { useMutation } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
 import { printHtmlDocument } from "../../utils/printDocument";
 import { sendEBill } from "../../https";
+import { resolveItemAmounts } from "../../utils/orderItems";
 
 /**
  * Invoice / receipt modal (Module 3 §5, §6, §7, §8).
@@ -124,8 +125,8 @@ const Invoice = ({
             ${item.name}
             ${modifierLine ? `<div style="font-size:10px;color:#333;">${modifierLine}</div>` : ""}
           </td>
-          <td style="padding:6px 0;font-size:12px;text-align:center;">x${item.quantity}</td>
-          <td style="padding:6px 0;font-size:12px;text-align:right;">${money(item.price)}</td>
+          <td style="padding:6px 0;font-size:12px;text-align:center;">x${resolveItemAmounts(item).quantity}</td>
+          <td style="padding:6px 0;font-size:12px;text-align:right;">${money(resolveItemAmounts(item).lineTotal)}</td>
         </tr>`;
             })
             .join("");
@@ -362,10 +363,11 @@ const Invoice = ({
                                     <div className="flex justify-between items-start gap-3">
                                         <span className="text-white/90">
                                             {item.name}{" "}
-                                            <span className="text-white/40">x{item.quantity}</span>
+                                            <span className="text-white/40">x{resolveItemAmounts(item).quantity}</span>
                                         </span>
+                                        {/* The LINE amount, so the rows add up to the subtotal below. */}
                                         <span className="font-semibold shrink-0">
-                                            {money(item.price)}
+                                            {money(resolveItemAmounts(item).lineTotal)}
                                         </span>
                                     </div>
                                     {(item.modifiers || []).length > 0 && (

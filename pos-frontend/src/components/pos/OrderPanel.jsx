@@ -40,6 +40,7 @@ import { getMyRestaurant } from "../../https/newModules";
 import { getWebsiteSettings } from "../../https/storefrontApi";
 import Invoice from "../invoice/Invoice";
 import { receiptAddress } from "../../utils/address";
+import { toOrderItems } from "../../utils/orderItems";
 import CollectionModal from "./CollectionModal";
 import DeliveryModal from "./DeliveryModal";
 import DiscountModal from "./DiscountModal";
@@ -427,7 +428,9 @@ const OrderPanel = () => {
       orderType: apiType,
 
       bills: billsForOrder,
-      items: cart,
+      // Mapped, not posted raw: the cart keeps the LINE total in `price`,
+      // the API expects the UNIT there with the line in `total`.
+      items: toOrderItems(cart),
       // paymentMethod tells the backend which channel the order came from,
       // but the actual "paid" vs "pending" state lives in `payments[]` and
       // for Pay-by-Link is only set to paid by verifyAndCaptureLinkPayment.
@@ -849,12 +852,22 @@ const OrderPanel = () => {
               // Structured modifier entries (from ProductPanel POS customization flow).
               const structuredMods = Array.isArray(item.modifiers) ? item.modifiers : [];
 
-              // Unit base price = total item price minus modifier prices (per unit).
+              // `item.price` is the LINE TOTAL (unit x quantity) -- see cartSlice,
+              // where addItems and updateQuantity both write
+              // `price = pricePerQuantity * quantity`. Subtracting a per-unit
+              // modifier figure from it, and then multiplying by quantity again
+              // below, counted the quantity twice: a 100 item taken 2x showed
+              // 400 on the line while the subtotal correctly said 200.
               const modifiersUnitPrice = structuredMods.reduce(
                 (s, m) => s + Number(m?.price || 0) * Number(m?.quantity || 1),
                 0,
               );
-              const baseUnitPrice = Math.max(0, Number(item.price || 0) - modifiersUnitPrice);
+              const lineQuantity = Math.max(1, Number(item.quantity) || 1);
+              // Prefer the stored unit price; fall back to dividing the line
+              // total for carts restored from a held order, which predate it.
+              const unitPrice =
+                Number(item.pricePerQuantity) || Number(item.price || 0) / lineQuantity;
+              const baseUnitPrice = Math.max(0, unitPrice - modifiersUnitPrice);
 
               return (
                 <div key={item.id} className="space-y-1">
@@ -875,7 +888,7 @@ const OrderPanel = () => {
                       {baseName}
                     </p>
                     <span className="shrink-0 text-[14px] font-extrabold text-[#0F172A] w-[72px] text-right">
-                      {money(baseUnitPrice * (item.quantity || 1))}
+                      {money(baseUnitPrice * lineQuantity)}
                     </span>
                   </div>
 
@@ -885,7 +898,7 @@ const OrderPanel = () => {
                       m.quantity && m.quantity > 1
                         ? `${m.quantity}× ${m.optionName || m.name}`
                         : m.optionName || m.name;
-                    const modLineTotal = Number(m.price || 0) * Number(m.quantity || 1) * (item.quantity || 1);
+                    const modLineTotal = Number(m.price || 0) * Number(m.quantity || 1) * lineQuantity;
                     return (
                       <div key={`${item.id}-mod-${idx}`} className="flex items-center gap-2.5 pl-6">
                         <button

@@ -5,6 +5,7 @@
 
 const { isSettled } = require("../constants/orderStatus");
 const { formatAddress } = require("./address");
+const { resolveItemAmounts } = require("./orderItemAmounts");
 
 const formatPaymentMethod = (method) => {
   const m = String(method || "").trim().toUpperCase();
@@ -49,13 +50,20 @@ const buildReceipt = ({
     rawItems = bill.items;
   }
 
-  const items = rawItems.map((item) => ({
-    name: item.name || "Item",
-    price: Number(item.price || 0),
-    quantity: Number(item.quantity || 1),
-    total: Number(item.total || (item.price || 0) * (item.quantity || 1)),
-    modifiers: item.modifiers || [],
-  }));
+  // `total || price * quantity` looked reasonable but multiplied the quantity
+  // in twice for POS orders, which store the LINE total in `price` and left
+  // `total` at 0. resolveItemAmounts settles which is which -- including for
+  // orders written before that was fixed. See services/orderItemAmounts.js.
+  const items = rawItems.map((item) => {
+    const { quantity, unitPrice, lineTotal } = resolveItemAmounts(item);
+    return {
+      name: item.name || "Item",
+      price: unitPrice,
+      quantity,
+      total: lineTotal,
+      modifiers: item.modifiers || [],
+    };
+  });
 
   const quantities = items.reduce((acc, curr) => acc + curr.quantity, 0);
 

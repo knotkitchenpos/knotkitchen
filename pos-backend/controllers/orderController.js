@@ -109,11 +109,22 @@ const sanitizeBills = (bills = {}) => ({
  * authenticated device) but bounded — a stored 1e12 price could crash
  * downstream aggregations.
  */
-const sanitizeItem = (raw = {}) => ({
+const sanitizeItem = (raw = {}) => {
+  const quantity = Math.max(1, Math.min(1000, Math.floor(safeNumber(raw.quantity, 1))));
+  const price = safeNumber(raw.price, 0, { min: 0, max: 1e7 });
+  // The schema means `price` per unit and `total` per line. A client that
+  // sends only `price` used to store total: 0, which the receipt then
+  // reconstructed as price * quantity -- counting the quantity twice for the
+  // POS, whose cart puts the LINE total in `price`. Derive it instead of
+  // storing a zero nobody can interpret later.
+  const total =
+    safeNumber(raw.total, 0, { min: 0, max: 1e9 }) ||
+    safeNumber(price * quantity, 0, { min: 0, max: 1e9 });
+  return {
   name: String(raw.name || "").slice(0, 200),
-  quantity: Math.max(1, Math.min(1000, Math.floor(safeNumber(raw.quantity, 1)))),
-  price: safeNumber(raw.price, 0, { min: 0, max: 1e7 }),
-  total: safeNumber(raw.total, 0, { min: 0, max: 1e9 }),
+  quantity,
+  price,
+  total,
   note: String(raw.note || "").slice(0, 300),
   modifiers: Array.isArray(raw.modifiers)
     ? raw.modifiers.slice(0, 40).map((m) => ({
@@ -121,7 +132,8 @@ const sanitizeItem = (raw = {}) => ({
         price: safeNumber(m?.price, 0, { min: -1e6, max: 1e6 }),
       }))
     : [],
-});
+  };
+};
 
 // Validate table capacity on the server.
 // Never trust the frontend: the table is always re-resolved
