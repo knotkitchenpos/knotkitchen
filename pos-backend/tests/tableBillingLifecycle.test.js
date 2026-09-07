@@ -517,14 +517,11 @@ test("full lifecycle: OPEN → OCCUPIED → PROCESSING → BILL_REQUESTED → PA
   assert.ok(bill, "bill record exists and is preserved");
   assert.equal(bill.status, "PAID", "2. bill marked PAID");
 
-  // A settled table now enters its post-payment cooldown rather than going
-  // straight back into service, so nobody is seated onto an uncleared table.
-  // services/tableCooldownService returns it to "available" once availableAt
-  // passes (or immediately, when the restaurant sets the wait to 0).
+  // A settled table goes straight back to available. The cleaning wait it
+  // used to serve was removed so the next party can be seated immediately.
   const t = store.tables.find((x) => x._id === table._id);
-  assert.equal(t.status, "cleaning", "6. table entered post-payment cooldown");
-  assert.ok(t.availableAt instanceof Date, "cooldown deadline is stamped on the table");
-  assert.ok(t.availableAt.getTime() > Date.now(), "and it is in the future");
+  assert.equal(t.status, "available", "6. table is free the moment the bill is settled");
+  assert.equal(t.availableAt, null, "and carries no deadline, because there is no wait");
   assert.equal(t.currentOccupancy, 0);
 
   // Orders preserved — NOT deleted

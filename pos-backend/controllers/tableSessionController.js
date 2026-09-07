@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const { buildCooldownUpdate, cooldownMinutesFor } = require("../services/tableCooldownService");
+const { buildCooldownUpdate } = require("../services/tableCooldownService");
 const { resolveGstForRestaurant } = require("../services/gst");
 const Table = require("../models/tableModel");
 const TableSession = require("../models/tableSessionModel");
@@ -1048,16 +1048,16 @@ const recordSessionPayment = async (req, res, next) => {
     // No-op unless the restaurant has autoEBill on.
     if (paid) fireAutoEBill({ tableSessionId: session._id });
 
-    // Tell the operator when the table comes back, rather than leaving them
-    // to wonder why it still shows as occupied.
-    const cooldownMinutes = paid ? await cooldownMinutesFor(session.restaurantId) : null;
+    // The table is free the moment the bill is settled, so there is no wait
+    // to report. `cooldownMinutes` stays in the response as 0 rather than
+    // disappearing, because a client still reading it should see "no wait"
+    // rather than `undefined`.
+    const cooldownMinutes = 0;
 
     res.status(200).json({
       success: true,
       message: paid
-        ? cooldownMinutes
-          ? `Paid via ${normalizedMethod}. Table frees up in ${cooldownMinutes} min.`
-          : `Paid via ${normalizedMethod}. Table is available again.`
+        ? `Paid via ${normalizedMethod}. Table is available again.`
         : "Payment failed.",
       data: paid ? { ...(session.toObject ? session.toObject() : session), cooldownMinutes } : session,
     });

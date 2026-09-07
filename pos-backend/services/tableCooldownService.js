@@ -1,19 +1,23 @@
 /**
- * Post-payment table cooldown.
+ * Freeing a table after payment.
  *
- * When a table's bill is settled it used to flip straight back to
- * "available", so the next party could be seated onto a table nobody had
- * cleared yet. A settled table now enters `cleaning` with an `availableAt`
- * stamp, and this sweep returns it to `available` once that passes.
+ * A settled table used to rest in `cleaning` for a configurable wait before
+ * returning to `available`. That is gone: payment now frees the table
+ * immediately, so the next party can be seated the moment the bill is
+ * settled.
  *
- * The wait is per-restaurant (`Restaurant.tableSettings.cooldownMinutes`,
- * default 2) and set from Manage Table. Zero means free it immediately, which
- * is the old behaviour for anyone who wants it.
+ * What remains, and why:
  *
- * Deliberately a poll rather than a timer per table: a setTimeout dies with
- * the process, so a restart during service would strand every table mid-
- * cooldown. A sweep recovers on its own because the deadline lives in the
- * database, not in memory.
+ *   `cleaning` is STILL a real status. Staff set it by hand from Manage
+ *   Table, and the CSD can too. Removing the status would take away a control
+ *   people use; only the AUTOMATIC hold after payment has gone.
+ *
+ *   The sweep is kept as a release valve. It frees any table carrying an
+ *   `availableAt` deadline -- which now only happens to rows stamped before
+ *   this change. Without it those tables would sit in `cleaning` forever,
+ *   because nothing would ever come back to clear them. A table a member of
+ *   staff marked `cleaning` by hand carries no deadline and is left alone, so
+ *   it stays until they clear it.
  */
 
 const AUTO_FREE_TICK_MS = 20 * 1000;
@@ -21,48 +25,30 @@ const AUTO_FREE_TICK_MS = 20 * 1000;
 let timer = null;
 let isRunning = false;
 
-/** Resolve how long this restaurant holds a table after payment. */
-const DEFAULT_COOLDOWN_MINUTES = 2;
+/**
+ * There is no wait any more.
+ *
+ * Kept as a function, and exported, so the settle path and its tests have one
+ * place that answers "how long is a table held" rather than each assuming
+ * zero independently.
+ */
+const DEFAULT_COOLDOWN_MINUTES = 0;
 
-const cooldownMinutesFor = async (restaurantId) => {
-  if (!restaurantId) return DEFAULT_COOLDOWN_MINUTES;
-
-  // Settling a bill must never block on this lookup. With no live connection
-  // there is nothing to read, and waiting would just burn the driver's
-  // server-selection timeout before falling back to the same default anyway.
-  const mongoose = require("mongoose");
-  if (mongoose.connection?.readyState !== 1) return DEFAULT_COOLDOWN_MINUTES;
-
-  try {
-    const Restaurant = require("../models/restaurantModel");
-    const restaurant = await Restaurant.findById(restaurantId).select("tableSettings").lean();
-    const value = Number(restaurant?.tableSettings?.cooldownMinutes);
-    return Number.isFinite(value) && value >= 0 ? value : DEFAULT_COOLDOWN_MINUTES;
-  } catch {
-    return DEFAULT_COOLDOWN_MINUTES;
-  }
-};
+const cooldownMinutesFor = async () => DEFAULT_COOLDOWN_MINUTES;
 
 /**
- * The update that puts a settled table into cooldown — or frees it outright
- * when the restaurant has the wait switched off.
+ * The update applied to a table when its bill is settled: free, immediately.
  *
  * Returns the update rather than applying it so the CALLER writes through its
  * own Table model. Reaching for the model here would bypass the model the
  * caller (and its tests) is actually using.
  */
-const buildCooldownUpdate = async (restaurantId) => {
-  const minutes = await cooldownMinutesFor(restaurantId);
-  if (minutes > 0) {
-    return {
-      status: "cleaning",
-      availableAt: new Date(Date.now() + minutes * 60 * 1000),
-      currentOrderId: null,
-      currentOccupancy: 0,
-    };
-  }
-  return { status: "available", availableAt: null, currentOrderId: null, currentOccupancy: 0 };
-};
+const buildCooldownUpdate = async () => ({
+  status: "available",
+  availableAt: null,
+  currentOrderId: null,
+  currentOccupancy: 0,
+});
 
 /** One sweep: free every table whose cooldown has elapsed. */
 const runTableCooldownTick = async () => {

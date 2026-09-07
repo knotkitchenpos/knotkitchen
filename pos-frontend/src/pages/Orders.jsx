@@ -259,8 +259,8 @@ const Orders = () => {
    * open and the table unavailable to the next party.
    *
    * So for a table order Complete asks how it was paid, then settles the
-   * session — which closes it, marks every kitchen order paid, and starts the
-   * table's cooldown. Non-table orders keep the plain status change.
+   * session — which closes it, marks every kitchen order paid, and frees the
+   * table immediately. Non-table orders keep the plain status change.
    */
   const [settleFor, setSettleFor] = useState(null); // { order, session }
   const [settleLoading, setSettleLoading] = useState(false);
@@ -288,11 +288,9 @@ const Orders = () => {
         idempotencyKey: `settle-${sessionId}-${method}-${amount}`,
       }),
     onSuccess: (res, vars) => {
-      const mins = res?.data?.data?.cooldownMinutes;
-      enqueueSnackbar(
-        res?.data?.message || `Paid. The table frees up${mins ? ` in ${mins} min` : " shortly"}.`,
-        { variant: "success" },
-      );
+      enqueueSnackbar(res?.data?.message || "Paid. The table is available again.", {
+        variant: "success",
+      });
       // Reported separately from the payment on purpose -- see the helper.
       if (vars?.sendEBill && vars?.phone) {
         sendTableEBill({ sessionId: vars.sessionId, phone: vars.phone, notify: enqueueSnackbar });

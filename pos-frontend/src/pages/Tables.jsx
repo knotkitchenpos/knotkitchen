@@ -21,8 +21,6 @@ import {
   cancelTableSessionItem,
   regenerateQr,
   getOrCreateTableQr,
-  getTableSettings,
-  updateTableSettings,
 } from "../https";
 import { enqueueSnackbar } from "notistack";
 // NOTE: `FiQrCode` does not exist in the `react-icons/fi` set — it was a
@@ -98,27 +96,10 @@ const Tables = () => {
   const [printModalTable, setPrintModalTable] = useState(null);
   const [isAreaModalOpen, setIsAreaModalOpen] = useState(false);
   const [newAreaInput, setNewAreaInput] = useState("");
-  const [cooldownInput, setCooldownInput] = useState("");
 
   // How long a table rests after its bill is settled before it can be seated
   // again. Lives on the restaurant, not the browser, so every till agrees.
-  const { data: tableSettingsRes } = useQuery({
-    queryKey: ["table-settings"],
-    queryFn: getTableSettings,
-  });
-  const cooldownMinutes = Number(tableSettingsRes?.data?.data?.cooldownMinutes ?? 2);
 
-  const cooldownMut = useMutation({
-    mutationFn: updateTableSettings,
-    onSuccess: (res) => {
-      enqueueSnackbar(res?.data?.message || "Cooldown updated.", { variant: "success" });
-      queryClient.invalidateQueries({ queryKey: ["table-settings"] });
-    },
-    onError: (e) =>
-      enqueueSnackbar(e?.response?.data?.message || "Could not update the cooldown.", {
-        variant: "error",
-      }),
-  });
 
   // Add/Edit Form State
   const [displayId, setDisplayId] = useState("");
@@ -229,9 +210,9 @@ const Tables = () => {
   /**
    * Settle a table and let it go.
    *
-   * The server marks the session PAID, then CLOSED, then puts the table into
-   * its cooldown; the sweeper returns it to "available" once the configured
-   * wait has passed. Because the closed session no longer counts as active,
+   * The server marks the session PAID, then CLOSED, then frees the table
+   * immediately -- there is no cleaning wait. Because the closed session no
+   * longer counts as active,
    * the next customer to scan the same QR gets a fresh order page -- the QR
    * itself never changes.
    */
@@ -244,12 +225,9 @@ const Tables = () => {
         idempotencyKey: `settle-${sessionId}-${method}-${amount}`,
       }),
     onSuccess: (res, vars) => {
-      const mins = res?.data?.data?.cooldownMinutes;
-      enqueueSnackbar(
-        res?.data?.message ||
-          `Paid. The table frees up${mins ? ` in ${mins} min` : " shortly"}.`,
-        { variant: "success" },
-      );
+      enqueueSnackbar(res?.data?.message || "Paid. The table is available again.", {
+        variant: "success",
+      });
       // Reported separately from the payment on purpose -- see the helper.
       if (vars?.sendEBill && vars?.phone) {
         sendTableEBill({ sessionId: vars.sessionId, phone: vars.phone, notify: enqueueSnackbar });
@@ -521,26 +499,6 @@ const Tables = () => {
               <span>Floors & Areas</span>
             </div>
             <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2 text-xs font-bold text-[#475569]">
-                <span title="A settled table stays out of service for this long so staff can clear it. 0 frees it immediately.">
-                  Free table after payment
-                </span>
-                <input
-                  type="number"
-                  min={0}
-                  max={120}
-                  value={cooldownInput === "" ? cooldownMinutes : cooldownInput}
-                  onChange={(e) => setCooldownInput(e.target.value)}
-                  onBlur={() => {
-                    if (cooldownInput === "") return;
-                    const next = Math.max(0, Math.min(120, Math.round(Number(cooldownInput) || 0)));
-                    setCooldownInput("");
-                    if (next !== cooldownMinutes) cooldownMut.mutate({ cooldownMinutes: next });
-                  }}
-                  className="w-[62px] h-[32px] px-2 text-center rounded-lg border border-[#E2E8F0] font-extrabold text-[12.5px]"
-                />
-                <span className="text-[#94A3B8]">min</span>
-              </label>
               <button
                 onClick={() => setIsAreaModalOpen(true)}
                 className="text-xs font-bold text-[#C2410C] hover:underline flex items-center gap-1"

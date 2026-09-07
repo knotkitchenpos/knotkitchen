@@ -73,25 +73,18 @@ test("the counter list does not quietly include an online rail", () => {
 
 // ---- the table comes back on its own --------------------------------
 
-test("a settled table goes into cooldown rather than straight back", async () => {
-  // No DB connection here, so cooldownMinutesFor falls back to the default.
+test("REGRESSION: a settled table goes straight back into service", async () => {
+  // It used to rest in `cleaning` for a configurable wait. That wait is gone:
+  // the next party can be seated the moment the bill is settled.
   const update = await buildCooldownUpdate(null);
-  assert.equal(update.status, "cleaning");
-  assert.ok(update.availableAt instanceof Date);
+  assert.equal(update.status, "available");
+  assert.equal(update.availableAt, null, "no deadline, because there is no wait");
   assert.equal(update.currentOrderId, null, "the finished order must be unlinked");
   assert.equal(update.currentOccupancy, 0, "and the guests cleared");
 });
 
-test("the default wait is the 2 minutes that was asked for", () => {
-  assert.equal(DEFAULT_COOLDOWN_MINUTES, 2);
-});
-
-test("the cooldown deadline is roughly the configured wait away", async () => {
-  const before = Date.now();
-  const update = await buildCooldownUpdate(null);
-  const waitMs = update.availableAt.getTime() - before;
-  const expected = DEFAULT_COOLDOWN_MINUTES * 60 * 1000;
-  assert.ok(Math.abs(waitMs - expected) < 5000, `expected ~${expected}ms, got ${waitMs}ms`);
+test("there is no wait left to configure", () => {
+  assert.equal(DEFAULT_COOLDOWN_MINUTES, 0);
 });
 
 // ---- the QR serves a fresh order to the next customer ----------------
