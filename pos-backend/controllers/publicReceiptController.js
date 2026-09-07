@@ -142,6 +142,21 @@ const viewPublicReceipt = async (req, res) => {
     const parsed = readToken(req.params.token);
     if (!parsed) return res.status(404).type("html").send(notFound());
 
+    // A KnotKitchen invoice to a restaurant rides the same signed-link
+    // mechanism: POS session cookies are keyed by an x-store-id header, which
+    // a plain link cannot send, so an authenticated URL would only work when
+    // exactly one store happened to be signed in.
+    if (parsed.isInvoice) {
+      const { PlatformInvoice } = require("../models/platformSubscriptionModel");
+      const invoice = await PlatformInvoice.findById(parsed.id).lean();
+      if (!invoice) return res.status(404).type("html").send(notFound());
+
+      const { renderInvoice } = require("../services/invoiceDocument");
+      res.set("Cache-Control", "no-store, private");
+      res.set("X-Robots-Tag", "noindex, nofollow");
+      return res.status(200).type("html").send(renderInvoice(invoice));
+    }
+
     let order = null;
     let tableSession = null;
     let bill = null;

@@ -202,6 +202,7 @@ app.use("/api/billing", require("./routes/billingRoute"));
 // The restaurant's KnotKitchen Business Balance. Scoped to the caller's own
 // restaurant throughout -- no route here takes a restaurantId.
 app.use("/api/business-balance", require("./routes/businessBalanceRoute"));
+app.use("/api/subscription", require("./routes/subscriptionRoute"));
 app.use("/api/qr", require("./routes/qrRoute"));
 app.use("/api/analytics", require("./routes/analyticsRoute"));
 app.use("/api/notification", require("./routes/notificationRoute"));

@@ -25,6 +25,11 @@ const crypto = require("crypto");
 
 const KIND_ORDER = "o";
 const KIND_SESSION = "s";
+// A KnotKitchen invoice to a restaurant. Same signing, because POS session
+// cookies are namespaced by an x-store-id HEADER -- which a plain link or a
+// new tab cannot send, so an authenticated URL would only work when exactly
+// one store happens to be signed in.
+const KIND_INVOICE = "i";
 
 /**
  * Read the key per call so a rotation only needs a container restart.
@@ -62,6 +67,7 @@ const mintToken = (kind, id) => {
 
 const tokenForOrder = (orderId) => mintToken(KIND_ORDER, orderId);
 const tokenForSession = (sessionId) => mintToken(KIND_SESSION, sessionId);
+const tokenForInvoice = (invoiceId) => mintToken(KIND_INVOICE, invoiceId);
 
 /**
  * Verify and unpack a token.
@@ -80,7 +86,7 @@ const readToken = (token) => {
   if (!match) return null;
 
   const [, kind, id, sig] = match;
-  if (kind !== KIND_ORDER && kind !== KIND_SESSION) return null;
+  if (![KIND_ORDER, KIND_SESSION, KIND_INVOICE].includes(kind)) return null;
 
   let expected;
   try {
@@ -94,7 +100,13 @@ const readToken = (token) => {
   const b = Buffer.from(String(sig), "utf8");
   if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
 
-  return { kind, id, isOrder: kind === KIND_ORDER, isSession: kind === KIND_SESSION };
+  return {
+    kind,
+    id,
+    isOrder: kind === KIND_ORDER,
+    isSession: kind === KIND_SESSION,
+    isInvoice: kind === KIND_INVOICE,
+  };
 };
 
 /**
@@ -123,12 +135,16 @@ const receiptUrl = (token) => {
 
 const urlForOrder = (orderId) => receiptUrl(tokenForOrder(orderId));
 const urlForSession = (sessionId) => receiptUrl(tokenForSession(sessionId));
+const urlForInvoice = (invoiceId) => receiptUrl(tokenForInvoice(invoiceId));
 
 module.exports = {
   KIND_ORDER,
   KIND_SESSION,
+  KIND_INVOICE,
   tokenForOrder,
   tokenForSession,
+  tokenForInvoice,
+  urlForInvoice,
   readToken,
   receiptUrl,
   urlForOrder,

@@ -210,3 +210,99 @@ test("SOURCE: an unaffordable subscription is refused, not part-applied", () => 
   assert.match(src, /InsufficientBalanceError/);
   assert.match(src, /402/, "payment required, with the shortfall named");
 });
+
+// ---------------------------------------------------------------------------
+// The invoice document
+// ---------------------------------------------------------------------------
+
+test("the invoice carries every field the spec lists", () => {
+  const { renderInvoice } = require("../services/invoiceDocument");
+  const html = renderInvoice({
+    invoiceNumber: "KK-148379-0001",
+    invoiceDate: new Date("2026-09-07"),
+    seller: { name: "KnotKitchen", gstin: "19AAAAA0000A1Z5", addressLines: ["Kolkata"], state: "West Bengal" },
+    buyer: { name: "Spice Garden", gstin: "19BBBBB1111B1Z5", addressLines: ["MG Road"], state: "West Bengal" },
+    lines: [{
+      serial: 1, description: "Growth plan — 30 days",
+      amountPaise: money.toPaise(1299), taxableValuePaise: money.toPaise(1299),
+      cgstRate: 9, cgstPaise: money.toPaise(116.91),
+      sgstRate: 9, sgstPaise: money.toPaise(116.91),
+      igstRate: 0, igstPaise: 0, totalPaise: money.toPaise(1532.82),
+    }],
+    subtotalPaise: money.toPaise(1299),
+    cgstPaise: money.toPaise(116.91),
+    sgstPaise: money.toPaise(116.91),
+    igstPaise: 0,
+    totalTaxPaise: money.toPaise(233.82),
+    totalPaise: money.toPaise(1532.82),
+    totalInWords: money.amountInWords(money.toPaise(1532.82)),
+    placeOfSupply: "West Bengal",
+    interState: false,
+    status: "PAID",
+  });
+
+  for (const [label, needle] of [
+    ["TAX INVOICE heading", "TAX INVOICE"],
+    ["invoice number", "KK-148379-0001"],
+    ["seller GSTIN", "19AAAAA0000A1Z5"],
+    ["bill to", "Spice Garden"],
+    ["buyer GSTIN", "19BBBBB1111B1Z5"],
+    ["plan name", "Growth plan"],
+    ["plan value", "1,299.00"],
+    ["cgst amount", "116.91"],
+    ["total in figures", "1,532.82"],
+    ["total in words", "Thirty Two and Eighty Two Paise Only"],
+    ["footer", "computer generated digital invoice, no signature required"],
+  ]) {
+    assert.ok(html.includes(needle), `missing ${label}`);
+  }
+});
+
+test("REGRESSION: tax columns follow the supply", () => {
+  // A nil IGST column on an intra-state invoice reads as a claim that IGST
+  // was charged at zero, which is not the same as it not applying.
+  const { taxColumns } = require("../services/invoiceDocument");
+  assert.deepEqual(taxColumns({ interState: false }).map((c) => c[0]), ["CGST", "SGST"]);
+  assert.deepEqual(taxColumns({ interState: true }).map((c) => c[0]), ["IGST"]);
+});
+
+test("the invoice escapes both parties' names", () => {
+  const { renderInvoice } = require("../services/invoiceDocument");
+  const html = renderInvoice({
+    invoiceNumber: "KK-1-0001", invoiceDate: new Date(),
+    seller: {}, buyer: { name: "<script>alert(1)</script>" },
+    lines: [], subtotalPaise: 0, totalPaise: 0, totalInWords: "", status: "PAID",
+  });
+  assert.ok(!html.includes("<script>alert(1)</script>"));
+  assert.match(html, /&lt;script&gt;/);
+});
+
+test("an invoice link is signed, and a session is never required to read it", () => {
+  const link = require("../services/receiptLink");
+  assert.equal(link.KIND_INVOICE, "i");
+
+  const saved = process.env.RECEIPT_LINK_SECRET;
+  process.env.RECEIPT_LINK_SECRET = "s3cr3t";
+  try {
+    const token = link.tokenForInvoice("65f1a2b3c4d5e6f708192a3b");
+    assert.equal(link.readToken(token).isInvoice, true);
+    // An invoice token must not open an order, or the reverse.
+    assert.equal(link.readToken(token.replace(/^i_/, "o_")), null);
+  } finally {
+    if (saved === undefined) delete process.env.RECEIPT_LINK_SECRET;
+    else process.env.RECEIPT_LINK_SECRET = saved;
+  }
+});
+
+test("SOURCE: no subscription route accepts a restaurantId or a price", () => {
+  const route = SRC("routes/subscriptionRoute.js");
+  assert.match(route, /const ownRestaurantId = \(req\)/);
+  assert.ok(
+    !/req\.body\?\.restaurantId|req\.params\.restaurantId/.test(route),
+    "the restaurant always comes from the session",
+  );
+  assert.ok(
+    !/req\.body\?\.(price|amount|pricePaise)/.test(route),
+    "a restaurant must never be able to name its own price",
+  );
+});
