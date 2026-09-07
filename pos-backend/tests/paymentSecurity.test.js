@@ -90,6 +90,24 @@ const noopModel = {
 const mongooseMock = {
   Types: { ObjectId: { isValid: () => true } },
   connection: { readyState: 0 },
+  // Enough of the model API for anything the controllers pull in
+  // transitively. The webhook now also reaches the recharge model, and a stub
+  // that only covers what was needed on the day is a suite that breaks
+  // whenever the module graph grows rather than when behaviour does.
+  Schema: Object.assign(
+    function Schema() {
+      return { index() {}, pre() {}, post() {}, virtual: () => ({ get() {}, set() {} }) };
+    },
+    { Types: { ObjectId: String, Mixed: Object } },
+  ),
+  model: () => ({
+    findOne: async () => null,
+    findById: async () => null,
+    find: async () => [],
+    create: async (doc) => doc,
+    updateOne: async () => ({}),
+    findOneAndUpdate: async () => null,
+  }),
   startSession: async () => ({
     startTransaction() {},
     async commitTransaction() {},

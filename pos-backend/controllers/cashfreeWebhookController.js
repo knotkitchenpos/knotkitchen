@@ -25,7 +25,12 @@
 
 const TableSession = require("../models/tableSessionModel");
 const PaymentLink = require("../models/paymentLinkModel");
-const { resolveGateway, PROVIDERS } = require("../services/paymentGateway");
+const RechargeOrder = require("../models/rechargeOrderModel");
+const {
+  resolveGateway,
+  resolvePlatformGateway,
+  PROVIDERS,
+} = require("../services/paymentGateway");
 const cashfree = require("../services/gateways/cashfree");
 
 const ack = (res, note, extra = {}) => {
@@ -64,11 +69,28 @@ const cashfreeWebhook = async (req, res) => {
       ? null
       : await PaymentLink.findOne({ gatewayOrderId: orderId, isDeleted: { $ne: true } });
 
-    if (!session && !link) return ack(res, `nothing opened gateway order ${orderId}`);
+    // A third thing opens Cashfree orders: a restaurant topping up its
+    // KnotKitchen Business Balance. That money is the PLATFORM'S, so it is
+    // resolved and verified differently -- see below.
+    const recharge = session || link ? null : await RechargeOrder.findOne({ gatewayOrderId: orderId });
 
-    // Step 3 — the secret of the tenant that owns it, and only that one.
-    const restaurantId = session ? session.restaurantId : link.restaurantId;
-    const gw = await resolveGateway({ restaurantId });
+    if (!session && !link && !recharge) {
+      return ack(res, `nothing opened gateway order ${orderId}`);
+    }
+
+    // Step 3 — the secret of whoever owns the money.
+    //
+    // For a diner's payment that is the TENANT's secret, because the money is
+    // theirs. For a balance top-up it is KnotKitchen's own, and using
+    // resolveGateway here would be a real hole: a restaurant with its own
+    // Cashfree account could sign a top-up event with its own secret and
+    // credit its balance without KnotKitchen receiving anything.
+    const restaurantId = session
+      ? session.restaurantId
+      : link
+        ? link.restaurantId
+        : recharge.restaurantId;
+    const gw = recharge ? resolvePlatformGateway() : await resolveGateway({ restaurantId });
     if (gw.provider !== PROVIDERS.CASHFREE || !gw.webhookSecret) {
       return ack(res, "no Cashfree secret for this tenant");
     }
@@ -91,8 +113,19 @@ const cashfreeWebhook = async (req, res) => {
     // delivery of this same event. Nothing to do, and saying so is correct.
     const settledAlready = session
       ? ["PAID", "CLOSED"].includes(session.status)
-      : link.status === "PAID";
+      : link
+        ? link.status === "PAID"
+        : recharge.status === "PAID";
     if (settledAlready) return ack(res, null, { alreadySettled: true });
+
+    // A top-up settles through the recharge service, which asks Cashfree for
+    // the status itself and credits through the ledger's idempotency key -- so
+    // this and the browser return can both arrive and only one credits.
+    if (recharge) {
+      const { finalizeRecharge } = require("../services/recharge");
+      const result = await finalizeRecharge({ gatewayOrderId: orderId });
+      return ack(res, result.credited ? null : result.reason, { credited: Boolean(result.credited) });
+    }
 
     // Step 4 — even a correctly signed event does not get to assert that money
     // moved. Ask.

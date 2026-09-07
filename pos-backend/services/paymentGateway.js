@@ -158,6 +158,18 @@ const isOnlinePaymentEnabled = async (scope) => {
 module.exports = {
   PROVIDERS,
   resolveGateway,
+  /**
+   * KnotKitchen's OWN credentials, never a store's.
+   *
+   * resolveGateway deliberately prefers a store's own gateway so a diner's
+   * money reaches the restaurant directly. That is exactly wrong for money
+   * the PLATFORM collects: a Business Balance recharge run through the
+   * restaurant's own Cashfree account would pay the restaurant its own money
+   * and still credit its balance here -- free balance, funded by nobody.
+   *
+   * Anything KnotKitchen bills for resolves through this instead.
+   */
+  resolvePlatformGateway: platformGateway,
   isOnlinePaymentEnabled,
   DEFAULT_GATEWAY: PROVIDERS.CASHFREE,
 };

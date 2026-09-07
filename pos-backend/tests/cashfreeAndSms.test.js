@@ -288,11 +288,15 @@ test("the webhook settles nothing it cannot trace back to an order WE opened", (
   assert.match(src, /"payment\.gatewayOrderId": orderId/);
 });
 
-test("the signature is checked against the tenant that owns the order", () => {
+test("the signature is checked against whoever owns the money", () => {
   // A signature valid under some other store's secret must not settle this
-  // store's table.
+  // store's table. Since balance top-ups joined the same webhook there are
+  // three subjects, and the rule sharpened rather than loosened: a diner's
+  // payment is verified with the TENANT's secret because the money is theirs,
+  // and a top-up with KNOTKITCHEN's, because that money is not.
   const src = read("controllers", "cashfreeWebhookController.js");
-  assert.match(src, /const restaurantId = session \? session\.restaurantId : link\.restaurantId;/);
+  assert.match(src, /const restaurantId = session[\s\S]{0,40}session\.restaurantId/);
+  assert.match(src, /recharge \? resolvePlatformGateway\(\) : await resolveGateway\(\{ restaurantId \}\)/);
   assert.match(src, /resolveGateway\(\{ restaurantId \}\)/);
   assert.match(src, /secretKey: gw\.webhookSecret/);
 });
