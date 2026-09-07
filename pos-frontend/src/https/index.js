@@ -289,3 +289,24 @@ export const sendEBill = (data) => axiosWrapper.post("/api/receipts/send-ebill",
 
 
 
+
+/**
+ * KnotKitchen Business Balance and subscription.
+ *
+ * Money crosses this boundary in RUPEES. The server converts to paise and is
+ * the only converter — arithmetic on money here would be a second place for a
+ * hundredfold error to appear.
+ */
+export const getBusinessBalance = () => axiosWrapper.get("/api/business-balance");
+export const getBalanceTransactions = (params) =>
+  axiosWrapper.get("/api/business-balance/transactions", { params });
+export const createRecharge = (data) => axiosWrapper.post("/api/business-balance/recharge", data);
+export const verifyRecharge = (data) =>
+  axiosWrapper.post("/api/business-balance/recharge/verify", data);
+
+export const getSubscriptionStatus = () => axiosWrapper.get("/api/subscription");
+export const getSubscriptionPlans = () => axiosWrapper.get("/api/subscription/plans");
+export const getSubscriptionQuote = (planCode) =>
+  axiosWrapper.get(`/api/subscription/quote/${planCode}`);
+export const purchasePlan = (data) => axiosWrapper.post("/api/subscription/purchase", data);
+export const getPlatformInvoices = () => axiosWrapper.get("/api/subscription/invoices");

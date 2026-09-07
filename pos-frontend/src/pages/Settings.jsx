@@ -1806,6 +1806,9 @@ const MENU_ITEMS = [
   { id: "timings", title: "8. Timings & Holidays", desc: "Channel schedules & holiday calendar.", Icon: I.calendar, mode: "view" },
   { id: "rules", title: "9. Rules, Charges & Promotions", desc: "Min orders, delivery slabs, GST, coupons, free items.", Icon: I.fileText, mode: "view" },
   { id: "reports", title: "10. Reports", desc: "Sales, revenue and order breakdowns.", Icon: I.chart, path: "/reports" },
+  // Reachable even when the account is locked -- it is the only screen that
+  // can clear a lock, so it must never be gated. See middlewares/accountLock.js.
+  { id: "billing", title: "Billing & Subscription", desc: "Business Balance, plan, invoices and transactions.", Icon: I.fileText, path: "/settings/billing" },
 
   { id: "website", title: "10. Manage Website", desc: "Storefront theme, branding and ordering options.", Icon: I.globe, path: "/website" },
   { id: "activity", title: "11. Activity Log & Audit Trail", desc: "View append-only audit log of all store and security changes.", Icon: I.fileText, mode: "view" },

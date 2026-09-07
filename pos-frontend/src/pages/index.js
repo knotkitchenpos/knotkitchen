@@ -12,6 +12,7 @@ export { default as WebsiteSettings } from "./WebsiteSettings.jsx"
 export { default as OnlineOrders } from "./OnlineOrders.jsx"
 export { default as Reports } from "./Reports.jsx"
 export { default as Settings } from "./Settings.jsx"
+export { default as Billing } from "./Billing";
 export { default as ManageMenuPage } from "./ManageMenuPage.jsx"
 export { default as Support } from "./Support.jsx"
 export { default as Impersonate } from "./Impersonate.jsx"

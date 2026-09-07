@@ -10,7 +10,7 @@ import { useSelector } from "react-redux";
 import {
   Home, Auth, Orders, Tables, Menu, KDS, OrderOnline, PaymentLink,
   Storefront, WebsiteSettings, OnlineOrders, Reports, Settings, ManageMenuPage, Support,
-  Impersonate,
+  Impersonate, Billing,
 } from "./pages";
 
 import Sidebar from "./components/shared/Sidebar";
@@ -55,6 +55,8 @@ function Layout() {
       <Route path="/kds" element={<ProtectedRoutes><KDS /></ProtectedRoutes>} />
       <Route path="/online-orders" element={<ProtectedRoutes><OnlineOrders /></ProtectedRoutes>} />
       <Route path="/settings" element={<ProtectedRoutes><Settings /></ProtectedRoutes>} />
+      {/* Reachable even when the account is locked -- see middlewares/accountLock.js */}
+      <Route path="/settings/billing" element={<ProtectedRoutes><Billing /></ProtectedRoutes>} />
       <Route path="/support" element={<ProtectedRoutes><Support /></ProtectedRoutes>} />
       <Route path="/manage-menu" element={<ProtectedRoutes><ManageMenuPage /></ProtectedRoutes>} />
 
