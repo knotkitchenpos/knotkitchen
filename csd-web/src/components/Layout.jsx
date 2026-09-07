@@ -3,6 +3,7 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import {
   FiGrid, FiUserPlus, FiUsers, FiShoppingBag, FiSearch, FiMessageSquare,
   FiCheckSquare, FiBarChart2, FiSettings, FiLogOut, FiMenu, FiX, FiBell, FiFileText,
+  FiDollarSign,
 } from "react-icons/fi";
 import { useAuth } from "../context/AuthContext";
 import GlobalSearch from "./GlobalSearch";
@@ -23,6 +24,7 @@ const NAV = [
   { to: "/jobs", label: "Jobs", icon: FiCheckSquare, adminOnly: false },
   { to: "/staff", label: "Staff Management", icon: FiUsers, adminOnly: true },
   { to: "/reports", label: "Reports", icon: FiBarChart2, adminOnly: true },
+  { to: "/billing", label: "Billing", icon: FiDollarSign, adminOnly: true },
   { to: "/settings", label: "Settings", icon: FiSettings, adminOnly: true },
 ];
 

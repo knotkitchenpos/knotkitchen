@@ -16,6 +16,7 @@ import Chat from "./pages/Chat";
 import StaffManagement from "./pages/StaffManagement";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
+import Billing from "./pages/Billing";
 
 const Splash = () => (
   <div className="flex min-h-screen items-center justify-center bg-navy-950 text-navy-300">
@@ -92,6 +93,10 @@ const App = () => (
           <Route
             path="/settings"
             element={<RequireAdmin><Settings /></RequireAdmin>}
+          />
+          <Route
+            path="/billing"
+            element={<RequireAdmin><Billing /></RequireAdmin>}
           />
 
           {/* Admins land on the dashboard, staff on store search. */}

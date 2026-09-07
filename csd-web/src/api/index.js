@@ -167,6 +167,20 @@ export const settings = {
   get: () => api.get("/settings").then((r) => r.data.data),
 };
 
+/**
+ * KnotKitchen's own pricing.
+ *
+ * Money crosses this boundary in RUPEES -- the server converts to paise, and
+ * it is the only converter. Anything here doing its own arithmetic on money
+ * would be a second place for a hundredfold error to creep in.
+ */
+export const billingConfig = {
+  get: () => api.get("/billing/config").then((r) => r.data.data),
+  save: (payload) => api.patch("/billing/config", payload).then((r) => r.data.data),
+  standing: (restaurantId) =>
+    api.get(`/billing/accounts/${restaurantId}`).then((r) => r.data.data),
+};
+
 export const jobs = {
   list: (params) => api.get("/jobs", { params }).then((r) => r.data.data),
   get: (id) => api.get(`/jobs/${id}`).then((r) => r.data.data),
