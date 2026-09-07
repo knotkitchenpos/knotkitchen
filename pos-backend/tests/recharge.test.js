@@ -104,3 +104,52 @@ test("SOURCE: settling dues cannot fail a top-up that already succeeded", () => 
   const after = code.slice(code.indexOf("settlePendingCharges"));
   assert.match(after, /catch \(err\)/, "the credit is not in doubt once it has happened");
 });
+
+// ---------------------------------------------------------------------------
+// Telling the operator what actually went wrong
+// ---------------------------------------------------------------------------
+
+test("REGRESSION: an unconfigured gateway says so, instead of 'Internal server error'", () => {
+  // The global handler masks 5xx messages in production, which is right for a
+  // real fault. It is wrong here: pressing Add Balance with no gateway set up
+  // returned "Internal server error", which reads as a crash and gives the
+  // operator nothing to act on. http-errors' own `expose` is the opt-in.
+  const { RechargeError } = require("../services/recharge");
+  const err = new RechargeError("Gateway not set up.", 503, "GATEWAY_NOT_CONFIGURED");
+
+  assert.equal(err.expose, true, "these messages are written to be read");
+  assert.equal(err.status, 503);
+  assert.equal(err.code, "GATEWAY_NOT_CONFIGURED");
+
+  // The handler's decision, reproduced.
+  const shown = (e, isProd) =>
+    e.status >= 500 && isProd && e.expose !== true ? "Internal server error." : e.message;
+  assert.equal(shown(err, true), "Gateway not set up.");
+  assert.equal(shown({ status: 500, message: "connect ECONNREFUSED 10.0.0.5" }, true), "Internal server error.");
+});
+
+test("SOURCE: the handler masks by default and exposes only on request", () => {
+  const src = SRC("middlewares/globalErrorHandler.js");
+  assert.match(src, /const exposed = err\.expose === true;/);
+  assert.match(src, /isServerError && config\.isProduction && !exposed/);
+  // A genuine internal error still says nothing.
+  assert.match(src, /"Internal server error\."/);
+});
+
+test("REGRESSION: a gateway refusal keeps its reason", () => {
+  // The commonest one is "a 10-digit customer phone number is required" --
+  // entirely fixable by the operator, but only if they are told. As a bare
+  // CashfreeError it fell through to a masked 500.
+  const src = SRC("services/recharge.js");
+  assert.match(src, /GATEWAY_REFUSED/);
+  assert.match(src, /err\?\.message \|\| "The payment could not be opened\."/);
+  assert.ok(
+    !/^\s*throw err;\s*$/m.test(src.slice(src.indexOf("intent.failureReason"))),
+    "the gateway's own wording must survive to the operator",
+  );
+});
+
+test("SOURCE: the route forwards both the reason and the code", () => {
+  const route = SRC("routes/businessBalanceRoute.js");
+  assert.match(route, /\{ expose: true, code: err\.code \}/);
+});

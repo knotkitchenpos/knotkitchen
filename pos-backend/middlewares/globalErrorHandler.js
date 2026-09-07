@@ -75,7 +75,19 @@ const globalErrorHandler = (rawErr, req, res, next) => { // eslint-disable-line 
     console.error(`[error ${reqId}]`, err?.stack || err?.message || err);
   }
 
-  const safeMessage = isServerError && config.isProduction
+  /**
+   * `expose` is http-errors' own opt-in, and it is the difference between an
+   * internal fault and an operator-facing one that happens to be 5xx.
+   *
+   * "KnotKitchen's payment gateway is not configured" is a 503 -- the service
+   * genuinely is unavailable -- but masking it told an operator clicking Add
+   * Balance only "Internal server error", which reads as a crash and gives
+   * them nothing to act on. Masking stays the default; this is opt-in per
+   * error, and only for messages written to be read.
+   */
+  const exposed = err.expose === true;
+
+  const safeMessage = isServerError && config.isProduction && !exposed
     ? "Internal server error."
     : (err.message || "Something went wrong.");
 
@@ -99,7 +111,7 @@ const globalErrorHandler = (rawErr, req, res, next) => { // eslint-disable-line 
   // this is, e.g. two different 409s on sign-in that need different screens.
   // Message text is for humans and may be reworded; this is the contract.
   // 4xx only, for the same reason as fieldErrors.
-  if (!isServerError && typeof err?.code === "string") {
+  if ((!isServerError || exposed) && typeof err?.code === "string") {
     payload.code = err.code;
   }
 

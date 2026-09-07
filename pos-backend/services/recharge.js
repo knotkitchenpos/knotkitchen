@@ -25,10 +25,15 @@ const { evaluateLock } = require("./accountLock");
 const { toPaise, toRupees, formatINR } = require("./money");
 
 class RechargeError extends Error {
-  constructor(message, status = 400) {
+  constructor(message, status = 400, code = "") {
     super(message);
     this.name = "RechargeError";
     this.status = status;
+    if (code) this.code = code;
+    // Every message here is written to be read by whoever pressed the button.
+    // Without this a 503 reaches them as "Internal server error", which reads
+    // as a crash rather than as "someone has not finished the setup".
+    this.expose = true;
   }
 }
 
@@ -44,8 +49,9 @@ const platformOrThrow = () => {
   const gw = resolvePlatformGateway();
   if (!gw.enabled) {
     throw new RechargeError(
-      "KnotKitchen's payment gateway is not configured, so balance top-ups cannot be taken.",
+      "KnotKitchen's payment gateway is not set up yet, so balance top-ups cannot be taken. Please contact KnotKitchen support.",
       503,
+      "GATEWAY_NOT_CONFIGURED",
     );
   }
   return gw;
@@ -119,7 +125,16 @@ const createRecharge = async ({ restaurantId, amountPaise, createdBy = null, ret
     intent.status = "FAILED";
     intent.failureReason = err?.message || "Could not open the payment.";
     await intent.save();
-    throw err;
+
+    // Re-thrown as a RechargeError so the reason survives to the operator.
+    // Cashfree's own wording is the useful part ("a 10-digit customer phone
+    // number is required", "insufficient permissions"); as a bare
+    // CashfreeError it fell through to a masked 500.
+    throw new RechargeError(
+      err?.message || "The payment could not be opened.",
+      502,
+      "GATEWAY_REFUSED",
+    );
   }
 };
 

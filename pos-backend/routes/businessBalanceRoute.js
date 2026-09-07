@@ -105,7 +105,10 @@ router.post("/recharge", isVerifiedUser, async (req, res, next) => {
 
     res.status(201).json({ success: true, data: result });
   } catch (err) {
-    if (err instanceof RechargeError) return next(createHttpError(err.status, err.message));
+    if (err instanceof RechargeError) {
+      // expose + code so the operator is told WHY, not just that it failed.
+      return next(createHttpError(err.status, err.message, { expose: true, code: err.code }));
+    }
     next(err);
   }
 });
@@ -141,7 +144,10 @@ router.post("/recharge/verify", isVerifiedUser, async (req, res, next) => {
       },
     });
   } catch (err) {
-    if (err instanceof RechargeError) return next(createHttpError(err.status, err.message));
+    if (err instanceof RechargeError) {
+      // expose + code so the operator is told WHY, not just that it failed.
+      return next(createHttpError(err.status, err.message, { expose: true, code: err.code }));
+    }
     next(err);
   }
 });
