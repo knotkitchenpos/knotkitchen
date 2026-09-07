@@ -21,6 +21,7 @@ const { resolvePlatformGateway } = require("./paymentGateway");
 const cashfree = require("./gateways/cashfree");
 const { credit } = require("./ledger");
 const { settlePendingCharges } = require("./orderCharge");
+const { evaluateLock } = require("./accountLock");
 const { toPaise, toRupees, formatINR } = require("./money");
 
 class RechargeError extends Error {
@@ -191,7 +192,17 @@ const finalizeRecharge = async ({ gatewayOrderId }) => {
     console.warn("[recharge] settling dues after top-up failed:", err.message);
   }
 
-  return { credited: true, intent, entry, settled };
+  // "After successful payment, the account should automatically unlock."
+  // Awaited, not fired: a caller that just paid should be told, in the same
+  // response, that it worked -- not have to poll for it.
+  let lock = null;
+  try {
+    lock = await evaluateLock(intent.restaurantId);
+  } catch (err) {
+    console.warn("[recharge] lock re-evaluation failed:", err.message);
+  }
+
+  return { credited: true, intent, entry, settled, lock };
 };
 
 module.exports = {

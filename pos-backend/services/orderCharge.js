@@ -24,6 +24,7 @@ const { REFUNDED_STATUSES } = require("../constants/orderStatus");
 const { getPlatformConfig, resolveOrderCharge } = require("./pricing");
 const { computeTax } = require("./tax");
 const { debit, InsufficientBalanceError } = require("./ledger");
+const { fireEvaluateLock } = require("./accountLock");
 
 /** One key per order, so a retry from anywhere can never double-charge. */
 const idempotencyKeyFor = (orderId) => `order-charge-${orderId}`;
@@ -137,6 +138,8 @@ const chargeOrder = async (orderId) => {
       reason: "Insufficient Business Balance at the time of the order.",
     };
     await order.save();
+    // The clock on the grace period starts here.
+    fireEvaluateLock(order.restaurantId);
     return { charged: false, pending: true, order, shortfallPaise: err.requiredPaise };
   }
 };
@@ -204,6 +207,8 @@ const settlePendingCharges = async (restaurantId) => {
     }
   }
 
+  // Paying off dues may be exactly what clears a lock.
+  fireEvaluateLock(restaurantId);
   return { settled: settled.length, remaining: (await outstandingDues(restaurantId)).count };
 };
 

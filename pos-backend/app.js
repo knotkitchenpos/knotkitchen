@@ -280,6 +280,13 @@ try {
     const { startAutoReadyScheduler } = require("./services/autoReadyService");
     const { emitOrderStatusChanged } = require("./services/socket");
     startAutoReadyScheduler({ onOrderReady: emitOrderStatusChanged });
+
+    // Non-payment locks. Evaluated on the events that change them (a charge
+    // that could not be collected, a top-up, a renewal); this sweep is the
+    // backstop for an account that crosses its grace period while nobody is
+    // touching it. Only candidates are read, never every restaurant.
+    const { startLockSweeper } = require("./services/accountLock");
+    startLockSweeper();
 } catch (err) {
     console.warn("Auto-ready scheduler failed to start:", err.message);
 }

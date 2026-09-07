@@ -20,6 +20,7 @@ const { debit, InsufficientBalanceError } = require("./ledger");
 const { amountInWords, formatINR } = require("./money");
 const { nextPeriod, upgradeCharge, isActiveAt, startOfIstDay } = require("./subscriptionPeriod");
 const { nextInvoiceNumber } = require("./invoiceNumber");
+const { fireEvaluateLock } = require("./accountLock");
 
 class SubscriptionError extends Error {
   constructor(message, status = 400, extra = {}) {
@@ -263,6 +264,9 @@ const purchasePlan = async ({ restaurantId, planCode, on = new Date(), createdBy
   subscription.lastInvoiceId = invoice._id;
   subscription.lastPaidAt = new Date();
   await subscription.save();
+
+  // A renewal may be what lifts a lock.
+  fireEvaluateLock(restaurantId);
 
   return { subscription, invoice, charged: q.totalPaise };
 };

@@ -3,6 +3,7 @@ const jwt = require("jsonwebtoken");
 const config = require("../config/config");
 const User = require("../models/userModel");
 const sessionCookies = require("../services/sessionCookies");
+const { enforceAccountLock } = require("./accountLock");
 
 /**
  * Access-token guard for all authenticated POS/API routes.
@@ -81,7 +82,13 @@ const isVerifiedUser = async (req, res, next) => {
 
     req.user = user;
     req.user.jti = decodeToken.jti || null;
-    next();
+
+    // Non-payment gate, here rather than at every call site. This is the one
+    // function every staff route already goes through, so one guard covers
+    // them all and none can be added later that forgets it. Billing, auth and
+    // customer-facing paths are allow-listed inside -- a lock that stopped
+    // someone paying could not be undone by paying.
+    return enforceAccountLock(req, res, next);
   } catch (error) {
     next(createHttpError(401, "Invalid Token!"));
   }
