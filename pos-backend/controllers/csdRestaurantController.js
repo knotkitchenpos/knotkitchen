@@ -502,6 +502,7 @@ const updateCharges = async (req, res, next) => {
 
     for (const [key, label, max] of [
       ["onlinePaidOrderCharge", "Online paid order charge", 10000],
+      ["ebillCharge", "E-bill charge", 1000],
       ["gstPercent", "GST percentage", 100],
       ["monthlySubscription", "Monthly subscription", 1000000],
     ]) {
@@ -592,6 +593,7 @@ const updateCharges = async (req, res, next) => {
         onlinePaidOrderCharge: existing.onlinePaidOrderCharge,
         gstPercent: existing.gstPercent,
         monthlySubscription: existing.monthlySubscription,
+        ebillCharge: existing.ebillCharge,
         planPrices: existing.planPrices || [],
         notes: existing.notes,
         plan: restaurant?.subscription?.plan || "free",

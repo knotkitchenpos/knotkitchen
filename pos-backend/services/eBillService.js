@@ -26,6 +26,7 @@ const Restaurant = require("../models/restaurantModel");
 const { buildReceipt } = require("./receiptService");
 const { sendEBillMessage } = require("./messagingService");
 const { urlForOrder, urlForSession } = require("./receiptLink");
+const { fireEBillCharge } = require("./ebillCharge");
 
 /**
  * Load everything a receipt needs, for either subject.
@@ -116,6 +117,20 @@ const deliverEBill = async ({ order, tableSession, bill, restaurant, phone }) =>
     itemsCount: receipt.quantities,
     receiptUrl: billUrl,
   });
+
+  // Charged on DELIVERY, never on an attempt. A send that failed cost the
+  // restaurant nothing and must cost them nothing. Fire-and-forget: the
+  // message is already gone and a billing problem must not turn a delivered
+  // e-bill into an error.
+  if (result.sent) {
+    fireEBillCharge({
+      restaurantId: (order || tableSession)?.restaurantId,
+      messageId: result.messageId,
+      refType: tableSession ? "TableSession" : "Order",
+      refId: (tableSession || order)?._id || null,
+      orderNumber: receipt.orderNumber,
+    });
+  }
 
   return { receipt, billUrl, result };
 };

@@ -33,7 +33,13 @@ const businessBalanceSchema = new mongoose.Schema(
 );
 
 const CREDIT_KINDS = ["RECHARGE", "REFUND", "ADJUSTMENT_CREDIT", "PROMO_CREDIT"];
-const DEBIT_KINDS = ["SUBSCRIPTION", "ORDER_CHARGE", "USAGE_INVOICE", "ADJUSTMENT_DEBIT"];
+const DEBIT_KINDS = [
+  "SUBSCRIPTION",
+  "ORDER_CHARGE",
+  "EBILL_CHARGE",
+  "USAGE_INVOICE",
+  "ADJUSTMENT_DEBIT",
+];
 
 const ledgerEntrySchema = new mongoose.Schema(
   {

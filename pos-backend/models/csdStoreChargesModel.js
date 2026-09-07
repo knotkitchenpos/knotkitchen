@@ -38,6 +38,9 @@ const csdStoreChargesSchema = new mongoose.Schema(
 
     // Per-order commission on website orders paid online.
     onlinePaidOrderCharge: { type: Number, default: DEFAULTS.onlinePaidOrderCharge, min: 0 },
+    // Per e-bill delivered. null means "use the platform amount"; 0 means
+    // "this restaurant is charged nothing", which is a real setting.
+    ebillCharge: { type: Number, default: null, min: 0 },
     gstPercent: { type: Number, default: DEFAULTS.gstPercent, min: 0, max: 100 },
 
     // Subscription amount. The plan NAME lives on Restaurant.subscription.plan

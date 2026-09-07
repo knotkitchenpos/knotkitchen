@@ -63,6 +63,12 @@ const present = (config) => ({
     chargeableSources: config.websiteOrderCharge?.chargeableSources || [],
     taxable: config.websiteOrderCharge?.taxable !== false,
   },
+  ebillCharge: {
+    enabled: config.ebillCharge?.enabled || false,
+    amount: toRupees(config.ebillCharge?.amountPaise || 0),
+    effectiveFrom: config.ebillCharge?.effectiveFrom || null,
+    taxable: config.ebillCharge?.taxable !== false,
+  },
   subscriptionDays: config.subscriptionDays,
   graceHours: config.graceHours,
   renewalPolicy: config.renewalPolicy,
@@ -191,6 +197,25 @@ const updateBillingConfig = async (req, res, next) => {
         chargeableSources: Array.isArray(c.chargeableSources)
           ? [...new Set(c.chargeableSources.map((s) => String(s).trim().toUpperCase()))]
           : config.websiteOrderCharge?.chargeableSources || [],
+        taxable: c.taxable !== false,
+      };
+    }
+
+    if (body.ebillCharge !== undefined) {
+      const c = body.ebillCharge || {};
+      const amount = num(c.amount);
+      if (amount !== null && (Number.isNaN(amount) || amount < 0)) {
+        fieldErrors["ebillCharge.amount"] = "The charge must be zero or more.";
+      }
+      if (c.enabled && !asDate(c.effectiveFrom)) {
+        fieldErrors["ebillCharge.effectiveFrom"] = "Set the date the charge starts applying.";
+      }
+      config.ebillCharge = {
+        enabled: Boolean(c.enabled),
+        amountPaise: toPaise(
+          amount === null ? toRupees(config.ebillCharge?.amountPaise || 0) : amount,
+        ),
+        effectiveFrom: asDate(c.effectiveFrom),
         taxable: c.taxable !== false,
       };
     }

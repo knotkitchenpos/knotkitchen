@@ -167,8 +167,34 @@ const resolveOrderCharge = async ({ restaurantId, on = new Date(), config, overr
   };
 };
 
+/**
+ * The per-e-bill charge for a restaurant.
+ *
+ * Deliberately the same shape as resolveOrderCharge, including the null-vs-0
+ * distinction: a stored 0 means "this restaurant is charged nothing per
+ * e-bill", which is a decision someone made, and only an absent value falls
+ * through to the platform amount.
+ */
+const resolveEBillCharge = async ({ restaurantId, on = new Date(), config, override } = {}) => {
+  const cfg = config || (await getPlatformConfig());
+  const charge = cfg.ebillCharge || {};
+  const ovr = override !== undefined ? override : await getOverride(restaurantId);
+
+  const started = charge.effectiveFrom ? new Date(on) >= new Date(charge.effectiveFrom) : false;
+  const hasCustom = ovr && ovr.ebillCharge !== null && ovr.ebillCharge !== undefined;
+
+  return {
+    enabled: Boolean(charge.enabled) && started,
+    started,
+    amountPaise: hasCustom ? toPaise(ovr.ebillCharge) : Number(charge.amountPaise || 0),
+    taxable: charge.taxable !== false,
+    source: hasCustom ? "restaurant" : "platform",
+  };
+};
+
 module.exports = {
   getPlatformConfig,
+  resolveEBillCharge,
   getOverride,
   offerActiveAt,
   customPricePaiseFor,

@@ -448,6 +448,62 @@ const Billing = () => {
       </Card>
 
       {/* ---------------------------------------------------------------- */}
+      <Card
+        title="Per e-bill charge"
+        subtitle="Deducted when an e-bill is actually delivered — never for a failed send."
+        warn={
+          config.ebillCharge.enabled && !Number(config.ebillCharge.amount)
+            ? "The charge is on but set to zero, so e-bills cost nothing."
+            : null
+        }
+      >
+        <Toggle
+          checked={config.ebillCharge.enabled}
+          onChange={(v) => set({ ebillCharge: { ...config.ebillCharge, enabled: v } })}
+          label="Charge per e-bill sent"
+          hint="Each delivered message is charged, including a deliberate re-send."
+        />
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Field label="Amount (₹)" hint="e.g. 0.25" error={fieldErrors["ebillCharge.amount"]}>
+            <input
+              className={input}
+              type="number"
+              min="0"
+              step="0.01"
+              value={config.ebillCharge.amount}
+              onChange={(e) => set({ ebillCharge: { ...config.ebillCharge, amount: e.target.value } })}
+            />
+          </Field>
+          <Field label="Applies from" error={fieldErrors["ebillCharge.effectiveFrom"]}>
+            <input
+              className={input}
+              type="date"
+              value={asInputDate(config.ebillCharge.effectiveFrom)}
+              onChange={(e) =>
+                set({
+                  ebillCharge: { ...config.ebillCharge, effectiveFrom: e.target.value || null },
+                })
+              }
+            />
+          </Field>
+          <Field label="GST on this charge">
+            <select
+              className={input}
+              value={config.ebillCharge.taxable ? "yes" : "no"}
+              onChange={(e) =>
+                set({
+                  ebillCharge: { ...config.ebillCharge, taxable: e.target.value === "yes" },
+                })
+              }
+            >
+              <option value="yes">Taxable</option>
+              <option value="no">Not taxable</option>
+            </select>
+          </Field>
+        </div>
+      </Card>
+
+      {/* ---------------------------------------------------------------- */}
       <Card title="Billing rules" subtitle="How periods, late payment and upgrades behave.">
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Subscription length (days)" error={fieldErrors.subscriptionDays}>

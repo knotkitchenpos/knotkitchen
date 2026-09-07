@@ -78,6 +78,25 @@ const orderChargeSchema = new mongoose.Schema(
   { _id: false },
 );
 
+/**
+ * Per-message charge for an e-bill.
+ *
+ * Same shape as the order charge because it is the same kind of thing: an
+ * amount, a date it starts applying, and whether GST is added. A third charge
+ * later should reuse this rather than inventing a fourth shape.
+ *
+ * No `chargeableSources` -- an e-bill is one thing, not several channels.
+ */
+const messageChargeSchema = new mongoose.Schema(
+  {
+    enabled: { type: Boolean, default: false },
+    amountPaise: { type: Number, default: 0, min: 0 },
+    effectiveFrom: { type: Date, default: null },
+    taxable: { type: Boolean, default: true },
+  },
+  { _id: false },
+);
+
 const platformBillingConfigSchema = new mongoose.Schema(
   {
     // Enforces the singleton: only one document can hold this value.
@@ -85,6 +104,8 @@ const platformBillingConfigSchema = new mongoose.Schema(
     plans: { type: [planSchema], default: [] },
     gst: { type: gstSchema, default: () => ({}) },
     websiteOrderCharge: { type: orderChargeSchema, default: () => ({}) },
+    // Charged per e-bill actually delivered -- never per attempt.
+    ebillCharge: { type: messageChargeSchema, default: () => ({}) },
     subscriptionDays: { type: Number, default: 30, min: 1 },
 
     /**
