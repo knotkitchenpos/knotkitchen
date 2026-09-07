@@ -4,6 +4,16 @@
  * One resolver. Every price in the system comes out of here, so there is
  * exactly one answer to "why was I charged this" and one place to change it.
  *
+ * Two layers, and only two:
+ *
+ *   PlatformBillingConfig   the platform-wide defaults (plans, GST, the
+ *                           per-order charge). A singleton.
+ *   CsdStoreCharges         what THIS restaurant was negotiated. Already
+ *                           existed, already audited, already has a CSD
+ *                           dialog behind it -- so the plan-price overrides
+ *                           were added there rather than in a second
+ *                           collection beside it.
+ *
  * Precedence, highest first:
  *   1. a per-restaurant price set by the admin  ("ABC pays 999 for Growth")
  *   2. an offer, if today falls inside its window
@@ -11,11 +21,18 @@
  *
  * A per-restaurant price beats an offer deliberately: it is a negotiated rate,
  * and a promotion should not silently override a deal someone agreed to. When
- * an offer happens to be cheaper the resolver says so in `alternatives`, so
- * the admin panel can show it rather than hiding the fact.
+ * an offer happens to be cheaper the resolver says so in the returned
+ * alternatives, so the admin panel can show that rather than hide it.
+ *
+ * CsdStoreCharges stores RUPEES because that is what the admin dialog edits.
+ * This file is the single place they become paise; nothing downstream ever
+ * sees a rupee amount again.
  */
 
-const { PlatformBillingConfig, RestaurantBillingOverride } = require("../models/platformBillingModel");
+const { PlatformBillingConfig } = require("../models/platformBillingModel");
+const CsdStoreCharges = require("../models/csdStoreChargesModel");
+const Restaurant = require("../models/restaurantModel");
+const { toPaise } = require("./money");
 
 /** The singleton, created empty on first read so the admin panel has something to edit. */
 const getPlatformConfig = async () => {
@@ -24,8 +41,25 @@ const getPlatformConfig = async () => {
   return PlatformBillingConfig.create({ singleton: "platform" });
 };
 
-const getOverride = (restaurantId) =>
-  restaurantId ? RestaurantBillingOverride.findOne({ restaurantId }) : null;
+/**
+ * The negotiated terms for a restaurant, or null.
+ *
+ * Charges are keyed by storeId (the six-digit id the CSD works in) while
+ * everything financial here is keyed by restaurantId, so this bridges the two.
+ * A restaurant with no row is simply on the platform defaults -- rows are
+ * created lazily on first edit, which is why absence is normal and not an
+ * error.
+ */
+const getOverride = async (restaurantId, { storeId } = {}) => {
+  if (!restaurantId && !storeId) return null;
+  let id = storeId;
+  if (!id) {
+    const restaurant = await Restaurant.findById(restaurantId).select("storeId").lean();
+    id = restaurant?.storeId;
+  }
+  if (!id) return null;
+  return CsdStoreCharges.findOne({ storeId: id }).lean();
+};
 
 const offerActiveAt = (offer, on) => {
   if (!offer || offer.pricePaise === null || offer.pricePaise === undefined) return false;
@@ -33,6 +67,13 @@ const offerActiveAt = (offer, on) => {
   if (offer.startsAt && at < new Date(offer.startsAt)) return false;
   if (offer.endsAt && at > new Date(offer.endsAt)) return false;
   return true;
+};
+
+/** A negotiated price for one plan, in paise, or null if none is set. */
+const customPricePaiseFor = (override, planCode) => {
+  if (!override) return null;
+  const row = (override.planPrices || []).find((p) => p.code === planCode);
+  return row ? toPaise(row.price) : null;
 };
 
 /**
@@ -47,20 +88,20 @@ const resolvePlanPrice = async ({ restaurantId, planCode, on = new Date(), confi
   if (!plan || !plan.isActive) return null;
 
   const ovr = override !== undefined ? override : await getOverride(restaurantId);
-  const custom = (ovr?.planPrices || []).find((p) => p.code === planCode);
+  const customPricePaise = customPricePaiseFor(ovr, planCode);
+  const offerPricePaise = offerActiveAt(plan.offer, on) ? plan.offer.pricePaise : null;
 
-  const offerPrice = offerActiveAt(plan.offer, on) ? plan.offer.pricePaise : null;
   const alternatives = {
     standardPricePaise: plan.standardPricePaise,
-    offerPricePaise: offerPrice,
-    customPricePaise: custom ? custom.pricePaise : null,
+    offerPricePaise,
+    customPricePaise,
   };
 
-  if (custom) {
-    return { ...alternatives, pricePaise: custom.pricePaise, source: "restaurant", plan };
+  if (customPricePaise !== null) {
+    return { ...alternatives, pricePaise: customPricePaise, source: "restaurant", plan };
   }
-  if (offerPrice !== null) {
-    return { ...alternatives, pricePaise: offerPrice, source: "offer", plan };
+  if (offerPricePaise !== null) {
+    return { ...alternatives, pricePaise: offerPricePaise, source: "offer", plan };
   }
   return { ...alternatives, pricePaise: plan.standardPricePaise, source: "standard", plan };
 };
@@ -70,7 +111,7 @@ const listPlansFor = async ({ restaurantId, on = new Date(), includeUnavailable 
   const config = await getPlatformConfig();
   const override = await getOverride(restaurantId);
 
-  const priced = await Promise.all(
+  return Promise.all(
     (config.plans || [])
       .filter((p) => p.isActive && (includeUnavailable || p.isAvailable))
       .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
@@ -92,7 +133,6 @@ const listPlansFor = async ({ restaurantId, on = new Date(), includeUnavailable 
         };
       }),
   );
-  return priced;
 };
 
 /**
@@ -108,27 +148,22 @@ const resolveOrderCharge = async ({ restaurantId, on = new Date(), config, overr
   const ovr = override !== undefined ? override : await getOverride(restaurantId);
 
   const started = charge.effectiveFrom ? new Date(on) >= new Date(charge.effectiveFrom) : false;
-  const enabled =
-    ovr && ovr.orderChargeEnabled !== null && ovr.orderChargeEnabled !== undefined
-      ? Boolean(ovr.orderChargeEnabled)
-      : Boolean(charge.enabled);
 
-  // null means "not set for this restaurant". 0 means "set, and it is zero".
-  const amountPaise =
-    ovr && ovr.orderChargePaise !== null && ovr.orderChargePaise !== undefined
-      ? ovr.orderChargePaise
-      : Number(charge.amountPaise || 0);
+  // A stored 0 means "this restaurant is not charged per order" and is a real
+  // setting; only an absent field falls through to the platform amount.
+  const hasCustom =
+    ovr && ovr.onlinePaidOrderCharge !== null && ovr.onlinePaidOrderCharge !== undefined;
+  const amountPaise = hasCustom
+    ? toPaise(ovr.onlinePaidOrderCharge)
+    : Number(charge.amountPaise || 0);
 
   return {
-    enabled: enabled && started,
+    enabled: Boolean(charge.enabled) && started,
     started,
     amountPaise,
     taxable: charge.taxable !== false,
     chargeableSources: charge.chargeableSources || [],
-    source:
-      ovr && ovr.orderChargePaise !== null && ovr.orderChargePaise !== undefined
-        ? "restaurant"
-        : "platform",
+    source: hasCustom ? "restaurant" : "platform",
   };
 };
 
@@ -136,6 +171,7 @@ module.exports = {
   getPlatformConfig,
   getOverride,
   offerActiveAt,
+  customPricePaiseFor,
   resolvePlanPrice,
   listPlansFor,
   resolveOrderCharge,

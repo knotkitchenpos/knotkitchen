@@ -45,6 +45,31 @@ const csdStoreChargesSchema = new mongoose.Schema(
     // two can't drift into disagreeing about which plan a store is on.
     monthlySubscription: { type: Number, default: DEFAULTS.monthlySubscription, min: 0 },
 
+    /**
+     * A negotiated price for a specific plan -- "ABC pays 999 for Growth"
+     * while the standard price stays 1299.
+     *
+     * Rupees, like every other amount on this document, because this is what
+     * the admin dialog edits. services/pricing.js converts to paise at the
+     * single point where money is computed.
+     *
+     * `monthlySubscription` above predates plans and is a single figure with
+     * no plan attached; an entry here for the restaurant's current plan wins
+     * over it.
+     */
+    planPrices: {
+      type: [
+        new mongoose.Schema(
+          {
+            code: { type: String, required: true, trim: true },
+            price: { type: Number, required: true, min: 0 },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
+
     notes: { type: String, default: "", maxlength: 1000 },
 
     // Kept on the document as well as in AuditLog so the pricing history is

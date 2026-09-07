@@ -246,3 +246,56 @@ test("SOURCE: the balance can only move through the ledger", () => {
   assert.match(model, /min: 0/, "the balance floor is declared on the schema too");
   assert.match(model, /unique: true, partialFilterExpression/, "idempotency needs an index, not a lookup");
 });
+
+// ---------------------------------------------------------------------------
+// One place per-restaurant prices live
+// ---------------------------------------------------------------------------
+
+test("REGRESSION: there is exactly one per-restaurant override model", () => {
+  // CsdStoreCharges already existed, with an audited PATCH and a CSD dialog
+  // behind it. A second override collection beside it would have been a
+  // fourth copy of "what does this restaurant pay" -- the failure this
+  // codebase keeps repeating (four copies of gateway resolution, three of
+  // website visibility, five of the address join).
+  const platform = SRC("models/platformBillingModel.js");
+  assert.ok(
+    !/RestaurantBillingOverride/.test(stripComments(platform)),
+    "the duplicate override model must stay deleted",
+  );
+
+  const CsdStoreCharges = require("../models/csdStoreChargesModel");
+  assert.ok(CsdStoreCharges.schema.path("planPrices"), "negotiated plan prices live here");
+  assert.ok(CsdStoreCharges.schema.path("onlinePaidOrderCharge"), "as does the per-order charge");
+
+  // And pricing reads that one, not another.
+  const pricing = stripComments(SRC("services/pricing.js"));
+  assert.match(pricing, /csdStoreChargesModel/);
+});
+
+test("rupees become paise in exactly one place", () => {
+  // CsdStoreCharges stores rupees because that is what the admin dialog
+  // edits. Two conversion points is how an amount ends up 100x out.
+  const pricing = SRC("services/pricing.js");
+  const conversions = (pricing.match(/toPaise\(/g) || []).length;
+  assert.ok(conversions > 0, "the boundary must convert");
+  assert.ok(conversions <= 3, `too many conversion points (${conversions}) — keep it at the boundary`);
+
+  // Nothing downstream of pricing should be converting again.
+  for (const file of ["services/orderCharge.js", "services/ledger.js"]) {
+    assert.ok(
+      !/toPaise\(/.test(stripComments(SRC(file))),
+      `${file} should receive paise already`,
+    );
+  }
+});
+
+test("a negotiated price outranks a promotion, and says what the promotion was", () => {
+  // A restaurant on an agreed rate should not be silently moved onto a
+  // campaign price, but the admin panel still needs to see both.
+  const pricing = SRC("services/pricing.js");
+  const custom = pricing.indexOf("customPricePaise !== null");
+  const offer = pricing.indexOf("offerPricePaise !== null");
+  assert.ok(custom !== -1 && offer !== -1, "anchors moved; retarget this guard");
+  assert.ok(custom < offer, "the negotiated price is checked first");
+  assert.match(pricing, /offerPricePaise,/, "and the offer is still reported");
+});

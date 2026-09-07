@@ -95,48 +95,15 @@ const platformBillingConfigSchema = new mongoose.Schema(
 );
 
 /**
- * Per-restaurant overrides. Absent fields fall through to the platform config,
- * so a restaurant with nothing special stored costs nothing to reason about.
+ * Per-restaurant overrides live in models/csdStoreChargesModel.js, NOT here.
  *
- * Written only by the admin panel. There is no restaurant-facing route that
- * touches this collection.
+ * That collection already existed with an audited PATCH endpoint and a CSD
+ * dialog behind it. A second override model next to it would have been a
+ * fourth copy of "what does this restaurant pay", which is the exact failure
+ * this codebase keeps repeating -- so the plan-price overrides were added
+ * there instead and this file holds only the platform-wide defaults.
  */
-const restaurantBillingOverrideSchema = new mongoose.Schema(
-  {
-    restaurantId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "Restaurant",
-      required: true,
-      unique: true,
-    },
-    // [{ code: "growth", pricePaise: 99900 }] -- "ABC pays 999 for Growth".
-    planPrices: {
-      type: [
-        new mongoose.Schema(
-          {
-            code: { type: String, required: true },
-            pricePaise: { type: Number, required: true, min: 0 },
-            note: { type: String, default: "" },
-          },
-          { _id: false },
-        ),
-      ],
-      default: [],
-    },
-    // null = use the platform charge. 0 is a real value (this restaurant is
-    // not charged per order) and must not be confused with "unset".
-    orderChargePaise: { type: Number, default: null, min: 0 },
-    orderChargeEnabled: { type: Boolean, default: null },
-    note: { type: String, default: "" },
-    updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
-  },
-  { timestamps: true },
-);
 
 module.exports = {
   PlatformBillingConfig: mongoose.model("PlatformBillingConfig", platformBillingConfigSchema),
-  RestaurantBillingOverride: mongoose.model(
-    "RestaurantBillingOverride",
-    restaurantBillingOverrideSchema,
-  ),
 };
