@@ -86,6 +86,36 @@ const platformBillingConfigSchema = new mongoose.Schema(
     gst: { type: gstSchema, default: () => ({}) },
     websiteOrderCharge: { type: orderChargeSchema, default: () => ({}) },
     subscriptionDays: { type: Number, default: 30, min: 1 },
+
+    /**
+     * What a late payment buys. The spec asks for a "configured
+     * renewal/activation policy" rather than naming one, and both satisfy its
+     * rule that missed days are never free:
+     *
+     *   FROM_PAYMENT  the new period starts the day they pay, so the gap is
+     *                 simply unsubscribed (default)
+     *   FROM_EXPIRY   the new period starts at the old expiry, so paying nine
+     *                 days late costs nine days of the new month
+     *
+     * Renewing while still active always continues from the current end under
+     * either policy -- charging someone and shortening their subscription
+     * would be indefensible.
+     */
+    renewalPolicy: {
+      type: String,
+      enum: ["FROM_PAYMENT", "FROM_EXPIRY"],
+      default: "FROM_PAYMENT",
+    },
+
+    /**
+     * What an upgrade costs mid-period. PRORATE is the default and matches
+     * "calculated based on the remaining subscription period".
+     */
+    upgradePolicy: {
+      type: String,
+      enum: ["PRORATE", "FULL_DIFFERENCE", "FULL_PRICE"],
+      default: "PRORATE",
+    },
     // Hours a restaurant gets to settle a due invoice before the account locks.
     graceHours: { type: Number, default: 24, min: 0 },
     currency: { type: String, default: "INR" },
