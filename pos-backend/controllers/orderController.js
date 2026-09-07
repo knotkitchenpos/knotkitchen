@@ -12,7 +12,7 @@ const { computeReadyDueAt, computeCompleteDueAt } = require("../services/autoRea
 const { notifyOrderReady } = require("../services/readyNotificationService");
 const { fireAutoEBill } = require("../services/eBillService");
 const { fireOrderCharge } = require("../services/orderCharge");
-const { emitOrderStatusChanged } = require("../services/socket");
+const { emitOrderCreated, emitOrderStatusChanged } = require("../services/socket");
 
 
 /**
@@ -496,6 +496,19 @@ const addOrder = async (req, res, next) => {
     // per-order charge for this source.
     if (isPaidAtTill) fireOrderCharge(order._id);
 
+    // A POS order emitted nothing at all, so a second till, the KDS and the
+    // Orders screen only learned about it on their next manual refresh.
+    try {
+      emitOrderCreated({
+        restaurantId: order.restaurantId,
+        outletId: order.outletId,
+        storeId: order.storeId,
+        order,
+      });
+    } catch (err) {
+      console.warn("emitOrderCreated failed:", err.message);
+    }
+
     res
       .status(201)
       .json({ success: true, message: "Order created!", data: order });
@@ -694,17 +707,24 @@ const updateOrder = async (req, res, next) => {
 
     await order.save();
 
+    // EVERY transition is broadcast, not only the one to Ready.
+    //
+    // This used to sit inside `if (readyTransition)`, so a screen listening
+    // for changes heard about an order becoming Ready and nothing else --
+    // completing, cancelling or settling one left every other till showing
+    // the old status until somebody reloaded the page.
+    try {
+      emitOrderStatusChanged({
+        restaurantId: order.restaurantId,
+        outletId: order.outletId,
+        storeId: order.storeId,
+        order,
+      });
+    } catch (err) {
+      console.warn("emitOrderStatusChanged failed:", err.message);
+    }
+
     if (readyTransition) {
-      try {
-        emitOrderStatusChanged({
-          restaurantId: order.restaurantId,
-          outletId: order.outletId,
-          storeId: order.storeId,
-          order,
-        });
-      } catch (err) {
-        console.warn("emitOrderStatusChanged failed:", err.message);
-      }
       // Fire-and-forget SMS; errors are logged inside the service.
       notifyOrderReady(order).catch((err) => {
         console.warn("notifyOrderReady failed:", err.message);

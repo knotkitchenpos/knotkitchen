@@ -1531,6 +1531,20 @@ const publishToTarget = async (req, res, target) => {
     });
   }
 
+  // Tell every other till. Publishing is exactly the case where one device
+  // changes what all the others should be showing, and without this they kept
+  // serving the old menu until someone reloaded them by hand.
+  try {
+    const { emitToRestaurant } = require("../services/socket");
+    emitToRestaurant(req.user?.restaurantId, "menu:updated", {
+      target,
+      count: updated,
+      publishedAt: now,
+    });
+  } catch (err) {
+    console.warn("menu:updated emit failed:", err.message);
+  }
+
   return res.status(200).json({
     success: true,
     message: `${target === "website" ? "Website" : "System"} cache refreshed. ${updated} menu(s) republished.`,

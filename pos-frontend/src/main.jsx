@@ -79,6 +79,21 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 30000,
+
+      /**
+       * Belt and braces behind the socket.
+       *
+       * hooks/useRealtimeSync turns server events into cache invalidations,
+       * and that is what makes the POS live. These two cover the case it
+       * cannot: a socket that never connects at all, because a proxy or a
+       * corporate network blocks websockets. Then a till still catches up
+       * whenever the tab is refocused or the network returns, instead of
+       * showing yesterday's orders until somebody reloads.
+       *
+       * Neither polls, so an idle till costs nothing.
+       */
+      refetchOnWindowFocus: true,
+      refetchOnReconnect: true,
     },
   },
 });

@@ -15,6 +15,7 @@ import {
 
 import Sidebar from "./components/shared/Sidebar";
 import useLoadData from "./hooks/useLoadData";
+import useRealtimeSync from "./hooks/useRealtimeSync";
 import { isPublicPath } from "./utils/publicRoutes";
 import FullScreenLoader from "./components/shared/FullScreenLoader";
 import MarketplaceOrderPopup from "./components/dashboard/MarketplaceOrderPopup";
@@ -30,6 +31,9 @@ function ProtectedRoutes({ children }) {
 
 function Layout() {
   const isLoading = useLoadData();
+  // One subscription for the whole app: socket events become cache
+  // invalidations, so screens update without anyone pressing refresh.
+  useRealtimeSync();
   const location = useLocation();
   const { isAuth } = useSelector((state) => state.user);
   const [mobileOpen, setMobileOpen] = useState(false);
