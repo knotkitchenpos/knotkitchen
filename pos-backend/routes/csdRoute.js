@@ -18,6 +18,11 @@ const {
 const { getReports, getAuditLog } = require("../controllers/csdReportsController");
 const { getSettings } = require("../controllers/csdSettingsController");
 const {
+  getBillingConfig,
+  updateBillingConfig,
+  getAccountStanding,
+} = require("../controllers/csdBillingConfigController");
+const {
   listAgreements, getAgreement, createStoreFromAgreement, retryPortalNotify,
 } = require("../controllers/csdAgreementController");
 const {
@@ -189,5 +194,15 @@ router.patch("/restaurants/:storeId/users/:userId", requireCsdAdmin, updateUser)
 router.get("/reports", requireCsdAdmin, getReports);
 router.get("/reports/audit", requireCsdAdmin, getAuditLog);
 router.get("/settings", requireCsdAdmin, getSettings);
+
+
+/**
+ * KnotKitchen's own pricing. The ONLY place plans, offers, GST and the
+ * per-order charge can be set -- no restaurant-facing route writes any of it.
+ * Reading is open to any CSD staff; changing a price is admin-only.
+ */
+router.get("/billing/config", getBillingConfig);
+router.patch("/billing/config", requireCsdAdmin, updateBillingConfig);
+router.get("/billing/accounts/:restaurantId", getAccountStanding);
 
 module.exports = router;

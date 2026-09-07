@@ -513,6 +513,35 @@ const updateCharges = async (req, res, next) => {
     }
     if (b.notes !== undefined) patch.notes = str(b.notes).slice(0, 1000);
 
+    /**
+     * A negotiated price for a specific plan -- "ABC pays 999 for Growth"
+     * while the standard price stays 1299.
+     *
+     * Sent as a whole list, not a patch, so removing an entry is possible:
+     * with a merge there would be no way to put a restaurant back on the
+     * standard price once it had been given a special one.
+     */
+    if (b.planPrices !== undefined) {
+      if (!Array.isArray(b.planPrices)) {
+        fieldErrors.planPrices = "Plan prices must be a list.";
+      } else {
+        const seen = new Set();
+        patch.planPrices = b.planPrices.map((row, i) => {
+          const code = str(row?.code).trim().toLowerCase();
+          const price = Number(row?.price);
+          if (!code) fieldErrors[`planPrices.${i}.code`] = "Pick a plan.";
+          if (seen.has(code)) fieldErrors[`planPrices.${i}.code`] = "That plan is listed twice.";
+          seen.add(code);
+          if (Number.isNaN(price) || price < 0) {
+            fieldErrors[`planPrices.${i}.price`] = "Price must be zero or more.";
+          } else if (price > 1000000) {
+            fieldErrors[`planPrices.${i}.price`] = "Price looks too large.";
+          }
+          return { code, price };
+        });
+      }
+    }
+
     if (Object.keys(fieldErrors).length) {
       return next(createHttpError(400, "Please correct the highlighted fields.", { fieldErrors }));
     }
@@ -530,7 +559,14 @@ const updateCharges = async (req, res, next) => {
     };
 
     for (const [k, v] of Object.entries(patch)) {
-      if (k !== "notes" && existing[k] !== v) {
+      if (k === "planPrices") {
+        existing.history.push({
+          field: k,
+          from: (existing.planPrices || []).map((p) => `${p.code}:${p.price}`).join(", "),
+          to: v.map((p) => `${p.code}:${p.price}`).join(", "),
+          byId: req.csdStaff._id, byStaffId: req.csdStaff.staffId, byName: req.csdStaff.fullName,
+        });
+      } else if (k !== "notes" && existing[k] !== v) {
         existing.history.push({
           field: k, from: existing[k], to: v,
           byId: req.csdStaff._id, byStaffId: req.csdStaff.staffId, byName: req.csdStaff.fullName,
@@ -556,6 +592,7 @@ const updateCharges = async (req, res, next) => {
         onlinePaidOrderCharge: existing.onlinePaidOrderCharge,
         gstPercent: existing.gstPercent,
         monthlySubscription: existing.monthlySubscription,
+        planPrices: existing.planPrices || [],
         notes: existing.notes,
         plan: restaurant?.subscription?.plan || "free",
         usingDefaults: false,
