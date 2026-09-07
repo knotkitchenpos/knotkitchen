@@ -14,6 +14,7 @@
 
 const { COMPLETED } = require("../constants/orderStatus");
 const { fireAutoEBill } = require("./eBillService");
+const { fireOrderCharge } = require("./orderCharge");
 const { normalizePaymentMethod, toOrderPaymentMethod } = require("../constants/paymentMethods");
 const Order = require("../models/orderModel");
 const Bill = require("../models/billModel");
@@ -159,6 +160,7 @@ const finalizePaymentLinkFromGateway = async ({
   // order is unpaid, so a webhook redelivery returns null here and cannot send
   // a second one. (eBillSentAt makes that safe twice over.)
   if (updatedOrder) fireAutoEBill({ orderId: updatedOrder._id });
+  if (updatedOrder) fireOrderCharge(updatedOrder._id);
 
   return { link: updatedLink || link, txn, order: updatedOrder };
 };

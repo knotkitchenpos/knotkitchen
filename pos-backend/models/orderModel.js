@@ -104,6 +104,33 @@ const orderSchema = new mongoose.Schema({
   eBillSentAt: { type: Date, default: null },
 
   /**
+   * What KnotKitchen charged the RESTAURANT for this order -- the platform's
+   * per-order website fee, not anything the diner paid.
+   *
+   * Lives on the order because the order is the thing being charged: "was
+   * this one billed, and if not why not" is answered in the same document,
+   * and a status already set is the idempotency guard.
+   *
+   * PENDING means the fee was owed but the Business Balance was short. The
+   * customer's order still went through -- KnotKitchen's billing must never
+   * be able to block a restaurant from taking money.
+   */
+  platformCharge: {
+    status: {
+      type: String,
+      enum: ["PENDING", "PAID", "NOT_APPLICABLE", "WAIVED"],
+      default: null,
+    },
+    reason: { type: String, default: "" },
+    amountPaise: { type: Number, default: 0 },
+    taxPaise: { type: Number, default: 0 },
+    totalPaise: { type: Number, default: 0 },
+    taxPercent: { type: Number, default: 0 },
+    chargedAt: { type: Date, default: null },
+    ledgerEntryId: { type: mongoose.Schema.Types.ObjectId, default: null },
+  },
+
+  /**
    * Auto-Complete state tracking.
    * `completeDueAt`   when the server-side auto-complete timer should fire
    * `completedAt`     when the order was marked/became Completed
@@ -221,6 +248,8 @@ orderSchema.index({ tableSessionId: 1 });
 // POS "new online orders" query + analytics rollups.
 orderSchema.index({ storeId: 1, source: 1, createdAt: -1 });
 orderSchema.index({ restaurantId: 1, source: 1, orderStatus: 1, createdAt: -1 });
+// Unsettled platform dues for a restaurant, oldest first.
+orderSchema.index({ restaurantId: 1, "platformCharge.status": 1, "platformCharge.chargedAt": 1 });
 /**
  * Idempotency guard (§32): a repeated checkout POST carrying the same
  * idempotencyKey can never create a second order for the same restaurant.

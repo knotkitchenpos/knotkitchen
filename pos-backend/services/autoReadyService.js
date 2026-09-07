@@ -33,6 +33,7 @@ const Order = require("../models/orderModel");
 const WebsiteSettings = require("../models/websiteSettingsModel");
 const { notifyOrderReady } = require("./readyNotificationService");
 const { fireAutoEBill } = require("./eBillService");
+const { fireOrderCharge } = require("./orderCharge");
 const {
   READY, SERVED, DELIVERED, COMPLETED,
   PREPARING_STATUSES, SETTLED_STATUSES, CANCELLED_STATUSES, REFUNDED_STATUSES,
@@ -293,6 +294,7 @@ const runAutoCompleteTick = async (now = new Date()) => {
         // no less final. Same fire-and-forget contract; no-op unless the
         // restaurant has autoEBill on.
         fireAutoEBill({ orderId: order._id });
+        fireOrderCharge(order._id);
 
         if (emitter && order.restaurantId) {
           try {

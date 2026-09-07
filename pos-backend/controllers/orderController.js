@@ -11,6 +11,7 @@ const { generateOrderNumberSafe } = require("../services/orderNumberService");
 const { computeReadyDueAt, computeCompleteDueAt } = require("../services/autoReadyService");
 const { notifyOrderReady } = require("../services/readyNotificationService");
 const { fireAutoEBill } = require("../services/eBillService");
+const { fireOrderCharge } = require("../services/orderCharge");
 const { emitOrderStatusChanged } = require("../services/socket");
 
 
@@ -490,6 +491,10 @@ const addOrder = async (req, res, next) => {
     // Fire-and-forget, and a no-op unless posSettings.autoEBill is on and the
     // order carries a phone number.
     if (isPaidAtTill) fireAutoEBill({ orderId: order._id });
+    // Same trigger, different direction: the e-bill goes to the diner,
+    // this bills the restaurant. A no-op unless the admin has enabled a
+    // per-order charge for this source.
+    if (isPaidAtTill) fireOrderCharge(order._id);
 
     res
       .status(201)
@@ -711,6 +716,7 @@ const updateOrder = async (req, res, next) => {
     // change worked, and a messaging problem must not turn that into an error.
     // Does nothing unless posSettings.autoEBill is on for this restaurant.
     if (settledTransition) fireAutoEBill({ orderId: order._id });
+    if (settledTransition) fireOrderCharge(order._id);
 
     // Return canonical status to the client too.
     const projected = order.toObject();
