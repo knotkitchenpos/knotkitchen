@@ -29,7 +29,7 @@
  * sees a rupee amount again.
  */
 
-const { PlatformBillingConfig } = require("../models/platformBillingModel");
+const { PlatformBillingConfig, DEFAULT_PLANS } = require("../models/platformBillingModel");
 const CsdStoreCharges = require("../models/csdStoreChargesModel");
 const Restaurant = require("../models/restaurantModel");
 const { toPaise } = require("./money");
@@ -37,7 +37,18 @@ const { toPaise } = require("./money");
 /** The singleton, created empty on first read so the admin panel has something to edit. */
 const getPlatformConfig = async () => {
   const existing = await PlatformBillingConfig.findOne({ singleton: "platform" });
-  if (existing) return existing;
+  if (existing) {
+    // An install that predates the seeded catalogue has a config row with no
+    // plans in it, and the POS showed "No plans are available at the moment"
+    // with no way for the restaurant to subscribe. Backfill once; an admin
+    // who has since edited the catalogue is never overwritten, because this
+    // only fires when it is EMPTY.
+    if (!existing.plans || existing.plans.length === 0) {
+      existing.plans = DEFAULT_PLANS.map((p) => ({ ...p }));
+      await existing.save();
+    }
+    return existing;
+  }
   return PlatformBillingConfig.create({ singleton: "platform" });
 };
 

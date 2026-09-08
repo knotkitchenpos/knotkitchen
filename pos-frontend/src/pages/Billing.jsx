@@ -9,8 +9,12 @@ import {
   getSubscriptionStatus,
   getSubscriptionPlans,
   purchasePlan,
+  getSubscriptionQuote,
   getPlatformInvoices,
 } from "../https";
+import { useSelector } from "react-redux";
+import SecurityPinModal from "../components/common/SecurityPinModal";
+import { checkActionAuthorization } from "../utils/security";
 
 /**
  * Settings → Billing.
@@ -87,6 +91,49 @@ const Billing = () => {
   const subscription = subRes?.data?.data;
   const plans = plansRes?.data?.data || [];
   const invoices = invRes?.data?.data || [];
+
+  const user = useSelector((st) => st.user);
+  const [pinOpen, setPinOpen] = useState(false);
+  const [pendingPlan, setPendingPlan] = useState(null);
+  // What each plan would actually cost RIGHT NOW. On an upgrade the server
+  // charges the difference for the days left in the period, not the full
+  // price again, and the operator should see that before committing.
+  const [upgradeQuotes, setUpgradeQuotes] = useState({});
+
+  useEffect(() => {
+    let cancelled = false;
+    const open = plans.filter((p) => p.isAvailable !== false && p.code !== subscription?.planCode);
+    if (!open.length) return undefined;
+    Promise.all(
+      open.map((p) =>
+        getSubscriptionQuote(p.code)
+          .then((r) => [p.code, r?.data?.data?.charge])
+          .catch(() => [p.code, null]),
+      ),
+    ).then((rows) => {
+      if (cancelled) return;
+      setUpgradeQuotes(Object.fromEntries(rows.filter(([, v]) => v != null)));
+    });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plansRes, subscription?.planCode]);
+
+  /**
+   * Changing the plan is the Owner's decision. A Staff member has to enter
+   * the Store Properties PIN first; the server enforces the same rule, so
+   * this modal is the prompt, not the protection.
+   */
+  const changePlan = (planCode) => {
+    const auth = checkActionAuthorization(user, { isOwnerOnly: false });
+    if (auth.status === "REQUIRE_PIN") {
+      setPendingPlan(planCode);
+      setPinOpen(true);
+      return;
+    }
+    buy.mutate(planCode);
+  };
 
   const refreshMoney = () => {
     qc.invalidateQueries({ queryKey: ["business-balance"] });
@@ -272,11 +319,18 @@ const Billing = () => {
             <div className="space-y-2">
               {plans.map((plan) => {
                 const current = subscription?.planCode === plan.code && subscription?.active;
+                // Listed but closed to new subscriptions. Shown rather than
+                // hidden so a restaurant can see the whole ladder.
+                const locked = plan.isAvailable === false && !current;
                 return (
                   <div
                     key={plan.code}
                     className={`flex items-center justify-between gap-3 rounded-xl border p-3 ${
-                      current ? "border-[#FD5302] bg-[#FFF7ED]" : "border-[#E2E8F0]"
+                      current
+                        ? "border-[#FD5302] bg-[#FFF7ED]"
+                        : locked
+                          ? "border-[#E2E8F0] bg-[#F8FAFC] opacity-70"
+                          : "border-[#E2E8F0]"
                     }`}
                   >
                     <div className="min-w-0">
@@ -285,20 +339,30 @@ const Billing = () => {
                         {current && (
                           <span className="ml-2 text-[11px] font-bold text-[#C2410C]">CURRENT</span>
                         )}
+                        {locked && (
+                          <span className="ml-2 text-[11px] font-bold text-[#94A3B8]">LOCKED</span>
+                        )}
                       </p>
                       <p className="text-[12px] text-[#64748B]">
                         {money(plan.price)} / {subscription?.periodDays || 30} days
                         {plan.source === "offer" && " · offer price"}
                         {plan.source === "restaurant" && " · your agreed rate"}
                       </p>
+                      {/* An upgrade mid-period is charged on the difference for
+                          the days that remain, never the full price again. */}
+                      {upgradeQuotes[plan.code] != null && !current && !locked && (
+                        <p className="text-[11.5px] font-bold text-[#15803D]">
+                          You pay {money(upgradeQuotes[plan.code])} now
+                        </p>
+                      )}
                     </div>
                     <button
                       type="button"
-                      disabled={buy.isPending || current}
-                      onClick={() => buy.mutate(plan.code)}
+                      disabled={buy.isPending || current || locked}
+                      onClick={() => changePlan(plan.code)}
                       className="shrink-0 rounded-xl bg-[#0F172A] px-4 py-2 text-[12.5px] font-extrabold text-white hover:bg-[#1E293B] disabled:opacity-40"
                     >
-                      {current ? "Active" : subscription?.active ? "Switch" : "Subscribe"}
+                      {current ? "Active" : locked ? "Locked" : subscription?.active ? "Switch" : "Subscribe"}
                     </button>
                   </div>
                 );
@@ -390,6 +454,21 @@ const Billing = () => {
           </div>
         )}
       </Card>
+
+      <SecurityPinModal
+        isOpen={pinOpen}
+        title="Plan changes need authorisation"
+        actionLabel="Change plan"
+        onClose={() => {
+          setPinOpen(false);
+          setPendingPlan(null);
+        }}
+        onSuccess={() => {
+          setPinOpen(false);
+          if (pendingPlan) buy.mutate(pendingPlan);
+          setPendingPlan(null);
+        }}
+      />
     </div>
   );
 };

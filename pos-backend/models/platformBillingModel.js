@@ -45,6 +45,26 @@ const planSchema = new mongoose.Schema(
   { _id: false },
 );
 
+/**
+ * The four plans KnotKitchen sells, as shipped.
+ *
+ * Seeded rather than hard-coded: the CSD owns pricing, offers and per-store
+ * rates, and every one of these is editable there. They exist here only so a
+ * fresh install has something to sell -- an empty catalogue is why the POS
+ * showed "No plans are available at the moment".
+ *
+ * Essential and Connect ship with `isAvailable: false`: listed so a restaurant
+ * can see what exists, but closed to new subscriptions until they open. That
+ * is exactly the distinction `isAvailable` was added for -- `isActive` false
+ * would hide them completely.
+ */
+const DEFAULT_PLANS = [
+  { code: "ESSENTIAL", name: "Essential", standardPricePaise: 39900, sortOrder: 1, isAvailable: false },
+  { code: "CONNECT", name: "Connect", standardPricePaise: 59900, sortOrder: 2, isAvailable: false },
+  { code: "GROWTH", name: "Growth", standardPricePaise: 129900, sortOrder: 3, isAvailable: true },
+  { code: "SCALE", name: "Scale", standardPricePaise: 169900, sortOrder: 4, isAvailable: true },
+];
+
 const gstSchema = new mongoose.Schema(
   {
     registered: { type: Boolean, default: false },
@@ -101,7 +121,7 @@ const platformBillingConfigSchema = new mongoose.Schema(
   {
     // Enforces the singleton: only one document can hold this value.
     singleton: { type: String, default: "platform", unique: true, immutable: true },
-    plans: { type: [planSchema], default: [] },
+    plans: { type: [planSchema], default: () => DEFAULT_PLANS.map((p) => ({ ...p })) },
     gst: { type: gstSchema, default: () => ({}) },
     websiteOrderCharge: { type: orderChargeSchema, default: () => ({}) },
     // Charged per e-bill actually delivered -- never per attempt.
@@ -156,5 +176,6 @@ const platformBillingConfigSchema = new mongoose.Schema(
  */
 
 module.exports = {
+  DEFAULT_PLANS,
   PlatformBillingConfig: mongoose.model("PlatformBillingConfig", platformBillingConfigSchema),
 };

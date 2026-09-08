@@ -6,6 +6,7 @@ const { quote, purchasePlan, statusFor, SubscriptionError } = require("../servic
 const { PlatformInvoice } = require("../models/platformSubscriptionModel");
 const { urlForInvoice } = require("../services/receiptLink");
 const { toRupees, formatINR } = require("../services/money");
+const { requireProtectedAction } = require("../middlewares/requirePermission");
 
 const router = express.Router();
 
@@ -48,7 +49,13 @@ router.get("/", isVerifiedUser, async (req, res, next) => {
 // negotiated rates already applied.
 router.get("/plans", isVerifiedUser, async (req, res, next) => {
   try {
-    const plans = await listPlansFor({ restaurantId: ownRestaurantId(req) });
+    // Locked plans are LISTED, not hidden: a restaurant should see what
+    // exists and which tier it could move to. `isAvailable: false` still
+    // refuses the purchase itself, in quote().
+    const plans = await listPlansFor({
+      restaurantId: ownRestaurantId(req),
+      includeUnavailable: true,
+    });
     res.status(200).json({
       success: true,
       data: plans.map((p) => ({ ...p, price: asAmount(p.pricePaise) })),
@@ -80,7 +87,10 @@ router.get("/quote/:planCode", isVerifiedUser, async (req, res, next) => {
  * Paid from the Business Balance. A shortfall answers 402 with the amounts,
  * so the UI can send them to top up rather than just saying no.
  */
-router.post("/purchase", isVerifiedUser, async (req, res, next) => {
+// Changing the plan is an Owner decision. requireProtectedAction lets the
+// Owner straight through and makes a Staff member enter the Store Properties
+// PIN -- the same gate the other money-touching settings already use.
+router.post("/purchase", isVerifiedUser, requireProtectedAction, async (req, res, next) => {
   try {
     const planCode = String(req.body?.planCode || "");
     if (!planCode) throw createHttpError(400, "planCode is required.");

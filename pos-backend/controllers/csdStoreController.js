@@ -7,6 +7,7 @@ const { buildStorefrontUrl } = require("../services/websiteProvisioningService")
 const { csdAudit } = require("../services/csdAuditService");
 const onboardPortalService = require("../services/onboardPortalService");
 const { formatAddress } = require("../services/address");
+const { purgeStoreData } = require("../services/storePurge");
 
 /** Escape user input before it reaches a RegExp — otherwise "(" or "*" throws. */
 const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -209,20 +210,29 @@ const permanentlyDeleteStore = async ({ req, store, storeId, reason }) => {
   const link = await CsdAgreementLink.findOne({ storeId }).lean();
   const agreementId = link?.agreementId || "";
 
-  // 1. Local: mark store deleted (keep the doc for audit + FK integrity).
+  // 1. Everything the store owns, actually removed.
+  //
+  //    This used to be two isDeleted flags and nothing else, so the orders,
+  //    staff, tables, menus, sessions, QR codes, website settings and
+  //    agreements all stayed in the database and the store kept working
+  //    through any route that did not check those two flags. See
+  //    services/storePurge.js for what is deliberately KEPT (the audit
+  //    trail, and our own invoices to them).
+  const purge = await purgeStoreData({ restaurantId: store.restaurantId, storeId });
+
+  // 2. The store row itself. Kept, flagged deleted, because the audit entry
+  //    below points at it and a dangling audit record is worse than a tomb
+  //    stone row that every query already filters out.
   store.status = "deleted";
   store.closedUntil = null;
   store.closureReason = reason || "Permanently deleted";
   store.isDeleted = true;
   await store.save();
 
-  // 2. Restaurant: hide it from every query without hard-deleting so
-  //    orders / payments retain their FK targets for reconciliation.
+  // 3. Restaurant: removed outright now that nothing references it. Leaving
+  //    it behind was how a "deleted" store still resolved on login.
   if (store.restaurantId) {
-    await Restaurant.updateOne(
-      { _id: store.restaurantId },
-      { $set: { isDeleted: true } }
-    );
+    await Restaurant.deleteOne({ _id: store.restaurantId });
   }
 
   // 3. Local agreement link: gone. Without this row, listing the portal's
@@ -260,6 +270,9 @@ const permanentlyDeleteStore = async ({ req, store, storeId, reason }) => {
       reason: store.closureReason,
       agreementId: agreementId || null,
       portalError: portalError || null,
+      // Exactly what was destroyed, per collection.
+      purged: purge.deleted,
+      retained: purge.skipped,
     },
     severity: "CRITICAL",
   });
