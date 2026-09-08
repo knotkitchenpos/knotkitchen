@@ -1160,6 +1160,40 @@ const settleSessionFromGateway = async ({
 // POS ticket and KDS), and the recalculated bill (which already excludes
 // cancelled items).
 // ============================================================
+/**
+ * Which kitchen line a cancelled session item refers to.
+ *
+ * A session's dishes are spread over one kitchen order per round, and the
+ * cancelled line lives in exactly ONE of them -- so this returns a single
+ * line, never a set. The order of preference is what keeps it honest:
+ *
+ *   kdsItemId   the line this item was actually created as, exact
+ *   orderId     the round it was added in, then matched by name within it
+ *   name        last resort, earliest round first
+ *
+ * Name matching is last precisely because two rounds can hold the same dish.
+ * Cancelling round one's coffee when round two's was pulled takes a cooked
+ * plate off the pass and leaves the wrong one on the ticket.
+ *
+ * `orders` are Mongoose documents (items expose `.id()`); plain objects work
+ * too as long as they provide one.
+ */
+const findCancelTarget = (item, orders) => {
+  const lineIn = (order) =>
+    (item.kdsItemId && order.items.id(item.kdsItemId)) ||
+    order.items.find(
+      (oi) => oi.status !== "cancelled" && String(oi.name) === String(item.name),
+    ) ||
+    null;
+
+  const owner =
+    (item.kdsItemId && orders.find((o) => o.items.id(item.kdsItemId))) ||
+    orders.find((o) => String(o._id) === String(item.orderId || "") && lineIn(o)) ||
+    orders.find((o) => lineIn(o));
+
+  return owner ? lineIn(owner) : null;
+};
+
 const cancelSessionItem = async (req, res, next) => {
   try {
     const { id, itemId } = req.params;
@@ -1202,51 +1236,66 @@ const cancelSessionItem = async (req, res, next) => {
     // items from the total.
     await recalculateSessionBill(session);
 
-    // Mirror onto the kitchen order so the ticket, the KDS and the Orders
-    // list agree with the bill. Without this the POS would keep cooking it.
-    let cancelledOrder = null;
-    if (item.orderId) {
-      const order = await Order.findOne({
-        _id: item.orderId,
-        restaurantId: session.restaurantId,
-        isDeleted: { $ne: true },
-      });
-      if (order) {
-        const orderItem =
-          (item.kdsItemId && order.items.id(item.kdsItemId)) ||
-          order.items.find(
-            (oi) => oi.status !== "cancelled" && String(oi.name) === String(item.name),
-          );
-        if (orderItem) orderItem.status = "cancelled";
+    // Mirror onto the kitchen order(s) so the ticket, the KDS and the Orders
+    // list agree with the bill. Without this the POS keeps cooking a dish the
+    // customer is no longer being charged for.
+    //
+    // The lookup is deliberately NOT `item.orderId` alone. That link is
+    // optional on the model ("internal kitchen order if any"), so an item
+    // added by any path that did not stamp it -- or written before the link
+    // existed -- skipped this whole block, and the Orders screen went on
+    // showing a line the bill had already dropped. `tableSessionId` is
+    // written by every order-creation path for a table, so it always finds
+    // them.
+    //
+    // All of the session's orders are updated, not just one: both creation
+    // sites write the session's RUNNING bill onto each order they create, so
+    // a stale bill on round one is just as wrong as a stale bill on round two.
+    const sessionOrders = await Order.find({
+      restaurantId: session.restaurantId,
+      isDeleted: { $ne: true },
+      $or: [
+        ...(item.orderId ? [{ _id: item.orderId }] : []),
+        { tableSessionId: session._id },
+      ],
+    }).sort({ orderDate: 1 });
 
-        order.bills = session.bills;
-
-        // Every dish pulled means there is no order left to cook.
-        const anyLive = order.items.some((oi) => oi.status !== "cancelled");
-        if (!anyLive && !isFinished(order.orderStatus)) {
-          order.orderStatus = CANCELLED;
-          order.timeline = order.timeline || [];
-          order.timeline.push({
-            status: CANCELLED,
-            timestamp: new Date(),
-            user: req.user?.name || "POS",
-          });
-          // A cancelled order must not be picked up by the auto sweeps.
-          order.readyDueAt = null;
-          order.completeDueAt = null;
-        }
-
-        await order.save();
-        cancelledOrder = order;
-      }
+    const orderItem = findCancelTarget(item, sessionOrders);
+    if (orderItem) {
+      orderItem.status = "cancelled";
+      orderItem.cancelledAt = item.cancelledAt;
+      orderItem.cancelReason = reason;
     }
 
-    if (cancelledOrder) {
+    const touchedOrders = [];
+    for (const order of sessionOrders) {
+      order.bills = session.bills;
+
+      // Every dish pulled means there is no order left to cook.
+      const anyLive = order.items.some((oi) => oi.status !== "cancelled");
+      if (!anyLive && !isFinished(order.orderStatus)) {
+        order.orderStatus = CANCELLED;
+        order.timeline = order.timeline || [];
+        order.timeline.push({
+          status: CANCELLED,
+          timestamp: new Date(),
+          user: req.user?.name || "POS",
+        });
+        // A cancelled order must not be picked up by the auto sweeps.
+        order.readyDueAt = null;
+        order.completeDueAt = null;
+      }
+
+      await order.save();
+      touchedOrders.push(order);
+    }
+
+    for (const order of touchedOrders) {
       try {
         emitOrderStatusChanged({
-          restaurantId: cancelledOrder.restaurantId,
-          outletId: cancelledOrder.outletId,
-          order: cancelledOrder,
+          restaurantId: order.restaurantId,
+          outletId: order.outletId,
+          order,
         });
       } catch (err) {
         console.warn("emitOrderStatusChanged failed:", err.message);
@@ -1282,6 +1331,7 @@ module.exports = {
   recordSessionPayment,
   closeSessionWithoutPayment,
   cancelSessionItem,
+  findCancelTarget,
   settleSessionFromGateway,
   findActiveSessionByTable,
   recalculateSessionBill,

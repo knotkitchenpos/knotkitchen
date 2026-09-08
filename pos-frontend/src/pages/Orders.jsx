@@ -750,16 +750,30 @@ const Orders = () => {
               {/* Items — includes variant, add-ons and options (Module 4 §7). */}
               <div className="px-4 py-3.5 border-b border-[#E2E8F0]">
                 <p className="text-[13.5px] font-extrabold text-[#0F172A] mb-2.5">
-                  Order Items ({selected.items?.length || 0})
+                  Order Items ({(selected.items || []).filter((it) => it.status !== "cancelled").length})
                 </p>
                 <div className="space-y-2.5">
-                  {(selected.items || []).map((it, i) => (
-                    <div key={i} className="flex items-start gap-3">
+                  {(selected.items || []).map((it, i) => {
+                    // A line cancelled from Manage Tables stays listed -- staff
+                    // need to see what was pulled -- but it must not read as
+                    // something still being cooked or still being charged.
+                    const isVoided = it.status === "cancelled";
+                    return (
+                    <div key={i} className={`flex items-start gap-3 ${isVoided ? "opacity-60" : ""}`}>
                       <div className="min-w-0 flex-1">
-                        <p className="text-[13.5px] font-bold text-[#0F172A] truncate">
+                        <p
+                          className={`text-[13.5px] font-bold truncate ${
+                            isVoided ? "text-[#94A3B8] line-through" : "text-[#0F172A]"
+                          }`}
+                        >
                           {it.name}
                           {it.variant?.name ? ` (${it.variant.name})` : ""}
                         </p>
+                        {isVoided && (
+                          <p className="text-[11px] font-bold text-[#DC2626]">
+                            Cancelled{it.cancelReason ? ` — ${it.cancelReason}` : ""}
+                          </p>
+                        )}
                         {Array.isArray(it.addons) && it.addons.length > 0 && (
                           <p className="text-[11px] text-[#64748B] truncate">
                             + {it.addons.map((a) => a.name).join(", ")}
@@ -775,11 +789,16 @@ const Orders = () => {
                       <span className="px-2.5 py-[3px] rounded-md border border-[#E2E8F0] text-[12px] font-bold text-[#334155] shrink-0">
                         x {it.quantity}
                       </span>
-                      <span className="text-[13.5px] font-extrabold text-[#0F172A] w-[68px] text-right shrink-0">
+                      <span
+                        className={`text-[13.5px] font-extrabold w-[68px] text-right shrink-0 ${
+                          isVoided ? "text-[#94A3B8] line-through" : "text-[#0F172A]"
+                        }`}
+                      >
                         {money(it.total || it.price * it.quantity)}
                       </span>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
 
