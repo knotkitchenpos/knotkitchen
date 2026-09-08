@@ -24,6 +24,9 @@ const AddedItemsPopup = () => {
   const restaurantId = useSelector((s) => s.user?.restaurantId);
   const [queue, setQueue] = useState([]);
   const [busy, setBusy] = useState(false);
+  // Which lines the operator ticked. Empty means "the whole batch", which is
+  // what the single Cancel button used to do and stays the default.
+  const [picked, setPicked] = useState({});
   const socketRef = useRef(null);
 
   useAlertBeep(queue.length > 0);
@@ -71,12 +74,15 @@ const AddedItemsPopup = () => {
 
   if (queue.length === 0) return null;
   const current = queue[0];
-  const drop = () => setQueue((prev) => prev.slice(1));
+  const drop = () => {
+    setPicked({});
+    setQueue((prev) => prev.slice(1));
+  };
 
-  const decide = async (action) => {
+  const decide = async (action, itemIds) => {
     setBusy(true);
     try {
-      const res = await resolveAddedItems(current.orderId, action);
+      const res = await resolveAddedItems(current.orderId, action, itemIds);
       enqueueSnackbar(res?.data?.message || "Updated.", {
         variant: action === "accept" ? "success" : "info",
       });
@@ -90,8 +96,18 @@ const AddedItemsPopup = () => {
     }
   };
 
+  const cancelWholeOrder = () => {
+    // Voiding a table's whole ticket is not the same decision as declining an
+    // addition, and it cannot be undone from here.
+    if (!window.confirm("Cancel this table's ENTIRE order? Every item on the ticket is voided.")) {
+      return;
+    }
+    decide("cancel_order");
+  };
+
   const label = current.displayId || `Table ${current.tableNumber ?? "?"}`;
   const items = Array.isArray(current.pendingItems) ? current.pendingItems : [];
+  const selectedIds = Object.keys(picked).filter((id) => picked[id]);
 
   return (
     <div className="fixed inset-0 z-[65] bg-black/50 flex items-center justify-center p-4">
@@ -117,36 +133,74 @@ const AddedItemsPopup = () => {
               No line items in this request.
             </p>
           ) : (
-            items.map((it, i) => (
-              <div key={i} className="px-3 py-2 flex items-center justify-between gap-3 text-[13px]">
-                <p className="font-bold text-[#0F172A] truncate">
-                  {it.quantity || 1}× {it.name || "Item"}
-                </p>
-                <span className="shrink-0 font-extrabold text-[#0F172A]">
-                  ₹{Number(it.total || 0).toFixed(2)}
-                </span>
-              </div>
-            ))
+            items.map((it, i) => {
+              const id = it._id ? String(it._id) : "";
+              const mods = (it.modifiers || [])
+                .map((m) => m.name)
+                .filter(Boolean)
+                .join(", ");
+              return (
+                <label
+                  key={id || i}
+                  className="px-3 py-2 flex items-center gap-3 text-[13px] cursor-pointer hover:bg-[#F8FAFC]"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!picked[id]}
+                    disabled={!id || busy}
+                    onChange={(e) =>
+                      setPicked((prev) => ({ ...prev, [id]: e.target.checked }))
+                    }
+                    className="w-4 h-4 accent-[#DC2626] shrink-0"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="font-bold text-[#0F172A] truncate">
+                      {it.quantity || 1}× {it.name || "Item"}
+                    </p>
+                    {mods && <p className="text-[11px] text-[#64748B] truncate">+ {mods}</p>}
+                  </div>
+                  <span className="shrink-0 font-extrabold text-[#0F172A]">
+                    ₹{Number(it.total || 0).toFixed(2)}
+                  </span>
+                </label>
+              );
+            })
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-2.5">
+        <div className="space-y-2.5">
+          <div className="grid grid-cols-2 gap-2.5">
+            <button
+              type="button"
+              onClick={() => decide("reject", selectedIds)}
+              disabled={busy}
+              className="h-[44px] rounded-xl border border-[#FECACA] bg-[#FEF2F2] text-[#DC2626] text-[13.5px] font-bold hover:bg-[#FEE2E2] disabled:opacity-60"
+            >
+              {selectedIds.length ? `Cancel ${selectedIds.length} Item(s)` : "Cancel All Items"}
+            </button>
+            <button
+              type="button"
+              onClick={() => decide("accept")}
+              disabled={busy}
+              className="h-[44px] rounded-xl bg-[#22C55E] text-white text-[13.5px] font-extrabold hover:bg-[#16A34A] disabled:opacity-60"
+            >
+              {busy ? "Working…" : "Accept Items"}
+            </button>
+          </div>
+          {/* Voiding the table's whole ticket, not just this addition. Kept
+              visually apart from the two routine buttons so it is not the one
+              hit by mistake during service. */}
           <button
             type="button"
-            onClick={() => decide("reject")}
+            onClick={cancelWholeOrder}
             disabled={busy}
-            className="h-[44px] rounded-xl border border-[#FECACA] bg-[#FEF2F2] text-[#DC2626] text-[13.5px] font-bold hover:bg-[#FEE2E2] disabled:opacity-60"
+            className="w-full h-[38px] rounded-xl border border-[#E2E8F0] text-[#DC2626] text-[12.5px] font-bold hover:bg-[#FEF2F2] disabled:opacity-60"
           >
-            Cancel Items
+            Cancel Entire Order
           </button>
-          <button
-            type="button"
-            onClick={() => decide("accept")}
-            disabled={busy}
-            className="h-[44px] rounded-xl bg-[#22C55E] text-white text-[13.5px] font-extrabold hover:bg-[#16A34A] disabled:opacity-60"
-          >
-            {busy ? "Working…" : "Accept Items"}
-          </button>
+          <p className="text-[11px] text-[#94A3B8] text-center">
+            Tick items to cancel only those — otherwise the whole addition is cancelled.
+          </p>
         </div>
 
         {queue.length > 1 && (

@@ -61,5 +61,10 @@ export const getOnlineOrderStats = () => axiosWrapper.get("/api/online-orders/st
 
 // Accept or reject the items a diner added to a table already mid-meal. These
 // live on the table's EXISTING order, so this never creates a second order.
-export const resolveAddedItems = (id, action) =>
-  axiosWrapper.put(`/api/online-orders/${id}/items`, { action });
+// `itemIds` declines part of a batch and leaves the rest cooking; omitting it
+// means the whole batch. `cancel_order` voids the table's ticket outright.
+export const resolveAddedItems = (id, action, itemIds) =>
+  axiosWrapper.put(`/api/online-orders/${id}/items`, {
+    action,
+    ...(Array.isArray(itemIds) && itemIds.length ? { itemIds } : {}),
+  });

@@ -274,6 +274,11 @@ export default function OrderOnline() {
               customerPhone: String(cust.phone).replace(/\D/g, "").slice(-10),
             }),
         requestId: `${token.slice(0, 8)}-${Date.now()}`,
+        // The session this page believes it is part of. The QR is permanent,
+        // so without this a page left open after the bill was settled would
+        // post onto whoever is sitting at the table next. The server refuses
+        // a code that is no longer the live one.
+        ...(session?.sessionCode ? { sessionCode: session.sessionCode } : {}),
       });
       setCart({});
       setCartOpen(false);
@@ -281,6 +286,13 @@ export default function OrderOnline() {
       setTimeout(() => setBanner(""), 4000);
       await refetch();
     } catch (e) {
+      // 409 is specifically "that session is over". Drop the stale session so
+      // the page reloads as a fresh scan rather than retrying against it.
+      if (e.response?.status === 409) {
+        setSession(null);
+        setCartOpen(false);
+        await refetch();
+      }
       setErr(e.response?.data?.message || "Could not send the order. Please try again.");
     } finally {
       setPlacing(false);

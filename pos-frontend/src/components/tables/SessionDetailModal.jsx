@@ -52,6 +52,14 @@ const SessionDetailModal = ({
                     >
                       {item.name}
                     </p>
+                    {/* The components the diner actually chose. They are
+                        priced into the line, so leaving them off made the
+                        total look wrong for no visible reason. */}
+                    {(item.modifiers || []).length > 0 && (
+                      <p className="text-xs text-content-muted truncate">
+                        + {item.modifiers.map((m) => m.name).filter(Boolean).join(", ")}
+                      </p>
+                    )}
                     <p className="text-xs text-content-muted">
                       x{item.quantity}
                       {cancelled ? (

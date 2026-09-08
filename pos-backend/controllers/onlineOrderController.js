@@ -2,8 +2,8 @@ const createHttpError = require("http-errors");
 const mongoose = require("mongoose");
 const Order = require("../models/orderModel");
 const { resolveTenantFromUser } = require("../services/tenantContext");
-const { emitOrderStatusChanged } = require("../services/socket");
-const { isFinished, AWAITING_ACCEPTANCE } = require("../constants/orderStatus");
+const { emitOrderStatusChanged, emitTableSessionUpdated } = require("../services/socket");
+const { isFinished, AWAITING_ACCEPTANCE, CANCELLED } = require("../constants/orderStatus");
 const { computeReadyDueAt, computeCompleteDueAt } = require("../services/autoReadyService");
 
 /**
@@ -253,11 +253,81 @@ const getOnlineOrderStats = async (req, res, next) => {
  * Either way the order itself is untouched: additions must never spawn a
  * second order for one table.
  */
+/**
+ * Push a decision taken on a kitchen order back onto the table session.
+ *
+ * The session is the record Manage Tables and the diner's own phone read, so
+ * a decision that stops at the Order is invisible on both. Lines are matched
+ * on `kdsItemId` -- the session's pointer at the order line -- and only then
+ * by name, for sessions written before that link existed.
+ *
+ * Required at load time rather than at the top of the file: tableSession's
+ * controller requires this one back, and the eager pair resolved to undefined
+ * depending on which was loaded first.
+ */
+const syncSessionFromOrder = async (order, orderItems, action) => {
+  if (!order.tableSessionId) return null;
+
+  const TableSession = require("../models/tableSessionModel");
+  const { recalculateSessionBill } = require("./tableSessionController");
+
+  const session = await TableSession.findOne({
+    _id: order.tableSessionId,
+    isDeleted: { $ne: true },
+  });
+  if (!session) return null;
+
+  // A settled bill is history -- never rewrite it.
+  if (["PAID", "CLOSED"].includes(session.status)) return null;
+
+  const ids = new Set(orderItems.map((i) => String(i._id)));
+  const names = orderItems.map((i) => String(i.name));
+
+  const matches = session.items.filter((si) => {
+    if (si.status === "cancelled") return false;
+    if (si.kdsItemId && ids.has(String(si.kdsItemId))) return true;
+    // Only fall back to the name when this item has no link at all, so a
+    // linked line is never matched twice.
+    return !si.kdsItemId && names.includes(String(si.name));
+  });
+
+  if (matches.length === 0) return session;
+
+  const at = new Date();
+  matches.forEach((si) => {
+    if (action === "accept") {
+      si.status = "preparing";
+    } else {
+      si.status = "cancelled";
+      si.cancelledAt = at;
+      si.cancelReason = action === "cancel_order" ? "Order cancelled" : "Not accepted";
+    }
+  });
+
+  // Drops cancelled lines from the total and saves.
+  await recalculateSessionBill(session);
+  return session;
+};
+
+/**
+ * Which of an order's pending lines this decision applies to.
+ *
+ * `itemIds` lets the till pull one dish out of a batch instead of all of
+ * them; omitting it means the whole batch, which is what the two-button
+ * popup sent before there was any choice.
+ */
+const selectPendingItems = (order, itemIds) => {
+  const pending = (order.items || []).filter((i) => i.status === "pending");
+  if (!Array.isArray(itemIds) || itemIds.length === 0) return pending;
+  const wanted = new Set(itemIds.map(String));
+  return pending.filter((i) => wanted.has(String(i._id)));
+};
+
 const resolveAddedItems = async (req, res, next) => {
   try {
     const action = String(req.body?.action || "").toLowerCase();
-    if (!["accept", "reject"].includes(action)) {
-      return next(createHttpError(400, "action must be accept or reject."));
+    if (!["accept", "reject", "cancel_order"].includes(action)) {
+      return next(createHttpError(400, "action must be accept, reject or cancel_order."));
     }
     if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
       return next(createHttpError(404, "Invalid order id."));
@@ -272,19 +342,44 @@ const resolveAddedItems = async (req, res, next) => {
     const order = await Order.findOne({ _id: req.params.id, ...scoped.scope });
     if (!order) return next(createHttpError(404, "Order not found."));
 
-    const pending = (order.items || []).filter((i) => i.status === "pending");
-    if (pending.length === 0) {
-      return next(createHttpError(409, "This order has no items waiting to be reviewed."));
+    // Cancelling the WHOLE order takes every live line, not just the batch
+    // waiting for review -- the till is voiding the table's ticket, not
+    // declining an addition.
+    const targets =
+      action === "cancel_order"
+        ? (order.items || []).filter((i) => i.status !== "cancelled")
+        : selectPendingItems(order, req.body?.itemIds);
+
+    if (targets.length === 0) {
+      return next(
+        createHttpError(
+          409,
+          action === "cancel_order"
+            ? "This order has nothing left to cancel."
+            : "This order has no items waiting to be reviewed.",
+        ),
+      );
     }
 
     if (action === "accept") {
-      pending.forEach((i) => { i.status = "preparing"; });
+      targets.forEach((i) => { i.status = "preparing"; });
     } else {
-      order.items = (order.items || []).filter((i) => i.status !== "pending");
+      // Marked cancelled, NOT spliced out. Deleting the lines threw away the
+      // `_id` the table session points at with `kdsItemId`, so the session --
+      // which is what Manage Tables and the diner's own page read -- could
+      // never be told which dish had gone. It also let a cancelled dish
+      // vanish from the ticket with no record that it was ever ordered.
+      const at = new Date();
+      targets.forEach((i) => {
+        i.status = "cancelled";
+        i.cancelledAt = at;
+        i.cancelReason = String(req.body?.reason || "").trim().slice(0, 200);
+      });
     }
 
     // Keep the ticket total honest after either outcome.
-    const subtotal = (order.items || []).reduce((s, i) => s + (Number(i.total) || 0), 0);
+    const live = (order.items || []).filter((i) => i.status !== "cancelled");
+    const subtotal = live.reduce((s, i) => s + (Number(i.total) || 0), 0);
     if (order.bills) {
       const taxRate = Number(order.bills.subtotal) > 0
         ? Number(order.bills.tax || 0) / Number(order.bills.subtotal)
@@ -295,7 +390,22 @@ const resolveAddedItems = async (req, res, next) => {
         Math.round((subtotal + order.bills.tax + Number(order.bills.charges || 0)) * 100) / 100;
     }
 
+    if (live.length === 0 && !isFinished(order.orderStatus)) {
+      order.orderStatus = CANCELLED;
+      order.readyDueAt = null;
+      order.completeDueAt = null;
+    }
+
     await order.save();
+
+    // Mirror onto the table session.
+    //
+    // This is the whole of the bug: the decision was written to the Order and
+    // nowhere else. Manage Tables and the diner's phone both read the
+    // SESSION, so a rejected dish stayed on the table's bill and on the
+    // customer's screen forever -- the till saw it disappear from the ticket
+    // and had no way to know the other two screens still showed it.
+    const session = await syncSessionFromOrder(order, targets, action);
 
     try {
       emitOrderStatusChanged({
@@ -303,6 +413,15 @@ const resolveAddedItems = async (req, res, next) => {
         outletId: order.outletId,
         order,
       });
+      if (session) {
+        emitTableSessionUpdated({
+          restaurantId: order.restaurantId,
+          outletId: order.outletId,
+          tableId: order.table,
+          session,
+          reason: action,
+        });
+      }
     } catch (e) {
       console.warn("[onlineOrder] added-items emit failed:", e.message);
     }
@@ -311,8 +430,10 @@ const resolveAddedItems = async (req, res, next) => {
       success: true,
       message:
         action === "accept"
-          ? `${pending.length} added item(s) accepted.`
-          : `${pending.length} added item(s) removed.`,
+          ? `${targets.length} added item(s) accepted.`
+          : action === "cancel_order"
+            ? "Order cancelled."
+            : `${targets.length} added item(s) removed.`,
       data: toPosOrderView(order),
     });
   } catch (error) {

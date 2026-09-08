@@ -236,6 +236,33 @@ const emitOrderStatusChanged = ({ restaurantId, outletId, storeId, order }) => {
   emitEvent("onlineOrder:status", payload, rooms);
 };
 
+/**
+ * A table session changed -- items added, accepted, cancelled, bill settled.
+ *
+ * The POS already invalidated its `tables` and `orders` caches on
+ * "tableSessionUpdated"; nothing ever emitted it, so Manage Tables sat on a
+ * stale session until someone reloaded. The diner's own page is a separate
+ * room (`table:<id>`) because it is not in the restaurant room and must not
+ * be -- it would receive every other table's traffic.
+ */
+const emitTableSessionUpdated = ({ restaurantId, outletId, tableId, session, reason = "" }) => {
+  if (!io || !session) return;
+  const payload = {
+    type: "TABLE_SESSION_UPDATED",
+    sessionId: String(session._id),
+    sessionCode: session.sessionCode || "",
+    status: session.status,
+    reason,
+    updatedAt: new Date(),
+  };
+  const rooms = [];
+  if (restaurantId) rooms.push(`restaurant:${restaurantId}`);
+  if (outletId) rooms.push(`outlet:${outletId}`);
+  if (tableId) rooms.push(`table:${tableId}`);
+  if (!rooms.length) return;
+  emitEvent("tableSessionUpdated", payload, rooms);
+};
+
 module.exports = {
   initSocket,
   authenticateSocket,
@@ -245,4 +272,5 @@ module.exports = {
   emitToTable,
   emitOrderCreated,
   emitOrderStatusChanged,
+  emitTableSessionUpdated,
 };

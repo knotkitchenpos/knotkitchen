@@ -354,6 +354,25 @@ router.route("/session/items/:token").post(qrWriteLimiter, resolveTableScope, as
           if (customerPhone) session.customerPhone = customerPhone;
         }
 
+        // The QR on the table is permanent, so the link that opens this page
+        // is permanent too -- anyone who scanned it once, or photographed the
+        // card, can open it again months later. What must NOT survive the
+        // bill being settled is the diner's claim on a session: without this
+        // a stale tab (or a saved link) posts onto whoever is sitting at that
+        // table now, adding dishes to a stranger's bill.
+        //
+        // So the client sends back the session it believes it is in. A fresh
+        // scan sends nothing and joins the live session as before; a page
+        // holding a finished session's code is refused and told to rescan.
+        // The QR itself is untouched -- only the claim expires.
+        const claimedCode = String(req.body?.sessionCode || "").trim();
+        if (claimedCode && claimedCode !== session.sessionCode) {
+          throw createHttpError(
+            409,
+            "This table's order has been settled. Please scan the QR code again to start a new order.",
+          );
+        }
+
         const validatedItems = await enrichItems({ items, restaurantId, outletId, addedBy: "QR" });
         session.items.push(...validatedItems);
         session.timeline.push({ event: "ITEMS_ADDED", note: `${validatedItems.length} item(s) added by QR`, actorType: "QR" });
@@ -424,10 +443,20 @@ router.route("/session/items/:token").post(qrWriteLimiter, resolveTableScope, as
           kitchenOrderDoc = kitchenOrder[0];
         }
 
+        // Both indexes count back from the END of their own list. `items[idx]`
+        // was right only for a brand-new order: when the additions were
+        // APPENDED to a table's existing order, idx 0 was the order's FIRST
+        // line -- a dish from an earlier round -- so every session item was
+        // linked to the wrong kitchen line. Cancelling one then struck the
+        // wrong dish off the ticket.
         const startIdx = session.items.length - validatedItems.length;
+        const kitchenStartIdx = kitchenOrderDoc.items.length - validatedItems.length;
         validatedItems.forEach((it, idx) => {
           const si = session.items[startIdx + idx];
-          if (si) { si.orderId = kitchenOrderDoc._id; si.kdsItemId = kitchenOrderDoc.items[idx]?._id; }
+          if (si) {
+            si.orderId = kitchenOrderDoc._id;
+            si.kdsItemId = kitchenOrderDoc.items[kitchenStartIdx + idx]?._id;
+          }
         });
 
         if (!session.billId) {
@@ -480,7 +509,17 @@ router.route("/session/items/:token").post(qrWriteLimiter, resolveTableScope, as
           addedCount: result.addedCount,
           pendingItems: (order.items || [])
             .filter((i) => i.status === "pending")
-            .map((i) => ({ name: i.name, quantity: i.quantity, total: i.total })),
+            // `_id` so the till can decline ONE dish out of the batch, and
+            // `modifiers` so it can see what was actually ordered before
+            // deciding -- "Caesar Salad" and "Caesar Salad, no anchovies"
+            // are not the same plate to a kitchen.
+            .map((i) => ({
+              _id: String(i._id),
+              name: i.name,
+              quantity: i.quantity,
+              total: i.total,
+              modifiers: i.modifiers || [],
+            })),
           bills: order.bills,
         });
       } else {
@@ -490,6 +529,15 @@ router.route("/session/items/:token").post(qrWriteLimiter, resolveTableScope, as
           order,
         });
       }
+      // Manage Tables watches the session, not the order, so it needs telling
+      // too -- otherwise a diner's addition only reached the approval popup.
+      getSocket().emitTableSessionUpdated({
+        restaurantId: result.session.restaurantId,
+        outletId: result.session.outletId,
+        tableId: result.session.tableId,
+        session: result.session,
+        reason: "items_added",
+      });
     } catch (socketErr) {
       console.warn("[qrRoute] socket emit failed:", socketErr.message);
     }

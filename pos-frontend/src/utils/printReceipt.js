@@ -62,7 +62,16 @@ export const printReceipt = ({
   const itemsHTML = safeCartData
     .map((item) => {
       const { quantity, lineTotal } = resolveItemAmounts(item);
-      return `<tr><td style="padding:6px 0;font-size:12px;">${esc(item.name)}</td><td style="padding:6px 0;font-size:12px;text-align:center;">x${quantity}</td><td style="padding:6px 0;font-size:12px;text-align:right;">Rs.${lineTotal.toFixed(2)}</td></tr>`;
+      // Components are priced into the line, so a receipt that omits them
+      // shows a number the diner cannot account for.
+      const mods = (item.modifiers || [])
+        .map((m) => m.name)
+        .filter(Boolean)
+        .join(", ");
+      const modsHTML = mods
+        ? `<div style="font-size:10px;color:#333;">+ ${esc(mods)}</div>`
+        : "";
+      return `<tr><td style="padding:6px 0;font-size:12px;">${esc(item.name)}${modsHTML}</td><td style="padding:6px 0;font-size:12px;text-align:center;">x${quantity}</td><td style="padding:6px 0;font-size:12px;text-align:right;">Rs.${lineTotal.toFixed(2)}</td></tr>`;
     })
     .join("");
 

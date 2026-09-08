@@ -8,7 +8,11 @@ const AuditLog = require("../models/auditLogModel");
 const PaymentTransaction = require("../models/paymentTransactionModel");
 const Bill = require("../models/billModel");
 const priceService = require("../services/price");
-const { emitOrderCreated, emitOrderStatusChanged } = require("../services/socket");
+const {
+  emitOrderCreated,
+  emitOrderStatusChanged,
+  emitTableSessionUpdated,
+} = require("../services/socket");
 
 const createHttpError = require("http-errors");
 const { PREPARING, PAID, CANCELLED, isFinished } = require("../constants/orderStatus");
@@ -252,13 +256,30 @@ const enrichItems = async ({ items, restaurantId, outletId, addedBy = "SYSTEM" }
       modifierSelections: rawItem.modifierSelections || {},
     });
 
+    // Components -- the variant, the add-ons and the modifier options -- were
+    // all priced into `unitPrice` and then thrown away: only `modifiers` was
+    // stored. The diner was charged for "Extra cheese" and for a "Large" and
+    // saw neither on the cart, the receipt or the bill, which reads as the
+    // total being wrong.
+    //
+    // Add-ons are additive, exactly like modifier options, so they join the
+    // same list -- one shape, and every surface that already renders
+    // `modifiers` picks them up for free.
+    //
+    // The variant is NOT additive: its price REPLACES the base rather than
+    // adding to it, so putting it in this list would corrupt anything that
+    // derives a base price by subtracting the modifiers (OrderPanel does
+    // exactly that). It belongs in the name, which is how a variant reads on
+    // a receipt anyway.
+    const components = [...(addons || []), ...(modifiers || [])];
+
     validatedItems.push({
       menuItemId: item._id,
-      name: item.name,
+      name: variant?.name ? `${item.name} (${variant.name})` : item.name,
       quantity: Number(rawItem.quantity),
       price: unitPrice,
       total: Math.round(unitPrice * Number(rawItem.quantity) * 100) / 100,
-      modifiers,
+      modifiers: components,
       note: rawItem.note || "",
       addedBy,
       status: "pending",
@@ -1300,6 +1321,21 @@ const cancelSessionItem = async (req, res, next) => {
       } catch (err) {
         console.warn("emitOrderStatusChanged failed:", err.message);
       }
+    }
+
+    // The session's own listeners: Manage Tables on the restaurant room, and
+    // the diner's phone on the table room. Without this the operator who
+    // pulled the dish saw it go and nobody else did.
+    try {
+      emitTableSessionUpdated({
+        restaurantId: session.restaurantId,
+        outletId: session.outletId,
+        tableId: session.tableId,
+        session,
+        reason: "item_cancelled",
+      });
+    } catch (err) {
+      console.warn("emitTableSessionUpdated failed:", err.message);
     }
 
     res.status(200).json({
