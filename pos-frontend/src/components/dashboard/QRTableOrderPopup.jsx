@@ -88,7 +88,10 @@ const QRTableOrderPopup = () => {
    * the same lifecycle (and the same auto-ready sweep) as any other channel.
    */
   const decide = async (action) => {
-    const orderId = current?._id || current?.id;
+    // emitOrderCreated sends `orderId`. `_id` was never on the payload, so
+    // this read undefined and BOTH buttons silently dismissed the popup
+    // without ever touching the order.
+    const orderId = current?.orderId || current?._id || current?.id;
     if (!orderId) {
       // Nothing to act on — don't strand the operator with a beeping popup.
       dismiss();

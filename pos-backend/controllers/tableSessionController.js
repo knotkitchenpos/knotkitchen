@@ -15,7 +15,14 @@ const {
 } = require("../services/socket");
 
 const createHttpError = require("http-errors");
-const { PREPARING, PAID, CANCELLED, isFinished } = require("../constants/orderStatus");
+const {
+  PREPARING,
+  PAID,
+  CANCELLED,
+  SETTLED_STATUSES,
+  CANCELLED_STATUSES,
+  isFinished,
+} = require("../constants/orderStatus");
 const { computeReadyDueAt, computeCompleteDueAt } = require("../services/autoReadyService");
 const { fireAutoEBill } = require("../services/eBillService");
 
@@ -1215,6 +1222,84 @@ const findCancelTarget = (item, orders) => {
   return owner ? lineIn(owner) : null;
 };
 
+/**
+ * An order was cancelled somewhere else -- free the table.
+ *
+ * Cancelling only ever wrote Order.orderStatus. The table session and the
+ * Table itself were never told, so the Orders screen showed "Cancelled"
+ * while Manage Tables kept the table occupied and the diner's QR page kept
+ * the dishes. Nothing else revisits those records, so the table stayed
+ * blocked until someone cleared it by hand.
+ *
+ * Every cancel route calls this, rather than each one growing its own copy.
+ *
+ * The table is released only when NOTHING live is left: no un-cancelled item
+ * on the session, and no other open order against it. A table mid-meal on a
+ * second round must not be handed to the next party because one round was
+ * voided.
+ */
+const releaseSessionForCancelledOrder = async (order, actor = "POS") => {
+  if (!order?.tableSessionId) return null;
+
+  const session = await TableSession.findOne({
+    _id: order.tableSessionId,
+    isDeleted: { $ne: true },
+  });
+  if (!session) return null;
+
+  // A settled bill is history.
+  if (SETTLED_SESSION_STATUSES.includes(session.status)) return null;
+
+  // Is this the session's only order? If so its items are this order's items,
+  // even the ones written before `orderId` was stamped on them.
+  const otherLive = await Order.countDocuments({
+    tableSessionId: session._id,
+    _id: { $ne: order._id },
+    isDeleted: { $ne: true },
+    orderStatus: { $nin: [...CANCELLED_STATUSES, ...SETTLED_STATUSES] },
+  });
+
+  const at = new Date();
+  session.items.forEach((si) => {
+    if (si.status === "cancelled") return;
+    const mine = si.orderId ? String(si.orderId) === String(order._id) : otherLive === 0;
+    if (!mine) return;
+    si.status = "cancelled";
+    si.cancelledAt = at;
+    si.cancelReason = "Order cancelled";
+  });
+
+  const anyLiveItem = session.items.some((si) => si.status !== "cancelled");
+  const freed = !anyLiveItem && otherLive === 0;
+
+  if (freed) {
+    session.status = "CLOSED";
+    session.closedAt = at;
+    addTimeline(session, "SESSION_CLOSED", "Order cancelled", actor);
+    await Table.findOneAndUpdate(
+      { _id: session.tableId },
+      await buildCooldownUpdate(session.restaurantId),
+    );
+  }
+
+  // Saves the session, and drops the cancelled lines from its bill.
+  await recalculateSessionBill(session);
+
+  try {
+    emitTableSessionUpdated({
+      restaurantId: session.restaurantId,
+      outletId: session.outletId,
+      tableId: session.tableId,
+      session,
+      reason: freed ? "order_cancelled_table_freed" : "order_cancelled",
+    });
+  } catch (err) {
+    console.warn("emitTableSessionUpdated failed:", err.message);
+  }
+
+  return session;
+};
+
 const cancelSessionItem = async (req, res, next) => {
   try {
     const { id, itemId } = req.params;
@@ -1368,6 +1453,7 @@ module.exports = {
   closeSessionWithoutPayment,
   cancelSessionItem,
   findCancelTarget,
+  releaseSessionForCancelledOrder,
   settleSessionFromGateway,
   findActiveSessionByTable,
   recalculateSessionBill,

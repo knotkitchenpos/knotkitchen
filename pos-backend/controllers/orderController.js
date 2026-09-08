@@ -62,6 +62,7 @@ const ALLOWED_ORDER_TYPES = new Set([
  */
 const {
   READY,
+  CANCELLED,
   ALLOWED_INITIAL_STATUS,
   ALLOWED_STATUS_TRANSITIONS,
   TERMINAL_STATUSES,
@@ -737,6 +738,19 @@ const updateOrder = async (req, res, next) => {
     // Does nothing unless posSettings.autoEBill is on for this restaurant.
     if (settledTransition) fireAutoEBill({ orderId: order._id });
     if (settledTransition) fireOrderCharge(order._id);
+
+    // Cancelling wrote orderStatus and stopped. The table session and the
+    // Table were never told, so Manage Tables kept the table occupied and the
+    // diner's QR page kept the dishes. Required lazily: tableSessionController
+    // requires this file back.
+    if (canonicalStatus(nextStatus) === CANCELLED) {
+      try {
+        const { releaseSessionForCancelledOrder } = require("./tableSessionController");
+        await releaseSessionForCancelledOrder(order, req.user?.name || "POS");
+      } catch (err) {
+        console.warn("releaseSessionForCancelledOrder failed:", err.message);
+      }
+    }
 
     // Return canonical status to the client too.
     const projected = order.toObject();

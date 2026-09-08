@@ -187,6 +187,17 @@ const updateOnlineOrderStatus = async (req, res, next) => {
 
     await order.save();
 
+    // Cancelling a table's order must free the table. Without this the Orders
+    // screen said "Cancelled" while Manage Tables kept the table occupied.
+    if (action === "reject" || action === "cancel") {
+      try {
+        const { releaseSessionForCancelledOrder } = require("./tableSessionController");
+        await releaseSessionForCancelledOrder(order, req.user?.name || "POS");
+      } catch (err) {
+        console.warn("releaseSessionForCancelledOrder failed:", err.message);
+      }
+    }
+
     // Push the change to any listening client (customer tracking, KDS).
     try {
       emitOrderStatusChanged({
