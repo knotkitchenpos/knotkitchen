@@ -68,3 +68,41 @@ export const clearActiveStoreId = () => {
     /* ignore */
   }
 };
+
+/**
+ * A localStorage key that belongs to ONE store.
+ *
+ * Anything a store's staff build up locally -- custom modifier groups, custom
+ * table areas -- was stored under a bare key, so the browser handed the same
+ * list to every store the user opened. Creating a second takeaway showed the
+ * first one's groups already filled in, and editing them in one place changed
+ * both.
+ *
+ * Unscoped keys stay readable ONLY through this helper's fallback so an
+ * operator's existing lists survive the change; anything written from now on
+ * is scoped.
+ */
+export const storeScopedKey = (key) => {
+  const storeId = getActiveStoreId();
+  return storeId ? `${key}:${storeId}` : key;
+};
+
+export const readStoreScoped = (key, fallback) => {
+  try {
+    const scoped = localStorage.getItem(storeScopedKey(key));
+    // Fall back to the old unscoped value once, so nothing an operator
+    // already built disappears the first time they open the screen.
+    const raw = scoped !== null ? scoped : localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
+export const writeStoreScoped = (key, value) => {
+  try {
+    localStorage.setItem(storeScopedKey(key), JSON.stringify(value));
+  } catch {
+    /* quota / private mode */
+  }
+};

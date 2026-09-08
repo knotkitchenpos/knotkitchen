@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
 import { selectionTypeOf } from "../../utils/modifierGroups";
+import { readStoreScoped, writeStoreScoped } from "../../utils/storeSession";
 import {
   addCategory,
   updateCategory,
@@ -225,22 +226,16 @@ const ManageMenu = () => {
   // Persisted registry of created groups so newly-created groups show up
   // in the "Assign Groups / Components" list immediately, even before they
   // are attached to any product.
+  // Scoped to the ACTIVE STORE. Under a bare key the browser handed the same
+  // groups to every store, so a newly created takeaway opened with the
+  // previous one's groups already listed and editing them changed both.
   const [customCreatedGroups, setCustomCreatedGroups] = useState(() => {
-    try {
-      const raw = localStorage.getItem("kk_custom_groups");
-      const parsed = raw ? JSON.parse(raw) : {};
-      return typeof parsed === "object" && parsed !== null ? parsed : {};
-    } catch {
-      return {};
-    }
+    const parsed = readStoreScoped("kk_custom_groups", {});
+    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed : {};
   });
 
   useEffect(() => {
-    try {
-      localStorage.setItem("kk_custom_groups", JSON.stringify(customCreatedGroups));
-    } catch {
-      /* ignore storage quota / private mode */
-    }
+    writeStoreScoped("kk_custom_groups", customCreatedGroups);
   }, [customCreatedGroups]);
 
   /*

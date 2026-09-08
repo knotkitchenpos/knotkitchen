@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { getKDSOrders, updateKDSItemStatus, updateKDSOrderStatus } from "../https/newModules";
 import { useState } from "react";
+import { orderDisplayId } from "../utils/orderLabels";
 
 const C = {
   queued: "bg-accent-amber/10 border-accent-amber/40 text-accent-amber",
@@ -69,7 +70,7 @@ export default function KDS() {
             <div key={o._id} className="bg-surface-secondary rounded-xl border border-border shadow-card overflow-hidden">
               <div className={`px-4 py-3 border-b border-border ${C[o.status] || "bg-surface border-border"}`}>
                 <div className="flex items-center justify-between">
-                  <span className="font-bold text-content">#{o.orderNumber || o._id.slice(-6)}</span>
+                  <span className="font-bold text-content">#{orderDisplayId(o)}</span>
                   {badge(o.status)}
                 </div>
                 <div className="text-xs text-content-muted mt-1">

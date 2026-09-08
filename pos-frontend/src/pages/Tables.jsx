@@ -32,6 +32,7 @@ import { FiGrid, FiPlus, FiTrash2, FiEdit2, FiLayers, FiCheckCircle } from "reac
 import { QRCodeCanvas } from "qrcode.react";
 import { setOrderType } from "../redux/slices/orderTypeSlice";
 import { updateTable as updateTableAction, setSessionId } from "../redux/slices/customerSlice";
+import { readStoreScoped, writeStoreScoped } from "../utils/storeSession";
 
 const IconQr = ({ size = 13 }) => (
   <svg
@@ -70,20 +71,13 @@ const Tables = () => {
   // is fine for now — the true source of truth for an area is that at
   // least one table lives in it. Empty custom areas are convenience only.
   const [customAreas, setCustomAreas] = useState(() => {
-    try {
-      const raw = localStorage.getItem("kk_custom_areas");
-      const parsed = raw ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) ? parsed.filter((s) => typeof s === "string" && s.trim()) : [];
-    } catch {
-      return [];
-    }
+    const parsed = readStoreScoped("kk_custom_areas", []);
+    return Array.isArray(parsed) ? parsed.filter((s) => typeof s === "string" && s.trim()) : [];
   });
+  // Scoped to the ACTIVE STORE, same reason as the custom groups in
+  // ManageMenu: one store's areas must not appear in another's.
   useEffect(() => {
-    try {
-      localStorage.setItem("kk_custom_areas", JSON.stringify(customAreas));
-    } catch {
-      /* quota / private-mode — silent fail is fine */
-    }
+    writeStoreScoped("kk_custom_areas", customAreas);
   }, [customAreas]);
   const [status, setStatus] = useState("all");
 

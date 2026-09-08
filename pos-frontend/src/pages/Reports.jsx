@@ -6,7 +6,7 @@ import { getMyRestaurant } from "../https/newModules";
 import { getWebsiteSettings } from "../https/storefrontApi";
 import { printHtmlDocument } from "../utils/printDocument";
 import { isPreparing, isReady, isCancelled, statusLabel } from "../constants/orderStatus";
-import { sourceLabel, tableLabel } from "../utils/orderLabels";
+import { sourceLabel, tableLabel, orderDisplayId } from "../utils/orderLabels";
 import { receiptAddress } from "../utils/address";
 
 /**
@@ -304,7 +304,7 @@ const OrderDetailsModal = ({ order, onClose }) => {
         <div className="px-5 py-4 border-b border-[#E2E8F0] flex items-center justify-between">
           <div>
             <h3 className="text-[16px] font-extrabold text-[#0F172A]">
-              Order #{order.orderNumber || order._id.slice(-6).toUpperCase()}
+              Order #{orderDisplayId(order)}
             </h3>
             <p className="text-[11.5px] text-[#94A3B8] mt-0.5">
               {fmtDate(order.createdAt)} · {fmtTime(order.createdAt)}
@@ -867,7 +867,7 @@ const Reports = () => {
                   className="w-full text-left flex items-center gap-4 px-5 py-3 hover:bg-[#F8FAFC] transition-colors"
                 >
                   <span className="text-[13px] font-extrabold text-[#0F172A] w-[110px] shrink-0">
-                    #{o.orderNumber || o._id.slice(-6).toUpperCase()}
+                    #{orderDisplayId(o)}
                   </span>
                   <span className="text-[12.5px] text-[#64748B] w-[70px] shrink-0">
                     {fmtTime(o.createdAt)}

@@ -166,6 +166,8 @@ test("Website Module 1: Duplicate custom domain claiming returns 409 Conflict", 
   let errorCaught = null;
   const req = {
     user: { restaurantId: RESTAURANT_B_ID, storeId: STORE_B_ID, role: "Owner" },
+    // customDomain is a Manage Website field, so this runs as CSD.
+    csdStaff: { _id: "csd-staff-1", name: "CSD" },
     body: { customDomain: "myrestaurant.com" },
   };
 

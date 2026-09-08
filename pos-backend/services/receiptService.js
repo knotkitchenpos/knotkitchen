@@ -133,12 +133,18 @@ const buildReceipt = ({
   //
   // Order of preference mirrors the POS exactly, including for marketplace
   // orders, where the screens also show our own number rather than Swiggy's.
+  // The ORDER number leads, not the session code. Putting sessionCode first
+  // gave a table order a different identifier on the e-bill than the one the
+  // Orders screen, the cart and the receipt all showed, so an operator
+  // holding a bill could not find the order it belonged to. sessionCode
+  // stays as a fallback for a session that has no kitchen order yet.
   const orderNumber =
-    tableSession?.sessionCode ||
     order?.orderNumber ||
     order?.marketplaceOrderId ||
+    (order?._id ? order._id.toString().slice(-6).toUpperCase() : "") ||
+    tableSession?.sessionCode ||
     bill?.billNumber ||
-    (order?._id ? order._id.toString().slice(-6).toUpperCase() : "N/A");
+    "N/A";
 
   const dateTime =
     tableSession?.openedAt ||

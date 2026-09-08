@@ -54,3 +54,26 @@ export const sourceLabel = (src) => {
       return "POS";
   }
 };
+
+/**
+ * The one identifier an order is known by, everywhere.
+ *
+ * Screens derived this ad hoc and the copies disagreed: the Orders header cut
+ * the last SIX characters of the id while the "Order ID" field two panels down
+ * cut the last EIGHT, so one order showed as #7CA1AC and 657CA1AC on the same
+ * screen. The receipt then preferred the table's sessionCode, giving a third
+ * answer on the e-bill.
+ *
+ * `orderNumber` is the real number once the counter has issued one. The id
+ * suffix is only the fallback for orders written before that, and the length
+ * of that slice is the whole reason this function exists -- never inline it.
+ */
+export const ORDER_ID_FALLBACK_LEN = 6;
+
+export const orderDisplayId = (order, fallback = "N/A") => {
+  if (!order) return fallback;
+  const issued = String(order.orderNumber || "").trim();
+  if (issued) return issued;
+  const id = String(order._id || order.orderId || order.id || "");
+  return id ? id.slice(-ORDER_ID_FALLBACK_LEN).toUpperCase() : fallback;
+};

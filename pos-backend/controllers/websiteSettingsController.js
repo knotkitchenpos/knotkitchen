@@ -142,11 +142,46 @@ const getWebsiteSettings = async (req, res, next) => {
 };
 
 /** PUT /api/website/settings — whitelisted partial update. */
+/**
+ * The Manage Website screen's own fields.
+ *
+ * That screen is CSD-only, but it shares this endpoint with POS Settings,
+ * which legitimately writes `ordering`, `couponsConfig` and `freeItemConfig`
+ * (Order Toggles, Rules & Charges). Locking the route would have taken those
+ * down too, so the boundary is drawn here, per field.
+ *
+ * Rejected rather than silently dropped: an operator who cannot change a
+ * setting must be told, not shown a save that did nothing.
+ */
+const CSD_ONLY_FIELDS = [
+  "enabled",
+  "disabledMessage",
+  "displayName",
+  "customDomain",
+  "slug",
+  "sectionTitles",
+  "banners",
+  "branding",
+  "theme",
+  "paymentGateways",
+  "offers",
+];
+
 const updateWebsiteSettings = async (req, res, next) => {
   try {
     const { tenant, settings } = await loadOwnSettings(req);
     const prevSnapshot = sanitizeSettings(settings);
     const body = req.body || {};
+
+    if (!req.csdStaff) {
+      const blocked = CSD_ONLY_FIELDS.filter((f) => body[f] !== undefined);
+      if (blocked.length) {
+        throw createHttpError(
+          403,
+          "Manage Website is handled by KnotKitchen support. Please contact support to change your storefront.",
+        );
+      }
+    }
 
     // ---- Master switch & display ----
     if (typeof body.enabled === "boolean") settings.enabled = body.enabled;

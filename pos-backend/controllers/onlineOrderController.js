@@ -409,6 +409,17 @@ const resolveAddedItems = async (req, res, next) => {
 
     await order.save();
 
+    // Voiding the whole ticket must free the table, like every other cancel
+    // route. Without this Manage Tables kept the table occupied.
+    if (action === "cancel_order") {
+      try {
+        const { releaseSessionForCancelledOrder } = require("./tableSessionController");
+        await releaseSessionForCancelledOrder(order, req.user?.name || "POS");
+      } catch (err) {
+        console.warn("releaseSessionForCancelledOrder failed:", err.message);
+      }
+    }
+
     // Mirror onto the table session.
     //
     // This is the whole of the bug: the decision was written to the Order and

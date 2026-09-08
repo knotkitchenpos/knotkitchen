@@ -19,6 +19,7 @@ const {
   PREPARING,
   PAID,
   CANCELLED,
+  canonicalStatus,
   SETTLED_STATUSES,
   CANCELLED_STATUSES,
   isFinished,
@@ -1405,6 +1406,17 @@ const cancelSessionItem = async (req, res, next) => {
         });
       } catch (err) {
         console.warn("emitOrderStatusChanged failed:", err.message);
+      }
+    }
+
+    // Pulling the last dish cancels the order, and a cancelled order must
+    // free the table like any other cancel route.
+    for (const order of touchedOrders) {
+      if (canonicalStatus(order.orderStatus) !== CANCELLED) continue;
+      try {
+        await releaseSessionForCancelledOrder(order, req.user?.name || "POS");
+      } catch (err) {
+        console.warn("releaseSessionForCancelledOrder failed:", err.message);
       }
     }
 

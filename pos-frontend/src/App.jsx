@@ -64,7 +64,9 @@ function Layout() {
       <Route path="/support" element={<ProtectedRoutes><Support /></ProtectedRoutes>} />
       <Route path="/manage-menu" element={<ProtectedRoutes><ManageMenuPage /></ProtectedRoutes>} />
 
-      <Route path="/website" element={<ProtectedRoutes><WebsiteSettings /></ProtectedRoutes>} />
+      {/* Manage Website is CSD-only. The preview below stays: it renders the
+          storefront read-only and changes nothing. */}
+      <Route path="/website" element={<Navigate to="/settings" replace />} />
 
       <Route path="/website/preview" element={<ProtectedRoutes><Storefront preview /></ProtectedRoutes>} />
       <Route path="/order" element={<OrderOnline />} />

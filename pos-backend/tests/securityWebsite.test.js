@@ -121,7 +121,10 @@ test("Manage Website Security: Staff cannot configure payment gateway credential
 
   assert.ok(errorCaught);
   assert.equal(errorCaught.status, 403);
-  assert.ok(errorCaught.message.includes("Only the Store Owner can configure payment gateways"));
+  // Manage Website is now CSD-only, so a STAFF attempt is refused one step
+  // earlier than the owner-only gateway rule -- at the tenant boundary. Still
+  // a 403, and still the point of the test: staff cannot do this.
+  assert.match(errorCaught.message, /KnotKitchen support/);
 });
 
 test("Manage Website Activity Log: Domain change logs Domain Changed event", async () => {
@@ -169,6 +172,7 @@ test("Manage Website Activity Log: Domain change logs Domain Changed event", asy
 
   const req = {
     user: ownerUser,
+    csdStaff: { _id: "csd-staff-1", name: "CSD" },
     body: { customDomain: "new-restaurant.com" },
   };
 
@@ -220,7 +224,7 @@ test("Manage Website Activity Log: Website publish logs Website Published event"
     json: () => {},
   };
 
-  const req = { user: ownerUser };
+  const req = { user: ownerUser, csdStaff: { _id: "csd-staff-1", name: "CSD" } };
 
   try {
     await publishWebsiteCache(req, res, () => {});
@@ -298,6 +302,7 @@ test("Website settings: an unchanged unconfigured activeGateway does not block a
   // untouched paymentGateways block it was handed by GET.
   const req = {
     user: ownerUser,
+    csdStaff: { _id: "csd-staff-1", name: "CSD" },
     body: {
       branding: { logo: { mediaId: "6a973d0555809ad56442458e" } },
       paymentGateways: {
@@ -352,6 +357,7 @@ test("Website settings: switching TO an unconfigured gateway is still refused", 
   let errorCaught = null;
   const req = {
     user: ownerUser,
+    csdStaff: { _id: "csd-staff-1", name: "CSD" },
     body: { paymentGateways: { activeGateway: "phonepe" } },
   };
 

@@ -3,6 +3,7 @@ import { useSelector } from "react-redux";
 import { useOnlineOrders } from "../hooks/useOnlineOrders";
 import { updateOnlineOrderStatus } from "../https/storefrontApi";
 import { isAwaitingAcceptance, statusLabel } from "../constants/orderStatus";
+import { orderDisplayId } from "../utils/orderLabels";
 
 /**
  * POS → Online Orders (§14).
@@ -67,7 +68,7 @@ const OrderCard = ({ order, onAction, busy }) => {
         <div className="flex flex-wrap items-start justify-between gap-3 mb-3">
           <div className="min-w-0">
             <p className="font-bold text-[#F5F7FA]">
-              {order.orderNumber || order._id.slice(-6)}
+              {orderDisplayId(order)}
             </p>
             <p className="text-xs text-[#77839A]">
               {new Date(order.createdAt).toLocaleString()} ·{" "}

@@ -15,7 +15,7 @@ import TableSettleModal from "../components/tables/TableSettleModal";
 import { getMyRestaurant } from "../https/newModules";
 import { printReceipt } from "../utils/printReceipt";
 import { isPreparing, isReady, isSettled, isCancelled, statusLabel, COMPLETED, CANCELLED } from "../constants/orderStatus";
-import { sourceLabel, tableLabel } from "../utils/orderLabels";
+import { sourceLabel, tableLabel, orderDisplayId } from "../utils/orderLabels";
 import { sendTableEBill } from "../utils/sendTableEBill";
 import { receiptAddress } from "../utils/address";
 
@@ -561,7 +561,7 @@ const Orders = () => {
                     {/* ID + time */}
                     <div className="shrink-0 w-[110px]">
                       <p className="text-[13px] font-extrabold text-[#0F172A]">
-                        #{o.orderNumber || o._id.slice(-6).toUpperCase()}
+                        #{orderDisplayId(o)}
                       </p>
                       <p className="text-[11.5px] text-[#94A3B8]">{timeOf(o.createdAt)}</p>
                     </div>
@@ -700,7 +700,7 @@ const Orders = () => {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <h2 className="text-[18px] font-extrabold text-[#0F172A]">
-                      #{selected.orderNumber || selected._id.slice(-6).toUpperCase()}
+                      #{orderDisplayId(selected)}
                     </h2>
                     <span
                       className="px-2 py-[2px] rounded-md text-[10.5px] font-bold"
@@ -850,7 +850,7 @@ const Orders = () => {
                   <div>
                     <p className="text-[#94A3B8]">Order ID</p>
                     <p className="font-bold text-[#0F172A] mt-0.5 break-all">
-                      {selected.orderNumber || selected._id.slice(-8).toUpperCase()}
+                      {orderDisplayId(selected)}
                     </p>
                   </div>
                   <div>
@@ -939,10 +939,7 @@ const Orders = () => {
                       customerPhone: selected.customerDetails?.phone,
                       // Show the customer-facing Order ID on the printed
                       // receipt — matches the panel's "#…" label.
-                      orderId:
-                        selected.orderNumber ||
-                        selected._id?.slice(-6).toUpperCase() ||
-                        "",
+                      orderId: orderDisplayId(selected, ""),
                     },
                     total: selected.bills?.total || 0,
                     tax: selected.bills?.tax || 0,

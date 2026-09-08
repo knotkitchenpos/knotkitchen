@@ -6,6 +6,7 @@ const {
   getAuditLogs, getRolePermissions,
 } = require("../controllers/teamController");
 const { isVerifiedUser } = require("../middlewares/tokenVerification");
+const { csdOnly } = require("../middlewares/csdOnly");
 const router = express.Router();
 
 router.route("/").post(isVerifiedUser, createTeam);
@@ -20,7 +21,9 @@ router.route("/staff/:restaurantId").get(isVerifiedUser, getStaff);
 router.route("/staff/:userId").put(isVerifiedUser, updateStaff);
 router.route("/staff/:userId").delete(isVerifiedUser, deleteStaff);
 
-router.route("/audit/:restaurantId").get(isVerifiedUser, getAuditLogs);
+// Activity Log is CSD-only. CSD reads it through its own routes
+// (/csd/restaurants/:storeId/activity and /csd/reports/audit).
+router.route("/audit/:restaurantId").get(isVerifiedUser, csdOnly("Activity Log"), getAuditLogs);
 router.route("/roles/permissions").get(isVerifiedUser, getRolePermissions);
 
 module.exports = router;

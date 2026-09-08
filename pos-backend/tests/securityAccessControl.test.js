@@ -25,7 +25,7 @@ const staffUser = {
 };
 
 test("Owner Access: Owner user automatically allowed for owner-only actions", async () => {
-  const req = { user: ownerUser };
+  const req = { user: ownerUser, csdStaff: { _id: "csd-staff-1", name: "CSD" } };
   let calledNext = false;
   let errorCaught = null;
 
@@ -176,7 +176,9 @@ test("Backend Enforcement: Staff cannot modify payment gateways in website setti
 
   assert.ok(errorCaught);
   assert.equal(errorCaught.status, 403);
-  assert.ok(errorCaught.message.includes("Only the Store Owner can configure payment gateways"));
+  // Manage Website is CSD-only now, so staff are stopped at the tenant
+  // boundary before the owner-only gateway rule. Still 403, same point.
+  assert.match(errorCaught.message, /KnotKitchen support/);
 });
 
 test("Backend Enforcement: Staff cannot modify owner info in store properties", async () => {
