@@ -209,26 +209,59 @@ test("an order with no session still resolves rather than throwing", async () =>
 
 const SRC = (...p) => fs.readFileSync(path.join(__dirname, "..", ...p), "utf8");
 
-test("REGRESSION: a settled session's code no longer buys write access", () => {
+test("REGRESSION: a settled session's claim no longer buys read or write access", () => {
   // The QR on the table is permanent, so the link is permanent. What must
-  // expire is the diner's claim on a SESSION -- otherwise a tab left open
-  // after the bill was paid posts dishes onto the next customer's ticket.
+  // expire is the diner's claim on a SESSION -- otherwise a link saved by an
+  // earlier party opens whoever is sitting there now.
+  //
+  // The claim is a per-session accessToken, deliberately NOT the sessionCode:
+  // that one is printed on the bill as `BL_<sessionCode>`, so anybody who saw
+  // a receipt would hold it. The behaviour is covered in
+  // tableQROrdering.test.js; this guards the wiring.
   const src = SRC("routes", "qrRoute.js");
-  assert.match(src, /const claimedCode = String\(req\.body\?\.sessionCode \|\| ""\)\.trim\(\);/);
-  assert.match(src, /claimedCode && claimedCode !== session\.sessionCode/);
+  assert.match(src, /const claimFrom = \(req\) =>/);
+  assert.match(src, /claimed !== \(session\?\.accessToken \|\| ""\)/);
   assert.match(src, /scan the QR code again/i, "and the diner is told what to do");
 
-  // A fresh scan sends no code and must still be able to join.
+  // A fresh scan sends no claim and must still be able to join, or a second
+  // phone at the same table cannot order.
+  assert.match(src, /Boolean\(claimed\) &&/, "an absent claim is not a mismatch");
+
+  // Every session-touching endpoint, not just the one in the bug report.
   assert.ok(
-    /if \(claimedCode &&/.test(src),
-    "an absent code is not a mismatch -- that would break every first scan",
+    src.split("assertSessionClaim(session, req)").length - 1 >= 5,
+    "one guarded route leaves the others open",
   );
+
+  // The old guard compared the printed sessionCode. If it comes back, a
+  // receipt is a credential again.
+  assert.ok(!/claimedCode/.test(src), "the sessionCode is not a secret");
 });
 
-test("the diner's page sends the session it believes it is in", () => {
+test("the claim is minted per session and never reaches anyone but the diner", () => {
+  const model = SRC("models", "tableSessionModel.js");
+  assert.match(model, /accessToken: \{ type: String, default: "", index: true \}/);
+
+  const ctrl = SRC("controllers", "tableSessionController.js");
+  assert.match(ctrl, /crypto\.randomBytes\(24\)\.toString\("hex"\)/);
+  assert.match(ctrl, /accessToken: generateSessionAccessToken\(\),/);
+
+  // sanitizeSession is the public projection. The claim must not be in it --
+  // it is returned alongside, only to a request that already proved it.
+  const src = SRC("routes", "qrRoute.js");
+  const projection = src.slice(src.indexOf("const sanitizeSession"), src.indexOf("const getActiveSessionForTable"));
+  assert.ok(!/accessToken/.test(projection), "the claim is not part of a session anyone can read");
+});
+
+test("the diner's page carries its claim and stops when it is spent", () => {
   const page = SRC("..", "pos-frontend", "src", "pages", "OrderOnline.jsx");
-  assert.match(page, /sessionCode: session\.sessionCode/);
-  assert.match(page, /e\.response\?\.status === 409/, "and recovers when it is refused");
+  assert.match(page, /claimRef = useRef\(params\.get\("s"\) \|\| ""\)/);
+  assert.match(page, /setParams\(next, \{ replace: true \}\)/, "no claim-less URL left in history");
+  assert.match(page, /if \(d\.sessionExpired\) return endSession\(d\.message\);/);
+  assert.match(page, /e\.response\?\.status === 409/, "and a refused write ends it too");
+
+  // The page must NOT quietly re-scan after expiry -- that is the bug.
+  assert.match(page, /if \(!token \|\| expiredRef\.current\) return;/);
 });
 
 test("REGRESSION: components survive onto the session item", () => {

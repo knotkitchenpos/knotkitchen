@@ -26,6 +26,20 @@ const tableSessionItemSchema = new mongoose.Schema(
 const tableSessionSchema = new mongoose.Schema(
   {
     sessionCode: { type: String, required: true, unique: true },
+
+    // The diner's claim on THIS session, and nothing else.
+    //
+    // The QR stuck to the table is permanent, so the link it opens is
+    // permanent too: whoever scanned it once, or photographed the card, could
+    // reopen it months later and land on whichever party is sitting there
+    // now -- reading their name, phone and bill, and adding dishes to it.
+    //
+    // This token is minted per session, handed only to the browser that is
+    // ordering, and carried in the page URL. It dies with the session, so a
+    // saved link stops working the moment the table is settled. It is NOT the
+    // sessionCode: that one is printed on the bill (`BL_<sessionCode>`), so
+    // anybody who saw a receipt would hold the claim.
+    accessToken: { type: String, default: "", index: true },
     restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: "Restaurant", required: true },
     // Optional. Single-outlet restaurants (which is the norm outside the
     // multi-outlet enterprise plan) never have an Outlet document, so

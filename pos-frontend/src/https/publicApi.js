@@ -13,19 +13,28 @@ export const publicApi = axios.create({
 // table exclusively from the secure QR token (`?table=<token>`). The client
 // can never supply restaurantId/outletId/tableId/sessionId in the URL or
 // body to access another table's session.
-export const qrGetTable = (token) => publicApi.get(`/api/qr/table/${token}`);
-export const qrGetSession = (token) => publicApi.get(`/api/qr/session/${token}`);
-export const qrPlaceOrder = (token, data) =>
-  publicApi.post(`/api/qr/session/items/${token}`, data); // tenant-scoped via table token
-export const qrRequestBill = (token) =>
-  publicApi.post(`/api/qr/request-bill/${token}`); // token-scoped; no client sessionId
+// `claim` is the session accessToken the page is holding (see OrderOnline).
+// The QR token identifies the TABLE and never changes; the claim identifies
+// the one SESSION this browser is ordering in, and dies when that session is
+// settled. Sent on every call so a link saved by an earlier diner cannot
+// reach the party sitting at that table now.
+const withClaim = (path, claim) => (claim ? `${path}?s=${encodeURIComponent(claim)}` : path);
+
+export const qrGetTable = (token, claim) =>
+  publicApi.get(withClaim(`/api/qr/table/${token}`, claim));
+export const qrGetSession = (token, claim) =>
+  publicApi.get(withClaim(`/api/qr/session/${token}`, claim));
+export const qrPlaceOrder = (token, data, claim) =>
+  publicApi.post(`/api/qr/session/items/${token}`, { ...data, sessionToken: claim || "" }); // tenant-scoped via table token
+export const qrRequestBill = (token, claim) =>
+  publicApi.post(`/api/qr/request-bill/${token}`, { sessionToken: claim || "" }); // token-scoped; no client sessionId
 export const qrCallWaiter = (token) => publicApi.post(`/api/qr/waiter-call/${token}`);
-export const qrGetPaymentIntent = (token) =>
-  publicApi.post(`/api/qr/payment-intent/${token}`); // opens a gateway order for the table's bill
+export const qrGetPaymentIntent = (token, claim) =>
+  publicApi.post(`/api/qr/payment-intent/${token}`, { sessionToken: claim || "" }); // opens a gateway order for the table's bill
 // The browser reports back from the gateway. The server re-computes the
 // signature before it believes any of it, then settles the table.
-export const qrVerifyPayment = (token, data) =>
-  publicApi.post(`/api/qr/payment-verify/${token}`, data);
+export const qrVerifyPayment = (token, data, claim) =>
+  publicApi.post(`/api/qr/payment-verify/${token}`, { ...data, sessionToken: claim || "" });
 
 // --- Payment links (customer side) ---
 export const paymentLinkGet = (token) => publicApi.get(`/api/payment-link/${token}`);

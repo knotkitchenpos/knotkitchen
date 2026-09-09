@@ -71,8 +71,25 @@ const ORDER_STATUS_STYLE = {
 
 export default function OrderOnline() {
   const { token: routeToken } = useParams();
-  const [params] = useSearchParams();
+  const [params, setParams] = useSearchParams();
   const token = routeToken || params.get("table") || "";
+
+  // The claim on ONE session, kept in the URL as `?s=`.
+  //
+  // The QR printed on the table never changes, so the link it opens never
+  // changes either -- a diner from last week still has it. Without a claim
+  // that link opened whatever session was live at the table: it showed the
+  // current party's name, phone and running bill, and could add dishes to it.
+  //
+  // The server mints this token per session and refuses any request naming a
+  // session that is no longer running. It lives in the URL so a reload, a
+  // locked phone and a bookmark all stay in the same order -- and so a link
+  // saved by an earlier diner carries a claim that is already dead.
+  const claimRef = useRef(params.get("s") || "");
+  // Once the claim is spent the page STOPS. It must never quietly re-scan and
+  // adopt whichever party is sitting at that table now -- that is the bug.
+  const [expired, setExpired] = useState(false);
+  const expiredRef = useRef(false);
 
   const [table, setTable] = useState(null);
   const [restaurant, setRestaurant] = useState(null);
@@ -102,17 +119,45 @@ export default function OrderOnline() {
   // below, and a hook after one of those runs conditionally.
   const menuRef = useRef(null);
 
+  /** Hold on to the claim the server issued, and put it in the address bar. */
+  const rememberClaim = (issued) => {
+    if (!issued || issued === claimRef.current) return;
+    claimRef.current = issued;
+    const next = new URLSearchParams(window.location.search);
+    next.set("s", issued);
+    // replace, not push: the claim-less URL must not be left in history for a
+    // back button (or a saved link) to return to.
+    setParams(next, { replace: true });
+  };
+
+  /** The session this page was in is over. Stop, and say so. */
+  const endSession = (message) => {
+    expiredRef.current = true;
+    claimRef.current = "";
+    setExpired(true);
+    setSession(null);
+    setCartOpen(false);
+    setPaymentInfo(null);
+    setErr(message || "");
+  };
+
   const refetch = () => {
-    if (!token) return;
-    return qrGetTable(token)
+    if (!token || expiredRef.current) return;
+    return qrGetTable(token, claimRef.current)
       .then(({ data }) => {
-        setTable(data.data.table);
-        setRestaurant(data.data.restaurant);
-        setMenu(data.data.menu || []);
-        setSession(data.data.activeSession || null);
+        const d = data.data;
+        if (d.sessionExpired) return endSession(d.message);
+        setTable(d.table);
+        setRestaurant(d.restaurant);
+        setMenu(d.menu || []);
+        setSession(d.activeSession || null);
+        rememberClaim(d.sessionToken);
         setErr("");
       })
-      .catch((e) => setErr(e.response?.data?.message || "Unable to load menu."));
+      .catch((e) => {
+        if (e.response?.status === 409) return endSession(e.response?.data?.message);
+        setErr(e.response?.data?.message || "Unable to load menu.");
+      });
   };
 
   useEffect(() => {
@@ -274,24 +319,18 @@ export default function OrderOnline() {
               customerPhone: String(cust.phone).replace(/\D/g, "").slice(-10),
             }),
         requestId: `${token.slice(0, 8)}-${Date.now()}`,
-        // The session this page believes it is part of. The QR is permanent,
-        // so without this a page left open after the bill was settled would
-        // post onto whoever is sitting at the table next. The server refuses
-        // a code that is no longer the live one.
-        ...(session?.sessionCode ? { sessionCode: session.sessionCode } : {}),
-      });
+      }, claimRef.current);
       setCart({});
       setCartOpen(false);
       setBanner(`Sent to kitchen · ${tableName}`);
       setTimeout(() => setBanner(""), 4000);
       await refetch();
     } catch (e) {
-      // 409 is specifically "that session is over". Drop the stale session so
-      // the page reloads as a fresh scan rather than retrying against it.
+      // 409 is specifically "that session is over". Stop here: re-scanning
+      // automatically would put this cart onto the next party's bill, which
+      // is the very thing the claim exists to prevent.
       if (e.response?.status === 409) {
-        setSession(null);
-        setCartOpen(false);
-        await refetch();
+        return endSession(e.response?.data?.message);
       }
       setErr(e.response?.data?.message || "Could not send the order. Please try again.");
     } finally {
@@ -301,11 +340,12 @@ export default function OrderOnline() {
 
   const requestBill = async () => {
     try {
-      await qrRequestBill(token);
+      await qrRequestBill(token, claimRef.current);
       setBanner("Bill requested — your server will be with you shortly.");
       setTimeout(() => setBanner(""), 5000);
       await refetch();
     } catch (e) {
+      if (e.response?.status === 409) return endSession(e.response?.data?.message);
       setErr(e.response?.data?.message || "Could not request the bill.");
     }
   };
@@ -323,10 +363,11 @@ export default function OrderOnline() {
   const preparePayment = async () => {
     setLoadingPayment(true);
     try {
-      const { data } = await qrGetPaymentIntent(token);
+      const { data } = await qrGetPaymentIntent(token, claimRef.current);
       setPaymentInfo(data.data);
       await refetch();
     } catch (e) {
+      if (e.response?.status === 409) return endSession(e.response?.data?.message);
       setErr(e.response?.data?.message || "Could not prepare payment.");
     } finally {
       setLoadingPayment(false);
@@ -341,6 +382,29 @@ export default function OrderOnline() {
         <div className="flex flex-col items-center gap-3 text-slate-500">
           <div className="w-8 h-8 border-2 border-slate-300 border-t-orange-500 rounded-full animate-spin" />
           <p className="text-sm font-medium">Loading menu…</p>
+        </div>
+      </div>
+    );
+  }
+
+  // The claim this page held is spent: the table has been settled and whoever
+  // is sitting there now has a session of their own. There is deliberately no
+  // "continue" button -- the diner must scan the physical QR again, which is
+  // the only thing that proves they are at the table.
+  if (expired) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
+        <div className="max-w-sm text-center">
+          <div className="mx-auto mb-4 w-14 h-14 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center text-2xl">
+            ✓
+          </div>
+          <h1 className="text-lg font-bold text-slate-900 mb-1">This order has ended</h1>
+          <p className="text-sm text-slate-600">
+            {err || "This table's order has been settled. Please scan the QR code on your table to start a new order."}
+          </p>
+          <p className="text-xs text-slate-400 mt-4">
+            Saved links stop working once a table is settled, so nobody else can see your order.
+          </p>
         </div>
       </div>
     );
@@ -386,7 +450,7 @@ export default function OrderOnline() {
     /** Ask the server what really happened, and reflect its answer. */
     const confirm = async (payload) => {
       try {
-        await qrVerifyPayment(token, payload || {});
+        await qrVerifyPayment(token, payload || {}, claimRef.current);
         setPaymentInfo(null);
         setBanner("Payment received. Thank you!");
         await refetch();

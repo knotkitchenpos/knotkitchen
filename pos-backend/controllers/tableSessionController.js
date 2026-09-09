@@ -27,7 +27,18 @@ const {
 const { computeReadyDueAt, computeCompleteDueAt } = require("../services/autoReadyService");
 const { fireAutoEBill } = require("../services/eBillService");
 
+const crypto = require("crypto");
+
 const SESSION_CODE_PREFIX = "TS";
+
+/**
+ * Mint the diner's claim on a session.
+ *
+ * Separate from the sessionCode on purpose: the code is printed on the bill
+ * as `BL_<sessionCode>`, so it is public the moment a receipt is handed over.
+ * This one only ever reaches the browser that is ordering at the table.
+ */
+const generateSessionAccessToken = () => crypto.randomBytes(24).toString("hex");
 
 const generateSessionCode = () =>
   `${SESSION_CODE_PREFIX}_${Date.now().toString(36).toUpperCase()}_${Math.random()
@@ -335,6 +346,7 @@ const addItemsToSession = async (req, res, next) => {
           [
             {
               sessionCode,
+              accessToken: generateSessionAccessToken(),
               restaurantId: table.restaurantId || req.user?.restaurantId,
               outletId: table.outletId || req.user?.outletId,
               tableId: table._id,
@@ -1475,6 +1487,7 @@ module.exports = {
   COUNTER_SETTLED_METHODS,
   runWithSessionRetry,
   generateSessionCode,
+  generateSessionAccessToken,
   formatDuration,
   ACTIVE_SESSION_STATUSES,
   SETTLED_SESSION_STATUSES,

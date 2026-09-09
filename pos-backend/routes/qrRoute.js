@@ -8,7 +8,7 @@ const Order = require("../models/orderModel");
 const TableSession = require("../models/tableSessionModel");
 const Bill = require("../models/billModel");
 const Restaurant = require("../models/restaurantModel");
-const { findActiveSessionByTable, recalculateSessionBill, validateCapacity, enrichItems, runWithSessionRetry, generateSessionCode } = require("../controllers/tableSessionController");
+const { findActiveSessionByTable, recalculateSessionBill, validateCapacity, enrichItems, runWithSessionRetry, generateSessionCode, generateSessionAccessToken } = require("../controllers/tableSessionController");
 const priceService = require("../services/price");
 // Lazy-require services/socket only when we actually need to emit — importing
 // it eagerly pulls in socket.io which touches mongoose internals and breaks
@@ -151,6 +151,55 @@ const getActiveSessionForTable = async ({ tableId, restaurantId }) =>
   });
 
 /**
+ * The diner's claim on one session, and why the QR alone is not one.
+ *
+ * The QR stuck to the table never changes, so the link it opens never changes
+ * either. A diner who ate here last week still has that link on their phone,
+ * and it used to open whatever session was live at that table: they could
+ * read the current party's name, phone and running bill, add dishes to it,
+ * request its bill, and open a payment against it.
+ *
+ * A session now mints an accessToken. The browser that is ordering carries it
+ * in the page URL and sends it back on every call. It names ONE session and
+ * dies with it, so a saved link stops working the moment the table is
+ * settled -- while the printed QR is untouched, which is what the restaurant
+ * needs.
+ *
+ * A request with NO claim is a fresh scan: it joins the live session and is
+ * issued that session's token, which is how a second phone at the same table
+ * still orders onto one bill. That is as far as a permanent printed QR can be
+ * taken; anyone physically at the table, or holding a photograph of the card,
+ * can always scan it.
+ */
+const SESSION_EXPIRED_MESSAGE =
+  "This table's order has been settled. Please scan the QR code again to start a new order.";
+
+const claimFrom = (req) => String(req.query?.s || req.body?.sessionToken || "").trim();
+
+/** True when the browser names a session that is not the one running now. */
+const claimIsStale = (session, claimed) =>
+  Boolean(claimed) && claimed !== (session?.accessToken || "");
+
+const assertSessionClaim = (session, req) => {
+  if (claimIsStale(session, claimFrom(req))) {
+    throw createHttpError(409, SESSION_EXPIRED_MESSAGE);
+  }
+};
+
+/**
+ * Sessions opened before this field existed carry no token. Mint one on first
+ * sight rather than locking a table out in the middle of its meal.
+ */
+const ensureAccessToken = async (session) => {
+  if (!session) return "";
+  if (!session.accessToken) {
+    session.accessToken = generateSessionAccessToken();
+    await session.save();
+  }
+  return session.accessToken;
+};
+
+/**
  * The kitchen status the diner should see for their table.
  *
  * The session carries a per-item status, but nothing ever advanced it past
@@ -194,7 +243,14 @@ router.route("/table/:token").get(qrReadLimiter, resolveTableScope, async (req, 
   try {
     const { table, restaurantId, outletId } = req.scope;
     const menu = await scopedMenu(restaurantId, outletId);
-    const activeSession = await getActiveSessionForTable({ tableId: table._id, restaurantId });
+    const liveSession = await getActiveSessionForTable({ tableId: table._id, restaurantId });
+
+    // A browser holding a spent claim is a diner from an earlier sitting. It
+    // gets the menu and the table, and NOTHING about the party sitting there
+    // now -- which is the whole point of the claim.
+    const expired = claimIsStale(liveSession, claimFrom(req));
+    const activeSession = expired ? null : liveSession;
+    const sessionToken = expired ? "" : await ensureAccessToken(liveSession);
 
     const restaurant = await Restaurant.findOne({
       _id: restaurantId,
@@ -244,6 +300,13 @@ router.route("/table/:token").get(qrReadLimiter, resolveTableScope, async (req, 
         activeSession: sanitizeSession(activeSession, {
           orderStatus: await kitchenStatusForSession(activeSession),
         }),
+        // The claim for the session above. The page carries it in its URL so
+        // a reload, a locked phone or a bookmark all stay in the same order.
+        sessionToken,
+        // Say so explicitly rather than quietly returning a different party's
+        // session: the page must stop, not adopt whoever is here now.
+        sessionExpired: expired,
+        ...(expired ? { message: SESSION_EXPIRED_MESSAGE } : {}),
       },
     });
   } catch (error) { next(error); }
@@ -256,6 +319,7 @@ router.route("/session/:token").get(qrReadLimiter, resolveTableScope, async (req
   try {
     const { table, restaurantId } = req.scope;
     const activeSession = await getActiveSessionForTable({ tableId: table._id, restaurantId });
+    assertSessionClaim(activeSession, req);
     if (!activeSession) {
       return res.status(404).json({ success: false, message: "No active session for this table." });
     }
@@ -265,6 +329,7 @@ router.route("/session/:token").get(qrReadLimiter, resolveTableScope, async (req
         session: sanitizeSession(activeSession, {
           orderStatus: await kitchenStatusForSession(activeSession),
         }),
+        sessionToken: await ensureAccessToken(activeSession),
       },
     });
   } catch (error) { next(error); }
@@ -301,6 +366,12 @@ router.route("/session/items/:token").post(qrWriteLimiter, resolveTableScope, as
           isDeleted: { $ne: true },
         }).session(mongoSession);
 
+        // The claim is checked BEFORE anything is created. A browser holding a
+        // spent claim must not silently open a brand new session on the table
+        // either -- it is a diner from an earlier sitting, and the only right
+        // answer is to send them back to the printed QR.
+        assertSessionClaim(session, req);
+
         let created = false;
         if (!session) {
           // The party that was here has paid and the table has not been
@@ -331,6 +402,7 @@ router.route("/session/items/:token").post(qrWriteLimiter, resolveTableScope, as
             [
               {
                 sessionCode: generateSessionCode(),
+                accessToken: generateSessionAccessToken(),
                 restaurantId, outletId, tableId: tableInTxn._id, status: "OCCUPIED", source: "QR",
                 // Guests is no longer collected from the diner. Absent, this
                 // resolves to 1; the till can still set a real count.
@@ -352,25 +424,6 @@ router.route("/session/items/:token").post(qrWriteLimiter, resolveTableScope, as
           if (customerCount) { validateCapacity(tableInTxn, customerCount); session.customerCount = Number(customerCount); }
           if (customerName) session.customerName = customerName;
           if (customerPhone) session.customerPhone = customerPhone;
-        }
-
-        // The QR on the table is permanent, so the link that opens this page
-        // is permanent too -- anyone who scanned it once, or photographed the
-        // card, can open it again months later. What must NOT survive the
-        // bill being settled is the diner's claim on a session: without this
-        // a stale tab (or a saved link) posts onto whoever is sitting at that
-        // table now, adding dishes to a stranger's bill.
-        //
-        // So the client sends back the session it believes it is in. A fresh
-        // scan sends nothing and joins the live session as before; a page
-        // holding a finished session's code is refused and told to rescan.
-        // The QR itself is untouched -- only the claim expires.
-        const claimedCode = String(req.body?.sessionCode || "").trim();
-        if (claimedCode && claimedCode !== session.sessionCode) {
-          throw createHttpError(
-            409,
-            "This table's order has been settled. Please scan the QR code again to start a new order.",
-          );
         }
 
         const validatedItems = await enrichItems({ items, restaurantId, outletId, addedBy: "QR" });
@@ -550,6 +603,7 @@ router.route("/session/items/:token").post(qrWriteLimiter, resolveTableScope, as
         }),
         order: result.kitchenOrder,
         created: result.created,
+        sessionToken: result.session.accessToken || "",
       },
     });
   } catch (error) { next(error); }
@@ -563,6 +617,7 @@ router.route("/request-bill/:token").post(qrWriteLimiter, resolveTableScope, asy
   try {
     const { table, restaurantId } = req.scope;
     const session = await getActiveSessionForTable({ tableId: table._id, restaurantId });
+    assertSessionClaim(session, req);
     if (!session) return res.status(404).json({ success: false, message: "No active session for this table!" });
     if (session.status === "PAID" || session.status === "CLOSED") {
       return res.status(400).json({ success: false, message: "Session already settled." });
@@ -610,6 +665,7 @@ router.route("/payment-intent/:token").post(qrWriteLimiter, resolveTableScope, a
   try {
     const { table, restaurantId } = req.scope;
     const session = await getActiveSessionForTable({ tableId: table._id, restaurantId });
+    assertSessionClaim(session, req);
     if (!session) return res.status(404).json({ success: false, message: "No active session for this table!" });
     if (session.status === "PAID" || session.status === "CLOSED") {
       return res.status(400).json({ success: false, message: "Session already settled." });
@@ -712,6 +768,7 @@ router.route("/payment-verify/:token").post(qrWriteLimiter, resolveTableScope, a
     const { table, restaurantId } = req.scope;
 
     const session = await getActiveSessionForTable({ tableId: table._id, restaurantId });
+    assertSessionClaim(session, req);
     if (!session) return res.status(404).json({ success: false, message: "No active session for this table!" });
 
     const gw = await resolveGateway({ restaurantId });
@@ -868,9 +925,20 @@ router.route("/pay-request/:token").post(qrWriteLimiter, resolveTableScope, asyn
   try {
     const { table, restaurantId } = req.scope;
     const session = await findActiveSessionByTable({ tableId: table._id, restaurantId });
+    assertSessionClaim(session, req);
     const order = session ? await Order.findById(session.items[0]?.orderId) : await Order.findById(table.currentOrderId);
     if (!order && !session) return res.status(404).json({ success: false, message: "No active order for this table!" });
-    res.status(200).json({ success: true, data: { session, order, message: "Payment request sent!" } });
+    res.status(200).json({
+      success: true,
+      data: {
+        // Sanitized like every other public read. This returned the raw
+        // session document -- timeline, gateway order ids, internal ids and
+        // all -- to anyone holding the table's QR.
+        session: sanitizeSession(session, { orderStatus: await kitchenStatusForSession(session) }),
+        order,
+        message: "Payment request sent!",
+      },
+    });
   } catch (error) { next(error); }
 });
 

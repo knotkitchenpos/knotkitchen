@@ -37,6 +37,7 @@ const newId = () => {
 };
 
 const makeToken = () => crypto.randomBytes(32).toString("hex");
+const generateSessionAccessToken = () => crypto.randomBytes(24).toString("hex");
 
 const TABLES = {
   4: { _id: newId(), tableNumber: 4, capacity: 4 },
@@ -210,6 +211,10 @@ const TableSessionMock = {
       const s = toLiveSession({
         _id: newId(),
         sessionCode: doc.sessionCode,
+        // The diner's claim on this session. Allowlisted here like every
+        // other field: a mock that silently dropped it would let a route
+        // which never stores it pass.
+        accessToken: doc.accessToken || "",
         restaurantId: doc.restaurantId,
         outletId: doc.outletId,
         tableId: doc.tableId,
@@ -453,6 +458,7 @@ const sessionControllerMock = {
   recalculateSessionBill,
   runWithSessionRetry,
   generateSessionCode,
+  generateSessionAccessToken,
 };
 
 // ============================================================
@@ -582,6 +588,7 @@ const seedSession = async ({
   const [session] = await TableSessionMock.create([
     {
       sessionCode: generateSessionCode(),
+      accessToken: generateSessionAccessToken(),
       restaurantId: "rest-A",
       outletId: "outlet-A",
       tableId,
@@ -945,4 +952,184 @@ test("REGRESSION: a second QR round appends to the SAME order, never a new one",
   // The addition waits for the till rather than going straight to the kitchen.
   const pending = order.items.filter((i) => i.status === "pending");
   assert.equal(pending.length, 2, "added items arrive as a request");
+});
+
+
+// ============================================================
+// The session claim
+//
+// The QR stuck to the table is permanent, so the link it opens is permanent
+// too. A diner who ate here last week still has that link on their phone, and
+// it used to open whatever session was live at that table: the current
+// party's name, phone and running bill, with the ability to add dishes to it,
+// request its bill and open a payment against it.
+//
+// A session now mints an accessToken. It names ONE session and dies with it.
+// ============================================================
+
+test("REGRESSION: a saved link from an earlier sitting cannot read the party sitting there now", async () => {
+  const router = loadQrRoute();
+  const token = await createQrForTable(TABLES[4]._id);
+
+  // Last week's diner. Their session was settled and is gone.
+  const spentClaim = generateSessionAccessToken();
+
+  // Tonight's party, with their name, phone and running bill on the table.
+  await seedSession({
+    tableId: TABLES[4]._id,
+    items: await enrichItems({
+      items: [{ menuItemId: "menu_biryani", quantity: 2 }],
+      restaurantId: "rest-A",
+      outletId: "outlet-A",
+      addedBy: "QR",
+    }),
+  });
+
+  const { statusCode, body } = await callRoute(router, "/table/:token", "get", {
+    params: { token },
+    query: { s: spentClaim },
+  });
+
+  assert.equal(statusCode, 200, "the menu still loads -- only the session is withheld");
+  assert.equal(body.data.activeSession, null, "the current party's order must not be readable");
+  assert.equal(body.data.sessionExpired, true);
+  assert.equal(body.data.sessionToken, "", "and no claim is handed to them");
+});
+
+test("a fresh scan carries no claim, joins the live session, and is issued its token", async () => {
+  // A second phone at the same table orders onto the same bill. This is the
+  // case that must NOT break, and the reason an absent claim is not refused.
+  const router = loadQrRoute();
+  const token = await createQrForTable(TABLES[4]._id);
+  const session = await seedSession({ tableId: TABLES[4]._id });
+
+  const { body } = await callRoute(router, "/table/:token", "get", { params: { token } });
+
+  assert.ok(body.data.activeSession, "the live session is visible to a fresh scan");
+  assert.equal(body.data.sessionExpired, false);
+  assert.equal(body.data.sessionToken, session.accessToken);
+});
+
+test("the right claim still sees everything", async () => {
+  const router = loadQrRoute();
+  const token = await createQrForTable(TABLES[4]._id);
+  const session = await seedSession({ tableId: TABLES[4]._id, customerCount: 3 });
+
+  const { body } = await callRoute(router, "/table/:token", "get", {
+    params: { token },
+    query: { s: session.accessToken },
+  });
+
+  assert.equal(body.data.sessionExpired, false);
+  assert.equal(body.data.activeSession.customerCount, 3);
+});
+
+test("REGRESSION: a spent claim cannot add dishes to the next party's bill", async () => {
+  const router = loadQrRoute();
+  const token = await createQrForTable(TABLES[4]._id);
+  const session = await seedSession({ tableId: TABLES[4]._id });
+  const itemsBefore = session.items.length;
+
+  const err = await callRoute(router, "/session/items/:token", "post", {
+    params: { token },
+    body: {
+      items: [{ menuItemId: "menu_biryani", quantity: 1 }],
+      sessionToken: generateSessionAccessToken(),
+    },
+  }).then(() => null, (e) => e);
+
+  assert.ok(err, "the write must be refused");
+  assert.equal(err.status || err.statusCode, 409);
+  assert.match(err.message, /scan the QR code again/i);
+  assert.equal(session.items.length, itemsBefore, "and nothing reaches the bill");
+});
+
+test("REGRESSION: a spent claim does not open a brand new session either", async () => {
+  // The table is empty. Without the check the stale link would simply start a
+  // session of its own -- a party that is not in the restaurant, opening a
+  // table nobody is sitting at.
+  const router = loadQrRoute();
+  const token = await createQrForTable(TABLES[5]._id);
+  const before = db.sessions.length;
+
+  const err = await callRoute(router, "/session/items/:token", "post", {
+    params: { token },
+    body: {
+      items: [{ menuItemId: "menu_biryani", quantity: 1 }],
+      customerName: "Old Customer",
+      customerPhone: "9876543210",
+      sessionToken: generateSessionAccessToken(),
+    },
+  }).then(() => null, (e) => e);
+
+  assert.ok(err);
+  assert.equal(err.status || err.statusCode, 409);
+  assert.equal(db.sessions.length, before, "no session was opened");
+});
+
+test("opening a table mints a claim, and a later session gets a different one", async () => {
+  const router = loadQrRoute();
+  const token = await createQrForTable(TABLES[4]._id);
+
+  const first = await callRoute(router, "/session/items/:token", "post", {
+    params: { token },
+    body: {
+      items: [{ menuItemId: "menu_biryani", quantity: 1 }],
+      customerName: "First Party",
+      customerPhone: "9000000001",
+    },
+  });
+  assert.equal(first.statusCode, 201);
+  const firstClaim = first.body.data.sessionToken;
+  assert.match(firstClaim, /^[a-f0-9]{48}$/, "a real secret, not a guessable code");
+
+  // They pay and leave.
+  const settled = db.sessions.find((x) => x.accessToken === firstClaim);
+  settled.status = "PAID";
+
+  const second = await callRoute(router, "/session/items/:token", "post", {
+    params: { token },
+    body: {
+      items: [{ menuItemId: "menu_water", quantity: 1 }],
+      customerName: "Second Party",
+      customerPhone: "9000000002",
+    },
+  });
+  assert.equal(second.statusCode, 201);
+  assert.notEqual(second.body.data.sessionToken, firstClaim, "the claim changes with the party");
+});
+
+test("the claim is NOT the sessionCode, which is printed on the bill", async () => {
+  // BL_<sessionCode> goes on the customer's receipt. Reusing it as the claim
+  // would hand it to anyone who saw a printed bill.
+  const router = loadQrRoute();
+  const token = await createQrForTable(TABLES[4]._id);
+  const session = await seedSession({ tableId: TABLES[4]._id });
+
+  const { body } = await callRoute(router, "/table/:token", "get", { params: { token } });
+  assert.notEqual(body.data.sessionToken, session.sessionCode);
+
+  const withCode = await callRoute(router, "/table/:token", "get", {
+    params: { token },
+    query: { s: session.sessionCode },
+  });
+  assert.equal(withCode.body.data.activeSession, null, "a receipt does not buy access");
+  assert.equal(withCode.body.data.sessionExpired, true);
+});
+
+test("a spent claim cannot force the bill or start a payment on someone else's table", async () => {
+  const router = loadQrRoute();
+  const token = await createQrForTable(TABLES[4]._id);
+  const session = await seedSession({ tableId: TABLES[4]._id });
+  const spent = generateSessionAccessToken();
+
+  for (const path of ["/request-bill/:token", "/payment-intent/:token"]) {
+    const err = await callRoute(router, path, "post", {
+      params: { token },
+      body: { sessionToken: spent },
+    }).then(() => null, (e) => e);
+    assert.ok(err, path + " accepted a spent claim");
+    assert.equal(err.status || err.statusCode, 409);
+  }
+  assert.equal(session.status, "OCCUPIED", "the party's session is untouched");
 });
