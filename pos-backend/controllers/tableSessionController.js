@@ -1251,8 +1251,47 @@ const findCancelTarget = (item, orders) => {
  * second round must not be handed to the next party because one round was
  * voided.
  */
+/**
+ * Free a table whose cancelled order never had a session.
+ *
+ * Same rule as the session path: the table goes back only when nothing else
+ * live is on it, so a table mid-meal on a second order is left alone.
+ */
+const releaseTableForCancelledOrderWithoutSession = async (order) => {
+  if (!order?.table) return null;
+
+  const otherLive = await Order.countDocuments({
+    table: order.table,
+    _id: { $ne: order._id },
+    isDeleted: { $ne: true },
+    orderStatus: { $nin: [...CANCELLED_STATUSES, ...SETTLED_STATUSES] },
+  });
+  if (otherLive > 0) return null;
+
+  const liveSession = await TableSession.findOne({
+    tableId: order.table,
+    status: { $in: ACTIVE_SESSION_STATUSES },
+    isDeleted: { $ne: true },
+  });
+  // Somebody is sitting there under a session of their own. Not ours to close.
+  if (liveSession) return null;
+
+  return Table.findOneAndUpdate(
+    { _id: order.table },
+    await buildCooldownUpdate(order.restaurantId),
+  );
+};
+
 const releaseSessionForCancelledOrder = async (order, actor = "POS") => {
-  if (!order?.tableSessionId) return null;
+  if (!order?.tableSessionId) {
+    // Not every table order has a session. A dine-in order typed at the till,
+    // and the legacy single-shot QR route, both stamp `table` and mark it
+    // occupied without ever opening one. Cancelling those freed nothing, so
+    // the table sat occupied with no session for anybody to close -- the
+    // stranded tables staff had no way to release.
+    await releaseTableForCancelledOrderWithoutSession(order);
+    return null;
+  }
 
   const session = await TableSession.findOne({
     _id: order.tableSessionId,

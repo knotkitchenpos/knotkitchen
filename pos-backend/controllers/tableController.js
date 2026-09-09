@@ -406,6 +406,130 @@ const updateTableSettings = async (req, res, next) => {
   }
 };
 
+
+/**
+ * Put an occupied table back into service by hand.
+ *
+ * Every automatic path frees a table when its order is cancelled or settled,
+ * but a table could still be left stranded: an order cancelled before those
+ * paths existed, a session whose dishes were all pulled one at a time, an
+ * order that carried a table but never a session. The result was a table
+ * nobody could use and nothing could clear -- "Complete Order & Take Payment"
+ * is disabled at a zero total, and there was no other control anywhere.
+ *
+ * So this is the manual release, and it is deliberately dumb: close whatever
+ * session is open, clear the table, done.
+ *
+ * The one thing it will NOT do is release a table that is still mid-meal. A
+ * live order with dishes still on it means somebody is sitting there, and
+ * handing that table to the next party would seat them on top of a running
+ * bill. Cancel or settle the order first -- both of those free the table on
+ * their own anyway.
+ */
+const releaseTable = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return next(createHttpError(404, "Invalid table id!"));
+    }
+
+    const scopeQuery = req.user?.restaurantId
+      ? {
+          restaurantId: req.user.restaurantId,
+          ...(req.user.outletId ? { outletId: req.user.outletId } : {}),
+        }
+      : { createdBy: req.user._id };
+
+    const table = await Table.findOne({ _id: id, ...scopeQuery, isDeleted: { $ne: true } });
+    if (!table) return next(createHttpError(404, "Table not found!"));
+
+    const Order = require("../models/orderModel");
+    const { CANCELLED_STATUSES, SETTLED_STATUSES } = require("../constants/orderStatus");
+
+    // Anything still being cooked or still owed for. A cancelled order's items
+    // are all cancelled, so a table whose orders were cancelled passes.
+    const liveOrders = await Order.find({
+      table: table._id,
+      isDeleted: { $ne: true },
+      orderStatus: { $nin: [...CANCELLED_STATUSES, ...SETTLED_STATUSES] },
+    }).select("items orderNumber _id");
+
+    const blocking = liveOrders.find((o) =>
+      (o.items || []).some((it) => it.status !== "cancelled"),
+    );
+    if (blocking) {
+      return next(
+        createHttpError(
+          409,
+          "This table still has a live order. Settle or cancel it first, which frees the table on its own.",
+        ),
+      );
+    }
+
+    const session = await TableSession.findOne({
+      tableId: table._id,
+      status: { $in: ["OPEN", "OCCUPIED", "PROCESSING", "BILL_REQUESTED", "PAYMENT_PENDING"] },
+      isDeleted: { $ne: true },
+    });
+
+    if (session) {
+      session.status = "CLOSED";
+      session.closedAt = new Date();
+      session.closedBy = req.user?._id;
+      session.timeline.push({
+        event: "SESSION_CLOSED",
+        note: "Table released by staff",
+        actorType: "POS",
+        actorId: req.user?._id,
+        at: new Date(),
+      });
+      await session.save();
+    }
+
+    // Whatever else was stale on the row goes with it: a currentOrderId
+    // pointing at a cancelled order is what kept some of these tables looking
+    // busy long after their order was gone.
+    const { buildCooldownUpdate } = require("../services/tableCooldownService");
+    const updated = await Table.findOneAndUpdate(
+      { _id: table._id },
+      { ...(await buildCooldownUpdate(table.restaurantId)), waiterCallActive: false },
+      { new: true },
+    );
+
+    try {
+      const { emitTableSessionUpdated } = require("../services/socket");
+      emitTableSessionUpdated({
+        restaurantId: table.restaurantId,
+        outletId: table.outletId,
+        tableId: table._id,
+        session,
+        reason: "table_released",
+      });
+    } catch (err) {
+      console.warn("emitTableSessionUpdated failed:", err.message);
+    }
+
+    await logActivity({
+      req,
+      action: "Table Released",
+      resource: "Table",
+      entityType: "Table",
+      entityId: table._id,
+      previousValue: { status: table.status, currentOrderId: table.currentOrderId },
+      newValue: { status: "available", sessionClosed: session ? String(session._id) : null },
+      description: `Table released: ${table.displayId || table.tableNumber}`,
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Table released and available.",
+      data: updated,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
   getTableSettings,
-  updateTableSettings, addTable, getTables, getTableById, updateTable, deleteTable, regenerateQr };
+  updateTableSettings, addTable, getTables, getTableById, updateTable, deleteTable, regenerateQr, releaseTable };

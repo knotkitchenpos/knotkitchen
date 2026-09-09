@@ -8,34 +8,42 @@ const SessionDetailModal = ({
   onAddItem,
   onComplete,
   onCancelItem,
+  onRelease,
+  releaseBusy = false,
   cancelBusy = false,
 }) => {
-  if (!session) return null;
+  // A table stranded WITHOUT a session is the case that had no way out at
+  // all: this returned null, so clicking the table opened nothing. It now
+  // renders, and the only thing it offers is the release.
   const statusColor = { OCCUPIED: "text-accent-amber", OPEN: "text-accent-green", PROCESSING: "text-accent-blue", BILL_REQUESTED: "text-accent-blue", PAYMENT_PENDING: "text-accent-red" };
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-surface-secondary p-6 rounded-2xl shadow-2xl w-full max-w-lg border border-border">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-content text-xl font-semibold font-display">{table?.name} — Active Session</h2>
+          <h2 className="text-content text-xl font-semibold font-display">
+            {table?.name} — {session ? "Active Session" : "No Active Order"}
+          </h2>
           <button onClick={onClose} className="text-content-muted hover:text-accent-red text-2xl leading-none p-1">&times;</button>
         </div>
 
         <div className="grid grid-cols-2 gap-3 mb-4">
           <div className="p-3 rounded-xl bg-surface-input border border-border">
             <p className="text-xs text-content-muted">Customers</p>
-            <p className="text-lg font-bold text-content">{session.customerCount} / {table?.capacity}</p>
+            <p className="text-lg font-bold text-content">{session?.customerCount ?? 0} / {table?.capacity}</p>
           </div>
           <div className="p-3 rounded-xl bg-surface-input border border-border">
             <p className="text-xs text-content-muted">Status</p>
-            <p className={`text-lg font-bold ${statusColor[session.status] || "text-content"}`}>{session.status}</p>
+            <p className={`text-lg font-bold ${statusColor[session?.status] || "text-content"}`}>
+              {session?.status || "No active order"}
+            </p>
           </div>
         </div>
 
         <div className="mb-4">
-          <p className="text-xs text-content-muted mb-2">Items ({session.items?.length || 0})</p>
+          <p className="text-xs text-content-muted mb-2">Items ({session?.items?.length || 0})</p>
           <div className="max-h-[220px] overflow-y-auto space-y-2 no-scrollbar">
-            {(session.items || []).map((item, idx) => {
+            {(session?.items || []).map((item, idx) => {
               const cancelled = item.status === "cancelled";
               return (
                 <div
@@ -94,28 +102,42 @@ const SessionDetailModal = ({
                 </div>
               );
             })}
-            {!session.items?.length && <p className="text-center text-content-muted text-sm py-6">No items yet.</p>}
+            {!session?.items?.length && <p className="text-center text-content-muted text-sm py-6">No items yet.</p>}
           </div>
         </div>
 
         <div className="p-3 rounded-xl bg-accent/5 border border-accent/20 flex items-center justify-between mb-5">
           <p className="text-sm font-semibold text-content">Running Total</p>
-          <p className="font-display text-lg font-bold text-accent">₹{(session.bills?.totalWithTax || 0).toFixed(2)}</p>
+          <p className="font-display text-lg font-bold text-accent">₹{(session?.bills?.totalWithTax || 0).toFixed(2)}</p>
         </div>
 
         <div className="flex flex-col gap-2">
-          <button onClick={onAddItem} className="btn-primary w-full !py-3 flex items-center justify-center gap-2">
-            Add Item <FaLongArrowAltRight size={14} />
-          </button>
+          {session && (
+            <button onClick={onAddItem} className="btn-primary w-full !py-3 flex items-center justify-center gap-2">
+              Add Item <FaLongArrowAltRight size={14} />
+            </button>
+          )}
           {/* Completing a table was simply not offered anywhere, so a table
               order could be taken but never finished. */}
-          {onComplete && (
+          {onComplete && session && (
             <button
               onClick={onComplete}
-              disabled={!(session.bills?.totalWithTax > 0)}
+              disabled={!(session?.bills?.totalWithTax > 0)}
               className="w-full py-3 rounded-xl bg-[#16A34A] text-white text-sm font-bold hover:bg-[#15803D] disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Complete Order &amp; Take Payment
+            </button>
+          )}
+          {/* The way out when there is nothing to take payment for. A party
+              that cancelled everything leaves a zero total, which disables
+              the button above and used to strand the table for good. */}
+          {onRelease && (
+            <button
+              onClick={onRelease}
+              disabled={releaseBusy}
+              className="w-full py-3 rounded-xl border border-border text-content-muted text-sm font-bold hover:text-accent-red hover:border-accent-red disabled:opacity-50"
+            >
+              {releaseBusy ? "Releasing…" : "Release Table"}
             </button>
           )}
         </div>

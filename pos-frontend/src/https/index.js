@@ -124,6 +124,14 @@ export const recordTableSessionPayment = (sessionId, data) =>
 export const closeTableSessionWithoutPayment = (sessionId, data) =>
   axiosWrapper.post(`/api/table-session/${sessionId}/close`, data);
 
+// Put a stranded table back into service. Every automatic path already frees
+// a table when its order is cancelled or settled, but a table left occupied
+// by an order that predates those paths had nothing that could clear it:
+// "Complete Order & Take Payment" is disabled at a zero total, and there was
+// no other control anywhere. Refused while a live order is still on the table.
+export const releaseTable = (tableId) =>
+  axiosWrapper.put(`/api/table/${tableId}/release`);
+
 // Pull one dish off a live table order — the kitchen ran out, or it went
 // back. The diner's QR page reads the same session, so they see it too.
 export const cancelTableSessionItem = (sessionId, itemId, data) =>

@@ -19,6 +19,7 @@ import {
   getTableSessionById,
   recordTableSessionPayment,
   cancelTableSessionItem,
+  releaseTable,
   regenerateQr,
   getOrCreateTableQr,
 } from "../https";
@@ -267,6 +268,38 @@ const Tables = () => {
     if (!window.confirm(`Cancel "${item.name}" from this table's order?`)) return;
     const reason = (window.prompt("Reason (optional) — the customer will see this:", "") || "").trim();
     cancelItemMut.mutate({ sessionId, itemId: item._id, reason });
+  };
+
+  /**
+   * Put a stranded table back into service.
+   *
+   * A party that cancels everything leaves the session at a zero total, which
+   * disables "Complete Order & Take Payment" -- so the table could not be
+   * settled, and there was no other control anywhere that would free it. The
+   * server refuses while a live order is still on the table, so this cannot
+   * be used to clear a table mid-meal.
+   */
+  const releaseMut = useMutation({
+    mutationFn: (tableId) => releaseTable(tableId),
+    onSuccess: (res) => {
+      enqueueSnackbar(res?.data?.message || "Table released.", { variant: "success" });
+      setSessionTable(null);
+      setSessionData(null);
+      queryClient.invalidateQueries({ queryKey: ["tables"] });
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
+    onError: (e) =>
+      enqueueSnackbar(e.response?.data?.message || "Could not release that table.", {
+        variant: "error",
+      }),
+  });
+
+  const handleReleaseTable = () => {
+    const tableId = sessionTable?._id || sessionTable?.id;
+    if (!tableId) return;
+    const label = sessionTable?.name || sessionTable?.tableNumber;
+    if (!window.confirm(`Release Table ${label}? It becomes available for the next customer.`)) return;
+    releaseMut.mutate(tableId);
   };
 
   const addTableMutation = useMutation({
@@ -681,6 +714,8 @@ const Tables = () => {
           onComplete={() => setSettleTarget({ table: sessionTable, session: sessionData })}
           onCancelItem={handleCancelSessionItem}
           cancelBusy={cancelItemMut.isPending}
+          onRelease={handleReleaseTable}
+          releaseBusy={releaseMut.isPending}
           onClose={() => {
             setSessionTable(null);
             setSessionData(null);
