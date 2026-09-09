@@ -55,11 +55,27 @@ const searchStores = async (req, res, next) => {
     const digits = q.replace(/\D/g, "");
     const SCAN_CAP = 200;
 
+    /**
+     * Deleted stores are hidden -- unless you ask for them by name.
+     *
+     * Deletion flags the Store row and every list filters it out, which is
+     * right for every other view. But a store deleted before the purge
+     * existed still owns all of its data, and staff could neither see it nor
+     * delete it again: this search hid it, and updateStoreStatus refused to
+     * load an already-flagged row. It was stranded, and its restaurant, users
+     * and orders went on working.
+     *
+     * Selecting the "deleted" filter now shows them, so the deletion can be
+     * run again and finish the job.
+     */
+    const includeDeleted = status === "deleted";
+    const notDeleted = includeDeleted ? {} : { isDeleted: { $ne: true } };
+
     // Empty query = "browse mode": return the most recent stores so an admin
     // opening Store Management sees the registry instead of a blank slate.
     // Filters (status, storeId prefix if the box holds only digits) still
     // apply even when q is empty.
-    const storeFilter = { isDeleted: { $ne: true } };
+    const storeFilter = { ...notDeleted };
     if (rx) storeFilter.$or = [{ storeName: rx }, { ownerName: rx }];
     if (/^\d{1,6}$/.test(digits)) {
       const idClause = { storeId: new RegExp(`^${digits}`) };
@@ -72,7 +88,7 @@ const searchStores = async (req, res, next) => {
     if (status) storeFilter.status = status;
 
     const restaurantFilter = {
-      isDeleted: { $ne: true },
+      ...notDeleted,
       $or: [
         { name: rx },
         { "address.line1": rx },
@@ -108,13 +124,13 @@ const searchStores = async (req, res, next) => {
     // storefront URL on each card costs one extra indexed query, not one per
     // candidate match.
     const [stores, restaurants, websites] = await Promise.all([
-      Store.find({ storeId: { $in: pageIds }, isDeleted: { $ne: true } }).lean(),
+      Store.find({ storeId: { $in: pageIds }, ...notDeleted }).lean(),
       Restaurant.find(
-        { storeId: { $in: pageIds }, isDeleted: { $ne: true } },
+        { storeId: { $in: pageIds }, ...notDeleted },
         { name: 1, address: 1, storeId: 1, ownerName: 1, ownerPhone: 1 }
       ).lean(),
       WebsiteSettings.find(
-        { storeId: { $in: pageIds }, isDeleted: { $ne: true } },
+        { storeId: { $in: pageIds }, ...notDeleted },
         { storeId: 1, slug: 1, subdomain: 1, customDomain: 1 }
       ).lean(),
     ]);
@@ -143,11 +159,16 @@ const getStore = async (req, res, next) => {
     const storeId = String(req.params.storeId || "").trim();
     if (!/^\d{6}$/.test(storeId)) return next(createHttpError(400, "Invalid Store ID."));
 
-    const store = await Store.findOne({ storeId, isDeleted: { $ne: true } }).lean();
+    // Deleted stores are NOT hidden from this lookup. Staff reach it by id
+    // from the search, and a store deleted before the purge existed still
+    // owns everything it ever had -- hiding its page was part of what left
+    // those stores stranded with no way to finish clearing them. The row
+    // carries status "deleted", so the page says so.
+    const store = await Store.findOne({ storeId }).lean();
     if (!store) return next(createHttpError(404, "Store not found."));
 
     const restaurant = await Restaurant.findOne(
-      { storeId, isDeleted: { $ne: true } },
+      { storeId },
       { securityPin: 0 } // never expose the store's protection PIN hash
     ).lean();
 
@@ -218,7 +239,21 @@ const permanentlyDeleteStore = async ({ req, store, storeId, reason }) => {
   //    through any route that did not check those two flags. See
   //    services/storePurge.js for what is deliberately KEPT (the audit
   //    trail, and our own invoices to them).
-  const purge = await purgeStoreData({ restaurantId: store.restaurantId, storeId });
+  //
+  //    restaurantId is optional on the Store row, and most of what a store
+  //    owns -- its tables, menus, bills, sessions -- is keyed ONLY by
+  //    restaurantId. A Store row without it would have had all of that
+  //    skipped and left behind, so resolve it from the Restaurant rather
+  //    than trusting the link to be there.
+  const restaurant = await Restaurant.findOne({
+    $or: [
+      ...(store.restaurantId ? [{ _id: store.restaurantId }] : []),
+      { storeId },
+    ],
+  }).select("_id");
+  const restaurantId = store.restaurantId || restaurant?._id || null;
+
+  const purge = await purgeStoreData({ restaurantId, storeId });
 
   // 2. The store row itself. Kept, flagged deleted, because the audit entry
   //    below points at it and a dangling audit record is worse than a tomb
@@ -231,9 +266,12 @@ const permanentlyDeleteStore = async ({ req, store, storeId, reason }) => {
 
   // 3. Restaurant: removed outright now that nothing references it. Leaving
   //    it behind was how a "deleted" store still resolved on login.
-  if (store.restaurantId) {
-    await Restaurant.deleteOne({ _id: store.restaurantId });
+  if (restaurantId) {
+    await Restaurant.deleteOne({ _id: restaurantId });
   }
+  // And any other Restaurant row still carrying this storeId. A store the old
+  // delete only flagged can have one that the id above never pointed at.
+  await Restaurant.deleteMany({ storeId });
 
   // 3. Local agreement link: gone. Without this row, listing the portal's
   //    agreements will no longer show a "store already created" badge.
@@ -306,7 +344,21 @@ const updateStoreStatus = async (req, res, next) => {
       closedUntil = d;
     }
 
-    const store = await Store.findOne({ storeId, isDeleted: { $ne: true } });
+    // A store already flagged deleted is loadable ONLY to delete it again.
+    //
+    // Deletion used to be two isDeleted flags and nothing else, so stores
+    // removed before the purge shipped still own their restaurant, users,
+    // orders and menus -- they are visibly there and their staff can still
+    // sign in. Refusing to load the flagged row left no way to finish the
+    // job. Re-running the delete is safe: the purge is a sweep by scope, so
+    // a second pass simply removes whatever the first one never did.
+    //
+    // Every other status still refuses, or a deleted store could be brought
+    // back to life by setting it "active".
+    const store = await Store.findOne({
+      storeId,
+      ...(status === "deleted" ? {} : { isDeleted: { $ne: true } }),
+    });
     if (!store) return next(createHttpError(404, "Store not found."));
 
     // Terminal path: destroys the store + its agreement.

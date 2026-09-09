@@ -126,8 +126,11 @@ test("one failing collection does not hide itself", async () => {
 
 test("REGRESSION: the delete route purges, and the Restaurant really goes", () => {
   const src = SRC("controllers", "csdStoreController.js");
-  assert.match(src, /const purge = await purgeStoreData\(\{ restaurantId: store\.restaurantId, storeId \}\);/);
-  assert.match(src, /await Restaurant\.deleteOne\(\{ _id: store\.restaurantId \}\);/);
+  // The scope is resolved before the sweep: restaurantId is optional on the
+  // Store row, and almost everything a store owns is keyed only by it.
+  assert.match(src, /const purge = await purgeStoreData\(\{ restaurantId, storeId \}\);/);
+  assert.match(src, /await Restaurant\.deleteOne\(\{ _id: restaurantId \}\);/);
+  assert.match(src, /await Restaurant\.deleteMany\(\{ storeId \}\);/, "and any row linked only by storeId");
   assert.ok(
     !/Restaurant\.updateOne\(\s*\n?\s*\{ _id: store\.restaurantId \},\s*\n?\s*\{ \$set: \{ isDeleted: true \} \}/.test(src),
     "flagging the restaurant was how a deleted store still resolved on login",

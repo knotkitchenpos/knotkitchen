@@ -4,7 +4,11 @@ import { FiSearch, FiLoader, FiAlertCircle } from "react-icons/fi";
 import { stores, errorMessage } from "../api";
 import StatusBadge from "../components/StatusBadge";
 
-const STATUSES = ["", "active", "pending", "suspended", "closed_temporarily", "closed_until"];
+// "deleted" is listed so staff can find stores that were removed before the
+// purge existed: those still own their restaurant, users and orders, and are
+// invisible everywhere else. Selecting it shows them so the delete can be run
+// again and actually clear them.
+const STATUSES = ["", "active", "pending", "suspended", "closed_temporarily", "closed_until", "deleted"];
 
 /**
  * Store Management / Global Store Search — available to staff and admins.
