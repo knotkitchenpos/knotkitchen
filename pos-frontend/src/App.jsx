@@ -9,7 +9,7 @@ import { useState } from "react";
 import { useSelector } from "react-redux";
 import {
   Home, Auth, Orders, Tables, Menu, KDS, OrderOnline, PaymentLink,
-  Storefront, WebsiteSettings, OnlineOrders, Reports, Settings, ManageMenuPage, Support,
+  Storefront, OnlineOrders, Reports, Settings, ManageMenuPage, Support,
   Impersonate, Billing,
 } from "./pages";
 
@@ -19,7 +19,7 @@ import useRealtimeSync from "./hooks/useRealtimeSync";
 import { isPublicPath } from "./utils/publicRoutes";
 import FullScreenLoader from "./components/shared/FullScreenLoader";
 import MarketplaceOrderPopup from "./components/dashboard/MarketplaceOrderPopup";
-import QRTableOrderPopup from "./components/dashboard/QRTableOrderPopup";
+import NewOrderPopup from "./components/dashboard/NewOrderPopup";
 import WaiterCallPopup from "./components/dashboard/WaiterCallPopup";
 import AddedItemsPopup from "./components/dashboard/AddedItemsPopup";
 
@@ -98,7 +98,7 @@ function Layout() {
         {routes}
       </main>
       {isAuth && <MarketplaceOrderPopup />}
-      {isAuth && <QRTableOrderPopup />}
+      {isAuth && <NewOrderPopup />}
       {isAuth && <WaiterCallPopup />}
       {isAuth && <AddedItemsPopup />}
     </div>

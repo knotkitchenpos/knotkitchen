@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
@@ -6,64 +6,79 @@ import { enqueueSnackbar } from "notistack";
 import { updateOnlineOrderStatus } from "../../https/storefrontApi";
 import useAlertBeep from "../../hooks/useAlertBeep";
 import { getActiveStoreId } from "../../utils/storeSession";
+import { tableLabel as labelForTable } from "../../utils/orderLabels";
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, "") || "";
 
 /**
- * Realtime popup for QR customer orders.
+ * "New order" — one popup for every channel a customer orders through.
  *
- * When a customer scans a Table QR, orders from the menu and submits,
- * `pos-backend/routes/qrRoute.js` creates a kitchen Order tagged
- * `source: "QR"` and calls `emitOrderCreated`. This component listens
- * to the same `onlineOrder:created` socket event `useOnlineOrders`
- * already uses, but ONLY fires for `source === "QR"` orders — so
- * marketplace / website / walk-in POS notifications stay handled by
- * their own popups.
+ * There used to be a popup for QR table orders and nothing at all for website
+ * orders: the backend emitted `onlineOrder:created` for both, but the only
+ * listener filtered on `source === "QR"` and dropped everything else on the
+ * floor. A website order reached the till silently, and was seen whenever
+ * somebody next reloaded the Orders page.
  *
- * The popup surfaces:
- *   - The table number the order came from (via order.table populated
- *     name/number, or a fallback like "T{id-suffix}")
- *   - Customer name / phone / guests
- *   - The line items + total
- *   - A "View in Orders" button that navigates to the Orders page
+ * This replaces that listener and accepts every customer-placed source. POS
+ * orders are deliberately NOT included: a member of staff typed those in, and
+ * alerting them about their own keystrokes is noise.
  *
- * If a burst of QR orders lands together, the popup queues them so the
- * biller can dismiss one, see the next, etc. — never dropping any.
+ * It floats rather than covering the screen. A modal backdrop stops the till
+ * working while a customer is standing at the counter, so the card can be
+ * dragged out of the way by its header and left there — the alert keeps
+ * sounding until somebody accepts or cancels, which is the part that must not
+ * be dismissable by accident.
  */
-const QRTableOrderPopup = () => {
+
+/** Channels a CUSTOMER ordered through. POS is staff typing, and never alerts. */
+const ALERTING_SOURCES = new Set(["QR", "WEBSITE"]);
+
+const SOURCE_LABEL = {
+  QR: "New Table Order · Scanned QR",
+  WEBSITE: "New Website Order",
+};
+
+const NewOrderPopup = () => {
   const navigate = useNavigate();
   const restaurantId = useSelector((s) => s.user?.restaurantId);
   const [queue, setQueue] = useState([]);
   const [busy, setBusy] = useState(false);
-  const socketRef = useRef(null);
 
-  // A QR order is a customer waiting at a table — the alert holds until the
-  // biller actually decides, rather than being a toast that scrolls away.
+  // Drag offset from the centred resting position, in pixels. Kept for the
+  // whole session so a till that shoved the card aside once is not fighting
+  // it back across the screen on every order.
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const dragRef = useRef(null);
+
   useAlertBeep(queue.length > 0);
 
   useEffect(() => {
     if (!restaurantId) return undefined;
+
     const socket = io(BACKEND_URL, {
       withCredentials: true,
       transports: ["websocket", "polling"],
       query: { restaurantId, storeId: getActiveStoreId() },
     });
-    socketRef.current = socket;
 
     const join = () => socket.emit("joinRestaurant", { restaurantId });
 
     const onCreated = (payload) => {
-      // Only handle QR-origin orders. WEBSITE / MARKETPLACE / POS have
-      // their own popups (or intentionally none for walk-in POS).
-      if (String(payload?.source || "").toUpperCase() !== "QR") return;
-      setQueue((prev) => [payload, ...prev]);
+      const source = String(payload?.source || "").toUpperCase();
+      if (!ALERTING_SOURCES.has(source)) return;
+      setQueue((prev) => {
+        // A retried emit must not stack two cards for one order.
+        const id = String(payload?.orderId || "");
+        if (id && prev.some((p) => String(p.orderId) === id)) return prev;
+        return [...prev, payload];
+      });
       try {
         enqueueSnackbar(
-          `New Table Order · Table ${payload.tableNumber || payload.table || "?"}`,
+          source === "WEBSITE" ? "New website order" : "New table order",
           { variant: "info" },
         );
       } catch {
-        /* snackbar failure is not fatal */
+        /* a failed toast must not break the alert */
       }
     };
 
@@ -74,27 +89,42 @@ const QRTableOrderPopup = () => {
       socket.off("connect", join);
       socket.off("onlineOrder:created", onCreated);
       socket.disconnect();
-      socketRef.current = null;
     };
   }, [restaurantId]);
 
+  // Dragging by the header. Pointer events rather than mouse events so this
+  // works on the touchscreen tills, and pointer capture so the card keeps
+  // following a finger that slides outside it.
+  const onPointerDown = (e) => {
+    if (e.button != null && e.button !== 0) return;
+    dragRef.current = { startX: e.clientX, startY: e.clientY, from: offset };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+
+  const onPointerMove = (e) => {
+    const d = dragRef.current;
+    if (!d) return;
+    setOffset({
+      x: d.from.x + (e.clientX - d.startX),
+      y: d.from.y + (e.clientY - d.startY),
+    });
+  };
+
+  const endDrag = (e) => {
+    dragRef.current = null;
+    e.currentTarget.releasePointerCapture?.(e.pointerId);
+  };
+
   if (queue.length === 0) return null;
   const current = queue[0];
-  const dismiss = () => setQueue((prev) => prev.slice(1));
+  const drop = () => setQueue((prev) => prev.slice(1));
 
-  /**
-   * Accept sends the order to the kitchen; Cancel rejects it. Both go through
-   * the existing online-order status endpoint, so a QR order follows exactly
-   * the same lifecycle (and the same auto-ready sweep) as any other channel.
-   */
   const decide = async (action) => {
-    // emitOrderCreated sends `orderId`. `_id` was never on the payload, so
-    // this read undefined and BOTH buttons silently dismissed the popup
-    // without ever touching the order.
+    // emitOrderCreated sends `orderId`. Reading `_id` here found nothing and
+    // silently dismissed the card without touching the order.
     const orderId = current?.orderId || current?._id || current?.id;
     if (!orderId) {
-      // Nothing to act on — don't strand the operator with a beeping popup.
-      dismiss();
+      drop();
       return;
     }
     setBusy(true);
@@ -103,7 +133,7 @@ const QRTableOrderPopup = () => {
       enqueueSnackbar(action === "accept" ? "Order accepted." : "Order cancelled.", {
         variant: action === "accept" ? "success" : "info",
       });
-      dismiss();
+      drop();
     } catch (e) {
       enqueueSnackbar(e?.response?.data?.message || "Could not update the order.", {
         variant: "error",
@@ -113,43 +143,52 @@ const QRTableOrderPopup = () => {
     }
   };
 
-  // The socket payload from emitOrderCreated carries the full Order doc
-  // (see services/socket.js). The `table` field is a populated ObjectId
-  // or the referenced document, depending on the emitter. We surface the
-  // most human-friendly identifier we can find.
-  const tableLabel =
-    current.table?.displayId ||
-    current.table?.tableName ||
-    (current.table?.tableNumber != null ? `Table ${current.table.tableNumber}` : null) ||
-    (current.tableNumber != null ? `Table ${current.tableNumber}` : null) ||
-    (typeof current.table === "string" ? `Table ${current.table.slice(-4)}` : "Table —");
+  const source = String(current.source || "").toUpperCase();
+  const isWebsite = source === "WEBSITE";
+  const heading = SOURCE_LABEL[source] || "New Order";
+
+  const where = isWebsite
+    ? current.orderType === "delivery"
+      ? "Delivery"
+      : current.orderType === "collection"
+        ? "Collection"
+        : "Website"
+    : labelForTable(current.table, null) ||
+      (current.tableNumber != null ? `Table ${current.tableNumber}` : "Table —");
 
   const items = Array.isArray(current.items) ? current.items : [];
   const total = Number(current.bills?.totalWithTax || current.bills?.total || 0);
-  const customer = current.customerDetails || {};
+  const customer = current.customerDetails || current.customer || {};
 
   return (
-    <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl overflow-hidden border border-[#E2E8F0]">
-        <div className="px-6 py-5 bg-gradient-to-r from-[#FD5302] to-[#C2410C] text-white flex items-center justify-between">
-          <div>
-            <p className="text-[11px] font-bold uppercase tracking-widest text-white/80">
-              New Table Order · Scanned QR
+    <div
+      className="fixed left-1/2 top-1/2 z-[70] w-[min(92vw,28rem)]"
+      style={{ transform: `translate(-50%, -50%) translate(${offset.x}px, ${offset.y}px)` }}
+      role="dialog"
+      aria-label={heading}
+    >
+      <div className="rounded-2xl bg-white shadow-2xl overflow-hidden border border-[#E2E8F0] ring-4 ring-black/5">
+        <div
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          className={`px-5 py-4 text-white flex items-center justify-between cursor-grab active:cursor-grabbing touch-none select-none ${
+            isWebsite
+              ? "bg-gradient-to-r from-[#2563EB] to-[#1E40AF]"
+              : "bg-gradient-to-r from-[#FD5302] to-[#C2410C]"
+          }`}
+        >
+          <div className="min-w-0">
+            <p className="text-[11px] font-bold uppercase tracking-widest text-white/80 truncate">
+              {heading}
             </p>
-            <h2 className="text-[22px] font-extrabold mt-1 leading-tight">{tableLabel}</h2>
+            <h2 className="text-[20px] font-extrabold mt-0.5 leading-tight truncate">{where}</h2>
           </div>
-          <button
-            type="button"
-            onClick={dismiss}
-            className="w-9 h-9 rounded-full bg-white/15 hover:bg-white/25 text-white text-[20px] leading-none flex items-center justify-center"
-            aria-label="Dismiss"
-          >
-            ×
-          </button>
+          <span className="shrink-0 text-white/60 text-[11px] font-bold uppercase">Drag</span>
         </div>
 
         <div className="p-5 space-y-4">
-          {/* Customer / total header row */}
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-[11px] font-bold text-[#94A3B8] uppercase tracking-wide">Customer</p>
@@ -158,12 +197,6 @@ const QRTableOrderPopup = () => {
               </p>
               {customer.phone && (
                 <p className="text-[12px] text-[#64748B] truncate">{customer.phone}</p>
-              )}
-              {/* Only shown when somebody actually set it. The diner is no
-                  longer asked for a guest count, so it defaults to 1 -- and a
-                  fabricated "1 guest(s)" on the till reads as fact. */}
-              {customer.guests > 1 && (
-                <p className="text-[11px] text-[#94A3B8]">{customer.guests} guests</p>
               )}
             </div>
             <div className="text-right shrink-0">
@@ -174,8 +207,7 @@ const QRTableOrderPopup = () => {
             </div>
           </div>
 
-          {/* Item list */}
-          <div className="max-h-[240px] overflow-y-auto rounded-xl border border-[#E2E8F0] divide-y divide-[#E2E8F0]">
+          <div className="max-h-[220px] overflow-y-auto rounded-xl border border-[#E2E8F0] divide-y divide-[#E2E8F0]">
             {items.length === 0 ? (
               <div className="px-3 py-4 text-[12.5px] text-[#94A3B8] text-center">No line items.</div>
             ) : (
@@ -202,8 +234,7 @@ const QRTableOrderPopup = () => {
             )}
           </div>
 
-          {/* Action row — the alert keeps sounding until one of these is used. */}
-          <div className="grid grid-cols-2 gap-2.5 pt-1">
+          <div className="grid grid-cols-2 gap-2.5">
             <button
               type="button"
               onClick={() => decide("cancel")}
@@ -225,17 +256,17 @@ const QRTableOrderPopup = () => {
           <button
             type="button"
             onClick={() => {
-              dismiss();
+              drop();
               navigate("/orders");
             }}
-            className="w-full text-[12px] font-bold text-[#64748B] hover:text-[#C2410C]"
+            className="w-full text-[12.5px] font-bold text-[#64748B] hover:text-[#0F172A]"
           >
             View in Orders
           </button>
 
           {queue.length > 1 && (
             <p className="text-[11px] font-bold text-[#94A3B8] text-center">
-              {queue.length - 1} more pending…
+              {queue.length - 1} more order(s) waiting…
             </p>
           )}
         </div>
@@ -244,4 +275,4 @@ const QRTableOrderPopup = () => {
   );
 };
 
-export default QRTableOrderPopup;
+export default NewOrderPopup;

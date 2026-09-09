@@ -201,10 +201,10 @@ test("REGRESSION: every cancel route releases the table", () => {
   }
 });
 
-test("REGRESSION: the QR popup acts on the id the payload actually carries", () => {
+test("REGRESSION: the new-order popup acts on the id the payload actually carries", () => {
   // emitOrderCreated sends `orderId`. The popup read `_id`, which was never on
   // the payload, so both buttons silently dismissed and the order was untouched.
-  const popup = SRC("..", "pos-frontend", "src", "components", "dashboard", "QRTableOrderPopup.jsx");
+  const popup = SRC("..", "pos-frontend", "src", "components", "dashboard", "NewOrderPopup.jsx");
   assert.match(popup, /current\?\.orderId \|\| current\?\._id \|\| current\?\.id/);
 
   const socket = SRC("services", "socket.js");
