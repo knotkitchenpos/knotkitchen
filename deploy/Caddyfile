@@ -170,13 +170,24 @@ bill.{$BASE_DOMAIN} {
 #
 # The pattern is the 64-hex token tableQRController mints. A single-segment
 # path only, so nothing here can shadow the SPA's /assets/* bundle requests.
+#
+# REDIRECT, not rewrite. A rewrite is server-side: the browser keeps asking
+# for `/<token>`, so the single-page app boots at a path it has no route for,
+# decides the visitor is staff without a session, and sends them to the POS
+# sign-in screen. Every diner scanning a short-form code got a Store ID box.
+#
+# It looked fine from the outside -- the request returns 200, because the SPA
+# shell is served for any path. Only the browser knows the difference.
+#
+# A redirect puts `/t/<token>` in the address bar, which is the path the app
+# actually routes on.
 order.{$BASE_DOMAIN} {
 	import security_headers
 
 	encode zstd gzip
 
 	@qr path_regexp qtok ^/([0-9a-f]{64})$
-	rewrite @qr /t/{re.qtok.1}
+	redir @qr /t/{re.qtok.1} 302
 
 	reverse_proxy pos-web:80 {
 		header_up Host {host}

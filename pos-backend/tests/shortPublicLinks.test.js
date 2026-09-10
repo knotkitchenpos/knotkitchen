@@ -147,6 +147,8 @@ const CADDY = DEPLOY("Caddyfile");
 
 test("REGRESSION: the bill host rewrites onto the route that already served it", () => {
   assert.match(CADDY, /^bill\.\{\$BASE_DOMAIN\} \{$/m);
+  // A rewrite is right HERE, unlike the QR host below: /r/<token> is rendered
+  // by pos-api on the server, so no client-side router ever reads the path.
   assert.match(CADDY, /rewrite @token \/r\/\{re\.tok\.1\}/);
   assert.match(CADDY, /reverse_proxy pos-api:8000/);
 
@@ -164,12 +166,24 @@ test("REGRESSION: the bill host rewrites onto the route that already served it",
   assert.ok(!rx.test(`/r/o_${ID}_${sig}`), "the old form must reach the route unrewritten");
 });
 
-test("REGRESSION: the order host cannot shadow the SPA's own assets", () => {
-  // A greedy matcher here would rewrite /assets/index-abc.js into a table
-  // token and serve the QR page instead of the JavaScript bundle -- a blank
-  // screen on every scan.
+test("REGRESSION: the order host REDIRECTS, so the SPA boots on a route it has", () => {
+  // A rewrite is server-side. The browser goes on asking for `/<token>`, so
+  // the single-page app boots at a path it has no route for, decides the
+  // visitor is staff without a session, and sends them to the POS sign-in
+  // screen. Every diner scanning a short-form code got a Store ID box.
+  //
+  // Nothing outside the browser could see it: the request returns 200 either
+  // way, because the SPA shell is served for any path.
   assert.match(CADDY, /^order\.\{\$BASE_DOMAIN\} \{$/m);
-  assert.match(CADDY, /rewrite @qr \/t\/\{re\.qtok\.1\}/);
+  assert.match(
+    CADDY,
+    /redir @qr \/t\/\{re\.qtok\.1\} 30\d/,
+    "the QR host must redirect, not rewrite -- see App.jsx, which routes on /t/:token",
+  );
+  assert.ok(
+    !/rewrite @qr /.test(CADDY),
+    "a rewrite here lands the diner on the staff sign-in screen",
+  );
   assert.match(CADDY, /reverse_proxy pos-web:80/);
 
   const m = CADDY.match(/@qr path_regexp qtok (\S+)/);
