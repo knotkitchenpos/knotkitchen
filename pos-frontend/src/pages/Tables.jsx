@@ -134,10 +134,14 @@ const Tables = () => {
    */
   useEffect(() => {
     if (!qrModalTable?._id) return;
-    // Already have a modern 64-hex token — no need to hit the API.
-    if (typeof qrModalTable.qrToken === "string" && /^[a-f0-9]{64}$/i.test(qrModalTable.qrToken)) {
-      return;
-    }
+    // Deliberately NO "we already have a token, skip the fetch" shortcut.
+    //
+    // The printed URL is host + token, and the host is deployment config. The
+    // cached `table.qrCode` on the row is whatever it was when the QR was
+    // minted, so skipping the fetch printed the old hostname for every table
+    // that already had a token -- which was all of them -- long after the
+    // short link host went live. The server rebuilds the URL from the token
+    // on every read, so asking it is the only way to be right.
     let cancelled = false;
     setQrFetching(true);
     getOrCreateTableQr(qrModalTable._id)
