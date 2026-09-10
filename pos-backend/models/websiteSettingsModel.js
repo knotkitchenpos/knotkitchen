@@ -31,16 +31,39 @@ const BUTTON_STYLES = ["rounded", "pill", "square"];
  *
  * The customer website opens on a landing page and the menu lives one click
  * behind it, so this list is the whole visual identity of a restaurant's front
- * door. Each key maps to one layout in customer-web's LandingTemplates.jsx;
- * adding a key here without adding the layout there renders the fallback.
+ * door. Each key maps to one page component under customer-web's
+ * components/landing/; adding a key here without adding the page there renders
+ * the fallback.
+ *
+ * The five are five kinds of restaurant rather than five colour schemes,
+ * because that is what an owner is actually choosing between.
  */
 const LANDING_TEMPLATES = [
-  "hero-classic",
-  "split-showcase",
-  "minimal-center",
-  "photo-fullbleed",
-  "card-stack",
+  "fine-dining",
+  "farm-to-table",
+  "omakase",
+  "coastal-brunch",
+  "urban-izakaya",
 ];
+
+/**
+ * The first attempt's keys, kept readable.
+ *
+ * Those five were layout descriptions ("card-stack") rather than kinds of
+ * restaurant, and every one of them was replaced. Stores that had already
+ * chosen one are mapped to the nearest new design rather than being silently
+ * reset to the default, which is what an unknown key would otherwise do.
+ *
+ * Storage-only: `enum` above does not accept these, so nothing new can be
+ * saved under one. They are translated on read in services/landingPayload.js.
+ */
+const LEGACY_LANDING_TEMPLATES = Object.freeze({
+  "hero-classic": "fine-dining",
+  "split-showcase": "farm-to-table",
+  "minimal-center": "coastal-brunch",
+  "photo-fullbleed": "omakase",
+  "card-stack": "urban-izakaya",
+});
 
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 const hexColor = (defaultValue) => ({
@@ -133,7 +156,7 @@ const landingFeatureSchema = new mongoose.Schema(
  */
 const landingSchema = new mongoose.Schema(
   {
-    template: { type: String, enum: LANDING_TEMPLATES, default: "hero-classic" },
+    template: { type: String, enum: LANDING_TEMPLATES, default: LANDING_TEMPLATES[0] },
     headline: { type: String, default: "", maxlength: 120 },
     subheadline: { type: String, default: "", maxlength: 300 },
     ctaText: { type: String, default: "View Menu", maxlength: 40 },
@@ -148,6 +171,18 @@ const landingSchema = new mongoose.Schema(
 
     features: { type: [landingFeatureSchema], default: [] },
     gallery: { type: [mediaRefSchema], default: [] },
+
+    /**
+     * The two or three dishes the landing page puts in front of a customer.
+     *
+     * NOT the menu. A landing page that prints the whole catalogue is the
+     * ordering page with no basket, only slower -- so the front door shows a
+     * few things worth coming for and hands the customer on. Menu item ids;
+     * an id that no longer exists is skipped, and an empty list falls back to
+     * the first few available dishes so a store that never picks any still
+     * has something to show.
+     */
+    featuredItems: { type: [mongoose.Schema.Types.ObjectId], default: [] },
 
     showAbout: { type: Boolean, default: true },
     showMenuPreview: { type: Boolean, default: true },
@@ -477,6 +512,7 @@ websiteSettingsSchema.index({ restaurantId: 1, isDeleted: 1 });
 module.exports = mongoose.model("WebsiteSettings", websiteSettingsSchema);
 module.exports.SAFE_FONTS = SAFE_FONTS;
 module.exports.LANDING_TEMPLATES = LANDING_TEMPLATES;
+module.exports.LEGACY_LANDING_TEMPLATES = LEGACY_LANDING_TEMPLATES;
 module.exports.HERO_STYLES = HERO_STYLES;
 module.exports.CARD_STYLES = CARD_STYLES;
 module.exports.HEADER_STYLES = HEADER_STYLES;

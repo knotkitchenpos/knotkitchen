@@ -1,36 +1,39 @@
 import React from "react";
-import Heritage from "./landing/Heritage";
-import BrandStory from "./landing/BrandStory";
-import Artisan from "./landing/Artisan";
-import FullScreen from "./landing/FullScreen";
-import CardStack from "./landing/CardStack";
+import FineDining from "./landing/FineDining";
+import FarmToTable from "./landing/FarmToTable";
+import Omakase from "./landing/Omakase";
+import CoastalBrunch from "./landing/CoastalBrunch";
+import UrbanIzakaya from "./landing/UrbanIzakaya";
 
 /**
  * The five landing pages.
  *
- * Five separate websites, not one website with five heroes. Each file under
- * ./landing owns its own masthead, section order, menu presentation, gallery
- * and footer, and they are meant to share as little as possible -- what they
- * do share is in ./landing/kit.jsx and carries no visual opinion.
+ * Five separate websites, not one website with five hero crops. Each file
+ * under ./landing owns its own masthead, typeface, section order, footer and
+ * treatment of the food, and they are meant to share as little as possible --
+ * what they do share is in ./landing/kit.jsx and ./landing/data.js, and none
+ * of it carries a look.
  *
- * That is a deliberate amount of duplication. An earlier version styled one
- * shared page with a token object, and the result was five heroes on top of an
- * identical body: the same masthead, the same three-card row, the same product
- * grid, in the same order. Two restaurants that picked different templates got
- * the same website in different colours.
+ * They are five KINDS OF RESTAURANT rather than five colour schemes, because
+ * that is what an owner is actually choosing between. Only one of the five is
+ * light, only one leads with ordering rather than atmosphere, and only one
+ * sets its food as a printed course list.
  *
- * The keys are stable and match LANDING_TEMPLATES in the backend model. They
- * are historical -- "hero-classic" is Heritage, "minimal-center" is Artisan --
- * and renaming them would mean migrating every store that has already chosen
- * one, which buys nothing a customer can see.
+ * None of them prints the whole menu. A landing page that lists every dish is
+ * the ordering page with no basket, only slower -- so each shows the two or
+ * three the operator picked in Manage Website and hands the customer on.
+ *
+ * Keys must match LANDING_TEMPLATES in the backend model. The five keys the
+ * first attempt used are translated to these in services/landingPayload.js so
+ * a store that chose one keeps the nearest design instead of being reset.
  */
 
 const THEMES = {
-  "hero-classic": Heritage,
-  "split-showcase": BrandStory,
-  "minimal-center": Artisan,
-  "photo-fullbleed": FullScreen,
-  "card-stack": CardStack,
+  "fine-dining": FineDining,
+  "farm-to-table": FarmToTable,
+  "omakase": Omakase,
+  "coastal-brunch": CoastalBrunch,
+  "urban-izakaya": UrbanIzakaya,
 };
 
 export const TEMPLATE_KEYS = Object.keys(THEMES);
@@ -39,6 +42,6 @@ export default function LandingTemplate({ landing, store, menuPath }) {
   // An unknown key means the database holds a template this build does not
   // ship yet -- a rollback, or a key added backend-first. Show the default
   // rather than a blank page.
-  const Page = THEMES[landing?.template] || Heritage;
+  const Page = THEMES[landing?.template] || FineDining;
   return <Page landing={landing} store={store} menuPath={menuPath} />;
 }

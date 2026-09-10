@@ -4,6 +4,7 @@ import MediaLibrary from "../components/media/MediaLibrary";
 import SecurityPinModal from "../components/common/SecurityPinModal";
 import { isOwner, checkActionAuthorization } from "../utils/security";
 import { getWebsiteSettings, updateWebsiteSettings, validateGatewayCredentials } from "../https/storefrontApi";
+import { getMenus } from "../https";
 
 /**
  * Settings → Website (§3, §19, §26).
@@ -37,25 +38,25 @@ const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Frid
  * been told about yet.
  */
 const LANDING_TEMPLATE_INFO = {
-  "hero-classic": {
-    name: "Heritage",
-    hint: "Dark, serif, your phone number above everything and your crest in the middle. The menu is set like a printed card, dish and price with dots between — no dish photos. For a name people already know.",
+  "fine-dining": {
+    name: "Fine Dining",
+    hint: "Obsidian and gold, high-contrast serif, no rounded corners anywhere. Your signature dishes are set as a printed course list with roman numerals. For a tasting room.",
   },
-  "split-showcase": {
-    name: "Brand Story",
-    hint: "White and roomy. Your story as one large paragraph, then each selling point as a full-width band of picture and words. The menu is a sideways row of a few things you are known for.",
+  "farm-to-table": {
+    name: "Farm to Table",
+    hint: "Warm charcoal and ember orange, heavy condensed capitals. Names your growers on the page and chalks up today's dishes. For a seasonal kitchen.",
   },
-  "minimal-center": {
-    name: "Artisan",
-    hint: "Cream and serif, with the photo framed inside the page rather than filling it. The menu runs as a category list down one side and typeset rows down the other. For a place people come to sit in.",
+  "omakase": {
+    name: "Omakase",
+    hint: "The quiet one. Wide margins, a vertical rail down the side, one dish held up beside the headline. For a counter that seats a few and serves one thing.",
   },
-  "photo-fullbleed": {
-    name: "Full Screen",
-    hint: "Near black. Your photo fills the whole first screen, the type is the biggest of the five, and the menu is a wall of dish photographs. Needs good pictures.",
+  "coastal-brunch": {
+    name: "Coastal Brunch",
+    hint: "The only light one. Sand and paper, italic serif, soft rounding, your photo framed in the page rather than behind it. For a daytime room.",
   },
-  "card-stack": {
-    name: "Card",
-    hint: "Light and rounded, everything on white panels, the top bar floats as a pill. Reads like a delivery app. The most forgiving if your photos were taken on a phone.",
+  "urban-izakaya": {
+    name: "Urban Izakaya",
+    hint: "Near black and hot red, heavy condensed capitals, a live service strip along the top. Leads with ordering rather than atmosphere. For a late kitchen.",
   },
 };
 
@@ -69,123 +70,151 @@ const LANDING_TEMPLATE_INFO = {
  * answer: where the masthead sits, what shape the hero is, and how the menu is
  * laid out, which is what actually differs between them.
  *
- * Deliberately grey and unbranded. It is a floor plan, not a preview: the real
- * colours come from the store's own theme.
+ * These carry each design's actual palette rather than a neutral grey, because
+ * four of the five are dark and one is not -- and which of those a restaurant
+ * is choosing is the first thing about a template worth knowing.
  */
 const TemplateThumb = ({ variant }) => {
-  const ink = "#334155";
-  const soft = "#CBD5E1";
-  const pale = "#E2E8F0";
-
   const shapes = {
-    // Utility strip, centred crest, dark hero, two-column printed menu.
-    "hero-classic": (
+    // Dark hero, then the signatures as a numbered course list beside a plate.
+    "fine-dining": (
       <>
-        <rect x="0" y="0" width="120" height="5" fill={ink} />
-        <rect x="0" y="5" width="120" height="9" fill="#0F172A" />
-        <circle cx="60" cy="9.5" r="3" fill={soft} />
-        <rect x="0" y="14" width="120" height="34" fill="#1E293B" />
-        <rect x="40" y="26" width="40" height="4" rx="1" fill={soft} />
-        <rect x="48" y="34" width="24" height="2" rx="1" fill="#64748B" />
-        {[0, 1].map((col) =>
-          [0, 1, 2].map((row) => (
-            <g key={`${col}-${row}`}>
-              <rect x={8 + col * 58} y={56 + row * 8} width="22" height="2" rx="1" fill={ink} />
-              <rect x={32 + col * 58} y={57 + row * 8} width="18" height="1" fill={pale} />
-              <rect x={52 + col * 58} y={56 + row * 8} width="6" height="2" rx="1" fill={soft} />
-            </g>
-          ))
-        )}
-      </>
-    ),
-
-    // Logo left, hero words left, alternating bands, menu as a clipped rail.
-    "split-showcase": (
-      <>
-        <rect x="0" y="0" width="120" height="8" fill="#FFFFFF" />
-        <rect x="6" y="2.5" width="14" height="3" rx="1" fill={ink} />
-        <rect x="86" y="3" width="28" height="2" rx="1" fill={soft} />
-        <rect x="0" y="8" width="120" height="30" fill="#1E293B" />
-        <rect x="8" y="20" width="44" height="5" rx="1" fill="#F1F5F9" />
-        <rect x="8" y="28" width="26" height="2" rx="1" fill="#94A3B8" />
-        <rect x="0" y="42" width="58" height="18" fill={soft} />
-        <rect x="64" y="47" width="34" height="2.5" rx="1" fill={ink} />
-        <rect x="64" y="53" width="46" height="2" rx="1" fill={pale} />
-        <rect x="62" y="64" width="58" height="18" fill={soft} />
-        <rect x="8" y="69" width="34" height="2.5" rx="1" fill={ink} />
-        <rect x="8" y="75" width="42" height="2" rx="1" fill={pale} />
-        {[0, 1, 2].map((i) => (
-          <rect key={i} x={8 + i * 34} y="88" width="28" height="14" rx="2" fill={pale} />
-        ))}
-        <rect x="110" y="88" width="10" height="14" rx="2" fill={pale} opacity="0.5" />
-      </>
-    ),
-
-    // Solid bar, hero inset with a margin all round, sidebar plus rows.
-    "minimal-center": (
-      <>
-        <rect x="0" y="0" width="120" height="100" fill="#FAF5EC" />
-        <rect x="0" y="0" width="120" height="8" fill="#F3E9DA" />
-        <rect x="6" y="2.5" width="12" height="3" rx="1.5" fill={ink} />
-        <rect x="88" y="3" width="26" height="2" rx="1" fill="#A8977F" />
-        <rect x="6" y="12" width="108" height="34" rx="6" fill="#8A6A45" />
-        <rect x="44" y="24" width="32" height="4" rx="1" fill="#F5EDE0" />
-        <rect x="52" y="32" width="16" height="2" rx="1" fill="#D9C7AC" />
-        <rect x="8" y="54" width="22" height="2.5" rx="1" fill={ink} />
-        <rect x="8" y="61" width="22" height="2.5" rx="1" fill="#C9B79A" />
-        <rect x="8" y="68" width="22" height="2.5" rx="1" fill="#C9B79A" />
-        <rect x="8" y="75" width="22" height="2.5" rx="1" fill="#C9B79A" />
-        <rect x="36" y="52" width="0.7" height="34" fill="#E0D2BD" />
-        {[0, 1, 2, 3].map((i) => (
-          <g key={i}>
-            <rect x="44" y={54 + i * 9} width="8" height="6" rx="2" fill="#E0D2BD" />
-            <rect x="56" y={55 + i * 9} width="34" height="2.5" rx="1" fill={ink} />
-            <rect x="104" y={55 + i * 9} width="8" height="2.5" rx="1" fill="#A8977F" />
-          </g>
-        ))}
-      </>
-    ),
-
-    // Almost no masthead, hero the whole frame, then a wall of photographs.
-    "photo-fullbleed": (
-      <>
-        <rect x="0" y="0" width="120" height="58" fill="#0B0B0C" />
-        <rect x="6" y="4" width="16" height="2" rx="1" fill="#64748B" />
-        <circle cx="112" cy="5" r="3" fill="#334155" />
-        <rect x="20" y="24" width="80" height="7" rx="1" fill="#F8FAFC" />
-        <rect x="34" y="35" width="52" height="7" rx="1" fill="#F8FAFC" />
-        <rect x="48" y="47" width="24" height="4" rx="2" fill="#E2571E" />
+        <rect x="0" y="0" width="120" height="100" fill="#121110" />
+        <rect x="0" y="0" width="120" height="7" fill="#0f0e0d" />
+        <rect x="6" y="2.5" width="18" height="2" rx="0.5" fill="#c5a059" />
+        <rect x="84" y="2.5" width="30" height="2" rx="0.5" fill="#4a453d" />
+        <rect x="0" y="7" width="120" height="40" fill="#1b1917" />
+        <rect x="26" y="18" width="68" height="5" rx="0.5" fill="#f5f2eb" />
+        <rect x="36" y="26" width="48" height="5" rx="0.5" fill="#f5f2eb" />
+        <rect x="46" y="37" width="28" height="4" fill="#c5a059" />
         {[0, 1, 2].map((i) => (
           <g key={i}>
-            <rect x={i * 40.5} y="62" width="39" height="38" fill="#1E293B" />
-            <rect x={i * 40.5 + 4} y="88" width="24" height="3" rx="1" fill="#CBD5E1" />
-            <rect x={i * 40.5 + 4} y="93" width="12" height="2.5" rx="1" fill="#E2571E" />
+            <rect x="8" y={56 + i * 12} width="4" height="3" fill="#c5a059" />
+            <rect x="16" y={56 + i * 12} width="34" height="3" rx="0.5" fill="#e8e2d6" />
+            <rect x="16" y={61 + i * 12} width="44" height="2" rx="0.5" fill="#4a453d" />
+            <rect x="62" y={56 + i * 12} width="8" height="3" rx="0.5" fill="#c5a059" />
+          </g>
+        ))}
+        <rect x="78" y="54" width="36" height="42" fill="#211f1e" />
+        <rect x="80" y="56" width="32" height="30" fill="#3a3733" />
+      </>
+    ),
+
+    // Notice strip, words left over a photo, a stat band, three dish cards.
+    "farm-to-table": (
+      <>
+        <rect x="0" y="0" width="120" height="100" fill="#161311" />
+        <rect x="0" y="0" width="120" height="5" fill="#0f0d0b" />
+        <rect x="5" y="1.7" width="20" height="1.6" rx="0.5" fill="#e2701e" />
+        <rect x="0" y="5" width="120" height="36" fill="#2a2018" />
+        <rect x="8" y="16" width="14" height="2" rx="0.5" fill="#e2701e" />
+        <rect x="8" y="21" width="60" height="6" rx="0.5" fill="#efe9e3" />
+        <rect x="8" y="30" width="24" height="5" fill="#e2701e" />
+        <rect x="36" y="30" width="24" height="5" fill="none" stroke="#8a8078" strokeWidth="0.6" />
+        <rect x="0" y="41" width="120" height="14" fill="#0f0d0b" />
+        {[0, 1, 2].map((i) => (
+          <g key={i}>
+            <rect x={10 + i * 38} y="45" width="16" height="4" rx="0.5" fill="#e2701e" />
+            <rect x={10 + i * 38} y="51" width="24" height="1.6" rx="0.5" fill="#4a4440" />
+          </g>
+        ))}
+        {[0, 1, 2].map((i) => (
+          <g key={`card-${i}`}>
+            <rect x={8 + i * 36} y="62" width="32" height="32" fill="#1d1917" />
+            <rect x={8 + i * 36} y="62" width="32" height="16" fill="#3b332c" />
+            <rect x={11 + i * 36} y="81" width="20" height="2.5" rx="0.5" fill="#efe9e3" />
+            <rect x={11 + i * 36} y="87" width="10" height="3" rx="0.5" fill="#e2701e" />
           </g>
         ))}
       </>
     ),
 
-    // A pill floating over the hero, everything on rounded panels.
-    "card-stack": (
+    // Wide margins, a vertical rail, one dish card pinned beside the words.
+    "omakase": (
       <>
-        <rect x="0" y="0" width="120" height="100" fill="#F2F4F7" />
-        <rect x="0" y="0" width="120" height="46" fill="#475569" />
-        <rect x="10" y="4" width="100" height="9" rx="4.5" fill="#FFFFFF" />
-        <rect x="15" y="7.5" width="12" height="2" rx="1" fill={ink} />
-        <rect x="88" y="7" width="17" height="4" rx="2" fill="#E2571E" />
-        <rect x="26" y="20" width="68" height="30" rx="5" fill="#FFFFFF" />
-        <rect x="46" y="28" width="28" height="3.5" rx="1" fill={ink} />
-        <rect x="34" y="40" width="52" height="5" rx="2.5" fill="#E2571E" />
+        <rect x="0" y="0" width="120" height="100" fill="#131314" />
+        <rect x="0" y="0" width="120" height="11" fill="#0d0d0e" />
+        <rect x="6" y="6" width="18" height="2.4" rx="0.5" fill="#d4ae7c" />
+        <rect x="0" y="11" width="120" height="52" fill="#181819" />
+        <rect x="10" y="20" width="12" height="2" rx="0.5" fill="#d4ae7c" />
+        <rect x="10" y="26" width="52" height="5" rx="0.5" fill="#eae3d8" />
+        <rect x="10" y="34" width="38" height="5" rx="0.5" fill="#eae3d8" />
+        <rect x="10" y="45" width="24" height="4.5" fill="#d4ae7c" />
+        <rect x="10" y="54" width="46" height="6" fill="#0d0d0e" />
+        <rect x="82" y="18" width="1" height="34" fill="#d4ae7c" opacity="0.4" />
+        <rect x="90" y="16" width="24" height="40" fill="#1c1c1e" />
+        <rect x="92" y="18" width="20" height="26" fill="#3a3733" />
+        <rect x="92" y="47" width="14" height="2" rx="0.5" fill="#eae3d8" />
         {[0, 1, 2].map((i) => (
-          <rect key={i} x={8 + i * 36} y="58" width="32" height="16" rx="4" fill="#FFFFFF" />
-        ))}
-        {[0, 1, 2].map((i) => (
-          <g key={`c${i}`}>
-            <rect x={8 + i * 36} y="79" width="32" height="17" rx="4" fill="#FFFFFF" />
-            <rect x={8 + i * 36} y="79" width="32" height="9" rx="4" fill={pale} />
-            <rect x={11 + i * 36} y="90" width="14" height="2" rx="1" fill={soft} />
+          <g key={i}>
+            <rect x="10" y={70 + i * 10} width="60" height="8" fill="#181819" />
+            <rect x="13" y={72.5 + i * 10} width="26" height="2" rx="0.5" fill="#eae3d8" />
+            <rect x="62" y={72.5 + i * 10} width="6" height="2" rx="0.5" fill="#d4ae7c" />
           </g>
         ))}
+        <rect x="76" y="70" width="38" height="28" fill="#1c1c1e" />
+        <rect x="80" y="76" width="24" height="3" rx="0.5" fill="#eae3d8" />
+        <rect x="80" y="88" width="30" height="4" fill="#d4ae7c" />
+      </>
+    ),
+
+    // Light page, hero as a two-column spread, a framed photo, three cards.
+    "coastal-brunch": (
+      <>
+        <rect x="0" y="0" width="120" height="100" fill="#fdf9f2" />
+        <rect x="6" y="2.5" width="18" height="2.4" rx="1.2" fill="#2f2a22" />
+        <rect x="92" y="2" width="22" height="3.4" rx="1.7" fill="#e07a25" />
+        <rect x="8" y="16" width="12" height="2" rx="0.5" fill="#c2610c" />
+        <rect x="8" y="22" width="44" height="5" rx="0.5" fill="#2f2a22" />
+        <rect x="8" y="30" width="34" height="5" rx="0.5" fill="#2f2a22" />
+        <rect x="8" y="41" width="36" height="9" rx="2" fill="#ffffff" stroke="#e6ddcd" strokeWidth="0.6" />
+        <rect x="8" y="54" width="24" height="5" rx="2.5" fill="#e07a25" />
+        <rect x="62" y="14" width="52" height="38" rx="4" fill="#f0e2cd" />
+        <rect x="66" y="46" width="40" height="10" rx="3" fill="#ffffff" stroke="#e6ddcd" strokeWidth="0.6" />
+        <rect x="0" y="62" width="120" height="12" fill="#ffffff" />
+        {[0, 1, 2].map((i) => (
+          <g key={i}>
+            <rect x={10 + i * 38} y="65.5" width="18" height="2.4" rx="0.5" fill="#2f2a22" />
+            <rect x={10 + i * 38} y="70" width="26" height="1.6" rx="0.5" fill="#b9ab94" />
+          </g>
+        ))}
+        {[0, 1, 2].map((i) => (
+          <g key={`card-${i}`}>
+            <rect x={8 + i * 36} y="80" width="32" height="18" rx="4" fill="#ffffff" stroke="#e6ddcd" strokeWidth="0.6" />
+            <rect x={8 + i * 36} y="80" width="32" height="9" rx="4" fill="#f0e2cd" />
+            <rect x={11 + i * 36} y="92" width="16" height="2" rx="0.5" fill="#2f2a22" />
+          </g>
+        ))}
+      </>
+    ),
+
+    // Status strip, big condensed words, a dish card with a price, red band.
+    "urban-izakaya": (
+      <>
+        <rect x="0" y="0" width="120" height="100" fill="#0c0b0c" />
+        <rect x="0" y="0" width="120" height="5" fill="#141213" />
+        <circle cx="7" cy="2.5" r="1.2" fill="#ff3b30" />
+        <rect x="11" y="1.7" width="22" height="1.6" rx="0.5" fill="#ff3b30" />
+        <rect x="6" y="6.5" width="20" height="3" rx="0.5" fill="#f3f0ee" />
+        <rect x="94" y="6.2" width="20" height="3.6" fill="#ff3b30" />
+        <rect x="0" y="11" width="120" height="44" fill="#1a1517" />
+        <rect x="8" y="18" width="14" height="2" rx="0.5" fill="#ff3b30" />
+        <rect x="8" y="23" width="54" height="7" rx="0.5" fill="#f3f0ee" />
+        <rect x="8" y="32" width="38" height="7" rx="0.5" fill="#f3f0ee" />
+        <rect x="8" y="43" width="24" height="5" fill="#ff3b30" />
+        <rect x="74" y="16" width="40" height="34" fill="#141213" />
+        <rect x="76" y="18" width="36" height="18" fill="#3a2f31" />
+        <rect x="78" y="39" width="18" height="3" rx="0.5" fill="#f3f0ee" />
+        <rect x="100" y="39" width="10" height="3" rx="0.5" fill="#ff3b30" />
+        {[0, 1, 2].map((i) => (
+          <g key={i}>
+            <rect x={8 + i * 36} y="60" width="32" height="24" fill="#141213" />
+            <rect x={8 + i * 36} y="60" width="32" height="13" fill="#332b2d" />
+            <rect x={11 + i * 36} y="76" width="16" height="2.5" rx="0.5" fill="#f3f0ee" />
+            <rect x={31 + i * 36} y="76" width="6" height="2.5" rx="0.5" fill="#ff3b30" />
+          </g>
+        ))}
+        <rect x="8" y="89" width="104" height="8" fill="#ff3b30" />
       </>
     ),
   };
@@ -344,6 +373,10 @@ const WebsiteSettings = () => {
   const [options, setOptions] = useState(null);
   const [themes, setThemes] = useState([]);
   const [storefrontUrl, setStorefrontUrl] = useState("");
+  // Every dish the store sells, flattened, so the landing page's two or three
+  // featured items can be picked by name rather than by id.
+  const [dishes, setDishes] = useState([]);
+  const [dishQuery, setDishQuery] = useState("");
   const [tab, setTab] = useState("general");
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -370,6 +403,29 @@ const WebsiteSettings = () => {
         setMessage({ type: "error", text: err.response?.data?.message || "Couldn't load settings." });
       } finally {
         setLoading(false);
+      }
+    })();
+  }, []);
+
+  // The menu is only needed by the Landing Page tab, and a store with a large
+  // catalogue should not pay for it before the page has even painted -- so it
+  // loads on its own and a failure costs the picker, not the screen.
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await getMenus();
+        const menus = res.data?.data || res.data || [];
+        setDishes(
+          (Array.isArray(menus) ? menus : []).flatMap((m) =>
+            (m.items || []).map((it) => ({
+              id: String(it._id),
+              name: it.name,
+              category: m.name,
+            })),
+          ),
+        );
+      } catch {
+        setDishes([]);
       }
     })();
   }, []);
@@ -846,6 +902,70 @@ const WebsiteSettings = () => {
             {/* Every text box below falls back to your branding when left
                 empty, so a store that never opens this tab still gets a
                 finished landing page. */}
+            {/* ---- The few dishes on the front door -------------------- */}
+            <SectionRule
+              title="Featured dishes"
+              hint="Two or three, no more. A landing page that lists the whole menu is the ordering page without a basket. Leave it empty and your first few dishes with photos are used."
+            />
+            {dishes.length ? (
+              <>
+                <input
+                  className={`${inputClass} mb-3`}
+                  placeholder="Search your dishes…"
+                  value={dishQuery}
+                  onChange={(e) => setDishQuery(e.target.value)}
+                />
+                <div className="mb-4 max-h-64 overflow-y-auto rounded-xl border border-[#E2E8F0] bg-white">
+                  {dishes
+                    .filter((d) =>
+                      `${d.name} ${d.category}`.toLowerCase().includes(dishQuery.trim().toLowerCase()),
+                    )
+                    .slice(0, 200)
+                    .map((d) => {
+                      const chosen = (settings.landing?.featuredItems || []).map(String);
+                      const on = chosen.includes(d.id);
+                      // Three is the cap the layouts are built around, so the
+                      // fourth box is disabled rather than silently dropped on
+                      // save.
+                      const full = chosen.length >= 3 && !on;
+                      return (
+                        <label
+                          key={d.id}
+                          className={`flex items-center gap-3 border-b border-[#F1F5F9] px-3 py-2.5 last:border-0 ${
+                            full ? "opacity-40" : "cursor-pointer hover:bg-[#F8FAFC]"
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={on}
+                            disabled={full}
+                            onChange={() =>
+                              patch(
+                                "landing.featuredItems",
+                                on ? chosen.filter((x) => x !== d.id) : [...chosen, d.id],
+                              )
+                            }
+                            className="h-4 w-4 rounded border-[#CBD5E1]"
+                          />
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-bold text-[#0F172A]">{d.name}</span>
+                            <span className="block truncate text-xs text-[#94A3B8]">{d.category}</span>
+                          </span>
+                        </label>
+                      );
+                    })}
+                </div>
+                <p className="-mt-2 mb-4 text-xs text-[#94A3B8]">
+                  {(settings.landing?.featuredItems || []).length} of 3 chosen.
+                </p>
+              </>
+            ) : (
+              <p className="mb-4 text-xs text-[#94A3B8]">
+                Your menu has not loaded, so there is nothing to pick from yet.
+              </p>
+            )}
+
+            <SectionRule title="Words" hint="What the first screen says." />
             <Field label="Headline" hint="Leave empty to use your website title.">
               <input
                 className={inputClass}

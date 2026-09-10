@@ -288,6 +288,15 @@ const updateWebsiteSettings = async (req, res, next) => {
       assign(settings.landing, "ctaText", clampText(l.ctaText, 40));
       assign(settings.landing, "aboutText", clampText(l.aboutText, 4000));
 
+      // Ids only, at most three. The browser resolves them against the menu
+      // it already has, and quietly drops any that no longer exist.
+      if (Array.isArray(l.featuredItems)) {
+        settings.landing.featuredItems = l.featuredItems
+          .map((id) => String(id || "").trim())
+          .filter((id) => mongoose.Types.ObjectId.isValid(id))
+          .slice(0, 3);
+      }
+
       for (const key of ["backgroundImage", "aboutImage"]) {
         if (l[key] !== undefined) {
           const ref = await resolveMediaRef(l[key], tenant);

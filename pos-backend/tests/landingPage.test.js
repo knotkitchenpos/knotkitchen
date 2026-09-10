@@ -22,7 +22,7 @@ const path = require("node:path");
 
 const { buildLandingPayload } = require("../services/landingPayload");
 const WebsiteSettings = require("../models/websiteSettingsModel");
-const { LANDING_TEMPLATES } = require("../models/websiteSettingsModel");
+const { LANDING_TEMPLATES, LEGACY_LANDING_TEMPLATES } = require("../models/websiteSettingsModel");
 
 // --- Payload fallbacks ------------------------------------------------------
 
@@ -41,7 +41,7 @@ test("an untouched store still gets a landing page from its branding", () => {
     null
   );
 
-  assert.equal(p.template, "hero-classic");
+  assert.equal(p.template, "fine-dining");
   assert.equal(p.headline, "Spice Route Kitchen");
   assert.equal(p.subheadline, "Slow-cooked, every day");
   assert.equal(p.backgroundImage, "https://cdn.example/cover.jpg");
@@ -55,7 +55,7 @@ test("the landing fields win over branding once they are set", () => {
     displayName: "Spice Route",
     branding: { siteTitle: "Spice Route Kitchen", tagline: "Slow-cooked, every day" },
     landing: {
-      template: "photo-fullbleed",
+      template: "omakase",
       headline: "Book your table",
       subheadline: "Open until midnight",
       ctaText: "See the food",
@@ -63,7 +63,7 @@ test("the landing fields win over branding once they are set", () => {
     },
   });
 
-  assert.equal(p.template, "photo-fullbleed");
+  assert.equal(p.template, "omakase");
   assert.equal(p.headline, "Book your table");
   assert.equal(p.subheadline, "Open until midnight");
   assert.equal(p.ctaText, "See the food");
@@ -100,8 +100,34 @@ test("the three section switches default to on and can be turned off", () => {
 
 test("a new website gets the default template without anyone choosing one", () => {
   const doc = new WebsiteSettings({ storeId: "123456", slug: "spice-route" });
-  assert.equal(doc.landing.template, "hero-classic");
+  assert.equal(doc.landing.template, "fine-dining");
   assert.equal(doc.landing.ctaText, "View Menu");
+});
+
+test("a store that chose one of the retired templates keeps a design", () => {
+  // Every one of the first five was replaced. Falling through to the default
+  // would reset each of those stores to the same page without telling anyone,
+  // so the old keys are mapped to the nearest new design instead.
+  for (const [oldKey, newKey] of Object.entries(LEGACY_LANDING_TEMPLATES)) {
+    assert.equal(
+      buildLandingPayload({ landing: { template: oldKey } }).template,
+      newKey,
+      `${oldKey} must still resolve to a design that ships`,
+    );
+  }
+
+  // And a key from nowhere at all still renders something.
+  assert.ok(
+    LANDING_TEMPLATES.includes(buildLandingPayload({ landing: { template: "???" } }).template),
+  );
+});
+
+test("the landing page shows a few dishes, not the menu", () => {
+  const many = Array.from({ length: 9 }, (_, i) => `6a9707a7183d9d7bc113480${i}`);
+  const p = buildLandingPayload({ landing: { featuredItems: many } });
+  assert.equal(p.featuredItems.length, 3, "three is the cap the layouts are built around");
+  assert.deepEqual(p.featuredItems, many.slice(0, 3));
+  assert.deepEqual(buildLandingPayload({}).featuredItems, [], "none chosen is a valid state");
 });
 
 test("a template the front end does not ship is rejected by the schema", () => {
@@ -214,12 +240,12 @@ test("CSD saves a template, and the audit trail records it", async () => {
   const { updateLanding } = loadCsd({ settings, audits });
 
   const { sent, failed } = await run(updateLanding, {
-    body: { template: "card-stack", headline: "Come hungry", overlayOpacity: 0 },
+    body: { template: "urban-izakaya", headline: "Come hungry", overlayOpacity: 0 },
   });
 
   assert.equal(failed, null);
   assert.equal(settings.saved, 1);
-  assert.equal(sent.data.landing.template, "card-stack");
+  assert.equal(sent.data.landing.template, "urban-izakaya");
   assert.equal(sent.data.landing.headline, "Come hungry");
   assert.equal(sent.data.landing.overlayOpacity, 0);
   assert.equal(audits.length, 1);
@@ -349,11 +375,18 @@ test("the POS saves the landing page rather than silently dropping it", async ()
   const { updateWebsiteSettings } = loadPos({ settings });
 
   const failed = await posRun(updateWebsiteSettings, {
-    landing: { template: "minimal-center", headline: "Come hungry", overlayOpacity: 10, showOffers: false },
+    landing: {
+      template: "coastal-brunch",
+      headline: "Come hungry",
+      overlayOpacity: 10,
+      showOffers: false,
+      featuredItems: ["6a9707a7183d9d7bc1134801", "6a9707a7183d9d7bc1134802", "6a9707a7183d9d7bc1134803", "6a9707a7183d9d7bc1134804"],
+    },
   });
 
   assert.equal(failed, null);
-  assert.equal(settings.landing.template, "minimal-center");
+  assert.equal(settings.landing.template, "coastal-brunch");
+  assert.equal(settings.landing.featuredItems.length, 3, "the POS cannot save a fourth either");
   assert.equal(settings.landing.headline, "Come hungry");
   assert.equal(settings.landing.overlayOpacity, 10);
   assert.equal(settings.landing.showOffers, false);
