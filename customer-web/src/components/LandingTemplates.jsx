@@ -61,7 +61,6 @@ const THEMES = {
     navBar: "bg-[#12100e]/95 text-[#f4efe7] border-b border-white/10",
     hairline: "border-white/10",
     muted: "text-white/60",
-    alternate: false,
   },
 
   // Zing's register: clean and corporate-warm. White page, brand-coloured
@@ -78,7 +77,6 @@ const THEMES = {
     navBar: "bg-white/95 text-[#14181f] border-b border-black/10",
     hairline: "border-black/10",
     muted: "text-black/55",
-    alternate: true,
   },
 
   // Yours Truly's register: cream, unhurried, serif, soft edges. The one to
@@ -95,7 +93,6 @@ const THEMES = {
     navBar: "bg-[#fbf6ee]/95 text-[#2e2419] border-b border-[#e0d2bd]",
     hairline: "border-[#e0d2bd]",
     muted: "text-[#7a6a55]",
-    alternate: true,
   },
 
   // Loud and photographic. Full-viewport hero, oversized type, dark bands.
@@ -112,7 +109,6 @@ const THEMES = {
     navBar: "bg-black/60 text-white border-b border-white/10 backdrop-blur",
     hairline: "border-white/10",
     muted: "text-white/60",
-    alternate: false,
   },
 
   // Light, rounded, friendly. Cards everywhere. The safest of the five for a
@@ -129,7 +125,6 @@ const THEMES = {
     navBar: "bg-white/95 text-[#111827] border-b border-black/10",
     hairline: "border-black/10",
     muted: "text-black/55",
-    alternate: true,
   },
 };
 
@@ -174,16 +169,23 @@ export default function LandingTemplate({ landing, store, menuPath }) {
 
       <Hero t={t} landing={landing} menuPath={menuPath} />
 
-      {show.features ? <Features t={t} features={landing.features} /> : null}
-      {show.about ? <About t={t} landing={landing} /> : null}
-      {show.menu ? (
-        <MenuPreview t={t} landing={landing} categories={categories} symbol={symbol} menuPath={menuPath} />
-      ) : null}
-      {show.offers ? <Offers t={t} landing={landing} offers={offers} /> : null}
-      {show.gallery ? <Gallery t={t} gallery={landing.gallery} /> : null}
-      {show.hours || show.contact ? (
-        <Visit t={t} landing={landing} hours={show.hours ? hours : []} contact={show.contact ? contact : {}} />
-      ) : null}
+      {/* Bands alternate by position rather than per section, so whichever
+          sections a store has switched on, no two of the same tone ever end up
+          touching and losing the seam between them. */}
+      {[
+        show.features ? <Features key="f" t={t} features={landing.features} /> : null,
+        show.about ? <About key="a" t={t} landing={landing} /> : null,
+        show.menu ? (
+          <MenuPreview key="m" t={t} landing={landing} categories={categories} symbol={symbol} menuPath={menuPath} />
+        ) : null,
+        show.offers ? <Offers key="o" t={t} landing={landing} offers={offers} /> : null,
+        show.gallery ? <Gallery key="g" t={t} gallery={landing.gallery} /> : null,
+        show.hours || show.contact ? (
+          <Visit key="v" t={t} landing={landing} hours={show.hours ? hours : []} contact={show.contact ? contact : {}} />
+        ) : null,
+      ]
+        .filter(Boolean)
+        .map((node, i) => React.cloneElement(node, { tone: i % 2 === 0 ? "band" : "page" }))}
 
       <Footer t={t} landing={landing} contact={contact} menuPath={menuPath} />
     </div>
@@ -326,9 +328,9 @@ function Nav({ t, landing, links, menuPath }) {
   );
 }
 
-function Features({ t, features }) {
+function Features({ t, features, tone }) {
   return (
-    <Section t={t} tone="band">
+    <Section t={t} tone={tone}>
       <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
         {features.map((f, i) => (
           <div key={f.title || i} className={`${t.card} ${t.radius} overflow-hidden`}>
@@ -351,10 +353,10 @@ function Features({ t, features }) {
   );
 }
 
-function About({ t, landing }) {
+function About({ t, landing, tone }) {
   const image = landing.about?.image;
   return (
-    <Section t={t} id="about" tone={t.alternate ? "page" : "band"}>
+    <Section t={t} id="about" tone={tone}>
       <div className="grid items-center gap-10 lg:grid-cols-2 lg:gap-16">
         {image ? (
           <img
@@ -390,14 +392,14 @@ function About({ t, landing }) {
  * each, then through to the ordering page. A landing page that printed the
  * entire catalogue would be the ordering page, only slower and with no basket.
  */
-function MenuPreview({ t, landing, categories, symbol, menuPath }) {
+function MenuPreview({ t, landing, categories, symbol, menuPath, tone }) {
   const [active, setActive] = useState(0);
   const shown = categories.slice(0, 8);
   const category = shown[Math.min(active, shown.length - 1)] || shown[0];
   const items = (category?.products || []).slice(0, 6);
 
   return (
-    <Section t={t} id="menu" tone={t.alternate ? "band" : "page"}>
+    <Section t={t} id="menu" tone={tone}>
       <SectionHead t={t} eyebrow="From the kitchen" title={landing.titles?.menu || "Our Menu"} />
 
       {shown.length > 1 ? (
@@ -451,9 +453,9 @@ function MenuPreview({ t, landing, categories, symbol, menuPath }) {
   );
 }
 
-function Offers({ t, landing, offers }) {
+function Offers({ t, landing, offers, tone }) {
   return (
-    <Section t={t} tone={t.alternate ? "page" : "band"}>
+    <Section t={t} tone={tone}>
       <SectionHead t={t} eyebrow="On now" title={landing.titles?.offers || "Special Offers"} />
       <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {offers.map((o, i) => (
@@ -477,9 +479,9 @@ function Offers({ t, landing, offers }) {
   );
 }
 
-function Gallery({ t, gallery }) {
+function Gallery({ t, gallery, tone }) {
   return (
-    <Section t={t} id="gallery" tone={t.alternate ? "band" : "page"}>
+    <Section t={t} id="gallery" tone={tone}>
       <SectionHead t={t} eyebrow="Look inside" title="Gallery" />
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
         {gallery.map((g, i) => (
@@ -498,9 +500,9 @@ function Gallery({ t, gallery }) {
 
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
-function Visit({ t, landing, hours, contact }) {
+function Visit({ t, landing, hours, contact, tone }) {
   return (
-    <Section t={t} id="visit" tone={t.alternate ? "page" : "band"}>
+    <Section t={t} id="visit" tone={tone}>
       <SectionHead t={t} eyebrow="Find us" title={landing.titles?.contact || "Visit Us"} />
       <div className="grid gap-10 sm:grid-cols-2 lg:gap-16">
         {contact.phone || contact.email || contact.addressLine1 ? (
