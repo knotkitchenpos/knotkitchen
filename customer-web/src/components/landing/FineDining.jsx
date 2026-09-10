@@ -19,8 +19,8 @@ import {
 
 const FONT = "family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..700;1,6..96,400..500&family=Manrope:wght@300;400;500;600;700";
 const WRAP = "mx-auto w-full max-w-7xl px-6 sm:px-10";
-const CAPS = "font-[Manrope] text-[11px] font-semibold uppercase tracking-[0.15em]";
-const SERIF = "font-[Bodoni_Moda]";
+const CAPS = "font-['Manrope'] text-[11px] font-semibold uppercase tracking-[0.15em]";
+const SERIF = "font-['Bodoni_Moda']";
 const GOLD = "text-[#c5a059]";
 const HAIR = "border-[#c5a059]/20";
 const BTN = `${CAPS} inline-flex items-center justify-center bg-[#c5a059] px-8 py-3.5 text-[#121110] transition hover:bg-[#d8b673]`;
@@ -42,7 +42,7 @@ export default function FineDining({ landing, store, menuPath }) {
   ].filter(Boolean);
 
   return (
-    <div className="min-h-screen bg-[#121110] font-[Manrope] text-[15px] leading-6 text-[#f5f2eb]">
+    <div className="min-h-screen bg-[#121110] font-['Manrope'] text-[15px] leading-6 text-[#f5f2eb]">
       <header
         className={`fixed inset-x-0 top-0 z-50 transition-colors ${
           scrolled || open ? "bg-[#0f0e0d]/95 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.6)]" : "bg-transparent"

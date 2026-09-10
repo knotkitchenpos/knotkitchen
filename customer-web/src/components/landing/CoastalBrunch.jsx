@@ -18,8 +18,8 @@ import {
 
 const FONT = "family=Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400..600&family=Manrope:wght@300;400;500;600;700";
 const WRAP = "mx-auto w-full max-w-6xl px-5 sm:px-8";
-const SERIF = "font-[Fraunces]";
-const CAPS = "font-[Manrope] text-[11px] font-semibold uppercase tracking-[0.16em]";
+const SERIF = "font-['Fraunces']";
+const CAPS = "font-['Manrope'] text-[11px] font-semibold uppercase tracking-[0.16em]";
 const WARM = "text-[#c2610c]";
 const LINE = "border-[#e6ddcd]";
 const BTN = `${CAPS} inline-flex items-center justify-center rounded-full bg-[#e07a25] px-8 py-3.5 text-white transition hover:bg-[#c2610c]`;
@@ -41,7 +41,7 @@ export default function CoastalBrunch({ landing, store, menuPath }) {
   ].filter(Boolean);
 
   return (
-    <div className="min-h-screen bg-[#fdf9f2] font-[Manrope] text-[15px] leading-6 text-[#2f2a22]">
+    <div className="min-h-screen bg-[#fdf9f2] font-['Manrope'] text-[15px] leading-6 text-[#2f2a22]">
       <header className={`sticky top-0 z-50 transition-shadow ${scrolled || open ? "bg-[#fdf9f2]/95 backdrop-blur shadow-[0_1px_0_#e6ddcd]" : ""}`}>
         <div className={`${WRAP} flex h-[72px] items-center justify-between gap-5`}>
           <a href="#top" className="flex min-w-0 items-center gap-3">

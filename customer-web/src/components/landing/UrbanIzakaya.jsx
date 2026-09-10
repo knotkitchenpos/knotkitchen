@@ -18,8 +18,8 @@ import {
 
 const FONT = "family=Bebas+Neue&family=Manrope:wght@300;400;500;600;700;800";
 const WRAP = "mx-auto w-full max-w-6xl px-5 sm:px-8";
-const DISPLAY = "font-[Bebas_Neue] tracking-[0.01em]";
-const CAPS = "font-[Manrope] text-[11px] font-bold uppercase tracking-[0.16em]";
+const DISPLAY = "font-['Bebas_Neue'] tracking-[0.01em]";
+const CAPS = "font-['Manrope'] text-[11px] font-bold uppercase tracking-[0.16em]";
 const RED = "text-[#ff3b30]";
 const LINE = "border-white/10";
 const BTN = `${CAPS} inline-flex items-center justify-center rounded-sm bg-[#ff3b30] px-8 py-3.5 text-white transition hover:bg-[#e02a20]`;
@@ -42,7 +42,7 @@ export default function UrbanIzakaya({ landing, store, menuPath }) {
   ].filter(Boolean);
 
   return (
-    <div className="min-h-screen bg-[#0c0b0c] font-[Manrope] text-[15px] leading-6 text-[#f3f0ee]">
+    <div className="min-h-screen bg-[#0c0b0c] font-['Manrope'] text-[15px] leading-6 text-[#f3f0ee]">
       {/* Status strip. At this hour the only question is whether the kitchen
           is still on. */}
       <div className={`border-b bg-[#141213] py-2 ${LINE}`}>

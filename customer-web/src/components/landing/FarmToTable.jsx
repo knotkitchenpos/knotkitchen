@@ -19,8 +19,8 @@ import {
 
 const FONT = "family=Oswald:wght@300;400;500;600;700&family=Manrope:wght@300;400;500;600;700";
 const WRAP = "mx-auto w-full max-w-6xl px-5 sm:px-8";
-const HEAD = "font-[Oswald] uppercase tracking-[0.01em]";
-const CAPS = "font-[Manrope] text-[11px] font-semibold uppercase tracking-[0.18em]";
+const HEAD = "font-['Oswald'] uppercase tracking-[0.01em]";
+const CAPS = "font-['Manrope'] text-[11px] font-semibold uppercase tracking-[0.18em]";
 const EMBER = "text-[#e2701e]";
 const LINE = "border-white/10";
 const BTN = `${CAPS} inline-flex items-center justify-center bg-[#e2701e] px-8 py-3.5 text-[#160f0a] transition hover:bg-[#f08536]`;
@@ -42,7 +42,7 @@ export default function FarmToTable({ landing, store, menuPath }) {
   ].filter(Boolean);
 
   return (
-    <div className="min-h-screen bg-[#161311] font-[Manrope] text-[15px] leading-6 text-[#efe9e3]">
+    <div className="min-h-screen bg-[#161311] font-['Manrope'] text-[15px] leading-6 text-[#efe9e3]">
       {/* A running note across the top, the way a kitchen chalks up what
           landed this morning. */}
       <div className={`hidden border-b bg-[#0f0d0b] py-2 md:block ${LINE}`}>

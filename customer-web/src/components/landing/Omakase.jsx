@@ -22,8 +22,8 @@ import {
 
 const FONT = "family=Bodoni+Moda:ital,opsz,wght@0,6..96,400..600;1,6..96,400..500&family=Manrope:wght@300;400;500;600";
 const WRAP = "mx-auto w-full max-w-7xl px-6 sm:px-10";
-const SERIF = "font-[Bodoni_Moda]";
-const CAPS = "font-[Manrope] text-[11px] font-semibold uppercase tracking-[0.15em]";
+const SERIF = "font-['Bodoni_Moda']";
+const CAPS = "font-['Manrope'] text-[11px] font-semibold uppercase tracking-[0.15em]";
 const GOLD = "text-[#d4ae7c]";
 const LINE = "border-[#3f3c38]";
 const BTN = `${CAPS} inline-flex items-center justify-center bg-[#d4ae7c] px-8 py-3.5 text-[#1a140b] transition hover:bg-[#b38954]`;
@@ -46,7 +46,7 @@ export default function Omakase({ landing, store, menuPath }) {
   ].filter(Boolean);
 
   return (
-    <div className="min-h-screen bg-[#131314] font-[Manrope] text-[15px] leading-6 text-[#eae3d8]">
+    <div className="min-h-screen bg-[#131314] font-['Manrope'] text-[15px] leading-6 text-[#eae3d8]">
       {/* A single line of standing information above everything, the way a
           counter posts what arrived this morning. */}
       <div className={`border-b bg-[#0d0d0e] py-2 ${LINE}/60`}>
