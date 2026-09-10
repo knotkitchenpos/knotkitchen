@@ -92,6 +92,8 @@ const THEMES = {
     rule: false,
     navBar: "bg-[#fbf6ee]/95 text-[#2e2419] border-b border-[#e0d2bd]",
     hairline: "border-[#e0d2bd]",
+    // The only template whose hero does not reach the top of the page.
+    navOverHero: false,
     muted: "text-[#7a6a55]",
   },
 
@@ -274,7 +276,9 @@ function Nav({ t, landing, links, menuPath }) {
   return (
     <header
       className={`fixed inset-x-0 top-0 z-50 transition-colors ${
-        solid || open ? t.navBar : "bg-transparent text-white border-b border-transparent"
+        solid || open || t.navOverHero === false
+          ? t.navBar
+          : "bg-transparent text-white border-b border-transparent"
       }`}
     >
       <div className={`${WRAP} flex h-16 items-center justify-between gap-4`}>
