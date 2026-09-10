@@ -208,3 +208,46 @@ test("the short hosts follow BASE_DOMAIN, so the .com move carries them", () => 
     "no literal domain in the default",
   );
 });
+
+
+// ---------------------------------------------------------------------------
+// The deploy that has to actually happen
+// ---------------------------------------------------------------------------
+
+test("REGRESSION: a deploy that cannot fast-forward fails instead of going green", () => {
+  // The short-link change was pushed, CI passed, "Deploy to VPS" reported
+  // success -- and the server went on running the previous commit, because a
+  // tracked file had been hand-edited there and `git pull --ff-only` aborted
+  // into `|| true`. Three days of green deploys shipped nothing at all.
+  const wf = fs.readFileSync(
+    path.join(__dirname, "..", "..", ".github", "workflows", "deploy.yml"),
+    "utf8",
+  );
+  const swallowed = /git pull[^\r\n]*\|\| true/;
+  assert.ok(
+    !swallowed.test(wf),
+    "a swallowed pull failure is a deploy that lies about what it shipped",
+  );
+  assert.match(wf, /if ! git pull --ff-only origin "\$REF"; then/);
+  assert.match(wf, /exit 1/);
+  // And it must say what is actually wrong, not merely fail.
+  assert.match(wf, /git status --porcelain/);
+});
+
+test("the hand-added demo vhost is in version control, before the wildcard", () => {
+  // Left only on the server, it is what blocked every pull. The wildcard below
+  // it would otherwise claim the hostname and proxy it to customer-web, which
+  // has no such store.
+  assert.match(CADDY, /^demostore\.\{\$BASE_DOMAIN\} \{$/m);
+  assert.ok(
+    CADDY.indexOf("demostore.{$BASE_DOMAIN}") < CADDY.indexOf("*.{$BASE_DOMAIN}"),
+    "the wildcard must not shadow it",
+  );
+  assert.match(CADDY, /root \* \/srv\/landing\/demostore/);
+  // Its files are bind-mounted straight out of the repo, so they have to be
+  // tracked alongside the vhost that serves them.
+  assert.ok(
+    fs.existsSync(path.join(__dirname, "..", "..", "deploy", "landing", "demostore", "index.html")),
+    "the page itself must ship with the vhost that serves it",
+  );
+});

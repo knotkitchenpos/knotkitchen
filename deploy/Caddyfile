@@ -21,6 +21,7 @@
 #   agreement.knotkitchen.online  → onboard-portal (partner onboarding)
 #   bill.knotkitchen.online       → pos-api       (customer bill link, /r/<token>)
 #   order.knotkitchen.online      → pos-web       (table QR link, /t/<token>)
+#   demostore.knotkitchen.online  → static        (Food Peddler sales demo)
 #   <store_id>.knotkitchen.online → customer-web  (per-store storefront)
 
 {
@@ -227,6 +228,29 @@ agreement.{$BASE_DOMAIN} {
 		health_uri     /api/health
 		health_interval 15s
 	}
+}
+
+# =============================================================================
+# demostore.knotkitchen.online — Food Peddler static preview
+# =============================================================================
+# A sales demo: a fixed storefront page served straight off disk, with no
+# backend and no store record behind it.
+#
+# This lived only on the VPS for three days, hand-edited into the deployed
+# Caddyfile. That is what made `git pull --ff-only` refuse to fast-forward, and
+# because the deploy step ended in `|| true` the job reported success while
+# running the previous commit -- every deploy between 2026-09-07 and now was a
+# silent no-op. It is in version control so that cannot happen again.
+#
+# Declared BEFORE the wildcard below, or that catch-all takes the hostname and
+# proxies it to customer-web, which has no such store.
+demostore.{$BASE_DOMAIN} {
+	import security_headers
+
+	encode zstd gzip
+
+	root * /srv/landing/demostore
+	file_server
 }
 
 # =============================================================================

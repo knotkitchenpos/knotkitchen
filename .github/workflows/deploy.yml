@@ -84,7 +84,20 @@ jobs:
             REF="${{ github.event.inputs.ref || 'main' }}"
             echo "==> Checking out $REF"
             git checkout "$REF"
-            git pull --ff-only origin "$REF" || true
+
+            # NOT `|| true`. A pull that cannot fast-forward -- because someone
+            # edited a tracked file on the server -- used to be swallowed here,
+            # so the job went green, `up -d` found nothing changed, and the
+            # deploy silently ran the previous commit. Three days of "success"
+            # deployed nothing at all. Fail here instead, and say what to do.
+            if ! git pull --ff-only origin "$REF"; then
+              echo "::error::Cannot fast-forward $REF. The checkout has local changes:"
+              git status --porcelain
+              echo "Commit them, or discard with 'git checkout -- <file>', then re-run."
+              exit 1
+            fi
+
+            echo "==> Deploying $(git rev-parse --short HEAD)"
 
             # The KYC/onboarding volumes are `external: true` so that a stray
             # `down -v` or `volume prune` cannot destroy them. Compose will not
