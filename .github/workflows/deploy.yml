@@ -75,8 +75,10 @@ jobs:
             set -euo pipefail
             cd ${{ secrets.DEPLOY_APP_PATH }}
 
-            # Remember the current SHA before we move. rollback.sh reads this.
-            git rev-parse HEAD > deploy/.previous || true
+            # Remember the current SHA before we move. rollback.sh reads this,
+            # and the Caddyfile check below diffs against it.
+            PREV_SHA="$(git rev-parse HEAD)"
+            echo "$PREV_SHA" > deploy/.previous || true
 
             echo "==> Fetching latest"
             git fetch --tags --prune origin
@@ -99,6 +101,15 @@ jobs:
 
             echo "==> Deploying $(git rev-parse --short HEAD)"
 
+            # Did this pull change the reverse-proxy config? Recorded BEFORE
+            # the build, and acted on after it. See the force-recreate below
+            # for why a plain `up -d` is not enough.
+            CADDY_CHANGED=0
+            if ! git diff --quiet "$PREV_SHA" HEAD -- deploy/Caddyfile 2>/dev/null; then
+              CADDY_CHANGED=1
+              echo "    deploy/Caddyfile changed — caddy will be recreated"
+            fi
+
             # The KYC/onboarding volumes are `external: true` so that a stray
             # `down -v` or `volume prune` cannot destroy them. Compose will not
             # create them itself, so ensure they exist first. Idempotent, and
@@ -109,6 +120,26 @@ jobs:
             echo "==> Building + starting containers"
             docker compose -f deploy/docker-compose.yml --env-file deploy/.env build --pull
             docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --remove-orphans
+
+            # The Caddyfile is bind-mounted as a FILE, so the mount is pinned to
+            # the inode it had when the container started. git replaces a file
+            # by writing a new one and renaming over it, which changes the
+            # inode — so the container goes on serving the config it booted
+            # with, and `up -d` sees no service change and leaves it running.
+            #
+            # Every Caddyfile change was silently ignored this way. A vhost
+            # added on 2026-09-07 only took effect because somebody restarted
+            # the container by hand, and the short-link hosts added later
+            # resolved to the wildcard instead: bills went out pointing at a
+            # host that served the storefront rather than the receipt.
+            #
+            # `caddy reload` does not help — it re-reads the same stale inode.
+            # Recreating is what re-resolves the mount.
+            if [ "$CADDY_CHANGED" = "1" ]; then
+              echo "==> Recreating caddy to pick up the new Caddyfile"
+              docker compose -f deploy/docker-compose.yml --env-file deploy/.env \
+                up -d --force-recreate caddy
+            fi
 
             echo "==> Waiting for backend to become ready"
             # Poll /health via the internal Docker network — no reliance on DNS

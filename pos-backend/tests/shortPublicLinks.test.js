@@ -251,3 +251,34 @@ test("the hand-added demo vhost is in version control, before the wildcard", () 
     "the page itself must ship with the vhost that serves it",
   );
 });
+
+test("REGRESSION: a Caddyfile change recreates caddy, because a reload cannot", () => {
+  // The Caddyfile is bind-mounted as a FILE, so the mount is pinned to the
+  // inode it had at container start. git replaces a file by renaming a new one
+  // over it, which changes the inode -- so the container keeps serving the
+  // config it booted with, and `up -d` sees no service change and leaves it
+  // alone. `caddy reload` re-reads the same stale inode and does not help.
+  //
+  // This is why the bill host went live serving the storefront instead of the
+  // receipt: pos-api had already started minting bill.<base> links while caddy
+  // was still running a config that had no such vhost, so the wildcard took
+  // them.
+  const wf = fs.readFileSync(
+    path.join(__dirname, "..", "..", ".github", "workflows", "deploy.yml"),
+    "utf8",
+  );
+  assert.match(wf, /git diff --quiet "\$PREV_SHA" HEAD -- deploy\/Caddyfile/);
+  assert.match(wf, /up -d --force-recreate caddy/);
+
+  // The comparison point has to be captured before the checkout moves HEAD.
+  assert.ok(
+    wf.indexOf('PREV_SHA="$(git rev-parse HEAD)"') < wf.indexOf('git checkout "$REF"'),
+    "PREV_SHA must be read before the checkout, or the diff compares HEAD to itself",
+  );
+
+  // And the mount this all works around must still be the file mount it
+  // describes -- if it ever becomes a directory mount, this dance is dead
+  // weight and the comment above is a lie.
+  const compose = DEPLOY("docker-compose.yml");
+  assert.match(compose, /- \.\/Caddyfile:\/etc\/caddy\/Caddyfile:ro/);
+});
