@@ -24,6 +24,20 @@ const buildLandingPayload = (settings = {}, restaurant = null, store = null) => 
   const name = settings.displayName || store?.storeName || restaurant?.name || "";
 
   return {
+    /**
+     * Which edit of the settings this design came from.
+     *
+     * The browser fetches the landing page twice -- once in the small
+     * bootstrap response, once in the full storefront response -- and the two
+     * are cached independently. When an owner changes the template, one of
+     * those can come back fresh and the other from cache, and whichever
+     * arrived second used to win. That is what made a template appear to
+     * switch and then switch back, or never switch at all.
+     *
+     * Carrying the version lets the browser keep the newer of the two rather
+     * than the later of the two.
+     */
+    version: Number(settings.version) || 0,
     template: landing.template || "hero-classic",
     headline: landing.headline || branding.siteTitle || name,
     subheadline: landing.subheadline || branding.tagline || "",

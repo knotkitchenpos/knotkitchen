@@ -128,11 +128,13 @@ const getPublicStoreByDomain = async (req, res, next) => {
 
     const { settings, store, restaurant } = result;
 
-    // Short. This response carries the landing page design, and an owner who
-    // changes it expects to see the change when they open their site -- a
-    // minute of the old one reads as "the template did not work".
-    // stale-while-revalidate keeps the burst protection.
-    res.set("Cache-Control", "public, max-age=5, stale-while-revalidate=60");
+    // Short, and deliberately WITHOUT stale-while-revalidate.
+    //
+    // This response carries the landing page design. `stale-while-revalidate`
+    // tells the browser it may serve the old body immediately and refresh in
+    // the background, so for a minute after an edit the owner reloads and sees
+    // the previous design -- which reads as "it did not switch".
+    res.set("Cache-Control", "public, max-age=5");
     res.status(200).json({
       success: true,
       data: {

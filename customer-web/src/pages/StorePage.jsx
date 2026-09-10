@@ -86,7 +86,13 @@ export default function StorePage({ slug, host }) {
   // The landing page renders from the bootstrap payload, which arrives well
   // before the menu — so the front door paints immediately and fills in the
   // hours/contact/offers blocks when the full storefront lands.
-  const landing = store?.landing || bootstrap?.landing;
+  //
+  // Take the NEWER of the two, not the later. Both responses describe the same
+  // design and are cached independently, so after an edit one can come back
+  // fresh and the other from cache. Preferring whichever arrived last meant a
+  // stale storefront could overwrite a fresh bootstrap, and the template
+  // appeared to switch and then switch back.
+  const landing = newerLanding(store?.landing, bootstrap?.landing);
   if (!isMenu && landing) {
     return <LandingTemplate landing={landing} store={store} menuPath={menuPath} />;
   }
@@ -105,6 +111,13 @@ export default function StorePage({ slug, host }) {
       onPlaceOrder={handlePlaceOrder}
     />
   );
+}
+
+/** Whichever of the two payloads describes a later edit of the settings. */
+function newerLanding(a, b) {
+  if (!a) return b;
+  if (!b) return a;
+  return (Number(b.version) || 0) > (Number(a.version) || 0) ? b : a;
 }
 
 function makeIdempotencyKey() {

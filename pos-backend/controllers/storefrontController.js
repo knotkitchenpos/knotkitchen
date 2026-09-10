@@ -283,10 +283,11 @@ const getStorefront = async (req, res, next) => {
 
     const payload = await buildStorefrontPayload(ctx);
 
-    // Short public cache. It has to be short: this response carries both the
-    // live menu and the landing page design, and both are edited by someone
-    // who then immediately looks at the site to check.
-    res.set("Cache-Control", "public, max-age=5, stale-while-revalidate=60");
+    // Short, and without stale-while-revalidate: this response carries both
+    // the live menu and the landing page design, and both are edited by
+    // someone who then immediately reloads to check. Serving them a stale copy
+    // while refreshing in the background is exactly the wrong answer here.
+    res.set("Cache-Control", "public, max-age=5");
     res.status(200).json({ success: true, data: payload });
   } catch (error) {
     next(error);
