@@ -5,7 +5,6 @@ import {
   qrGetTable,
   qrPlaceOrder,
   qrRequestBill,
-  qrCallWaiter,
   qrGetPaymentIntent,
   qrVerifyPayment,
 } from "../https/publicApi";
@@ -350,16 +349,6 @@ export default function OrderOnline() {
     }
   };
 
-  const callWaiter = async () => {
-    try {
-      await qrCallWaiter(token);
-      setBanner("Waiter called — someone will be with you shortly.");
-      setTimeout(() => setBanner(""), 5000);
-    } catch (e) {
-      setErr(e.response?.data?.message || "Could not call the waiter.");
-    }
-  };
-
   const preparePayment = async () => {
     setLoadingPayment(true);
     try {
@@ -424,6 +413,7 @@ export default function OrderOnline() {
   }
 
   const brandName = restaurant?.name || "KnotKitchen";
+  const brandLogo = String(restaurant?.branding?.logo || "").trim();
   const primary = restaurant?.branding?.primaryColor || "#FD5302";
   // What the restaurant calls this table ("GF1"), not its row number. The
   // diner sees the same name the staff use when they come over.
@@ -500,33 +490,32 @@ export default function OrderOnline() {
         style={{ background: `linear-gradient(135deg, ${primary} 0%, #021E49 130%)` }}
       >
         <div className="max-w-3xl mx-auto px-4 pt-4 pb-3">
-          <div className="flex items-start justify-between gap-3">
-            <div className="min-w-0">
+          {/* Logo and name, and nothing else.
+              The table number, the seat count and Call Waiter used to sit
+              here. A diner scanning the code on that table knows which table
+              they are at, and the seat count was never anything they could
+              act on -- it is stock information for the floor staff. */}
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              {brandLogo ? (
+                <img
+                  src={brandLogo}
+                  alt=""
+                  className="h-9 w-9 shrink-0 rounded-full bg-white/15 object-cover"
+                />
+              ) : null}
               <h1 className="text-lg font-extrabold leading-tight truncate">{brandName}</h1>
-              <div className="flex items-center gap-2 mt-1 text-[11px] font-semibold uppercase tracking-wider text-white/85">
-                <span className="inline-flex items-center gap-1.5 bg-white/15 backdrop-blur rounded-full px-2 py-0.5">
-                  <span>🍽️</span> {tableName}
-                </span>
-                <span className="text-white/60">·</span>
-                <span>Seats {table?.capacity}</span>
-              </div>
             </div>
-            <div className="flex flex-col gap-1.5 shrink-0">
+            {/* Request Bill stays: it is how the diner asks to pay, and there
+                is no other way to do it from this page. */}
+            {session && (
               <button
-                onClick={callWaiter}
-                className="text-[11px] font-semibold bg-white/15 hover:bg-white/25 backdrop-blur rounded-full px-3 py-1.5"
+                onClick={requestBill}
+                className="shrink-0 text-[11px] font-semibold bg-white text-slate-900 rounded-full px-3 py-1.5"
               >
-                🔔 Call Waiter
+                🧾 Request Bill
               </button>
-              {session && (
-                <button
-                  onClick={requestBill}
-                  className="text-[11px] font-semibold bg-white text-slate-900 rounded-full px-3 py-1.5"
-                >
-                  🧾 Request Bill
-                </button>
-              )}
-            </div>
+            )}
           </div>
 
           {/* Search + tabs */}

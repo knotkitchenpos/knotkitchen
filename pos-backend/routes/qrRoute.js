@@ -200,6 +200,37 @@ const ensureAccessToken = async (session) => {
 };
 
 /**
+ * The store's logo, wherever it actually lives.
+ *
+ * `Restaurant.branding.logo` is a plain string set by the old onboarding path
+ * and empty for almost every store. The logo an owner uploads today goes to
+ * WebsiteSettings through Manage Website, as a media reference. Checking only
+ * the first one means the diner's header shows no logo for a store that
+ * plainly has one.
+ *
+ * Lazily required for the same reason as the services above: this module is
+ * loaded by tests that mock mongoose first.
+ */
+const resolveBrandLogo = async (restaurantId, restaurant) => {
+  const own = String(restaurant?.branding?.logo || "").trim();
+  if (own) return own;
+  try {
+    const WebsiteSettings = require("../models/websiteSettingsModel");
+    const settings = await WebsiteSettings.findOne({
+      restaurantId,
+      isDeleted: { $ne: true },
+    })
+      .select("branding.logo")
+      .lean();
+    return settings?.branding?.logo?.url || "";
+  } catch {
+    // A missing logo is a cosmetic loss; failing the diner's whole page over
+    // it is not.
+    return "";
+  }
+};
+
+/**
  * The kitchen status the diner should see for their table.
  *
  * The session carries a per-item status, but nothing ever advanced it past
@@ -256,6 +287,7 @@ router.route("/table/:token").get(qrReadLimiter, resolveTableScope, async (req, 
       _id: restaurantId,
       isDeleted: { $ne: true },
     }).lean();
+    const brandLogo = restaurant ? await resolveBrandLogo(restaurantId, restaurant) : "";
 
     res.status(200).json({
       success: true,
@@ -281,7 +313,7 @@ router.route("/table/:token").get(qrReadLimiter, resolveTableScope, async (req, 
               _id: restaurant._id,
               name: restaurant.name,
               currency: restaurant.currency || "INR",
-              branding: restaurant.branding || {},
+              branding: { ...(restaurant.branding || {}), logo: brandLogo },
               address: restaurant.address || {},
               // Whether this store can take money online at all. The diner
               // must not be offered "Pay online" against a store with no
