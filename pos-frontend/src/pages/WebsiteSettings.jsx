@@ -17,6 +17,7 @@ import { publishWebsiteCache } from "../https";
 const TABS = [
   { key: "general", label: "Domain & General" },
   { key: "branding", label: "Homepage & Branding" },
+  { key: "landing", label: "Landing Page" },
   { key: "theme", label: "Colors & Fonts" },
   { key: "layout", label: "Layout" },
   { key: "ordering", label: "Ordering Options" },
@@ -27,6 +28,37 @@ const TABS = [
 ];
 
 const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+/**
+ * The landing page templates, in the order the customer website ships them.
+ *
+ * The keys come from the server (`options.landingTemplates`) so the database
+ * stays the authority on what is selectable; this map only supplies the
+ * human-readable names, and falls back to the raw key for anything it has not
+ * been told about yet.
+ */
+const LANDING_TEMPLATE_INFO = {
+  "hero-classic": {
+    name: "Classic hero",
+    hint: "Wide photo with the headline across the bottom. Works with any picture.",
+  },
+  "split-showcase": {
+    name: "Split showcase",
+    hint: "Words on one side, photo on the other. Reads like a magazine spread.",
+  },
+  "minimal-center": {
+    name: "Minimal centred",
+    hint: "No photo at all — your brand colour and centred text. Good if you have no food photography yet.",
+  },
+  "photo-fullbleed": {
+    name: "Full-screen photo",
+    hint: "One photograph filling the whole screen. Needs a strong picture.",
+  },
+  "card-stack": {
+    name: "Floating card",
+    hint: "Photo behind a solid card. Keeps the words readable over a busy picture.",
+  },
+};
 
 const Field = ({ label, hint, children }) => (
   <label className="block mb-4">
@@ -585,6 +617,120 @@ const WebsiteSettings = () => {
         ) : null}
 
         {/* ---------- THEME ---------- */}
+        {tab === "landing" ? (
+          <>
+            <p className="mb-5 text-sm text-[#64748B]">
+              The first screen a customer sees. Your menu is one tap behind it.
+            </p>
+
+            <Field
+              label="Template"
+              hint="Changes the layout only. Your colours and fonts stay as they are."
+            >
+              <div className="grid gap-2 sm:grid-cols-2">
+                {(options?.landingTemplates || []).map((key) => {
+                  const info = LANDING_TEMPLATE_INFO[key] || { name: key, hint: "" };
+                  const active = (settings.landing?.template || "hero-classic") === key;
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => patch("landing.template", key)}
+                      className={`rounded-xl border p-3 text-left transition-colors ${
+                        active
+                          ? "border-[#FD5302] bg-[#FD5302]/5"
+                          : "border-[#E2E8F0] bg-white hover:border-[#CBD5E1]"
+                      }`}
+                    >
+                      <span className="block text-sm font-bold text-[#0F172A]">{info.name}</span>
+                      <span className="block text-xs text-[#94A3B8] mt-0.5">{info.hint}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            </Field>
+
+            {/* Every text box below falls back to your branding when left
+                empty, so a store that never opens this tab still gets a
+                finished landing page. */}
+            <Field label="Headline" hint="Leave empty to use your website title.">
+              <input
+                className={inputClass}
+                maxLength={120}
+                placeholder={settings.branding?.siteTitle || settings.displayName || ""}
+                value={settings.landing?.headline || ""}
+                onChange={(e) => patch("landing.headline", e.target.value)}
+              />
+            </Field>
+
+            <Field label="Sub-headline" hint="Leave empty to use your tagline.">
+              <input
+                className={inputClass}
+                maxLength={300}
+                placeholder={settings.branding?.tagline || ""}
+                value={settings.landing?.subheadline || ""}
+                onChange={(e) => patch("landing.subheadline", e.target.value)}
+              />
+            </Field>
+
+            <Field label="Button text">
+              <input
+                className={inputClass}
+                maxLength={40}
+                placeholder="View Menu"
+                value={settings.landing?.ctaText || ""}
+                onChange={(e) => patch("landing.ctaText", e.target.value)}
+              />
+            </Field>
+
+            <ImagePicker
+              label="Background photo"
+              folder="cover"
+              value={settings.landing?.backgroundImage}
+              onPick={(v) => patch("landing.backgroundImage", v)}
+            />
+            <p className="-mt-2 mb-4 text-xs text-[#94A3B8]">
+              Leave this empty to use your cover image.
+            </p>
+
+            <Field
+              label={`Photo darkening — ${settings.landing?.overlayOpacity ?? 45}%`}
+              hint="Raise it until the headline is easy to read over the photo."
+            >
+              <input
+                type="range"
+                min="0"
+                max="100"
+                step="5"
+                className="w-full accent-[#FD5302]"
+                value={settings.landing?.overlayOpacity ?? 45}
+                onChange={(e) => patch("landing.overlayOpacity", Number(e.target.value))}
+              />
+            </Field>
+
+            <div className="mt-2 rounded-xl border border-[#E2E8F0] bg-white px-4">
+              <Toggle
+                label="Opening hours"
+                hint="Shown under the headline."
+                checked={settings.landing?.showHours !== false}
+                onChange={(v) => patch("landing.showHours", v)}
+              />
+              <Toggle
+                label="Address and phone"
+                hint="Uses what is on the Contact tab."
+                checked={settings.landing?.showContact !== false}
+                onChange={(v) => patch("landing.showContact", v)}
+              />
+              <Toggle
+                label="Current offers"
+                hint="Your active offers, if you have any."
+                checked={settings.landing?.showOffers !== false}
+                onChange={(v) => patch("landing.showOffers", v)}
+              />
+            </div>
+          </>
+        ) : null}
+
         {tab === "theme" ? (
           <>
             <h3 className="font-bold text-[#0F172A] mb-3">Colors</h3>

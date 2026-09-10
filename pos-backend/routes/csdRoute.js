@@ -32,6 +32,7 @@ const {
   listMenus, toggleMenuPublish, updateDish,
   listTables, updateTable,
   listUsers, updateUser,
+  getLanding, updateLanding,
 } = require("../controllers/csdCatalogController");
 const {
   getRestaurant, getCustomers, getOrderSummary, getRestaurantStaff, getActivity,
@@ -188,6 +189,9 @@ router.get("/restaurants/:storeId/tables", requireCsdAuth, listTables);
 router.patch("/restaurants/:storeId/tables/:tableId", requireCsdAdmin, updateTable);
 
 // The restaurant's own employees, NOT CSD staff (see /staff above).
+router.get("/restaurants/:storeId/landing", requireCsdAuth, getLanding);
+router.patch("/restaurants/:storeId/landing", requireCsdAdmin, updateLanding);
+
 router.get("/restaurants/:storeId/users", requireCsdAuth, listUsers);
 router.patch("/restaurants/:storeId/users/:userId", requireCsdAdmin, updateUser);
 

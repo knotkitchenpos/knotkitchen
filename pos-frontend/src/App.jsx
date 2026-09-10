@@ -10,7 +10,7 @@ import { useSelector } from "react-redux";
 import {
   Home, Auth, Orders, Tables, Menu, KDS, OrderOnline, PaymentLink,
   Storefront, OnlineOrders, Reports, Settings, ManageMenuPage, Support,
-  Impersonate, Billing,
+  Impersonate, Billing, WebsiteSettings,
 } from "./pages";
 
 import Sidebar from "./components/shared/Sidebar";
@@ -64,9 +64,7 @@ function Layout() {
       <Route path="/support" element={<ProtectedRoutes><Support /></ProtectedRoutes>} />
       <Route path="/manage-menu" element={<ProtectedRoutes><ManageMenuPage /></ProtectedRoutes>} />
 
-      {/* Manage Website is CSD-only. The preview below stays: it renders the
-          storefront read-only and changes nothing. */}
-      <Route path="/website" element={<Navigate to="/settings" replace />} />
+      <Route path="/website" element={<ProtectedRoutes><WebsiteSettings /></ProtectedRoutes>} />
 
       <Route path="/website/preview" element={<ProtectedRoutes><Storefront preview /></ProtectedRoutes>} />
       <Route path="/order" element={<OrderOnline />} />

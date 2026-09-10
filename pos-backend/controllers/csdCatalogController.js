@@ -4,6 +4,9 @@ const Menu = require("../models/menuModel");
 const Table = require("../models/tableModel");
 const User = require("../models/userModel");
 const Store = require("../models/storeModel");
+const WebsiteSettings = require("../models/websiteSettingsModel");
+const { LANDING_TEMPLATES } = require("../models/websiteSettingsModel");
+const { buildStorefrontUrl } = require("../services/websiteProvisioningService");
 const { csdAudit } = require("../services/csdAuditService");
 
 /**
@@ -371,9 +374,145 @@ const updateUser = async (req, res, next) => {
   }
 };
 
+// --- Landing page ------------------------------------------------------------
+
+/**
+ * The customer website's front door.
+ *
+ * Manage Website belongs to KnotKitchen support, not to the restaurant -- the
+ * POS route refuses `landing` for the same reason it refuses `branding` and
+ * `theme`. This is the editor that side of the boundary, so it is the only
+ * place the landing page can be changed.
+ *
+ * Reads are open to any signed-in CSD staff member; the write is admin-only,
+ * matching every other write in this file.
+ */
+
+/**
+ * Background images are pasted in as URLs rather than picked from a media
+ * library: CSD has no media browser, and the store's own library is scoped to
+ * a POS session this request does not have. The scheme check is the point --
+ * the value lands in a CSS `url()` and an <img src>, so `javascript:` and
+ * `data:` must not survive.
+ */
+const safeImageUrl = (value) => {
+  const url = str(value).slice(0, 500);
+  if (!url) return "";
+  if (!/^https?:\/\//i.test(url)) {
+    throw createHttpError(400, "Background image must be a full http:// or https:// URL.");
+  }
+  return url;
+};
+
+const landingResponse = (settings) => ({
+  templates: LANDING_TEMPLATES,
+  canEdit: false,
+  storefrontUrl: buildStorefrontUrl(settings),
+  landing: {
+    template: settings.landing?.template || "hero-classic",
+    headline: settings.landing?.headline || "",
+    subheadline: settings.landing?.subheadline || "",
+    ctaText: settings.landing?.ctaText || "View Menu",
+    backgroundImageUrl: settings.landing?.backgroundImage?.url || "",
+    overlayOpacity: settings.landing?.overlayOpacity ?? 45,
+    showHours: settings.landing?.showHours !== false,
+    showContact: settings.landing?.showContact !== false,
+    showOffers: settings.landing?.showOffers !== false,
+  },
+  // What the page falls back to when a field above is left blank, so the
+  // editor can show it as placeholder text instead of looking empty.
+  fallbacks: {
+    headline: settings.branding?.siteTitle || settings.displayName || "",
+    subheadline: settings.branding?.tagline || "",
+    backgroundImageUrl: settings.branding?.coverImage?.url || "",
+  },
+});
+
+/** Load this store's website settings, or explain why there are none. */
+const websiteForStore = async (storeId) => {
+  const id = str(storeId);
+  if (!/^\d{6}$/.test(id)) throw createHttpError(400, "Store ID must be 6 digits.");
+
+  const settings = await WebsiteSettings.findOne({ storeId: id, isDeleted: { $ne: true } });
+  if (!settings) {
+    throw createHttpError(404, "This store has no customer website yet.");
+  }
+  return settings;
+};
+
+const getLanding = async (req, res, next) => {
+  try {
+    const settings = await websiteForStore(req.params.storeId);
+    res.status(200).json({
+      success: true,
+      data: { ...landingResponse(settings), canEdit: req.csdStaff?.role === "admin" },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+const updateLanding = async (req, res, next) => {
+  try {
+    const settings = await websiteForStore(req.params.storeId);
+    const body = req.body || {};
+    const before = landingResponse(settings).landing;
+
+    if (!settings.landing) settings.landing = {};
+
+    if (body.template !== undefined) {
+      if (!LANDING_TEMPLATES.includes(str(body.template))) {
+        throw createHttpError(400, `Template must be one of: ${LANDING_TEMPLATES.join(", ")}.`);
+      }
+      settings.landing.template = str(body.template);
+    }
+    if (body.headline !== undefined) settings.landing.headline = str(body.headline).slice(0, 120);
+    if (body.subheadline !== undefined) settings.landing.subheadline = str(body.subheadline).slice(0, 300);
+    if (body.ctaText !== undefined) settings.landing.ctaText = str(body.ctaText).slice(0, 40) || "View Menu";
+
+    if (body.backgroundImageUrl !== undefined) {
+      const url = safeImageUrl(body.backgroundImageUrl);
+      settings.landing.backgroundImage = url ? { mediaId: null, url, thumbnailUrl: url, alt: "" } : {};
+    }
+
+    if (body.overlayOpacity !== undefined) {
+      const pct = Number(body.overlayOpacity);
+      if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+        throw createHttpError(400, "Overlay must be between 0 and 100.");
+      }
+      settings.landing.overlayOpacity = Math.round(pct);
+    }
+
+    for (const key of ["showHours", "showContact", "showOffers"]) {
+      if (typeof body[key] === "boolean") settings.landing[key] = body[key];
+    }
+
+    await settings.save({ validateModifiedOnly: true });
+
+    const after = landingResponse(settings).landing;
+    await csdAudit({
+      req, staff: req.csdStaff,
+      action: "CSD_WEBSITE_LANDING_UPDATED",
+      resource: "WebsiteSettings", entityType: "WebsiteSettings", entityId: settings._id,
+      storeId: str(req.params.storeId),
+      description: `Landing page updated (${after.template})`,
+      previousValue: before,
+      newValue: after,
+    });
+
+    res.status(200).json({
+      success: true,
+      data: { ...landingResponse(settings), canEdit: true },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
 module.exports = {
   listMenus, toggleMenuPublish, updateDish,
   listTables, updateTable,
   listUsers, updateUser,
-  ALLOWED_USER_ROLES, TABLE_STATUSES,
+  getLanding, updateLanding,
+  ALLOWED_USER_ROLES, TABLE_STATUSES, LANDING_TEMPLATES,
 };

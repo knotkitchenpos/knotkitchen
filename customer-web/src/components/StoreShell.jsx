@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { Link } from "react-router-dom";
 import ProductCard from "./ProductCard";
 import { dispatchLabel } from "../lib/dispatch";
 import ProductModal from "./ProductModal";
@@ -15,6 +16,7 @@ import OrderConfirmation from "./OrderConfirmation";
  *     while the menu is still fetching.
  */
 export default function StoreShell({
+  homePath,
   bootstrap,
   store,
   loadingFull,
@@ -48,6 +50,7 @@ export default function StoreShell({
   return (
     <div className="min-h-screen bg-slate-50">
       <Header
+        homePath={homePath}
         title={branding.siteTitle || b.name || "Restaurant"}
         logo={branding.logo}
         cartCount={cart.count}
@@ -148,16 +151,19 @@ export default function StoreShell({
   );
 }
 
-function Header({ title, logo, cartCount, onOpenCart }) {
+function Header({ homePath, title, logo, cartCount, onOpenCart }) {
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200">
       <div className="max-w-5xl mx-auto flex items-center justify-between px-4 py-3">
-        <div className="flex items-center gap-3 min-w-0">
+        {/* The masthead is the way back to the landing page — the convention
+            everywhere else on the web, and the only route back now that the
+            menu is no longer the front page. */}
+        <Link to={homePath || "/"} className="flex items-center gap-3 min-w-0">
           {logo ? (
             <img src={logo} alt="" className="h-9 w-9 rounded-full object-cover" />
           ) : null}
           <span className="font-semibold text-slate-900 truncate">{title}</span>
-        </div>
+        </Link>
         <button
           type="button"
           onClick={onOpenCart}

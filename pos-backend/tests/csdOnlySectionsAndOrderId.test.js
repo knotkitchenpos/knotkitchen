@@ -9,7 +9,14 @@ const SRC = (...p) => fs.readFileSync(path.join(__dirname, "..", ...p), "utf8");
 const FE = (...p) => fs.readFileSync(path.join(__dirname, "..", "..", "pos-frontend", ...p), "utf8");
 
 /**
- * Manage Website and the Activity Log belong to CSD, and an order has one id.
+ * The Activity Log belongs to CSD, Manage Website belongs to the restaurant,
+ * and an order has one id.
+ *
+ * Manage Website was CSD-only for a while: the tile was pulled from POS
+ * Settings and every storefront field was refused for a non-CSD caller. That
+ * is reversed -- an owner configures their own website -- so the tests below
+ * assert the way BACK is open, and that reopening it did not also reopen the
+ * audit trail, which is a different question and still support's.
  */
 
 // ---------------------------------------------------------------------------
@@ -43,30 +50,42 @@ test("REGRESSION: the audit endpoint is locked, not merely hidden", () => {
   );
 });
 
-test("REGRESSION: locking Manage Website did not take Order Toggles with it", () => {
-  // POS Settings writes `ordering`, `couponsConfig` and `freeItemConfig`
-  // through the SAME endpoint. A route-level lock would have broken Order
-  // Toggles and Rules & Charges, so the boundary is per field.
+test("no storefront field is refused for being a support-only section", () => {
+  // The tenant boundary is gone: there is no list of fields a restaurant may
+  // not write, and nothing in this controller turns a POS caller away for not
+  // being support.
   const ctrl = SRC("controllers", "websiteSettingsController.js");
-  for (const open of ["ordering", "couponsConfig", "freeItemConfig"]) {
-    assert.ok(
-      !new RegExp(`"${open}",`).test(ctrl.slice(ctrl.indexOf("const CSD_ONLY_FIELDS"), ctrl.indexOf("];"))),
-      `${open} must stay writable from the POS`,
-    );
-  }
-  for (const locked of ["branding", "theme", "paymentGateways", "customDomain", "banners"]) {
-    assert.match(
-      ctrl.slice(ctrl.indexOf("const CSD_ONLY_FIELDS"), ctrl.indexOf("];")),
-      new RegExp(`"${locked}",`),
-      `${locked} belongs to Manage Website`,
-    );
-  }
+  assert.ok(
+    !/CSD_ONLY_FIELDS/.test(ctrl),
+    "the CSD-only field list is back -- Manage Website belongs to the restaurant",
+  );
+  assert.ok(
+    !/handled by KnotKitchen support/.test(ctrl),
+    "a storefront write is refused with the support message again",
+  );
 
-  // And the route itself stays open, or the rest of Settings dies with it.
+  // The route stays open, or the rest of Settings dies with it: Order Toggles
+  // and Rules & Charges write `ordering`, `couponsConfig` and `freeItemConfig`
+  // through this same endpoint.
   assert.match(
     SRC("routes", "websiteRoute.js"),
     /\.put\(isVerifiedUser, requireProtectedAction, updateWebsiteSettings\);/,
   );
+  assert.ok(
+    !/csdOnly/.test(SRC("routes", "websiteRoute.js")),
+    "no route under /api/website may be support-only",
+  );
+});
+
+test("the payment gateway is still Owner-only inside the restaurant", () => {
+  // Opening Manage Website to the restaurant is not the same as opening the
+  // takings to every waiter. This rule is about privilege INSIDE the tenant
+  // and survives the boundary being removed.
+  assert.match(
+    SRC("controllers", "websiteSettingsController.js"),
+    /Only the Store Owner can configure payment gateways\./,
+  );
+  assert.match(SRC("routes", "websiteRoute.js"), /requireOwnerOnly, validateGatewayCredentials/);
 });
 
 test("the storefront read stays open to the till", () => {
@@ -75,11 +94,18 @@ test("the storefront read stays open to the till", () => {
   assert.match(SRC("routes", "websiteRoute.js"), /\.get\(isVerifiedUser, getWebsiteSettings\)/);
 });
 
-test("neither section is offered in the POS any more", () => {
+test("Manage Website is reachable from the POS, the Activity Log is not", () => {
   const settings = FE("src", "pages", "Settings.jsx");
-  assert.ok(!/title: "10\. Manage Website"/.test(settings));
-  assert.ok(!/title: "11\. Activity Log & Audit Trail"/.test(settings));
-  assert.match(FE("src", "App.jsx"), /path="\/website" element=\{<Navigate to="\/settings" replace \/>\}/);
+  assert.match(settings, /title: "11\. Manage Website"/, "the tile is missing from POS Settings");
+  assert.ok(
+    !/title: "11\. Activity Log & Audit Trail"/.test(settings),
+    "the Activity Log is support's, and stays out of the POS",
+  );
+
+  // A tile that navigates nowhere is the failure this catches: the route used
+  // to redirect straight back to /settings.
+  const app = FE("src", "App.jsx");
+  assert.match(app, /path="\/website" element=\{<ProtectedRoutes><WebsiteSettings \/><\/ProtectedRoutes>\}/);
 });
 
 // ---------------------------------------------------------------------------

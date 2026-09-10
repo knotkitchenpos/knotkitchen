@@ -93,6 +93,12 @@ export const restaurants = {
   updateTable: (storeId, tableId, payload) =>
     api.patch(`/restaurants/${storeId}/tables/${tableId}`, payload).then((r) => r.data.data),
 
+  // The customer website's landing page. Manage Website is CSD-owned, so
+  // this is the only editor for it -- the POS route refuses the field.
+  landing: (storeId) => api.get(`/restaurants/${storeId}/landing`).then((r) => r.data.data),
+  updateLanding: (storeId, payload) =>
+    api.patch(`/restaurants/${storeId}/landing`, payload).then((r) => r.data.data),
+
   users: (storeId) => api.get(`/restaurants/${storeId}/users`).then((r) => r.data.data),
   updateUser: (storeId, userId, payload) =>
     api.patch(`/restaurants/${storeId}/users/${userId}`, payload).then((r) => r.data.data),

@@ -17,6 +17,7 @@ const {
   WEBSITE_VISIBLE_QUERY,
 } = require("../services/menuCache");
 const { getTheme } = require("../services/themeRegistry");
+const { buildLandingPayload } = require("../services/landingPayload");
 const { emitOrderCreated } = require("../services/socket");
 const { generateOrderNumberSafe } = require("../services/orderNumberService");
 
@@ -207,6 +208,7 @@ const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezon
       nextOpen: openState.nextOpen,
       acceptingOrders: openState.isOpen || Boolean(settings.ordering?.acceptPreOrders),
     },
+    landing: buildLandingPayload(settings, restaurant, null),
     branding: {
       siteTitle: settings.branding?.siteTitle || settings.displayName || "",
       siteDescription: settings.branding?.siteDescription || "",

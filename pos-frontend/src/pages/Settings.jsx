@@ -1810,10 +1810,11 @@ const MENU_ITEMS = [
   // can clear a lock, so it must never be gated. See middlewares/accountLock.js.
   { id: "billing", title: "Billing & Subscription", desc: "Business Balance, plan, invoices and transactions.", Icon: I.fileText, path: "/settings/billing" },
 
-  // Manage Website and Activity Log are CSD-only. Removed from the POS for
-  // Owner AND Staff alike -- this is a tenant boundary, not a privilege
-  // level inside the restaurant. The endpoints are locked server-side too
-  // (middlewares/csdOnly.js); hiding a tile is not access control.
+  { id: "website", title: "11. Manage Website", desc: "Landing page, branding, colours, domain and payments.", Icon: I.globe, path: "/website" },
+
+  // Activity Log stays CSD-only: it is the audit trail of who did what,
+  // including support's own actions, and is locked server-side in
+  // middlewares/csdOnly.js rather than merely hidden here.
   { id: "support", title: "12. Help & Support", desc: "Get help or report an issue.", Icon: I.headset, path: "/support" },
   { id: "logout", title: "13. Logout", desc: "Securely sign out of the POS system.", Icon: I.logout, action: "logout" },
 ];

@@ -1,10 +1,13 @@
 import React, { useCallback, useMemo, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import { useStorefront } from "../hooks/useStorefront";
 import { useDocumentMeta, useThemeVars } from "../hooks/useThemeVars";
 import { useCart } from "../hooks/useCart";
 import StoreShell from "../components/StoreShell";
 import LoadingSkeleton from "../components/LoadingSkeleton";
 import ErrorPage from "../components/ErrorPage";
+import LandingTemplate from "../components/LandingTemplates";
+import { landingRoute } from "../lib/landingRoute";
 import { placeOrder } from "../lib/api";
 
 /**
@@ -17,10 +20,16 @@ import { placeOrder } from "../lib/api";
  *
  * The page is intentionally thin — it composes hooks and hands the fully
  * hydrated data to <StoreShell />, which handles rendering and interaction.
+ *
+ * It also owns the landing/menu split. Both views live in this ONE component
+ * on purpose: the landing page and the menu share the storefront payload and
+ * the cart, and routing them as two <Route> elements would remount the page on
+ * every click, refetch the menu and empty the basket.
  */
 export default function StorePage({ slug, host }) {
   const identity = useMemo(() => ({ slug, host }), [slug, host]);
   const { bootstrap, store, error, loading } = useStorefront(identity);
+  const { isMenu, homePath, menuPath } = landingRoute(useLocation().pathname);
 
   // Bootstrap arrives first, so apply meta/theme from whichever is available.
   useDocumentMeta(store || bootstrap);
@@ -74,8 +83,17 @@ export default function StorePage({ slug, host }) {
     );
   }
 
+  // The landing page renders from the bootstrap payload, which arrives well
+  // before the menu — so the front door paints immediately and fills in the
+  // hours/contact/offers blocks when the full storefront lands.
+  const landing = store?.landing || bootstrap?.landing;
+  if (!isMenu && landing) {
+    return <LandingTemplate landing={landing} store={store} menuPath={menuPath} />;
+  }
+
   return (
     <StoreShell
+      homePath={homePath}
       bootstrap={bootstrap}
       store={store}
       loadingFull={!store}

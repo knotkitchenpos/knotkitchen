@@ -26,6 +26,22 @@ const NAV_STYLES = ["pills", "tabs", "sidebar"];
 const IMAGE_POSITIONS = ["top", "left", "right"];
 const BUTTON_STYLES = ["rounded", "pill", "square"];
 
+/**
+ * Landing page templates.
+ *
+ * The customer website opens on a landing page and the menu lives one click
+ * behind it, so this list is the whole visual identity of a restaurant's front
+ * door. Each key maps to one layout in customer-web's LandingTemplates.jsx;
+ * adding a key here without adding the layout there renders the fallback.
+ */
+const LANDING_TEMPLATES = [
+  "hero-classic",
+  "split-showcase",
+  "minimal-center",
+  "photo-fullbleed",
+  "card-stack",
+];
+
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
 const hexColor = (defaultValue) => ({
   type: String,
@@ -83,6 +99,32 @@ const bannerSchema = new mongoose.Schema({
   isActive: { type: Boolean, default: true },
   sortOrder: { type: Number, default: 0 },
 });
+
+/**
+ * The landing page a customer sees before the menu.
+ *
+ * Every text field defaults to empty on purpose: empty means "fall back to
+ * branding", so a restaurant that never opens this editor still gets a landing
+ * page built from the site title, tagline and cover image it already has.
+ * Storing a copy of those strings here would give us two sources for the same
+ * headline and they would drift apart the first time one of them was edited.
+ */
+const landingSchema = new mongoose.Schema(
+  {
+    template: { type: String, enum: LANDING_TEMPLATES, default: "hero-classic" },
+    headline: { type: String, default: "", maxlength: 120 },
+    subheadline: { type: String, default: "", maxlength: 300 },
+    ctaText: { type: String, default: "View Menu", maxlength: 40 },
+    backgroundImage: { type: mediaRefSchema, default: () => ({}) },
+    // How dark the scrim over the background photo is. A bright food photo
+    // needs more of it than a dim one for the headline to stay readable.
+    overlayOpacity: { type: Number, min: 0, max: 100, default: 45 },
+    showHours: { type: Boolean, default: true },
+    showContact: { type: Boolean, default: true },
+    showOffers: { type: Boolean, default: true },
+  },
+  { _id: false }
+);
 
 const sectionTitlesSchema = new mongoose.Schema(
   {
@@ -353,6 +395,7 @@ const websiteSettingsSchema = new mongoose.Schema(
     branding: { type: brandingSchema, default: () => ({}) },
     sectionTitles: { type: sectionTitlesSchema, default: () => ({}) },
     banners: { type: [bannerSchema], default: [] },
+    landing: { type: landingSchema, default: () => ({}) },
     theme: { type: themeSettingsSchema, default: () => ({}) },
     ordering: { type: orderingSchema, default: () => ({}) },
     contact: { type: contactSchema, default: () => ({}) },
@@ -400,6 +443,7 @@ websiteSettingsSchema.index({ restaurantId: 1, isDeleted: 1 });
 
 module.exports = mongoose.model("WebsiteSettings", websiteSettingsSchema);
 module.exports.SAFE_FONTS = SAFE_FONTS;
+module.exports.LANDING_TEMPLATES = LANDING_TEMPLATES;
 module.exports.HERO_STYLES = HERO_STYLES;
 module.exports.CARD_STYLES = CARD_STYLES;
 module.exports.HEADER_STYLES = HEADER_STYLES;

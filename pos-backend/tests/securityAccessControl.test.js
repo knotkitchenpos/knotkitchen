@@ -176,9 +176,7 @@ test("Backend Enforcement: Staff cannot modify payment gateways in website setti
 
   assert.ok(errorCaught);
   assert.equal(errorCaught.status, 403);
-  // Manage Website is CSD-only now, so staff are stopped at the tenant
-  // boundary before the owner-only gateway rule. Still 403, same point.
-  assert.match(errorCaught.message, /KnotKitchen support/);
+  assert.match(errorCaught.message, /Only the Store Owner can configure payment gateways/);
 });
 
 test("Backend Enforcement: Staff cannot modify owner info in store properties", async () => {

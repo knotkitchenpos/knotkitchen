@@ -11,6 +11,7 @@ const { slugify, isValidSlug, RESERVED_SLUGS } = require("../services/slugServic
 const {
   SAFE_FONTS, HERO_STYLES, CARD_STYLES, HEADER_STYLES,
   FOOTER_STYLES, NAV_STYLES, IMAGE_POSITIONS, BUTTON_STYLES,
+  LANDING_TEMPLATES,
 } = require("../models/websiteSettingsModel");
 const { logActivity } = require("../services/auditService");
 
@@ -133,6 +134,7 @@ const getWebsiteSettings = async (req, res, next) => {
           categoryNavStyles: NAV_STYLES,
           imagePositions: IMAGE_POSITIONS,
           buttonStyles: BUTTON_STYLES,
+          landingTemplates: LANDING_TEMPLATES,
         },
       },
     });
@@ -153,35 +155,27 @@ const getWebsiteSettings = async (req, res, next) => {
  * Rejected rather than silently dropped: an operator who cannot change a
  * setting must be told, not shown a save that did nothing.
  */
-const CSD_ONLY_FIELDS = [
-  "enabled",
-  "disabledMessage",
-  "displayName",
-  "customDomain",
-  "slug",
-  "sectionTitles",
-  "banners",
-  "branding",
-  "theme",
-  "paymentGateways",
-  "offers",
-];
-
+/**
+ * Manage Website belongs to the restaurant.
+ *
+ * For a period every storefront field here -- branding, theme, banners, the
+ * web address, the payment gateway -- was refused unless the caller was CSD
+ * support staff, and the POS had no screen for it at all. That is reversed:
+ * an owner configures their own website, and support helps rather than holds
+ * the only key.
+ *
+ * The per-field rules that remain are the ones that are about competence and
+ * safety rather than about who owns the section:
+ *   - payment gateway credentials are Owner-only (see the block below), so a
+ *     waiter cannot repoint the restaurant's takings,
+ *   - a slug or custom domain already claimed by another store is refused,
+ *     because two restaurants cannot share one public address.
+ */
 const updateWebsiteSettings = async (req, res, next) => {
   try {
     const { tenant, settings } = await loadOwnSettings(req);
     const prevSnapshot = sanitizeSettings(settings);
     const body = req.body || {};
-
-    if (!req.csdStaff) {
-      const blocked = CSD_ONLY_FIELDS.filter((f) => body[f] !== undefined);
-      if (blocked.length) {
-        throw createHttpError(
-          403,
-          "Manage Website is handled by KnotKitchen support. Please contact support to change your storefront.",
-        );
-      }
-    }
 
     // ---- Master switch & display ----
     if (typeof body.enabled === "boolean") settings.enabled = body.enabled;
@@ -270,6 +264,44 @@ const updateWebsiteSettings = async (req, res, next) => {
           const ref = await resolveMediaRef(b[key], tenant);
           if (ref !== undefined) settings.branding[key] = ref;
         }
+      }
+    }
+
+    // ---- Landing page ----
+    // The front door: what a customer sees before the menu. Blank text fields
+    // fall back to branding at render time (services/landingPayload.js), so
+    // "" is a meaningful value here and is stored as sent.
+    if (body.landing) {
+      const l = body.landing;
+      // Stores provisioned before the landing page existed have no sub-document.
+      if (!settings.landing) settings.landing = {};
+
+      if (l.template !== undefined) {
+        if (!LANDING_TEMPLATES.includes(String(l.template))) {
+          return next(createHttpError(400, "That landing page template is not available."));
+        }
+        settings.landing.template = String(l.template);
+      }
+
+      assign(settings.landing, "headline", clampText(l.headline, 120));
+      assign(settings.landing, "subheadline", clampText(l.subheadline, 300));
+      assign(settings.landing, "ctaText", clampText(l.ctaText, 40));
+
+      if (l.backgroundImage !== undefined) {
+        const ref = await resolveMediaRef(l.backgroundImage, tenant);
+        if (ref !== undefined) settings.landing.backgroundImage = ref;
+      }
+
+      if (l.overlayOpacity !== undefined) {
+        const pct = Number(l.overlayOpacity);
+        if (!Number.isFinite(pct) || pct < 0 || pct > 100) {
+          return next(createHttpError(400, "Photo darkening must be between 0 and 100."));
+        }
+        settings.landing.overlayOpacity = Math.round(pct);
+      }
+
+      for (const key of ["showHours", "showContact", "showOffers"]) {
+        if (typeof l[key] === "boolean") settings.landing[key] = l[key];
       }
     }
 
@@ -467,7 +499,7 @@ const updateWebsiteSettings = async (req, res, next) => {
     const domainChanged = body.customDomain !== undefined && body.customDomain !== prevSnapshot.customDomain;
     const activeGatewayChanged = body.paymentGateways?.activeGateway && body.paymentGateways.activeGateway !== prevSnapshot.paymentGateways?.activeGateway;
     const gatewayUpdated = Boolean(body.paymentGateways?.cashfree || body.paymentGateways?.phonepe);
-    const homepageChanged = Boolean(body.banners || body.sectionTitles || body.branding);
+    const homepageChanged = Boolean(body.banners || body.sectionTitles || body.branding || body.landing);
 
     settings.version += 1;
     settings.publishedAt = new Date();

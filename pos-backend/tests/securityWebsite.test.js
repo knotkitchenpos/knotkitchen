@@ -121,10 +121,7 @@ test("Manage Website Security: Staff cannot configure payment gateway credential
 
   assert.ok(errorCaught);
   assert.equal(errorCaught.status, 403);
-  // Manage Website is now CSD-only, so a STAFF attempt is refused one step
-  // earlier than the owner-only gateway rule -- at the tenant boundary. Still
-  // a 403, and still the point of the test: staff cannot do this.
-  assert.match(errorCaught.message, /KnotKitchen support/);
+  assert.match(errorCaught.message, /Only the Store Owner can configure payment gateways/);
 });
 
 test("Manage Website Activity Log: Domain change logs Domain Changed event", async () => {

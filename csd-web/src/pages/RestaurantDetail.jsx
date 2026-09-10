@@ -9,6 +9,7 @@ import StatusBadge from "../components/StatusBadge";
 import { useAuth } from "../context/AuthContext";
 import ChargesDialog from "../components/ChargesDialog";
 import CustomersDialog from "../components/CustomersDialog";
+import LandingPageDialog from "../components/LandingPageDialog";
 import StoreDocuments from "../components/StoreDocuments";
 import { UsersPanel } from "../components/CatalogPanels";
 
@@ -212,7 +213,7 @@ const RestaurantDetail = () => {
   const [customerCount, setCustomerCount] = useState(null);
   const [staff, setStaff] = useState([]);
   const [activity, setActivity] = useState([]);
-  const [dialog, setDialog] = useState(null); // 'charges' | 'customers' | 'gbp'
+  const [dialog, setDialog] = useState(null); // 'charges' | 'customers' | 'gbp' | 'landing'
   const [openingPos, setOpeningPos] = useState(false);
   const [gbpUrl, setGbpUrl] = useState("");
   const [gbpErr, setGbpErr] = useState("");
@@ -411,6 +412,14 @@ const RestaurantDetail = () => {
                   Opens in a new tab, signed in as the store's Owner. Recorded against your name.
                 </span>
               </span>
+            </button>
+
+            {/* Open to staff as well as admin -- the dialog is read-only
+                unless the server says otherwise, and support needs to be able
+                to see what a customer is looking at while on the phone. */}
+            <button type="button" onClick={() => setDialog("landing")}
+              className="w-full text-right text-xs font-semibold text-brand-600 hover:text-brand-700">
+              Landing page &amp; template
             </button>
 
             {isAdmin && (
@@ -681,6 +690,9 @@ const RestaurantDetail = () => {
       )}
       {dialog === "customers" && (
         <CustomersDialog storeId={storeId} onClose={() => setDialog(null)} />
+      )}
+      {dialog === "landing" && (
+        <LandingPageDialog storeId={storeId} onClose={() => setDialog(null)} />
       )}
       {dialog === "gbp" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">

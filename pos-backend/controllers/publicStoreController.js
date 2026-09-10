@@ -4,6 +4,7 @@ const Store = require("../models/storeModel");
 const Restaurant = require("../models/restaurantModel");
 const Menu = require("../models/menuModel");
 const { resolveStorefront, REASON_MESSAGES, findSettingsByHost } = require("../services/storefrontResolver");
+const { buildLandingPayload } = require("../services/landingPayload");
 
 const getPublicStoreInfo = async (req, res, next) => {
   try {
@@ -142,6 +143,10 @@ const getPublicStoreByDomain = async (req, res, next) => {
         siteTitle: settings.branding?.siteTitle || "",
         siteDescription: settings.branding?.siteDescription || "",
         tagline: settings.branding?.tagline || "",
+
+        // The landing page is what this response paints, so it ships here
+        // rather than waiting for the full storefront payload.
+        landing: buildLandingPayload(settings, restaurant, store),
 
         // Assets needed to paint the first frame.
         logoUrl: settings.branding?.logo?.url || "",
