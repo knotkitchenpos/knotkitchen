@@ -39,23 +39,23 @@ const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Frid
 const LANDING_TEMPLATE_INFO = {
   "hero-classic": {
     name: "Heritage",
-    hint: "Dark and warm, serif type, logo carried large over the photo. For an established name.",
+    hint: "Dark, serif, your phone number above everything and your crest in the middle. The menu is set like a printed card, dish and price with dots between — no dish photos. For a name people already know.",
   },
   "split-showcase": {
     name: "Brand Story",
-    hint: "White and roomy, headline held to the left of a wide photo. Reads like a magazine.",
+    hint: "White and roomy. Your story as one large paragraph, then each selling point as a full-width band of picture and words. The menu is a sideways row of a few things you are known for.",
   },
   "minimal-center": {
     name: "Artisan",
-    hint: "Cream and unhurried, framed photo, serif type. For a place with atmosphere.",
+    hint: "Cream and serif, with the photo framed inside the page rather than filling it. The menu runs as a category list down one side and typeset rows down the other. For a place people come to sit in.",
   },
   "photo-fullbleed": {
     name: "Full Screen",
-    hint: "One photograph filling the screen and the biggest type of the five. Needs a strong picture.",
+    hint: "Near black. Your photo fills the whole first screen, the type is the biggest of the five, and the menu is a wall of dish photographs. Needs good pictures.",
   },
   "card-stack": {
     name: "Card",
-    hint: "Light and rounded, a solid panel over the photo. Safest with mixed photography.",
+    hint: "Light and rounded, everything on white panels, the top bar floats as a pill. Reads like a delivery app. The most forgiving if your photos were taken on a phone.",
   },
 };
 
