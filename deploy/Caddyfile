@@ -19,6 +19,8 @@
 #   api.knotkitchen.online        → pos-api       (POS backend API)
 #   admin-api.knotkitchen.online  → admin-api     (super-admin backend API)
 #   agreement.knotkitchen.online  → onboard-portal (partner onboarding)
+#   bill.knotkitchen.online       → pos-api       (customer bill link, /r/<token>)
+#   order.knotkitchen.online      → pos-web       (table QR link, /t/<token>)
 #   <store_id>.knotkitchen.online → customer-web  (per-store storefront)
 
 {
@@ -115,6 +117,67 @@ csd.{$BASE_DOMAIN} {
 
 	encode zstd gzip
 	reverse_proxy csd-web:80 {
+		header_up Host {host}
+	}
+}
+
+# =============================================================================
+# bill.knotkitchen — the customer's bill link
+# =============================================================================
+# A vanity host in front of a route that already existed. The e-bill URL is the
+# whole message when it arrives over WhatsApp or SMS, and
+# `api.<base>/r/o_65f4..._Xy9` announces an API to a diner and spends
+# characters on a path segment that means nothing to them.
+#
+# The rewrite is here rather than in the app so the OLD form keeps working: the
+# `/r/<token>` route on pos-api is untouched, and every bill link already sent
+# is sitting in a customer's message history where it can never be reissued.
+#
+# The pattern is the token shape receiptLink.js mints -- kind, 24-hex id,
+# 22-char signature. Anything else falls through to pos-api unrewritten, so a
+# health check or a typo gets an honest 404 rather than a mangled path.
+bill.{$BASE_DOMAIN} {
+	import security_headers
+
+	encode zstd gzip
+
+	@token path_regexp tok ^/([ois]_[0-9a-fA-F]{24}_[A-Za-z0-9_-]{22})$
+	rewrite @token /r/{re.tok.1}
+
+	reverse_proxy pos-api:8000 {
+		header_up X-Real-IP           {remote_host}
+		header_up X-Forwarded-For     {remote_host}
+		header_up X-Forwarded-Proto   {scheme}
+		header_up X-Forwarded-Host    {host}
+
+		health_uri     /health
+		health_interval 15s
+		health_timeout  5s
+	}
+}
+
+# =============================================================================
+# order.knotkitchen — the link inside a table's QR code
+# =============================================================================
+# Same trick, same reason, and it matters more here: this URL IS the QR code.
+# Once a card is printed and glued to a table it can never be edited, so the
+# shorter the string the fewer modules the code needs and the more reliably a
+# phone reads it across a dim table.
+#
+# `/t/<token>` on pos-web is untouched, so every card already printed under
+# `business.<base>/t/<token>` keeps scanning.
+#
+# The pattern is the 64-hex token tableQRController mints. A single-segment
+# path only, so nothing here can shadow the SPA's /assets/* bundle requests.
+order.{$BASE_DOMAIN} {
+	import security_headers
+
+	encode zstd gzip
+
+	@qr path_regexp qtok ^/([0-9a-f]{64})$
+	rewrite @qr /t/{re.qtok.1}
+
+	reverse_proxy pos-web:80 {
 		header_up Host {host}
 	}
 }

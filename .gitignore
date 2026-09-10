@@ -2,3 +2,6 @@
 # Scratch copies of built bundles pulled down for verification.
 /b.js
 /*.bundle.js
+
+# graphify knowledge graph output (local, rebuildable)
+graphify-out/

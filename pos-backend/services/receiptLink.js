@@ -120,12 +120,32 @@ const publicBaseUrl = () =>
   String(process.env.PUBLIC_API_URL || process.env.API_BASE_URL || "").replace(/\/+$/, "");
 
 /**
+ * The short host a customer actually reads: `https://bill.<base>/<token>`.
+ *
+ * A bill link is sent over WhatsApp and SMS, where the URL is the message --
+ * `api.knotkitchen.com/r/o_65f...` announces an API and spends characters on a
+ * path segment that means nothing to the diner. `bill.` says what the link is.
+ *
+ * The rewrite lives in Caddy, not here: the `bill.` vhost maps `/<token>` back
+ * onto the `/r/<token>` route this service has always served, so the old form
+ * keeps working for every link already sent. Those are in customers' message
+ * histories and can never be reissued.
+ *
+ * Unset falls back to the long form, so a deployment that has not added the
+ * vhost yet still mints links that work.
+ */
+const billBaseUrl = () => String(process.env.RECEIPT_PUBLIC_URL || "").replace(/\/+$/, "");
+
+/**
  * Absolute or nothing. A relative "/r/<token>" is meaningless the moment it
  * leaves the server -- in a WhatsApp message it is not even a link -- and
  * WhatsApp rejects a blank template parameter, so a misconfigured origin has
  * to fail here, where the message says what is wrong.
  */
 const receiptUrl = (token) => {
+  const short = billBaseUrl();
+  if (short) return `${short}/${token}`;
+
   const base = publicBaseUrl();
   if (!base) {
     throw new Error("PUBLIC_API_URL is not set, so the bill link would not be a working URL.");

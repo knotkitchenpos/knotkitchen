@@ -12,7 +12,27 @@ const generateSecureToken = () => crypto.randomBytes(32).toString("hex");
 
 const FRONTEND_URL = () => process.env.FRONTEND_URL || "http://localhost:5173";
 
-const buildQrUrl = (token) => `${FRONTEND_URL()}/t/${token}`;
+/**
+ * The short host printed on the table: `https://order.<base>/<token>`.
+ *
+ * This URL is the QR code. Once a card is printed and glued to a table it can
+ * never be edited, so it is worth it being the shortest, most legible thing it
+ * can be -- `business.knotkitchen.com/t/<64 hex>` spends a third of the code's
+ * capacity announcing the POS to a diner who does not care.
+ *
+ * The rewrite lives in Caddy: the `order.` vhost maps `/<token>` back onto the
+ * `/t/<token>` route the POS SPA already serves, so every card already printed
+ * under the long form keeps scanning.
+ *
+ * Unset falls back to the long form, so a deployment without the vhost still
+ * generates a QR that works.
+ */
+const QR_PUBLIC_URL = () => String(process.env.QR_PUBLIC_URL || "").replace(/\/+$/, "");
+
+const buildQrUrl = (token) => {
+  const short = QR_PUBLIC_URL();
+  return short ? `${short}/${token}` : `${FRONTEND_URL()}/t/${token}`;
+};
 
 /**
  * Resolve the restaurant/outlet scope from the authenticated user.

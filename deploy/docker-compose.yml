@@ -85,7 +85,7 @@ services:
       # onboard.${BASE_DOMAIN} was removed along with the admin-web/admin-api
       # services (2026-08-30) — the CSD panel took over that surface.
       FRONTEND_URLS: >-
-        https://${BASE_DOMAIN},https://csd.${BASE_DOMAIN},https://business.${BASE_DOMAIN}
+        https://${BASE_DOMAIN},https://csd.${BASE_DOMAIN},https://business.${BASE_DOMAIN},https://order.${BASE_DOMAIN}
       CORS_WILDCARD_DOMAINS: ${BASE_DOMAIN}
       BASE_DOMAIN: ${BASE_DOMAIN}
       COOKIE_SAMESITE: none
@@ -96,6 +96,16 @@ services:
       STOREFRONT_ROOT_DOMAIN: ${BASE_DOMAIN}
       FRONTEND_URL: https://business.${BASE_DOMAIN}
       BACKEND_PUBLIC_URL: https://api.${BASE_DOMAIN}
+
+      # === Customer-facing short links ===
+      # The two URLs a diner actually reads. Both are vanity hosts in front of
+      # routes that already existed, so links minted under the long form keep
+      # working -- which matters because a printed QR card and a WhatsApp bill
+      # link can never be reissued.
+      #   bill.${BASE_DOMAIN}/<token>   ->  pos-api  /r/<token>
+      #   order.${BASE_DOMAIN}/<token>  ->  pos-web  /t/<token>
+      RECEIPT_PUBLIC_URL: ${RECEIPT_PUBLIC_URL:-https://bill.${BASE_DOMAIN}}
+      QR_PUBLIC_URL: ${QR_PUBLIC_URL:-https://order.${BASE_DOMAIN}}
 
       # === Media (object storage) ===
       # Default = local (files stored in the backend_uploads Docker volume and
