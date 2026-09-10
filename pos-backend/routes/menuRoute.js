@@ -39,7 +39,6 @@ const {
   getMenuVersions,
   rollbackMenu,
   publishSystemCache,
-  publishWebsiteCache,
 } = require("../controllers/menuController");
 
 const {
@@ -93,7 +92,6 @@ router.route("/import").post(isVerifiedUser, requireProtectedAction, importMenu)
 // Module 6 §4 — Manage Cache. Declared alongside the other top-level
 // action routes so the "publish" segment is never treated as a menuId.
 router.route("/publish/system").post(isVerifiedUser, requireProtectedAction, publishSystemCache);
-router.route("/publish/website").post(isVerifiedUser, requireProtectedAction, publishWebsiteCache);
 
 // Drag-and-drop category reorder. Kept alongside the other top-level
 // action routes so the "reorder-categories" segment is never read as a

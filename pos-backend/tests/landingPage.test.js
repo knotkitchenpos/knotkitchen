@@ -123,10 +123,12 @@ test("every template the database allows exists in the customer website bundle",
     "utf8"
   );
 
-  const block = source.match(/const TEMPLATES = \{([\s\S]*?)\n\};/);
-  assert.ok(block, "could not find the TEMPLATES map in LandingTemplates.jsx");
+  const block = source.match(/const THEMES = \{([\s\S]*?)\n\};/);
+  assert.ok(block, "could not find the THEMES map in LandingTemplates.jsx");
 
-  const shipped = [...block[1].matchAll(/"([a-z0-9-]+)":/g)].map((m) => m[1]);
+  // Only the top-level keys: each theme body is full of quoted class strings,
+  // and a looser scan would count those as templates.
+  const shipped = [...block[1].matchAll(/^  "([a-z0-9-]+)": \{$/gm)].map((m) => m[1]);
   assert.ok(shipped.length >= 5, `expected at least five templates, found ${shipped.length}`);
 
   assert.deepEqual(

@@ -11,9 +11,16 @@
  * opened the landing editor has an empty `landing` sub-document, and still has
  * to get a real landing page out of the branding it already filled in.
  */
+
+const img = (ref) =>
+  ref && ref.url
+    ? { url: ref.url, thumbnail: ref.thumbnailUrl || ref.url, alt: ref.alt || "" }
+    : null;
+
 const buildLandingPayload = (settings = {}, restaurant = null, store = null) => {
   const landing = settings.landing || {};
   const branding = settings.branding || {};
+  const titles = settings.sectionTitles || {};
   const name = settings.displayName || store?.storeName || restaurant?.name || "";
 
   return {
@@ -27,6 +34,31 @@ const buildLandingPayload = (settings = {}, restaurant = null, store = null) => 
     // 0 is a legitimate choice (no scrim at all), so a plain `||` would quietly
     // turn it back into the default.
     overlayOpacity: Number.isFinite(landing.overlayOpacity) ? landing.overlayOpacity : 45,
+
+    // Section headings come from sectionTitles, which the storefront already
+    // owns, rather than a second copy of the same strings on the landing page.
+    titles: {
+      menu: titles.menuTitle || "Our Menu",
+      about: titles.aboutTitle || "About Us",
+      offers: titles.offersTitle || "Special Offers",
+      contact: titles.contactTitle || "Contact Us",
+    },
+
+    about: {
+      text: landing.aboutText || branding.aboutText || "",
+      image: img(landing.aboutImage) || img(branding.coverImage),
+    },
+
+    features: (landing.features || [])
+      .filter((f) => f && (f.title || f.text))
+      .slice(0, 3)
+      .map((f) => ({ title: f.title || "", text: f.text || "", image: img(f.image) })),
+
+    gallery: (landing.gallery || []).map(img).filter(Boolean).slice(0, 12),
+
+    showAbout: landing.showAbout !== false,
+    showMenuPreview: landing.showMenuPreview !== false,
+    showGallery: landing.showGallery !== false,
     showHours: landing.showHours !== false,
     showContact: landing.showContact !== false,
     showOffers: landing.showOffers !== false,

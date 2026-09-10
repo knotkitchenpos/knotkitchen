@@ -15,10 +15,11 @@ test("Website Module 3: Public store menu returns categories, products with Veg/
   // A Menu document is a CATEGORY holding items — the previous fixture modelled
   // each menu as a bare dish, which is not a shape production ever returns.
   //
-  // The public menu endpoint serves the WEBSITE PUBLISHED snapshot, so each
-  // category carries one. `items` (the draft) deliberately holds a DIFFERENT
-  // price here, to prove the response comes from the snapshot and not the
-  // draft — that is the whole point of Manage Cache.
+  // The public menu endpoint serves the LIVE menu, so the fixture carries a
+  // stale websiteSnapshot at a different price. A response quoting 999 would
+  // mean a read path had gone back to the snapshot, and every store that ever
+  // pressed the old Publish Website button would start serving whatever it
+  // held on that day.
   const paneer = {
     _id: "d1",
     name: "Paneer Tikka",
@@ -44,9 +45,12 @@ test("Website Module 3: Public store menu returns categories, products with Veg/
       name: "Starters",
       published: true,
       isDeleted: false,
-      items: [{ ...paneer, price: 999 }, { ...chicken, price: 999 }],
+      items: [paneer, chicken],
       hasPublishedToWebsite: true,
-      websiteSnapshot: { name: "Starters", items: [paneer, chicken] },
+      websiteSnapshot: {
+        name: "Starters",
+        items: [{ ...paneer, price: 999 }, { ...chicken, price: 999 }],
+      },
     },
   ];
 
@@ -112,7 +116,7 @@ test("Website Module 3: Public store menu returns categories, products with Veg/
   assert.equal(vegItem.name, "Paneer Tikka");
   assert.equal(nonVegItem.name, "Chicken Tikka");
 
-  // Published prices, not the 999 sitting unpublished in the draft.
+  // Live prices, not the 999 left behind in the retired snapshot.
   assert.equal(vegItem.price, 280);
   assert.equal(nonVegItem.price, 350);
 });

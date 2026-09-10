@@ -1490,21 +1490,6 @@ const publishAllMenusForUser = async (user, target) => {
       menu.lastPublishedToSystemAt = now;
       menu.systemVersion = (menu.systemVersion || 0) + 1;
       menu.systemSnapshot = { name: menu.name, items: snapshotItems };
-    } else if (target === "website") {
-      menu.hasPublishedToWebsite = true;
-      menu.lastPublishedToWebsiteAt = now;
-      menu.websiteVersion = (menu.websiteVersion || 0) + 1;
-      menu.websiteSnapshot = { name: menu.name, items: snapshotItems };
-      // Publishing does NOT switch Display Status back on.
-      //
-      // This block used to do exactly that, contradicting the comment on this
-      // function ("it does not toggle `published` — that would be a footgun,
-      // the store owner already had it off for a reason"). The effect was that
-      // every attempt to hide a category was undone by the next Publish Web,
-      // while the products inside it stayed switched off by the old cascade.
-      //
-      // Publishing copies the draft to a surface. It is not an opinion about
-      // what the operator wants shown.
     }
 
     try {
@@ -1521,15 +1506,16 @@ const publishAllMenusForUser = async (user, target) => {
 const publishToTarget = async (req, res, target) => {
   const { updated, now } = await publishAllMenusForUser(req.user, target);
 
-  if (target === "website") {
-    await logActivity({
-      req,
-      action: "Website Published",
-      resource: "Website Cache",
-      newValue: `${updated} menu(s) published to customer website`,
-      description: "Website cache published to live customer site",
-    });
-  }
+  // Publishing swaps the price list under everyone mid-service, so it is
+  // recorded. This used to fire only for the website target, which no longer
+  // exists -- pressing Publish left no trace at all for a while.
+  await logActivity({
+    req,
+    action: "Menu Published",
+    resource: "System Cache",
+    newValue: `${updated} menu(s) published to the tills`,
+    description: "Menu published to the POS tills",
+  });
 
   // Tell every other till. Publishing is exactly the case where one device
   // changes what all the others should be showing, and without this they kept
@@ -1558,9 +1544,6 @@ const publishToTarget = async (req, res, target) => {
 
 const publishSystemCache = (req, res, next) =>
   publishToTarget(req, res, "system").catch(next);
-
-const publishWebsiteCache = (req, res, next) =>
-  publishToTarget(req, res, "website").catch(next);
 
 module.exports = {
   // Exposed for tests: takeaway isolation lives or dies on this helper.
@@ -1605,7 +1588,6 @@ module.exports = {
   rollbackMenu,
   publishAllMenusForUser,
   publishSystemCache,
-  publishWebsiteCache,
 };
 
 

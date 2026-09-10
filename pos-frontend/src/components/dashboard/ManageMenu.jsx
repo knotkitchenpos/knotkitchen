@@ -32,7 +32,6 @@ import {
   unpublishMenu,
   publishMenu,
   publishSystemCache,
-  publishWebsiteCache,
   uploadMediaAsset,
   updateDishStatus,
 } from "../../https";
@@ -1242,26 +1241,8 @@ const ManageMenu = () => {
               Publish POS
             </button>
 
-            <button
-              onClick={async () => {
-                try {
-                  const res = await publishWebsiteCache();
-                  enqueueSnackbar(res.data?.message || "Website Cache updated!", { variant: "success" });
-                  // Force any cached storefront/menu queries to refetch so the
-                  // customer website reflects the freshly published snapshot.
-                  await qc.invalidateQueries({ queryKey: ["menus"] });
-                  await qc.invalidateQueries({ queryKey: ["storefront"] });
-                  await qc.invalidateQueries({ queryKey: ["storefront-menu"] });
-                  await qc.invalidateQueries({ queryKey: ["website", "settings"] });
-                } catch (e) {
-                  enqueueSnackbar("Failed to publish website cache", { variant: "error" });
-                }
-              }}
-              className="h-[36px] px-3.5 rounded-xl bg-[#22C55E] text-white text-[12.5px] font-bold hover:bg-[#16A34A]"
-              title="Publish draft menu to live customer website"
-            >
-              Publish Web
-            </button>
+            {/* There is no "Publish Web" button. The customer website reads
+                this menu directly, so anything saved here is already live. */}
 
             {/*
               §UI: the CSV "Download Template" affordance has been removed
@@ -2763,7 +2744,9 @@ const ManageMenu = () => {
             </div>
 
             <div className="text-[12px] text-[#64748B] font-semibold">
-              Total Records: {csvPreviewData.totalRows}. After importing, click <span className="font-extrabold text-[#0F172A]">Update System Cache</span> and <span className="font-extrabold text-[#0F172A]">Update Website Cache</span> to publish changes.
+              Total Records: {csvPreviewData.totalRows}. The import goes live on your customer website
+              straight away. Click <span className="font-extrabold text-[#0F172A]">Publish POS</span> when
+              you want the tills to pick it up too.
             </div>
 
             <div className="flex gap-3 pt-2">

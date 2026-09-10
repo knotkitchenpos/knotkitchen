@@ -12,7 +12,6 @@ import {
   getStoreProperties,
   logout,
   publishSystemCache,
-  publishWebsiteCache,
   updateChannelTimings,
   updateHolidays,
   toggleClosedForToday,
@@ -138,35 +137,15 @@ const ManageCacheView = () => {
     onError: (err) => enqueueSnackbar(err.response?.data?.message || "Failed to publish system cache", { variant: "error" }),
   });
 
-  const webMutation = useMutation({
-    mutationFn: publishWebsiteCache,
-    onSuccess: (res) => enqueueSnackbar(res.data?.message || "Website cache updated", { variant: "success" }),
-    onError: (err) => enqueueSnackbar(err.response?.data?.message || "Failed to publish website cache", { variant: "error" }),
-  });
-
   return (
     <div className="space-y-4">
       <p className="text-[13px] text-[#64748B] leading-relaxed">
-        Menu changes do NOT automatically appear in either published environment. Use the triggers below to manually publish your latest categories, prices, and products.
+        Your customer website always shows the menu exactly as it is in Manage Menu — there is
+        nothing to publish. The tills are different: they keep serving the last published copy so
+        prices cannot change under a cashier mid-service. Publish when you want the tills to catch up.
       </p>
 
       <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
-        <div className="flex items-start justify-between gap-4 border-b border-[#E2E8F0] pb-4">
-          <div>
-            <h4 className="text-[15px] font-extrabold text-[#0F172A]">Update Website Cache</h4>
-            <p className="text-[12.5px] text-[#64748B] mt-0.5">
-              Publishes menu changes to the public customer website.
-            </p>
-          </div>
-          <button
-            onClick={() => executeProtected(() => webMutation.mutate())}
-            disabled={webMutation.isPending}
-            className="h-[40px] px-4 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold shrink-0 hover:bg-[#D64502] disabled:opacity-50"
-          >
-            {webMutation.isPending ? "Publishing…" : "Publish Website"}
-          </button>
-        </div>
-
         <div className="flex items-start justify-between gap-4 pt-1">
           <div>
             <h4 className="text-[15px] font-extrabold text-[#0F172A]">Update System Cache</h4>

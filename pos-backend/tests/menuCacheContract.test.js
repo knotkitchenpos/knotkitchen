@@ -61,47 +61,61 @@ test("a price edit is NOT served to the POS until the system cache is published"
   assert.equal(view.items.find((i) => i._id === "i1").price, 100, "till must still bill the published price");
 });
 
-test("a price edit is NOT served to the website until the website cache is published", () => {
+test("a price edit reaches the website with no publish step", () => {
+  // The website is a shop window: nobody presses Publish before a customer
+  // looks at it. Two live stores had thirty-three categories in the POS and an
+  // empty public menu because of the step this removes.
   const view = menuViewFor(menuWithPendingEdits(), AUDIENCES.WEBSITE);
-  assert.equal(view.items.find((i) => i._id === "i1").price, 100);
+  assert.equal(view.items.find((i) => i._id === "i1").price, 120);
 });
 
-test("a new product is invisible to POS and website until published", () => {
+test("a new product is invisible to the POS until published, and live on the website", () => {
   const menu = menuWithPendingEdits();
-  for (const audience of [AUDIENCES.SYSTEM, AUDIENCES.WEBSITE]) {
-    const view = menuViewFor(menu, audience);
-    assert.equal(
-      view.items.some((i) => i._id === "i2"),
-      false,
-      `unpublished item leaked to ${audience}`
-    );
-  }
+
+  assert.equal(
+    menuViewFor(menu, AUDIENCES.SYSTEM).items.some((i) => i._id === "i2"),
+    false,
+    "unpublished item leaked to the tills"
+  );
+  assert.equal(
+    menuViewFor(menu, AUDIENCES.WEBSITE).items.some((i) => i._id === "i2"),
+    true,
+    "the website serves the live menu"
+  );
 });
 
-test("REGRESSION: a never-published category does not leak to POS or website", () => {
-  // This is the case the old fallback got wrong: no snapshot meant "show the
-  // draft" rather than "show nothing".
+test("REGRESSION: a never-published category does not leak to the POS", () => {
+  // This is the case the old fallback got wrong for the tills: no snapshot
+  // meant "show the draft" rather than "show nothing".
   const menu = brandNewMenu();
   assert.equal(menuViewFor(menu, AUDIENCES.SYSTEM).items.length, 0);
-  assert.equal(menuViewFor(menu, AUDIENCES.WEBSITE).items.length, 0);
-  // …while Manage Menu still shows it, so it can be edited and published.
+  // Manage Menu still shows it, so it can be edited and published…
   assert.equal(menuViewFor(menu, AUDIENCES.DRAFT).items.length, 1);
+  // …and the website already has it, which is the point.
+  assert.equal(menuViewFor(menu, AUDIENCES.WEBSITE).items.length, 1);
 });
 
-test("projectMenus drops categories with nothing published for that audience", () => {
+test("projectMenus drops categories with nothing published for the tills", () => {
   const menus = [menuWithPendingEdits(), brandNewMenu()];
   assert.equal(projectMenus(menus, AUDIENCES.SYSTEM).length, 1);
-  assert.equal(projectMenus(menus, AUDIENCES.WEBSITE).length, 1);
+  assert.equal(projectMenus(menus, AUDIENCES.WEBSITE).length, 2, "the website sees both");
   assert.equal(projectMenus(menus, AUDIENCES.DRAFT).length, 2, "the editor sees everything");
 });
 
-test("the two caches are independent — publishing one does not move the other", () => {
-  // System republished with the new price; website deliberately left behind.
+test("publishing the tills does not change what the website already serves", () => {
   const menu = menuWithPendingEdits();
   menu.systemSnapshot = { name: "Drinks", items: [{ _id: "i1", name: "Cola", price: 120 }] };
 
   assert.equal(menuViewFor(menu, AUDIENCES.SYSTEM).items[0].price, 120);
-  assert.equal(menuViewFor(menu, AUDIENCES.WEBSITE).items[0].price, 100);
+  assert.equal(menuViewFor(menu, AUDIENCES.WEBSITE).items[0].price, 120);
+});
+
+test("a stale websiteSnapshot is ignored -- nothing reads it any more", () => {
+  // The column still holds whatever was last pushed to it. If a read path ever
+  // reaches for it again, the website starts serving old prices in silence.
+  const menu = menuWithPendingEdits();
+  menu.websiteSnapshot = { name: "Drinks", items: [{ _id: "i1", name: "Cola", price: 5 }] };
+  assert.equal(menuViewFor(menu, AUDIENCES.WEBSITE).items[0].price, 120);
 });
 
 test("projected items are plain objects whichever audience asked", () => {
@@ -135,10 +149,20 @@ test("hasUnpublishedChanges reports work waiting to be published", () => {
   assert.equal(hasUnpublishedChanges(brandNewMenu(), AUDIENCES.SYSTEM), true);
 });
 
-test("a menu missing snapshot fields entirely is treated as unpublished, not as a draft", () => {
+test("a menu missing snapshot fields entirely is unpublished to the tills, live on the website", () => {
   const legacy = { _id: "m3", name: "Legacy", items: [{ _id: "x", name: "Old", price: 10 }] };
   assert.equal(menuViewFor(legacy, AUDIENCES.SYSTEM).items.length, 0);
-  assert.equal(menuViewFor(legacy, AUDIENCES.WEBSITE).items.length, 0);
+  assert.equal(menuViewFor(legacy, AUDIENCES.WEBSITE).items.length, 1);
+});
+
+test("the website is never reported as having changes waiting to be published", () => {
+  const pending = {
+    hasPublishedToWebsite: true,
+    lastPublishedToWebsiteAt: new Date("2026-01-01T10:00:00Z"),
+    updatedAt: new Date("2026-01-01T11:00:00Z"),
+  };
+  assert.equal(hasUnpublishedChanges(pending, AUDIENCES.WEBSITE), false);
+  assert.equal(hasUnpublishedChanges(brandNewMenu(), AUDIENCES.WEBSITE), false);
 });
 
 // ---------------------------------------------------------------------------

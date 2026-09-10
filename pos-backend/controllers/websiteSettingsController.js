@@ -286,10 +286,37 @@ const updateWebsiteSettings = async (req, res, next) => {
       assign(settings.landing, "headline", clampText(l.headline, 120));
       assign(settings.landing, "subheadline", clampText(l.subheadline, 300));
       assign(settings.landing, "ctaText", clampText(l.ctaText, 40));
+      assign(settings.landing, "aboutText", clampText(l.aboutText, 4000));
 
-      if (l.backgroundImage !== undefined) {
-        const ref = await resolveMediaRef(l.backgroundImage, tenant);
-        if (ref !== undefined) settings.landing.backgroundImage = ref;
+      for (const key of ["backgroundImage", "aboutImage"]) {
+        if (l[key] !== undefined) {
+          const ref = await resolveMediaRef(l[key], tenant);
+          if (ref !== undefined) settings.landing[key] = ref;
+        }
+      }
+
+      // Three at most. The layouts put them in a row, and a fourth would wrap
+      // to a lonely second line on every screen size.
+      if (Array.isArray(l.features)) {
+        const features = [];
+        for (const f of l.features.slice(0, 3)) {
+          const image = await resolveMediaRef(f?.image, tenant);
+          features.push({
+            title: clampText(f?.title, 60) || "",
+            text: clampText(f?.text, 240) || "",
+            ...(image ? { image } : {}),
+          });
+        }
+        settings.landing.features = features;
+      }
+
+      if (Array.isArray(l.gallery)) {
+        const gallery = [];
+        for (const g of l.gallery.slice(0, 12)) {
+          const image = await resolveMediaRef(g, tenant);
+          if (image && image.url) gallery.push(image);
+        }
+        settings.landing.gallery = gallery;
       }
 
       if (l.overlayOpacity !== undefined) {
@@ -300,7 +327,10 @@ const updateWebsiteSettings = async (req, res, next) => {
         settings.landing.overlayOpacity = Math.round(pct);
       }
 
-      for (const key of ["showHours", "showContact", "showOffers"]) {
+      for (const key of [
+        "showAbout", "showMenuPreview", "showGallery",
+        "showHours", "showContact", "showOffers",
+      ]) {
         if (typeof l[key] === "boolean") settings.landing[key] = l[key];
       }
     }

@@ -230,15 +230,12 @@ export const rollbackMenu = ({ menuId, version }) =>
 /**
  * Module 6 §4 — Manage Cache.
  *
- * Bulk-publish every menu in this tenant to the requested target so the
- * new prices / items appear in the POS ("system") or the customer
- * website. Backend increments each menu's version and stamps
- * lastPublishedToSystemAt / lastPublishedToWebsiteAt.
+ * Bulk-publish every menu in this tenant to the tills, so new prices and
+ * items reach the POS. There is no website equivalent: the customer site
+ * reads the live menu (see services/menuCache.js).
  */
 export const publishSystemCache = () =>
   axiosWrapper.post("/api/menu/publish/system");
-export const publishWebsiteCache = () =>
-  axiosWrapper.post("/api/menu/publish/website");
 
 // Module 7 — Store Properties, Protection PIN, POS Settings & Staff
 export const getStoreProperties = () => axiosWrapper.get("/api/restaurant/properties");

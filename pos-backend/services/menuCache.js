@@ -1,28 +1,31 @@
 /**
  * Menu cache — which copy of a menu each audience is allowed to see.
  *
- * A Menu document carries three copies of its catalogue:
+ * A Menu document carries two copies of its catalogue:
  *
  *   menu.items            the DRAFT. Everything Manage Menu writes — CSV
  *                         imports, price edits, images, new categories and
- *                         products — lands here and nowhere else.
+ *                         products — lands here, and it is what the customer
+ *                         website serves.
  *   menu.systemSnapshot   what the POS tills serve. Written only by
  *                         "Update System Cache".
- *   menu.websiteSnapshot  what the customer website serves. Written only by
- *                         "Update Website Cache".
  *
- * Settings → Manage Cache tells the operator, in as many words, that "menu
- * changes do NOT automatically appear in either published environment". That
- * was only half true: every read path fell back to the draft whenever a menu
- * had not been published to that target yet, so a newly created category — or
- * any menu on a store that had never pressed Publish — went straight to the
- * tills and the public site. This module removes the guesswork by making the
- * snapshot the ONLY source for a published audience.
+ * The two surfaces are treated differently on purpose.
  *
- * The deliberate consequence: a menu that has never been published to a target
- * is invisible to that target. That is the point of a publish step. Migration
- * 003 backfills both snapshots for every pre-existing menu so nothing
- * disappears when this ships.
+ * A till is mid-service. Repricing a dish under a cashier who has already
+ * quoted it, or making a category appear halfway through a shift, is how a
+ * customer gets charged something other than what they were told. So the till
+ * serves a frozen copy and the operator decides when to swap it.
+ *
+ * A website is a shop window. Nobody wants yesterday's prices in it, and
+ * nobody thinks to press Publish before a customer looks. It had its own
+ * snapshot for a while and the cost was exactly what you would expect: two
+ * live stores had thirty-three categories between them in the POS and an
+ * empty menu on their public site, because the publish step was never pressed
+ * and nothing anywhere said so. The website reads the draft.
+ *
+ * `websiteSnapshot` and `hasPublishedToWebsite` still exist on the model and
+ * still hold whatever was last pushed. Nothing reads them.
  */
 
 const AUDIENCES = Object.freeze({
@@ -52,17 +55,9 @@ const menuViewFor = (menu, audience) => {
     };
   }
 
-  if (audience === AUDIENCES.WEBSITE) {
-    const snap = menu.websiteSnapshot;
-    const published = Boolean(menu.hasPublishedToWebsite && snap);
-    return {
-      name: (published && snap.name) || menu.name,
-      items: published ? snap.items || [] : [],
-      isPublished: published,
-    };
-  }
-
-  // Draft — Manage Menu, and nothing else.
+  // Website and draft are the same catalogue: what Manage Menu holds right
+  // now. Category visibility still applies on top (see WEBSITE_VISIBLE_QUERY),
+  // so hiding a category still hides it.
   return { name: menu.name, items: menu.items || [], isPublished: true };
 };
 
@@ -108,10 +103,10 @@ const projectMenus = (menus, audience) => {
  */
 const hasUnpublishedChanges = (menu, audience) => {
   if (!menu) return false;
-  const stamp =
-    audience === AUDIENCES.SYSTEM ? menu.lastPublishedToSystemAt : menu.lastPublishedToWebsiteAt;
-  const publishedFlag =
-    audience === AUDIENCES.SYSTEM ? menu.hasPublishedToSystem : menu.hasPublishedToWebsite;
+  // The website serves the draft, so it can never be behind it.
+  if (audience !== AUDIENCES.SYSTEM) return false;
+  const stamp = menu.lastPublishedToSystemAt;
+  const publishedFlag = menu.hasPublishedToSystem;
   if (!publishedFlag || !stamp) return true;
   const changedAt = menu.updatedAt;
   if (!changedAt) return false;

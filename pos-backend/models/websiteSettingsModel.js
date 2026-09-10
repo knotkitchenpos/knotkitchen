@@ -101,6 +101,22 @@ const bannerSchema = new mongoose.Schema({
 });
 
 /**
+ * One short selling point, three of which sit under the hero.
+ *
+ * Every restaurant site of this kind has them -- "Authentic Origins",
+ * "Handcrafted with Heart", "Since 1993" -- and they are the cheapest way for
+ * a landing page to say something specific rather than generic.
+ */
+const landingFeatureSchema = new mongoose.Schema(
+  {
+    title: { type: String, default: "", maxlength: 60 },
+    text: { type: String, default: "", maxlength: 240 },
+    image: { type: mediaRefSchema, default: () => ({}) },
+  },
+  { _id: false }
+);
+
+/**
  * The landing page a customer sees before the menu.
  *
  * Every text field defaults to empty on purpose: empty means "fall back to
@@ -108,6 +124,12 @@ const bannerSchema = new mongoose.Schema({
  * page built from the site title, tagline and cover image it already has.
  * Storing a copy of those strings here would give us two sources for the same
  * headline and they would drift apart the first time one of them was edited.
+ *
+ * The images are the point of the whole sub-document. A landing page with the
+ * restaurant's own photographs in it looks like that restaurant; the same page
+ * with stock gradients looks like every other tenant on the platform. So there
+ * is a slot for the hero, one for the story section, one per selling point,
+ * and a gallery -- all pointing at the store's own media library.
  */
 const landingSchema = new mongoose.Schema(
   {
@@ -119,6 +141,17 @@ const landingSchema = new mongoose.Schema(
     // How dark the scrim over the background photo is. A bright food photo
     // needs more of it than a dim one for the headline to stay readable.
     overlayOpacity: { type: Number, min: 0, max: 100, default: 45 },
+
+    // The story section.
+    aboutImage: { type: mediaRefSchema, default: () => ({}) },
+    aboutText: { type: String, default: "", maxlength: 4000 },
+
+    features: { type: [landingFeatureSchema], default: [] },
+    gallery: { type: [mediaRefSchema], default: [] },
+
+    showAbout: { type: Boolean, default: true },
+    showMenuPreview: { type: Boolean, default: true },
+    showGallery: { type: Boolean, default: true },
     showHours: { type: Boolean, default: true },
     showContact: { type: Boolean, default: true },
     showOffers: { type: Boolean, default: true },

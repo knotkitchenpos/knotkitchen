@@ -4,7 +4,6 @@ import MediaLibrary from "../components/media/MediaLibrary";
 import SecurityPinModal from "../components/common/SecurityPinModal";
 import { isOwner, checkActionAuthorization } from "../utils/security";
 import { getWebsiteSettings, updateWebsiteSettings, validateGatewayCredentials } from "../https/storefrontApi";
-import { publishWebsiteCache } from "../https";
 
 /**
  * Settings → Website (§3, §19, §26).
@@ -39,24 +38,24 @@ const DAY_NAMES = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Frid
  */
 const LANDING_TEMPLATE_INFO = {
   "hero-classic": {
-    name: "Classic hero",
-    hint: "Wide photo with the headline across the bottom. Works with any picture.",
+    name: "Heritage",
+    hint: "Dark and warm, serif type, logo carried large over the photo. For an established name.",
   },
   "split-showcase": {
-    name: "Split showcase",
-    hint: "Words on one side, photo on the other. Reads like a magazine spread.",
+    name: "Brand Story",
+    hint: "White and roomy, headline held to the left of a wide photo. Reads like a magazine.",
   },
   "minimal-center": {
-    name: "Minimal centred",
-    hint: "No photo at all — your brand colour and centred text. Good if you have no food photography yet.",
+    name: "Artisan",
+    hint: "Cream and unhurried, framed photo, serif type. For a place with atmosphere.",
   },
   "photo-fullbleed": {
-    name: "Full-screen photo",
-    hint: "One photograph filling the whole screen. Needs a strong picture.",
+    name: "Full Screen",
+    hint: "One photograph filling the screen and the biggest type of the five. Needs a strong picture.",
   },
   "card-stack": {
-    name: "Floating card",
-    hint: "Photo behind a solid card. Keeps the words readable over a busy picture.",
+    name: "Card",
+    hint: "Light and rounded, a solid panel over the photo. Safest with mixed photography.",
   },
 };
 
@@ -145,6 +144,57 @@ const ImagePicker = ({ label, value, onPick, folder }) => {
           }}
         />
       ) : null}
+    </>
+  );
+};
+
+/** A labelled break between groups of fields on a long tab. */
+const SectionRule = ({ title, hint }) => (
+  <div className="mt-8 mb-4 border-t border-[#E2E8F0] pt-5">
+    <h3 className="text-sm font-extrabold text-[#0F172A]">{title}</h3>
+    {hint ? <p className="mt-1 text-xs text-[#94A3B8]">{hint}</p> : null}
+  </div>
+);
+
+/**
+ * A list of gallery photos.
+ *
+ * Built from the single ImagePicker rather than a new picker of its own: the
+ * media library already knows how to choose one image, and a second selection
+ * UI would be a second place for the tenant-scoping rules to be got wrong.
+ */
+const GalleryPicker = ({ value, onChange }) => {
+  const set = (i, v) => {
+    const next = [...value];
+    if (v) next[i] = v;
+    else next.splice(i, 1);
+    onChange(next);
+  };
+
+  return (
+    <>
+      <div className="grid gap-4 sm:grid-cols-2">
+        {value.map((img, i) => (
+          <ImagePicker
+            key={img?.mediaId || img?.url || i}
+            label={`Photo ${i + 1}`}
+            folder="cover"
+            value={img}
+            onPick={(v) => set(i, v)}
+          />
+        ))}
+      </div>
+      {value.length < 12 ? (
+        <button
+          type="button"
+          onClick={() => onChange([...value, { url: "" }])}
+          className="mb-4 px-3 py-2 rounded-xl border border-dashed border-[#CBD5E1] bg-white text-sm font-bold text-[#475569] hover:border-[#FD5302] hover:text-[#C2410C]"
+        >
+          + Add photo
+        </button>
+      ) : (
+        <p className="mb-4 text-xs text-[#94A3B8]">Twelve is the maximum.</p>
+      )}
     </>
   );
 };
@@ -239,22 +289,20 @@ const WebsiteSettings = () => {
   };
 
   /**
-   * Publish = refresh the live customer-site cache. It does NOT send the
-   * editor's state, so on its own it drops anything unsaved while still
-   * reporting success — which is how a freshly picked logo could be uploaded,
-   * "published", and silently never stored. Save first, then publish.
+   * Publish is now just Save.
+   *
+   * It used to also push the menu snapshot to the website, which meant the
+   * button reported success while quietly dropping anything unsaved in this
+   * editor. The website reads the live menu, so there is nothing left to push
+   * — writing the settings IS publishing them.
    */
   const publish = async () => {
     executeWithSecurity(async () => {
       try {
         setSaving(true);
         setMessage(null);
-        if (dirty) await persist();
-        const res = await publishWebsiteCache();
-        setMessage({
-          type: "success",
-          text: res.data?.message || "Website published / cache updated!",
-        });
+        await persist();
+        setMessage({ type: "success", text: "Website published." });
       } catch (e) {
         setMessage({
           type: "error",
@@ -684,7 +732,7 @@ const WebsiteSettings = () => {
             </Field>
 
             <ImagePicker
-              label="Background photo"
+              label="Hero photo"
               folder="cover"
               value={settings.landing?.backgroundImage}
               onPick={(v) => patch("landing.backgroundImage", v)}
@@ -708,16 +756,108 @@ const WebsiteSettings = () => {
               />
             </Field>
 
+            {/* ---- Selling points -------------------------------------- */}
+            <SectionRule
+              title="Three reasons to come"
+              hint="Short claims in a row under the hero — “Since 1993”, “Wood-fired daily”, “Free delivery over ₹499”. Leave them empty to hide the row."
+            />
+            {[0, 1, 2].map((i) => {
+              const feature = settings.landing?.features?.[i] || {};
+              const setFeature = (key, value) => {
+                const next = [0, 1, 2].map((n) => ({ ...(settings.landing?.features?.[n] || {}) }));
+                next[i] = { ...next[i], [key]: value };
+                patch("landing.features", next);
+              };
+              return (
+                <div key={i} className="mb-4 rounded-xl border border-[#E2E8F0] bg-white p-4">
+                  <Field label={`Point ${i + 1}`}>
+                    <input
+                      className={inputClass}
+                      maxLength={60}
+                      placeholder="Heading"
+                      value={feature.title || ""}
+                      onChange={(e) => setFeature("title", e.target.value)}
+                    />
+                  </Field>
+                  <Field label="Description">
+                    <textarea
+                      className={inputClass}
+                      rows={2}
+                      maxLength={240}
+                      placeholder="One or two sentences."
+                      value={feature.text || ""}
+                      onChange={(e) => setFeature("text", e.target.value)}
+                    />
+                  </Field>
+                  <ImagePicker
+                    label="Photo (optional)"
+                    folder="cover"
+                    value={feature.image}
+                    onPick={(v) => setFeature("image", v)}
+                  />
+                </div>
+              );
+            })}
+
+            {/* ---- Story ----------------------------------------------- */}
+            <SectionRule
+              title="Your story"
+              hint="A paragraph or two about the restaurant, next to a photo. Leave both empty to hide the section."
+            />
+            <Field label="Story text" hint="Leave empty to use the About text from Homepage & Branding.">
+              <textarea
+                className={inputClass}
+                rows={6}
+                maxLength={4000}
+                placeholder={settings.branding?.aboutText || "How the place started, what you are known for…"}
+                value={settings.landing?.aboutText || ""}
+                onChange={(e) => patch("landing.aboutText", e.target.value)}
+              />
+            </Field>
+            <ImagePicker
+              label="Story photo"
+              folder="cover"
+              value={settings.landing?.aboutImage}
+              onPick={(v) => patch("landing.aboutImage", v)}
+            />
+
+            {/* ---- Gallery --------------------------------------------- */}
+            <SectionRule title="Gallery" hint="Up to twelve photos of the room, the kitchen and the food." />
+            <GalleryPicker
+              value={settings.landing?.gallery || []}
+              onChange={(v) => patch("landing.gallery", v)}
+            />
+
+            {/* ---- Sections -------------------------------------------- */}
+            <SectionRule title="Sections" hint="What appears below the hero." />
             <div className="mt-2 rounded-xl border border-[#E2E8F0] bg-white px-4">
               <Toggle
+                label="Your story"
+                hint="The paragraph and photo above."
+                checked={settings.landing?.showAbout !== false}
+                onChange={(v) => patch("landing.showAbout", v)}
+              />
+              <Toggle
+                label="A look at the menu"
+                hint="A few dishes from each category, straight from Manage Menu."
+                checked={settings.landing?.showMenuPreview !== false}
+                onChange={(v) => patch("landing.showMenuPreview", v)}
+              />
+              <Toggle
+                label="Gallery"
+                hint="The photos above."
+                checked={settings.landing?.showGallery !== false}
+                onChange={(v) => patch("landing.showGallery", v)}
+              />
+              <Toggle
                 label="Opening hours"
-                hint="Shown under the headline."
+                hint="Uses the Hours tab."
                 checked={settings.landing?.showHours !== false}
                 onChange={(v) => patch("landing.showHours", v)}
               />
               <Toggle
                 label="Address and phone"
-                hint="Uses what is on the Contact tab."
+                hint="Uses the Contact tab."
                 checked={settings.landing?.showContact !== false}
                 onChange={(v) => patch("landing.showContact", v)}
               />

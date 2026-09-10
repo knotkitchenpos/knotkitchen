@@ -185,7 +185,7 @@ test("Manage Website Activity Log: Domain change logs Domain Changed event", asy
   assert.equal(createdLog.newValue, "new-restaurant.com");
 });
 
-test("Manage Website Activity Log: Website publish logs Website Published event", async () => {
+test("Manage Website Activity Log: publishing to the tills logs a Published event", async () => {
   let createdLog = null;
 
   const MenuMock = {
@@ -211,7 +211,9 @@ test("Manage Website Activity Log: Website publish logs Website Published event"
 
   delete require.cache[require.resolve("../controllers/menuController")];
   delete require.cache[require.resolve("../services/auditService")];
-  const { publishWebsiteCache } = require("../controllers/menuController");
+  // There is no website publish any more -- the customer site reads the live
+  // menu. The tills still have one, and it is still audited.
+  const { publishSystemCache } = require("../controllers/menuController");
 
   const res = {
     status: (code) => {
@@ -224,14 +226,14 @@ test("Manage Website Activity Log: Website publish logs Website Published event"
   const req = { user: ownerUser, csdStaff: { _id: "csd-staff-1", name: "CSD" } };
 
   try {
-    await publishWebsiteCache(req, res, () => {});
+    await publishSystemCache(req, res, () => {});
   } finally {
     Module._load = orig;
   }
 
   assert.ok(createdLog);
-  assert.equal(createdLog.action, "Website Published");
-  assert.equal(createdLog.resource, "Website Cache");
+  assert.equal(createdLog.action, "Menu Published");
+  assert.equal(createdLog.resource, "System Cache");
 });
 
 /**
