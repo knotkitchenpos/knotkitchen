@@ -283,9 +283,10 @@ const getStorefront = async (req, res, next) => {
 
     const payload = await buildStorefrontPayload(ctx);
 
-    // Short public cache: menus change rarely, and this keeps repeat loads fast
-    // while still reflecting price/availability edits within a minute (§23).
-    res.set("Cache-Control", "public, max-age=30, stale-while-revalidate=120");
+    // Short public cache. It has to be short: this response carries both the
+    // live menu and the landing page design, and both are edited by someone
+    // who then immediately looks at the site to check.
+    res.set("Cache-Control", "public, max-age=5, stale-while-revalidate=60");
     res.status(200).json({ success: true, data: payload });
   } catch (error) {
     next(error);

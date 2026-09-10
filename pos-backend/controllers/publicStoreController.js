@@ -128,7 +128,11 @@ const getPublicStoreByDomain = async (req, res, next) => {
 
     const { settings, store, restaurant } = result;
 
-    res.set("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+    // Short. This response carries the landing page design, and an owner who
+    // changes it expects to see the change when they open their site -- a
+    // minute of the old one reads as "the template did not work".
+    // stale-while-revalidate keeps the burst protection.
+    res.set("Cache-Control", "public, max-age=5, stale-while-revalidate=60");
     res.status(200).json({
       success: true,
       data: {

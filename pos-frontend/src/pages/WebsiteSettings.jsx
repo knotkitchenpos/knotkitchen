@@ -59,6 +59,145 @@ const LANDING_TEMPLATE_INFO = {
   },
 };
 
+/**
+ * A wireframe of each landing design, drawn at thumbnail size.
+ *
+ * Two rounds of this feature were reported back as "they all look the same",
+ * and both times the reason was that the owner could not see a design without
+ * saving it and reloading the public site. A picker that only lists five names
+ * cannot answer "how is Heritage different from Artisan?" -- so it draws the
+ * answer: where the masthead sits, what shape the hero is, and how the menu is
+ * laid out, which is what actually differs between them.
+ *
+ * Deliberately grey and unbranded. It is a floor plan, not a preview: the real
+ * colours come from the store's own theme.
+ */
+const TemplateThumb = ({ variant }) => {
+  const ink = "#334155";
+  const soft = "#CBD5E1";
+  const pale = "#E2E8F0";
+
+  const shapes = {
+    // Utility strip, centred crest, dark hero, two-column printed menu.
+    "hero-classic": (
+      <>
+        <rect x="0" y="0" width="120" height="5" fill={ink} />
+        <rect x="0" y="5" width="120" height="9" fill="#0F172A" />
+        <circle cx="60" cy="9.5" r="3" fill={soft} />
+        <rect x="0" y="14" width="120" height="34" fill="#1E293B" />
+        <rect x="40" y="26" width="40" height="4" rx="1" fill={soft} />
+        <rect x="48" y="34" width="24" height="2" rx="1" fill="#64748B" />
+        {[0, 1].map((col) =>
+          [0, 1, 2].map((row) => (
+            <g key={`${col}-${row}`}>
+              <rect x={8 + col * 58} y={56 + row * 8} width="22" height="2" rx="1" fill={ink} />
+              <rect x={32 + col * 58} y={57 + row * 8} width="18" height="1" fill={pale} />
+              <rect x={52 + col * 58} y={56 + row * 8} width="6" height="2" rx="1" fill={soft} />
+            </g>
+          ))
+        )}
+      </>
+    ),
+
+    // Logo left, hero words left, alternating bands, menu as a clipped rail.
+    "split-showcase": (
+      <>
+        <rect x="0" y="0" width="120" height="8" fill="#FFFFFF" />
+        <rect x="6" y="2.5" width="14" height="3" rx="1" fill={ink} />
+        <rect x="86" y="3" width="28" height="2" rx="1" fill={soft} />
+        <rect x="0" y="8" width="120" height="30" fill="#1E293B" />
+        <rect x="8" y="20" width="44" height="5" rx="1" fill="#F1F5F9" />
+        <rect x="8" y="28" width="26" height="2" rx="1" fill="#94A3B8" />
+        <rect x="0" y="42" width="58" height="18" fill={soft} />
+        <rect x="64" y="47" width="34" height="2.5" rx="1" fill={ink} />
+        <rect x="64" y="53" width="46" height="2" rx="1" fill={pale} />
+        <rect x="62" y="64" width="58" height="18" fill={soft} />
+        <rect x="8" y="69" width="34" height="2.5" rx="1" fill={ink} />
+        <rect x="8" y="75" width="42" height="2" rx="1" fill={pale} />
+        {[0, 1, 2].map((i) => (
+          <rect key={i} x={8 + i * 34} y="88" width="28" height="14" rx="2" fill={pale} />
+        ))}
+        <rect x="110" y="88" width="10" height="14" rx="2" fill={pale} opacity="0.5" />
+      </>
+    ),
+
+    // Solid bar, hero inset with a margin all round, sidebar plus rows.
+    "minimal-center": (
+      <>
+        <rect x="0" y="0" width="120" height="100" fill="#FAF5EC" />
+        <rect x="0" y="0" width="120" height="8" fill="#F3E9DA" />
+        <rect x="6" y="2.5" width="12" height="3" rx="1.5" fill={ink} />
+        <rect x="88" y="3" width="26" height="2" rx="1" fill="#A8977F" />
+        <rect x="6" y="12" width="108" height="34" rx="6" fill="#8A6A45" />
+        <rect x="44" y="24" width="32" height="4" rx="1" fill="#F5EDE0" />
+        <rect x="52" y="32" width="16" height="2" rx="1" fill="#D9C7AC" />
+        <rect x="8" y="54" width="22" height="2.5" rx="1" fill={ink} />
+        <rect x="8" y="61" width="22" height="2.5" rx="1" fill="#C9B79A" />
+        <rect x="8" y="68" width="22" height="2.5" rx="1" fill="#C9B79A" />
+        <rect x="8" y="75" width="22" height="2.5" rx="1" fill="#C9B79A" />
+        <rect x="36" y="52" width="0.7" height="34" fill="#E0D2BD" />
+        {[0, 1, 2, 3].map((i) => (
+          <g key={i}>
+            <rect x="44" y={54 + i * 9} width="8" height="6" rx="2" fill="#E0D2BD" />
+            <rect x="56" y={55 + i * 9} width="34" height="2.5" rx="1" fill={ink} />
+            <rect x="104" y={55 + i * 9} width="8" height="2.5" rx="1" fill="#A8977F" />
+          </g>
+        ))}
+      </>
+    ),
+
+    // Almost no masthead, hero the whole frame, then a wall of photographs.
+    "photo-fullbleed": (
+      <>
+        <rect x="0" y="0" width="120" height="58" fill="#0B0B0C" />
+        <rect x="6" y="4" width="16" height="2" rx="1" fill="#64748B" />
+        <circle cx="112" cy="5" r="3" fill="#334155" />
+        <rect x="20" y="24" width="80" height="7" rx="1" fill="#F8FAFC" />
+        <rect x="34" y="35" width="52" height="7" rx="1" fill="#F8FAFC" />
+        <rect x="48" y="47" width="24" height="4" rx="2" fill="#E2571E" />
+        {[0, 1, 2].map((i) => (
+          <g key={i}>
+            <rect x={i * 40.5} y="62" width="39" height="38" fill="#1E293B" />
+            <rect x={i * 40.5 + 4} y="88" width="24" height="3" rx="1" fill="#CBD5E1" />
+            <rect x={i * 40.5 + 4} y="93" width="12" height="2.5" rx="1" fill="#E2571E" />
+          </g>
+        ))}
+      </>
+    ),
+
+    // A pill floating over the hero, everything on rounded panels.
+    "card-stack": (
+      <>
+        <rect x="0" y="0" width="120" height="100" fill="#F2F4F7" />
+        <rect x="0" y="0" width="120" height="46" fill="#475569" />
+        <rect x="10" y="4" width="100" height="9" rx="4.5" fill="#FFFFFF" />
+        <rect x="15" y="7.5" width="12" height="2" rx="1" fill={ink} />
+        <rect x="88" y="7" width="17" height="4" rx="2" fill="#E2571E" />
+        <rect x="26" y="20" width="68" height="30" rx="5" fill="#FFFFFF" />
+        <rect x="46" y="28" width="28" height="3.5" rx="1" fill={ink} />
+        <rect x="34" y="40" width="52" height="5" rx="2.5" fill="#E2571E" />
+        {[0, 1, 2].map((i) => (
+          <rect key={i} x={8 + i * 36} y="58" width="32" height="16" rx="4" fill="#FFFFFF" />
+        ))}
+        {[0, 1, 2].map((i) => (
+          <g key={`c${i}`}>
+            <rect x={8 + i * 36} y="79" width="32" height="17" rx="4" fill="#FFFFFF" />
+            <rect x={8 + i * 36} y="79" width="32" height="9" rx="4" fill={pale} />
+            <rect x={11 + i * 36} y="90" width="14" height="2" rx="1" fill={soft} />
+          </g>
+        ))}
+      </>
+    ),
+  };
+
+  return (
+    <svg viewBox="0 0 120 100" role="img" aria-hidden="true"
+      className="block h-[92px] w-full rounded-lg border border-[#E2E8F0] bg-white">
+      {shapes[variant] || null}
+    </svg>
+  );
+};
+
 const Field = ({ label, hint, children }) => (
   <label className="block mb-4">
     <span className="block text-sm font-bold text-[#475569] mb-1.5">{label}</span>
@@ -354,8 +493,13 @@ const WebsiteSettings = () => {
           >
             🚀 Publish Website
           </button>
+          {/* Preview opens the REAL customer website.
+              It used to open /website/preview, a second storefront living
+              inside the POS that renders one fixed design and knows nothing
+              about landing templates -- so every template previewed
+              identically, and the landing page never appeared at all. */}
           <a
-            href="/website/preview"
+            href={storefrontUrl}
             target="_blank"
             rel="noreferrer"
             className="px-4 py-2 rounded-xl border border-[#E2E8F0] bg-white text-sm font-bold text-[#475569] hover:border-[#C7C2FF] hover:text-[#C2410C]"
@@ -690,8 +834,9 @@ const WebsiteSettings = () => {
                           : "border-[#E2E8F0] bg-white hover:border-[#CBD5E1]"
                       }`}
                     >
-                      <span className="block text-sm font-bold text-[#0F172A]">{info.name}</span>
-                      <span className="block text-xs text-[#94A3B8] mt-0.5">{info.hint}</span>
+                      <TemplateThumb variant={key} />
+                      <span className="block text-sm font-bold text-[#0F172A] mt-2.5">{info.name}</span>
+                      <span className="block text-xs text-[#94A3B8] mt-0.5 leading-relaxed">{info.hint}</span>
                     </button>
                   );
                 })}
