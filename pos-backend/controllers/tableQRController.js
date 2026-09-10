@@ -35,6 +35,25 @@ const buildQrUrl = (token) => {
 };
 
 /**
+ * Hand back a QR with its URL rebuilt from the token, never the stored string.
+ *
+ * `qrUrl` is a stored copy of something derived: host plus token. The token is
+ * the durable half -- it is what the QR encodes and what resolves the table --
+ * and the host is deployment config that changes underneath it. Returning the
+ * stored copy meant every QR minted before a host change kept serving the old
+ * URL forever, because nothing ever recomputes it: the short-link hosts went
+ * live and all thirteen existing tables went on printing the POS hostname.
+ *
+ * Rebuilding on read makes the stored field a cache rather than the truth, so
+ * a host change reaches every table at once. The row is still written on
+ * create, for the legacy `table.qrCode` readers.
+ */
+const withQrUrl = (qr) => {
+  const plain = qr?.toObject ? qr.toObject() : { ...qr };
+  return { ...plain, qrUrl: plain.token ? buildQrUrl(plain.token) : plain.qrUrl || "" };
+};
+
+/**
  * Resolve the restaurant/outlet scope from the authenticated user.
  * Built-in tenant isolation — the user's restaurantId/outletId are
  * trusted (they come from the verified JWT), never the request body.
@@ -97,13 +116,13 @@ const getOrCreateQr = async (req, res, next) => {
         createdBy: req.user?._id,
       });
       // Backfill legacy fields so the existing QR flow also works
-      await Table.updateOne({ _id: table._id }, { qrToken: token, qrCode: qr.qrUrl });
+      await Table.updateOne({ _id: table._id }, { qrToken: token, qrCode: buildQrUrl(token) });
     }
 
     res.status(200).json({
       success: true,
       data: {
-        ...qr.toObject(),
+        ...withQrUrl(qr),
         table: { _id: table._id, tableNumber: table.tableNumber, capacity: table.capacity },
       },
     });
@@ -148,13 +167,13 @@ const regenerateQr = async (req, res, next) => {
     });
 
     // Backfill legacy fields so the existing QR flow also works
-    await Table.updateOne({ _id: table._id }, { qrToken: token, qrCode: qr.qrUrl });
+    await Table.updateOne({ _id: table._id }, { qrToken: token, qrCode: buildQrUrl(token) });
 
     res.status(201).json({
       success: true,
       message: "QR regenerated! The previous QR is now invalid.",
       data: {
-        ...qr.toObject(),
+        ...withQrUrl(qr),
         table: { _id: table._id, tableNumber: table.tableNumber, capacity: table.capacity },
       },
     });
@@ -179,7 +198,7 @@ const listQrs = async (req, res, next) => {
       .populate("tableId", "tableNumber capacity status")
       .sort({ createdAt: -1 });
 
-    res.status(200).json({ success: true, data: qrs });
+    res.status(200).json({ success: true, data: qrs.map(withQrUrl) });
   } catch (error) {
     next(error);
   }
@@ -242,7 +261,7 @@ const resolveQrToken = async (req, res, next) => {
         token: qr.token,
         status: qr.status,
         label: qr.label,
-        qrUrl: qr.qrUrl,
+        qrUrl: buildQrUrl(qr.token),
         table: {
           _id: table._id,
           tableNumber: table.tableNumber,

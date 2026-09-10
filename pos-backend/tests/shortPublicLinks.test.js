@@ -282,3 +282,42 @@ test("REGRESSION: a Caddyfile change recreates caddy, because a reload cannot", 
   const compose = DEPLOY("docker-compose.yml");
   assert.match(compose, /- \.\/Caddyfile:\/etc\/caddy\/Caddyfile:ro/);
 });
+
+// ---------------------------------------------------------------------------
+// A stored URL is a stale URL
+// ---------------------------------------------------------------------------
+
+test("REGRESSION: a QR's URL is rebuilt from its token, never read back from the row", () => {
+  // qrUrl is a stored copy of something derived: host plus token. The token is
+  // the durable half; the host is deployment config that moves underneath it.
+  // Returning the stored copy meant the thirteen tables that already had a QR
+  // went on printing the POS hostname after the short host went live, because
+  // nothing ever recomputes a column.
+  const src = SRC("controllers", "tableQRController.js");
+
+  assert.match(src, /const withQrUrl = \(qr\) => \{/);
+  assert.match(src, /qrUrl: plain\.token \? buildQrUrl\(plain\.token\) : plain\.qrUrl \|\| ""/);
+
+  // Every path that hands a QR to a caller. Miss one and that screen keeps
+  // showing the old host while the others move.
+  assert.equal(
+    src.split("...withQrUrl(qr),").length - 1,
+    2,
+    "get-or-create and regenerate both return a rebuilt URL",
+  );
+  assert.match(src, /data: qrs\.map\(withQrUrl\)/, "the list does too");
+  assert.match(src, /qrUrl: buildQrUrl\(qr\.token\)/, "and the public token resolver");
+
+  // The legacy mirror on the Table row is what the print sheet actually reads,
+  // so it must be stamped with the derived URL, not with whatever the QR row
+  // happened to be created with.
+  assert.ok(
+    !/qrCode: qr\.qrUrl/.test(src),
+    "copying the stored column forward just moves the stale value",
+  );
+  assert.equal(
+    src.split("qrCode: buildQrUrl(token)").length - 1,
+    2,
+    "both creation paths stamp the derived URL",
+  );
+});
