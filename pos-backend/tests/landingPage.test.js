@@ -126,16 +126,33 @@ test("every template the database allows exists in the customer website bundle",
   const block = source.match(/const THEMES = \{([\s\S]*?)\n\};/);
   assert.ok(block, "could not find the THEMES map in LandingTemplates.jsx");
 
-  // Only the top-level keys: each theme body is full of quoted class strings,
-  // and a looser scan would count those as templates.
-  const shipped = [...block[1].matchAll(/^  "([a-z0-9-]+)": \{$/gm)].map((m) => m[1]);
+  const rows = [...block[1].matchAll(/^  "([a-z0-9-]+)": (\w+),$/gm)];
+  const shipped = rows.map((m) => m[1]);
   assert.ok(shipped.length >= 5, `expected at least five templates, found ${shipped.length}`);
 
   assert.deepEqual(
     [...shipped].sort(),
     [...LANDING_TEMPLATES].sort(),
-    "the model's LANDING_TEMPLATES and the browser's TEMPLATES map have drifted apart"
+    "the model's LANDING_TEMPLATES and the browser's THEMES map have drifted apart"
   );
+
+  // Each key must reach a DIFFERENT page component. Two keys pointing at one
+  // component is how "five templates" quietly became "one template, five
+  // names" the first time round.
+  const components = rows.map((m) => m[2]);
+  assert.equal(
+    new Set(components).size,
+    components.length,
+    `two templates share a design: ${components.join(", ")}`
+  );
+
+  // And each of those components must be a real file.
+  for (const name of components) {
+    const file = path.join(
+      __dirname, "..", "..", "customer-web", "src", "components", "landing", `${name}.jsx`
+    );
+    assert.ok(fs.existsSync(file), `${name}.jsx is missing from customer-web/src/components/landing`);
+  }
 });
 
 // --- The CSD editor ---------------------------------------------------------
