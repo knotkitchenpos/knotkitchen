@@ -17,6 +17,7 @@ const TableSession = require("../models/tableSessionModel");
 const Restaurant = require("../models/restaurantModel");
 const { buildReceipt } = require("../services/receiptService");
 const { readToken } = require("../services/receiptLink");
+const { orderItemExtras } = require("../services/orderItemExtras");
 
 const esc = (value) =>
   String(value === null || value === undefined ? "" : value)
@@ -61,7 +62,11 @@ const page = (title, body) => `<!doctype html>
   .item .n { flex:1; min-width:0; }
   .item .q { color:#64748B; font-size:12px; }
   .item .p { font-weight:700; white-space:nowrap; }
-  .mods { margin:2px 0 0; padding-left:12px; font-size:11.5px; color:#64748B; }
+  /* An extra is a row of its own, indented under the dish it belongs to,
+     with a hairline down the left so the grouping survives a long name. */
+  .item.extra { padding:2px 0 2px 14px; border-left:2px solid #E2E8F0; margin-left:2px; }
+  .item.extra .n { font-size:12.5px; color:#475569; font-weight:400; }
+  .item.extra .p { font-size:12.5px; color:#475569; font-weight:500; }
   .totals { padding:14px 20px; }
   .grand { display:flex; justify-content:space-between; font-size:17px; font-weight:800;
            border-top:2px solid #0F172A; padding-top:10px; margin-top:8px; }
@@ -91,17 +96,26 @@ const render = (receipt) => {
 
   const items = r.items
     .map((i) => {
-      const mods = (i.modifiers || [])
-        .map((m) => esc(m.optionName || m.name || ""))
-        .filter(Boolean)
-        .join(", ");
+      // Extras get a row each, under the dish, with what they cost. A
+      // comma-joined tail told the diner neither which of them carried a
+      // price nor how the line reached its total.
+      const extras = orderItemExtras(i)
+        .map((e) => {
+          const label = e.quantity > 1 ? `${e.quantity} × ${e.name}` : e.name;
+          const cost = e.price * e.quantity * Number(i.quantity || 1);
+          return `<div class="item extra">
+            <div class="n">${esc(label)}</div>
+            <div class="p">${cost ? money(cost) : ""}</div>
+          </div>`;
+        })
+        .join("");
+
       return `<div class="item">
         <div class="n">${esc(i.name)}
           <div class="q">${Number(i.quantity)} × ${money(i.price)}</div>
-          ${mods ? `<div class="mods">+ ${mods}</div>` : ""}
         </div>
         <div class="p">${money(i.total)}</div>
-      </div>`;
+      </div>${extras}`;
     })
     .join("");
 

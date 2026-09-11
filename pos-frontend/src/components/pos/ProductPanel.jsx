@@ -416,10 +416,16 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
     }
 
     const finalUnitPrice = basePrice + extraCost;
-    const optionNamesStr = selectedList
-      .map((s) => (s.quantity > 1 ? `${s.quantity}× ${s.optionName}` : s.optionName))
-      .join(", ");
-    const displayName = `${customizingItem.name}${variantObj ? ` (${variantObj.name})` : ""}${optionNamesStr ? ` (+ ${optionNamesStr})` : ""}`;
+
+    // The extras are NOT flattened into the name any more.
+    //
+    // They used to be -- "Tandoori Chicken Sandwich (+ Jeera Rice, Coke)" --
+    // and because that string is what gets stored on the order, every screen
+    // downstream inherited it: the order detail, the printed receipt and the
+    // e-bill all showed a name that truncated before the extras, with no
+    // prices anywhere. They travel as structured entries and are rendered as
+    // rows under the dish.
+    const displayName = `${customizingItem.name}${variantObj ? ` (${variantObj.name})` : ""}`;
 
     dispatch(
       addItems({

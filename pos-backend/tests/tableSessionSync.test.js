@@ -277,16 +277,20 @@ test("REGRESSION: components survive onto the session item", () => {
 });
 
 test("every surface that shows a line shows its components", () => {
-  const surfaces = {
-    "pos-frontend/src/components/tables/SessionDetailModal.jsx": /item\.modifiers\.map\(\(m\) => m\.name\)/,
-    "pos-frontend/src/utils/printReceipt.js": /item\.modifiers \|\| \[\]/,
-    "pos-frontend/src/components/invoice/Invoice.jsx": /item\.modifiers/,
-  };
-  for (const [file, re] of Object.entries(surfaces)) {
-    assert.match(SRC("..", ...file.split("/")), re, `${file} drops the components`);
+  // They are rows now rather than a comma-joined tail on the name, which is
+  // why each of these reads them through the shared helper -- see
+  // tests/orderItemExtras.test.js for what that helper has to get right.
+  const surfaces = [
+    "pos-frontend/src/components/tables/SessionDetailModal.jsx",
+    "pos-frontend/src/utils/printReceipt.js",
+    "pos-frontend/src/components/invoice/Invoice.jsx",
+    "pos-frontend/src/pages/Orders.jsx",
+  ];
+  for (const file of surfaces) {
+    assert.match(SRC("..", ...file.split("/")), /itemExtras\(/, `${file} drops the components`);
   }
   // ...and the e-bill, which was the only one that ever showed them.
-  assert.match(SRC("controllers", "publicReceiptController.js"), /i\.modifiers \|\| \[\]/);
+  assert.match(SRC("controllers", "publicReceiptController.js"), /orderItemExtras\(/);
 });
 
 test("REGRESSION: an appended kitchen line is linked from the right end", () => {

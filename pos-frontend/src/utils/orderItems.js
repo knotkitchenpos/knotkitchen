@@ -37,6 +37,38 @@ export const toOrderItems = (cart = []) =>
 export default toOrderItems;
 
 /**
+ * The extras on a line, as rows in their own right.
+ *
+ * Mirrors `pos-backend/services/orderItemExtras.js`, which carries the full
+ * reasoning -- keep them in step. The short version: the same extras arrive
+ * under three field names, and on a POS line two of them hold the SAME
+ * entries, so concatenating all three prints every extra twice. `modifiers`
+ * wins where it exists. The variant is dropped: it is part of what the dish
+ * is, it is priced into the base, and it is already printed beside the name.
+ */
+export const itemExtras = (item = {}) => {
+  const source =
+    Array.isArray(item.modifiers) && item.modifiers.length
+      ? item.modifiers
+      : [...(item.addons || []), ...(item.modifierSelections || [])];
+
+  const variantName = String(item.variant?.name || "").trim().toLowerCase();
+
+  return source
+    .map((entry) => {
+      const name = String(entry?.name || entry?.optionName || "").trim();
+      if (!name) return null;
+      return {
+        name,
+        price: round2(entry?.price),
+        quantity: Math.max(1, Math.floor(Number(entry?.quantity) || 1)),
+      };
+    })
+    .filter(Boolean)
+    .filter((e) => !variantName || e.name.toLowerCase() !== variantName);
+};
+
+/**
  * What a SAVED order line actually cost.
  *
  * Mirrors `pos-backend/services/orderItemAmounts.js` -- keep them in step.

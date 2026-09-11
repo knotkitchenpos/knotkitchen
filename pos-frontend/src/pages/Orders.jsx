@@ -14,6 +14,7 @@ import {
 import TableSettleModal from "../components/tables/TableSettleModal";
 import { getMyRestaurant } from "../https/newModules";
 import { printReceipt } from "../utils/printReceipt";
+import { itemExtras } from "../utils/orderItems";
 import { isPreparing, isReady, isSettled, isCancelled, statusLabel, COMPLETED, CANCELLED } from "../constants/orderStatus";
 import { sourceLabel, tableLabel, orderDisplayId } from "../utils/orderLabels";
 import { sendTableEBill } from "../utils/sendTableEBill";
@@ -758,44 +759,53 @@ const Orders = () => {
                     // need to see what was pulled -- but it must not read as
                     // something still being cooked or still being charged.
                     const isVoided = it.status === "cancelled";
+                    const lineQty = Math.max(1, Number(it.quantity) || 1);
                     return (
-                    <div key={i} className={`flex items-start gap-3 ${isVoided ? "opacity-60" : ""}`}>
-                      <div className="min-w-0 flex-1">
-                        <p
-                          className={`text-[13.5px] font-bold truncate ${
+                    <div key={i} className={isVoided ? "opacity-60" : ""}>
+                      <div className="flex items-start gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p
+                            className={`text-[13.5px] font-bold truncate ${
+                              isVoided ? "text-[#94A3B8] line-through" : "text-[#0F172A]"
+                            }`}
+                          >
+                            {it.name}
+                            {it.variant?.name ? ` (${it.variant.name})` : ""}
+                          </p>
+                          {isVoided && (
+                            <p className="text-[11px] font-bold text-[#DC2626]">
+                              Cancelled{it.cancelReason ? ` — ${it.cancelReason}` : ""}
+                            </p>
+                          )}
+                          {it.note && <p className="text-[11px] text-[#C2410C] truncate">Note: {it.note}</p>}
+                        </div>
+                        <span className="px-2.5 py-[3px] rounded-md border border-[#E2E8F0] text-[12px] font-bold text-[#334155] shrink-0">
+                          x {it.quantity}
+                        </span>
+                        <span
+                          className={`text-[13.5px] font-extrabold w-[68px] text-right shrink-0 ${
                             isVoided ? "text-[#94A3B8] line-through" : "text-[#0F172A]"
                           }`}
                         >
-                          {it.name}
-                          {it.variant?.name ? ` (${it.variant.name})` : ""}
-                        </p>
-                        {isVoided && (
-                          <p className="text-[11px] font-bold text-[#DC2626]">
-                            Cancelled{it.cancelReason ? ` — ${it.cancelReason}` : ""}
-                          </p>
-                        )}
-                        {Array.isArray(it.addons) && it.addons.length > 0 && (
-                          <p className="text-[11px] text-[#64748B] truncate">
-                            + {it.addons.map((a) => a.name).join(", ")}
-                          </p>
-                        )}
-                        {Array.isArray(it.modifierSelections) && it.modifierSelections.length > 0 && (
-                          <p className="text-[11px] text-[#64748B] truncate">
-                            {it.modifierSelections.map((m) => m.optionName).join(", ")}
-                          </p>
-                        )}
-                        {it.note && <p className="text-[11px] text-[#C2410C] truncate">Note: {it.note}</p>}
+                          {money(it.total || it.price * it.quantity)}
+                        </span>
                       </div>
-                      <span className="px-2.5 py-[3px] rounded-md border border-[#E2E8F0] text-[12px] font-bold text-[#334155] shrink-0">
-                        x {it.quantity}
-                      </span>
-                      <span
-                        className={`text-[13.5px] font-extrabold w-[68px] text-right shrink-0 ${
-                          isVoided ? "text-[#94A3B8] line-through" : "text-[#0F172A]"
-                        }`}
-                      >
-                        {money(it.total || it.price * it.quantity)}
-                      </span>
+
+                      {/* Extras as their own rows under the dish, each with its
+                          own price. They used to be a comma-joined tail on the
+                          name that truncated before the first one, and never
+                          said what any of them cost. */}
+                      {itemExtras(it).map((extra, x) => (
+                        <div key={`${i}-x-${x}`} className="flex items-center gap-3 pl-3 mt-1">
+                          <span className="w-1 self-stretch rounded bg-[#E2E8F0] shrink-0" aria-hidden="true" />
+                          <p className="min-w-0 flex-1 text-[12px] text-[#475569] truncate">
+                            {extra.quantity > 1 ? `${extra.quantity}× ${extra.name}` : extra.name}
+                          </p>
+                          <span className="text-[12px] font-semibold text-[#334155] w-[68px] text-right shrink-0">
+                            {extra.price ? money(extra.price * extra.quantity * lineQty) : "—"}
+                          </span>
+                        </div>
+                      ))}
                     </div>
                     );
                   })}

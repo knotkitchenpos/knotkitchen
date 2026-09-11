@@ -7,7 +7,7 @@ import { useMutation } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
 import { printHtmlDocument } from "../../utils/printDocument";
 import { sendEBill } from "../../https";
-import { resolveItemAmounts } from "../../utils/orderItems";
+import { itemExtras, resolveItemAmounts } from "../../utils/orderItems";
 
 /**
  * Invoice / receipt modal (Module 3 §5, §6, §7, §8).
@@ -115,19 +115,27 @@ const Invoice = ({
     const handlePrint = () => {
         const itemsHTML = safeItems
             .map((item) => {
-                const modifierLine = (item.modifiers || [])
-                    .filter((m) => m?.name)
-                    .map((m) => `+ ${m.name}`)
-                    .join("<br/>");
+                const { quantity, lineTotal } = resolveItemAmounts(item);
+                // One row per extra, indented under the dish and priced --
+                // not a comma-joined tail on the product name.
+                const extraRows = itemExtras(item)
+                    .map((e) => {
+                        const label = e.quantity > 1 ? `${e.quantity}x ${e.name}` : e.name;
+                        const cost = e.price * e.quantity * quantity;
+                        return `
+        <tr>
+          <td style="padding:0 0 4px 12px;font-size:11px;color:#333;">${label}</td>
+          <td></td>
+          <td style="padding:0 0 4px 0;font-size:11px;color:#333;text-align:right;">${cost ? money(cost) : ""}</td>
+        </tr>`;
+                    })
+                    .join("");
                 return `
         <tr>
-          <td style="padding:6px 0;font-size:12px;">
-            ${item.name}
-            ${modifierLine ? `<div style="font-size:10px;color:#333;">${modifierLine}</div>` : ""}
-          </td>
-          <td style="padding:6px 0;font-size:12px;text-align:center;">x${resolveItemAmounts(item).quantity}</td>
-          <td style="padding:6px 0;font-size:12px;text-align:right;">${money(resolveItemAmounts(item).lineTotal)}</td>
-        </tr>`;
+          <td style="padding:6px 0 2px 0;font-size:12px;">${item.name}</td>
+          <td style="padding:6px 0 2px 0;font-size:12px;text-align:center;">x${quantity}</td>
+          <td style="padding:6px 0 2px 0;font-size:12px;text-align:right;">${money(lineTotal)}</td>
+        </tr>${extraRows}`;
             })
             .join("");
 
@@ -370,14 +378,18 @@ const Invoice = ({
                                             {money(resolveItemAmounts(item).lineTotal)}
                                         </span>
                                     </div>
-                                    {(item.modifiers || []).length > 0 && (
-                                        <div className="text-[11.5px] text-white/50 pl-3 mt-0.5">
-                                            {item.modifiers
-                                                .filter((m) => m?.name)
-                                                .map((m) => `+ ${m.name}`)
-                                                .join("  ")}
+                                    {itemExtras(item).map((extra, x) => (
+                                        <div key={x} className="flex items-baseline gap-3 pl-3 mt-0.5 text-[11.5px]">
+                                            <span className="min-w-0 flex-1 truncate text-white/50">
+                                                {extra.quantity > 1 ? `${extra.quantity}× ${extra.name}` : extra.name}
+                                            </span>
+                                            <span className="shrink-0 text-white/60">
+                                                {extra.price
+                                                    ? money(extra.price * extra.quantity * resolveItemAmounts(item).quantity)
+                                                    : ""}
+                                            </span>
                                         </div>
-                                    )}
+                                    ))}
                                 </div>
                             ))}
                         </div>

@@ -1,4 +1,5 @@
 import React from "react";
+import { itemExtras } from "../../utils/orderItems";
 import { FaLongArrowAltRight } from "react-icons/fa";
 
 const SessionDetailModal = ({
@@ -45,13 +46,16 @@ const SessionDetailModal = ({
           <div className="max-h-[220px] overflow-y-auto space-y-2 no-scrollbar">
             {(session?.items || []).map((item, idx) => {
               const cancelled = item.status === "cancelled";
+              const lineQty = Math.max(1, Number(item.quantity) || 1);
+              const extras = itemExtras(item);
               return (
                 <div
                   key={item._id || idx}
-                  className={`flex items-center justify-between bg-surface-input rounded-xl px-4 py-2.5 border border-border ${
+                  className={`bg-surface-input rounded-xl px-4 py-2.5 border border-border ${
                     cancelled ? "opacity-60" : ""
                   }`}
                 >
+                  <div className="flex items-center justify-between">
                   <div className="min-w-0">
                     <p
                       className={`text-sm font-semibold truncate ${
@@ -60,14 +64,6 @@ const SessionDetailModal = ({
                     >
                       {item.name}
                     </p>
-                    {/* The components the diner actually chose. They are
-                        priced into the line, so leaving them off made the
-                        total look wrong for no visible reason. */}
-                    {(item.modifiers || []).length > 0 && (
-                      <p className="text-xs text-content-muted truncate">
-                        + {item.modifiers.map((m) => m.name).filter(Boolean).join(", ")}
-                      </p>
-                    )}
                     <p className="text-xs text-content-muted">
                       x{item.quantity}
                       {cancelled ? (
@@ -99,6 +95,22 @@ const SessionDetailModal = ({
                       </button>
                     )}
                   </div>
+                  </div>
+
+                  {/* The components the diner chose, each on its own row with
+                      what it cost. They are priced into the line, so a bill
+                      that only names them leaves the total unaccountable. */}
+                  {extras.map((extra, x) => (
+                    <div key={x} className="flex items-center gap-3 mt-1.5 pl-3">
+                      <span className="w-0.5 self-stretch rounded bg-border shrink-0" aria-hidden="true" />
+                      <p className="min-w-0 flex-1 text-xs text-content-muted truncate">
+                        {extra.quantity > 1 ? `${extra.quantity}× ${extra.name}` : extra.name}
+                      </p>
+                      <p className="text-xs font-semibold text-content-muted shrink-0">
+                        {extra.price ? `₹${(extra.price * extra.quantity * lineQty).toFixed(2)}` : ""}
+                      </p>
+                    </div>
+                  ))}
                 </div>
               );
             })}

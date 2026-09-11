@@ -1,5 +1,5 @@
 import { printHtmlDocument } from "./printDocument";
-import { resolveItemAmounts } from "./orderItems";
+import { itemExtras, resolveItemAmounts } from "./orderItems";
 
 /**
  * Open a printable receipt document.
@@ -62,16 +62,17 @@ export const printReceipt = ({
   const itemsHTML = safeCartData
     .map((item) => {
       const { quantity, lineTotal } = resolveItemAmounts(item);
-      // Components are priced into the line, so a receipt that omits them
-      // shows a number the diner cannot account for.
-      const mods = (item.modifiers || [])
-        .map((m) => m.name)
-        .filter(Boolean)
-        .join(", ");
-      const modsHTML = mods
-        ? `<div style="font-size:10px;color:#333;">+ ${esc(mods)}</div>`
-        : "";
-      return `<tr><td style="padding:6px 0;font-size:12px;">${esc(item.name)}${modsHTML}</td><td style="padding:6px 0;font-size:12px;text-align:center;">x${quantity}</td><td style="padding:6px 0;font-size:12px;text-align:right;">Rs.${lineTotal.toFixed(2)}</td></tr>`;
+      // Extras are priced into the line, so a receipt that omits them shows a
+      // number the diner cannot account for. One row each, indented under the
+      // dish, with its own price -- the same shape as the till's cart.
+      const extraRows = itemExtras(item)
+        .map((e) => {
+          const label = e.quantity > 1 ? `${e.quantity}x ${e.name}` : e.name;
+          const cost = e.price * e.quantity * quantity;
+          return `<tr><td style="padding:0 0 4px 12px;font-size:11px;color:#333;">${esc(label)}</td><td></td><td style="padding:0 0 4px 0;font-size:11px;color:#333;text-align:right;">${cost ? `Rs.${cost.toFixed(2)}` : ""}</td></tr>`;
+        })
+        .join("");
+      return `<tr><td style="padding:6px 0 2px 0;font-size:12px;">${esc(item.name)}</td><td style="padding:6px 0 2px 0;font-size:12px;text-align:center;">x${quantity}</td><td style="padding:6px 0 2px 0;font-size:12px;text-align:right;">Rs.${lineTotal.toFixed(2)}</td></tr>${extraRows}`;
     })
     .join("");
 
