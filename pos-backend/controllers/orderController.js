@@ -128,10 +128,38 @@ const sanitizeItem = (raw = {}) => {
   price,
   total,
   note: String(raw.note || "").slice(0, 300),
+  // `optionName` is what the till sends -- reading only `name` stored an
+  // EMPTY string for every extra on every POS order ever taken. The names
+  // survived solely inside the composed product name, which is why removing
+  // that bracket had to come with this.
   modifiers: Array.isArray(raw.modifiers)
     ? raw.modifiers.slice(0, 40).map((m) => ({
-        name: String(m?.name || "").slice(0, 120),
+        name: String(m?.name || m?.optionName || "").slice(0, 120),
         price: safeNumber(m?.price, 0, { min: -1e6, max: 1e6 }),
+        quantity: Math.max(1, Math.min(99, Math.floor(safeNumber(m?.quantity, 1)))),
+      }))
+    : [],
+
+  // The structured detail behind those extras. Dropped entirely before, so a
+  // POS order could never say which option group a choice came from, and a
+  // chosen variant left no trace at all.
+  variant: raw.variant
+    ? {
+        name: String(raw.variant.name || "").slice(0, 120),
+        price: safeNumber(raw.variant.price, 0, { min: -1e6, max: 1e6 }),
+      }
+    : undefined,
+  modifierSelections: Array.isArray(raw.modifierSelections)
+    ? raw.modifierSelections.slice(0, 40).map((m) => ({
+        groupName: String(m?.groupName || "").slice(0, 120),
+        optionName: String(m?.optionName || m?.name || "").slice(0, 120),
+        price: safeNumber(m?.price, 0, { min: -1e6, max: 1e6 }),
+      }))
+    : [],
+  addons: Array.isArray(raw.addons)
+    ? raw.addons.slice(0, 40).map((a) => ({
+        name: String(a?.name || "").slice(0, 120),
+        price: safeNumber(a?.price, 0, { min: -1e6, max: 1e6 }),
       }))
     : [],
   };

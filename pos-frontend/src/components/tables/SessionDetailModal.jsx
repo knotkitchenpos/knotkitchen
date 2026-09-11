@@ -1,5 +1,5 @@
 import React from "react";
-import { itemExtras } from "../../utils/orderItems";
+import { itemDisplayName, itemExtras } from "../../utils/orderItems";
 import { FaLongArrowAltRight } from "react-icons/fa";
 
 const SessionDetailModal = ({
@@ -62,7 +62,7 @@ const SessionDetailModal = ({
                         cancelled ? "text-content-muted line-through" : "text-content"
                       }`}
                     >
-                      {item.name}
+                      {itemDisplayName(item)}
                     </p>
                     <p className="text-xs text-content-muted">
                       x{item.quantity}

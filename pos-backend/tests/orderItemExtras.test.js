@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const { orderItemExtras } = require("../services/orderItemExtras");
+const { orderItemExtras, itemDisplayName } = require("../services/orderItemExtras");
 
 /**
  * Extras are sub-products, not a tail on the product name.
@@ -147,4 +147,48 @@ test("the two copies of the rule stay in step", () => {
     assert.match(source, /item\.variant\?\.name/, "both must drop the variant");
     assert.match(source, /entry\?\.name \|\| entry\?\.optionName/, "both must read either field");
   }
+});
+
+// ---------------------------------------------------------------------------
+// Orders taken before the names were stored
+// ---------------------------------------------------------------------------
+
+test("an older order's extras are recovered from the name they were baked into", () => {
+  // The till sent `optionName`; the order controller read `name`. So every
+  // POS order ever taken stored a price for each extra and an EMPTY name, and
+  // the names survived only inside the composed product title. Those bills are
+  // reachable by link for good.
+  const item = {
+    name: "Chicken Sandwich (+ Thums Up 250 ml, Sprite 250 ml)",
+    modifiers: [{ name: "", price: 20 }, { name: "", price: 20 }],
+  };
+
+  assert.deepEqual(orderItemExtras(item), [
+    { name: "Thums Up 250 ml", price: 20, quantity: 1 },
+    { name: "Sprite 250 ml", price: 20, quantity: 1 },
+  ]);
+});
+
+test("the recovered tail comes off the name, so nothing is listed twice", () => {
+  assert.equal(
+    itemDisplayName({ name: "Chicken Sandwich (+ Thums Up 250 ml, Sprite 250 ml)" }),
+    "Chicken Sandwich",
+  );
+  // A bracket that is not an extras tail is part of the dish's name.
+  assert.equal(itemDisplayName({ name: "Sandwich (Large)" }), "Sandwich (Large)");
+  assert.equal(itemDisplayName({ name: "  Plain  " }), "Plain");
+  assert.equal(itemDisplayName({}), "");
+});
+
+test("REGRESSION: the order controller keeps the name the till actually sends", () => {
+  // Reading only `name` is what emptied them. It also dropped the structured
+  // detail wholesale, so a POS order could never say which group a choice came
+  // from and a chosen variant left no trace at all.
+  const ctrl = SRC("controllers", "orderController.js");
+  const block = ctrl.slice(ctrl.indexOf("const sanitizeItem"), ctrl.indexOf("// Validate table capacity"));
+
+  assert.match(block, /m\?\.name \|\| m\?\.optionName/, "the till sends optionName");
+  assert.match(block, /modifierSelections:/, "the structured selections must survive");
+  assert.match(block, /addons:/);
+  assert.match(block, /variant:/);
 });

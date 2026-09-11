@@ -407,7 +407,11 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
             groupId: group._id,
             groupName: group.name,
             optionId: opt._id,
+            // Both spellings. `optionName` is what the POS screens read;
+            // `name` is what the order schema stores, and sending only the
+            // first is how every stored extra ended up nameless.
             optionName: opt.name,
+            name: opt.name,
             quantity: qty,
             price: Number(opt.price || 0),
           });

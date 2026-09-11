@@ -54,9 +54,19 @@ export const itemExtras = (item = {}) => {
 
   const variantName = String(item.variant?.name || "").trim().toLowerCase();
 
+  // Orders taken before the till stopped composing the name stored a price
+  // for every extra and an EMPTY name, because the controller read `name`
+  // while the till sent `optionName`. The names are still in the product
+  // title those orders carry, which is the only place left to read them.
+  const tail = String(item.name || "").match(/\(\+\s*([^)]*)\)\s*$/);
+  const salvaged =
+    tail && source.some((e) => !String(e?.name || e?.optionName || "").trim())
+      ? tail[1].split(",").map((t) => t.trim()).filter(Boolean)
+      : [];
+
   return source
-    .map((entry) => {
-      const name = String(entry?.name || entry?.optionName || "").trim();
+    .map((entry, i) => {
+      const name = String(entry?.name || entry?.optionName || salvaged[i] || "").trim();
       if (!name) return null;
       return {
         name,
@@ -67,6 +77,16 @@ export const itemExtras = (item = {}) => {
     .filter(Boolean)
     .filter((e) => !variantName || e.name.toLowerCase() !== variantName);
 };
+
+/**
+ * A line's product name, without the extras an older till baked into it.
+ *
+ * Those orders keep their composed title -- it is the only record of what the
+ * extras were called. Printing it AND the rows salvaged from it would list
+ * every extra twice on the same bill.
+ */
+export const itemDisplayName = (item = {}) =>
+  String(item?.name || "").replace(/\s*\(\+\s*[^)]*\)\s*$/, "").trim();
 
 /**
  * What a SAVED order line actually cost.

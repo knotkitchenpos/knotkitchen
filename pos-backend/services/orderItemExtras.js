@@ -42,6 +42,21 @@ const normalise = (entry) => {
   };
 };
 
+/**
+ * The names an older order kept only inside its product name.
+ *
+ * Until the till stopped composing "Sandwich (+ Coke, Fries)", the order
+ * controller read `m.name` while the till sent `m.optionName` -- so every
+ * stored extra had a price and an EMPTY name. Those orders are real, their
+ * bills are reachable by link for good, and the names are still there in the
+ * one place nobody meant to put them.
+ */
+const namesFromComposedTitle = (name) => {
+  const tail = String(name || "").match(/\(\+\s*([^)]*)\)\s*$/);
+  if (!tail) return [];
+  return tail[1].split(",").map((t) => t.trim()).filter(Boolean);
+};
+
 const orderItemExtras = (item = {}) => {
   const source =
     Array.isArray(item.modifiers) && item.modifiers.length
@@ -49,11 +64,25 @@ const orderItemExtras = (item = {}) => {
       : [...(item.addons || []), ...(item.modifierSelections || [])];
 
   const variantName = String(item.variant?.name || "").trim().toLowerCase();
+  const salvaged = source.some((e) => !String(e?.name || e?.optionName || "").trim())
+    ? namesFromComposedTitle(item.name)
+    : [];
 
   return source
-    .map(normalise)
+    .map((entry, i) => normalise(entry) || normalise({ ...entry, name: salvaged[i] }))
     .filter(Boolean)
     .filter((e) => !variantName || e.name.toLowerCase() !== variantName);
 };
 
-module.exports = { orderItemExtras };
+/**
+ * A line's product name, without the extras an older till baked into it.
+ *
+ * Those orders keep their composed title -- it is the only record of what the
+ * extras were called. Printing it AND the rows salvaged from it would list
+ * every extra twice on the same bill, so the tail comes off the name and the
+ * rows carry it.
+ */
+const itemDisplayName = (item = {}) =>
+  String(item?.name || "").replace(/\s*\(\+\s*[^)]*\)\s*$/, "").trim();
+
+module.exports = { orderItemExtras, itemDisplayName };

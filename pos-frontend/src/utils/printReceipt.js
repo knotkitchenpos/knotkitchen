@@ -1,5 +1,5 @@
 import { printHtmlDocument } from "./printDocument";
-import { itemExtras, resolveItemAmounts } from "./orderItems";
+import { itemDisplayName, itemExtras, resolveItemAmounts } from "./orderItems";
 
 /**
  * Open a printable receipt document.
@@ -72,7 +72,7 @@ export const printReceipt = ({
           return `<tr><td style="padding:0 0 4px 12px;font-size:11px;color:#333;">${esc(label)}</td><td></td><td style="padding:0 0 4px 0;font-size:11px;color:#333;text-align:right;">${cost ? `Rs.${cost.toFixed(2)}` : ""}</td></tr>`;
         })
         .join("");
-      return `<tr><td style="padding:6px 0 2px 0;font-size:12px;">${esc(item.name)}</td><td style="padding:6px 0 2px 0;font-size:12px;text-align:center;">x${quantity}</td><td style="padding:6px 0 2px 0;font-size:12px;text-align:right;">Rs.${lineTotal.toFixed(2)}</td></tr>${extraRows}`;
+      return `<tr><td style="padding:6px 0 2px 0;font-size:12px;">${esc(itemDisplayName(item))}</td><td style="padding:6px 0 2px 0;font-size:12px;text-align:center;">x${quantity}</td><td style="padding:6px 0 2px 0;font-size:12px;text-align:right;">Rs.${lineTotal.toFixed(2)}</td></tr>${extraRows}`;
     })
     .join("");
 

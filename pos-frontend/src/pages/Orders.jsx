@@ -14,7 +14,7 @@ import {
 import TableSettleModal from "../components/tables/TableSettleModal";
 import { getMyRestaurant } from "../https/newModules";
 import { printReceipt } from "../utils/printReceipt";
-import { itemExtras } from "../utils/orderItems";
+import { itemDisplayName, itemExtras } from "../utils/orderItems";
 import { isPreparing, isReady, isSettled, isCancelled, statusLabel, COMPLETED, CANCELLED } from "../constants/orderStatus";
 import { sourceLabel, tableLabel, orderDisplayId } from "../utils/orderLabels";
 import { sendTableEBill } from "../utils/sendTableEBill";
@@ -769,7 +769,7 @@ const Orders = () => {
                               isVoided ? "text-[#94A3B8] line-through" : "text-[#0F172A]"
                             }`}
                           >
-                            {it.name}
+                            {itemDisplayName(it)}
                             {it.variant?.name ? ` (${it.variant.name})` : ""}
                           </p>
                           {isVoided && (

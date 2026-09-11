@@ -7,7 +7,7 @@ import { useMutation } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
 import { printHtmlDocument } from "../../utils/printDocument";
 import { sendEBill } from "../../https";
-import { itemExtras, resolveItemAmounts } from "../../utils/orderItems";
+import { itemDisplayName, itemExtras, resolveItemAmounts } from "../../utils/orderItems";
 
 /**
  * Invoice / receipt modal (Module 3 §5, §6, §7, §8).
@@ -132,7 +132,7 @@ const Invoice = ({
                     .join("");
                 return `
         <tr>
-          <td style="padding:6px 0 2px 0;font-size:12px;">${item.name}</td>
+          <td style="padding:6px 0 2px 0;font-size:12px;">${itemDisplayName(item)}</td>
           <td style="padding:6px 0 2px 0;font-size:12px;text-align:center;">x${quantity}</td>
           <td style="padding:6px 0 2px 0;font-size:12px;text-align:right;">${money(lineTotal)}</td>
         </tr>${extraRows}`;
@@ -370,7 +370,7 @@ const Invoice = ({
                                 <div key={index} className="text-[13px]">
                                     <div className="flex justify-between items-start gap-3">
                                         <span className="text-white/90">
-                                            {item.name}{" "}
+                                            {itemDisplayName(item)}{" "}
                                             <span className="text-white/40">x{resolveItemAmounts(item).quantity}</span>
                                         </span>
                                         {/* The LINE amount, so the rows add up to the subtotal below. */}

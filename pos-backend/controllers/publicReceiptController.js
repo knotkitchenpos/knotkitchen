@@ -17,7 +17,7 @@ const TableSession = require("../models/tableSessionModel");
 const Restaurant = require("../models/restaurantModel");
 const { buildReceipt } = require("../services/receiptService");
 const { readToken } = require("../services/receiptLink");
-const { orderItemExtras } = require("../services/orderItemExtras");
+const { orderItemExtras, itemDisplayName } = require("../services/orderItemExtras");
 
 const esc = (value) =>
   String(value === null || value === undefined ? "" : value)
@@ -111,7 +111,7 @@ const render = (receipt) => {
         .join("");
 
       return `<div class="item">
-        <div class="n">${esc(i.name)}
+        <div class="n">${esc(itemDisplayName(i))}
           <div class="q">${Number(i.quantity)} × ${money(i.price)}</div>
         </div>
         <div class="p">${money(i.total)}</div>
