@@ -117,6 +117,24 @@ const getOrCreateQr = async (req, res, next) => {
       });
       // Backfill legacy fields so the existing QR flow also works
       await Table.updateOne({ _id: table._id }, { qrToken: token, qrCode: buildQrUrl(token) });
+    } else {
+      // Heal the stored copies when the host has moved under them.
+      //
+      // `qrUrl` and `Table.qrCode` are written once, at mint time, and the
+      // host in them is deployment config that changes afterwards. Responses
+      // are rebuilt from the token so they are always right, but anything
+      // reading the stored string directly -- an export, a report, a screen
+      // that has not been looked at in a while -- keeps serving the hostname
+      // the QR was minted under. Rewrite it the first time the table is
+      // opened rather than leaving a wrong URL in the database for good.
+      const fresh = buildQrUrl(qr.token);
+      if (fresh && qr.qrUrl !== fresh) {
+        qr.qrUrl = fresh;
+        await qr.save();
+      }
+      if (fresh && table.qrCode !== fresh) {
+        await Table.updateOne({ _id: table._id }, { qrToken: qr.token, qrCode: fresh });
+      }
     }
 
     res.status(200).json({

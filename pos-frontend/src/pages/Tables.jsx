@@ -88,6 +88,22 @@ const Tables = () => {
   const [qrModalTable, setQrModalTable] = useState(null);
   const [settleTarget, setSettleTarget] = useState(null);
   const [qrFetching, setQrFetching] = useState(false);
+
+  /**
+   * The URL a table's QR code should carry.
+   *
+   * ALWAYS the server's, never one built from this browser's address bar.
+   * The short QR host is deployment configuration (QR_PUBLIC_URL), and the
+   * till is served from a different hostname entirely -- so composing
+   * `window.location.origin + "/t/" + token` printed the POS's own hostname
+   * onto every card, which is what kept the long link alive long after the
+   * short one went live. The API rebuilds this from the token on every read.
+   *
+   * The origin is still the fallback, for the moment before the fetch lands
+   * and for a deployment with no short host configured.
+   */
+  const qrLinkFor = (table) =>
+    table?.qrCode || (table?.qrToken ? `${window.location.origin}/t/${table.qrToken}` : "");
   const [printModalTable, setPrintModalTable] = useState(null);
   const [isAreaModalOpen, setIsAreaModalOpen] = useState(false);
   const [newAreaInput, setNewAreaInput] = useState("");
@@ -925,7 +941,7 @@ const Tables = () => {
                     </div>
                   ) : qrModalTable.qrToken ? (
                     <QRCodeCanvas
-                      value={`${window.location.origin}/t/${qrModalTable.qrToken}`}
+                      value={qrLinkFor(qrModalTable)}
                       size={180}
                       level="H"
                       includeMargin
@@ -940,18 +956,14 @@ const Tables = () => {
               </div>
 
               <div className="p-3 bg-white rounded-xl border border-[#E2E8F0] break-all text-[11px] font-mono text-[#334155]">
-                {qrModalTable.qrToken
-                  ? `${window.location.origin}/t/${qrModalTable.qrToken}`
-                  : "QR will appear once generated."}
+                {qrLinkFor(qrModalTable) || "QR will appear once generated."}
               </div>
             </div>
 
             <div className="flex gap-2">
               <button
                 onClick={() => {
-                  const url = qrModalTable.qrToken
-                    ? `${window.location.origin}/t/${qrModalTable.qrToken}`
-                    : "";
+                  const url = qrLinkFor(qrModalTable);
                   if (!url) {
                     enqueueSnackbar("QR is not ready yet — please wait.", { variant: "warning" });
                     return;

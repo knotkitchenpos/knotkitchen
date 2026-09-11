@@ -70,7 +70,13 @@ const PrintTableQRModal = ({ isOpen, onClose, table }) => {
   const restaurantLogo = storeProps.logo || storeProps.branding?.logo || "";
   const tableDisplay = table.displayId || table.tableName || `Table ${table.tableNumber}`;
   const areaName = table.area || table.floor || "Main Hall";
-  const qrUrl = table.qrCode || `${window.location.origin}/t/${table.qrToken || ""}`;
+  // The server's URL, not one built from this browser's address bar: the
+  // short QR host is deployment configuration and the till is served from a
+  // different hostname. Composing it here printed the POS's own hostname onto
+  // the card. The origin remains the fallback for a deployment with no short
+  // host configured.
+  const qrUrl =
+    table.qrCode || (table.qrToken ? `${window.location.origin}/t/${table.qrToken}` : "");
 
   const esc = (v) =>
     String(v ?? "").replace(/[&<>"']/g, (c) =>

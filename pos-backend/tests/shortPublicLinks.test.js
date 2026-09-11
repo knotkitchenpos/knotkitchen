@@ -5,6 +5,7 @@ const path = require("node:path");
 
 const SRC = (...p) => fs.readFileSync(path.join(__dirname, "..", ...p), "utf8");
 const DEPLOY = (...p) => fs.readFileSync(path.join(__dirname, "..", "..", "deploy", ...p), "utf8");
+const FE = (...p) => fs.readFileSync(path.join(__dirname, "..", "..", "pos-frontend", ...p), "utf8");
 
 /**
  * The two URLs a customer actually reads.
@@ -334,4 +335,38 @@ test("REGRESSION: a QR's URL is rebuilt from its token, never read back from the
     2,
     "both creation paths stamp the derived URL",
   );
+});
+
+test("REGRESSION: the till prints the server's QR URL, not its own hostname", () => {
+  // The API has rebuilt this from the token since the short host shipped, and
+  // the screen that prints the cards ignored it: it composed
+  // `window.location.origin + "/t/" + token`, and the till is served from
+  // business.<base>. So every code generated, shown and printed carried the
+  // POS hostname however QR_PUBLIC_URL was set -- the long link outliving the
+  // short one by way of the one surface that never asked the server.
+  const tables = FE("src", "pages", "Tables.jsx");
+
+  assert.match(tables, /const qrLinkFor = \(table\) =>\s*\n?\s*table\?\.qrCode/, "the server's URL first");
+  assert.match(tables, /value=\{qrLinkFor\(qrModalTable\)\}/, "the code encodes it");
+
+  // The origin may appear ONLY inside the two fallbacks, for the moment
+  // before the fetch lands and for a deployment with no short host.
+  const composed = [...tables.matchAll(/\$\{window\.location\.origin\}\/t\//g)];
+  assert.equal(composed.length, 1, "one fallback, inside qrLinkFor");
+
+  const print = FE("src", "components", "tables", "PrintTableQRModal.jsx");
+  assert.match(print, /table\.qrCode \|\|/, "the printed card prefers the stored server URL");
+});
+
+test("opening a table heals a QR URL the host moved under", () => {
+  // `qrUrl` and `Table.qrCode` are written once, at mint time, and the host in
+  // them is deployment config that changes afterwards. Responses are rebuilt
+  // from the token, but anything reading the stored string keeps serving the
+  // old hostname.
+  const ctrl = SRC("controllers", "tableQRController.js");
+  const block = ctrl.slice(ctrl.indexOf("const getOrCreateQr"), ctrl.indexOf("Regenerate a QR for a table"));
+
+  assert.match(block, /const fresh = buildQrUrl\(qr\.token\)/);
+  assert.match(block, /if \(fresh && qr\.qrUrl !== fresh\)/);
+  assert.match(block, /if \(fresh && table\.qrCode !== fresh\)/);
 });

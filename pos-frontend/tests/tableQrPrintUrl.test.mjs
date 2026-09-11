@@ -38,6 +38,21 @@ test("REGRESSION: the print modal always asks the server for the URL", () => {
 
 test("the QR image renders the URL the server returned", () => {
   const modal = SRC("src/components/tables/PrintTableQRModal.jsx");
-  assert.match(modal, /const qrUrl = table\.qrCode \|\|/);
+  // Whitespace-tolerant: the declaration wraps once the fallback is spelled
+  // out, and the point of the test is the precedence, not the line breaks.
+  assert.match(modal, /const qrUrl =\s+table\.qrCode \|\|/);
   assert.match(modal, /value=\{qrUrl\}/);
+});
+
+test("REGRESSION: the QR screen does not compose the URL from its own hostname", () => {
+  // The till is served from business.<base> while a table QR points at the
+  // short host, so `window.location.origin + "/t/" + token` printed the POS's
+  // own hostname onto every card however QR_PUBLIC_URL was set.
+  const tables = SRC("src/pages/Tables.jsx");
+  assert.match(tables, /const qrLinkFor = \(table\) =>/);
+  assert.match(tables, /value=\{qrLinkFor\(qrModalTable\)\}/);
+
+  // The origin survives only as the fallback inside that helper.
+  const composed = [...tables.matchAll(/\$\{window\.location\.origin\}\/t\//g)];
+  assert.equal(composed.length, 1, "one fallback, inside qrLinkFor");
 });
