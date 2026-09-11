@@ -1,21 +1,35 @@
 import React, { useMemo, useState } from "react";
 import { dispatchLabel } from "../lib/dispatch";
+import { capLabel, capOf } from "../lib/modifierGroups";
 
 /**
  * Product detail sheet.
  *
- * Handles required modifier groups (min/max selection), optional add-ons,
- * variants, quantity, and an optional note. The `unitPrice` we compute here is
- * only for a nicer UX — the backend re-prices from the same identifiers, so
- * the customer cannot pay less by editing the DOM (§10).
+ * Laid out to match the table-QR sheet a diner sees after scanning, because
+ * they are the same job on two surfaces and a customer who has used one should
+ * recognise the other: a header that stays put, the choices scrolling between
+ * it and a footer that always shows the running total and the button.
+ *
+ * Every option is a real checkbox or radio rather than a bordered button. A
+ * button that changes colour when chosen is guesswork on a phone in a dark
+ * room; a ticked box is not, and it is what assistive technology reads.
+ *
+ * The `unitPrice` computed here is only for a nicer experience -- the backend
+ * re-prices from the same identifiers, so the customer cannot pay less by
+ * editing the DOM.
  */
 export default function ProductModal({ product, symbol, onClose, onAdd, allowNotes }) {
-  const [selectedVariant, setSelectedVariant] = useState(product.variants?.[0] || null);
+  const variants = product.variants || [];
+  const groups = product.modifierGroups || [];
+  const addons = product.addons || [];
+
+  const [selectedVariant, setSelectedVariant] = useState(variants[0] || null);
   const [selectedAddons, setSelectedAddons] = useState([]);
-  const [selectedModifiers, setSelectedModifiers] = useState({}); // { groupId: [optionId, ...] }
+  const [selectedModifiers, setSelectedModifiers] = useState({}); // { groupId: [option, ...] }
   const [quantity, setQuantity] = useState(1);
   const [note, setNote] = useState("");
-  const [error, setError] = useState("");
+
+  const money = (n) => `${symbol}${Number(n || 0).toFixed(2)}`;
 
   const toggleAddon = (addon) => {
     setSelectedAddons((prev) =>
@@ -27,17 +41,13 @@ export default function ProductModal({ product, symbol, onClose, onAdd, allowNot
     setSelectedModifiers((prev) => {
       const current = prev[group.id] || [];
       const already = current.find((o) => o.id === option.id);
-      let next;
-      if (already) {
-        next = current.filter((o) => o.id !== option.id);
-      } else if (group.maxSelections <= 1) {
-        next = [option];
-      } else if (current.length >= group.maxSelections) {
-        return prev;
-      } else {
-        next = [...current, option];
-      }
-      return { ...prev, [group.id]: next };
+      if (already) return { ...prev, [group.id]: current.filter((o) => o.id !== option.id) };
+
+      const cap = capOf(group);
+      // A cap of one behaves like a radio: picking swaps rather than blocks.
+      if (cap === 1) return { ...prev, [group.id]: [option] };
+      if (current.length >= cap) return prev;
+      return { ...prev, [group.id]: [...current, option] };
     });
   };
 
@@ -50,17 +60,17 @@ export default function ProductModal({ product, symbol, onClose, onAdd, allowNot
     return base + addonSum + modifierSum;
   }, [product, selectedVariant, selectedAddons, selectedModifiers]);
 
-  const handleAdd = () => {
-    // Enforce required-group rules client-side too, so the customer gets an
-    // instant, friendly error before we hit the server.
-    for (const group of product.modifierGroups || []) {
-      const chosen = selectedModifiers[group.id] || [];
-      if (group.required && chosen.length < (group.minSelections || 1)) {
-        setError(`Please select at least ${group.minSelections || 1} option in "${group.name}".`);
-        return;
-      }
-    }
+  // Required groups are enforced BEFORE the button can be pressed, not after.
+  // Telling a customer what was wrong once they have already committed is the
+  // worst moment to tell them.
+  const missingRequired = groups.filter(
+    (g) => g.required && (selectedModifiers[g.id] || []).length < (g.minSelections || 1)
+  );
+  const needsVariant = variants.length > 0 && !selectedVariant;
+  const blocked = needsVariant || missingRequired.length > 0;
 
+  const handleAdd = () => {
+    if (blocked) return;
     onAdd({
       menuId: product.menuId,
       itemId: product.id,
@@ -76,7 +86,7 @@ export default function ProductModal({ product, symbol, onClose, onAdd, allowNot
         : null,
       addons: selectedAddons.map((a) => ({ addonId: a.id, name: a.name, price: a.price })),
       modifierSelections: Object.entries(selectedModifiers).flatMap(([groupId, opts]) => {
-        const group = (product.modifierGroups || []).find((g) => g.id === groupId);
+        const group = groups.find((g) => g.id === groupId);
         return opts.map((o) => ({
           groupId,
           groupName: group?.name || "",
@@ -92,126 +102,159 @@ export default function ProductModal({ product, symbol, onClose, onAdd, allowNot
 
   return (
     <div
-      className="fixed inset-0 z-[100] bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-6"
+      className="fixed inset-0 z-[100] flex items-end justify-center bg-black/50 sm:items-center"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
+      aria-label={`Choose options for ${product.name}`}
     >
       <div
-        className="bg-white w-full max-w-lg rounded-t-3xl sm:rounded-3xl overflow-hidden max-h-[92vh] flex flex-col"
+        className="flex max-h-[88vh] w-full flex-col rounded-t-3xl bg-white sm:max-w-md sm:rounded-3xl"
         onClick={(e) => e.stopPropagation()}
       >
-        {product.image ? (
-          <img src={product.image} alt={product.imageAlt || product.name} className="w-full h-48 object-cover" />
-        ) : null}
+        {/* Header — stays put while the choices scroll under it. */}
+        <div className="flex shrink-0 items-start justify-between gap-3 border-b border-slate-200 p-4">
+          <div className="min-w-0">
+            <h3 className="text-[15px] font-extrabold leading-snug text-slate-900">{product.name}</h3>
+            {product.description ? (
+              <p className="mt-0.5 line-clamp-2 text-[12px] text-slate-500">{product.description}</p>
+            ) : null}
+            {dispatchLabel(product.dispatchType) ? (
+              <span className="mt-1.5 inline-block rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">
+                {dispatchLabel(product.dispatchType)}
+              </span>
+            ) : null}
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="h-8 w-8 shrink-0 rounded-full bg-slate-100 text-lg font-bold leading-none text-slate-600"
+          >
+            ×
+          </button>
+        </div>
 
-        <div className="p-5 overflow-y-auto">
-          <h2 className="text-xl font-semibold">{product.name}</h2>
-          {dispatchLabel(product.dispatchType) ? (
-            <span className="mt-1 inline-block text-[11px] font-medium px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">
-              {dispatchLabel(product.dispatchType)}
-            </span>
-          ) : null}
-          {product.description ? (
-            <p className="mt-1 text-sm text-slate-500">{product.description}</p>
-          ) : null}
-
-          {product.variants?.length ? (
-            <Section title="Size">
-              {product.variants.map((v) => (
-                <Option
+        {/* Choices */}
+        <div className="flex-1 space-y-5 overflow-y-auto p-4">
+          {variants.length > 0 ? (
+            <Group title="Choose a size" hint="Required" hintTone="required">
+              {variants.map((v) => (
+                <Choice
                   key={v.id}
+                  type="radio"
+                  name="variant"
                   label={v.name}
-                  hint={`${symbol}${Number(v.price).toFixed(2)}`}
-                  selected={selectedVariant?.id === v.id}
-                  onClick={() => setSelectedVariant(v)}
+                  price={money(v.price)}
+                  checked={selectedVariant?.id === v.id}
+                  onChange={() => setSelectedVariant(v)}
                 />
               ))}
-            </Section>
+            </Group>
           ) : null}
 
-          {(product.modifierGroups || []).map((group) => (
-            <Section
-              key={group.id}
-              title={group.name}
-              subtitle={
-                group.required
-                  ? `Required · pick ${group.minSelections || 1}${
-                      group.maxSelections > 1 ? `–${group.maxSelections}` : ""
-                    }`
-                  : group.maxSelections > 1
-                  ? `Pick up to ${group.maxSelections}`
-                  : "Optional"
-              }
-            >
-              {group.options.map((o) => (
-                <Option
-                  key={o.id}
-                  label={o.name}
-                  hint={o.price ? `+ ${symbol}${Number(o.price).toFixed(2)}` : ""}
-                  selected={(selectedModifiers[group.id] || []).some((x) => x.id === o.id)}
-                  onClick={() => toggleModifier(group, o)}
-                />
-              ))}
-            </Section>
-          ))}
+          {groups.map((group) => {
+            const chosen = selectedModifiers[group.id] || [];
+            const cap = capOf(group);
+            const single = cap === 1;
+            return (
+              <Group
+                key={group.id}
+                title={group.name}
+                hint={`${group.required ? "Required" : "Optional"} · ${capLabel(group)}`}
+                hintTone={group.required ? "required" : "optional"}
+              >
+                {group.options.map((o) => {
+                  const active = chosen.some((x) => x.id === o.id);
+                  return (
+                    <Choice
+                      key={o.id}
+                      type={single ? "radio" : "checkbox"}
+                      name={single ? `grp-${group.id}` : undefined}
+                      label={o.name}
+                      price={o.price ? `+${money(o.price)}` : ""}
+                      checked={active}
+                      // Past the cap the remaining options dim rather than
+                      // disappear, so the customer can see what they gave up.
+                      atCap={!active && !single && chosen.length >= cap}
+                      onChange={() => toggleModifier(group, o)}
+                    />
+                  );
+                })}
+                {group.options.length === 0 ? (
+                  <p className="text-[12px] text-slate-400">No options in this group.</p>
+                ) : null}
+              </Group>
+            );
+          })}
 
-          {product.addons?.length ? (
-            <Section title="Add extras">
-              {product.addons.map((a) => (
-                <Option
+          {addons.length > 0 ? (
+            <Group title="Add extras" hint="Optional · Choose any" hintTone="optional">
+              {addons.map((a) => (
+                <Choice
                   key={a.id}
+                  type="checkbox"
                   label={a.name}
-                  hint={a.price ? `+ ${symbol}${Number(a.price).toFixed(2)}` : ""}
-                  selected={!!selectedAddons.find((x) => x.id === a.id)}
-                  onClick={() => toggleAddon(a)}
+                  price={a.price ? `+${money(a.price)}` : ""}
+                  checked={!!selectedAddons.find((x) => x.id === a.id)}
+                  onChange={() => toggleAddon(a)}
                 />
               ))}
-            </Section>
+            </Group>
           ) : null}
 
           {allowNotes ? (
-            <Section title="Special instructions">
+            <Group title="Special instructions" hint="Optional" hintTone="optional">
               <textarea
                 value={note}
                 onChange={(e) => setNote(e.target.value.slice(0, 250))}
                 rows={2}
                 placeholder="e.g. no onions"
-                className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm"
+                className="w-full rounded-xl border border-slate-200 px-3 py-2 text-[13px] outline-none focus:border-brand"
               />
-            </Section>
+            </Group>
           ) : null}
-
-          {error ? <div className="mt-3 text-sm text-red-600">{error}</div> : null}
         </div>
 
-        <div className="border-t p-4 flex items-center gap-3">
-          <div className="flex items-center rounded-full border border-slate-200 overflow-hidden">
-            <button
-              type="button"
-              className="px-3 py-1 text-lg"
-              onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-              aria-label="Decrease quantity"
-            >
-              −
-            </button>
-            <span className="px-3 min-w-[2rem] text-center">{quantity}</span>
-            <button
-              type="button"
-              className="px-3 py-1 text-lg"
-              onClick={() => setQuantity((q) => Math.min(20, q + 1))}
-              aria-label="Increase quantity"
-            >
-              +
-            </button>
+        {/* Footer — the running total and the button never scroll away. */}
+        <div className="shrink-0 space-y-3 border-t border-slate-200 p-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                className="h-9 w-9 rounded-full bg-slate-100 text-lg font-bold text-slate-700"
+                aria-label="Decrease quantity"
+              >
+                −
+              </button>
+              <span className="min-w-[20px] text-center font-extrabold text-slate-900">{quantity}</span>
+              <button
+                type="button"
+                onClick={() => setQuantity((q) => Math.min(20, q + 1))}
+                className="h-9 w-9 rounded-full bg-brand text-lg font-bold text-brand-fg"
+                aria-label="Increase quantity"
+              >
+                +
+              </button>
+            </div>
+            <span className="font-extrabold text-slate-900">{money(unitPrice * quantity)}</span>
           </div>
+
+          {blocked ? (
+            <p className="text-center text-[12px] font-bold text-rose-500">
+              {needsVariant
+                ? "Please choose a size."
+                : `Please choose ${missingRequired.map((g) => `"${g.name}"`).join(", ")}.`}
+            </p>
+          ) : null}
+
           <button
             type="button"
             onClick={handleAdd}
-            className="flex-1 bg-brand text-brand-fg font-semibold rounded-full py-3 hover:opacity-90 transition"
+            disabled={blocked}
+            className="h-12 w-full rounded-2xl bg-brand text-[14px] font-extrabold text-brand-fg transition hover:opacity-90 disabled:opacity-50"
           >
-            Add · {symbol}
-            {(unitPrice * quantity).toFixed(2)}
+            Add to cart · {money(unitPrice * quantity)}
           </button>
         </div>
       </div>
@@ -219,29 +262,49 @@ export default function ProductModal({ product, symbol, onClose, onAdd, allowNot
   );
 }
 
-function Section({ title, subtitle, children }) {
+function Group({ title, hint, hintTone, children }) {
   return (
-    <div className="mt-4">
-      <div className="flex items-baseline justify-between">
-        <h3 className="text-sm font-semibold text-slate-900">{title}</h3>
-        {subtitle ? <span className="text-xs text-slate-500">{subtitle}</span> : null}
+    <section>
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <h4 className="text-[13px] font-extrabold text-slate-900">{title}</h4>
+        {hint ? (
+          <span
+            className={`shrink-0 text-[11px] font-bold ${
+              hintTone === "required" ? "text-rose-500" : "text-slate-400"
+            }`}
+          >
+            {hint}
+          </span>
+        ) : null}
       </div>
-      <div className="mt-2 space-y-1.5">{children}</div>
-    </div>
+      <div className="space-y-2">{children}</div>
+    </section>
   );
 }
 
-function Option({ label, hint, selected, onClick }) {
+function Choice({ type, name, label, price, checked, atCap, onChange }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl border text-sm transition ${
-        selected ? "border-brand bg-brand/5 text-slate-900" : "border-slate-200 hover:border-slate-300"
-      }`}
+    <label
+      className={`flex items-center justify-between gap-3 rounded-xl border p-3 text-[13px] ${
+        atCap ? "opacity-45" : "cursor-pointer"
+      } ${checked ? "border-brand" : "border-slate-200"}`}
     >
-      <span>{label}</span>
-      {hint ? <span className="text-slate-500 text-xs">{hint}</span> : null}
-    </button>
+      <span className="flex min-w-0 items-center gap-2.5">
+        <input
+          type={type}
+          name={name}
+          checked={checked}
+          disabled={atCap}
+          onChange={onChange}
+          className="h-4 w-4 accent-[var(--brand,#e2571e)]"
+        />
+        <span className="truncate font-bold text-slate-800">{label}</span>
+      </span>
+      {price ? (
+        <span className="shrink-0 font-extrabold text-slate-900">{price}</span>
+      ) : (
+        <span className="shrink-0 text-[11px] font-bold text-slate-400">Free</span>
+      )}
+    </label>
   );
 }

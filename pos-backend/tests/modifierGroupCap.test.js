@@ -131,3 +131,26 @@ test("a single-choice group still accepts exactly one", () => {
     /Maximum 1 selection\(s\)/,
   );
 });
+
+// ---- the surfaces that read the rule for themselves -------------------
+
+test("REGRESSION: the customer website reads the flag, not the number", () => {
+  // It was the last surface still reading `maxSelections` directly. That
+  // field defaults to 1, so a group the restaurant had set to "choose any"
+  // let a customer pick a single drink and silently ignored the next tap --
+  // while the QR sheet on the same menu allowed all of them.
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const read = (...p) => fs.readFileSync(path.join(__dirname, "..", "..", ...p), "utf8");
+
+  const lib = read("customer-web", "src", "lib", "modifierGroups.js");
+  assert.match(lib, /maxSelectionEnabled !== true/, "a cap applies only when explicitly on");
+  assert.match(lib, /return Infinity/);
+
+  const modal = read("customer-web", "src", "components", "ProductModal.jsx");
+  assert.match(modal, /capOf\(group\)/, "the sheet must ask the helper");
+  assert.ok(
+    !/group\.maxSelections/.test(modal),
+    "reading maxSelections directly is the bug this replaces",
+  );
+});
