@@ -461,13 +461,7 @@ const Invoice = ({
                                     {paymentId}
                                 </span>
                             </p>
-                        ) : (
-                            <p className="text-[11.5px] text-white/40">
-                                {isCash
-                                    ? "Cash payments do not carry a gateway Payment ID."
-                                    : "Payment ID will appear here once the gateway confirms the transaction."}
-                            </p>
-                        )}
+                        ) : null}
                     </div>
 
                     {emailedTo && (
