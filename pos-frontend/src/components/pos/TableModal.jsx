@@ -1,6 +1,9 @@
 import React, { useMemo, useState } from "react";
 import { ModalShell } from "./ModalShell";
 
+/** The order a table is already running, if it has one. */
+const sessionIdOf = (t) => t?.session?._id || t?.activeSessionId || "";
+
 const isOccupied = (t) => {
   const s = String(t.status || "").toLowerCase();
   if (["occupied", "booked", "reserved", "processing", "cleaning"].includes(s)) return true;
@@ -10,7 +13,18 @@ const isOccupied = (t) => {
   return cap > 0 && occ >= cap;
 };
 
-/** Finish Order → Table: pick an available table for this store. */
+/**
+ * A table that is taken but ORDERABLE.
+ *
+ * Occupied is not one state. A party already eating can be sent another dish;
+ * a table being cleared cannot, and neither can one that is merely reserved.
+ * Treating all of them as "unavailable" is what left a QR order with no way to
+ * be added to from the till -- the only table the biller wanted was the one
+ * the screen refused to let them pick.
+ */
+const canAddTo = (t) => Boolean(sessionIdOf(t));
+
+/** Finish Order → Table: pick a table for this store, or add to one in use. */
 const TableModal = ({ tables = [], busy, onClose, onConfirm }) => {
   const [picked, setPicked] = useState(null);
   const [guests, setGuests] = useState(1);
@@ -40,9 +54,11 @@ const TableModal = ({ tables = [], busy, onClose, onConfirm }) => {
   }, [tables, q, area]);
 
   const available = list.filter((t) => !isOccupied(t)).length;
+  const addable = list.filter(canAddTo).length;
+  const adding = Boolean(picked && canAddTo(picked));
 
   const confirm = () => {
-    if (!picked) return setErr("Select an available table to continue.");
+    if (!picked) return setErr("Select a table to continue.");
     const cap = Number(picked.capacity) || 4;
     const g = Math.max(1, Number(guests) || 1);
     if (g > cap) return setErr(`Table ${picked.tableNumber} seats a maximum of ${cap} customers.`);
@@ -53,15 +69,24 @@ const TableModal = ({ tables = [], busy, onClose, onConfirm }) => {
         tableNo: picked.tableNumber,
         capacity: picked.capacity,
         occupancy: picked.currentOccupancy || 0,
+        // Carried through so the caller appends to the order this table is
+        // already running rather than starting a second one on it.
+        session: picked.session || null,
+        activeSessionId: sessionIdOf(picked),
       },
-      guests: g,
+      // The party is already seated, so their count is not being taken again.
+      guests: adding ? 0 : g,
     });
   };
 
   return (
     <ModalShell
       title="Select Table"
-      subtitle={`${available} of ${tables.length} tables available in this store.`}
+      subtitle={
+        addable
+          ? `${available} of ${tables.length} free · ${addable} taking more orders.`
+          : `${available} of ${tables.length} tables available in this store.`
+      }
       onClose={onClose}
       width={560}
     >
@@ -98,7 +123,9 @@ const TableModal = ({ tables = [], busy, onClose, onConfirm }) => {
               </p>
             )}
             {list.map((t) => {
-              const off = isOccupied(t);
+              const addTo = canAddTo(t);
+              // Taken AND not orderable -- being cleared, or reserved.
+              const off = isOccupied(t) && !addTo;
               const on = picked?._id === t._id;
               return (
                 <button
@@ -113,9 +140,17 @@ const TableModal = ({ tables = [], busy, onClose, onConfirm }) => {
                       ? "bg-[#FEF2F2] border-[#FECACA] cursor-not-allowed opacity-70"
                       : on
                       ? "bg-[#FD5302] border-[#FD5302] text-white shadow-md"
+                      : addTo
+                      ? "bg-[#FFF7ED] border-[#FED7AA] hover:border-[#FD5302]"
                       : "bg-white border-[#E2E8F0] hover:border-[#FD5302]"
                   }`}
-                  title={off ? "Table is occupied" : `Seats ${t.capacity}`}
+                  title={
+                    off
+                      ? "Table is being cleared"
+                      : addTo
+                      ? "Already has an order — adding to it"
+                      : `Seats ${t.capacity}`
+                  }
                 >
                   <p className={`text-[15px] font-extrabold ${on ? "text-white" : "text-[#0F172A]"}`}>
                     Table {t.tableNumber}
@@ -130,11 +165,15 @@ const TableModal = ({ tables = [], busy, onClose, onConfirm }) => {
                         ? "bg-[#FEE2E2] text-[#DC2626]"
                         : on
                         ? "bg-white/20 text-white"
+                        : addTo
+                        ? "bg-[#FFEDD5] text-[#C2410C]"
                         : "bg-[#DCFCE7] text-[#15803D]"
                     }`}
                   >
                     {String(t.status || "").toLowerCase() === "cleaning"
                       ? "Cleaning"
+                      : addTo
+                      ? "Add to order"
                       : off
                       ? "Occupied"
                       : "Available"}
@@ -145,7 +184,14 @@ const TableModal = ({ tables = [], busy, onClose, onConfirm }) => {
           </div>
         )}
 
-        {picked && (
+        {picked && adding ? (
+          <p className="rounded-xl bg-[#FFF7ED] border border-[#FED7AA] px-3.5 py-3 text-[12.5px] font-semibold text-[#9A3412]">
+            Table {picked.tableNumber} already has an order. These items are added to it, and the
+            party keeps the guest count it was seated with.
+          </p>
+        ) : null}
+
+        {picked && !adding && (
           <div>
             <label className="block text-[12px] font-bold text-[#475569] mb-1.5 uppercase tracking-wide">
               Number of Customers
@@ -179,7 +225,7 @@ const TableModal = ({ tables = [], busy, onClose, onConfirm }) => {
             disabled={busy || !picked}
             className="h-[48px] rounded-xl bg-[#FD5302] text-white text-[14px] font-bold hover:bg-[#D64502] disabled:opacity-50"
           >
-            {busy ? "Completing…" : "Complete Order"}
+            {busy ? "Saving…" : adding ? "Add to Order" : "Complete Order"}
           </button>
         </div>
       </div>

@@ -31,6 +31,7 @@ import {
   addOrder,
   createPaymentLink,
   createTableSession,
+  addItemsToTableSession,
   getStoreProperties,
   getTables,
   updateTable,
@@ -373,6 +374,33 @@ const OrderPanel = () => {
       enqueueSnackbar(e.response?.data?.message || "Failed to complete order.", { variant: "error" }),
   });
 
+  /**
+   * Adding to a table that is already running an order.
+   *
+   * The only way to put another dish on an occupied table used to be to start
+   * a NEW session for it, which the server refuses -- the table is occupied.
+   * So a QR order could never be topped up from the till: Add Item led to the
+   * menu, Finish asked for a table, and the table it wanted was the one the
+   * diner was already sitting at.
+   *
+   * The endpoint for appending has existed all along; nothing called it.
+   */
+  const appendMutation = useMutation({
+    mutationFn: ({ sessionId, items, customerCount }) =>
+      addItemsToTableSession({ sessionId, items, customerCount }),
+    onSuccess: () => {
+      enqueueSnackbar("Items added to the table's order.", { variant: "success" });
+      qc.invalidateQueries({ queryKey: ["tables"] });
+      qc.invalidateQueries({ queryKey: ["table-sessions"] });
+      setShowTable(false);
+      dispatch(removeAllItems());
+      dispatch(removeCustomer());
+      dispatch(clearDiscount());
+    },
+    onError: (e) =>
+      enqueueSnackbar(e.response?.data?.message || "Failed to add items to the table.", { variant: "error" }),
+  });
+
   const sessionMutation = useMutation({
     mutationFn: (d) => createTableSession(d),
     onSuccess: (res) => {
@@ -391,7 +419,20 @@ const OrderPanel = () => {
   });
 
   const busy =
-    orderMutation.isPending || sessionMutation.isPending || paymentLinkMutation.isPending;
+    orderMutation.isPending ||
+    sessionMutation.isPending ||
+    appendMutation.isPending ||
+    paymentLinkMutation.isPending;
+
+  /**
+   * The session this cart is already attached to, if any.
+   *
+   * Set by Manage Tables → Add Item before it sends the biller here, and by
+   * the session mutation once a table order has been started from the till.
+   * Its presence is what turns Finish from "attach to a table" into "add to
+   * the order that table already has".
+   */
+  const activeSessionId = customer.sessionId || customer.table?.activeSessionId || "";
   const count = cart.reduce((n, i) => n + (i.quantity || 1), 0);
 
   /**
@@ -489,7 +530,12 @@ const OrderPanel = () => {
     // go through the payment-method chooser because payment for a dine-in
     // table is captured later (via /pay/:token or at the till when the
     // session is closed).
-    if (isTable) return setShowTable(true);
+    if (isTable) {
+      // Already on a table: append rather than ask which table, which is the
+      // question the biller has just answered by pressing Add Item on it.
+      if (activeSessionId) return appendToSession(activeSessionId);
+      return setShowTable(true);
+    }
     setShowPaymentMethod(true);
   };
 
@@ -569,18 +615,45 @@ const OrderPanel = () => {
   };
 
 
+  /** The cart, in the shape both session endpoints expect. */
+  const sessionItems = () =>
+    cart.map((i) => ({
+      menuItemId: i.menuItemId || i._id,
+      quantity: i.quantity,
+      variantId: i.variantId || null,
+      addonIds: i.addonIds || [],
+      modifierSelections: i.modifierSelections || {},
+      note: i.note || "",
+    }));
+
+  const appendToSession = (sessionId, customerCount) => {
+    appendMutation.mutate({
+      sessionId,
+      items: sessionItems(),
+      // Omitted unless the biller actually gave a new count: sending one
+      // re-validates the table's capacity and overwrites the count the party
+      // was seated with.
+      ...(customerCount ? { customerCount } : {}),
+    });
+  };
+
   const doTable = ({ table, guests }) => {
     dispatch(updateTableAction({ table }));
+
+    // A table picked from the list may already be running an order -- a QR
+    // order, or one started earlier at the till. Adding to it is the only
+    // thing that can work; asking the server for a second session on the same
+    // table is what produced "table is occupied".
+    const existing = table.session?._id || table.activeSessionId || "";
+    if (existing) {
+      dispatch(setSessionId(existing));
+      appendToSession(existing, guests);
+      return;
+    }
+
     sessionMutation.mutate({
       tableId: table.tableId || table._id,
-      items: cart.map((i) => ({
-        menuItemId: i.menuItemId || i._id,
-        quantity: i.quantity,
-        variantId: i.variantId || null,
-        addonIds: i.addonIds || [],
-        modifierSelections: i.modifierSelections || {},
-        note: i.note || "",
-      })),
+      items: sessionItems(),
       customerCount: guests,
       customerName: customer.customerName || "",
       customerPhone: customer.customerPhone || "",
@@ -1099,7 +1172,12 @@ const OrderPanel = () => {
           disabled={busy || cart.length === 0}
           className="h-[50px] rounded-xl bg-[#FD5302] text-white text-[14.5px] font-bold flex items-center justify-center gap-2 shadow-[0_8px_20px_-8px_rgba(253,83,2,0.7)] hover:bg-[#D64502] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
-          {busy ? "Processing…" : "Finish Order"} {!busy && <IconArrowRight />}
+          {busy
+            ? "Processing…"
+            : activeSessionId
+            ? `Add to ${customer.table?.tableNo ? `Table ${customer.table.tableNo}` : "Table"}`
+            : "Finish Order"}{" "}
+          {!busy && <IconArrowRight />}
         </button>
       </div>
 
