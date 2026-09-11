@@ -169,6 +169,28 @@ test("an older order's extras are recovered from the name they were baked into",
   ]);
 });
 
+test("REGRESSION: a recovered extra keeps its price", () => {
+  // An order read without .lean() hands over Mongoose subdocuments, whose
+  // fields live behind getters rather than as own properties. Building the
+  // fallback by spreading one copied its internals and not its price, so every
+  // recovered extra printed as free on a bill whose total said otherwise.
+  const subdoc = (o) =>
+    Object.create({
+      get name() { return o.name; },
+      get price() { return o.price; },
+    });
+
+  const extras = orderItemExtras({
+    name: "Sandwich (+ Coke, Fries)",
+    modifiers: [subdoc({ name: "", price: 20 }), subdoc({ name: "", price: 30 })],
+  });
+
+  assert.deepEqual(extras, [
+    { name: "Coke", price: 20, quantity: 1 },
+    { name: "Fries", price: 30, quantity: 1 },
+  ]);
+});
+
 test("the recovered tail comes off the name, so nothing is listed twice", () => {
   assert.equal(
     itemDisplayName({ name: "Chicken Sandwich (+ Thums Up 250 ml, Sprite 250 ml)" }),

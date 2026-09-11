@@ -32,8 +32,8 @@
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
-const normalise = (entry) => {
-  const name = String(entry?.name || entry?.optionName || "").trim();
+const normalise = (entry, fallbackName) => {
+  const name = String(entry?.name || entry?.optionName || fallbackName || "").trim();
   if (!name) return null;
   return {
     name,
@@ -68,8 +68,13 @@ const orderItemExtras = (item = {}) => {
     ? namesFromComposedTitle(item.name)
     : [];
 
+  // The salvaged name is passed IN rather than spread onto a copy of the
+  // entry. These are Mongoose subdocuments when the order came from a
+  // non-lean query, and spreading one copies its internals rather than its
+  // fields -- which silently dropped the price and printed every recovered
+  // extra as free.
   return source
-    .map((entry, i) => normalise(entry) || normalise({ ...entry, name: salvaged[i] }))
+    .map((entry, i) => normalise(entry, salvaged[i]))
     .filter(Boolean)
     .filter((e) => !variantName || e.name.toLowerCase() !== variantName);
 };
