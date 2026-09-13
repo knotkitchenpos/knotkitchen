@@ -9,7 +9,7 @@ import StatusBadge from "../components/StatusBadge";
 import { useAuth } from "../context/AuthContext";
 import ChargesDialog from "../components/ChargesDialog";
 import CustomersDialog from "../components/CustomersDialog";
-import LandingPageDialog from "../components/LandingPageDialog";
+import WebsiteDesignDialog from "../components/WebsiteDesignDialog";
 import StoreDocuments from "../components/StoreDocuments";
 import { UsersPanel } from "../components/CatalogPanels";
 
@@ -213,7 +213,8 @@ const RestaurantDetail = () => {
   const [customerCount, setCustomerCount] = useState(null);
   const [staff, setStaff] = useState([]);
   const [activity, setActivity] = useState([]);
-  const [dialog, setDialog] = useState(null); // 'charges' | 'customers' | 'gbp' | 'landing'
+  const [dialog, setDialog] = useState(null); // 'charges' | 'customers' | 'gbp' | 'website'
+  const [activityOpen, setActivityOpen] = useState(false);
   const [openingPos, setOpeningPos] = useState(false);
   const [gbpUrl, setGbpUrl] = useState("");
   const [gbpErr, setGbpErr] = useState("");
@@ -417,9 +418,9 @@ const RestaurantDetail = () => {
             {/* Open to staff as well as admin -- the dialog is read-only
                 unless the server says otherwise, and support needs to be able
                 to see what a customer is looking at while on the phone. */}
-            <button type="button" onClick={() => setDialog("landing")}
+            <button type="button" onClick={() => setDialog("website")}
               className="w-full text-right text-xs font-semibold text-brand-600 hover:text-brand-700">
-              Landing page &amp; template
+              Website: branding, landing page, colours, layout, ordering &amp; hours
             </button>
 
             {isAdmin && (
@@ -657,8 +658,21 @@ const RestaurantDetail = () => {
 
       {/* ── Activity (§33) — admin only ─────────────────────────────── */}
       {isAdmin && (
-      <Card title="Restaurant activity" className="mt-3">
-        {activity.length === 0 ? (
+      <Card
+        title="Restaurant activity"
+        className="mt-3"
+        action={
+          <button
+            type="button"
+            onClick={() => setActivityOpen((v) => !v)}
+            aria-expanded={activityOpen}
+            className="text-xs font-semibold text-brand-600 hover:text-brand-700"
+          >
+            {activityOpen ? "Hide" : `Show${activity.length ? ` (${activity.length})` : ""}`}
+          </button>
+        }
+      >
+        {!activityOpen ? null : activity.length === 0 ? (
           <p className="text-sm text-navy-400">No activity recorded for this restaurant yet.</p>
         ) : (
           <ul className="space-y-3">
@@ -691,8 +705,8 @@ const RestaurantDetail = () => {
       {dialog === "customers" && (
         <CustomersDialog storeId={storeId} onClose={() => setDialog(null)} />
       )}
-      {dialog === "landing" && (
-        <LandingPageDialog storeId={storeId} onClose={() => setDialog(null)} />
+      {dialog === "website" && (
+        <WebsiteDesignDialog storeId={storeId} onClose={() => setDialog(null)} />
       )}
       {dialog === "gbp" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">

@@ -114,29 +114,29 @@ const loadOwnSettings = async (req) => {
   return { tenant, settings };
 };
 
+/** The editor payload: settings plus the choices each field accepts. */
+const settingsResponse = (settings) => ({
+    settings: sanitizeSettings(settings),
+    storefrontUrl: buildStorefrontUrl(settings),
+    themes: listThemes(),
+    options: {
+      fonts: SAFE_FONTS,
+      heroStyles: HERO_STYLES,
+      productCardStyles: CARD_STYLES,
+      headerStyles: HEADER_STYLES,
+      footerStyles: FOOTER_STYLES,
+      categoryNavStyles: NAV_STYLES,
+      imagePositions: IMAGE_POSITIONS,
+      buttonStyles: BUTTON_STYLES,
+      landingTemplates: LANDING_TEMPLATES,
+    },
+});
+
 /** GET /api/website/settings */
 const getWebsiteSettings = async (req, res, next) => {
   try {
     const { settings } = await loadOwnSettings(req);
-    res.status(200).json({
-      success: true,
-      data: {
-        settings: sanitizeSettings(settings),
-        storefrontUrl: buildStorefrontUrl(settings),
-        themes: listThemes(),
-        options: {
-          fonts: SAFE_FONTS,
-          heroStyles: HERO_STYLES,
-          productCardStyles: CARD_STYLES,
-          headerStyles: HEADER_STYLES,
-          footerStyles: FOOTER_STYLES,
-          categoryNavStyles: NAV_STYLES,
-          imagePositions: IMAGE_POSITIONS,
-          buttonStyles: BUTTON_STYLES,
-          landingTemplates: LANDING_TEMPLATES,
-        },
-      },
-    });
+    res.status(200).json({ success: true, data: settingsResponse(settings) });
   } catch (error) {
     next(error);
   }
@@ -172,7 +172,8 @@ const getWebsiteSettings = async (req, res, next) => {
  */
 const updateWebsiteSettings = async (req, res, next) => {
   try {
-    const { tenant, settings } = await loadOwnSettings(req);
+    // req.websiteTarget: the CSD editing a chosen store (csdWebsiteController).
+    const { tenant, settings } = req.websiteTarget || (await loadOwnSettings(req));
     const prevSnapshot = sanitizeSettings(settings);
     const body = req.body || {};
 
@@ -725,4 +726,4 @@ const validateGatewayCredentials = async (req, res, next) => {
   }
 };
 
-module.exports = { getWebsiteSettings, updateWebsiteSettings, previewWebsite, validateGatewayCredentials, loadOwnSettings };
+module.exports = { getWebsiteSettings, updateWebsiteSettings, previewWebsite, validateGatewayCredentials, loadOwnSettings, settingsResponse };

@@ -189,6 +189,12 @@ router.get("/restaurants/:storeId/tables", requireCsdAuth, listTables);
 router.patch("/restaurants/:storeId/tables/:tableId", requireCsdAdmin, updateTable);
 
 // The restaurant's own employees, NOT CSD staff (see /staff above).
+// Website design & ordering settings (moved out of the POS's Manage Website).
+const { getCsdWebsite, updateCsdWebsite, listCsdWebsiteMedia } = require("../controllers/csdWebsiteController");
+router.get("/restaurants/:storeId/website", requireCsdAuth, getCsdWebsite);
+router.patch("/restaurants/:storeId/website", requireCsdAdmin, updateCsdWebsite);
+router.get("/restaurants/:storeId/website/media", requireCsdAuth, listCsdWebsiteMedia);
+
 router.get("/restaurants/:storeId/landing", requireCsdAuth, getLanding);
 router.patch("/restaurants/:storeId/landing", requireCsdAdmin, updateLanding);
 
