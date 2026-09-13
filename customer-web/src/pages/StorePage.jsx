@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { useStorefront } from "../hooks/useStorefront";
 import { useDocumentMeta, useThemeVars } from "../hooks/useThemeVars";
@@ -8,7 +8,37 @@ import LoadingSkeleton from "../components/LoadingSkeleton";
 import ErrorPage from "../components/ErrorPage";
 import LandingTemplate from "../components/LandingTemplates";
 import { landingRoute } from "../lib/landingRoute";
-import { placeOrder } from "../lib/api";
+import { startCheckout, verifyCheckout } from "../lib/api";
+
+/** Cashfree JS v3, loaded on demand. Resolves null if it cannot load. */
+function loadCashfree() {
+  return new Promise((resolve) => {
+    if (window.Cashfree) return resolve(window.Cashfree);
+    const el = document.createElement("script");
+    el.src = "https://sdk.cashfree.com/js/v3/cashfree.js";
+    el.onload = () => resolve(window.Cashfree || null);
+    el.onerror = () => resolve(null);
+    document.body.appendChild(el);
+  });
+}
+
+// A checkout the customer paid for but whose tab closed before we heard back.
+const pendingKey = (slug) => `kk_pending_checkout:${slug}`;
+const readPending = (slug) => {
+  try {
+    return window.localStorage.getItem(pendingKey(slug)) || "";
+  } catch {
+    return "";
+  }
+};
+const writePending = (slug, id) => {
+  try {
+    if (id) window.localStorage.setItem(pendingKey(slug), id);
+    else window.localStorage.removeItem(pendingKey(slug));
+  } catch {
+    /* private mode: the resume simply does not happen */
+  }
+};
 
 /**
  * StorePage — the customer-facing restaurant page.
@@ -50,28 +80,67 @@ export default function StorePage({ slug, host }) {
   const idempotencyKeyRef = useRef(null);
   if (!idempotencyKeyRef.current) idempotencyKeyRef.current = makeIdempotencyKey();
 
+  /** Ask the server whether the checkout was paid; it places the order if so. */
+  const confirmCheckout = useCallback(
+    async (checkoutId) => {
+      const res = await verifyCheckout(effectiveSlug, checkoutId);
+      writePending(effectiveSlug, "");
+      setConfirmedOrder(res.data.data);
+      cart.clear();
+      idempotencyKeyRef.current = makeIdempotencyKey();
+    },
+    [effectiveSlug, cart]
+  );
+
+  /**
+   * Place Order = pay first. The server holds the priced order, opens the
+   * payment, and only creates the order once the gateway confirms the money
+   * moved -- nothing reaches the restaurant for a payment that failed.
+   */
   const handlePlaceOrder = useCallback(
     async (checkout) => {
       if (!effectiveSlug) return;
       setPlacing(true);
       setPlaceError("");
       try {
-        const res = await placeOrder(effectiveSlug, {
+        const res = await startCheckout(effectiveSlug, {
           ...checkout,
           items: cart.toOrderItems(),
           idempotencyKey: idempotencyKeyRef.current,
         });
-        setConfirmedOrder(res.data.data);
-        cart.clear();
-        idempotencyKeyRef.current = makeIdempotencyKey();
+        const { checkoutId, checkout: gateway } = res.data.data;
+        writePending(effectiveSlug, checkoutId);
+
+        const Cashfree = await loadCashfree();
+        if (!Cashfree) {
+          setPlaceError("The payment page could not be loaded. Please check your connection and try again.");
+          return;
+        }
+        // Whatever the modal resolves with, the server decides.
+        await Cashfree({ mode: gateway.mode || "sandbox" }).checkout({
+          paymentSessionId: gateway.paymentSessionId,
+          redirectTarget: "_modal",
+        });
+        await confirmCheckout(checkoutId);
       } catch (err) {
         setPlaceError(err.response?.data?.message || "We couldn't place your order. Please try again.");
       } finally {
         setPlacing(false);
       }
     },
-    [effectiveSlug, cart]
+    [effectiveSlug, cart, confirmCheckout]
   );
+
+  // Came back after paying in a tab that closed before it could report back.
+  useEffect(() => {
+    if (!effectiveSlug) return;
+    const id = readPending(effectiveSlug);
+    if (!id) return;
+    confirmCheckout(id).catch((err) => {
+      // Unpaid or gone: forget it. "Could not confirm yet" (502): keep trying later.
+      if (err.response?.status !== 502) writePending(effectiveSlug, "");
+    });
+  }, [effectiveSlug, confirmCheckout]);
 
   if (loading && !bootstrap && !store) return <LoadingSkeleton />;
   if (error && !store) {

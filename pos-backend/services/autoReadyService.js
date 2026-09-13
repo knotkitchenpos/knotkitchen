@@ -145,6 +145,92 @@ const computeCompleteDueAt = async ({ restaurantId, storeId, orderType, from = n
   return new Date(from.getTime() + effective * 60 * 1000);
 };
 
+/**
+ * The clocks an order gets when the restaurant accepts it.
+ *
+ * An order for now starts cooking now: ready after the Auto Ready duration.
+ *
+ * A scheduled pickup is accepted into the queue but not started. Cooking
+ * should begin Auto Ready minutes before the pickup time, so it is ready AT
+ * the pickup time rather than going cold for two hours:
+ *
+ *   pickup 7:00 PM, Auto Ready 20 min  ->  prepStartAt 6:40 PM, ready 7:00 PM
+ *
+ * If that start time has already passed when it is accepted, it starts now.
+ */
+const clocksOnAccept = async (order, now = new Date()) => {
+  const args = { restaurantId: order.restaurantId, storeId: order.storeId, orderType: order.orderType };
+  const pickup = order.scheduledFor ? new Date(order.scheduledFor) : null;
+
+  if (pickup) {
+    const minutes = await getAutoReadyMinutes(args);
+    const prepStartAt = new Date(pickup.getTime() - minutes * 60 * 1000);
+    if (prepStartAt > now) {
+      return {
+        prepStartAt,
+        readyDueAt: minutes > 0 ? pickup : null,
+        completeDueAt: await computeCompleteDueAt({ ...args, from: prepStartAt }),
+      };
+    }
+  }
+
+  return {
+    prepStartAt: null,
+    readyDueAt: await computeReadyDueAt({ ...args, from: now }),
+    completeDueAt: await computeCompleteDueAt({ ...args, from: now }),
+  };
+};
+
+/**
+ * Tell the POS a queued order is due to start cooking.
+ *
+ * Fires once per order (prepAlertedAt), for accepted orders still in the
+ * kitchen queue whose start time has come. The POS keeps ringing until staff
+ * press Start Preparing.
+ */
+const runPrepStartTick = async (now = new Date()) => {
+  const due = await Order.find({
+    prepStartAt: { $lte: now, $ne: null },
+    prepAlertedAt: null,
+    prepStartedAt: null,
+    isDeleted: { $ne: true },
+    orderStatus: { $in: PREPARING_STATUSES.filter((s) => s.toLowerCase() !== "pending") },
+  })
+    .sort({ prepStartAt: 1 })
+    .limit(MAX_BATCH);
+
+  let alerted = 0;
+  for (const order of due) {
+    try {
+      const res = await Order.updateOne({ _id: order._id, prepAlertedAt: null }, { $set: { prepAlertedAt: now } });
+      if (!res.modifiedCount) continue;
+      alerted += 1;
+      try {
+        require("./socket").emitToRestaurant(order.restaurantId, "order:prepDue", prepDuePayload(order));
+      } catch (emitErr) {
+        console.warn("[autoReady] prepDue emit failed:", emitErr.message);
+      }
+    } catch (rowErr) {
+      console.warn("[autoReady] prep alert failed for order", order._id, rowErr.message);
+    }
+  }
+  return { alerted };
+};
+
+/** What the POS "Start Preparing" alert shows. */
+const prepDuePayload = (order) => ({
+  orderId: String(order._id),
+  orderNumber: order.orderNumber || "",
+  orderType: order.orderType,
+  source: order.source || "",
+  scheduledFor: order.scheduledFor,
+  prepStartAt: order.prepStartAt,
+  customer: { name: order.customerDetails?.name || "", phone: order.customerDetails?.phone || "" },
+  items: (order.items || [])
+    .filter((i) => i.status !== "cancelled")
+    .map((i) => ({ name: i.name, quantity: i.quantity })),
+});
+
 // Kept as a named local for readability; the vocabulary itself now lives in
 // constants/orderStatus.js so this guard and the query above cannot drift.
 const isPreparingStatus = (status) => isPreparing(status);
@@ -214,6 +300,13 @@ const runAutoReadyTick = async () => {
 
     // Run Auto-Complete check on same tick
     await runAutoCompleteTick(now);
+
+    // ...and the "time to start preparing" alerts for queued pickups.
+    try {
+      await runPrepStartTick(now);
+    } catch (prepErr) {
+      console.warn("[autoReady] prep tick failed:", prepErr.message);
+    }
 
     return { promoted, scanned: due.length };
   } catch (err) {
@@ -326,6 +419,9 @@ module.exports = {
   runAutoCompleteTick,
   computeReadyDueAt,
   computeCompleteDueAt,
+  clocksOnAccept,
+  runPrepStartTick,
+  prepDuePayload,
   getAutoReadyMinutes,
   getAutoCompleteMinutes,
   DEFAULT_MINUTES,

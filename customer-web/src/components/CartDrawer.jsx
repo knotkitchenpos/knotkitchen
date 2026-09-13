@@ -1,4 +1,22 @@
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
+
+/**
+ * Later-today pickup times: every 15 minutes from 30 minutes out, up to the
+ * restaurant's pickup window (5 hours by default), never past midnight.
+ */
+function pickupTimes(windowHours) {
+  const now = new Date();
+  const first = new Date(now.getTime() + 30 * 60000);
+  first.setMinutes(Math.ceil(first.getMinutes() / 15) * 15, 0, 0);
+  const last = new Date(now.getTime() + (Number(windowHours) || 5) * 3600000);
+  const out = [];
+  for (let t = first; t <= last && t.getDate() === now.getDate(); t = new Date(t.getTime() + 15 * 60000)) {
+    out.push(t);
+  }
+  return out;
+}
+
+const clock = (d) => d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
 import { allowsFulfilment, dispatchLabel } from "../lib/dispatch";
 
 /**
@@ -21,7 +39,11 @@ export default function CartDrawer({
   const [orderType, setOrderType] = useState(
     ordering?.pickupEnabled !== false ? "pickup" : "delivery"
   );
-  const [customer, setCustomer] = useState({ name: "", phone: "", email: "" });
+  const [customer, setCustomer] = useState({ name: "", phone: "" });
+  // Collection: "now" by default, or a later time today.
+  const [pickupWhen, setPickupWhen] = useState("now");
+  const [pickupAt, setPickupAt] = useState("");
+  const pickupSlots = useMemo(() => pickupTimes(ordering?.pickupWindowHours), [ordering?.pickupWindowHours, open]);
   const [address, setAddress] = useState({ line1: "", line2: "", city: "", postalCode: "", instructions: "" });
 
   const symbol = ordering?.currencySymbol || "£";
@@ -42,10 +64,14 @@ export default function CartDrawer({
   // about it, instead of after they have filled in their address.
   const conflicting = cart.items.filter((l) => !allowsFulfilment(l.dispatchType, orderType));
 
+  const phoneDigits = customer.phone.replace(/\D/g, "");
+  const needsPickupTime = orderType === "pickup" && pickupWhen === "later";
+
   const canSubmit =
     cart.items.length > 0 &&
     customer.name.trim() &&
-    customer.phone.trim().length >= 7 &&
+    phoneDigits.length === 10 &&
+    (!needsPickupTime || pickupAt) &&
     minReached &&
     conflicting.length === 0 &&
     !placing &&
@@ -57,9 +83,9 @@ export default function CartDrawer({
       orderType,
       customer: {
         name: customer.name.trim(),
-        phone: customer.phone.replace(/\D/g, ""),
-        email: customer.email.trim(),
+        phone: phoneDigits,
       },
+      scheduledFor: needsPickupTime ? pickupAt : undefined,
       deliveryAddress: orderType === "delivery" ? address : undefined,
     });
   };
@@ -175,7 +201,7 @@ export default function CartDrawer({
             <input
               type="text"
               required
-              placeholder="Your name"
+              placeholder="Your name *"
               value={customer.name}
               onChange={(e) => setCustomer((c) => ({ ...c, name: e.target.value }))}
               className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm"
@@ -184,20 +210,54 @@ export default function CartDrawer({
             <input
               type="tel"
               required
-              placeholder="Phone number"
+              inputMode="numeric"
+              maxLength={10}
+              placeholder="10-digit phone number *"
               value={customer.phone}
-              onChange={(e) => setCustomer((c) => ({ ...c, phone: e.target.value }))}
+              onChange={(e) => setCustomer((c) => ({ ...c, phone: e.target.value.replace(/\D/g, "").slice(0, 10) }))}
               className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm"
               autoComplete="tel"
             />
-            <input
-              type="email"
-              placeholder="Email (optional)"
-              value={customer.email}
-              onChange={(e) => setCustomer((c) => ({ ...c, email: e.target.value }))}
-              className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm"
-              autoComplete="email"
-            />
+
+            {orderType === "pickup" ? (
+              <div>
+                <p className="text-sm font-medium text-slate-800 mb-1.5">Pickup time *</p>
+                <div className="flex gap-2">
+                  {[
+                    ["now", "Pickup now"],
+                    ["later", "Later today"],
+                  ].map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setPickupWhen(key)}
+                      disabled={key === "later" && pickupSlots.length === 0}
+                      className={`flex-1 py-2 rounded-full text-sm font-medium border disabled:opacity-40 ${
+                        pickupWhen === key ? "border-brand bg-brand text-brand-fg" : "border-slate-200 text-slate-700 bg-white"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                {pickupWhen === "later" ? (
+                  <select
+                    required
+                    value={pickupAt}
+                    onChange={(e) => setPickupAt(e.target.value)}
+                    className="mt-2 w-full px-3 py-2 border border-slate-200 rounded-xl text-sm bg-white"
+                    aria-label="Pickup time"
+                  >
+                    <option value="">Choose a pickup time</option>
+                    {pickupSlots.map((t) => (
+                      <option key={t.toISOString()} value={t.toISOString()}>
+                        {clock(t)}
+                      </option>
+                    ))}
+                  </select>
+                ) : null}
+              </div>
+            ) : null}
 
             {orderType === "delivery" ? (
               <>
@@ -280,7 +340,7 @@ export default function CartDrawer({
               disabled={!canSubmit}
               className="w-full bg-brand text-brand-fg font-semibold rounded-full py-3 disabled:opacity-50"
             >
-              {placing ? "Placing order..." : `Place order · ${symbol}${total.toFixed(2)}`}
+              {placing ? "Opening payment…" : `Place order & pay · ${symbol}${total.toFixed(2)}`}
             </button>
           </form>
         ) : null}

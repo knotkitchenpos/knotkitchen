@@ -186,6 +186,12 @@ const orderSchema = new mongoose.Schema({
   idempotencyKey: { type: String, default: "" },
   // Scheduled/pre-orders (§21). Null = ASAP.
   scheduledFor: { type: Date, default: null },
+  // A scheduled order accepted ahead of time waits in the queue until the
+  // kitchen should start: scheduledFor minus the Auto Ready duration.
+  prepStartAt: { type: Date, default: null, index: true },
+  // When the POS was told "time to start preparing", and when staff did.
+  prepAlertedAt: { type: Date, default: null },
+  prepStartedAt: { type: Date, default: null },
   // Structured analytics context (§28) — no PII beyond what the order holds.
   channelMeta: {
     slug: { type: String, default: "" },

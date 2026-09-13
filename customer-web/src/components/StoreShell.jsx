@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import ProductCard from "./ProductCard";
 import { dispatchLabel } from "../lib/dispatch";
@@ -29,6 +29,8 @@ export default function StoreShell({
 }) {
   const [selected, setSelected] = useState(null);
   const [cartOpen, setCartOpen] = useState(false);
+  const [added, setAdded] = useState("");
+  const addedTimer = useRef(0);
 
   const b = bootstrap || {};
   const s = store || {};
@@ -122,10 +124,32 @@ export default function StoreShell({
           allowNotes={ordering.specialInstructionsEnabled !== false}
           onClose={() => setSelected(null)}
           onAdd={(line) => {
+            // Stay on the menu: customers add several dishes, then open the
+            // cart themselves when they are ready.
             cart.addItem(line);
-            setCartOpen(true);
+            setAdded(line.name || "Item");
+            window.clearTimeout(addedTimer.current);
+            addedTimer.current = window.setTimeout(() => setAdded(""), 2200);
           }}
         />
+      ) : null}
+
+      {cart.count > 0 && !cartOpen ? (
+        <div className="fixed inset-x-0 bottom-0 z-[90] p-3 sm:p-4 pointer-events-none">
+          <button
+            type="button"
+            onClick={() => setCartOpen(true)}
+            className="pointer-events-auto mx-auto flex w-full max-w-md items-center justify-between rounded-full bg-brand px-5 py-3.5 text-brand-fg font-semibold shadow-xl"
+          >
+            <span>
+              {added ? `Added ${added}` : `${cart.count} item${cart.count === 1 ? "" : "s"}`}
+            </span>
+            <span>
+              View cart · {symbol}
+              {cart.subtotal.toFixed(2)}
+            </span>
+          </button>
+        </div>
       ) : null}
 
       <CartDrawer

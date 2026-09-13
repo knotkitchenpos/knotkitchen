@@ -20,9 +20,15 @@ export default function OrderConfirmation({ order, symbol, prepTime, onClose }) 
           <p className="text-sm text-slate-500 mt-1">
             Order <span className="font-mono">{order.orderNumber}</span>
           </p>
-          {prepTime ? (
+          {order.scheduledFor ? (
+            <p className="text-sm font-semibold text-slate-800 mt-2">
+              Pickup at{" "}
+              {new Date(order.scheduledFor).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}
+            </p>
+          ) : prepTime ? (
             <p className="text-xs text-slate-500 mt-1">Estimated preparation: ~{prepTime} min</p>
           ) : null}
+          <p className="text-xs text-slate-500 mt-1">The restaurant will confirm your order shortly.</p>
         </div>
 
         <div className="border-t pt-3 space-y-1 text-sm">
@@ -57,7 +63,7 @@ export default function OrderConfirmation({ order, symbol, prepTime, onClose }) 
             </div>
           ) : null}
           <div className="flex justify-between font-semibold text-slate-900 pt-1">
-            <span>Total paid on collection</span>
+            <span>Total paid</span>
             <span>
               {symbol}
               {Number(order.bills?.totalWithTax || 0).toFixed(2)}

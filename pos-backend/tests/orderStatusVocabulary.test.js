@@ -224,12 +224,10 @@ test("accept is the transition that starts the clock", () => {
     "utf8"
   );
   assert.match(src, /action === "accept"/, "acceptance must be the trigger");
-  assert.match(src, /computeReadyDueAt/, "acceptance must start the ready clock");
-  assert.match(
-    src,
-    /!order\.scheduledFor/,
-    "scheduled pre-orders must keep skipping auto-ready"
-  );
+  assert.match(src, /const clocks = await clocksOnAccept\(order\)/, "acceptance must start the ready clock");
+  assert.match(src, /order\.readyDueAt = clocks\.readyDueAt/);
+  // Scheduled pickups queue with a prep start instead (scheduledPickup.test.js).
+  assert.match(src, /order\.prepStartAt = clocks\.prepStartAt/);
 });
 
 test("a website order is created awaiting acceptance, not already cooking", () => {

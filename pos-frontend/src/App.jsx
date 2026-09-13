@@ -22,6 +22,7 @@ import MarketplaceOrderPopup from "./components/dashboard/MarketplaceOrderPopup"
 import NewOrderPopup from "./components/dashboard/NewOrderPopup";
 import WaiterCallPopup from "./components/dashboard/WaiterCallPopup";
 import TableBookingPopup from "./components/dashboard/TableBookingPopup";
+import PrepDuePopup from "./components/dashboard/PrepDuePopup";
 import AddedItemsPopup from "./components/dashboard/AddedItemsPopup";
 
 function ProtectedRoutes({ children }) {
@@ -100,6 +101,7 @@ function Layout() {
       {isAuth && <NewOrderPopup />}
       {isAuth && <WaiterCallPopup />}
       {isAuth && <TableBookingPopup />}
+      {isAuth && <PrepDuePopup />}
       {isAuth && <AddedItemsPopup />}
     </div>
   );

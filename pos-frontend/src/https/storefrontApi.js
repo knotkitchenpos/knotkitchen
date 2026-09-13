@@ -58,6 +58,9 @@ export const getOnlineOrder = (id) => axiosWrapper.get(`/api/online-orders/${id}
 export const updateOnlineOrderStatus = (id, action, reason) =>
   axiosWrapper.put(`/api/online-orders/${id}/status`, { action, reason });
 export const getOnlineOrderStats = () => axiosWrapper.get("/api/online-orders/stats/summary");
+// Scheduled pickups whose kitchen start time has come.
+export const listPrepDueOrders = () => axiosWrapper.get("/api/online-orders/prep-due");
+export const startPreparingOrder = (id) => axiosWrapper.post(`/api/online-orders/${id}/start-preparing`);
 
 // Accept or reject the items a diner added to a table already mid-meal. These
 // live on the table's EXISTING order, so this never creates a second order.

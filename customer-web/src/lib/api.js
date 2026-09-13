@@ -58,8 +58,11 @@ export const getBookingSlots = (slug, date) =>
 export const requestTableBooking = (slug, payload) =>
   client.post(`/api/storefront/${encodeURIComponent(slug)}/table-bookings`, payload);
 
-export const placeOrder = (slug, payload) =>
-  client.post(`/api/storefront/${encodeURIComponent(slug)}/orders`, payload);
+export const startCheckout = (slug, payload) =>
+  client.post(`/api/storefront/${encodeURIComponent(slug)}/checkout`, payload);
+
+export const verifyCheckout = (slug, checkoutId) =>
+  client.post(`/api/storefront/${encodeURIComponent(slug)}/checkout/${checkoutId}/verify`);
 
 export const trackOrder = (slug, orderId, phone) =>
   client.get(`/api/storefront/${encodeURIComponent(slug)}/orders/${orderId}`, {

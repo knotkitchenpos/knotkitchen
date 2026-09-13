@@ -6,7 +6,8 @@ const {
   getStorefront,
   getStorefrontMenu,
   getStorefrontProduct,
-  createStorefrontOrder,
+  startStorefrontCheckout,
+  verifyStorefrontCheckout,
   trackStorefrontOrder,
 } = require("../controllers/storefrontController");
 const { getPublicBookingSlots, createPublicTableBooking } = require("../controllers/tableBookingController");
@@ -33,7 +34,11 @@ const orderLimiter = rateLimit({
 router.get("/:slug", readLimiter, getStorefront);
 router.get("/:slug/menu", readLimiter, getStorefrontMenu);
 router.get("/:slug/products/:id", readLimiter, getStorefrontProduct);
-router.post("/:slug/orders", orderLimiter, createStorefrontOrder);
+// A website order is only placed once it is paid: /checkout opens the
+// payment, /verify asks the gateway and places the order. There is
+// deliberately no route that places an unpaid order.
+router.post("/:slug/checkout", orderLimiter, startStorefrontCheckout);
+router.post("/:slug/checkout/:checkoutId/verify", orderLimiter, verifyStorefrontCheckout);
 router.get("/:slug/orders/:orderId", readLimiter, trackStorefrontOrder);
 
 const bookingLimiter = rateLimit({

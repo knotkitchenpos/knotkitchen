@@ -19,6 +19,10 @@ const {
 const { getTheme } = require("../services/themeRegistry");
 const { buildLandingPayload } = require("../services/landingPayload");
 const { emitOrderCreated } = require("../services/socket");
+const WebsiteCheckout = require("../models/websiteCheckoutModel");
+const { resolveGateway } = require("../services/paymentGateway");
+const { localDate } = require("../services/tableBookings");
+const config = require("../config/config");
 const { generateOrderNumberSafe } = require("../services/orderNumberService");
 
 
@@ -239,6 +243,7 @@ const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezon
       currency: settings.ordering?.currency || "INR",
       currencySymbol: settings.ordering?.currencySymbol || "₹",
       prepTimeMinutes: Number(settings.ordering?.prepTimeMinutes) || 30,
+      pickupWindowHours: Number(settings.ordering?.pickupWindowHours) || 5,
       acceptPreOrders: settings.ordering?.acceptPreOrders !== false,
       specialInstructionsEnabled: settings.ordering?.specialInstructionsEnabled !== false,
     },
@@ -334,7 +339,13 @@ const getStorefrontProduct = async (req, res, next) => {
  * contact details. Prices, taxes, fees, storeId and restaurantId are all
  * derived server-side.
  */
-const createStorefrontOrder = async (req, res, next) => {
+/**
+ * Validates, prices and schedules a website order, then hands the unsaved
+ * Order to `finalize`. Two finalizers share every check above the save:
+ * placing the order outright (createStorefrontOrder), and holding it until
+ * the customer pays (startStorefrontCheckout).
+ */
+const buildStorefrontOrder = (finalize) => async (req, res, next) => {
   try {
     const ctx = await requireStorefront(req, next);
     if (!ctx) return;
@@ -510,7 +521,9 @@ const createStorefrontOrder = async (req, res, next) => {
       const maxAhead = nowTime + pickupWindowHours * 60 * 60 * 1000;
 
       const isPast = when.getTime() < nowTime - 60000;
-      const isDifferentDay = when.toDateString() !== new Date(nowTime).toDateString();
+      // In the restaurant's timezone: the server runs in UTC, so a 1 AM IST
+      // pickup was being judged against the previous UTC day.
+      const isDifferentDay = localDate(when, timezone) !== localDate(new Date(nowTime), timezone);
       const isTooFarAhead = when.getTime() > maxAhead;
 
       if (isPast) {
@@ -590,60 +603,248 @@ const createStorefrontOrder = async (req, res, next) => {
     });
 
 
+    return await finalize({ req, res, next, ctx, order, idempotencyKey, name, phone, email, priced });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** Place the order immediately and tell the POS. */
+const saveAndAnnounce = async ({ res, ctx, order, idempotencyKey, name, phone, email, priced }) => {
+  const { restaurantId, outletId, storeId } = ctx;
+  try {
+    await order.save();
+  } catch (err) {
+    // Unique index race on idempotencyKey: another concurrent submit won.
+    if (err?.code === 11000 && idempotencyKey) {
+      const existing = await Order.findOne({ restaurantId, idempotencyKey });
+      if (existing) {
+        return res.status(200).json({
+          success: true,
+          message: "Order already placed",
+          duplicate: true,
+          data: publicOrderView(existing),
+        });
+      }
+    }
+    // Unique index race on orderNumber: astronomically unlikely with
+    // 6-digit random IDs, but the partial-unique index in orderModel
+    // is the ultimate safety net. Regenerate and retry once — the new
+    // generator's pre-flight `exists()` check makes a second collision
+    // vanishingly rare.
+    if (err?.code === 11000 && String(err?.keyPattern?.orderNumber) === "1") {
+      order.orderNumber = await generateOrderNumberSafe({
+        source: "WEBSITE",
+        restaurantId,
+      });
+      await order.save();
+    } else {
+      throw err;
+    }
+  }
+
+  // ---- CRM: upsert the customer record (best-effort) ----
+  // Never let a CRM failure lose a paid/placed order (§32).
+  try {
+    await upsertCustomer({ restaurantId, outletId, name, phone, email, total: priced.bills.totalWithTax });
+  } catch (err) {
+    console.warn("Customer upsert failed for website order:", err.message);
+  }
+
+  // ---- Realtime notification to the POS (§13, §31) ----
+  // Emitted AFTER the order is durably saved, and wrapped so a socket
+  // failure can never fail the request — the POS will still see the order
+  // via its normal fetch/reconnect path.
+  try {
+    emitOrderCreated({ restaurantId, outletId, storeId, order });
+  } catch (err) {
+    console.warn("Realtime emit failed for website order:", err.message);
+  }
+
+  res.status(201).json({
+    success: true,
+    message: "Order placed successfully",
+    data: publicOrderView(order),
+  });
+};
+
+const createStorefrontOrder = buildStorefrontOrder(saveAndAnnounce);
+
+/**
+ * Open a payment for the order instead of placing it.
+ *
+ * Nothing is written to Orders here. The priced order waits in
+ * WebsiteCheckout until verifyStorefrontCheckout hears from the gateway that
+ * it was paid, so an abandoned or failed payment never reaches the POS.
+ */
+const openCheckout = async ({ res, next, ctx, order, idempotencyKey, name, phone, priced }) => {
+  const { restaurantId, storeId } = ctx;
+  const amount = Number(priced.bills?.totalWithTax) || 0;
+  if (amount <= 0) return next(createHttpError(400, "Your order total must be more than zero."));
+
+  const gw = await resolveGateway({ restaurantId, storeId });
+  if (!gw.enabled) {
+    return next(
+      createHttpError(409, "This restaurant has not set up online payment yet, so orders cannot be placed on the website."),
+    );
+  }
+
+  const checkout = new WebsiteCheckout({
+    restaurantId,
+    storeId,
+    orderData: order.toObject({ depopulate: true }),
+    amount,
+    currency: "INR",
+  });
+
+  let gatewayOrder;
+  try {
+    const cashfree = require("../services/gateways/cashfree");
+    gatewayOrder = await cashfree.createOrder({
+      appId: gw.keyId,
+      secretKey: gw.secret,
+      environment: gw.environment,
+      amount,
+      currency: "INR",
+      orderId: `web_${checkout._id}`,
+      customer: { id: `web_${phone}`, phone, name },
+      notifyUrl: config.cashfreeNotifyUrl,
+      tags: { websiteCheckoutId: String(checkout._id), restaurantId: String(restaurantId) },
+    });
+  } catch (err) {
+    console.warn("[storefront] gateway order failed:", err?.message || err);
+    return next(createHttpError(502, "The payment page could not be opened. Please try again."));
+  }
+
+  checkout.gatewayOrderId = gatewayOrder.orderId;
+  await checkout.save();
+
+  res.status(201).json({
+    success: true,
+    data: {
+      checkoutId: String(checkout._id),
+      amount,
+      currency: "INR",
+      checkout: {
+        provider: "cashfree",
+        paymentSessionId: gatewayOrder.paymentSessionId,
+        mode: gatewayOrder.environment === "PROD" ? "production" : "sandbox",
+      },
+    },
+  });
+};
+
+const startStorefrontCheckout = buildStorefrontOrder(openCheckout);
+
+/**
+ * POST /api/storefront/:slug/checkout/:checkoutId/verify
+ *
+ * The browser only says "I came back from the payment page". Whether the
+ * order is placed is decided by asking the gateway about the order WE opened,
+ * never by anything in the request.
+ */
+const verifyStorefrontCheckout = async (req, res, next) => {
+  try {
+    const ctx = await requireStorefront(req, next);
+    if (!ctx) return;
+    const { restaurantId, outletId, storeId } = ctx;
+
+    const id = String(req.params.checkoutId || "");
+    if (!/^[a-f0-9]{24}$/i.test(id)) return next(createHttpError(404, "Checkout not found."));
+    let checkout = await WebsiteCheckout.findOne({ _id: id, storeId });
+    if (!checkout) return next(createHttpError(404, "Checkout not found."));
+
+    const placedView = async (c) => {
+      const placed = c.orderId ? await Order.findById(c.orderId) : null;
+      return placed
+        ? res.status(200).json({ success: true, message: "Order placed successfully", data: publicOrderView(placed) })
+        : next(createHttpError(409, "Your payment is being processed. Please wait a moment and try again."));
+    };
+    if (checkout.status !== "PENDING") return placedView(checkout);
+
+    const gw = await resolveGateway({ restaurantId, storeId });
+    if (!gw.enabled) return next(createHttpError(409, "Online payment is not available for this restaurant."));
+
+    let result;
+    try {
+      const cashfree = require("../services/gateways/cashfree");
+      result = await cashfree.isOrderPaid({
+        appId: gw.keyId,
+        secretKey: gw.secret,
+        environment: gw.environment,
+        orderId: checkout.gatewayOrderId,
+      });
+    } catch (err) {
+      console.warn("[storefront] payment status check failed:", err?.message || err);
+      return next(
+        createHttpError(502, "We could not confirm your payment yet. Please do not pay again; try this page again in a moment."),
+      );
+    }
+
+    if (!result.paid) {
+      return next(createHttpError(402, "Payment was not completed, so your order has not been placed. Please try again."));
+    }
+    if (Math.abs(Number(result.amount) - Number(checkout.amount)) > 0.01) {
+      return next(createHttpError(409, "The amount paid does not match this order. Please contact the restaurant."));
+    }
+
+    // Claim it: two tabs, or a retry racing the first request, place it once.
+    const claimed = await WebsiteCheckout.findOneAndUpdate(
+      { _id: checkout._id, status: "PENDING" },
+      { $set: { status: "PLACING", transactionId: result.cfOrderId || checkout.gatewayOrderId } },
+      { new: true },
+    );
+    if (!claimed) {
+      checkout = await WebsiteCheckout.findById(checkout._id);
+      return placedView(checkout);
+    }
+
+    const data = { ...claimed.orderData };
+    const transactionId = claimed.transactionId;
+    const order = new Order({
+      ...data,
+      paymentMethod: "online",
+      payments: [{ method: "online", amount: claimed.amount, status: "paid", transactionId }],
+      channelMeta: { ...(data.channelMeta || {}), placedAt: new Date() },
+    });
+
     try {
       await order.save();
     } catch (err) {
-      // Unique index race on idempotencyKey: another concurrent submit won.
-      if (err?.code === 11000 && idempotencyKey) {
-        const existing = await Order.findOne({ restaurantId, idempotencyKey });
-        if (existing) {
-          return res.status(200).json({
-            success: true,
-            message: "Order already placed",
-            duplicate: true,
-            data: publicOrderView(existing),
-          });
-        }
-      }
-      // Unique index race on orderNumber: astronomically unlikely with
-      // 6-digit random IDs, but the partial-unique index in orderModel
-      // is the ultimate safety net. Regenerate and retry once — the new
-      // generator's pre-flight `exists()` check makes a second collision
-      // vanishingly rare.
       if (err?.code === 11000 && String(err?.keyPattern?.orderNumber) === "1") {
-        order.orderNumber = await generateOrderNumberSafe({
-          source: "WEBSITE",
-          restaurantId,
-        });
+        order.orderNumber = await generateOrderNumberSafe({ source: "WEBSITE", restaurantId });
         await order.save();
+      } else if (err?.code === 11000 && data.idempotencyKey) {
+        const existing = await Order.findOne({ restaurantId, idempotencyKey: data.idempotencyKey });
+        if (!existing) throw err;
+        order._id = existing._id;
       } else {
+        await WebsiteCheckout.updateOne({ _id: claimed._id }, { $set: { status: "PENDING" } });
         throw err;
       }
     }
 
-    // ---- CRM: upsert the customer record (best-effort) ----
-    // Never let a CRM failure lose a paid/placed order (§32).
+    await WebsiteCheckout.updateOne({ _id: claimed._id }, { $set: { status: "PLACED", orderId: order._id } });
+
     try {
-      await upsertCustomer({ restaurantId, outletId, name, phone, email, total: priced.bills.totalWithTax });
+      await upsertCustomer({
+        restaurantId,
+        outletId,
+        name: order.customerDetails?.name,
+        phone: order.customerDetails?.phone,
+        total: claimed.amount,
+      });
     } catch (err) {
       console.warn("Customer upsert failed for website order:", err.message);
     }
 
-    // ---- Realtime notification to the POS (§13, §31) ----
-    // Emitted AFTER the order is durably saved, and wrapped so a socket
-    // failure can never fail the request — the POS will still see the order
-    // via its normal fetch/reconnect path.
     try {
       emitOrderCreated({ restaurantId, outletId, storeId, order });
     } catch (err) {
       console.warn("Realtime emit failed for website order:", err.message);
     }
 
-    res.status(201).json({
-      success: true,
-      message: "Order placed successfully",
-      data: publicOrderView(order),
-    });
+    res.status(201).json({ success: true, message: "Order placed successfully", data: publicOrderView(order) });
   } catch (error) {
     next(error);
   }
@@ -733,6 +934,8 @@ module.exports = {
   getStorefrontMenu,
   getStorefrontProduct,
   createStorefrontOrder,
+  startStorefrontCheckout,
+  verifyStorefrontCheckout,
   trackStorefrontOrder,
   buildStorefrontPayload,
   toPublicProduct,

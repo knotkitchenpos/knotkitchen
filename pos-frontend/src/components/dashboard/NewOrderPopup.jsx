@@ -207,6 +207,21 @@ const NewOrderPopup = () => {
             </div>
           </div>
 
+          {isWebsite ? (
+            <div className="rounded-xl border border-[#FED7AA] bg-[#FFF7ED] px-3 py-2 text-[13px] font-bold text-[#9A3412] flex items-center justify-between gap-2">
+              <span>
+                {String(current.orderType || "").toLowerCase() === "delivery"
+                  ? "Delivery"
+                  : current.scheduledFor
+                  ? `Pickup at ${new Date(current.scheduledFor).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}`
+                  : "Pickup now"}
+              </span>
+              {current.paymentStatus === "paid" || current.payments?.[0]?.status === "paid" ? (
+                <span className="text-[11px] font-bold text-[#15803D]">Paid online</span>
+              ) : null}
+            </div>
+          ) : null}
+
           <div className="max-h-[220px] overflow-y-auto rounded-xl border border-[#E2E8F0] divide-y divide-[#E2E8F0]">
             {items.length === 0 ? (
               <div className="px-3 py-4 text-[12.5px] text-[#94A3B8] text-center">No line items.</div>

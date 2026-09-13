@@ -5,6 +5,8 @@ const {
   listOnlineOrders,
   getOnlineOrder,
   updateOnlineOrderStatus,
+  listPrepDueOrders,
+  startPreparingOrder,
   resolveAddedItems,
   getOnlineOrderStats,
 } = require("../controllers/onlineOrderController");
@@ -19,6 +21,8 @@ const {
 router.get("/stats/summary", isVerifiedUser, getOnlineOrderStats);
 
 router.get("/", isVerifiedUser, listOnlineOrders);
+router.get("/prep-due", isVerifiedUser, listPrepDueOrders);
+router.post("/:id/start-preparing", isVerifiedUser, startPreparingOrder);
 router.get("/:id", isVerifiedUser, getOnlineOrder);
 router.put("/:id/status", isVerifiedUser, updateOnlineOrderStatus);
 

@@ -3,8 +3,17 @@ const mongoose = require("mongoose");
 const Order = require("../models/orderModel");
 const { resolveTenantFromUser } = require("../services/tenantContext");
 const { emitOrderStatusChanged, emitTableSessionUpdated } = require("../services/socket");
-const { isFinished, AWAITING_ACCEPTANCE, CANCELLED } = require("../constants/orderStatus");
-const { computeReadyDueAt, computeCompleteDueAt } = require("../services/autoReadyService");
+const {
+  isFinished,
+  AWAITING_ACCEPTANCE,
+  CANCELLED,
+  READY_STATUSES,
+  SETTLED_STATUSES,
+  CANCELLED_STATUSES,
+  REFUNDED_STATUSES,
+} = require("../constants/orderStatus");
+const { clocksOnAccept, prepDuePayload } = require("../services/autoReadyService");
+const { emitToRestaurant } = require("../services/socket");
 
 /**
  * POS-side online order management (§14).
@@ -49,6 +58,8 @@ const toPosOrderView = (order) => ({
   // the card with no actions at all.
   orderStatus: order.orderStatus,
   scheduledFor: order.scheduledFor,
+  prepStartAt: order.prepStartAt,
+  prepStartedAt: order.prepStartedAt,
   customerDetails: order.customerDetails,
   deliveryAddress: order.deliveryAddress,
   items: (order.items || []).map((i) => ({
@@ -160,14 +171,13 @@ const updateOnlineOrderStatus = async (req, res, next) => {
     // an order nobody has accepted must never promote itself to Ready and text
     // the customer that food is waiting. Scheduled pre-orders keep skipping
     // auto-ready — their deadline belongs to scheduledFor, not to now.
-    if ((action === "accept" || action === "preparing") && !order.readyDueAt && !order.scheduledFor) {
-      const clockArgs = {
-        restaurantId: order.restaurantId,
-        storeId: order.storeId,
-        orderType: order.orderType,
-      };
-      order.readyDueAt = await computeReadyDueAt(clockArgs);
-      order.completeDueAt = await computeCompleteDueAt(clockArgs);
+    // A scheduled pickup is queued with a prepStartAt instead of starting
+    // now; see clocksOnAccept.
+    if ((action === "accept" || action === "preparing") && !order.readyDueAt) {
+      const clocks = await clocksOnAccept(order);
+      order.prepStartAt = clocks.prepStartAt;
+      order.readyDueAt = clocks.readyDueAt;
+      order.completeDueAt = clocks.completeDueAt;
     }
 
     order.timeline.push({
@@ -211,6 +221,58 @@ const updateOnlineOrderStatus = async (req, res, next) => {
     }
 
     res.status(200).json({ success: true, message: `Order ${action}ed`, data: toPosOrderView(order) });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/online-orders/prep-due
+ * Queued orders whose start time has come and nobody has started yet -- so a
+ * till that reloads, or missed the socket event, still rings for them.
+ */
+const listPrepDueOrders = async (req, res, next) => {
+  try {
+    const scoped = await tenantScope(req);
+    if (!scoped) return res.status(200).json({ success: true, data: [] });
+    const orders = await Order.find({
+      ...scoped.scope,
+      prepAlertedAt: { $ne: null },
+      prepStartedAt: null,
+      isDeleted: { $ne: true },
+      orderStatus: { $nin: [...READY_STATUSES, ...SETTLED_STATUSES, ...CANCELLED_STATUSES, ...REFUNDED_STATUSES] },
+    })
+      .sort({ prepStartAt: 1 })
+      .limit(50);
+    res.status(200).json({ success: true, data: orders.map(prepDuePayload) });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** POST /api/online-orders/:id/start-preparing — staff acknowledge the prep alert. */
+const startPreparingOrder = async (req, res, next) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return next(createHttpError(404, "Order not found."));
+    const scoped = await tenantScope(req);
+    if (!scoped) return next(createHttpError(404, "Order not found."));
+    const order = await Order.findOne({ _id: req.params.id, ...scoped.scope });
+    if (!order) return next(createHttpError(404, "Order not found."));
+
+    if (!order.prepStartedAt) {
+      order.prepStartedAt = new Date();
+      order.timeline.push({ status: "Start Preparing", timestamp: new Date(), user: req.user?.name || "POS" });
+      await order.save();
+    }
+
+    try {
+      emitToRestaurant(order.restaurantId, "order:prepStarted", { orderId: String(order._id) });
+      emitOrderStatusChanged({ restaurantId: order.restaurantId, outletId: order.outletId, storeId: order.storeId, order });
+    } catch (err) {
+      console.warn("Realtime prepStarted emit failed:", err.message);
+    }
+
+    res.status(200).json({ success: true, message: "Preparation started.", data: toPosOrderView(order) });
   } catch (error) {
     next(error);
   }
@@ -468,6 +530,8 @@ module.exports = {
   listOnlineOrders,
   getOnlineOrder,
   updateOnlineOrderStatus,
+  listPrepDueOrders,
+  startPreparingOrder,
   getOnlineOrderStats,
   toPosOrderView,
   ACTION_STATUS,

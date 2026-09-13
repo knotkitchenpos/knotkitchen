@@ -42,6 +42,8 @@ const INVALIDATE_ON = {
   waiterCall: ["tables"],
   "tableBooking:created": ["table-bookings"],
   "tableBooking:updated": ["tables", "table-bookings"],
+  "order:prepDue": ["orders", "online-orders", "kds-orders"],
+  "order:prepStarted": ["orders", "online-orders", "kds-orders"],
 };
 
 const useRealtimeSync = () => {
