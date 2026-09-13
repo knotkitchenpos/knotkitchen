@@ -416,6 +416,10 @@ const WebsiteSettings = () => {
                   Current: {settings.paymentGateways?.activeGateway || "cashfree"}
                 </span>
               </div>
+              <div className="p-3 rounded-xl border border-[#FDE68A] bg-[#FFFBEB] text-xs text-[#92400E]">
+                Enter <strong>this restaurant's own</strong> payment gateway keys. Every website, table QR and Pay by Link
+                payment settles to the account these keys belong to. Never enter KnotKitchen's keys here.
+              </div>
               <Field label="Select Active Gateway" hint="Pay by Link and storefront payments will use this gateway.">
                 <select
                   className={inputClass}

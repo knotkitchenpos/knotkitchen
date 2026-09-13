@@ -104,12 +104,18 @@ const fromStoredGateway = (name, gw) => {
  *   a payment fails and you need to know whose keys were used.
  */
 const resolveGateway = async ({ restaurantId, storeId } = {}) => {
-  const platform = platformGateway();
-  if (!restaurantId && !storeId) return platform;
+  // A diner's payment is the RESTAURANT'S money and must only ever settle to
+  // the restaurant's own gateway account. This used to fall back to the
+  // platform (KnotKitchen) keys whenever a store had none, which would have
+  // collected every such restaurant's takings into KnotKitchen's bank account.
+  // No store gateway now means no online payment, never someone else's
+  // account. Money KnotKitchen itself bills uses resolvePlatformGateway.
+  const none = { ...platformGateway(), enabled: false, keyId: "", secret: "", webhookSecret: "", source: "none" };
+  if (!restaurantId && !storeId) return none;
 
   try {
     const mongoose = require("mongoose");
-    if (mongoose.connection?.readyState !== 1) return platform;
+    if (mongoose.connection?.readyState !== 1) return none;
 
     const WebsiteSettings = require("../models/websiteSettingsModel");
     const or = [];
@@ -124,7 +130,7 @@ const resolveGateway = async ({ restaurantId, storeId } = {}) => {
       .lean();
 
     const gateways = settings?.paymentGateways;
-    if (!gateways) return platform;
+    if (!gateways) return none;
 
     const active = String(gateways.activeGateway || PROVIDERS.CASHFREE).toLowerCase();
 
@@ -140,12 +146,10 @@ const resolveGateway = async ({ restaurantId, storeId } = {}) => {
       if (other) return other;
     }
 
-    // Marked configured but unusable, or nothing configured. Falling back to
-    // the platform keys is better than telling the diner to pay through
-    // nothing.
-    return platform;
+    // Marked configured but unusable, or nothing configured.
+    return none;
   } catch {
-    return platform;
+    return none;
   }
 };
 

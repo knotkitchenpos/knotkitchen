@@ -238,12 +238,27 @@ test("REGRESSION: the QR page no longer asks the Restaurant model for a gateway"
   assert.match(QR_ROUTE, /isOnlinePaymentEnabled\(\{ restaurantId \}\)/);
 });
 
-test("the gateway resolver falls back to the platform keys, never to nothing", async () => {
-  const { resolveGateway } = require("../services/paymentGateway");
-  const gw = await resolveGateway({});
-  assert.equal(typeof gw.enabled, "boolean");
-  assert.equal(gw.gateway, "cashfree");
-  assert.equal(gw.source, "platform");
+test("REGRESSION: a restaurant without its own gateway never pays into the platform account", async () => {
+  // Restaurant takings must settle to the restaurant. Falling back to the
+  // KnotKitchen keys would have collected them into KnotKitchen's bank.
+  const saved = { id: process.env.CASHFREE_APP_ID, secret: process.env.CASHFREE_SECRET_KEY };
+  process.env.CASHFREE_APP_ID = "platform_app";
+  process.env.CASHFREE_SECRET_KEY = "platform_secret";
+  try {
+    delete require.cache[require.resolve("../config/config")];
+    delete require.cache[require.resolve("../services/paymentGateway")];
+    const { resolveGateway, resolvePlatformGateway } = require("../services/paymentGateway");
+    const gw = await resolveGateway({ restaurantId: "r1" });
+    assert.equal(gw.enabled, false, "no store keys means no online payment");
+    assert.equal(gw.keyId, "");
+    assert.equal(gw.gateway, "cashfree");
+    assert.equal(resolvePlatformGateway().enabled, true, "platform billing still has its own keys");
+  } finally {
+    process.env.CASHFREE_APP_ID = saved.id || "";
+    process.env.CASHFREE_SECRET_KEY = saved.secret || "";
+    delete require.cache[require.resolve("../config/config")];
+    delete require.cache[require.resolve("../services/paymentGateway")];
+  }
 });
 
 

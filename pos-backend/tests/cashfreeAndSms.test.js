@@ -140,8 +140,8 @@ test("the API version is pinned", () => {
 
 test("with no credentials anywhere, online payment is simply off", async () => {
   const gw = await resolveGateway({});
-  assert.equal(typeof gw.enabled, "boolean");
-  assert.equal(gw.source, "platform");
+  assert.equal(gw.enabled, false);
+  assert.equal(gw.source, "none");
   assert.ok(Object.values(PROVIDERS).includes(gw.provider));
 });
 

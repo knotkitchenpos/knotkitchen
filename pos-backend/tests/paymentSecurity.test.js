@@ -171,6 +171,15 @@ let linkCtrl, hookCtrl;
     if (mocks[r]) return mocks[r];
     return orig.apply(this, arguments);
   };
+  // The restaurant has its own Cashfree keys (the test keys above). Restaurant
+  // payments never fall back to the platform account, so say so explicitly.
+  const realGateway = require("../services/paymentGateway");
+  const storeGateway = { ...realGateway.resolvePlatformGateway(), source: "store" };
+  mocks["../services/paymentGateway"] = {
+    ...realGateway,
+    resolveGateway: async () => storeGateway,
+    isOnlinePaymentEnabled: async () => true,
+  };
   linkCtrl = require("../controllers/paymentLinkController");
   hookCtrl = require("../controllers/cashfreeWebhookController");
 }
