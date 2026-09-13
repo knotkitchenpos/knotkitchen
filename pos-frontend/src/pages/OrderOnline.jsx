@@ -5,6 +5,7 @@ import {
   qrGetTable,
   qrPlaceOrder,
   qrRequestBill,
+  qrCallWaiter,
   qrGetPaymentIntent,
   qrVerifyPayment,
 } from "../https/publicApi";
@@ -109,6 +110,7 @@ export default function OrderOnline() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
   const [banner, setBanner] = useState(""); // in-page success/info banner
+  const [callingWaiter, setCallingWaiter] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
   const [placing, setPlacing] = useState(false);
   const [paymentInfo, setPaymentInfo] = useState(null);
@@ -337,6 +339,22 @@ export default function OrderOnline() {
     }
   };
 
+  // Rings the till: the POS raises an alert naming this table and beeps until
+  // a staff member acknowledges it. Needs no open order -- a diner who has
+  // just sat down may want someone before they have ordered anything.
+  const callWaiter = async () => {
+    setCallingWaiter(true);
+    try {
+      await qrCallWaiter(token);
+      setBanner("Waiter called — someone will be with you shortly.");
+      setTimeout(() => setBanner(""), 5000);
+    } catch (e) {
+      setErr(e.response?.data?.message || "Could not call the waiter. Please try again.");
+    } finally {
+      setCallingWaiter(false);
+    }
+  };
+
   const requestBill = async () => {
     try {
       await qrRequestBill(token, claimRef.current);
@@ -490,11 +508,8 @@ export default function OrderOnline() {
         style={{ background: `linear-gradient(135deg, ${primary} 0%, #021E49 130%)` }}
       >
         <div className="max-w-3xl mx-auto px-4 pt-4 pb-3">
-          {/* Logo and name, and nothing else.
-              The table number, the seat count and Call Waiter used to sit
-              here. A diner scanning the code on that table knows which table
-              they are at, and the seat count was never anything they could
-              act on -- it is stock information for the floor staff. */}
+          {/* Logo, store name with the table under it, and Call Waiter.
+              Asking for the bill lives with the order card's Pay step. */}
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-3 min-w-0">
               {brandLogo ? (
@@ -504,16 +519,20 @@ export default function OrderOnline() {
                   className="h-9 w-9 shrink-0 rounded-full bg-white/15 object-cover"
                 />
               ) : null}
-              <h1 className="text-lg font-extrabold leading-tight truncate">{brandName}</h1>
+              <div className="min-w-0">
+                <h1 className="text-lg font-extrabold leading-tight truncate">{brandName}</h1>
+                {table ? (
+                  <p className="text-xs font-semibold text-white/80 truncate">{tableName}</p>
+                ) : null}
+              </div>
             </div>
-            {/* Request Bill stays: it is how the diner asks to pay, and there
-                is no other way to do it from this page. */}
-            {session && (
+            {table && (
               <button
-                onClick={requestBill}
-                className="shrink-0 text-[11px] font-semibold bg-white text-slate-900 rounded-full px-3 py-1.5"
+                onClick={callWaiter}
+                disabled={callingWaiter}
+                className="shrink-0 text-[11px] font-semibold bg-white text-slate-900 rounded-full px-3 py-1.5 disabled:opacity-60"
               >
-                🧾 Request Bill
+                🔔 {callingWaiter ? "Calling…" : "Call Waiter"}
               </button>
             )}
           </div>

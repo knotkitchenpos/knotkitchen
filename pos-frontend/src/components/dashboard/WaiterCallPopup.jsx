@@ -3,6 +3,7 @@ import { useSelector } from "react-redux";
 import { io } from "socket.io-client";
 import { enqueueSnackbar } from "notistack";
 import { dismissWaiterCall } from "../../https/newModules";
+import { getTables } from "../../https";
 import useAlertBeep from "../../hooks/useAlertBeep";
 import { getActiveStoreId } from "../../utils/storeSession";
 
@@ -39,7 +40,33 @@ const WaiterCallPopup = () => {
     });
     socketRef.current = socket;
 
-    const join = () => socket.emit("joinRestaurant", { restaurantId });
+    // A call only arrives as a socket event, so a till that reloads, or whose
+    // socket dropped when the diner tapped, would never hear it. The Table
+    // row keeps the flag until someone acknowledges, so pick those up on
+    // every (re)connect.
+    const restore = async () => {
+      try {
+        const { data } = await getTables();
+        const open = (data?.data || [])
+          .filter((t) => t?.waiterCallActive)
+          .map((t) => ({
+            tableId: String(t._id),
+            tableNumber: t.tableNumber,
+            displayId: t.displayId || t.tableName || "",
+            area: t.area || t.floor || "",
+            requestedAt: t.waiterCallRequestedAt,
+          }));
+        if (!open.length) return;
+        setCalls((prev) => [...prev, ...open.filter((c) => !prev.some((p) => p.tableId === c.tableId))]);
+      } catch {
+        /* the live event still works without this */
+      }
+    };
+
+    const join = () => {
+      socket.emit("joinRestaurant", { restaurantId });
+      restore();
+    };
 
     const onCalled = (payload) => {
       if (!payload?.tableId) return;
@@ -98,6 +125,8 @@ const WaiterCallPopup = () => {
     <div className="fixed top-4 right-4 z-[70] flex flex-col gap-2 w-[330px] max-w-[calc(100vw-2rem)]">
       {calls.map((call) => {
         const label = call.displayId || `Table ${call.tableNumber}`;
+        // "GF1" reads as a table on the floor; a bare "4" does not.
+        const heading = /^table\b/i.test(label) || !/^\d+$/.test(label) ? label : `Table ${label}`;
         return (
           <div
             key={call.tableId}
@@ -108,9 +137,10 @@ const WaiterCallPopup = () => {
               🔔
             </span>
             <div className="min-w-0 flex-1">
-              <p className="text-[13.5px] font-extrabold text-[#0F172A]">
-                Waiter is called by {label}
+              <p className="text-[11px] font-bold uppercase tracking-wide text-[#B45309]">
+                Waiter called
               </p>
+              <p className="text-[22px] leading-tight font-black text-[#0F172A] truncate">{heading}</p>
               {call.area ? (
                 <p className="text-[11.5px] font-semibold text-[#64748B] truncate">{call.area}</p>
               ) : null}
