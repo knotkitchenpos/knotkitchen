@@ -105,6 +105,8 @@ services:
       #   bill.${BASE_DOMAIN}/<token>   ->  pos-api  /r/<token>
       #   order.${BASE_DOMAIN}/<token>  ->  pos-web  /t/<token>
       RECEIPT_PUBLIC_URL: ${RECEIPT_PUBLIC_URL:-https://bill.${BASE_DOMAIN}}
+      # The single host website payments open on (Cashfree domain whitelist).
+      PAYMENT_PUBLIC_URL: ${PAYMENT_PUBLIC_URL:-https://pay.${BASE_DOMAIN}}
       QR_PUBLIC_URL: ${QR_PUBLIC_URL:-https://order.${BASE_DOMAIN}}
 
       # === Media (object storage) ===

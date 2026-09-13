@@ -108,8 +108,15 @@ export default function StorePage({ slug, host }) {
           items: cart.toOrderItems(),
           idempotencyKey: idempotencyKeyRef.current,
         });
-        const { checkoutId, checkout: gateway } = res.data.data;
+        const { checkoutId, payUrl, checkout: gateway } = res.data.data;
         writePending(effectiveSlug, checkoutId);
+
+        // Pay on the shared payment host; it brings the customer back here
+        // with ?checkout=<id>, and the effect below confirms the order.
+        if (payUrl) {
+          window.location.assign(payUrl);
+          return;
+        }
 
         const Cashfree = await loadCashfree();
         if (!Cashfree) {
@@ -131,14 +138,26 @@ export default function StorePage({ slug, host }) {
     [effectiveSlug, cart, confirmCheckout]
   );
 
-  // Came back after paying in a tab that closed before it could report back.
+  // Back from the payment page (?checkout=<id>), or returning after a tab
+  // closed before the payment could be confirmed.
   useEffect(() => {
     if (!effectiveSlug) return;
-    const id = readPending(effectiveSlug);
+    const params = new URLSearchParams(window.location.search);
+    const returned = /^[a-f0-9]{24}$/i.test(params.get("checkout") || "") ? params.get("checkout") : "";
+    const id = returned || readPending(effectiveSlug);
     if (!id) return;
+    if (returned) {
+      params.delete("checkout");
+      const qs = params.toString();
+      window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
+    }
     confirmCheckout(id).catch((err) => {
-      // Unpaid or gone: forget it. "Could not confirm yet" (502): keep trying later.
+      // Unpaid or gone: forget it, and say so if they just came back from paying.
+      // "Could not confirm yet" (502): keep it and try again on the next visit.
       if (err.response?.status !== 502) writePending(effectiveSlug, "");
+      if (returned) {
+        setPlaceError(err.response?.data?.message || "We could not confirm your payment. Please try again.");
+      }
     });
   }, [effectiveSlug, confirmCheckout]);
 
@@ -175,6 +194,7 @@ export default function StorePage({ slug, host }) {
       cart={cart}
       placing={placing}
       placeError={placeError}
+      notice={placeError}
       confirmedOrder={confirmedOrder}
       onDismissOrder={() => setConfirmedOrder(null)}
       onPlaceOrder={handlePlaceOrder}

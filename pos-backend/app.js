@@ -238,6 +238,7 @@ app.use("/api/receipts", require("./routes/receiptRoute"));
 // customer taps in their e-bill, so it is kept short and human-sized. The
 // signed token in the path is the whole authorisation.
 app.use("/r", require("./routes/publicReceiptRoute"));
+app.use("/c", require("./routes/payPageRoute"));
 
 // Global Error Handler
 app.use(globalErrorHandler);

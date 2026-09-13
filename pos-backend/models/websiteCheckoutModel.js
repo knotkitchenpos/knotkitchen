@@ -24,6 +24,11 @@ const websiteCheckoutSchema = new mongoose.Schema(
     status: { type: String, enum: ["PENDING", "PLACING", "PLACED"], default: "PENDING", index: true },
     orderId: { type: mongoose.Schema.Types.ObjectId, ref: "Order", default: null },
     transactionId: { type: String, default: "" },
+    // What pay.<base>/c/<id> needs to open checkout, and where it sends the
+    // customer afterwards (the store's own menu, never taken from the request).
+    paymentSessionId: { type: String, default: "" },
+    mode: { type: String, default: "sandbox" },
+    returnUrl: { type: String, default: "" },
     // Kept a day so a customer who paid and closed the tab can still be
     // placed when they come back; the gateway is asked again either way.
     expiresAt: { type: Date, default: () => new Date(Date.now() + 24 * 3600 * 1000) },

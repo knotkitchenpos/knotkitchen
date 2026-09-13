@@ -24,6 +24,10 @@ const { resolveGateway } = require("../services/paymentGateway");
 const { localDate } = require("../services/tableBookings");
 const { availabilityAt, websiteAvailability } = require("../services/websiteAvailability");
 const config = require("../config/config");
+const { buildStorefrontUrl } = require("../services/websiteProvisioningService");
+
+/** pay.<base>: the single payment host Cashfree needs whitelisted. "" in dev. */
+const payBaseUrl = () => String(process.env.PAYMENT_PUBLIC_URL || "").replace(/\/+$/, "");
 const { generateOrderNumberSafe } = require("../services/orderNumberService");
 
 
@@ -682,12 +686,14 @@ const openCheckout = async ({ res, next, ctx, order, idempotencyKey, name, phone
     );
   }
 
+  const payBase = payBaseUrl();
   const checkout = new WebsiteCheckout({
     restaurantId,
     storeId,
     orderData: order.toObject({ depopulate: true }),
     amount,
     currency: "INR",
+    returnUrl: `${buildStorefrontUrl(ctx.settings)}/menu`,
   });
 
   let gatewayOrder;
@@ -702,6 +708,7 @@ const openCheckout = async ({ res, next, ctx, order, idempotencyKey, name, phone
       orderId: `web_${checkout._id}`,
       customer: { id: `web_${phone}`, phone, name },
       notifyUrl: config.cashfreeNotifyUrl,
+      ...(payBase ? { returnUrl: `${payBase}/c/${checkout._id}/done` } : {}),
       tags: { websiteCheckoutId: String(checkout._id), restaurantId: String(restaurantId) },
     });
   } catch (err) {
@@ -710,6 +717,8 @@ const openCheckout = async ({ res, next, ctx, order, idempotencyKey, name, phone
   }
 
   checkout.gatewayOrderId = gatewayOrder.orderId;
+  checkout.paymentSessionId = gatewayOrder.paymentSessionId;
+  checkout.mode = gatewayOrder.environment === "PROD" ? "production" : "sandbox";
   await checkout.save();
 
   res.status(201).json({
@@ -718,6 +727,9 @@ const openCheckout = async ({ res, next, ctx, order, idempotencyKey, name, phone
       checkoutId: String(checkout._id),
       amount,
       currency: "INR",
+      // Where to send the customer to pay. Checkout never opens on the
+      // store's own host, so Cashfree only needs this one domain whitelisted.
+      payUrl: payBase ? `${payBase}/c/${checkout._id}` : "",
       checkout: {
         provider: "cashfree",
         paymentSessionId: gatewayOrder.paymentSessionId,

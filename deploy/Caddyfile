@@ -163,6 +163,32 @@ bill.{$BASE_DOMAIN} {
 }
 
 # =============================================================================
+# pay.knotkitchen — the one host website payments open on
+# =============================================================================
+# Cashfree only opens checkout on whitelisted domains and refuses wildcards,
+# so checkout cannot open on each store's own host. Every store sends the
+# customer to pay.<base>/c/<checkoutId>, served by pos-api (routes/payPageRoute),
+# and Cashfree returns there. Only /c/* is exposed.
+pay.{$BASE_DOMAIN} {
+	import security_headers
+
+	encode zstd gzip
+
+	@pay path /c/*
+	handle @pay {
+		reverse_proxy pos-api:8000 {
+			header_up X-Real-IP           {remote_host}
+			header_up X-Forwarded-For     {remote_host}
+			header_up X-Forwarded-Proto   {scheme}
+			header_up X-Forwarded-Host    {host}
+		}
+	}
+	handle {
+		redir https://{$BASE_DOMAIN}/ 302
+	}
+}
+
+# =============================================================================
 # order.knotkitchen — the link inside a table's QR code
 # =============================================================================
 # Same trick, same reason, and it matters more here: this URL IS the QR code.

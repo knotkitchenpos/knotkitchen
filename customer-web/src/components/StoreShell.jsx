@@ -26,6 +26,7 @@ export default function StoreShell({
   confirmedOrder,
   onPlaceOrder,
   onDismissOrder,
+  notice,
 }) {
   const [selected, setSelected] = useState(null);
   const [cartOpen, setCartOpen] = useState(false);
@@ -66,6 +67,8 @@ export default function StoreShell({
       />
 
       <main className="max-w-5xl mx-auto px-4 py-6">
+        {notice ? <Notice tone="warn">{notice}</Notice> : null}
+
         {!websiteEnabled ? (
           <Notice tone="warn">
             This restaurant is not accepting online orders right now.
