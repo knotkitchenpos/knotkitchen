@@ -42,16 +42,15 @@ test("REGRESSION: a QR table order is given an auto-COMPLETE deadline", () => {
 
 test("REGRESSION: a POS table order is given an auto-COMPLETE deadline", () => {
   const calls = SESSION_CTRL.match(/completeDueAt: await computeCompleteDueAt\(/g) || [];
-  assert.equal(
-    calls.length,
-    2,
-    "both order-creation sites (new session, and adding to one) must set it",
-  );
+  // One creation site now: addRoundToKitchenOrder, which both the new-session
+  // and add-to-session paths go through.
+  assert.equal(calls.length, 1, "the table order creation site must set it");
+  assert.equal((SESSION_CTRL.match(/await addRoundToKitchenOrder\(/g) || []).length, 2);
 });
 
 test("both table order-creation sites still set the auto-READY deadline too", () => {
   const ready = SESSION_CTRL.match(/readyDueAt: await computeReadyDueAt\(/g) || [];
-  assert.equal(ready.length, 2);
+  assert.equal(ready.length, 1);
   assert.match(QR_ROUTE, /computeReadyDueAt/);
 });
 

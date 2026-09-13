@@ -99,6 +99,7 @@ test("Manage Tables Module 6 Audit §4 & §5: IDOR & Anti-Tampering — Client p
   };
 
   const OrderMock = {
+    findOne: async () => null, // no open order yet: the round starts one
     create: async (docs) => docs.map((d) => ({ _id: "order-1", items: d.items.map((i, idx) => ({ _id: `kds-${idx}` })) })),
   };
 

@@ -95,3 +95,21 @@ test("a party being added to is not asked for its head count again", () => {
   const panel = FE("src", "components", "pos", "OrderPanel.jsx");
   assert.match(panel, /\.\.\.\(customerCount \? \{ customerCount \} : \{\}\)/);
 });
+
+test("REGRESSION: a round added at the till joins the table's open order", () => {
+  // QR order first, then Add Item at the till, showed as TWO orders for one
+  // table: every POS session path created a fresh Order per round, while the
+  // QR route appended to the open one.
+  const ctrl = SRC("controllers", "tableSessionController.js");
+  const helper = ctrl.slice(ctrl.indexOf("const addRoundToKitchenOrder"), ctrl.indexOf("const announceKitchenOrder"));
+  assert.match(helper, /Order\.findOne\(\s*\{\s*tableSessionId: session\._id/);
+  assert.match(helper, /orderStatus: \{ \$nin: \[\.\.\.SETTLED_STATUSES, \.\.\.CANCELLED_STATUSES\] \}/);
+  assert.match(helper, /order\.items\.push\(\.\.\.lines\)/);
+
+  // The helper is the only place a table order is created.
+  assert.equal((ctrl.match(/Order\.create\(/g) || []).length, 1);
+  assert.equal((ctrl.match(/await addRoundToKitchenOrder\(/g) || []).length, 2);
+
+  // An appended round refreshes the tills instead of popping a "new order".
+  assert.match(ctrl, /const emit = appended \? emitOrderStatusChanged : emitOrderCreated/);
+});

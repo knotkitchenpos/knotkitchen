@@ -22,6 +22,7 @@ const {
   canonicalStatus,
   SETTLED_STATUSES,
   CANCELLED_STATUSES,
+  READY_STATUSES,
   isFinished,
 } = require("../constants/orderStatus");
 const { computeReadyDueAt, computeCompleteDueAt } = require("../services/autoReadyService");
@@ -30,6 +31,102 @@ const { fireAutoEBill } = require("../services/eBillService");
 const crypto = require("crypto");
 
 const SESSION_CODE_PREFIX = "TS";
+
+/**
+ * Put a round of items on the table's open kitchen order, or start one.
+ *
+ * A table has ONE order while it is being served. Every POS path used to
+ * create a fresh Order per round, so a table ordered from the QR and topped
+ * up at the till showed as two orders on the Orders page, two kitchen
+ * tickets and two cards for one bill. The QR route already appended; this is
+ * the same rule for the till.
+ *
+ * Links each new session item to its kitchen line by counting back from the
+ * END of the order, which is right for an appended round as well as a new
+ * order.
+ */
+const addRoundToKitchenOrder = async ({ session, validatedItems, tableId, createdBy, mongoSession }) => {
+  const lines = validatedItems.map((it) => ({
+    menuItemId: it.menuItemId,
+    name: it.name,
+    quantity: it.quantity,
+    price: it.price,
+    total: it.total,
+    modifiers: it.modifiers || [],
+    note: it.note || "",
+    status: "pending",
+  }));
+
+  let order = await Order.findOne(
+    {
+      tableSessionId: session._id,
+      isDeleted: { $ne: true },
+      orderStatus: { $nin: [...SETTLED_STATUSES, ...CANCELLED_STATUSES] },
+    },
+    null,
+    { sort: { createdAt: -1 }, session: mongoSession },
+  );
+  const appended = Boolean(order);
+
+  if (order) {
+    order.items.push(...lines);
+    order.bills = session.bills;
+    // New dishes mean the table is being cooked for again.
+    if (READY_STATUSES.includes(order.orderStatus)) {
+      order.orderStatus = PREPARING;
+      order.readyDueAt = await computeReadyDueAt({ restaurantId: session.restaurantId, orderType: "dine-in" });
+    }
+    await order.save({ session: mongoSession });
+  } else {
+    [order] = await Order.create(
+      [
+        {
+          customerDetails: {
+            name: session.customerName || "Guest",
+            phone: session.customerPhone || "",
+            guests: session.customerCount || 1,
+          },
+          orderType: "dine-in",
+          orderStatus: PREPARING,
+          // Table orders are auto-ready and auto-complete eligible; without
+          // these dates the sweeps skip them and they sit in Preparing forever.
+          readyDueAt: await computeReadyDueAt({ restaurantId: session.restaurantId, orderType: "dine-in" }),
+          completeDueAt: await computeCompleteDueAt({ restaurantId: session.restaurantId, orderType: "dine-in" }),
+          bills: session.bills,
+          items: lines,
+          table: tableId,
+          tableSessionId: session._id,
+          restaurantId: session.restaurantId,
+          outletId: session.outletId,
+          createdBy: createdBy || null,
+        },
+      ],
+      { session: mongoSession },
+    );
+  }
+
+  const startIdx = session.items.length - validatedItems.length;
+  const kitchenStartIdx = order.items.length - validatedItems.length;
+  validatedItems.forEach((it, idx) => {
+    const sessionItem = session.items[startIdx + idx];
+    if (sessionItem) {
+      sessionItem.orderId = order._id;
+      sessionItem.kdsItemId = order.items[kitchenStartIdx + idx]?._id;
+    }
+  });
+
+  return { order, appended };
+};
+
+/** A new order pops up on the tills; an appended round only refreshes them. */
+const announceKitchenOrder = ({ session, order, appended }) => {
+  try {
+    const emit = appended ? emitOrderStatusChanged : emitOrderCreated;
+    emit({ restaurantId: session.restaurantId, outletId: session.outletId, order });
+  } catch (socketErr) {
+    console.warn("[tableSession] socket emit failed:", socketErr.message);
+  }
+};
 
 /**
  * Mint the diner's claim on a session.
@@ -399,73 +496,24 @@ const addItemsToSession = async (req, res, next) => {
 
       await recalculateSessionBill(session);
 
-      // Mirror to kitchen Order — linked to the session
-      const kitchenOrder = await Order.create(
-        [
-          {
-            customerDetails: {
-              name: session.customerName || "Guest",
-              phone: session.customerPhone || "",
-              guests: session.customerCount || 1,
-            },
-            orderType: "dine-in",
-            orderStatus: PREPARING,
-            // Module 4 �4: table orders are auto-ready eligible. Without a
-            // readyDueAt the sweep skips them and they sit in Preparing forever.
-            readyDueAt: await computeReadyDueAt({ restaurantId: session.restaurantId, orderType: "dine-in" }),
-            // Same for Auto-Complete: a table order that never gets a
-            // completeDueAt can never be swept, so the configured "table"
-            // auto-complete duration silently did nothing.
-            completeDueAt: await computeCompleteDueAt({ restaurantId: session.restaurantId, orderType: "dine-in" }),
-            bills: session.bills,
-            items: validatedItems.map((it) => ({
-              menuItemId: it.menuItemId,
-              name: it.name,
-              quantity: it.quantity,
-              price: it.price,
-              total: it.total,
-              modifiers: it.modifiers || [],
-              note: it.note || "",
-              status: "pending",
-            })),
-            table: table._id,
-            tableSessionId: session._id,
-            restaurantId: session.restaurantId,
-            outletId: session.outletId,
-            createdBy: req.user?._id || null,
-          },
-        ],
-        { session: mongoSession }
-      );
-
-      const kitchenOrderId = kitchenOrder[0]._id;
-      const kitchenItems = kitchenOrder[0].items;
-      const startIdx = session.items.length - validatedItems.length;
-      validatedItems.forEach((it, idx) => {
-        const sessionItem = session.items[startIdx + idx];
-        if (sessionItem) {
-          sessionItem.orderId = kitchenOrderId;
-          sessionItem.kdsItemId = kitchenItems[idx]?._id;
-        }
+      const { order: kitchenOrder, appended } = await addRoundToKitchenOrder({
+        session,
+        validatedItems,
+        tableId: table._id,
+        createdBy: req.user?._id,
+        mongoSession,
       });
+      const kitchenOrderId = kitchenOrder._id;
 
       // Keep the table's currentOrder in sync with the session's kitchen order
       table.currentOrderId = kitchenOrderId;
       await table.save({ session: mongoSession });
       await session.save({ session: mongoSession });
 
-      return { session, kitchenOrder: kitchenOrder[0], validatedItems };
+      return { session, kitchenOrder, appended, validatedItems };
     }));
 
-    try {
-      emitOrderCreated({
-        restaurantId: result.session.restaurantId,
-        outletId: result.session.outletId,
-        order: result.kitchenOrder,
-      });
-    } catch (socketErr) {
-      console.warn("[tableSession] socket emit failed:", socketErr.message);
-    }
+    announceKitchenOrder({ session: result.session, order: result.kitchenOrder, appended: result.appended });
   } catch (error) {
     return next(error);
   }
@@ -541,53 +589,12 @@ const addItemsToExistingSession = async (req, res, next) => {
       addTimeline(session, "ITEMS_ADDED", `${validatedItems.length} item(s) added`, "POS", req.user?._id);
       await recalculateSessionBill(session);
 
-      // Mirror to kitchen Order — linked to the same session (no new session!)
-      const kitchenOrder = await Order.create(
-        [
-          {
-            customerDetails: {
-              name: session.customerName || "Guest",
-              phone: session.customerPhone || "",
-              guests: session.customerCount || 1,
-            },
-            orderType: "dine-in",
-            orderStatus: PREPARING,
-            // Module 4 �4: table orders are auto-ready eligible. Without a
-            // readyDueAt the sweep skips them and they sit in Preparing forever.
-            readyDueAt: await computeReadyDueAt({ restaurantId: session.restaurantId, orderType: "dine-in" }),
-            // Same for Auto-Complete: a table order that never gets a
-            // completeDueAt can never be swept, so the configured "table"
-            // auto-complete duration silently did nothing.
-            completeDueAt: await computeCompleteDueAt({ restaurantId: session.restaurantId, orderType: "dine-in" }),
-            bills: session.bills,
-            items: validatedItems.map((it) => ({
-              menuItemId: it.menuItemId,
-              name: it.name,
-              quantity: it.quantity,
-              price: it.price,
-              total: it.total,
-              modifiers: it.modifiers || [],
-              note: it.note || "",
-              status: "pending",
-            })),
-            table: session.tableId,
-            tableSessionId: session._id,
-            restaurantId: session.restaurantId,
-            outletId: session.outletId,
-            createdBy: req.user?._id,
-          },
-        ],
-        { session: mongoSession }
-      );
-
-      const kitchenItems = kitchenOrder[0].items;
-      const startIdx = session.items.length - validatedItems.length;
-      validatedItems.forEach((it, idx) => {
-        const sessionItem = session.items[startIdx + idx];
-        if (sessionItem) {
-          sessionItem.orderId = kitchenOrder[0]._id;
-          sessionItem.kdsItemId = kitchenItems[idx]?._id;
-        }
+      const { order: kitchenOrder, appended } = await addRoundToKitchenOrder({
+        session,
+        validatedItems,
+        tableId: session.tableId,
+        createdBy: req.user?._id,
+        mongoSession,
       });
 
       // Keep the table's currentOrder in sync
@@ -595,24 +602,16 @@ const addItemsToExistingSession = async (req, res, next) => {
         table = await Table.findOne({ _id: session.tableId, ...scopeQuery }).session(mongoSession);
       }
       if (table) {
-        table.currentOrderId = kitchenOrder[0]._id;
+        table.currentOrderId = kitchenOrder._id;
         await table.save({ session: mongoSession });
       }
 
       await session.save({ session: mongoSession });
 
-      return { session, kitchenOrder: kitchenOrder[0], validatedItems };
+      return { session, kitchenOrder, appended, validatedItems };
     }));
 
-    try {
-      emitOrderCreated({
-        restaurantId: result.session.restaurantId,
-        outletId: result.session.outletId,
-        order: result.kitchenOrder,
-      });
-    } catch (socketErr) {
-      console.warn("[tableSession] socket emit failed:", socketErr.message);
-    }
+    announceKitchenOrder({ session: result.session, order: result.kitchenOrder, appended: result.appended });
   } catch (error) {
     return next(error);
   }

@@ -64,6 +64,7 @@ test("Manage Tables Module 4: Session Rotation — Closing Session A causes new 
   };
 
   const OrderMock = {
+    findOne: async () => null, // no open order yet: the round starts one
     create: async (docs) => docs.map((d) => ({ _id: "order-B", items: d.items.map((i, idx) => ({ _id: `kds-${idx}` })) })),
   };
 

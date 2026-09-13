@@ -44,6 +44,7 @@ test("Manage Tables Module 5: QR order triggers realtime socket event emission o
   };
 
   const OrderMock = {
+    findOne: async () => null, // no open order yet: the round starts one
     create: async (docs) => docs.map((d) => ({ _id: "ord-m5", ...d })),
   };
 
@@ -159,6 +160,7 @@ test("Manage Tables Module 5: Table settlement releases table to Available and p
   };
 
   const OrderMock = {
+    findOne: async () => null, // no open order yet: the round starts one
     updateMany: async (q, u) => {
       orderStatusUpdated = u.$set.orderStatus; // Marked "paid" for history
     },
