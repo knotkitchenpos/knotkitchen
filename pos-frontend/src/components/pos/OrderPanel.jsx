@@ -42,6 +42,7 @@ import { getWebsiteSettings } from "../../https/storefrontApi";
 import Invoice from "../invoice/Invoice";
 import { receiptAddress } from "../../utils/address";
 import { toOrderItems } from "../../utils/orderItems";
+import { tableLabel } from "../../utils/orderLabels";
 import CollectionModal from "./CollectionModal";
 import DeliveryModal from "./DeliveryModal";
 import DiscountModal from "./DiscountModal";
@@ -1175,7 +1176,7 @@ const OrderPanel = () => {
           {busy
             ? "Processing…"
             : activeSessionId
-            ? `Add to ${customer.table?.tableNo ? `Table ${customer.table.tableNo}` : "Table"}`
+            ? `Add to ${tableLabel(customer.table, "Table")}`
             : "Finish Order"}{" "}
           {!busy && <IconArrowRight />}
         </button>

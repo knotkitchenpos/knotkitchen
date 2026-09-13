@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { ModalShell } from "./ModalShell";
+import { tableLabel } from "../../utils/orderLabels";
 
 /** The order a table is already running, if it has one. */
 const sessionIdOf = (t) => t?.session?._id || t?.activeSessionId || "";
@@ -50,7 +51,12 @@ const TableModal = ({ tables = [], busy, onClose, onConfirm }) => {
     const s = q.trim();
     let arr = [...tables].sort((a, b) => (a.tableNumber || 0) - (b.tableNumber || 0));
     if (area !== "all") arr = arr.filter((t) => areaOf(t) === area);
-    return s ? arr.filter((t) => String(t.tableNumber).includes(s)) : arr;
+    if (!s) return arr;
+    // Staff search by the name on the floor ("LA 2") as often as the number.
+    const needle = s.toLowerCase().replace(/[\s-]+/g, "");
+    return arr.filter((t) =>
+      [tableLabel(t), String(t.tableNumber)].some((v) => v.toLowerCase().replace(/[\s-]+/g, "").includes(needle)),
+    );
   }, [tables, q, area]);
 
   const available = list.filter((t) => !isOccupied(t)).length;
@@ -61,12 +67,13 @@ const TableModal = ({ tables = [], busy, onClose, onConfirm }) => {
     if (!picked) return setErr("Select a table to continue.");
     const cap = Number(picked.capacity) || 4;
     const g = Math.max(1, Number(guests) || 1);
-    if (g > cap) return setErr(`Table ${picked.tableNumber} seats a maximum of ${cap} customers.`);
+    if (g > cap) return setErr(`${tableLabel(picked)} seats a maximum of ${cap} customers.`);
     setErr("");
     onConfirm({
       table: {
         tableId: picked._id,
         tableNo: picked.tableNumber,
+        displayId: tableLabel(picked),
         capacity: picked.capacity,
         occupancy: picked.currentOccupancy || 0,
         // Carried through so the caller appends to the order this table is
@@ -153,7 +160,7 @@ const TableModal = ({ tables = [], busy, onClose, onConfirm }) => {
                   }
                 >
                   <p className={`text-[15px] font-extrabold ${on ? "text-white" : "text-[#0F172A]"}`}>
-                    Table {t.tableNumber}
+                    {tableLabel(t)}
                   </p>
                   <p className={`text-[11px] mt-0.5 truncate ${on ? "text-white/80" : "text-[#94A3B8]"}`}>
                     Seats {t.capacity}
@@ -186,7 +193,7 @@ const TableModal = ({ tables = [], busy, onClose, onConfirm }) => {
 
         {picked && adding ? (
           <p className="rounded-xl bg-[#FFF7ED] border border-[#FED7AA] px-3.5 py-3 text-[12.5px] font-semibold text-[#9A3412]">
-            Table {picked.tableNumber} already has an order. These items are added to it, and the
+            {tableLabel(picked)} already has an order. These items are added to it, and the
             party keeps the guest count it was seated with.
           </p>
         ) : null}
@@ -205,7 +212,7 @@ const TableModal = ({ tables = [], busy, onClose, onConfirm }) => {
               className="w-full h-[46px] px-3.5 rounded-xl border border-[#E2E8F0] text-[14px] focus:border-[#FD5302]"
             />
             <p className="text-[11.5px] text-[#94A3B8] mt-1">
-              Table {picked.tableNumber} seats up to {picked.capacity} customers.
+              {tableLabel(picked)} seats up to {picked.capacity} customers.
             </p>
           </div>
         )}

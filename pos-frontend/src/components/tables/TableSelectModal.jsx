@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { enqueueSnackbar } from "notistack";
+import { tableLabel } from "../../utils/orderLabels";
 
 const TableSelectModal = ({ tables = [], onClose, onSelect }) => {
   const [search, setSearch] = useState("");
@@ -20,7 +21,7 @@ const TableSelectModal = ({ tables = [], onClose, onSelect }) => {
   const handleSelect = (table) => {
     if (Number(table.currentOccupancy) >= Number(table.capacity)) {
       enqueueSnackbar(
-        `Table ${table.tableNumber} is full (${table.capacity}/${table.capacity}).`,
+        `${tableLabel(table)} is full (${table.capacity}/${table.capacity}).`,
         { variant: "error" }
       );
       return;
@@ -65,7 +66,7 @@ const TableSelectModal = ({ tables = [], onClose, onSelect }) => {
                 className="w-full flex items-center justify-between p-3.5 rounded-xl border border-border bg-surface-input hover:border-accent hover:bg-accent/5 transition-colors text-left"
               >
                 <div>
-                  <p className="text-sm font-semibold text-content">Table {table.tableNumber}</p>
+                  <p className="text-sm font-semibold text-content">{tableLabel(table)}</p>
                   <p className="text-xs text-content-muted">
                     Capacity {table.capacity} | Occupancy {table.currentOccupancy || 0}
                   </p>
