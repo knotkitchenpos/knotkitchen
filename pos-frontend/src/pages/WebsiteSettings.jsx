@@ -402,9 +402,9 @@ const WebsiteSettings = () => {
               </div>
             )}
             <div>
-              <h3 className="font-bold text-[#0F172A] text-base mb-1">Payment Gateways & Pay by Link</h3>
+              <h3 className="font-bold text-[#0F172A] text-base mb-1">Payment Gateways</h3>
               <p className="text-xs text-[#94A3B8]">
-                Configure Cashfree or PhonePe gateway credentials. Only ONE gateway can be active at a time for website ordering & Pay by Link.
+                Configure Cashfree or PhonePe gateway credentials. Only ONE gateway can be active at a time for website and table QR payments.
               </p>
             </div>
 
@@ -417,10 +417,10 @@ const WebsiteSettings = () => {
                 </span>
               </div>
               <div className="p-3 rounded-xl border border-[#FDE68A] bg-[#FFFBEB] text-xs text-[#92400E]">
-                Enter <strong>this restaurant's own</strong> payment gateway keys. Every website, table QR and Pay by Link
-                payment settles to the account these keys belong to. Never enter KnotKitchen's keys here.
+                Enter <strong>this restaurant&apos;s own</strong> payment gateway keys. Every website and table QR
+                payment settles to the account these keys belong to. Never enter KnotKitchen&apos;s keys here.
               </div>
-              <Field label="Select Active Gateway" hint="Pay by Link and storefront payments will use this gateway.">
+              <Field label="Select Active Gateway" hint="Website and table QR payments will use this gateway.">
                 <select
                   className={inputClass}
                   value={settings.paymentGateways?.activeGateway || "cashfree"}

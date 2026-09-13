@@ -4,17 +4,12 @@ import { ModalShell } from "./ModalShell";
 /**
  * Finish Order → Payment Method chooser (Module 2 §5).
  *
- * Shown after the biller taps "Finish Order". Presents three ways to
+ * Shown after the biller taps "Finish Order". Presents two ways to
  * collect payment:
  *
  *   - Cash       → order is created + immediately closed as paid-in-cash.
  *   - QR / Online→ order is created + immediately closed as paid via
  *                  in-store QR/online rail (existing behaviour).
- *   - Pay by Link→ order is created in "Pending" state (NOT paid) and a
- *                  shareable payment link is generated for the customer.
- *                  The link is only marked PAID after the customer
- *                  actually completes payment via /pay/:token (this is
- *                  enforced server-side in paymentLinkController).
  *
  * The bill breakdown (subtotal, discount, tax, packaging, delivery, total)
  * is shown here as a final review — this is the operator's last chance to
@@ -36,13 +31,6 @@ const IconQR = () => (
         <path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20h1" />
     </svg>
 );
-const IconLink = () => (
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M10 13a5 5 0 0 0 7.07 0l3.54-3.54a5 5 0 1 0-7.07-7.07L11.5 4.5" />
-        <path d="M14 11a5 5 0 0 0-7.07 0L3.39 14.54a5 5 0 1 0 7.07 7.07L12.5 19.5" />
-    </svg>
-);
-
 const money = (n) => `₹${Number(n || 0).toFixed(2)}`;
 
 const Row = ({ label, value, strong = false, muted = false, positive = false, negative = false }) => (
@@ -156,14 +144,6 @@ const PaymentMethodModal = ({
                     tint={{ bg: "#FFF1E8", fg: "#FD5302" }}
                     disabled={busy}
                     onClick={() => onSelect("qr")}
-                />
-                <MethodTile
-                    Icon={IconLink}
-                    title="Pay via Link"
-                    subtitle="Send a secure payment link — order stays pending until paid."
-                    tint={{ bg: "#FEF3C7", fg: "#B45309" }}
-                    disabled={busy}
-                    onClick={() => onSelect("link")}
                 />
             </div>
 

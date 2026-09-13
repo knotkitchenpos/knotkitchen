@@ -29,7 +29,6 @@ import {
 } from "../../redux/slices/discountSlice";
 import {
   addOrder,
-  createPaymentLink,
   createTableSession,
   addItemsToTableSession,
   getStoreProperties,
@@ -47,7 +46,6 @@ import CollectionModal from "./CollectionModal";
 import DeliveryModal from "./DeliveryModal";
 import DiscountModal from "./DiscountModal";
 import PaymentMethodModal from "./PaymentMethodModal";
-import PaymentLinkResultModal from "./PaymentLinkResultModal";
 import TableModal from "./TableModal";
 
 /* ---------- Icons (drawn to match the reference) ---------- */
@@ -122,12 +120,11 @@ const OrderPanel = () => {
   const [noteText, setNoteText] = useState("");
   const [showDiscount, setShowDiscount] = useState(false);
   const [showPaymentMethod, setShowPaymentMethod] = useState(false);
-  const [pendingMethod, setPendingMethod] = useState(null); // "cash" | "qr" | "link"
+  const [pendingMethod, setPendingMethod] = useState(null); // "cash" | "qr"
   const [showCollection, setShowCollection] = useState(false);
   const [showDelivery, setShowDelivery] = useState(false);
   const [showTable, setShowTable] = useState(false);
   const [invoice, setInvoice] = useState(null);
-  const [paymentLinkResult, setPaymentLinkResult] = useState(null);
   const [showHeldOrders, setShowHeldOrders] = useState(false);
 
   useEffect(() => {
@@ -296,20 +293,10 @@ const OrderPanel = () => {
 
   const tableUpdate = useMutation({ mutationFn: (d) => updateTable(d) });
 
-  const paymentLinkMutation = useMutation({
-    mutationFn: createPaymentLink,
-  });
-
-  /*
-   * The single order-create mutation. `variables` carries the chosen
-   * paymentMethod so we can decide whether to (a) close the order + open
-   * the invoice (cash/qr) or (b) chain a payment-link creation and leave
-   * the order pending (link). This is where §5 "do not immediately
-   * finalize a Pay by Link order as paid" is enforced on the client.
-   */
+  /* The single order-create mutation: create, then show the invoice. */
   const orderMutation = useMutation({
     mutationFn: (d) => addOrder(d),
-    onSuccess: async (res, variables) => {
+    onSuccess: (res) => {
       const data = res.data?.data;
       if (data?.table) {
         setTimeout(
@@ -320,45 +307,6 @@ const OrderPanel = () => {
       qc.invalidateQueries({ queryKey: ["orders"] });
       qc.invalidateQueries({ queryKey: ["popular-items"] });
       qc.invalidateQueries({ queryKey: ["tables"] });
-
-      // "Pay via Link" — create the payment link but DO NOT show the invoice
-      // and DO NOT clear the cart until the link is generated (so if link
-      // creation fails, the operator can retry without re-entering the order).
-      if (variables?.paymentMethod === "link") {
-        try {
-          const linkRes = await paymentLinkMutation.mutateAsync({
-            orderId: data._id,
-            phone: data.customerDetails?.phone || variables?._phone || "",
-            expiresInHours: 24,
-          });
-          setPaymentLinkResult(linkRes.data?.data);
-          setShowPaymentMethod(false);
-          setShowCollection(false);
-          setShowDelivery(false);
-          dispatch(removeAllItems());
-          dispatch(removeCustomer());
-          dispatch(clearDiscount());
-          enqueueSnackbar(
-            "Order created. Share the payment link — the order will finalise once the customer pays.",
-            { variant: "success" },
-          );
-        } catch (e) {
-          enqueueSnackbar(
-            e.response?.data?.message ||
-              "Order was created but the payment link could not be generated. Please retry from Orders.",
-            { variant: "error" },
-          );
-          // Even on link failure, the order exists — clear the cart so the
-          // biller doesn't re-submit and end up with a duplicate.
-          setShowPaymentMethod(false);
-          setShowCollection(false);
-          setShowDelivery(false);
-          dispatch(removeAllItems());
-          dispatch(removeCustomer());
-          dispatch(clearDiscount());
-        }
-        return;
-      }
 
       // Cash / QR — show the invoice + close the modals.
       enqueueSnackbar("Order completed!", { variant: "success" });
@@ -422,8 +370,7 @@ const OrderPanel = () => {
   const busy =
     orderMutation.isPending ||
     sessionMutation.isPending ||
-    appendMutation.isPending ||
-    paymentLinkMutation.isPending;
+    appendMutation.isPending;
 
   /**
    * The session this cart is already attached to, if any.
@@ -486,8 +433,6 @@ const OrderPanel = () => {
         ? { paymentMethod: "Cash" }
         : paymentMethod === "qr"
         ? { paymentMethod: "UPI" }
-        : paymentMethod === "link"
-        ? { paymentMethod: "PaymentLink" }
         : {}),
       ...(deliveryAddress ? { deliveryAddress } : {}),
       ...(table ? { table } : {}),
@@ -553,21 +498,12 @@ const OrderPanel = () => {
     const name = (customer.customerName || "").trim();
     const phone = (customer.customerPhone || "").trim();
 
-    if (method === "link" && !phone) {
-      enqueueSnackbar("A phone number is required to send the payment link.", { variant: "warning" });
-      return;
-    }
-
     setShowPaymentMethod(false);
     doCollection({ name, phone, chosenMethod: method });
   };
 
   const doCollection = ({ name, phone, address, city, pinCode, deliveryNote, chosenMethod }) => {
     const payMethod = chosenMethod || pendingMethod;
-    if (payMethod === "link" && !phone) {
-      enqueueSnackbar("A phone number is required to send the payment link.", { variant: "warning" });
-      return;
-    }
     if (name || phone) dispatch(setCustomer({ name, phone, guests: 0 }));
     orderMutation.mutate(
       buildOrderPayload({
@@ -595,10 +531,6 @@ const OrderPanel = () => {
     deliveryNote,
     deliveryAddress,
   }) => {
-    if (pendingMethod === "link" && !phone) {
-      enqueueSnackbar("A phone number is required to send the payment link.", { variant: "warning" });
-      return;
-    }
     dispatch(setCustomer({ name, phone, guests: 0 }));
     orderMutation.mutate(
       buildOrderPayload({
@@ -1306,13 +1238,6 @@ const OrderPanel = () => {
             ""
           }
           restaurantAddress={receiptAddress({ storeProps, restaurant, websiteSettings })}
-        />
-      )}
-
-      {paymentLinkResult && (
-        <PaymentLinkResultModal
-          result={paymentLinkResult}
-          onClose={() => setPaymentLinkResult(null)}
         />
       )}
 
