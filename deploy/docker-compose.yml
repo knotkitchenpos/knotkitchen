@@ -127,8 +127,10 @@ services:
 
       # === Payments / SMS ===
 
-      # Cashfree PG. Platform-wide fallback for stores that have not entered
-      # their own credentials under Website Settings.
+      # Cashfree PG: KnotKitchen's OWN account, for money KnotKitchen bills
+      # (Business Balance top-ups that pay for subscriptions and charges).
+      # Never used for a restaurant's customer payments -- those need the
+      # restaurant's own keys in Manage Website > Payment Gateway.
       # CASHFREE_ENV: TEST = sandbox.cashfree.com, PROD = api.cashfree.com.
       # Anything unrecognised is treated as sandbox on purpose -- a typo here
       # should cost a failed test payment, not a real one.
@@ -141,7 +143,7 @@ services:
       CASHFREE_SECRET_KEY: ${CASHFREE_SECRET_KEY:-}
       CASHFREE_ENV: ${CASHFREE_ENV:-TEST}
       CASHFREE_WEBHOOK_SECRET: ${CASHFREE_WEBHOOK_SECRET:-}
-      CASHFREE_NOTIFY_URL: ${CASHFREE_NOTIFY_URL:-}
+      CASHFREE_NOTIFY_URL: ${CASHFREE_NOTIFY_URL:-https://api.${BASE_DOMAIN}/api/payment/cashfree/webhook}
 
       FAST2SMS_API_KEY: ${FAST2SMS_API_KEY:-}
       # DLT: the approved header, and the Message ID per template. With a

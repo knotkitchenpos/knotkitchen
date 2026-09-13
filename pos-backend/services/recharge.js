@@ -107,6 +107,9 @@ const createRecharge = async ({ restaurantId, amountPaise, createdBy = null, ret
         email: restaurant.ownerEmail || restaurant.email || "",
       },
       returnUrl,
+      // So a top-up is credited even if the operator closes the payment window
+      // before the POS can verify it (the webhook credits through the same key).
+      notifyUrl: require("../config/config").cashfreeNotifyUrl,
       tags: { purpose: "business_balance_recharge", restaurantId: String(restaurantId) },
     });
 
