@@ -56,7 +56,8 @@ export default function CoastalBrunch({ landing, store, menuPath, onBookTable })
           </nav>
           {onBookTable ? (
             <button type="button" onClick={onBookTable} className={`${GHOST} ml-auto shrink-0 !px-4 !py-2.5 lg:ml-0`}>
-              Book a Table
+              <span className="sm:hidden">Book</span>
+              <span className="hidden sm:inline">Book a Table</span>
             </button>
           ) : null}
           <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open}
