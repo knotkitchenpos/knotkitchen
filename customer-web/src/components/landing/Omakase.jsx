@@ -29,7 +29,7 @@ const LINE = "border-[#3f3c38]";
 const BTN = `${CAPS} inline-flex items-center justify-center bg-[#d4ae7c] px-8 py-3.5 text-[#1a140b] transition hover:bg-[#b38954]`;
 const GHOST = `${CAPS} inline-flex items-center justify-center border border-[#3f3c38] bg-[#242325] px-7 py-3.5 text-[#eae3d8] transition hover:text-[#d4ae7c]`;
 
-export default function Omakase({ landing, store, menuPath }) {
+export default function Omakase({ landing, store, menuPath, onBookTable }) {
   useGoogleFont(FONT);
   const { symbol, categories, offers, hours, contact, features, gallery, show } =
     useLandingData(landing, store);
@@ -68,6 +68,11 @@ export default function Omakase({ landing, store, menuPath }) {
             ))}
             <Cta to={menuPath} label={landing.ctaText} className={`${BTN} ml-4 !px-6 !py-2.5`} />
           </nav>
+          {onBookTable ? (
+            <button type="button" onClick={onBookTable} className={`${GHOST} ml-auto shrink-0 !px-4 !py-2.5 lg:ml-0`}>
+              Book a Table
+            </button>
+          ) : null}
           <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open}
             className={`${CAPS} border px-4 py-2 lg:hidden ${LINE}`}>
             {open ? "Close" : "Menu"}

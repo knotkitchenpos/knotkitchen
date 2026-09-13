@@ -9,6 +9,7 @@ const {
   createStorefrontOrder,
   trackStorefrontOrder,
 } = require("../controllers/storefrontController");
+const { getPublicBookingSlots, createPublicTableBooking } = require("../controllers/tableBookingController");
 
 /**
  * PUBLIC storefront routes (§30) — no authentication.
@@ -34,5 +35,14 @@ router.get("/:slug/menu", readLimiter, getStorefrontMenu);
 router.get("/:slug/products/:id", readLimiter, getStorefrontProduct);
 router.post("/:slug/orders", orderLimiter, createStorefrontOrder);
 router.get("/:slug/orders/:orderId", readLimiter, trackStorefrontOrder);
+
+const bookingLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 5,
+  keyGenerator: (req) => `booking:${req.params.slug}:${clientIp(req)}`,
+  message: "Too many booking requests. Please wait a few minutes and try again.",
+});
+router.get("/:slug/table-bookings/slots", readLimiter, getPublicBookingSlots);
+router.post("/:slug/table-bookings", bookingLimiter, createPublicTableBooking);
 
 module.exports = router;

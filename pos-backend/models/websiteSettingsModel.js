@@ -369,6 +369,17 @@ const orderingSchema = new mongoose.Schema(
     acceptPreOrders: { type: Boolean, default: true },
     prepTimeMinutes: { type: Number, default: 30, min: 0 },
     specialInstructionsEnabled: { type: Boolean, default: true },
+    // Table booking from the website. Times are restaurant-local "HH:MM".
+    tableBooking: {
+      enabled: { type: Boolean, default: true },
+      openTime: { type: String, default: "16:00" },
+      closeTime: { type: String, default: "22:00" },
+      slotMinutes: { type: Number, default: 30, min: 5, max: 240 },
+      // The table stops taking new orders this long before the booked time...
+      holdBeforeMinutes: { type: Number, default: 30, min: 0, max: 24 * 60 },
+      // ...and is let go this long after it if the party never arrives.
+      releaseAfterMinutes: { type: Number, default: 60, min: 0, max: 24 * 60 },
+    },
     autoReadyMinutes: {
       collection: { type: Number, default: 20, min: 0, max: 24 * 60 },
       delivery: { type: Number, default: 45, min: 0, max: 24 * 60 },

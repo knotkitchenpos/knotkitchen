@@ -26,7 +26,7 @@ const HAIR = "border-[#c5a059]/20";
 const BTN = `${CAPS} inline-flex items-center justify-center bg-[#c5a059] px-8 py-3.5 text-[#121110] transition hover:bg-[#d8b673]`;
 const GHOST = `${CAPS} inline-flex items-center justify-center border border-[#c5a059]/40 px-7 py-3.5 text-[#f5f2eb] transition hover:border-[#c5a059] hover:bg-[#c5a059]/[0.06]`;
 
-export default function FineDining({ landing, store, menuPath }) {
+export default function FineDining({ landing, store, menuPath, onBookTable }) {
   useGoogleFont(FONT);
   const { symbol, categories, offers, hours, contact, features, gallery, show } =
     useLandingData(landing, store);
@@ -70,6 +70,11 @@ export default function FineDining({ landing, store, menuPath }) {
             <Cta to={menuPath} label={landing.ctaText} className={`${BTN} ml-4 !px-6 !py-2.5`} />
           </nav>
 
+          {onBookTable ? (
+            <button type="button" onClick={onBookTable} className={`${GHOST} ml-auto shrink-0 !px-4 !py-2.5 lg:ml-0`}>
+              Book a Table
+            </button>
+          ) : null}
           <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open}
             className={`${CAPS} border border-[#c5a059]/40 px-4 py-2 text-[#f5f2eb] lg:hidden`}>
             {open ? "Close" : "Menu"}

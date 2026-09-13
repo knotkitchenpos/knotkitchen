@@ -12,6 +12,8 @@ import { checkActionAuthorization } from "../utils/security";
 import { keepPreviousData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   getTables,
+  seatTableBooking,
+  cancelTableBooking,
   addTable,
   updateTable,
   deleteTable,
@@ -314,6 +316,30 @@ const Tables = () => {
       }),
   });
 
+  /**
+   * A table pre-booked from the website. "Guests arrived" releases the hold so
+   * their order can start; "Cancel pre-booking" frees the table for anyone.
+   */
+  const bookingMut = useMutation({
+    mutationFn: ({ action, id }) => (action === "seat" ? seatTableBooking(id) : cancelTableBooking(id)),
+    onSuccess: (res) => {
+      enqueueSnackbar(res?.data?.message || "Booking updated.", { variant: "success" });
+      queryClient.invalidateQueries({ queryKey: ["tables"] });
+      queryClient.invalidateQueries({ queryKey: ["table-bookings"] });
+    },
+    onError: (e) =>
+      enqueueSnackbar(e.response?.data?.message || "Could not update that booking.", { variant: "error" }),
+  });
+
+  const handleBookingAction = (action, booking, label) => {
+    const question =
+      action === "seat"
+        ? `${booking.name}'s party has arrived at ${label}? The table is released for their order.`
+        : `Cancel the pre-booking for ${booking.name} at ${booking.timeLabel}? ${label} becomes available again.`;
+    if (!window.confirm(question)) return;
+    bookingMut.mutate({ action, id: booking._id });
+  };
+
   const handleReleaseTable = () => {
     const tableId = sessionTable?._id || sessionTable?.id;
     if (!tableId) return;
@@ -469,6 +495,13 @@ const Tables = () => {
     };
     if (isOccupied(table)) {
       openSessionDetail(shaped);
+      return;
+    }
+    if (table.status === "reserved" && table.booking) {
+      enqueueSnackbar(
+        `${shaped.name} is pre-booked for ${table.booking.name} at ${table.booking.timeLabel}. Mark the guests arrived or cancel the pre-booking first.`,
+        { variant: "warning" },
+      );
       return;
     }
     setGuestCountTable(shaped);
@@ -693,6 +726,45 @@ const Tables = () => {
                   session={table.session}
                   onClick={() => handleTableClick(table)}
                 />
+                {table.booking ? (
+                  <div
+                    className={`mt-2 rounded-xl border px-3 py-2 text-left ${
+                      table.booking.blocking ? "border-[#FDBA74] bg-[#FFF7ED]" : "border-[#E2E8F0] bg-white"
+                    }`}
+                  >
+                    <p className="text-[11px] font-bold text-[#C2410C] truncate">
+                      {table.booking.blocking ? "Reserved" : "Pre-booked"} · {table.booking.timeLabel}
+                      {table.booking.bookingDate !== new Date().toLocaleDateString("en-CA")
+                        ? ` · ${table.booking.bookingDate}`
+                        : ""}
+                    </p>
+                    <p className="text-[11px] text-[#0F172A] truncate">
+                      {table.booking.name} · {table.booking.guestCount} guests · {table.booking.phone}
+                    </p>
+                    <div className="mt-1.5 flex gap-1.5">
+                      <button
+                        type="button"
+                        disabled={bookingMut.isPending}
+                        onClick={() =>
+                          handleBookingAction("seat", table.booking, table.displayId || table.tableName || `Table ${table.tableNumber}`)
+                        }
+                        className="flex-1 py-1 rounded-lg bg-[#22C55E] text-white text-[11px] font-bold disabled:opacity-50"
+                      >
+                        Guests arrived
+                      </button>
+                      <button
+                        type="button"
+                        disabled={bookingMut.isPending}
+                        onClick={() =>
+                          handleBookingAction("cancel", table.booking, table.displayId || table.tableName || `Table ${table.tableNumber}`)
+                        }
+                        className="flex-1 py-1 rounded-lg border border-[#FECACA] text-[#DC2626] text-[11px] font-bold disabled:opacity-50"
+                      >
+                        Cancel pre-booking
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
               </div>
             ))}
           </div>

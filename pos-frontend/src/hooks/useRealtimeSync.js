@@ -40,6 +40,8 @@ const INVALIDATE_ON = {
   "menu:updated": ["menus", "popular-items", "store-properties"],
   tableSessionUpdated: ["tables", "orders"],
   waiterCall: ["tables"],
+  "tableBooking:created": ["table-bookings"],
+  "tableBooking:updated": ["tables", "table-bookings"],
 };
 
 const useRealtimeSync = () => {

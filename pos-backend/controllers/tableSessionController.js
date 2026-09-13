@@ -29,6 +29,7 @@ const { computeReadyDueAt, computeCompleteDueAt } = require("../services/autoRea
 const { fireAutoEBill } = require("../services/eBillService");
 
 const crypto = require("crypto");
+const { findActiveBlock, blockedError } = require("./tableBookingController");
 
 const SESSION_CODE_PREFIX = "TS";
 
@@ -437,6 +438,11 @@ const addItemsToSession = async (req, res, next) => {
       }).session(mongoSession);
 
       if (!session) {
+        // A table promised to a booking stops taking new parties from its
+        // block start. Seating the booking (Manage Tables) releases it.
+        const block = await findActiveBlock(table._id);
+        if (block) throw blockedError(block, table);
+
         // Create new session
         const sessionCode = generateSessionCode();
         const created = await TableSession.create(

@@ -1,5 +1,6 @@
 const Table = require("../models/tableModel");
 const TableSession = require("../models/tableSessionModel");
+const { upcomingBookingsByTable } = require("./tableBookingController");
 const createHttpError = require("http-errors");
 const crypto = require("crypto");
 const mongoose = require("mongoose");
@@ -107,6 +108,8 @@ const getTables = async (req, res, next) => {
       isDeleted: { $ne: true },
     });
 
+    const bookings = await upcomingBookingsByTable(tables.map((t) => t._id));
+
     const sessionMap = {};
     activeSessions.forEach((s) => {
       sessionMap[s.tableId.toString()] = s;
@@ -134,6 +137,11 @@ const getTables = async (req, res, next) => {
           : session.status === "PAYMENT_PENDING"
           ? "occupied"
           : tObj.status;
+      }
+      const booking = bookings[t._id.toString()];
+      if (booking) {
+        tObj.booking = booking;
+        if (booking.blocking && !session) tObj.status = "reserved";
       }
       return tObj;
     });

@@ -52,6 +52,12 @@ export const getStorefrontProduct = (slug, id) =>
  * computed server-side in services/orderPricingService.js — anything the
  * browser sends for a monetary field is ignored (§10 of the spec).
  */
+export const getBookingSlots = (slug, date) =>
+  client.get(`/api/storefront/${encodeURIComponent(slug)}/table-bookings/slots`, { params: { date } });
+
+export const requestTableBooking = (slug, payload) =>
+  client.post(`/api/storefront/${encodeURIComponent(slug)}/table-bookings`, payload);
+
 export const placeOrder = (slug, payload) =>
   client.post(`/api/storefront/${encodeURIComponent(slug)}/orders`, payload);
 

@@ -10,6 +10,9 @@ const TableCard = ({ id, name, status, initials, seats, occupancy = 0, available
   // here, so the card invited staff to seat a table nobody had cleared and
   // gave no sign that a timer was running at all.
   const isCleaning = status === "cleaning";
+  // Held for a website booking: no new party may be seated until the booking
+  // is seated or cancelled.
+  const isReserved = status === "reserved";
   const isBooked =
     !isCleaning &&
     (["Booked", "occupied", "OCCUPIED"].includes(status) ||
@@ -47,17 +50,19 @@ const TableCard = ({ id, name, status, initials, seats, occupancy = 0, available
       <div className="flex items-start justify-between mb-3">
         <p className="text-sm font-bold text-content flex items-center gap-2">
           {name}
-          {!isBooked && !isCleaning && <FaLongArrowAltRight className="text-accent" size={12} />}
+          {!isBooked && !isCleaning && !isReserved && <FaLongArrowAltRight className="text-accent" size={12} />}
         </p>
         <span
           className={`badge ${
-            isCleaning ? "badge-booked" : isBooked ? "badge-booked" : "badge-available"
+            isCleaning || isReserved ? "badge-booked" : isBooked ? "badge-booked" : "badge-available"
           }`}
         >
           {isCleaning
             ? minutesLeft > 0
               ? `Cleaning · ${minutesLeft} min`
               : "Cleaning"
+            : isReserved
+            ? "Reserved"
             : isBooked
             ? "Booked"
             : status}

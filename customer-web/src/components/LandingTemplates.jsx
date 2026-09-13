@@ -1,4 +1,6 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
+import TableBookingModal from "./TableBookingModal";
+import { getBookingSlots } from "../lib/api";
 import FineDining from "./landing/FineDining";
 import FarmToTable from "./landing/FarmToTable";
 import Omakase from "./landing/Omakase";
@@ -38,10 +40,35 @@ const THEMES = {
 
 export const TEMPLATE_KEYS = Object.keys(THEMES);
 
-export default function LandingTemplate({ landing, store, menuPath }) {
+export default function LandingTemplate({ landing, store, menuPath, slug }) {
+  const [booking, setBooking] = useState(null); // slots payload once known
+  const [open, setOpen] = useState(false);
+
+  // Asked up front so the button only appears on stores that take bookings.
+  useEffect(() => {
+    if (!slug) return undefined;
+    let live = true;
+    getBookingSlots(slug)
+      .then(({ data }) => live && setBooking(data.data))
+      .catch(() => {});
+    return () => {
+      live = false;
+    };
+  }, [slug]);
+
   // An unknown key means the database holds a template this build does not
   // ship yet -- a rollback, or a key added backend-first. Show the default
   // rather than a blank page.
   const Page = THEMES[landing?.template] || FineDining;
-  return <Page landing={landing} store={store} menuPath={menuPath} />;
+  return (
+    <>
+      <Page
+        landing={landing}
+        store={store}
+        menuPath={menuPath}
+        onBookTable={booking?.enabled ? () => setOpen(true) : null}
+      />
+      {open ? <TableBookingModal slug={slug} initial={booking} onClose={() => setOpen(false)} /> : null}
+    </>
+  );
 }

@@ -30,6 +30,14 @@ export const impersonateWithSupportToken = (token) =>
 // Table Endpoints
 export const addTable = (data) => axiosWrapper.post("/api/table/", data);
 export const getTables = () => axiosWrapper.get("/api/table");
+
+// Table bookings from the restaurant website
+export const getTableBookings = () => axiosWrapper.get("/api/table-bookings");
+export const getBookingTables = (bookingId) => axiosWrapper.get(`/api/table-bookings/${bookingId}/tables`);
+export const acceptTableBooking = (bookingId, tableId) =>
+  axiosWrapper.post(`/api/table-bookings/${bookingId}/accept`, { tableId });
+export const cancelTableBooking = (bookingId) => axiosWrapper.post(`/api/table-bookings/${bookingId}/cancel`);
+export const seatTableBooking = (bookingId) => axiosWrapper.post(`/api/table-bookings/${bookingId}/seat`);
 export const updateTable = ({ tableId, ...tableData }) =>
   axiosWrapper.put(`/api/table/${tableId}`, tableData);
 export const deleteTable = (tableId) =>

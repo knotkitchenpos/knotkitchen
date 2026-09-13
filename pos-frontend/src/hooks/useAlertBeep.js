@@ -1,22 +1,46 @@
 import { useEffect, useRef } from "react";
 
+/** The restaurant's alert ringtone, looped while anything needs attention. */
+export const ALERT_TONE_URL = "/sounds/alert-ringtone.mp3";
+
+/*
+ * One audio element for the whole till. A new order, added items and a waiter
+ * call can all be outstanding at once; three copies of the ringtone started a
+ * second apart are noise, not three alerts. Each active hook takes a share and
+ * the tone stops when the last one lets go.
+ */
+let tone = null;
+let holders = 0;
+let toneBroken = false;
+
+const getTone = () => {
+  if (toneBroken || typeof Audio === "undefined") return null;
+  if (!tone) {
+    tone = new Audio(ALERT_TONE_URL);
+    tone.loop = true;
+    tone.preload = "auto";
+    tone.addEventListener("error", () => {
+      toneBroken = true;
+    });
+  }
+  return tone;
+};
+
 /**
- * A repeating alert tone that runs until the operator deals with something.
+ * A repeating alert that runs until the operator deals with something.
  *
- * Synthesised with WebAudio rather than played from an audio file: a till that
- * is offline, or a deployment that forgets to ship the asset, would otherwise
- * fail silently — and a notification nobody hears is the whole problem this
- * exists to solve.
+ * Plays the ringtone on a loop. Two things can stop a file from sounding, and
+ * a notification nobody hears is the whole problem this exists to solve, so
+ * each falls back to a synthesised WebAudio burst:
  *
- * Browsers refuse to start audio until the page has been interacted with. A
- * POS is a page someone is constantly touching, so in practice the context is
- * already unlocked; if it is not, we resume it on the first interaction rather
- * than throwing.
+ *   - the asset fails to load (offline till, a deployment missing the file);
+ *   - the browser blocks playback because the page has not been touched yet.
+ *     The first tap or keypress anywhere retries the ringtone.
  *
- * @param {boolean} active  beep while true, stop the moment it goes false
+ * @param {boolean} active  sound while true, stop the moment it goes false
  * @param {object}  [opts]
- * @param {number}  [opts.intervalMs=900]  gap between bursts
- * @param {number}  [opts.frequency=988]   first tone in Hz
+ * @param {number}  [opts.intervalMs=900]  gap between fallback bursts
+ * @param {number}  [opts.frequency=988]   first fallback tone in Hz
  */
 export default function useAlertBeep(active, { intervalMs = 900, frequency = 988 } = {}) {
   const ctxRef = useRef(null);
@@ -38,21 +62,8 @@ export default function useAlertBeep(active, { intervalMs = 900, frequency = 988
       return ctxRef.current;
     };
 
-    /**
-     * A three-pulse rising burst.
-     *
-     * This was two soft sine tones a second and a half apart, which reads as
-     * a notification chime rather than something demanding attention -- easy
-     * to miss over a busy counter. Three things changed:
-     *
-     *   - a square wave, whose harmonics cut through kitchen noise where a
-     *     pure sine gets absorbed;
-     *   - three quick pulses on a RISING pitch, which the ear reads as an
-     *     alarm rather than a chime;
-     *   - a shorter gap between bursts, so it nags.
-     *
-     * Still ramped rather than switched, or each pulse ends in a click.
-     */
+    // Three quick square-wave pulses on a rising pitch: reads as an alarm
+    // over kitchen noise. Ramped, or each pulse ends in a click.
     const chirp = () => {
       const ctx = getCtx();
       if (!ctx) return;
@@ -60,7 +71,7 @@ export default function useAlertBeep(active, { intervalMs = 900, frequency = 988
 
       const now = ctx.currentTime;
       const steps = [
-        { at: 0.00, hz: frequency },
+        { at: 0.0, hz: frequency },
         { at: 0.13, hz: frequency * 1.335 },
         { at: 0.26, hz: frequency * 1.587 },
       ];
@@ -80,21 +91,47 @@ export default function useAlertBeep(active, { intervalMs = 900, frequency = 988
       });
     };
 
-    chirp();
-    timerRef.current = setInterval(chirp, intervalMs);
-
-    // If audio was blocked because nothing had been clicked yet, the first
-    // interaction anywhere unlocks it.
-    const unlock = () => {
-      const ctx = getCtx();
-      if (ctx && ctx.state === "suspended") ctx.resume().catch(() => {});
+    const startFallback = () => {
+      if (timerRef.current) return;
+      chirp();
+      timerRef.current = setInterval(chirp, intervalMs);
     };
+
+    const stopFallback = () => {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    };
+
+    const playTone = () => {
+      const el = getTone();
+      if (!el) return startFallback();
+      if (!el.paused) return stopFallback();
+      el.play().then(stopFallback, startFallback);
+    };
+
+    holders += 1;
+    playTone();
+
+    // A broken file flips to the synth; a blocked one is retried on the first
+    // interaction, which also unlocks the fallback's audio context.
+    const unlock = () => {
+      const ctx = ctxRef.current;
+      if (ctx && ctx.state === "suspended") ctx.resume().catch(() => {});
+      playTone();
+    };
+    const onToneError = () => startFallback();
+    tone?.addEventListener("error", onToneError);
     window.addEventListener("pointerdown", unlock);
     window.addEventListener("keydown", unlock);
 
     return () => {
-      clearInterval(timerRef.current);
-      timerRef.current = null;
+      stopFallback();
+      holders = Math.max(0, holders - 1);
+      if (holders === 0 && tone) {
+        tone.pause();
+        tone.currentTime = 0;
+      }
+      tone?.removeEventListener("error", onToneError);
       window.removeEventListener("pointerdown", unlock);
       window.removeEventListener("keydown", unlock);
     };

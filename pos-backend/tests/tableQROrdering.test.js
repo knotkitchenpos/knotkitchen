@@ -507,6 +507,8 @@ const tokenVerificationMock = {
 function loadQrRoute() {
   const orig = Module._load;
   Module._load = function (r, p, m) {
+    // No pre-bookings in these scenarios.
+    if (/tableBookingController$/.test(r)) return { findActiveBlock: async () => null, blockedError: () => new Error("blocked"), formatTimeOf: () => "", upcomingBookingsByTable: async () => ({}) };
     if (r === "../middlewares/tokenVerification") return tokenVerificationMock;
     if (r === "../models/tableModel") return TableMock;
     if (r === "../models/menuModel") return MenuMock;

@@ -1296,6 +1296,54 @@ const WebsiteSettings = () => {
           </>
         ) : null}
 
+        {tab === "ordering" ? (
+          <div className="mt-6 pt-5 border-t border-[#E2E8F0]">
+            <p className="text-sm font-bold text-[#0F172A]">Table Booking</p>
+            <p className="text-xs text-[#64748B] mb-3">
+              Customers request a table from the website; you accept or cancel it on the POS.
+            </p>
+            <Toggle
+              label="Allow Table Booking"
+              checked={settings.ordering?.tableBooking?.enabled !== false}
+              onChange={(v) => patch("ordering.tableBooking.enabled", v)}
+            />
+            <div className="grid sm:grid-cols-2 gap-4 mt-4">
+              <Field label="Booking From">
+                <input
+                  type="time"
+                  className={inputClass}
+                  value={settings.ordering?.tableBooking?.openTime || "16:00"}
+                  onChange={(e) => patch("ordering.tableBooking.openTime", e.target.value)}
+                />
+              </Field>
+              <Field label="Booking Until">
+                <input
+                  type="time"
+                  className={inputClass}
+                  value={settings.ordering?.tableBooking?.closeTime || "22:00"}
+                  onChange={(e) => patch("ordering.tableBooking.closeTime", e.target.value)}
+                />
+              </Field>
+              {[
+                ["slotMinutes", "Time Slot Every (minutes)", 30],
+                ["holdBeforeMinutes", "Block Table Before Booking (minutes)", 30],
+                ["releaseAfterMinutes", "Release If No-Show After (minutes)", 60],
+              ].map(([key, label, fallback]) => (
+                <Field key={key} label={label}>
+                  <input
+                    type="number"
+                    min="0"
+                    step="5"
+                    className={inputClass}
+                    value={settings.ordering?.tableBooking?.[key] ?? fallback}
+                    onChange={(e) => patch(`ordering.tableBooking.${key}`, Number(e.target.value))}
+                  />
+                </Field>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         {/* ---------- HOURS ---------- */}
         {tab === "hours" ? (
           <>

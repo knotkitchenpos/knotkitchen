@@ -94,7 +94,7 @@ export default function StorePage({ slug, host }) {
   // appeared to switch and then switch back.
   const landing = newerLanding(store?.landing, bootstrap?.landing);
   if (!isMenu && landing) {
-    return <LandingTemplate landing={landing} store={store} menuPath={menuPath} />;
+    return <LandingTemplate landing={landing} store={store} menuPath={menuPath} slug={effectiveSlug} />;
   }
 
   return (

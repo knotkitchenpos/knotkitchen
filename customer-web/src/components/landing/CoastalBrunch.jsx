@@ -25,7 +25,7 @@ const LINE = "border-[#e6ddcd]";
 const BTN = `${CAPS} inline-flex items-center justify-center rounded-full bg-[#e07a25] px-8 py-3.5 text-white transition hover:bg-[#c2610c]`;
 const GHOST = `${CAPS} inline-flex items-center justify-center rounded-full border border-[#d8cab2] px-7 py-3.5 text-[#4a3d2c] transition hover:border-[#e07a25] hover:text-[#c2610c]`;
 
-export default function CoastalBrunch({ landing, store, menuPath }) {
+export default function CoastalBrunch({ landing, store, menuPath, onBookTable }) {
   useGoogleFont(FONT);
   const { symbol, categories, offers, hours, contact, features, gallery, show } =
     useLandingData(landing, store);
@@ -54,6 +54,11 @@ export default function CoastalBrunch({ landing, store, menuPath }) {
             ))}
             <Cta to={menuPath} label={landing.ctaText} className={`${BTN} !px-6 !py-2.5`} />
           </nav>
+          {onBookTable ? (
+            <button type="button" onClick={onBookTable} className={`${GHOST} ml-auto shrink-0 !px-4 !py-2.5 lg:ml-0`}>
+              Book a Table
+            </button>
+          ) : null}
           <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open}
             className={`${CAPS} rounded-full border px-4 py-2 lg:hidden ${LINE}`}>
             {open ? "Close" : "Menu"}

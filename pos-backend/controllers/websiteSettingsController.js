@@ -395,6 +395,18 @@ const updateWebsiteSettings = async (req, res, next) => {
         const value = Number(o[key]);
         if (Number.isFinite(value) && value >= 0 && value < 1_000_000) settings.ordering[key] = value;
       }
+      if (o.tableBooking && typeof o.tableBooking === "object") {
+        const tb = o.tableBooking;
+        const target = (settings.ordering.tableBooking = settings.ordering.tableBooking || {});
+        if (typeof tb.enabled === "boolean") target.enabled = tb.enabled;
+        for (const key of ["openTime", "closeTime"]) {
+          if (/^([01]\d|2[0-3]):[0-5]\d$/.test(String(tb[key] || ""))) target[key] = tb[key];
+        }
+        for (const [key, min, max] of [["slotMinutes", 5, 240], ["holdBeforeMinutes", 0, 1440], ["releaseAfterMinutes", 0, 1440]]) {
+          const value = Math.floor(Number(tb[key]));
+          if (Number.isFinite(value) && value >= min && value <= max) target[key] = value;
+        }
+      }
       const tax = Number(o.taxPercent);
       if (Number.isFinite(tax) && tax >= 0 && tax <= 100) settings.ordering.taxPercent = tax;
       assign(settings.ordering, "currency", clampText(o.currency, 8));

@@ -179,6 +179,8 @@ const TableModal = ({ tables = [], busy, onClose, onConfirm }) => {
                   >
                     {String(t.status || "").toLowerCase() === "cleaning"
                       ? "Cleaning"
+                      : String(t.status || "").toLowerCase() === "reserved"
+                      ? `Pre-booked ${t.booking?.timeLabel || ""}`.trim()
                       : addTo
                       ? "Add to order"
                       : off

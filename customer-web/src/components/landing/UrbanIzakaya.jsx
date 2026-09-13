@@ -25,7 +25,7 @@ const LINE = "border-white/10";
 const BTN = `${CAPS} inline-flex items-center justify-center rounded-sm bg-[#ff3b30] px-8 py-3.5 text-white transition hover:bg-[#e02a20]`;
 const GHOST = `${CAPS} inline-flex items-center justify-center rounded-sm border border-white/25 px-7 py-3.5 text-white transition hover:border-[#ff3b30] hover:text-[#ff3b30]`;
 
-export default function UrbanIzakaya({ landing, store, menuPath }) {
+export default function UrbanIzakaya({ landing, store, menuPath, onBookTable }) {
   useGoogleFont(FONT);
   const { symbol, categories, offers, hours, contact, features, gallery, show } =
     useLandingData(landing, store);
@@ -67,6 +67,11 @@ export default function UrbanIzakaya({ landing, store, menuPath }) {
             ))}
             <Cta to={menuPath} label={landing.ctaText} className={`${BTN} !px-6 !py-2.5`} />
           </nav>
+          {onBookTable ? (
+            <button type="button" onClick={onBookTable} className={`${GHOST} ml-auto shrink-0 !px-4 !py-2.5 lg:ml-0`}>
+              Book a Table
+            </button>
+          ) : null}
           <button type="button" onClick={() => setOpen((v) => !v)} aria-expanded={open}
             className={`${CAPS} rounded-sm border border-white/25 px-4 py-2 lg:hidden`}>
             {open ? "Close" : "Menu"}

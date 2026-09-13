@@ -90,6 +90,8 @@ test("Manage Tables Module 4: Session Rotation — Closing Session A causes new 
   const Module = require("module");
   const orig = Module._load;
   Module._load = function (r, p, m) {
+    // No pre-bookings in these scenarios.
+    if (/tableBookingController$/.test(r)) return { findActiveBlock: async () => null, blockedError: () => new Error("blocked"), formatTimeOf: () => "", upcomingBookingsByTable: async () => ({}) };
     if (r === "../models/tableSessionModel") return TableSessionMock;
     if (r === "../models/tableModel") return TableMock;
     if (r === "../models/orderModel") return OrderMock;

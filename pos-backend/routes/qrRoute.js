@@ -1,5 +1,6 @@
 const express = require("express");
 const createHttpError = require("http-errors");
+const { findActiveBlock, formatTimeOf } = require("../controllers/tableBookingController");
 const { isVerifiedUser, resolveTableScope } = require("../middlewares/tokenVerification");
 const { requirePermission } = require("../middlewares/requirePermission");
 const Table = require("../models/tableModel");
@@ -416,6 +417,14 @@ router.route("/session/items/:token").post(qrWriteLimiter, resolveTableScope, as
             throw createHttpError(
               409,
               "This table has just been settled and is being prepared. Please ask a member of staff, or scan again in a moment.",
+            );
+          }
+
+          const block = await findActiveBlock(tableInTxn._id);
+          if (block) {
+            throw createHttpError(
+              409,
+              `This table is reserved for ${formatTimeOf(block)}. Please ask a member of staff for another table.`,
             );
           }
 
