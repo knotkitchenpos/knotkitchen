@@ -461,7 +461,7 @@ const WebsiteDesignDialog = ({ storeId, onClose }) => {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-3" role="dialog" aria-modal="true">
       <div className="flex max-h-[94vh] w-full max-w-4xl flex-col rounded-2xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between gap-3 border-b border-navy-100 px-5 py-3.5">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-navy-100 px-5 py-3.5">
           <div className="min-w-0">
             <h2 className="text-lg font-bold text-navy-900">Website settings</h2>
             <p className="text-xs text-navy-500">
@@ -478,7 +478,7 @@ const WebsiteDesignDialog = ({ storeId, onClose }) => {
           </button>
         </div>
 
-        <div className="flex gap-1.5 overflow-x-auto border-b border-navy-100 px-4 py-2.5">
+        <div className="flex shrink-0 gap-1.5 overflow-x-auto border-b border-navy-100 px-4 py-2.5">
           {TABS.map((t) => (
             <button key={t.key} type="button" onClick={() => setTab(t.key)}
               className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm font-semibold ${
@@ -498,7 +498,7 @@ const WebsiteDesignDialog = ({ storeId, onClose }) => {
           <div className="mx-5 mt-3 rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-800">View only. Only a CSD admin can change these settings.</div>
         ) : null}
 
-        <div className="flex-1 overflow-y-auto px-5 py-4">
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
           {!settings ? (
             <p className="py-10 text-center text-sm text-navy-400">{banner?.type === "error" ? "" : "Loading…"}</p>
           ) : (
@@ -1182,7 +1182,7 @@ const WebsiteDesignDialog = ({ storeId, onClose }) => {
           )}
         </div>
 
-        <div className="flex items-center justify-end gap-2 border-t border-navy-100 px-5 py-3">
+        <div className="flex shrink-0 items-center justify-end gap-2 border-t border-navy-100 px-5 py-3">
           <button type="button" onClick={close} className="rounded-xl border border-navy-200 px-4 py-2 text-sm font-semibold text-navy-700">
             Close
           </button>
