@@ -52,13 +52,13 @@ const findSettingsByHost = async (host) => {
   // domain(s) this deployment is actually served under (BASE_DOMAIN / legacy
   // fallbacks), so a fresh deployment under a new domain works with zero code
   // changes — only an env var.
-  // `knotkitchen.online` is the domain actually deployed today; .in/.com are
-  // kept only so links minted under earlier domains still resolve.
+  // `knotkitchen.com` is the domain deployed today; .online/.in are kept only
+  // so links minted under earlier domains still resolve.
   const bases = [
     config.baseDomain,
+    "knotkitchen.com",
     "knotkitchen.online",
     "knotkitchen.in",
-    "knotkitchen.com",
     "localhost",
   ].filter(Boolean);
   const baseSuffix = bases.map((b) => b.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");

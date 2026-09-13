@@ -1,7 +1,7 @@
 # Knot Kitchen — Hostinger Deployment Runbook
 
 _Companion to `ARCHITECTURE.md`. Everything here targets a **Hostinger KVM VPS
-with public IPv4 `93.127.194.80`** running the `knotkitchen.online` platform.
+with public IPv4 `93.127.194.80`** running the `knotkitchen.com` platform.
 No Cloudflare. No external CDN. Caddy on the VPS terminates TLS directly using
 Let's Encrypt HTTP-01._
 
@@ -12,7 +12,7 @@ Let's Encrypt HTTP-01._
 | Requirement | Value / Notes |
 | --- | --- |
 | Hostinger KVM VPS | `93.127.194.80` — Ubuntu 24.04 LTS, ≥ 2 vCPU / 4 GB RAM / 40 GB disk |
-| Domain in Hostinger DNS | `knotkitchen.online` (no CDN, no Cloudflare, no proxy) |
+| Domain in Hostinger DNS | `knotkitchen.com` (no CDN, no Cloudflare, no proxy) |
 | MongoDB | Atlas M10+ **or** self-hosted `mongo:7` in the same compose file |
 | Object storage (optional) | S3-compatible (AWS/Wasabi/B2/DO Spaces/MinIO) **or** Cloudinary. Default = `local` |
 | GitHub repo | `main` triggers deploy (or clone + `git pull` manually) |
@@ -24,20 +24,20 @@ Let's Encrypt HTTP-01._
 
 | Purpose | Hostname | Backed by |
 | --- | --- | --- |
-| Landing page + storefront | `knotkitchen.online` | `customer-web` |
-| Support desk / internal admin | `csd.knotkitchen.online` | `csd-web` |
-| POS SPA | `business.knotkitchen.online` | `pos-web` |
-| POS backend API | `api.knotkitchen.online` | `pos-api` |
-| Partner onboarding / agreement portal | `agreement.knotkitchen.online` | `onboard-portal` (separate repo: `knotkitchenpos/onboard`, cloned to `/srv/onboard`) |
-| Per-store customer website | `<store_id>.knotkitchen.online` (any subdomain not listed above) | `customer-web`, resolved by hostname via `resolveStorefront()` |
+| Landing page + storefront | `knotkitchen.com` | `customer-web` |
+| Support desk / internal admin | `csd.knotkitchen.com` | `csd-web` |
+| POS SPA | `business.knotkitchen.com` | `pos-web` |
+| POS backend API | `api.knotkitchen.com` | `pos-api` |
+| Partner onboarding / agreement portal | `agreement.knotkitchen.com` | `onboard-portal` (separate repo: `knotkitchenpos/onboard`, cloned to `/srv/onboard`) |
+| Per-store customer website | `<store_id>.knotkitchen.com` (any subdomain not listed above) | `customer-web`, resolved by hostname via `resolveStorefront()` |
 
 Only `caddy` publishes host ports 80/443. Everything else is on the internal
 `knot` Docker network and is only reachable through Caddy.
 
-DNS for `knotkitchen.online` is hosted on **Cloudflare, in "DNS only" (grey
+DNS for `knotkitchen.com` is hosted on **Cloudflare, in "DNS only" (grey
 cloud) mode** — Cloudflare never proxies traffic; Caddy on the VPS still
 terminates TLS directly, exactly as before. The only thing Cloudflare adds is
-letting Caddy obtain a real `*.knotkitchen.online` wildcard cert via DNS-01
+letting Caddy obtain a real `*.knotkitchen.com` wildcard cert via DNS-01
 (`caddy-dns/cloudflare` plugin, `CLOUDFLARE_API_TOKEN` in `deploy/.env`) —
 every named hostname above still gets its cert the old way, via plain HTTP-01.
 
@@ -46,7 +46,7 @@ every named hostname above still gets its cert the old way, via plain HTTP-01.
 
 ## 2. Hostinger DNS records
 
-In **hPanel → Domains → knotkitchen.online → DNS / Nameservers → DNS Zone**,
+In **hPanel → Domains → knotkitchen.com → DNS / Nameservers → DNS Zone**,
 delete any conflicting default records and create these seven A records —
 every value is the same VPS IP:
 
@@ -64,10 +64,10 @@ terminate TLS itself for Let's Encrypt HTTP-01 to succeed.
 Verify from any laptop before continuing:
 
 ```powershell
-nslookup api.knotkitchen.online 8.8.8.8
-nslookup business.knotkitchen.online 8.8.8.8
-nslookup csd.knotkitchen.online 8.8.8.8
-nslookup knotkitchen.online 8.8.8.8
+nslookup api.knotkitchen.com 8.8.8.8
+nslookup business.knotkitchen.com 8.8.8.8
+nslookup csd.knotkitchen.com 8.8.8.8
+nslookup knotkitchen.com 8.8.8.8
 ```
 
 Every answer must show `93.127.194.80`. If not, wait 5–15 min for TTL to
@@ -165,7 +165,7 @@ nano deploy/.env
 Fill in **at minimum** these values:
 
 ```env
-BASE_DOMAIN=knotkitchen.online
+BASE_DOMAIN=knotkitchen.com
 ACME_EMAIL=<your email — Let's Encrypt notifications>
 
 MONGODB_URI=<Atlas SRV URI, or mongodb://user:pass@mongo:27017/knotkitchen?authSource=admin>
@@ -174,14 +174,14 @@ MONGODB_URI=<Atlas SRV URI, or mongodb://user:pass@mongo:27017/knotkitchen?authS
 JWT_SECRET=<64+ hex chars>
 REFRESH_TOKEN_SECRET=<64+ hex chars>
 
-SUPERADMIN_EMAIL=admin@knotkitchen.online
+SUPERADMIN_EMAIL=admin@knotkitchen.com
 SUPERADMIN_PASSWORD=<long random passphrase>
 
 FAST2SMS_API_KEY=<your production key>
 
 # Media: leave as `local` for a small deployment
 MEDIA_STORAGE_PROVIDER=local
-MEDIA_PUBLIC_BASE_URL=https://api.knotkitchen.online/uploads
+MEDIA_PUBLIC_BASE_URL=https://api.knotkitchen.com/uploads
 ```
 
 Create the external volumes. The KYC and onboarding volumes are declared
@@ -223,14 +223,14 @@ hostname (six in total). If any cert fails, 99 % of the time it is one of:
 From any laptop:
 
 ```powershell
-curl.exe -I https://api.knotkitchen.online/health
-curl.exe -I https://business.knotkitchen.online/healthz
-curl.exe -I https://csd.knotkitchen.online/healthz
-curl.exe -I https://knotkitchen.online/healthz
+curl.exe -I https://api.knotkitchen.com/health
+curl.exe -I https://business.knotkitchen.com/healthz
+curl.exe -I https://csd.knotkitchen.com/healthz
+curl.exe -I https://knotkitchen.com/healthz
 ```
 
 All six MUST return `HTTP/2 200`. Then open
-`https://csd.knotkitchen.online` and sign in with `SUPERADMIN_EMAIL` /
+`https://csd.knotkitchen.com` and sign in with `SUPERADMIN_EMAIL` /
 `SUPERADMIN_PASSWORD`.
 
 
@@ -304,15 +304,15 @@ happen as a side effect of a command aimed at something else.
 
 ## 8. Creating a store (no infra change)
 
-1. Log into `https://csd.knotkitchen.online`.
+1. Log into `https://csd.knotkitchen.com`.
 2. Create a Store (e.g. "Burger House"). The backend generates a unique
    6-digit `storeId` and URL-safe `slug`, and `provisionWebsiteForStore`
    creates the `WebsiteSettings` document.
 3. Customers reach the storefront at
-   `https://csd.knotkitchen.online/s/<slug>` immediately — no DNS or cert
-   work required because `csd.knotkitchen.online` already exists.
+   `https://csd.knotkitchen.com/s/<slug>` immediately — no DNS or cert
+   work required because `csd.knotkitchen.com` already exists.
 
-If you later want dedicated `<slug>.knotkitchen.online` subdomains per
+If you later want dedicated `<slug>.knotkitchen.com` subdomains per
 store, add a wildcard `*` A record in Hostinger + a Caddy `on_demand_tls`
 block + a `/api/public/storefront/tls-ask` allow-list endpoint. Not needed
 for the default path-based layout above.
@@ -447,10 +447,10 @@ MongoDB has its own backup story (Atlas continuous snapshots, or a
 
 Cheap uptime coverage with Uptime Kuma or Better Uptime — poll each of:
 
-* `https://api.knotkitchen.online/health`
-* `https://business.knotkitchen.online/healthz`
-* `https://csd.knotkitchen.online/healthz`
-* `https://knotkitchen.online/healthz`
+* `https://api.knotkitchen.com/health`
+* `https://business.knotkitchen.com/healthz`
+* `https://csd.knotkitchen.com/healthz`
+* `https://knotkitchen.com/healthz`
 
 Container-level health: `docker compose -f deploy/docker-compose.yml ps`
 shows the `HEALTHCHECK` state of every service.

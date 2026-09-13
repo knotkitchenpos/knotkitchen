@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-24.04
     environment:
       name: production
-      url: https://api.knotkitchen.online/health
+      url: https://api.knotkitchen.com/health
     steps:
       # Fail fast with a legible message. appleboy/ssh-action reports an
       # unreachable host as an opaque "dial tcp ***:22: i/o timeout" after 30s,
@@ -55,7 +55,7 @@ jobs:
           }
           echo "TCP 22 reachability from this runner:"
           probe "${{ secrets.DEPLOY_SSH_HOST }}" "DEPLOY_SSH_HOST (value masked)"
-          probe "api.knotkitchen.online" "api.knotkitchen.online (public DNS -> VPS)"
+          probe "api.knotkitchen.com" "api.knotkitchen.com (public DNS -> VPS)"
           echo
           echo "If the public hostname is REACHABLE but DEPLOY_SSH_HOST is not,"
           echo "the secret holds the wrong value. If both are UNREACHABLE, the"
@@ -164,7 +164,7 @@ jobs:
           # These MUST match the vhosts in deploy/Caddyfile. The previous list
           # (api./pos./admin..knotkitchen.com) named three hostnames that have
           # never existed, so `set -e` + `curl -f` failed every deploy here.
-          curl -fsSI https://api.knotkitchen.online/health > /dev/null && echo "api       OK"
-          curl -fsSI https://business.knotkitchen.online/  > /dev/null && echo "pos       OK"
-          curl -fsSI https://csd.knotkitchen.online/       > /dev/null && echo "csd       OK"
-          curl -fsSI https://knotkitchen.online/           > /dev/null && echo "customer  OK"
+          curl -fsSI https://api.knotkitchen.com/health > /dev/null && echo "api       OK"
+          curl -fsSI https://business.knotkitchen.com/  > /dev/null && echo "pos       OK"
+          curl -fsSI https://csd.knotkitchen.com/       > /dev/null && echo "csd       OK"
+          curl -fsSI https://knotkitchen.com/           > /dev/null && echo "customer  OK"

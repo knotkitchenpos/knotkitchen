@@ -370,3 +370,23 @@ test("opening a table heals a QR URL the host moved under", () => {
   assert.match(block, /if \(fresh && qr\.qrUrl !== fresh\)/);
   assert.match(block, /if \(fresh && table\.qrCode !== fresh\)/);
 });
+
+test("the old domain keeps every printed and sent link alive after the .com move", () => {
+  // Printed QR cards and e-bills sitting in WhatsApp can never be reissued.
+  // api. stays served in place: webhooks POST to it and stored media URLs
+  // point at it, and neither survives a redirect.
+  assert.match(CADDY, /^api\.\{\$BASE_DOMAIN\}, api\.\{\$LEGACY_DOMAIN\} \{$/m);
+
+  // Everything else is redirected to the same path on the new host.
+  assert.match(CADDY, /^\{\$LEGACY_DOMAIN\} \{\s+redir https:\/\/\{\$BASE_DOMAIN\}\{uri\} 301/m);
+  assert.match(CADDY, /^\*\.\{\$LEGACY_DOMAIN\} \{\s+redir https:\/\/\{labels\.2\}\.\{\$BASE_DOMAIN\}\{uri\} 301/m);
+
+  // order. and bill. must NOT be served in place on the old host: the POS app
+  // there would call api.<new> from an origin CORS does not list.
+  assert.ok(!/order\.\{\$LEGACY_DOMAIN\}/.test(CADDY));
+  assert.ok(!/bill\.\{\$LEGACY_DOMAIN\}/.test(CADDY));
+
+  // Caddy refuses to start on an empty site address, so the variable needs a default.
+  const compose = DEPLOY("docker-compose.yml");
+  assert.match(compose, /LEGACY_DOMAIN: \$\{LEGACY_DOMAIN:-knotkitchen\.online\}/);
+});

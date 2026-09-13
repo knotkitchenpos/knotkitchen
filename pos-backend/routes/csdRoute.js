@@ -40,7 +40,7 @@ const {
 } = require("../controllers/csdRestaurantController");
 
 /**
- * KnotKitchen Business — CSD + Admin panel API (csd.knotkitchen.online).
+ * KnotKitchen Business — CSD + Admin panel API (csd.knotkitchen.com).
  *
  * Authorisation is enforced HERE, on the server. The SPA also hides admin
  * navigation from staff, but that is presentation only: the spec requires that

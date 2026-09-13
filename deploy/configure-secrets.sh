@@ -164,9 +164,9 @@ echo " Public receipt links"
 echo "=============================================="
 echo
 echo "  The origin the bill link is built from. Must be reachable by a"
-echo "  customer with no login -- normally https://api.knotkitchen.online"
+echo "  customer with no login -- normally https://api.knotkitchen.com"
 echo
-ask PUBLIC_API_URL "Public API origin for /r/<token> links" "" "https://api.knotkitchen.online"
+ask PUBLIC_API_URL "Public API origin for /r/<token> links" "" "https://api.knotkitchen.com"
 
 echo "=============================================="
 echo " Restarting the API"
@@ -177,7 +177,7 @@ compose up -d pos-api
 echo
 echo "Waiting for the API to come back..."
 for _ in $(seq 1 60); do
-  if curl -fsS -o /dev/null "https://api.knotkitchen.online/api/public/store/148379/menu" 2>/dev/null; then
+  if curl -fsS -o /dev/null "https://api.knotkitchen.com/api/public/store/148379/menu" 2>/dev/null; then
     echo "API is up."
     break
   fi
@@ -236,7 +236,7 @@ if (channel === "whatsapp") {
     restaurantName: "Your Restaurant",
     orderNumber: "A-1042",
     total: "525.00",
-    receiptUrl: "https://api.knotkitchen.online/r/o_x_y",
+    receiptUrl: "https://api.knotkitchen.com/r/o_x_y",
   });
   console.log("");
   console.log("Variables, in the order they will be sent:");

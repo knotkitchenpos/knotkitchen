@@ -668,7 +668,7 @@ const WebsiteSettings = () => {
 
                   <div className="p-3 bg-white rounded-xl border border-[#E2E8F0] space-y-1">
                     <p className="font-bold text-[#0F172A]">Required DNS Records for Verification:</p>
-                    <p className="text-[#64748B] font-mono">CNAME → cname.knotkitchen.online</p>
+                    <p className="text-[#64748B] font-mono">CNAME → cname.knotkitchen.com</p>
                     <p className="text-[#64748B] font-mono">TXT → knotkitchen-verify={settings.storeId}</p>
                   </div>
                 </div>

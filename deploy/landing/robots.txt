@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://knotkitchen.online/sitemap.xml
+Sitemap: https://knotkitchen.com/sitemap.xml

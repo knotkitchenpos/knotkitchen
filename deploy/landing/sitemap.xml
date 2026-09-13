@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <url><loc>https://knotkitchen.online/</loc><priority>1.0</priority></url>
-  <url><loc>https://knotkitchen.online/terms.html</loc><priority>0.4</priority></url>
-  <url><loc>https://knotkitchen.online/privacy.html</loc><priority>0.4</priority></url>
-  <url><loc>https://knotkitchen.online/refund.html</loc><priority>0.4</priority></url>
-  <url><loc>https://knotkitchen.online/return.html</loc><priority>0.4</priority></url>
-  <url><loc>https://knotkitchen.online/shipping.html</loc><priority>0.4</priority></url>
+  <url><loc>https://knotkitchen.com/</loc><priority>1.0</priority></url>
+  <url><loc>https://knotkitchen.com/terms.html</loc><priority>0.4</priority></url>
+  <url><loc>https://knotkitchen.com/privacy.html</loc><priority>0.4</priority></url>
+  <url><loc>https://knotkitchen.com/refund.html</loc><priority>0.4</priority></url>
+  <url><loc>https://knotkitchen.com/return.html</loc><priority>0.4</priority></url>
+  <url><loc>https://knotkitchen.com/shipping.html</loc><priority>0.4</priority></url>
 </urlset>

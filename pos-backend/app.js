@@ -40,11 +40,11 @@ app.set("trust proxy", 1);
 // Now: allow-list only. Same-origin (no `Origin` header) is always permitted
 // because that covers server-to-server, Capacitor file:// and health checks.
 //
-// Wildcard support (production): CORS_WILDCARD_DOMAINS=knotkitchen.online lets any
-// https://<slug>.knotkitchen.online origin call the API. This is the ONLY way to
+// Wildcard support (production): CORS_WILDCARD_DOMAINS=knotkitchen.com lets any
+// https://<slug>.knotkitchen.com origin call the API. This is the ONLY way to
 // support customer websites without listing every store's subdomain explicitly.
-// The comparison is a strict host-suffix check (a.knotkitchen.online but never
-// knotkitchen.online.evil.tld).
+// The comparison is a strict host-suffix check (a.knotkitchen.com but never
+// knotkitchen.com.evil.tld).
 const allowedOrigins = new Set(
     (config.frontendUrls || [])
         .map((u) => (u || "").replace(/\/$/, ""))

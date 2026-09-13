@@ -112,14 +112,14 @@ const config = Object.freeze({
 
     // ==== Wildcard base domain for customer websites ====
     //
-    // A customer website is served from <slug>.knotkitchen.online. Enumerating
+    // A customer website is served from <slug>.knotkitchen.com. Enumerating
     // every possible subdomain in FRONTEND_URLS is impossible, so instead we
     // list the base domains here (comma separated, no leading dot) and CORS
     // accepts any Origin that ends with `.<base>` over https.
     //
-    // Example: CORS_WILDCARD_DOMAINS=knotkitchen.online,knot.local
-    // Accepts: https://burger-house.knotkitchen.online, https://cafe.knotkitchen.online
-    // Rejects: https://knotkitchen.online.evil.com, http://x.knotkitchen.online in prod
+    // Example: CORS_WILDCARD_DOMAINS=knotkitchen.com,knot.local
+    // Accepts: https://burger-house.knotkitchen.com, https://cafe.knotkitchen.com
+    // Rejects: https://knotkitchen.com.evil.com, http://x.knotkitchen.com in prod
     corsWildcardDomains: parseCsv(process.env.CORS_WILDCARD_DOMAINS || ""),
 
     // Base domain the platform is served under, used by the storefront

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "KnotKitchen Business \u00e2\u20ac\u201d CSD + Admin operations panel (csd.knotkitchen.online)",
+  "description": "KnotKitchen Business \u00e2\u20ac\u201d CSD + Admin operations panel (csd.knotkitchen.com)",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

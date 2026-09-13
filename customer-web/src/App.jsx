@@ -12,7 +12,7 @@ import Apex from "./pages/Apex";
  *  1. **Subdomain / custom domain** (production): the hostname resolver picks
  *     the slug and we render <StorePage slug=… /> for the root path.
  *  2. **Path-based** (`/s/:slug`): a helpful fallback for testing on a plain
- *     `knotkitchen.online` host without DNS/TLS setup. Also works for shared
+ *     `knotkitchen.com` host without DNS/TLS setup. Also works for shared
  *     preview links.
  *
  * All routing decisions are made once at mount time; a customer navigating
@@ -72,7 +72,7 @@ function HostnameRouter({ resolution }) {
 
     case "apex":
     case "ip":
-      // Someone visited the bare knotkitchen.online / an IP address.
+      // Someone visited the bare knotkitchen.com / an IP address.
       if (resolution.slug) return <StorePage slug={resolution.slug} />;
       return <Apex />;
 

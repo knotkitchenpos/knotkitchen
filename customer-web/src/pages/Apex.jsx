@@ -2,7 +2,7 @@ import React from "react";
 
 /**
  * Landing shown when the customer-web receives a bare-apex request
- * (`knotkitchen.online`) with no fallback slug configured. Deliberately minimal —
+ * (`knotkitchen.com`) with no fallback slug configured. Deliberately minimal —
  * marketing / discovery is a separate concern and out of scope for this app.
  */
 export default function Apex() {
@@ -13,7 +13,7 @@ export default function Apex() {
         <h1 className="text-2xl font-bold text-slate-900 mb-2">Knot Kitchen</h1>
         <p className="text-slate-500 text-sm">
           Each Knot Kitchen restaurant has its own address — for example{" "}
-          <span className="font-mono">burger-house.knotkitchen.online</span>. Please use the link
+          <span className="font-mono">burger-house.knotkitchen.com</span>. Please use the link
           your restaurant shared with you.
         </p>
       </div>

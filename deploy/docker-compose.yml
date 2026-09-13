@@ -86,7 +86,7 @@ services:
       # services (2026-08-30) — the CSD panel took over that surface.
       FRONTEND_URLS: >-
         https://${BASE_DOMAIN},https://csd.${BASE_DOMAIN},https://business.${BASE_DOMAIN},https://order.${BASE_DOMAIN}
-      CORS_WILDCARD_DOMAINS: ${BASE_DOMAIN}
+      CORS_WILDCARD_DOMAINS: ${BASE_DOMAIN},${LEGACY_DOMAIN:-knotkitchen.online}
       BASE_DOMAIN: ${BASE_DOMAIN}
       COOKIE_SAMESITE: none
       COOKIE_SECURE: "true"
@@ -296,6 +296,9 @@ services:
     environment:
       # Consumed by the Caddyfile via env placeholders.
       BASE_DOMAIN: ${BASE_DOMAIN}
+      # The domain the platform moved off. Kept serving so printed table QR
+      # codes, e-bill links already sent and stored media URLs never break.
+      LEGACY_DOMAIN: ${LEGACY_DOMAIN:-knotkitchen.online}
       ACME_EMAIL: ${ACME_EMAIL}
       # Cloudflare API token (Zone:DNS:Edit, scoped to this zone only) — used
       # solely to obtain the *.${BASE_DOMAIN} wildcard cert via DNS-01. Every

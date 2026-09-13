@@ -3,14 +3,14 @@
 _Last reviewed: 2026-08-30_
 
 This document is the authoritative reference for how Knot Kitchen is deployed
-to **`knotkitchen.online`** on a Hostinger KVM VPS. It supersedes any inline
+to **`knotkitchen.com`** on a Hostinger KVM VPS. It supersedes any inline
 notes in individual services.
 
 > **On Cloudflare.** DNS for the zone is hosted at Cloudflare in **"DNS only"
 > (grey cloud)** mode. Traffic does **not** pass through Cloudflare's edge —
 > Caddy on the VPS terminates TLS directly, and there is no Cloudflare WAF or
 > DDoS layer in the request path. The Cloudflare API token exists for exactly
-> one purpose: the DNS-01 challenge that issues the `*.knotkitchen.online`
+> one purpose: the DNS-01 challenge that issues the `*.knotkitchen.com`
 > wildcard certificate. Every other hostname uses plain HTTP-01.
 >
 > The base domain is not hardcoded anywhere — it is the `BASE_DOMAIN` variable
@@ -148,7 +148,7 @@ The codebase is already a true multi-tenant SaaS. In particular:
 | - | ------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- |
 | 1 | Only one React app served both POS and the customer storefront.    | Introduced a dedicated **`customer-web`** application (still shares the backend + the theme layer).                    |
 | 2 | Hostname-based store resolution was implemented on the backend but not exercised by any frontend. | Added `resolveStoreFromHostname()` utility + `by-domain` public endpoint, wired both apps.                             |
-| 3 | Root domain CORS did not know about `*.knotkitchen.online`.        | Added `CORS_WILDCARD_DOMAINS` support so subdomains are validated by pattern.                                          |
+| 3 | Root domain CORS did not know about `*.knotkitchen.com`.        | Added `CORS_WILDCARD_DOMAINS` support so subdomains are validated by pattern.                                          |
 | 4 | No `/health` or `/ready` endpoint.                                 | Added both.                                                                                                            |
 | 5 | No graceful SIGTERM/SIGINT handling.                                | Added a shared shutdown handler that closes HTTP, Socket.IO, and Mongoose in order.                                    |
 | 6 | No Dockerfiles / compose / reverse proxy.                          | Added production-grade Dockerfiles for all four apps + a Caddy reverse proxy with wildcard TLS.                        |
@@ -218,18 +218,18 @@ extra hop in front of `trust proxy = 1`.
 
 | Type | Name                             | Value        | Serves          |
 | ---- | -------------------------------- | ------------ | --------------- |
-| A    | `knotkitchen.online`             | `<VPS IPv4>` | customer-web    |
-| A    | `business.knotkitchen.online`    | `<VPS IPv4>` | pos-web (POS SPA) |
-| A    | `csd.knotkitchen.online`         | `<VPS IPv4>` | csd-web (support desk) |
-| A    | `agreement.knotkitchen.online`   | `<VPS IPv4>` | onboard-portal  |
-| A    | `api.knotkitchen.online`         | `<VPS IPv4>` | pos-api         |
-| A    | `*.knotkitchen.online`           | `<VPS IPv4>` | **Wildcard** — customer-web, one vhost per store |
+| A    | `knotkitchen.com`             | `<VPS IPv4>` | customer-web    |
+| A    | `business.knotkitchen.com`    | `<VPS IPv4>` | pos-web (POS SPA) |
+| A    | `csd.knotkitchen.com`         | `<VPS IPv4>` | csd-web (support desk) |
+| A    | `agreement.knotkitchen.com`   | `<VPS IPv4>` | onboard-portal  |
+| A    | `api.knotkitchen.com`         | `<VPS IPv4>` | pos-api         |
+| A    | `*.knotkitchen.com`           | `<VPS IPv4>` | **Wildcard** — customer-web, one vhost per store |
 
 The wildcard record is what makes new stores available *automatically* — no
 per-restaurant DNS change is ever required.
 
 TLS: every named hostname above gets its certificate by ordinary **HTTP-01**.
-Only the `*.knotkitchen.online` wildcard uses a **DNS-01 ACME challenge with
+Only the `*.knotkitchen.com` wildcard uses a **DNS-01 ACME challenge with
 Cloudflare**, because a wildcard cert cannot be issued over HTTP-01. That is
 the sole reason `CLOUDFLARE_API_TOKEN` exists; scope it to Zone:DNS:Edit on
 this zone only. See `DEPLOYMENT.md`.
@@ -250,11 +250,11 @@ Every store has **three** identifiers that never change once assigned:
 * `slug` — URL-safe (`burger-house`). May be renamed by the owner. Reserved
   words are blocked (`admin`, `api`, `pos`, …).
 
-Public URL:  `https://<slug>.knotkitchen.online`
-Numeric URL: `https://<storeId>.knotkitchen.online` — `storefrontResolver`
+Public URL:  `https://<slug>.knotkitchen.com`
+Numeric URL: `https://<storeId>.knotkitchen.com` — `storefrontResolver`
 accepts a 6-digit subdomain, which keeps printed QR codes working across a
 slug rename.
-Legacy URL: `https://business.knotkitchen.online/store/<slug>` — the POS SPA
+Legacy URL: `https://business.knotkitchen.com/store/<slug>` — the POS SPA
 still serves the storefront at its `/store/:slug` route.
 
 A store may also be reached on its own `customDomain`, which is checked before
@@ -281,11 +281,11 @@ subdomain and slug. See the resolution order in §1.2.
 | Container      | Internal port | Published? | Public URL                            |
 | -------------- | ------------- | ---------- | ------------------------------------- |
 | caddy          | 80, 443       | ✅ yes      | *(the only public entry point)*       |
-| pos-api        | 8000          | ❌ no       | `api.knotkitchen.online`              |
-| pos-web        | 80            | ❌ no       | `business.knotkitchen.online`         |
-| csd-web        | 80            | ❌ no       | `csd.knotkitchen.online`              |
-| onboard-portal | 3000          | ❌ no       | `agreement.knotkitchen.online`        |
-| customer-web   | 80            | ❌ no       | `knotkitchen.online` + `*.knotkitchen.online` |
+| pos-api        | 8000          | ❌ no       | `api.knotkitchen.com`              |
+| pos-web        | 80            | ❌ no       | `business.knotkitchen.com`         |
+| csd-web        | 80            | ❌ no       | `csd.knotkitchen.com`              |
+| onboard-portal | 3000          | ❌ no       | `agreement.knotkitchen.com`        |
+| customer-web   | 80            | ❌ no       | `knotkitchen.com` + `*.knotkitchen.com` |
 
 Dev ports `5173` (pos-web), `5175` (csd-web), `5176`
 (customer-web) and `8000` (pos-api) remain unchanged for
@@ -315,7 +315,7 @@ by `MEDIA_STORAGE_PROVIDER`:
 **As deployed today the provider is `local`**, not R2. `docker-compose.yml`
 defaults it (`${MEDIA_STORAGE_PROVIDER:-local}`) and media lands in the
 `backend_uploads` Docker volume, published at
-`https://api.knotkitchen.online/uploads`. MongoDB stores only metadata
+`https://api.knotkitchen.com/uploads`. MongoDB stores only metadata
 (`imageUrl`, `storageKey`, `fileName`, `mimeType`, `size`, `storeId`).
 
 Consequences of being on `local`, which you are accepting until you switch:

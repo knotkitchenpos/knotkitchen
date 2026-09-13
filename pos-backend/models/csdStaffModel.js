@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 const bcrypt = require("bcrypt");
 
 /**
- * CSD / Admin panel staff (csd.knotkitchen.online).
+ * CSD / Admin panel staff (csd.knotkitchen.com).
  *
  * Deliberately separate from `User` (restaurant staff working a POS terminal):
  * these are KnotKitchen's OWN employees doing customer-support and operations

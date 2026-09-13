@@ -1,4 +1,4 @@
-# Landing page — knotkitchen.online
+# Landing page — knotkitchen.com
 
 The public marketing site (landing + legal pages) is plain static HTML/CSS in
 `deploy/landing/`, served directly by Caddy on the apex hostname. No build step,
@@ -63,7 +63,7 @@ The site palette (`style.css` `:root`) is sampled from the logo: orange
 `#f4620a`, navy `#0a1b45`.
 
 All policies carry the effective date **1st September, 2026** and point at
-`support@knotkitchen.online`.
+`support@knotkitchen.com`.
 
 ## How it is wired
 
@@ -94,7 +94,7 @@ read-only:
 ```
 
 `csd.`, `business.`, `onboard.`, `api.`, `admin-api.`, `agreement.` and the
-`*.knotkitchen.online` wildcard are untouched.
+`*.knotkitchen.com` wildcard are untouched.
 
 ## Responsive behaviour
 
@@ -147,7 +147,7 @@ zero horizontal overflow — plus landscape 812x375.
 
 ## Deploy
 
-DNS already points `knotkitchen.online` (and `www`) at the VPS `93.127.194.80`,
+DNS already points `knotkitchen.com` (and `www`) at the VPS `93.127.194.80`,
 so nothing to change there. On the VPS:
 
 ```bash
