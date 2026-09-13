@@ -194,7 +194,7 @@ const loadCsd = ({ settings, audits = [] }) => {
       );
     }
     if (request === "../services/websiteProvisioningService") {
-      return { buildStorefrontUrl: () => "https://spice-route.knotkitchen.online" };
+      return { buildStorefrontUrl: () => "https://spice-route.knotkitchen.com" };
     }
     if (request === "../services/csdAuditService") {
       return { csdAudit: async (entry) => audits.push(entry) };

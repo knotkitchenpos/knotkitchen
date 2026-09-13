@@ -100,8 +100,8 @@ const build = ({
       },
     },
     "./receiptLink": {
-      urlForOrder: (id) => `https://api.knotkitchen.online/r/o_${id}_sig`,
-      urlForSession: (id) => `https://api.knotkitchen.online/r/s_${id}_sig`,
+      urlForOrder: (id) => `https://api.knotkitchen.com/r/o_${id}_sig`,
+      urlForSession: (id) => `https://api.knotkitchen.com/r/s_${id}_sig`,
     },
   };
 
@@ -234,7 +234,7 @@ test("the total is sent as a bare two-decimal amount", async () => {
   await service.maybeSendAutoEBill({ orderId: "order1" });
   // The template renders "Total: Rs {{2}}" -- a symbol here would read "Rs Rs525".
   assert.equal(sent[0].total, "525.00");
-  assert.match(sent[0].receiptUrl, /^https:\/\/api\.knotkitchen\.online\/r\//);
+  assert.match(sent[0].receiptUrl, /^https:\/\/api\.knotkitchen.com\/r\//);
 });
 
 test("a table session is linked as a session, not as an order", async () => {

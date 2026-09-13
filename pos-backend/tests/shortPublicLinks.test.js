@@ -13,8 +13,8 @@ const FE = (...p) => fs.readFileSync(path.join(__dirname, "..", "..", "pos-front
  * A bill link IS the WhatsApp message, and a QR link IS the printed card. Both
  * used to carry an internal hostname and an internal path segment:
  *
- *     https://api.knotkitchen.online/r/o_65f4c1..._Xy9
- *     https://business.knotkitchen.online/t/<64 hex>
+ *     https://api.knotkitchen.com/r/o_65f4c1..._Xy9
+ *     https://business.knotkitchen.com/t/<64 hex>
  *
  * They now go out as `bill.<base>/<token>` and `order.<base>/<token>`.
  *
@@ -371,22 +371,10 @@ test("opening a table heals a QR URL the host moved under", () => {
   assert.match(block, /if \(fresh && table\.qrCode !== fresh\)/);
 });
 
-test("the old domain keeps every printed and sent link alive after the .com move", () => {
-  // Printed QR cards and e-bills sitting in WhatsApp can never be reissued.
-  // api. stays served in place: webhooks POST to it and stored media URLs
-  // point at it, and neither survives a redirect.
-  assert.match(CADDY, /^api\.\{\$BASE_DOMAIN\}, api\.\{\$LEGACY_DOMAIN\} \{$/m);
-
-  // Everything else is redirected to the same path on the new host.
-  assert.match(CADDY, /^\{\$LEGACY_DOMAIN\} \{\s+redir https:\/\/\{\$BASE_DOMAIN\}\{uri\} 301/m);
-  assert.match(CADDY, /^\*\.\{\$LEGACY_DOMAIN\} \{\s+redir https:\/\/\{labels\.2\}\.\{\$BASE_DOMAIN\}\{uri\} 301/m);
-
-  // order. and bill. must NOT be served in place on the old host: the POS app
-  // there would call api.<new> from an origin CORS does not list.
-  assert.ok(!/order\.\{\$LEGACY_DOMAIN\}/.test(CADDY));
-  assert.ok(!/bill\.\{\$LEGACY_DOMAIN\}/.test(CADDY));
-
-  // Caddy refuses to start on an empty site address, so the variable needs a default.
-  const compose = DEPLOY("docker-compose.yml");
-  assert.match(compose, /LEGACY_DOMAIN: \$\{LEGACY_DOMAIN:-knotkitchen\.online\}/);
+test("knotkitchen.com is gone from the proxy and the containers", () => {
+  // The platform moved to knotkitchen.com and the old domain was retired
+  // outright. Any vhost left for it would ask Caddy for a certificate the
+  // Cloudflare token can no longer issue.
+  assert.ok(!/LEGACY_DOMAIN|knotkitchen\.online/.test(CADDY));
+  assert.ok(!/LEGACY_DOMAIN|knotkitchen\.online/.test(DEPLOY("docker-compose.yml")));
 });

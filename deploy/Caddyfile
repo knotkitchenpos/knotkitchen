@@ -29,8 +29,7 @@
 	# Every certificate over DNS-01. HTTP-01 cannot pass while a record is
 	# proxied through Cloudflare with "Always Use HTTPS" on (the challenge is
 	# redirected to an origin that has no cert yet), and a wildcard needs
-	# DNS-01 regardless. The token must cover BOTH zones: BASE_DOMAIN and
-	# LEGACY_DOMAIN.
+	# DNS-01 regardless. The token must cover the BASE_DOMAIN zone.
 	acme_dns cloudflare {env.CLOUDFLARE_API_TOKEN}
 }
 
@@ -51,7 +50,7 @@
 # =============================================================================
 # api.knotkitchen.com — POS backend
 # =============================================================================
-api.{$BASE_DOMAIN}, api.{$LEGACY_DOMAIN} {
+api.{$BASE_DOMAIN} {
 	import security_headers
 
 	request_body {
@@ -268,27 +267,6 @@ demostore.{$BASE_DOMAIN} {
 
 	root * /srv/landing/demostore
 	file_server
-}
-
-# =============================================================================
-# LEGACY_DOMAIN (knotkitchen.online) -- the domain the platform moved off
-# =============================================================================
-# api. on the old domain is served in place by the api vhost above, never
-# redirected: a payment webhook POST does not survive a redirect, and stored
-# media URLs point at api.<old>/uploads.
-#
-# Everything else is a browser doing a GET, so it goes to the same path on the
-# new domain. That includes the printed table QR cards (order.<old>/<token>
-# and business.<old>/t/<token>) and every e-bill already sent (bill.<old>/...):
-# the redirect lands them on the same route under the new host. Served in
-# place instead, the POS app would call api.<new> from an origin CORS does not
-# list, and every scan would fail its first request.
-{$LEGACY_DOMAIN} {
-	redir https://{$BASE_DOMAIN}{uri} 301
-}
-
-*.{$LEGACY_DOMAIN} {
-	redir https://{labels.2}.{$BASE_DOMAIN}{uri} 301
 }
 
 # =============================================================================

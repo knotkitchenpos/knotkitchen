@@ -131,11 +131,11 @@ test("with no signing key configured, nothing verifies and nothing is minted", a
 
 test("the public URL is absolute and points at the API host", async () => {
   await withEnv(
-    { RECEIPT_LINK_SECRET: "s3cr3t", PUBLIC_API_URL: "https://api.knotkitchen.online/" },
+    { RECEIPT_LINK_SECRET: "s3cr3t", PUBLIC_API_URL: "https://api.knotkitchen.com/" },
     () => {
       const link = require("../services/receiptLink");
       const url = link.urlForOrder(ID_A);
-      assert.match(url, /^https:\/\/api\.knotkitchen\.online\/r\/o_/);
+      assert.match(url, /^https:\/\/api\.knotkitchen.com\/r\/o_/);
       assert.ok(!url.includes("//r/"), "trailing slash on the base must not double up");
     },
   );
@@ -168,7 +168,7 @@ test("a WhatsApp template send carries template, number and variables", async ()
       messageId: "31172",
       phoneNumberId: "PNID99",
       apiKey: "KEY",
-      variables: ["Spice Garden", "A-1042", "525.00", "https://api.knotkitchen.online/r/o_x_y"],
+      variables: ["Spice Garden", "A-1042", "525.00", "https://api.knotkitchen.com/r/o_x_y"],
     });
 
     assert.equal(res.ok, true);
@@ -181,7 +181,7 @@ test("a WhatsApp template send carries template, number and variables", async ()
     assert.equal(url.searchParams.get("numbers"), "9477623682", "+91 and spaces stripped");
     assert.equal(
       url.searchParams.get("variables_values"),
-      "Spice Garden|A-1042|525.00|https://api.knotkitchen.online/r/o_x_y",
+      "Spice Garden|A-1042|525.00|https://api.knotkitchen.com/r/o_x_y",
     );
     assert.equal(calls[0].opts.headers.authorization, "KEY");
   } finally {
@@ -318,14 +318,14 @@ test("the e-bill variable order matches the registered WhatsApp template", () =>
     restaurantName: "Spice Garden",
     orderNumber: "A-1042",
     total: "525.00",
-    receiptUrl: "https://api.knotkitchen.online/r/o_x_y",
+    receiptUrl: "https://api.knotkitchen.com/r/o_x_y",
   });
 
   assert.deepEqual(values, [
     "Spice Garden",                              // header {{1}}
     "A-1042",                                    // body {{1}}
     "525.00",                                    // body {{2}}
-    "https://api.knotkitchen.online/r/o_x_y",    // body {{3}}
+    "https://api.knotkitchen.com/r/o_x_y",    // body {{3}}
   ]);
 });
 

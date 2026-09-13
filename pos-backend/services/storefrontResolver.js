@@ -15,7 +15,7 @@ const config = require("../config/config");
  *
  * Resolution order:
  *   1. customDomain  (www.abcrestaurant.com)
- *   2. subdomain     (abc-restaurant.knotkitchen.online)
+ *   2. subdomain     (abc-restaurant.knotkitchen.com)
  *   3. slug          (/store/abc-restaurant)
  *   4. storeId       (/store/482193) — legacy/QR-friendly numeric fallback
  */
@@ -52,13 +52,11 @@ const findSettingsByHost = async (host) => {
   // domain(s) this deployment is actually served under (BASE_DOMAIN / legacy
   // fallbacks), so a fresh deployment under a new domain works with zero code
   // changes — only an env var.
-  // `knotkitchen.com` is the domain deployed today; .online/.in are kept only
-  // so links minted under earlier domains still resolve.
+  // `knotkitchen.com` stays listed so the platform domain resolves even if
+  // BASE_DOMAIN is unset.
   const bases = [
     config.baseDomain,
     "knotkitchen.com",
-    "knotkitchen.online",
-    "knotkitchen.in",
     "localhost",
   ].filter(Boolean);
   const baseSuffix = bases.map((b) => b.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
