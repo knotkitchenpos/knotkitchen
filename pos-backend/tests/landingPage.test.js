@@ -402,15 +402,18 @@ test("the POS refuses a template that does not exist", async () => {
   assert.equal(settings.landing.template, undefined);
 });
 
-test("the POS offers the same template list the database accepts", () => {
+test("Manage Website in the POS no longer carries the design tabs", () => {
+  // Homepage & Branding, Landing Page, Colors & Fonts, Layout, Ordering
+  // Options and Hours were removed from the POS; the landing page is edited
+  // from the CSD and website timing lives in Website Timing & Holidays.
   const source = fs.readFileSync(
     path.join(__dirname, "..", "..", "pos-frontend", "src", "pages", "WebsiteSettings.jsx"),
     "utf8"
   );
-
-  const block = source.match(/const LANDING_TEMPLATE_INFO = \{([\s\S]*?)\n\};/);
-  assert.ok(block, "could not find LANDING_TEMPLATE_INFO in WebsiteSettings.jsx");
-
-  const named = [...block[1].matchAll(/"([a-z0-9-]+)": \{/g)].map((m) => m[1]);
-  assert.deepEqual([...named].sort(), [...LANDING_TEMPLATES].sort());
+  const tabs = source.slice(source.indexOf("const TABS = ["), source.indexOf("];", source.indexOf("const TABS = [")));
+  for (const gone of ["branding", "landing", "theme", "layout", "ordering", "hours"]) {
+    assert.ok(!tabs.includes(`key: "${gone}"`), `${gone} tab must be gone`);
+    assert.ok(!source.includes(`tab === "${gone}"`), `${gone} tab body must be gone`);
+  }
+  assert.match(source, /Your store ID is your website address/);
 });

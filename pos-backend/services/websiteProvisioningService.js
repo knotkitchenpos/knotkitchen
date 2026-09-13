@@ -1,5 +1,4 @@
 const WebsiteSettings = require("../models/websiteSettingsModel");
-const { generateUniqueSlug } = require("./slugService");
 const { DEFAULT_THEME_KEY, getDefaultTheme } = require("./themeRegistry");
 const config = require("../config/config");
 
@@ -38,7 +37,9 @@ const provisionWebsiteForStore = async (params, deps = {}) => {
   const existing = await Model.findOne({ storeId: String(storeId), isDeleted: { $ne: true } });
   if (existing) return existing;
 
-  const slug = await generateUniqueSlug(storeName || `store-${storeId}`, String(storeId), { Model });
+  // The website address is the permanent store id (231146.knotkitchen.com),
+  // never the store name: names change, get renamed, and collide.
+  const slug = String(storeId);
   const themeDefaults = (getDefaultTheme() || {}).defaults || {};
 
   const doc = {

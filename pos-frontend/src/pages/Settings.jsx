@@ -1782,7 +1782,7 @@ const MENU_ITEMS = [
   { id: "table", title: "5. Manage Table", desc: "Table layouts and session status.", Icon: I.grid, path: "/tables" },
   { id: "staff", title: "6. Manage Staff", desc: "Add/delete staff and PIN privileges.", Icon: I.users, mode: "view" },
   { id: "toggles", title: "7. Order Toggles & Auto-Ready", desc: "Channel ON/OFF & auto-ready durations.", Icon: I.toggle, mode: "view" },
-  { id: "timings", title: "8. Timings & Holidays", desc: "Channel schedules & holiday calendar.", Icon: I.calendar, mode: "view" },
+  { id: "timings", title: "8. Website Timing & Holidays", desc: "Collection, delivery and table booking hours, Close for Today and holidays for the website.", Icon: I.calendar, mode: "view" },
   { id: "rules", title: "9. Rules, Charges & Promotions", desc: "Min orders, delivery slabs, GST, coupons, free items.", Icon: I.fileText, mode: "view" },
   { id: "reports", title: "10. Reports", desc: "Sales, revenue and order breakdowns.", Icon: I.chart, path: "/reports" },
   // Reachable even when the account is locked -- it is the only screen that

@@ -157,7 +157,7 @@ export default function StoreShell({
         onClose={() => setCartOpen(false)}
         cart={cart}
         ordering={ordering}
-        storeOpen={s.store?.isOpen !== false}
+        availability={s.availability}
         onPlaceOrder={onPlaceOrder}
         placing={placing}
         error={placeError}

@@ -7,7 +7,6 @@ const { resolveTenantFromUser } = require("../services/tenantContext");
 const { seal } = require("../services/secretBox");
 const { provisionWebsiteForStore, buildStorefrontUrl } = require("../services/websiteProvisioningService");
 const { listThemes, isSelectableTheme } = require("../services/themeRegistry");
-const { slugify, isValidSlug, RESERVED_SLUGS } = require("../services/slugService");
 const {
   SAFE_FONTS, HERO_STYLES, CARD_STYLES, HEADER_STYLES,
   FOOTER_STYLES, NAV_STYLES, IMAGE_POSITIONS, BUTTON_STYLES,
@@ -202,23 +201,8 @@ const updateWebsiteSettings = async (req, res, next) => {
       }
     }
 
-    // ---- Slug (public identifier) ----
-    if (body.slug !== undefined) {
-      const candidate = slugify(body.slug);
-      if (!isValidSlug(candidate)) {
-        return next(createHttpError(400, "Website address must be 2-60 letters, numbers or hyphens."));
-      }
-      if (RESERVED_SLUGS.has(candidate)) {
-        return next(createHttpError(400, "That website address is reserved. Please choose another."));
-      }
-      if (candidate !== settings.slug) {
-        const taken = await WebsiteSettings.findOne({ slug: candidate, isDeleted: { $ne: true } });
-        if (taken && String(taken.storeId) !== String(tenant.storeId)) {
-          return next(createHttpError(409, "That website address is already taken."));
-        }
-        settings.slug = candidate;
-      }
-    }
+    // ---- Slug ----
+    // Not editable: the website address is the permanent store id.
 
     // ---- Section Titles (Module 3) ----
     if (body.sectionTitles) {

@@ -5,7 +5,7 @@ const Order = require("../models/orderModel");
 const Customer = require("../models/customerModel");
 const { resolveStorefront, REASON_MESSAGES } = require("../services/storefrontResolver");
 const { AWAITING_ACCEPTANCE } = require("../constants/orderStatus");
-const { isStoreOpen, isClosedForToday, isItemAvailableNow, getEffectivePrice } = require("../services/businessHours");
+const { isItemAvailableNow, getEffectivePrice } = require("../services/businessHours");
 const { calculateOrderTotals, PricingError } = require("../services/orderPricingService");
 const {
   AUDIENCES,
@@ -22,6 +22,7 @@ const { emitOrderCreated } = require("../services/socket");
 const WebsiteCheckout = require("../models/websiteCheckoutModel");
 const { resolveGateway } = require("../services/paymentGateway");
 const { localDate } = require("../services/tableBookings");
+const { availabilityAt, websiteAvailability } = require("../services/websiteAvailability");
 const config = require("../config/config");
 const { generateOrderNumberSafe } = require("../services/orderNumberService");
 
@@ -182,22 +183,17 @@ const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezon
   }
 
 
-  const now = new Date();
-  const cftClosed = isClosedForToday(settings, timezone);
-  const activeHoliday = (settings?.holidays || []).find((h) => {
-    const start = new Date(h.startDate);
-    const end = new Date(h.endDate);
-    end.setHours(23, 59, 59, 999);
-    return now >= start && now <= end;
-  });
-
+  // Website Timing & Holidays: each channel's own hours, Close for Today and
+  // the Holiday Calendar. See services/websiteAvailability.
+  const availability = websiteAvailability(settings, timezone);
+  const anyOrdering = availability.collection.open || availability.delivery.open;
   const openState = preview
     ? { isOpen: true, reason: "", nextOpen: null }
-    : cftClosed
-    ? { isOpen: false, reason: settings.closedForToday?.reason || "Store is Closed for Today", nextOpen: null }
-    : activeHoliday
-    ? { isOpen: false, reason: `Store is Closed (${activeHoliday.reason || "Holiday"})`, nextOpen: activeHoliday.endDate }
-    : isStoreOpen(settings, timezone);
+    : {
+        isOpen: anyOrdering,
+        reason: anyOrdering ? "" : availability.collection.reason || availability.delivery.reason,
+        nextOpen: null,
+      };
 
 
   const theme = getTheme(settings.theme?.themeKey) || getTheme("default-restaurant");
@@ -210,7 +206,12 @@ const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezon
       isOpen: openState.isOpen,
       closedReason: openState.reason,
       nextOpen: openState.nextOpen,
-      acceptingOrders: openState.isOpen || Boolean(settings.ordering?.acceptPreOrders),
+      acceptingOrders: openState.isOpen,
+    },
+    availability: {
+      collection: { open: availability.collection.open, reason: availability.collection.reason, windows: availability.collection.windows },
+      delivery: { open: availability.delivery.open, reason: availability.delivery.reason, windows: availability.delivery.windows },
+      table: { open: availability.table.open, reason: availability.table.reason },
     },
     landing: buildLandingPayload(settings, restaurant, null),
     branding: {
@@ -363,27 +364,13 @@ const buildStorefrontOrder = (finalize) => async (req, res, next) => {
       return next(createHttpError(400, "Invalid order type."));
     }
 
-    if (isClosedForToday(settings, timezone)) {
-      return next(createHttpError(409, `Store is Closed: ${settings.closedForToday?.reason || "Closed for Today"}`));
-    }
-
-    // ---- Module 7 §7: Holiday calendar gate ----
+    // ---- Website Timing & Holidays ----
+    // Collection orders only in Collection Time, delivery only in Delivery
+    // Time; a holiday or Close for Today stops both.
+    const channel = requestedType === "delivery" ? "delivery" : "collection";
     const now = new Date();
-    const activeHoliday = (settings?.holidays || []).find((h) => {
-      const start = new Date(h.startDate);
-      const end = new Date(h.endDate);
-      end.setHours(23, 59, 59, 999);
-      return now >= start && now <= end;
-    });
-    if (activeHoliday) {
-      return next(createHttpError(409, `Store is Closed: ${activeHoliday.reason || "Holiday"}`));
-    }
-
-    // ---- Business hours / pre-order gate ----
-    const openState = isStoreOpen(settings, timezone);
-    if (!openState.isOpen && !settings.ordering?.acceptPreOrders) {
-      return next(createHttpError(409, "The restaurant is currently closed and is not accepting pre-orders."));
-    }
+    const availability = availabilityAt(settings, channel, now, timezone);
+    if (!availability.open) return next(createHttpError(409, availability.reason));
 
     if (requestedType === "pickup" && settings.ordering?.pickupEnabled === false) {
       return next(createHttpError(409, "This restaurant does not offer pickup."));
@@ -534,6 +521,12 @@ const buildStorefrontOrder = (finalize) => async (req, res, next) => {
       }
       if (isTooFarAhead) {
         return next(createHttpError(400, `Collection pickup time must be within ${pickupWindowHours} hours.`));
+      }
+
+      // The pickup itself must also fall inside Collection Time.
+      const atPickup = availabilityAt(settings, "collection", when, timezone);
+      if (!atPickup.open) {
+        return next(createHttpError(400, `Please choose a pickup time within collection hours. ${atPickup.reason}`));
       }
 
       scheduledFor = when;

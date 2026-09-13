@@ -574,16 +574,17 @@ const toggleClosedForToday = async (req, res, next) => {
     const { enabled, date, reason } = req.body || {};
     const restaurantId = req.user.restaurantId || req.user._id;
 
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, "0");
-    const d = String(now.getDate()).padStart(2, "0");
-    const todayStr = `${y}-${m}-${d}`;
+    // "Today" in the restaurant's timezone. The server runs in UTC, so its own
+    // date was a day behind for the first 5.5 hours of every Indian day and
+    // Close for Today switched on after midnight closed yesterday instead.
+    const { localDate } = require("../services/tableBookings");
+    const restaurant = await Restaurant.findById(req.user.restaurantId).select("timezone").lean().catch(() => null);
+    const todayStr = localDate(new Date(), restaurant?.timezone || "Asia/Kolkata");
 
     const updateData = {
       closedForToday: {
         enabled: Boolean(enabled),
-        date: date || todayStr,
+        date: todayStr,
         reason: reason || "Closed for Today",
       },
     };

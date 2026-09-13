@@ -4,14 +4,16 @@ import React, { useMemo, useState } from "react";
  * Later-today pickup times: every 15 minutes from 30 minutes out, up to the
  * restaurant's pickup window (5 hours by default), never past midnight.
  */
-function pickupTimes(windowHours) {
+function pickupTimes(windowHours, windows) {
   const now = new Date();
   const first = new Date(now.getTime() + 30 * 60000);
   first.setMinutes(Math.ceil(first.getMinutes() / 15) * 15, 0, 0);
   const last = new Date(now.getTime() + (Number(windowHours) || 5) * 3600000);
   const out = [];
   for (let t = first; t <= last && t.getDate() === now.getDate(); t = new Date(t.getTime() + 15 * 60000)) {
-    out.push(t);
+    const minute = t.getHours() * 60 + t.getMinutes();
+    // Inside Collection Time only (null = no hours set, any time today).
+    if (!windows || windows.some((w) => minute >= w.from && minute < w.to)) out.push(t);
   }
   return out;
 }
@@ -31,7 +33,7 @@ export default function CartDrawer({
   onClose,
   cart,
   ordering,
-  storeOpen,
+  availability,
   onPlaceOrder,
   placing,
   error,
@@ -43,7 +45,12 @@ export default function CartDrawer({
   // Collection: "now" by default, or a later time today.
   const [pickupWhen, setPickupWhen] = useState("now");
   const [pickupAt, setPickupAt] = useState("");
-  const pickupSlots = useMemo(() => pickupTimes(ordering?.pickupWindowHours), [ordering?.pickupWindowHours, open]);
+  const pickupSlots = useMemo(
+    () => pickupTimes(ordering?.pickupWindowHours, availability?.collection?.windows),
+    // `open` so the list is rebuilt from the current time each time the cart opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [ordering?.pickupWindowHours, availability, open]
+  );
   const [address, setAddress] = useState({ line1: "", line2: "", city: "", postalCode: "", instructions: "" });
 
   const symbol = ordering?.currencySymbol || "£";
@@ -65,6 +72,9 @@ export default function CartDrawer({
   const conflicting = cart.items.filter((l) => !allowsFulfilment(l.dispatchType, orderType));
 
   const phoneDigits = customer.phone.replace(/\D/g, "");
+  // Website Timing & Holidays, as the server reported it.
+  const channelState = availability?.[orderType === "delivery" ? "delivery" : "collection"];
+  const channelClosed = Boolean(channelState && !channelState.open);
   const needsPickupTime = orderType === "pickup" && pickupWhen === "later";
 
   const canSubmit =
@@ -72,6 +82,7 @@ export default function CartDrawer({
     customer.name.trim() &&
     phoneDigits.length === 10 &&
     (!needsPickupTime || pickupAt) &&
+    !channelClosed &&
     minReached &&
     conflicting.length === 0 &&
     !placing &&
@@ -311,9 +322,9 @@ export default function CartDrawer({
                 {Number(ordering?.minOrderValue).toFixed(2)}.
               </div>
             ) : null}
-            {!storeOpen ? (
-              <div className="text-xs text-slate-600 bg-slate-100 rounded-lg p-2">
-                Restaurant is currently closed — your order will be scheduled for the next opening.
+            {channelClosed ? (
+              <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded-lg p-2" role="alert">
+                {channelState.reason || "This order type is not available right now."}
               </div>
             ) : null}
             {conflicting.length ? (
