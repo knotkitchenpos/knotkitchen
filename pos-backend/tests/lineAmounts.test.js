@@ -119,7 +119,7 @@ test("SOURCE: the cart line is priced from the unit, not the line total", () => 
 });
 
 test("SOURCE: both frontend receipts show the line amount", () => {
-  for (const file of ["src/utils/printReceipt.js", "src/components/invoice/Invoice.jsx"]) {
+  for (const file of ["src/utils/receiptLayout.js", "src/components/invoice/Invoice.jsx"]) {
     assert.match(FE(file), /resolveItemAmounts/, `${file} must resolve the amount it prints`);
   }
 });

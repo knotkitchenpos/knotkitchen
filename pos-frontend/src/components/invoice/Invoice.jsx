@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { FaCheck } from "react-icons/fa6";
 import { useMutation } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
-import { printHtmlDocument } from "../../utils/printDocument";
+import { printOrderReceipt } from "../../utils/printReceipt";
 import { sendEBill } from "../../https";
 import { itemDisplayName, itemExtras, resolveItemAmounts } from "../../utils/orderItems";
 
@@ -41,8 +41,6 @@ const Invoice = ({
     setShowInvoice,
     restaurantName: propRestaurantName,
     restaurantLogo: propRestaurantLogo,
-    restaurantPhone: propRestaurantPhone,
-    restaurantAddress: propRestaurantAddress,
 }) => {
     const safeOrder = orderInfo || {};
     const safeCustomer = safeOrder.customerDetails || {};
@@ -58,8 +56,6 @@ const Invoice = ({
         safeOrder.storeName ||
         "Restaurant";
     const restaurantLogo = propRestaurantLogo || safeOrder.restaurantLogo || "";
-    const restaurantPhone = propRestaurantPhone || safeOrder.restaurantPhone || "";
-    const restaurantAddress = propRestaurantAddress || safeOrder.restaurantAddress || "";
 
     // Order + payment identifiers.
     // Prefer the human-friendly server-generated orderNumber (POS-YYYYMMDD-XXXXXX)
@@ -112,176 +108,14 @@ const Invoice = ({
             ),
     });
 
-    const handlePrint = () => {
-        const itemsHTML = safeItems
-            .map((item) => {
-                const { quantity, lineTotal } = resolveItemAmounts(item);
-                // One row per extra, indented under the dish and priced --
-                // not a comma-joined tail on the product name.
-                const extraRows = itemExtras(item)
-                    .map((e) => {
-                        const label = e.quantity > 1 ? `${e.quantity}x ${e.name}` : e.name;
-                        const cost = e.price * e.quantity * quantity;
-                        return `
-        <tr>
-          <td style="padding:0 0 4px 12px;font-size:11px;color:#333;">${label}</td>
-          <td></td>
-          <td style="padding:0 0 4px 0;font-size:11px;color:#333;text-align:right;">${cost ? money(cost) : ""}</td>
-        </tr>`;
-                    })
-                    .join("");
-                return `
-        <tr>
-          <td style="padding:6px 0 2px 0;font-size:12px;">${itemDisplayName(item)}</td>
-          <td style="padding:6px 0 2px 0;font-size:12px;text-align:center;">x${quantity}</td>
-          <td style="padding:6px 0 2px 0;font-size:12px;text-align:right;">${money(lineTotal)}</td>
-        </tr>${extraRows}`;
-            })
-            .join("");
-
-        const dateString = new Date(
-            safeOrder.orderDate || safeOrder.createdAt || Date.now(),
-        ).toLocaleString("en-US", {
-            month: "long",
-            day: "2-digit",
-            year: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-            hour12: true,
-        });
-
-        // Thermal receipt CSS stays black-on-white — the on-screen dark
-        // theme (§6) is intentionally NOT propagated into the print
-        // stylesheet because 58mm/80mm thermal printers cannot render
-        // greyscale reliably (Module 3 §6 note).
-        const receiptHTML = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>${restaurantName} Receipt</title>
-          <style>
-            * { margin: 0; padding: 0; box-sizing: border-box; }
-            body {
-              font-family: 'Courier New', Courier, monospace;
-              width: 300px;
-              margin: 0 auto;
-              padding: 20px;
-              color: #000;
-              background: #fff;
-            }
-            .header { text-align: center; margin-bottom: 15px; }
-            .header h1 { font-size: 18px; letter-spacing: 1px; }
-            .header p { font-size: 10px; color: #333; margin-top: 4px; }
-            .divider { border-top: 1px dashed #000; margin: 10px 0; }
-            .info-row { display: flex; justify-content: space-between; font-size: 11px; margin: 3px 0; }
-            .items-table { width: 100%; border-collapse: collapse; margin-top: 5px; }
-            .items-table th {
-              font-size: 11px;
-              text-align: left;
-              border-bottom: 1px solid #000;
-              padding-bottom: 5px;
-            }
-            .items-table td { border-bottom: 1px dotted #666; }
-            .totals { margin-top: 10px; }
-            .total-row { display: flex; justify-content: space-between; font-size: 12px; margin: 4px 0; }
-            .grand-total {
-              display: flex;
-              justify-content: space-between;
-              font-size: 15px;
-              font-weight: bold;
-              border-top: 2px solid #000;
-              padding-top: 8px;
-              margin-top: 6px;
-            }
-            .payment-info { margin-top: 12px; font-size: 10px; color: #000; }
-            .footer { text-align: center; margin-top: 20px; font-size: 10px; color: #333; }
-            @media print { body { width: 300px; } }
-          </style>
-        </head>
-        <body>
-          <div class="header">
-            <h1>${restaurantName}</h1>
-            ${restaurantAddress ? `<p>${restaurantAddress}</p>` : ""}
-            ${restaurantPhone ? `<p>${restaurantPhone}</p>` : ""}
-            <p>${dateString}</p>
-          </div>
-          <div class="divider"></div>
-          <div class="info-row">
-            <span>Order ID:</span>
-            <span><strong>${orderId}</strong></span>
-          </div>
-          ${safeCustomer.name ? `
-          <div class="info-row">
-            <span>Name:</span>
-            <span><strong>${safeCustomer.name}</strong></span>
-          </div>` : ""}
-          ${customerPhone ? `
-          <div class="info-row">
-            <span>Phone:</span>
-            <span>${customerPhone}</span>
-          </div>` : ""}
-          <div class="divider"></div>
-          <table class="items-table">
-            <thead>
-              <tr>
-                <th>Item</th>
-                <th style="text-align:center;">Qty</th>
-                <th style="text-align:right;">Price</th>
-              </tr>
-            </thead>
-            <tbody>${itemsHTML}</tbody>
-          </table>
-          <div class="divider"></div>
-          <div class="totals">
-            <div class="total-row">
-              <span>Subtotal</span>
-              <span>${money(safeBills.subtotal || safeBills.total || 0)}</span>
-            </div>
-            ${Number(safeBills.discount) > 0 ? `
-            <div class="total-row">
-              <span>Discount</span>
-              <span>- ${money(safeBills.discount)}</span>
-            </div>` : ""}
-            ${Number(safeBills.packagingFee) > 0 ? `
-            <div class="total-row">
-              <span>Packing charge</span>
-              <span>${money(safeBills.packagingFee)}</span>
-            </div>` : ""}
-            ${Number(safeBills.deliveryFee) > 0 ? `
-            <div class="total-row">
-              <span>Delivery charge</span>
-              <span>${money(safeBills.deliveryFee)}</span>
-            </div>` : ""}
-            ${Number(safeBills.tax) > 0 ? `
-            <div class="total-row">
-              <span>GST / Tax</span>
-              <span>${money(safeBills.tax)}</span>
-            </div>` : ""}
-            <div class="grand-total">
-              <span>Total</span>
-              <span>${money(safeBills.totalWithTax || safeBills.total || 0)}</span>
-            </div>
-          </div>
-          <div class="divider"></div>
-          <div class="payment-info">
-            <p>Payment Method: ${paymentMethodRaw}</p>
-            ${paymentId ? `<p>Payment ID: ${paymentId}</p>` : ""}
-          </div>
-          <div class="divider"></div>
-          <div class="footer">
-            <p>Thank you for dining with us!</p>
-            <p>Please visit again 😊</p>
-          </div>
-        </body>
-      </html>
-    `;
-
-        // Module 3 §8 — printHtmlDocument opens a print popup via
-        // window.open (or an iframe fallback). If the user cancels the
-        // print dialog or the popup is blocked, this returns immediately
-        // without throwing. The invoice modal stays open; nothing
-        // downstream is gated on the print completing.
-        printHtmlDocument(receiptHTML);
+    // One receipt for every screen: see utils/printReceipt.js. It prints on
+    // this device's configured printer, or opens the print dialog if none.
+    const handlePrint = async () => {
+        try {
+            await printOrderReceipt(safeOrder);
+        } catch (err) {
+            enqueueSnackbar(err?.message || "Could not print the receipt.", { variant: "error" });
+        }
     };
 
     return (

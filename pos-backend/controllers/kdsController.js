@@ -3,6 +3,7 @@ const KDSOrder = require("../models/kdsModel");
 const Order = require("../models/orderModel");
 const AuditLog = require("../models/auditLogModel");
 const { PREPARING, READY, COMPLETED } = require("../constants/orderStatus");
+const { fireAutoEBill } = require("../services/eBillService");
 
 // ===== Create KDS Order from order =====
 const createKDSOrder = async (req, res, next) => {
@@ -154,6 +155,7 @@ const updateKDSStatus = async (req, res, next) => {
       await Order.findByIdAndUpdate(kdsOrder.orderId, { orderStatus: READY });
     } else if (status === "served") {
       await Order.findByIdAndUpdate(kdsOrder.orderId, { orderStatus: COMPLETED });
+      fireAutoEBill({ orderId: kdsOrder.orderId });
     }
 
     res.status(200).json({ success: true, message: "Order status updated!", data: kdsOrder });

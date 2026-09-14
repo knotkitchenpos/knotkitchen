@@ -117,7 +117,7 @@ test("REGRESSION: the till no longer bakes the extras into the product name", ()
 test("every bill surface renders extras as rows, not as a joined tail", () => {
   const surfaces = [
     ["e-bill", SRC("controllers", "publicReceiptController.js"), /orderItemExtras\(/],
-    ["printed receipt", FE("src", "utils", "printReceipt.js"), /itemExtras\(/],
+    ["printed receipt", FE("src", "utils", "receiptLayout.js"), /itemExtras\(/],
     ["invoice", FE("src", "components", "invoice", "Invoice.jsx"), /itemExtras\(/],
     ["order detail", FE("src", "pages", "Orders.jsx"), /itemExtras\(/],
   ];

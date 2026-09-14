@@ -16,7 +16,6 @@ import {
   updateHolidays,
   toggleClosedForToday,
   updateOrderToggles,
-  updatePosSettings,
   updateStoreProperties,
   verifyPin,
 } from "../https";
@@ -25,6 +24,7 @@ import { removeUser } from "../redux/slices/userSlice";
 import SecurityPinModal from "../components/common/SecurityPinModal";
 import { checkActionAuthorization } from "../utils/security";
 import ActivityLogView from "../components/dashboard/ActivityLogView";
+import DeviceConfiguration from "../components/settings/DeviceConfiguration";
 
 /* ---------- Icons ---------- */
 const I = {
@@ -181,118 +181,8 @@ const ManageCacheView = () => {
   );
 };
 
-/* ---------- Device Configuration ---------- */
-const DeviceConfigurationView = () => {
-  const qc = useQueryClient();
-  const { data: propsRes } = useQuery({ queryKey: ["store-properties"], queryFn: getStoreProperties });
-  const posSettings = propsRes?.data?.data?.posSettings || {};
-
-  const [paperWidth, setPaperWidth] = useState("80mm");
-  const [autoPrint, setAutoPrint] = useState(posSettings.autoPrintReceipt ?? true);
-  const [autoEBill, setAutoEBill] = useState(posSettings.autoEBill ?? false);
-  const [customMsg, setCustomMsg] = useState(posSettings.customMessage || "");
-  const [webLink, setWebLink] = useState(posSettings.websiteLink || "");
-
-  const posMutation = useMutation({
-    mutationFn: updatePosSettings,
-    onSuccess: () => {
-      enqueueSnackbar("POS & Receipt settings updated!", { variant: "success" });
-      qc.invalidateQueries({ queryKey: ["store-properties"] });
-    },
-    onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to update", { variant: "error" }),
-  });
-
-  const save = () => {
-    posMutation.mutate({
-      autoPrintReceipt: autoPrint,
-      autoEBill,
-      customMessage: customMsg,
-      websiteLink: webLink,
-    });
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
-        <h4 className="text-[15px] font-extrabold text-[#0F172A]">Thermal Receipt Printer</h4>
-        <div className="space-y-3 text-[13px]">
-          <div className="flex items-center justify-between">
-            <span className="text-[#334155] font-semibold">Default Paper Size</span>
-            <select
-              value={paperWidth}
-              onChange={(e) => setPaperWidth(e.target.value)}
-              className="h-[36px] px-3 rounded-lg border border-[#E2E8F0] font-bold text-[#0F172A]"
-            >
-              <option value="80mm">80mm (Standard receipt)</option>
-              <option value="58mm">58mm (Compact thermal)</option>
-            </select>
-          </div>
-
-          <div className="flex items-center justify-between pt-2 border-t border-[#E2E8F0]">
-            <div>
-              <p className="text-[#334155] font-semibold">Auto Receipt Print</p>
-              <p className="text-[11.5px] text-[#94A3B8]">Automatically trigger receipt printing on order complete</p>
-            </div>
-            <input
-              type="checkbox"
-              checked={autoPrint}
-              onChange={(e) => setAutoPrint(e.target.checked)}
-              className="w-5 h-5 accent-[#FD5302]"
-            />
-          </div>
-
-          <div className="flex items-center justify-between pt-2 border-t border-[#E2E8F0]">
-            <div>
-              <p className="text-[#334155] font-semibold">Auto E-Bill</p>
-              <p className="text-[11.5px] text-[#94A3B8]">
-                Send the bill to the customer automatically when an order is paid or
-                completed. Needs a phone number on the order; sent once per order.
-              </p>
-            </div>
-            <input
-              type="checkbox"
-              checked={autoEBill}
-              onChange={(e) => setAutoEBill(e.target.checked)}
-              className="w-5 h-5 accent-[#FD5302]"
-            />
-          </div>
-        </div>
-
-        <div className="pt-3 border-t border-[#E2E8F0] space-y-3">
-          <h5 className="text-[14px] font-extrabold text-[#0F172A]">Receipt Customization</h5>
-          <div>
-            <label className="text-[12px] font-bold text-[#94A3B8]">Advertisement / Custom Message</label>
-            <input
-              value={customMsg}
-              onChange={(e) => setCustomMsg(e.target.value)}
-              placeholder="e.g. Thank you for dining with us!"
-              className="w-full h-[38px] px-3 mt-1 rounded-xl border border-[#E2E8F0] text-[13px]"
-            />
-          </div>
-          <div>
-            <label className="text-[12px] font-bold text-[#94A3B8]">Website Link on Receipt</label>
-            <input
-              value={webLink}
-              onChange={(e) => setWebLink(e.target.value)}
-              placeholder="e.g. https://your-restaurant.com"
-              className="w-full h-[38px] px-3 mt-1 rounded-xl border border-[#E2E8F0] text-[13px]"
-            />
-          </div>
-        </div>
-
-        <div className="pt-2 flex justify-end">
-          <button
-            onClick={save}
-            disabled={posMutation.isPending}
-            className="h-[40px] px-5 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold hover:bg-[#D64502] disabled:opacity-50"
-          >
-            {posMutation.isPending ? "Saving…" : "Save Receipt Settings"}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
+/* ---------- Device Configuration: components/settings/DeviceConfiguration.jsx ---------- */
+const DeviceConfigurationView = DeviceConfiguration;
 
 /* ---------- Module 7 §1 & §2: Store Properties ---------- */
 const StorePropertiesView = () => {

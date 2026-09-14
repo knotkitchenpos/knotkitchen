@@ -39,7 +39,6 @@ import {
 import { getMyRestaurant } from "../../https/newModules";
 import { getWebsiteSettings } from "../../https/storefrontApi";
 import Invoice from "../invoice/Invoice";
-import { receiptAddress } from "../../utils/address";
 import { toOrderItems } from "../../utils/orderItems";
 import { tableLabel } from "../../utils/orderLabels";
 import CollectionModal from "./CollectionModal";
@@ -1230,14 +1229,6 @@ const OrderPanel = () => {
           // editing store properties never reflected on the receipt.
           restaurantName={displayName}
           restaurantLogo={restaurantLogo}
-          restaurantPhone={
-            storeProps.ownerPhone ||
-            storeProps.contactPersonPhone ||
-            restaurant?.phone ||
-            websiteSettings?.contact?.phone ||
-            ""
-          }
-          restaurantAddress={receiptAddress({ storeProps, restaurant, websiteSettings })}
         />
       )}
 

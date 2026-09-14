@@ -138,13 +138,9 @@ test("SOURCE: nobody hand-rolls the address join any more", () => {
     assert.match(SRC(file), /formatAddress/, `${file} should use the shared formatter`);
   }
 
-  for (const file of [
-    "src/pages/Reports.jsx",
-    "src/pages/Orders.jsx",
-    "src/components/pos/OrderPanel.jsx",
-  ]) {
+  for (const file of ["src/pages/Reports.jsx", "src/utils/printReceipt.js"]) {
     const src = FE(file);
-    assert.match(src, /receiptAddress/, `${file} should use the shared formatter`);
+    assert.match(src, /receiptAddress|formatAddress/, `${file} should use the shared formatter`);
     assert.ok(
       !/address\?\.postalCode,?\s*\n?\s*\]/.test(src),
       `${file} still builds its own address array`,

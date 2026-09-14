@@ -24,6 +24,7 @@ import WaiterCallPopup from "./components/dashboard/WaiterCallPopup";
 import TableBookingPopup from "./components/dashboard/TableBookingPopup";
 import PrepDuePopup from "./components/dashboard/PrepDuePopup";
 import AddedItemsPopup from "./components/dashboard/AddedItemsPopup";
+import useAutoReceiptPrint from "./hooks/useAutoReceiptPrint";
 
 function ProtectedRoutes({ children }) {
   const { isAuth } = useSelector((state) => state.user);
@@ -36,6 +37,8 @@ function Layout() {
   // One subscription for the whole app: socket events become cache
   // invalidations, so screens update without anyone pressing refresh.
   useRealtimeSync();
+  // Prints each new order on this device's printer when it is set to.
+  useAutoReceiptPrint();
   const location = useLocation();
   const { isAuth } = useSelector((state) => state.user);
   const [mobileOpen, setMobileOpen] = useState(false);

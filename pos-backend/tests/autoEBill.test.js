@@ -350,3 +350,16 @@ test("SOURCE: settling a table can send its e-bill", () => {
     assert.match(src, /onSuccess: \(res, vars\)/, `${page} ignores what was asked for`);
   }
 });
+
+test("REGRESSION: a table's order being auto-completed does not send a partial e-bill", async () => {
+  // The table's bill goes once, when the table settles (tableSessionId path).
+  const { service, sent } = build({ order: { ...ORDER, tableSessionId: "sess1" } });
+  const res = await service.maybeSendAutoEBill({ orderId: "order1" });
+  assert.equal(res.sent, false);
+  assert.match(res.reason, /table settles/);
+  assert.equal(sent.length, 0);
+});
+
+test("a KDS 'served' completion sends the e-bill too", () => {
+  assert.match(SRC("controllers/kdsController.js"), /orderStatus: COMPLETED \}\);\s*\n\s*fireAutoEBill\(\{ orderId: kdsOrder\.orderId \}\)/);
+});

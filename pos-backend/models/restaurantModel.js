@@ -82,11 +82,20 @@ const restaurantSchema = new mongoose.Schema(
     securityPin: { type: String, default: "" },
 
     // Module 7 §3 — POS Settings & Receipt/Bill Customization
+    // Printer choice, paper size and Auto Receipt Print are per DEVICE and
+    // live on the till itself (pos-frontend utils/printerDevice.js): two
+    // tablets with their own printers must not both print every order.
     posSettings: {
-      autoPrintReceipt: { type: Boolean, default: true },
+      autoPrintReceipt: { type: Boolean, default: true }, // legacy, unread
       autoEBill: { type: Boolean, default: false },
+      // Printed at the bottom of every receipt ("Advertisement").
       customMessage: { type: String, default: "Thank you for visiting us!" },
+      showWebsiteLink: { type: Boolean, default: false },
+      // Blank means the store's own website address.
       websiteLink: { type: String, default: "" },
+      showQrCode: { type: Boolean, default: false },
+      qrCodeImage: { type: String, default: "" },
+      showLogo: { type: Boolean, default: true },
     },
 
     // How long a table stays out of service after its bill is settled, so

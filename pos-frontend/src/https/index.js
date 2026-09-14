@@ -49,6 +49,7 @@ export const regenerateQr = (tableId) =>
 
 // Order Endpoints
 export const addOrder = (data) => axiosWrapper.post("/api/order/", data);
+export const getOrderById = (id) => axiosWrapper.get(`/api/order/${id}`);
 // Module 4 §6 — Orders list accepts an optional filter object.
 // The backend defaults to today when no date/from/to is provided so calling
 // getOrders() with no args still returns "today only", matching the

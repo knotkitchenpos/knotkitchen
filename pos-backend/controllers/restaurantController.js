@@ -260,6 +260,35 @@ const getFranchiseOverview = async (req, res, next) => {
 
 const bcrypt = require("bcrypt");
 const WebsiteSettings = require("../models/websiteSettingsModel");
+const { buildStorefrontUrl } = require("../services/websiteProvisioningService");
+
+/** posSettings with every field present, including ones added after the restaurant was saved. */
+const receiptSettingsOf = (restaurant) => {
+  const s = (restaurant && restaurant.posSettings) || {};
+  return {
+    autoEBill: Boolean(s.autoEBill),
+    customMessage: s.customMessage ?? "Thank you for visiting us!",
+    showWebsiteLink: Boolean(s.showWebsiteLink),
+    websiteLink: s.websiteLink || "",
+    showQrCode: Boolean(s.showQrCode),
+    qrCodeImage: s.qrCodeImage || "",
+    showLogo: s.showLogo !== false,
+  };
+};
+
+/** An image URL (http(s) or /uploads/...). Anything else is dropped. */
+const cleanImageUrl = (value) => {
+  const v = String(value || "").trim().slice(0, 500);
+  return /^(https?:\/\/|\/uploads\/)/i.test(v) ? v : "";
+};
+
+/** A website address, printed as text. https:// is assumed when left off. */
+const cleanWebsiteLink = (value) => {
+  const v = String(value || "").trim().slice(0, 200);
+  if (!v) return "";
+  if (/^https?:\/\/\S+$/i.test(v)) return v;
+  return /^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(\/\S*)?$/i.test(v) ? `https://${v}` : "";
+};
 const { logActivity } = require("../services/auditService");
 
 const DEFAULT_PIN = "8796";
@@ -303,7 +332,9 @@ const getStoreProperties = async (req, res, next) => {
         fssaiNumber: restaurant.fssaiNumber || "",
         gstNumber: restaurant.taxId || "",
         restaurantLogo: restaurant.branding?.logo || settings?.branding?.logo?.url || "",
-        posSettings: restaurant.posSettings || { autoPrintReceipt: true, autoEBill: false, customMessage: "Thank you for visiting us!", websiteLink: "" },
+        posSettings: receiptSettingsOf(restaurant),
+        // The website link printed on receipts when none is typed in.
+        websiteUrl: buildStorefrontUrl(settings),
         orderTypeToggles: restaurant.orderTypeToggles || { collection: true, delivery: true, table: true },
         hasCustomPin: Boolean(restaurant.securityPin),
       },
@@ -462,7 +493,7 @@ const updateStoreProperties = async (req, res, next) => {
 // Module 7 §3 — Update POS Settings
 const updatePosSettings = async (req, res, next) => {
   try {
-    const { autoPrintReceipt, autoEBill, customMessage, websiteLink } = req.body || {};
+    const body = req.body || {};
 
     const restaurant = await Restaurant.findOne({
       ...(req.user.restaurantId ? { _id: req.user.restaurantId } : { ownerId: req.user._id }),
@@ -470,15 +501,29 @@ const updatePosSettings = async (req, res, next) => {
     });
     if (!restaurant) return next(createHttpError(404, "Restaurant not found!"));
 
-    restaurant.posSettings = {
-      autoPrintReceipt: Boolean(autoPrintReceipt),
-      autoEBill: Boolean(autoEBill),
-      customMessage: String(customMessage || "").trim().slice(0, 300),
-      websiteLink: String(websiteLink || "").trim().slice(0, 200),
-    };
+    // Only the fields sent are changed, so one section of the screen saving
+    // cannot reset another.
+    const updated = receiptSettingsOf(restaurant);
+    if ("autoEBill" in body) updated.autoEBill = Boolean(body.autoEBill);
+    if ("customMessage" in body) updated.customMessage = String(body.customMessage || "").trim().slice(0, 300);
+    if ("showWebsiteLink" in body) updated.showWebsiteLink = Boolean(body.showWebsiteLink);
+    if ("websiteLink" in body) {
+      updated.websiteLink = cleanWebsiteLink(body.websiteLink);
+      if (String(body.websiteLink || "").trim() && !updated.websiteLink) {
+        return next(createHttpError(400, "Enter the website link as an address, e.g. www.yourrestaurant.com"));
+      }
+    }
+    if ("showQrCode" in body) updated.showQrCode = Boolean(body.showQrCode);
+    if ("qrCodeImage" in body) updated.qrCodeImage = cleanImageUrl(body.qrCodeImage);
+    if ("showLogo" in body) updated.showLogo = Boolean(body.showLogo);
+    if (updated.showQrCode && !updated.qrCodeImage) {
+      return next(createHttpError(400, "Upload the website QR code image before turning it on."));
+    }
+
+    restaurant.posSettings = { ...updated, autoPrintReceipt: restaurant.posSettings?.autoPrintReceipt ?? true };
     await restaurant.save();
 
-    res.status(200).json({ success: true, message: "POS Settings updated!", data: restaurant.posSettings });
+    res.status(200).json({ success: true, message: "POS Settings updated!", data: receiptSettingsOf(restaurant) });
   } catch (error) {
     next(error);
   }

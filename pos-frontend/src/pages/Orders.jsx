@@ -13,12 +13,11 @@ import {
 } from "../https";
 import TableSettleModal from "../components/tables/TableSettleModal";
 import { getMyRestaurant } from "../https/newModules";
-import { printReceipt } from "../utils/printReceipt";
+import { printOrderReceipt } from "../utils/printReceipt";
 import { itemDisplayName, itemExtras } from "../utils/orderItems";
 import { isPreparing, isReady, isSettled, isCancelled, statusLabel, COMPLETED, CANCELLED } from "../constants/orderStatus";
 import { sourceLabel, tableLabel, orderDisplayId } from "../utils/orderLabels";
 import { sendTableEBill } from "../utils/sendTableEBill";
-import { receiptAddress } from "../utils/address";
 
 /* ---------- Icons ---------- */
 const I = {
@@ -942,30 +941,9 @@ const Orders = () => {
             <div className="px-4 py-3.5 border-t border-[#E2E8F0] shrink-0 grid grid-cols-3 gap-2">
               <button
                 onClick={() =>
-                  printReceipt({
-                    cartData: selected.items || [],
-                    customerData: {
-                      customerName: selected.customerDetails?.name,
-                      customerPhone: selected.customerDetails?.phone,
-                      // Show the customer-facing Order ID on the printed
-                      // receipt — matches the panel's "#…" label.
-                      orderId: orderDisplayId(selected, ""),
-                    },
-                    total: selected.bills?.total || 0,
-                    tax: selected.bills?.tax || 0,
-                    totalPriceWithTax: selected.bills?.totalWithTax || 0,
-                    // Store branding — MUST be the restaurant's own
-                    // name/address, never "KnotKitchen" or the
-                    // logged-in user's name (see BUG 6 in the QA
-                    // report).
-                    restaurantName: storeDisplayName,
-                    restaurantAddress: receiptAddress({ storeProps, restaurant }),
-                    restaurantPhone:
-                      storeProps.ownerPhone ||
-                      storeProps.contactPersonPhone ||
-                      restaurant?.phone ||
-                      "",
-                  })
+                  printOrderReceipt(selected).catch((err) =>
+                    enqueueSnackbar(err?.message || "Could not print the receipt.", { variant: "error" }),
+                  )
                 }
                 className="h-[46px] rounded-xl border border-[#E2E8F0] text-[#334155] text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#F8FAFC]"
               >

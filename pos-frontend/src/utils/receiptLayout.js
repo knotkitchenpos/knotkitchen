@@ -1,0 +1,258 @@
+import { itemDisplayName, itemExtras, resolveItemAmounts } from "./orderItems.js";
+import { orderDisplayId, tableLabel } from "./orderLabels.js";
+
+/**
+ * The printed receipt, laid out in printer dots for one paper width.
+ *
+ * Thermal printers print a bitmap 384 dots wide on 58 mm paper and 576 on
+ * 80 mm (203 dpi). The receipt is laid out at exactly that width and drawn to
+ * a canvas, so the same picture goes to a USB or Bluetooth printer as raster
+ * data and, through the system print dialog, to anything else. Printer fonts
+ * were not an option: they have no rupee sign and no Hindi.
+ *
+ * Pure: `measure(text, font)` is passed in, so this runs (and is tested)
+ * without a browser. The result is a list of draw operations, every one of
+ * which stays inside [0, width].
+ */
+
+export const PAPER = {
+  58: { width: 384, body: 20, small: 17, title: 28, gap: 14, pad: 4 },
+  80: { width: 576, body: 24, small: 20, title: 34, gap: 20, pad: 6 },
+};
+
+export const paperOf = (size) => PAPER[String(size) === "58" ? 58 : 80];
+
+const FAMILY = "Arial, Helvetica, sans-serif";
+export const font = (size, bold = false) => `${bold ? "bold " : ""}${size}px ${FAMILY}`;
+
+const num = (n) =>
+  Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+export const rupees = (n) => `₹${num(n)}`;
+
+/** Split text into lines no wider than `maxWidth`; a word too long for a line is broken. */
+export const wrap = (text, fnt, maxWidth, measure) => {
+  const lines = [];
+  for (const paragraph of String(text ?? "").split(/\r?\n/)) {
+    let line = "";
+    for (const word of paragraph.split(/\s+/).filter(Boolean)) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (measure(candidate, fnt) <= maxWidth) {
+        line = candidate;
+        continue;
+      }
+      if (line) lines.push(line);
+      line = "";
+      let rest = word;
+      while (measure(rest, fnt) > maxWidth && rest.length > 1) {
+        let cut = rest.length - 1;
+        while (cut > 1 && measure(rest.slice(0, cut), fnt) > maxWidth) cut -= 1;
+        lines.push(rest.slice(0, cut));
+        rest = rest.slice(cut);
+      }
+      line = rest;
+    }
+    if (line) lines.push(line);
+  }
+  return lines;
+};
+
+const ORDER_TYPES = { delivery: "Delivery", "dine-in": "Table", collection: "Collection", takeaway: "Collection" };
+
+/**
+ * The lines of money under the items. Subtotal always; the rest only when
+ * they are not zero, and Total only when something changed the subtotal.
+ */
+export const billLines = (bills = {}, itemsSubtotal = 0) => {
+  const subtotal = Number(bills.subtotal || bills.total || itemsSubtotal || 0);
+  const lines = [{ label: "Subtotal", amount: subtotal, strong: true }];
+  const add = (label, value, sign = "") => {
+    if (Number(value) > 0) lines.push({ label, amount: Number(value), sign });
+  };
+  add("Discount", bills.discount, "- ");
+  add("Packing charge", bills.packagingFee);
+  add("Delivery charge", bills.deliveryFee);
+  add("GST", bills.tax);
+  const total = Number(bills.totalWithTax || bills.total || subtotal);
+  if (Math.abs(total - subtotal) > 0.004) lines.push({ label: "Total", amount: total, strong: true, big: true });
+  return lines;
+};
+
+/**
+ * Lay out a receipt.
+ *
+ * @param {object} args
+ * @param {object} args.order     a saved order
+ * @param {object} args.store     { name, address, phone, gstNumber }
+ * @param {object} args.settings  posSettings: customMessage, showWebsiteLink, websiteLink, showQrCode, showLogo
+ * @param {object} args.images    { logo: {width,height}|null, qr: {width,height}|null } -- already loaded
+ * @param {58|80}  args.paper
+ * @param {(text: string, font: string) => number} args.measure
+ * @returns {{ width: number, height: number, ops: object[] }}
+ */
+export const layoutReceipt = ({ order = {}, store = {}, settings = {}, images = {}, paper = 80, measure }) => {
+  const P = paperOf(paper);
+  const W = P.width;
+  const inner = W - P.pad * 2;
+  const ops = [];
+  let y = P.pad * 2;
+
+  const text = (value, { size = P.body, bold = false, align = "left", x = P.pad, width = inner } = {}) => {
+    const fnt = font(size, bold);
+    const lines = wrap(value, fnt, width, measure);
+    for (const line of lines) {
+      const tx = align === "center" ? x + width / 2 : align === "right" ? x + width : x;
+      ops.push({ type: "text", text: line, x: tx, y, font: fnt, align });
+      y += Math.round(size * 1.3);
+    }
+    return lines.length;
+  };
+  const rule = (dashed = true, space = 8) => {
+    y += space;
+    ops.push({ type: "line", x1: P.pad, x2: W - P.pad, y, dashed, thickness: dashed ? 2 : 3 });
+    y += space + 3;
+  };
+  const image = (key, box, maxW, maxH) => {
+    if (!box || !box.width || !box.height) return;
+    const scale = Math.min(maxW / box.width, maxH / box.height, 1);
+    const w = Math.max(1, Math.round(box.width * scale));
+    const h = Math.max(1, Math.round(box.height * scale));
+    ops.push({ type: "image", key, x: Math.round((W - w) / 2), y, width: w, height: h });
+    y += h + 10;
+  };
+  /** Label on the left, value on the right; the value wraps under itself if long. */
+  const pair = (label, value, { size = P.small, bold = false } = {}) => {
+    if (value === undefined || value === null || String(value).trim() === "") return;
+    const fnt = font(size, bold);
+    const labelW = Math.ceil(measure(`${label} `, fnt));
+    const valueLines = wrap(String(value), fnt, inner - labelW, measure);
+    ops.push({ type: "text", text: label, x: P.pad, y, font: fnt, align: "left" });
+    for (const line of valueLines) {
+      ops.push({ type: "text", text: line, x: W - P.pad, y, font: fnt, align: "right" });
+      y += Math.round(size * 1.3);
+    }
+  };
+
+  // ---- Header ----
+  if (settings.showLogo !== false) image("logo", images.logo, inner * 0.6, P.width === 384 ? 96 : 128);
+  text(store.name || "Restaurant", { size: P.title, bold: true, align: "center" });
+  y += 2;
+  if (store.address) text(store.address, { size: P.small, align: "center" });
+  if (store.phone) text(`Ph: ${store.phone}`, { size: P.small, align: "center" });
+  if (store.gstNumber) text(`GSTIN: ${store.gstNumber}`, { size: P.small, align: "center" });
+  rule(true);
+
+  // ---- Order details ----
+  const placed = new Date(order.orderDate || order.createdAt || Date.now());
+  pair("Order", `#${orderDisplayId(order)}`, { bold: true });
+  pair(
+    "Date",
+    placed.toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true }),
+  );
+  const type = ORDER_TYPES[String(order.orderType || "").toLowerCase()];
+  const table = tableLabel(order.table);
+  pair("Type", [type, table].filter(Boolean).join(" · "));
+  pair("Customer", order.customerDetails?.name);
+  pair("Phone", order.customerDetails?.phone);
+  rule(true);
+
+  // ---- Items: Item | Rate | Qty | Price ----
+  const rows = (order.items || []).map((item) => {
+    const { quantity, unitPrice, lineTotal } = resolveItemAmounts(item);
+    return {
+      name: itemDisplayName(item) || "Item",
+      extras: itemExtras(item).map((e) => (e.quantity > 1 ? `+ ${e.quantity}x ${e.name}` : `+ ${e.name}`)),
+      rate: num(unitPrice),
+      qty: String(quantity),
+      price: num(lineTotal),
+      lineTotal,
+    };
+  });
+
+  // Number columns are exactly as wide as their widest entry. The item column
+  // takes what is left; if that gets too narrow for a readable name, the whole
+  // table steps down a font size rather than letting columns collide.
+  let size = P.body;
+  let cols;
+  for (;;) {
+    const bold = font(size, true);
+    const reg = font(size);
+    const widest = (header, values) =>
+      Math.ceil(Math.max(measure(header, bold), ...values.map((v) => measure(v, reg))));
+    const rateW = widest("Rate", rows.map((r) => r.rate));
+    const priceW = widest("Price", rows.map((r) => r.price));
+    const fits = (qtyLabel) => {
+      const qtyW = widest(qtyLabel, rows.map((r) => r.qty));
+      const itemW = inner - rateW - qtyW - priceW - P.gap * 3;
+      return { qtyLabel, qtyW, itemW };
+    };
+    let q = fits("Quantity");
+    if (q.itemW < inner * 0.4) q = fits("Qty");
+    cols = { size, rateW, priceW, ...q };
+    if (q.itemW >= inner * 0.34 || size <= P.small - 3) break;
+    size -= 1;
+  }
+  const xItem = P.pad;
+  const xPrice = W - P.pad; // right edges
+  const xQty = xPrice - cols.priceW - P.gap;
+  const xRate = xQty - cols.qtyW - P.gap;
+  const lineH = Math.round(cols.size * 1.3);
+  const extraSize = Math.max(cols.size - 3, 14);
+
+  const headFont = font(cols.size, true);
+  ops.push({ type: "text", text: "Item", x: xItem, y, font: headFont, align: "left" });
+  ops.push({ type: "text", text: "Rate", x: xRate, y, font: headFont, align: "right" });
+  ops.push({ type: "text", text: cols.qtyLabel, x: xQty, y, font: headFont, align: "right" });
+  ops.push({ type: "text", text: "Price", x: xPrice, y, font: headFont, align: "right" });
+  y += lineH;
+  rule(false, 4);
+
+  const bodyFont = font(cols.size);
+  rows.forEach((row, i) => {
+    if (i) y += 6;
+    const nameLines = wrap(row.name, font(cols.size, true), cols.itemW, measure);
+    ops.push({ type: "text", text: row.rate, x: xRate, y, font: bodyFont, align: "right" });
+    ops.push({ type: "text", text: row.qty, x: xQty, y, font: bodyFont, align: "right" });
+    ops.push({ type: "text", text: row.price, x: xPrice, y, font: bodyFont, align: "right" });
+    for (const line of nameLines) {
+      ops.push({ type: "text", text: line, x: xItem, y, font: font(cols.size, true), align: "left" });
+      y += lineH;
+    }
+    for (const extra of row.extras) {
+      for (const line of wrap(extra, font(extraSize), cols.itemW - 10, measure)) {
+        ops.push({ type: "text", text: line, x: xItem + 10, y, font: font(extraSize), align: "left" });
+        y += Math.round(extraSize * 1.3);
+      }
+    }
+  });
+  rule(false, 6);
+
+  // ---- Totals ----
+  const itemsSubtotal = rows.reduce((sum, r) => sum + r.lineTotal, 0);
+  for (const line of billLines(order.bills || {}, itemsSubtotal)) {
+    const s = line.big ? P.body + 4 : P.body;
+    const fnt = font(s, Boolean(line.strong));
+    ops.push({ type: "text", text: `${line.label}:`, x: P.pad, y, font: fnt, align: "left" });
+    ops.push({ type: "text", text: `${line.sign || ""}${rupees(line.amount)}`, x: W - P.pad, y, font: fnt, align: "right" });
+    y += Math.round(s * 1.35);
+  }
+  const method = String(order.paymentMethod || order.payments?.[0]?.method || "").trim();
+  if (method) pair("Paid by", method.charAt(0).toUpperCase() + method.slice(1));
+
+  // ---- Footer ----
+  const advert = String(settings.customMessage || "").trim();
+  const link = String(settings.websiteLink || "").trim().replace(/^https?:\/\//i, "").replace(/\/$/, "");
+  const qr = settings.showQrCode ? images.qr : null;
+  if (advert || qr || (settings.showWebsiteLink && link)) rule(true);
+  if (advert) {
+    text(advert, { size: P.body, bold: true, align: "center" });
+    y += 4;
+  }
+  if (qr) {
+    y += 4;
+    image("qr", qr, Math.round(inner * 0.55), P.width === 384 ? 200 : 260);
+  }
+  if (link && (qr || settings.showWebsiteLink)) text(link, { size: P.small, align: "center" });
+
+  y += P.pad * 3;
+  return { width: W, height: Math.ceil(y), ops };
+};

@@ -282,7 +282,7 @@ test("every surface that shows a line shows its components", () => {
   // tests/orderItemExtras.test.js for what that helper has to get right.
   const surfaces = [
     "pos-frontend/src/components/tables/SessionDetailModal.jsx",
-    "pos-frontend/src/utils/printReceipt.js",
+    "pos-frontend/src/utils/receiptLayout.js",
     "pos-frontend/src/components/invoice/Invoice.jsx",
     "pos-frontend/src/pages/Orders.jsx",
   ];

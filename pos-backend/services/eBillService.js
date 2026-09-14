@@ -176,6 +176,13 @@ const maybeSendAutoEBill = async ({ orderId, tableSessionId } = {}) => {
     const subject = await loadEBillSubject({ orderId, tableSessionId });
     if (!subject) return { sent: false, reason: "not found" };
 
+    // A table's dishes are one bill, sent once when the TABLE settles. The
+    // auto-complete sweep marking the table's order Served must not send the
+    // diner a second, partial e-bill before they have paid.
+    if (orderId && !tableSessionId && subject.order && subject.order.tableSessionId) {
+      return { sent: false, reason: "a table bill is sent when the table settles" };
+    }
+
     if (!autoEBillEnabled(subject.restaurant)) {
       return { sent: false, reason: "auto e-bill is off for this restaurant" };
     }

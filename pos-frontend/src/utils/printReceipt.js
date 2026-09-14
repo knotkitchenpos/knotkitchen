@@ -1,82 +1,161 @@
+import { getStoreProperties } from "../https";
 import { printHtmlDocument } from "./printDocument";
-import { itemDisplayName, itemExtras, resolveItemAmounts } from "./orderItems";
+import { formatAddress } from "./address";
+import { layoutReceipt, paperOf } from "./receiptLayout.js";
+import { ditherInPlace, rasterJob, toMonochrome } from "./escpos.js";
+import { loadPrinterConfig, sendToPrinter } from "./printerDevice.js";
 
 /**
- * Open a printable receipt document.
+ * Print a receipt for a saved order -- the one way the POS prints a bill.
  *
- * The receipt HEADER must show the RESTAURANT / STORE name — never a
- * hardcoded "KnotKitchen" and never the logged-in staff/owner name (see
- * BUG 3 & BUG 6 in the QA report). Callers should pass `restaurantName`
- * (and, optionally, `restaurantAddress` / `restaurantPhone`) sourced from
- * the authenticated /api/restaurant/me or /api/restaurant/properties
- * response so a Store-A user can never accidentally print Store-B's
- * branding.
- *
- * If the caller omits `restaurantName` we fall back to a neutral
- * "Restaurant Receipt" label rather than a made-up brand name — better
- * to show a generic string than to lie about which store issued the
- * bill.
+ * The Invoice modal, the Orders screen and Auto Receipt Print all come here,
+ * so a receipt looks the same whichever button printed it. The store's name,
+ * address, logo and receipt customisation are read fresh from Store
+ * Properties each time, never passed in by the caller, so no screen can print
+ * stale or another store's branding.
  */
-export const printReceipt = ({
-  cartData,
-  customerData,
-  total,
-  tax,
-  totalPriceWithTax,
-  restaurantName,
-  restaurantAddress,
-  restaurantPhone,
-}) => {
-  const safeCartData = Array.isArray(cartData) ? cartData : [];
-  const safeCustomerData = customerData || {};
-  const safeTotal = Number(total || 0);
-  const safeTax = Number(tax || 0);
-  const safeTotalWithTax = Number(totalPriceWithTax || 0);
 
-  // Escape untrusted string values before injecting into HTML so a
-  // maliciously-named store or menu item can't inject markup / scripts
-  // into the print window.
-  const esc = (s) =>
-    String(s == null ? "" : s)
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
+const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || "").replace(/\/$/, "");
+const absolute = (url) => (url && url.startsWith("/") ? `${BACKEND_URL}${url}` : url);
 
-  const storeName = esc(restaurantName) || "Restaurant Receipt";
-  const storeAddress = esc(restaurantAddress);
-  const storePhone = esc(restaurantPhone);
+/** Store Properties (GET /api/restaurant/properties) as the receipt needs them. */
+export const receiptContextFrom = (props = {}, posSettings = props.posSettings) => ({
+  store: {
+    name: props.storeName,
+    address: formatAddress({
+      line1: props.fullAddress,
+      line2: props.secondAddress,
+      city: props.city,
+      postalCode: props.postalCode,
+    }),
+    phone: props.ownerPhone || props.contactPersonPhone || "",
+    gstNumber: props.gstNumber || "",
+    logo: props.restaurantLogo || "",
+  },
+  settings: { ...(posSettings || {}), websiteLink: posSettings?.websiteLink || props.websiteUrl || "" },
+});
 
-  const date = new Date().toLocaleString("en-US", {
-    month: "long",
-    day: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: true,
-  });
-  // The money column is the LINE amount, so the rows add up to the subtotal
-  // printed below them. Reading `item.price` showed the unit price on new
-  // orders and the line total on ones saved before the two were told apart.
-  const itemsHTML = safeCartData
-    .map((item) => {
-      const { quantity, lineTotal } = resolveItemAmounts(item);
-      // Extras are priced into the line, so a receipt that omits them shows a
-      // number the diner cannot account for. One row each, indented under the
-      // dish, with its own price -- the same shape as the till's cart.
-      const extraRows = itemExtras(item)
-        .map((e) => {
-          const label = e.quantity > 1 ? `${e.quantity}x ${e.name}` : e.name;
-          const cost = e.price * e.quantity * quantity;
-          return `<tr><td style="padding:0 0 4px 12px;font-size:11px;color:#333;">${esc(label)}</td><td></td><td style="padding:0 0 4px 0;font-size:11px;color:#333;text-align:right;">${cost ? `Rs.${cost.toFixed(2)}` : ""}</td></tr>`;
-        })
-        .join("");
-      return `<tr><td style="padding:6px 0 2px 0;font-size:12px;">${esc(itemDisplayName(item))}</td><td style="padding:6px 0 2px 0;font-size:12px;text-align:center;">x${quantity}</td><td style="padding:6px 0 2px 0;font-size:12px;text-align:right;">Rs.${lineTotal.toFixed(2)}</td></tr>${extraRows}`;
-    })
-    .join("");
+export const loadReceiptContext = async () =>
+  receiptContextFrom((await getStoreProperties())?.data?.data || {});
 
-  const receiptHTML = `<!DOCTYPE html><html><head><title>${storeName} Receipt</title><style>*{margin:0;padding:0;box-sizing:border-box}body{font-family:'Courier New',monospace;width:300px;margin:0 auto;padding:20px;color:#000;background:#fff}.header{text-align:center;margin-bottom:15px}.header h1{font-size:18px;letter-spacing:1px;}.header p{font-size:10px;color:#333;margin-top:4px}.divider{border-top:1px dashed #000;margin:10px 0}.info-row{display:flex;justify-content:space-between;font-size:11px;margin:3px 0}.items-table{width:100%;border-collapse:collapse;margin-top:5px}.items-table th{font-size:11px;text-align:left;border-bottom:1px solid #000;padding-bottom:5px}.items-table td{border-bottom:1px dotted #ccc}.totals{margin-top:10px}.total-row{display:flex;justify-content:space-between;font-size:12px;margin:4px 0}.grand-total{display:flex;justify-content:space-between;font-size:15px;font-weight:bold;border-top:2px solid #000;padding-top:8px;margin-top:6px}.footer{text-align:center;margin-top:20px;font-size:10px;color:#333}@media print{body{width:300px}}</style></head><body><div class="header"><h1>${storeName}</h1>${storeAddress ? `<p>${storeAddress}</p>` : ""}${storePhone ? `<p>${storePhone}</p>` : ""}<p>${date}</p></div><div class="divider"></div><div class="info-row"><span>Customer:</span><span><strong>${esc(safeCustomerData.customerName) || "Walk-in"}</strong></span></div><div class="info-row"><span>Phone:</span><span>${esc(safeCustomerData.customerPhone) || "N/A"}</span></div>${safeCustomerData.guests ? `<div class="info-row"><span>Guests:</span><span>${Number(safeCustomerData.guests) || 0}</span></div>` : ""}<div class="info-row"><span>Order ID:</span><span>#${esc(safeCustomerData.orderId) || "N/A"}</span></div>${safeCustomerData.table?.tableNo ? `<div class="info-row"><span>Table:</span><span>${esc(safeCustomerData.table.tableNo)}</span></div>` : ""}<div class="divider"></div><table class="items-table"><thead><tr><th>Item</th><th style="text-align:center;">Qty</th><th style="text-align:right;">Price</th></tr></thead><tbody>${itemsHTML}</tbody></table><div class="divider"></div><div class="totals"><div class="total-row"><span>Subtotal</span><span>Rs.${safeTotal.toFixed(2)}</span></div><div class="total-row"><span>Tax</span><span>Rs.${safeTax.toFixed(2)}</span></div><div class="grand-total"><span>Total</span><span>Rs.${safeTotalWithTax.toFixed(2)}</span></div></div><div class="divider"></div><div class="footer"><p>Thank you for dining with us!</p><p>Please visit again :)</p></div></body></html>`;
+/** An image as a bitmap the canvas can read back. A missing or blocked image is left off the receipt. */
+const loadBitmap = async (url) => {
+  if (!url) return null;
+  try {
+    const res = await fetch(absolute(url), { mode: "cors" });
+    if (!res.ok) return null;
+    return await createImageBitmap(await res.blob());
+  } catch {
+    return null;
+  }
+};
 
-  return printHtmlDocument(receiptHTML);
+/** Draw the receipt for one paper width onto a canvas. */
+export const renderReceiptCanvas = async ({ order, store, settings, paper }) => {
+  const [logo, qr] = await Promise.all([
+    settings.showLogo !== false ? loadBitmap(store.logo) : null,
+    settings.showQrCode ? loadBitmap(settings.qrCodeImage) : null,
+  ]);
+
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  const measure = (text, font) => {
+    ctx.font = font;
+    return ctx.measureText(text).width;
+  };
+  const layout = layoutReceipt({ order, store, settings, images: { logo, qr }, paper, measure });
+
+  canvas.width = layout.width;
+  canvas.height = layout.height;
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "#000";
+  ctx.strokeStyle = "#000";
+  ctx.textBaseline = "top";
+
+  for (const op of layout.ops) {
+    if (op.type === "text") {
+      ctx.font = op.font;
+      ctx.textAlign = op.align;
+      ctx.fillText(op.text, op.x, op.y);
+    } else if (op.type === "line") {
+      ctx.lineWidth = op.thickness;
+      ctx.setLineDash(op.dashed ? [8, 6] : []);
+      ctx.beginPath();
+      ctx.moveTo(op.x1, op.y);
+      ctx.lineTo(op.x2, op.y);
+      ctx.stroke();
+    } else if (op.type === "image") {
+      const bitmap = op.key === "logo" ? logo : qr;
+      const scratch = document.createElement("canvas");
+      scratch.width = op.width;
+      scratch.height = op.height;
+      const sctx = scratch.getContext("2d", { willReadFrequently: true });
+      sctx.drawImage(bitmap, 0, 0, op.width, op.height);
+      const pixels = sctx.getImageData(0, 0, op.width, op.height);
+      ditherInPlace(pixels.data, op.width, op.height);
+      ctx.putImageData(pixels, op.x, op.y);
+    }
+  }
+  return canvas;
+};
+
+/** Print a canvas through the browser's print dialog, sized to the paper. */
+const printCanvasWithDialog = (canvas, paper) => {
+  const printable = paperOf(paper).width === 384 ? 48 : 72; // mm of printable width
+  const html = `<!DOCTYPE html><html><head><title>Receipt</title><style>
+    @page { size: ${paper === "58" ? 58 : 80}mm auto; margin: 0; }
+    html, body { margin: 0; padding: 0; background: #fff; }
+    img { display: block; width: ${printable}mm; margin: 0 auto; image-rendering: pixelated; }
+  </style></head><body><img src="${canvas.toDataURL("image/png")}" alt="Receipt"></body></html>`;
+  return printHtmlDocument(html);
+};
+
+/**
+ * Print `order`.
+ *
+ * @param {object}  order
+ * @param {object}  [options]
+ * @param {boolean} [options.auto]  true for Auto Receipt Print: never falls back
+ *                                  to a print dialog nobody asked for.
+ * @param {object}  [options.config] a printer config to use instead of the saved one (Test Print)
+ * @param {object}  [options.context] a preloaded loadReceiptContext() result
+ * @returns {Promise<{ printed: boolean, via: string }>}  throws with a readable message
+ */
+export const printOrderReceipt = async (order, { auto = false, config, context } = {}) => {
+  const printer = config || loadPrinterConfig();
+  const { store, settings } = context || (await loadReceiptContext());
+  const paper = printer.paper === "58" ? "58" : "80";
+  const canvas = await renderReceiptCanvas({ order, store, settings, paper });
+
+  if (printer.type === "usb" || printer.type === "bluetooth") {
+    const pixels = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
+    const bits = toMonochrome(pixels.data, canvas.width, canvas.height);
+    await sendToPrinter(printer, rasterJob(bits, canvas.width, canvas.height));
+    return { printed: true, via: printer.type };
+  }
+  if (auto && printer.type !== "system") return { printed: false, via: "none" };
+  printCanvasWithDialog(canvas, paper);
+  return { printed: true, via: "dialog" };
+};
+
+/** A sample order for Test Print. */
+export const SAMPLE_ORDER = {
+  orderNumber: "TEST-0001",
+  orderType: "collection",
+  createdAt: new Date().toISOString(),
+  customerDetails: { name: "Test Customer", phone: "9876543210" },
+  items: [
+    { name: "Paneer Butter Masala", quantity: 2, price: 280, total: 560 },
+    {
+      name: "Veg Loaded Pizza with Extra Toppings",
+      quantity: 1,
+      price: 399,
+      total: 399,
+      modifiers: [{ name: "Extra Cheese", price: 40 }, { name: "Jalapenos", price: 30 }],
+    },
+    { name: "Masala Chai", quantity: 3, price: 30, total: 90 },
+  ],
+  bills: { subtotal: 1049, total: 1049, tax: 0, totalWithTax: 1049 },
+  paymentMethod: "Cash",
 };
