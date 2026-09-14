@@ -273,6 +273,17 @@ const updateWebsiteSettings = async (req, res, next) => {
       assign(settings.landing, "ctaText", clampText(l.ctaText, 40));
       assign(settings.landing, "aboutText", clampText(l.aboutText, 4000));
 
+      // The design's words. An empty string clears a field back to the
+      // design's own default, so it is written rather than skipped.
+      if (l.copy && typeof l.copy === "object") {
+        if (!settings.landing.copy) settings.landing.copy = {};
+        for (const [key, max] of [["kicker", 60], ["headline", 80], ["headlineAccent", 80], ["lead", 300], ["heroBadge", 30], ["heroNote", 40], ["storyTitle", 80], ["storyAccent", 80], ["menuTitle", 80], ["menuAccent", 80], ["ctaTitle", 80], ["ctaLead", 160], ["ctaText", 40], ["visitTitle", 80], ["hoursText", 120], ["footerTagline", 80]]) {
+          if (l.copy[key] !== undefined) {
+            settings.landing.copy[key] = String(l.copy[key] ?? "").trim().slice(0, max);
+          }
+        }
+      }
+
       // Ids only, at most three. The browser resolves them against the menu
       // it already has, and quietly drops any that no longer exist.
       if (Array.isArray(l.featuredItems)) {

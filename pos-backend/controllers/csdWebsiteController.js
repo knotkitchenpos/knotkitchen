@@ -18,7 +18,7 @@ const { settingsResponse, updateWebsiteSettings } = require("./websiteSettingsCo
  * and payment gateway stay with the restaurant.
  */
 
-const CSD_SECTIONS = ["branding", "sectionTitles", "banners", "landing", "theme", "ordering"];
+const CSD_SECTIONS = ["displayName", "contact", "branding", "sectionTitles", "banners", "landing", "theme", "ordering"];
 const CHANNELS = ["collection", "delivery", "table"];
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 

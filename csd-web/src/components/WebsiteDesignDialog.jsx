@@ -36,200 +36,42 @@ const HOUR_CHANNELS = [
   { key: "table", label: "Restaurant Time", hint: "When customers can book a table on the website." },
 ];
 
-/**
- * The landing page templates, in the order the customer website ships them.
- *
- * The keys come from the server (`options.landingTemplates`) so the database
- * stays the authority on what is selectable; this map only supplies the
- * human-readable names, and falls back to the raw key for anything it has not
- * been told about yet.
- */
+/** The five designs from the Templates folder. Keys match LANDING_TEMPLATES. */
 const LANDING_TEMPLATE_INFO = {
-  "fine-dining": {
-    name: "Fine Dining",
-    hint: "Obsidian and gold, high-contrast serif, no rounded corners anywhere. Your signature dishes are set as a printed course list with roman numerals. For a tasting room.",
-  },
-  "farm-to-table": {
-    name: "Farm to Table",
-    hint: "Warm charcoal and ember orange, heavy condensed capitals. Names your growers on the page and chalks up today's dishes. For a seasonal kitchen.",
-  },
-  "omakase": {
-    name: "Omakase",
-    hint: "The quiet one. Wide margins, a vertical rail down the side, one dish held up beside the headline. For a counter that seats a few and serves one thing.",
-  },
-  "coastal-brunch": {
-    name: "Coastal Brunch",
-    hint: "The only light one. Sand and paper, italic serif, soft rounding, your photo framed in the page rather than behind it. For a daytime room.",
-  },
-  "urban-izakaya": {
-    name: "Urban Izakaya",
-    hint: "Near black and hot red, heavy condensed capitals, a live service strip along the top. Leads with ordering rather than atmosphere. For a late kitchen.",
-  },
+  peddler: { name: "Classic", hint: "Dark green hero, sun disc behind a tilted photo, bold serif." },
+  citrus: { name: "Citrus", hint: "Warm cream, rounded cards, big photo on the right." },
+  night: { name: "Night Market", hint: "Dark and premium, gold accents. Suits late-night and bars." },
+  garden: { name: "Garden", hint: "Fresh greens, photo on the left. Suits healthy and cafés." },
+  sunset: { name: "Sunset", hint: "Warm peach and terracotta, playful serif." },
 };
 
-/**
- * A wireframe of each landing design, drawn at thumbnail size.
- *
- * Two rounds of this feature were reported back as "they all look the same",
- * and both times the reason was that the owner could not see a design without
- * saving it and reloading the public site. A picker that only lists five names
- * cannot answer "how is Heritage different from Artisan?" -- so it draws the
- * answer: where the masthead sits, what shape the hero is, and how the menu is
- * laid out, which is what actually differs between them.
- *
- * These carry each design's actual palette rather than a neutral grey, because
- * four of the five are dark and one is not -- and which of those a restaurant
- * is choosing is the first thing about a template worth knowing.
- */
+/** A small colour sketch of each design: page, hero photo block, accent. */
 const TemplateThumb = ({ variant }) => {
-  const shapes = {
-    // Dark hero, then the signatures as a numbered course list beside a plate.
-    "fine-dining": (
-      <>
-        <rect x="0" y="0" width="120" height="100" fill="#121110" />
-        <rect x="0" y="0" width="120" height="7" fill="#0f0e0d" />
-        <rect x="6" y="2.5" width="18" height="2" rx="0.5" fill="#c5a059" />
-        <rect x="84" y="2.5" width="30" height="2" rx="0.5" fill="#4a453d" />
-        <rect x="0" y="7" width="120" height="40" fill="#1b1917" />
-        <rect x="26" y="18" width="68" height="5" rx="0.5" fill="#f5f2eb" />
-        <rect x="36" y="26" width="48" height="5" rx="0.5" fill="#f5f2eb" />
-        <rect x="46" y="37" width="28" height="4" fill="#c5a059" />
-        {[0, 1, 2].map((i) => (
-          <g key={i}>
-            <rect x="8" y={56 + i * 12} width="4" height="3" fill="#c5a059" />
-            <rect x="16" y={56 + i * 12} width="34" height="3" rx="0.5" fill="#e8e2d6" />
-            <rect x="16" y={61 + i * 12} width="44" height="2" rx="0.5" fill="#4a453d" />
-            <rect x="62" y={56 + i * 12} width="8" height="3" rx="0.5" fill="#c5a059" />
-          </g>
-        ))}
-        <rect x="78" y="54" width="36" height="42" fill="#211f1e" />
-        <rect x="80" y="56" width="32" height="30" fill="#3a3733" />
-      </>
-    ),
-
-    // Notice strip, words left over a photo, a stat band, three dish cards.
-    "farm-to-table": (
-      <>
-        <rect x="0" y="0" width="120" height="100" fill="#161311" />
-        <rect x="0" y="0" width="120" height="5" fill="#0f0d0b" />
-        <rect x="5" y="1.7" width="20" height="1.6" rx="0.5" fill="#e2701e" />
-        <rect x="0" y="5" width="120" height="36" fill="#2a2018" />
-        <rect x="8" y="16" width="14" height="2" rx="0.5" fill="#e2701e" />
-        <rect x="8" y="21" width="60" height="6" rx="0.5" fill="#efe9e3" />
-        <rect x="8" y="30" width="24" height="5" fill="#e2701e" />
-        <rect x="36" y="30" width="24" height="5" fill="none" stroke="#8a8078" strokeWidth="0.6" />
-        <rect x="0" y="41" width="120" height="14" fill="#0f0d0b" />
-        {[0, 1, 2].map((i) => (
-          <g key={i}>
-            <rect x={10 + i * 38} y="45" width="16" height="4" rx="0.5" fill="#e2701e" />
-            <rect x={10 + i * 38} y="51" width="24" height="1.6" rx="0.5" fill="#4a4440" />
-          </g>
-        ))}
-        {[0, 1, 2].map((i) => (
-          <g key={`card-${i}`}>
-            <rect x={8 + i * 36} y="62" width="32" height="32" fill="#1d1917" />
-            <rect x={8 + i * 36} y="62" width="32" height="16" fill="#3b332c" />
-            <rect x={11 + i * 36} y="81" width="20" height="2.5" rx="0.5" fill="#efe9e3" />
-            <rect x={11 + i * 36} y="87" width="10" height="3" rx="0.5" fill="#e2701e" />
-          </g>
-        ))}
-      </>
-    ),
-
-    // Wide margins, a vertical rail, one dish card pinned beside the words.
-    "omakase": (
-      <>
-        <rect x="0" y="0" width="120" height="100" fill="#131314" />
-        <rect x="0" y="0" width="120" height="11" fill="#0d0d0e" />
-        <rect x="6" y="6" width="18" height="2.4" rx="0.5" fill="#d4ae7c" />
-        <rect x="0" y="11" width="120" height="52" fill="#181819" />
-        <rect x="10" y="20" width="12" height="2" rx="0.5" fill="#d4ae7c" />
-        <rect x="10" y="26" width="52" height="5" rx="0.5" fill="#eae3d8" />
-        <rect x="10" y="34" width="38" height="5" rx="0.5" fill="#eae3d8" />
-        <rect x="10" y="45" width="24" height="4.5" fill="#d4ae7c" />
-        <rect x="10" y="54" width="46" height="6" fill="#0d0d0e" />
-        <rect x="82" y="18" width="1" height="34" fill="#d4ae7c" opacity="0.4" />
-        <rect x="90" y="16" width="24" height="40" fill="#1c1c1e" />
-        <rect x="92" y="18" width="20" height="26" fill="#3a3733" />
-        <rect x="92" y="47" width="14" height="2" rx="0.5" fill="#eae3d8" />
-        {[0, 1, 2].map((i) => (
-          <g key={i}>
-            <rect x="10" y={70 + i * 10} width="60" height="8" fill="#181819" />
-            <rect x="13" y={72.5 + i * 10} width="26" height="2" rx="0.5" fill="#eae3d8" />
-            <rect x="62" y={72.5 + i * 10} width="6" height="2" rx="0.5" fill="#d4ae7c" />
-          </g>
-        ))}
-        <rect x="76" y="70" width="38" height="28" fill="#1c1c1e" />
-        <rect x="80" y="76" width="24" height="3" rx="0.5" fill="#eae3d8" />
-        <rect x="80" y="88" width="30" height="4" fill="#d4ae7c" />
-      </>
-    ),
-
-    // Light page, hero as a two-column spread, a framed photo, three cards.
-    "coastal-brunch": (
-      <>
-        <rect x="0" y="0" width="120" height="100" fill="#fdf9f2" />
-        <rect x="6" y="2.5" width="18" height="2.4" rx="1.2" fill="#2f2a22" />
-        <rect x="92" y="2" width="22" height="3.4" rx="1.7" fill="#e07a25" />
-        <rect x="8" y="16" width="12" height="2" rx="0.5" fill="#c2610c" />
-        <rect x="8" y="22" width="44" height="5" rx="0.5" fill="#2f2a22" />
-        <rect x="8" y="30" width="34" height="5" rx="0.5" fill="#2f2a22" />
-        <rect x="8" y="41" width="36" height="9" rx="2" fill="#ffffff" stroke="#e6ddcd" strokeWidth="0.6" />
-        <rect x="8" y="54" width="24" height="5" rx="2.5" fill="#e07a25" />
-        <rect x="62" y="14" width="52" height="38" rx="4" fill="#f0e2cd" />
-        <rect x="66" y="46" width="40" height="10" rx="3" fill="#ffffff" stroke="#e6ddcd" strokeWidth="0.6" />
-        <rect x="0" y="62" width="120" height="12" fill="#ffffff" />
-        {[0, 1, 2].map((i) => (
-          <g key={i}>
-            <rect x={10 + i * 38} y="65.5" width="18" height="2.4" rx="0.5" fill="#2f2a22" />
-            <rect x={10 + i * 38} y="70" width="26" height="1.6" rx="0.5" fill="#b9ab94" />
-          </g>
-        ))}
-        {[0, 1, 2].map((i) => (
-          <g key={`card-${i}`}>
-            <rect x={8 + i * 36} y="80" width="32" height="18" rx="4" fill="#ffffff" stroke="#e6ddcd" strokeWidth="0.6" />
-            <rect x={8 + i * 36} y="80" width="32" height="9" rx="4" fill="#f0e2cd" />
-            <rect x={11 + i * 36} y="92" width="16" height="2" rx="0.5" fill="#2f2a22" />
-          </g>
-        ))}
-      </>
-    ),
-
-    // Status strip, big condensed words, a dish card with a price, red band.
-    "urban-izakaya": (
-      <>
-        <rect x="0" y="0" width="120" height="100" fill="#0c0b0c" />
-        <rect x="0" y="0" width="120" height="5" fill="#141213" />
-        <circle cx="7" cy="2.5" r="1.2" fill="#ff3b30" />
-        <rect x="11" y="1.7" width="22" height="1.6" rx="0.5" fill="#ff3b30" />
-        <rect x="6" y="6.5" width="20" height="3" rx="0.5" fill="#f3f0ee" />
-        <rect x="94" y="6.2" width="20" height="3.6" fill="#ff3b30" />
-        <rect x="0" y="11" width="120" height="44" fill="#1a1517" />
-        <rect x="8" y="18" width="14" height="2" rx="0.5" fill="#ff3b30" />
-        <rect x="8" y="23" width="54" height="7" rx="0.5" fill="#f3f0ee" />
-        <rect x="8" y="32" width="38" height="7" rx="0.5" fill="#f3f0ee" />
-        <rect x="8" y="43" width="24" height="5" fill="#ff3b30" />
-        <rect x="74" y="16" width="40" height="34" fill="#141213" />
-        <rect x="76" y="18" width="36" height="18" fill="#3a2f31" />
-        <rect x="78" y="39" width="18" height="3" rx="0.5" fill="#f3f0ee" />
-        <rect x="100" y="39" width="10" height="3" rx="0.5" fill="#ff3b30" />
-        {[0, 1, 2].map((i) => (
-          <g key={i}>
-            <rect x={8 + i * 36} y="60" width="32" height="24" fill="#141213" />
-            <rect x={8 + i * 36} y="60" width="32" height="13" fill="#332b2d" />
-            <rect x={11 + i * 36} y="76" width="16" height="2.5" rx="0.5" fill="#f3f0ee" />
-            <rect x={31 + i * 36} y="76" width="6" height="2.5" rx="0.5" fill="#ff3b30" />
-          </g>
-        ))}
-        <rect x="8" y="89" width="104" height="8" fill="#ff3b30" />
-      </>
-    ),
-  };
-
+  const palette = {
+    peddler: { bg: "#f4f0e7", hero: "#17251d", accent: "#e85d2a", pop: "#f6c84b", text: "#fbf9f2", photoLeft: false },
+    citrus: { bg: "#f7f0e7", hero: "#f7f0e7", accent: "#ea5c2f", pop: "#f4b841", text: "#1f2b20", photoLeft: false },
+    night: { bg: "#120d17", hero: "#120d17", accent: "#ff7a59", pop: "#f3c76a", text: "#f8f2e8", photoLeft: false },
+    garden: { bg: "#edf5eb", hero: "#edf5eb", accent: "#4d8f57", pop: "#d4a554", text: "#1d2f21", photoLeft: true },
+    sunset: { bg: "#fff3ea", hero: "#fff3ea", accent: "#c95736", pop: "#f4ad4a", text: "#2f1d18", photoLeft: false },
+  }[variant];
+  if (!palette) return null;
+  const photoX = palette.photoLeft ? 8 : 64;
+  const textX = palette.photoLeft ? 62 : 8;
   return (
-    <svg viewBox="0 0 120 100" role="img" aria-hidden="true"
-      className="block h-[92px] w-full rounded-lg border border-[#E2E8F0] bg-white">
-      {shapes[variant] || null}
+    <svg viewBox="0 0 120 80" className="w-full rounded-lg border border-[#E2E8F0]" aria-hidden="true">
+      <rect width="120" height="80" fill={palette.bg} />
+      <rect width="120" height="52" fill={palette.hero} />
+      <rect x="0" y="0" width="120" height="7" fill={palette.hero} />
+      <rect x="6" y="2.5" width="22" height="2.5" rx="1" fill={palette.text} opacity="0.85" />
+      <rect x="98" y="2" width="16" height="3.5" rx="1.75" fill={palette.accent} />
+      {variant === "peddler" ? <circle cx="92" cy="26" r="17" fill={palette.pop} /> : null}
+      <rect x={photoX} y="12" width="48" height="36" rx={variant === "peddler" ? 0 : 5} fill={palette.accent} opacity="0.35" />
+      <rect x={textX} y="16" width="42" height="6" rx="1" fill={palette.text} />
+      <rect x={textX} y="25" width="30" height="6" rx="1" fill={palette.pop} />
+      <rect x={textX} y="36" width="18" height="5" rx="2.5" fill={palette.accent} />
+      <rect x="8" y="58" width="44" height="16" rx="3" fill={palette.accent} opacity="0.25" />
+      <rect x="56" y="58" width="26" height="16" rx="3" fill={palette.accent} opacity="0.18" />
+      <rect x="86" y="58" width="26" height="16" rx="3" fill={palette.accent} opacity="0.18" />
     </svg>
   );
 };
@@ -328,48 +170,6 @@ const SectionRule = ({ title, hint }) => (
   </div>
 );
 
-/**
- * A list of gallery photos.
- *
- * Built from the single ImagePicker rather than a new picker of its own: the
- * media library already knows how to choose one image, and a second selection
- * UI would be a second place for the tenant-scoping rules to be got wrong.
- */
-const GalleryPicker = ({ value, onChange }) => {
-  const set = (i, v) => {
-    const next = [...value];
-    if (v) next[i] = v;
-    else next.splice(i, 1);
-    onChange(next);
-  };
-
-  return (
-    <>
-      <div className="grid gap-4 sm:grid-cols-2">
-        {value.map((img, i) => (
-          <ImagePicker
-            key={img?.mediaId || img?.url || i}
-            label={`Photo ${i + 1}`}
-            value={img}
-            onPick={(v) => set(i, v)}
-          />
-        ))}
-      </div>
-      {value.length < 12 ? (
-        <button
-          type="button"
-          onClick={() => onChange([...value, { url: "" }])}
-          className="mb-4 px-3 py-2 rounded-xl border border-dashed border-[#CBD5E1] bg-white text-sm font-bold text-[#475569] hover:border-[#FD5302] hover:text-[#C2410C]"
-        >
-          + Add photo
-        </button>
-      ) : (
-        <p className="mb-4 text-xs text-[#94A3B8]">Twelve is the maximum.</p>
-      )}
-    </>
-  );
-};
-
 const WebsiteDesignDialog = ({ storeId, onClose }) => {
   const [data, setData] = useState(null);
   const [settings, setSettings] = useState(null);
@@ -421,6 +221,8 @@ const WebsiteDesignDialog = ({ storeId, onClose }) => {
     setBanner(null);
     try {
       const saved = await api.updateWebsite(storeId, {
+        displayName: settings.displayName,
+        contact: settings.contact,
         branding: settings.branding,
         sectionTitles: settings.sectionTitles,
         banners: settings.banners,
@@ -659,65 +461,281 @@ const WebsiteDesignDialog = ({ storeId, onClose }) => {
           {tab === "landing" ? (
             <>
               <p className="mb-5 text-sm text-[#64748B]">
-                The first screen a customer sees. Your menu is one tap behind it.
+                The first screen a customer sees. The menu is one tap behind it. Every text box can be left empty to
+                use the chosen design&apos;s own wording; the restaurant&apos;s name, details and photos are always its own.
               </p>
 
-              <Field
-                label="Template"
-                hint="Changes the layout only. Your colours and fonts stay as they are."
-              >
-                <div className="grid gap-2 sm:grid-cols-2">
+              <Field label="Design">
+                <div className="grid gap-2 sm:grid-cols-3">
                   {(options?.landingTemplates || []).map((key) => {
                     const info = LANDING_TEMPLATE_INFO[key] || { name: key, hint: "" };
-                    const active = (settings.landing?.template || "hero-classic") === key;
+                    const active = (settings.landing?.template || "peddler") === key;
                     return (
                       <button
                         key={key}
                         type="button"
                         onClick={() => patch("landing.template", key)}
                         className={`rounded-xl border p-3 text-left transition-colors ${
-                          active
-                            ? "border-[#FD5302] bg-[#FD5302]/5"
-                            : "border-[#E2E8F0] bg-white hover:border-[#CBD5E1]"
+                          active ? "border-[#FD5302] bg-[#FD5302]/5" : "border-[#E2E8F0] bg-white hover:border-[#CBD5E1]"
                         }`}
                       >
                         <TemplateThumb variant={key} />
-                        <span className="block text-sm font-bold text-[#0F172A] mt-2.5">{info.name}</span>
-                        <span className="block text-xs text-[#94A3B8] mt-0.5 leading-relaxed">{info.hint}</span>
+                        <span className="mt-2.5 block text-sm font-bold text-[#0F172A]">{info.name}</span>
+                        <span className="mt-0.5 block text-xs leading-relaxed text-[#94A3B8]">{info.hint}</span>
                       </button>
                     );
                   })}
                 </div>
               </Field>
 
-              {/* Every text box below falls back to your branding when left
-                  empty, so a store that never opens this tab still gets a
-                  finished landing page. */}
-              {/* ---- The few dishes on the front door -------------------- */}
+              <SectionRule title="Restaurant name & details" hint="Shown in the header, the visit section and the footer." />
+              <Field label="Restaurant name">
+                <input
+                  className={inputClass}
+                  maxLength={160}
+                  value={settings.displayName || ""}
+                  onChange={(e) => patch("displayName", e.target.value)}
+                />
+              </Field>
+              <ImagePicker
+                label="Logo (optional, shown beside the name)"
+                value={settings.branding?.logo}
+                onPick={(v) => patch("branding.logo", v)}
+              />
+              <div className="grid gap-x-4 sm:grid-cols-2">
+                {[
+                  ["phone", "Phone", 30],
+                  ["email", "Email", 160],
+                  ["addressLine1", "Address line 1", 200],
+                  ["addressLine2", "Address line 2", 200],
+                  ["city", "City", 100],
+                  ["postalCode", "PIN code", 20],
+                ].map(([key, label, max]) => (
+                  <Field key={key} label={label}>
+                    <input
+                      className={inputClass}
+                      maxLength={max}
+                      value={settings.contact?.[key] || ""}
+                      onChange={(e) => patch(`contact.${key}`, e.target.value)}
+                    />
+                  </Field>
+                ))}
+              </div>
+
+              <SectionRule title="Photos" />
+              <ImagePicker
+                label="Hero photo"
+                value={settings.landing?.backgroundImage}
+                onPick={(v) => patch("landing.backgroundImage", v)}
+              />
+              <p className="-mt-2 mb-4 text-xs text-[#94A3B8]">
+                Leave empty to use the first featured dish&apos;s photo. Dish cards use each dish&apos;s own photo from the menu.
+              </p>
+
+              <SectionRule title="Hero" />
+              <Field label="Small line above the headline">
+                <input
+                  className={inputClass}
+                  maxLength={60}
+                  placeholder="e.g. Kolkata's sandwich hotline Leave empty for the design's own wording."
+                  value={settings.landing?.copy?.kicker || ""}
+                  onChange={(e) => patch("landing.copy.kicker", e.target.value)}
+                />
+              </Field>
+              <Field label="Headline">
+                <input
+                  className={inputClass}
+                  maxLength={80}
+                  placeholder="e.g. Big flavour. Leave empty for the design's own wording."
+                  value={settings.landing?.copy?.headline || ""}
+                  onChange={(e) => patch("landing.copy.headline", e.target.value)}
+                />
+              </Field>
+              <Field label="Headline second line (in italics)">
+                <input
+                  className={inputClass}
+                  maxLength={80}
+                  placeholder="e.g. Handheld. Leave empty for the design's own wording."
+                  value={settings.landing?.copy?.headlineAccent || ""}
+                  onChange={(e) => patch("landing.copy.headlineAccent", e.target.value)}
+                />
+              </Field>
+              <Field label="Intro sentence">
+                <textarea
+                  className={inputClass} rows={2}
+                  maxLength={300}
+                  placeholder="One or two sentences under the headline. Leave empty for the design's own wording."
+                  value={settings.landing?.copy?.lead || ""}
+                  onChange={(e) => patch("landing.copy.lead", e.target.value)}
+                />
+              </Field>
+              <Field label="Main button">
+                <input
+                  className={inputClass}
+                  maxLength={40}
+                  placeholder="e.g. Browse menu Leave empty for the design's own wording."
+                  value={settings.landing?.copy?.ctaText || ""}
+                  onChange={(e) => patch("landing.copy.ctaText", e.target.value)}
+                />
+              </Field>
+              <Field label="Badge on the photo">
+                <input
+                  className={inputClass}
+                  maxLength={30}
+                  placeholder="e.g. 100% fresh Leave empty for the design's own wording."
+                  value={settings.landing?.copy?.heroBadge || ""}
+                  onChange={(e) => patch("landing.copy.heroBadge", e.target.value)}
+                />
+              </Field>
+              <Field label="Handwritten note (Classic design only)">
+                <input
+                  className={inputClass}
+                  maxLength={40}
+                  placeholder="e.g. made fresh for you Leave empty for the design's own wording."
+                  value={settings.landing?.copy?.heroNote || ""}
+                  onChange={(e) => patch("landing.copy.heroNote", e.target.value)}
+                />
+              </Field>
+
+              <SectionRule title="Story section" />
+              <Field label="Story heading">
+                <input
+                  className={inputClass}
+                  maxLength={80}
+                  placeholder="e.g. Not just a meal. Leave empty for the design's own wording."
+                  value={settings.landing?.copy?.storyTitle || ""}
+                  onChange={(e) => patch("landing.copy.storyTitle", e.target.value)}
+                />
+              </Field>
+              <Field label="Story heading second line (in italics)">
+                <input
+                  className={inputClass}
+                  maxLength={80}
+                  placeholder="e.g. A little daily ritual. Leave empty for the design's own wording."
+                  value={settings.landing?.copy?.storyAccent || ""}
+                  onChange={(e) => patch("landing.copy.storyAccent", e.target.value)}
+                />
+              </Field>
+
+              <SectionRule title="Favourites section" />
+              <Field label="Favourites heading">
+                <input
+                  className={inputClass}
+                  maxLength={80}
+                  placeholder="e.g. Favourites, Leave empty for the design's own wording."
+                  value={settings.landing?.copy?.menuTitle || ""}
+                  onChange={(e) => patch("landing.copy.menuTitle", e.target.value)}
+                />
+              </Field>
+              <Field label="Favourites heading second part (in italics)">
+                <input
+                  className={inputClass}
+                  maxLength={80}
+                  placeholder="e.g. right this way. Leave empty for the design's own wording."
+                  value={settings.landing?.copy?.menuAccent || ""}
+                  onChange={(e) => patch("landing.copy.menuAccent", e.target.value)}
+                />
+              </Field>
+
+              <SectionRule title="Order and visit sections" />
+              <Field label="Order band heading">
+                <input
+                  className={inputClass}
+                  maxLength={80}
+                  placeholder="e.g. Hungry already? Leave empty for the design's own wording."
+                  value={settings.landing?.copy?.ctaTitle || ""}
+                  onChange={(e) => patch("landing.copy.ctaTitle", e.target.value)}
+                />
+              </Field>
+              <Field label="Order band sentence (Classic design only)">
+                <input
+                  className={inputClass}
+                  maxLength={160}
+                  placeholder="e.g. Our online menu is live and ready when you are. Leave empty for the design's own wording."
+                  value={settings.landing?.copy?.ctaLead || ""}
+                  onChange={(e) => patch("landing.copy.ctaLead", e.target.value)}
+                />
+              </Field>
+              <Field label="Visit heading">
+                <input
+                  className={inputClass}
+                  maxLength={80}
+                  placeholder="e.g. Come by, or call ahead. Leave empty for the design's own wording."
+                  value={settings.landing?.copy?.visitTitle || ""}
+                  onChange={(e) => patch("landing.copy.visitTitle", e.target.value)}
+                />
+              </Field>
+              <Field label="Opening note (press Enter for a new line)">
+                <textarea
+                  className={inputClass} rows={2}
+                  maxLength={120}
+                  placeholder="e.g. Freshly prepared, delivered to you. Leave empty for the design's own wording."
+                  value={settings.landing?.copy?.hoursText || ""}
+                  onChange={(e) => patch("landing.copy.hoursText", e.target.value)}
+                />
+              </Field>
+              <Field label="Footer line">
+                <input
+                  className={inputClass}
+                  maxLength={80}
+                  placeholder="e.g. Sandwiches, salads & good moods. Leave empty for the design's own wording."
+                  value={settings.landing?.copy?.footerTagline || ""}
+                  onChange={(e) => patch("landing.copy.footerTagline", e.target.value)}
+                />
+              </Field>
+
+              <SectionRule title="Story text" />
+              <Field label="Story paragraph">
+                <textarea
+                  className={inputClass}
+                  rows={4}
+                  maxLength={4000}
+                  placeholder="How the place started, what it is known for. Leave empty for the design's own wording."
+                  value={settings.landing?.aboutText || ""}
+                  onChange={(e) => patch("landing.aboutText", e.target.value)}
+                />
+              </Field>
+
+              <SectionRule
+                title="Three highlights"
+                hint="Short points shown as 01 / 02 / 03, e.g. “Made to order”, “Veg & non-veg”, “Delivered fresh”."
+              />
+              <div className="grid gap-x-4 sm:grid-cols-3">
+                {[0, 1, 2].map((i) => (
+                  <Field key={i} label={`Highlight ${i + 1}`}>
+                    <input
+                      className={inputClass}
+                      maxLength={60}
+                      value={settings.landing?.features?.[i]?.title || ""}
+                      onChange={(e) => {
+                        const next = [0, 1, 2].map((n) => ({ ...(settings.landing?.features?.[n] || {}) }));
+                        next[i] = { ...next[i], title: e.target.value };
+                        patch("landing.features", next);
+                      }}
+                    />
+                  </Field>
+                ))}
+              </div>
+
               <SectionRule
                 title="Featured dishes"
-                hint="Two or three, no more. A landing page that lists the whole menu is the ordering page without a basket. Leave it empty and your first few dishes with photos are used."
+                hint="Up to three, shown with their photo and price from the menu. Leave empty to use the first dishes that have photos."
               />
               {dishes.length ? (
                 <>
                   <input
                     className={`${inputClass} mb-3`}
-                    placeholder="Search your dishes…"
+                    placeholder="Search dishes…"
                     value={dishQuery}
                     onChange={(e) => setDishQuery(e.target.value)}
                   />
-                  <div className="mb-4 max-h-64 overflow-y-auto rounded-xl border border-[#E2E8F0] bg-white">
+                  <div className="mb-2 max-h-64 overflow-y-auto rounded-xl border border-[#E2E8F0] bg-white">
                     {dishes
-                      .filter((d) =>
-                        `${d.name} ${d.category}`.toLowerCase().includes(dishQuery.trim().toLowerCase()),
-                      )
+                      .filter((d) => `${d.name} ${d.category}`.toLowerCase().includes(dishQuery.trim().toLowerCase()))
                       .slice(0, 200)
                       .map((d) => {
                         const chosen = (settings.landing?.featuredItems || []).map(String);
                         const on = chosen.includes(d.id);
-                        // Three is the cap the layouts are built around, so the
-                        // fourth box is disabled rather than silently dropped on
-                        // save.
                         const full = chosen.length >= 3 && !on;
                         return (
                           <label
@@ -731,10 +749,7 @@ const WebsiteDesignDialog = ({ storeId, onClose }) => {
                               checked={on}
                               disabled={full}
                               onChange={() =>
-                                patch(
-                                  "landing.featuredItems",
-                                  on ? chosen.filter((x) => x !== d.id) : [...chosen, d.id],
-                                )
+                                patch("landing.featuredItems", on ? chosen.filter((x) => x !== d.id) : [...chosen, d.id])
                               }
                               className="h-4 w-4 rounded border-[#CBD5E1]"
                             />
@@ -746,181 +761,11 @@ const WebsiteDesignDialog = ({ storeId, onClose }) => {
                         );
                       })}
                   </div>
-                  <p className="-mt-2 mb-4 text-xs text-[#94A3B8]">
-                    {(settings.landing?.featuredItems || []).length} of 3 chosen.
-                  </p>
+                  <p className="mb-4 text-xs text-[#94A3B8]">{(settings.landing?.featuredItems || []).length} of 3 chosen.</p>
                 </>
               ) : (
-                <p className="mb-4 text-xs text-[#94A3B8]">
-                  Your menu has not loaded, so there is nothing to pick from yet.
-                </p>
+                <p className="mb-4 text-xs text-[#94A3B8]">This restaurant&apos;s menu has not loaded, so there is nothing to pick from yet.</p>
               )}
-
-              <SectionRule title="Words" hint="What the first screen says." />
-              <Field label="Headline" hint="Leave empty to use your website title.">
-                <input
-                  className={inputClass}
-                  maxLength={120}
-                  placeholder={settings.branding?.siteTitle || settings.displayName || ""}
-                  value={settings.landing?.headline || ""}
-                  onChange={(e) => patch("landing.headline", e.target.value)}
-                />
-              </Field>
-
-              <Field label="Sub-headline" hint="Leave empty to use your tagline.">
-                <input
-                  className={inputClass}
-                  maxLength={300}
-                  placeholder={settings.branding?.tagline || ""}
-                  value={settings.landing?.subheadline || ""}
-                  onChange={(e) => patch("landing.subheadline", e.target.value)}
-                />
-              </Field>
-
-              <Field label="Button text">
-                <input
-                  className={inputClass}
-                  maxLength={40}
-                  placeholder="View Menu"
-                  value={settings.landing?.ctaText || ""}
-                  onChange={(e) => patch("landing.ctaText", e.target.value)}
-                />
-              </Field>
-
-              <ImagePicker
-                label="Hero photo"
-                value={settings.landing?.backgroundImage}
-                onPick={(v) => patch("landing.backgroundImage", v)}
-              />
-              <p className="-mt-2 mb-4 text-xs text-[#94A3B8]">
-                Leave this empty to use your cover image.
-              </p>
-
-              <Field
-                label={`Photo darkening — ${settings.landing?.overlayOpacity ?? 45}%`}
-                hint="Raise it until the headline is easy to read over the photo."
-              >
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  step="5"
-                  className="w-full accent-[#FD5302]"
-                  value={settings.landing?.overlayOpacity ?? 45}
-                  onChange={(e) => patch("landing.overlayOpacity", Number(e.target.value))}
-                />
-              </Field>
-
-              {/* ---- Selling points -------------------------------------- */}
-              <SectionRule
-                title="Three reasons to come"
-                hint="Short claims in a row under the hero — “Since 1993”, “Wood-fired daily”, “Free delivery over ₹499”. Leave them empty to hide the row."
-              />
-              {[0, 1, 2].map((i) => {
-                const feature = settings.landing?.features?.[i] || {};
-                const setFeature = (key, value) => {
-                  const next = [0, 1, 2].map((n) => ({ ...(settings.landing?.features?.[n] || {}) }));
-                  next[i] = { ...next[i], [key]: value };
-                  patch("landing.features", next);
-                };
-                return (
-                  <div key={i} className="mb-4 rounded-xl border border-[#E2E8F0] bg-white p-4">
-                    <Field label={`Point ${i + 1}`}>
-                      <input
-                        className={inputClass}
-                        maxLength={60}
-                        placeholder="Heading"
-                        value={feature.title || ""}
-                        onChange={(e) => setFeature("title", e.target.value)}
-                      />
-                    </Field>
-                    <Field label="Description">
-                      <textarea
-                        className={inputClass}
-                        rows={2}
-                        maxLength={240}
-                        placeholder="One or two sentences."
-                        value={feature.text || ""}
-                        onChange={(e) => setFeature("text", e.target.value)}
-                      />
-                    </Field>
-                    <ImagePicker
-                      label="Photo (optional)"
-                      value={feature.image}
-                      onPick={(v) => setFeature("image", v)}
-                    />
-                  </div>
-                );
-              })}
-
-              {/* ---- Story ----------------------------------------------- */}
-              <SectionRule
-                title="Your story"
-                hint="A paragraph or two about the restaurant, next to a photo. Leave both empty to hide the section."
-              />
-              <Field label="Story text" hint="Leave empty to use the About text from Homepage & Branding.">
-                <textarea
-                  className={inputClass}
-                  rows={6}
-                  maxLength={4000}
-                  placeholder={settings.branding?.aboutText || "How the place started, what you are known for…"}
-                  value={settings.landing?.aboutText || ""}
-                  onChange={(e) => patch("landing.aboutText", e.target.value)}
-                />
-              </Field>
-              <ImagePicker
-                label="Story photo"
-                value={settings.landing?.aboutImage}
-                onPick={(v) => patch("landing.aboutImage", v)}
-              />
-
-              {/* ---- Gallery --------------------------------------------- */}
-              <SectionRule title="Gallery" hint="Up to twelve photos of the room, the kitchen and the food." />
-              <GalleryPicker
-                value={settings.landing?.gallery || []}
-                onChange={(v) => patch("landing.gallery", v)}
-              />
-
-              {/* ---- Sections -------------------------------------------- */}
-              <SectionRule title="Sections" hint="What appears below the hero." />
-              <div className="mt-2 rounded-xl border border-[#E2E8F0] bg-white px-4">
-                <Toggle
-                  label="Your story"
-                  hint="The paragraph and photo above."
-                  checked={settings.landing?.showAbout !== false}
-                  onChange={(v) => patch("landing.showAbout", v)}
-                />
-                <Toggle
-                  label="A look at the menu"
-                  hint="A few dishes from each category, straight from Manage Menu."
-                  checked={settings.landing?.showMenuPreview !== false}
-                  onChange={(v) => patch("landing.showMenuPreview", v)}
-                />
-                <Toggle
-                  label="Gallery"
-                  hint="The photos above."
-                  checked={settings.landing?.showGallery !== false}
-                  onChange={(v) => patch("landing.showGallery", v)}
-                />
-                <Toggle
-                  label="Opening hours"
-                  hint="Uses the Hours tab."
-                  checked={settings.landing?.showHours !== false}
-                  onChange={(v) => patch("landing.showHours", v)}
-                />
-                <Toggle
-                  label="Address and phone"
-                  hint="Uses the Contact tab."
-                  checked={settings.landing?.showContact !== false}
-                  onChange={(v) => patch("landing.showContact", v)}
-                />
-                <Toggle
-                  label="Current offers"
-                  hint="Your active offers, if you have any."
-                  checked={settings.landing?.showOffers !== false}
-                  onChange={(v) => patch("landing.showOffers", v)}
-                />
-              </div>
             </>
           ) : null}
 

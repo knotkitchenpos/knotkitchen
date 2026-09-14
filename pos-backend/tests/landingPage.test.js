@@ -41,7 +41,7 @@ test("an untouched store still gets a landing page from its branding", () => {
     null
   );
 
-  assert.equal(p.template, "fine-dining");
+  assert.equal(p.template, "peddler");
   assert.equal(p.headline, "Spice Route Kitchen");
   assert.equal(p.subheadline, "Slow-cooked, every day");
   assert.equal(p.backgroundImage, "https://cdn.example/cover.jpg");
@@ -55,7 +55,7 @@ test("the landing fields win over branding once they are set", () => {
     displayName: "Spice Route",
     branding: { siteTitle: "Spice Route Kitchen", tagline: "Slow-cooked, every day" },
     landing: {
-      template: "omakase",
+      template: "night",
       headline: "Book your table",
       subheadline: "Open until midnight",
       ctaText: "See the food",
@@ -63,7 +63,7 @@ test("the landing fields win over branding once they are set", () => {
     },
   });
 
-  assert.equal(p.template, "omakase");
+  assert.equal(p.template, "night");
   assert.equal(p.headline, "Book your table");
   assert.equal(p.subheadline, "Open until midnight");
   assert.equal(p.ctaText, "See the food");
@@ -100,7 +100,7 @@ test("the three section switches default to on and can be turned off", () => {
 
 test("a new website gets the default template without anyone choosing one", () => {
   const doc = new WebsiteSettings({ storeId: "123456", slug: "spice-route" });
-  assert.equal(doc.landing.template, "fine-dining");
+  assert.equal(doc.landing.template, "peddler");
   assert.equal(doc.landing.ctaText, "View Menu");
 });
 
@@ -152,7 +152,7 @@ test("every template the database allows exists in the customer website bundle",
   const block = source.match(/const THEMES = \{([\s\S]*?)\n\};/);
   assert.ok(block, "could not find the THEMES map in LandingTemplates.jsx");
 
-  const rows = [...block[1].matchAll(/^  "([a-z0-9-]+)": (\w+),$/gm)];
+  const rows = [...block[1].matchAll(/^  "?([a-z0-9-]+)"?: (\w+),$/gm)];
   const shipped = rows.map((m) => m[1]);
   assert.ok(shipped.length >= 5, `expected at least five templates, found ${shipped.length}`);
 
@@ -240,12 +240,12 @@ test("CSD saves a template, and the audit trail records it", async () => {
   const { updateLanding } = loadCsd({ settings, audits });
 
   const { sent, failed } = await run(updateLanding, {
-    body: { template: "urban-izakaya", headline: "Come hungry", overlayOpacity: 0 },
+    body: { template: "citrus", headline: "Come hungry", overlayOpacity: 0 },
   });
 
   assert.equal(failed, null);
   assert.equal(settings.saved, 1);
-  assert.equal(sent.data.landing.template, "urban-izakaya");
+  assert.equal(sent.data.landing.template, "citrus");
   assert.equal(sent.data.landing.headline, "Come hungry");
   assert.equal(sent.data.landing.overlayOpacity, 0);
   assert.equal(audits.length, 1);
@@ -376,7 +376,7 @@ test("the POS saves the landing page rather than silently dropping it", async ()
 
   const failed = await posRun(updateWebsiteSettings, {
     landing: {
-      template: "coastal-brunch",
+      template: "sunset",
       headline: "Come hungry",
       overlayOpacity: 10,
       showOffers: false,
@@ -385,7 +385,7 @@ test("the POS saves the landing page rather than silently dropping it", async ()
   });
 
   assert.equal(failed, null);
-  assert.equal(settings.landing.template, "coastal-brunch");
+  assert.equal(settings.landing.template, "sunset");
   assert.equal(settings.landing.featuredItems.length, 3, "the POS cannot save a fourth either");
   assert.equal(settings.landing.headline, "Come hungry");
   assert.equal(settings.landing.overlayOpacity, 10);

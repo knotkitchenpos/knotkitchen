@@ -1,41 +1,31 @@
 import React, { useEffect, useState } from "react";
 import TableBookingModal from "./TableBookingModal";
 import { getBookingSlots } from "../lib/api";
-import FineDining from "./landing/FineDining";
-import FarmToTable from "./landing/FarmToTable";
-import Omakase from "./landing/Omakase";
-import CoastalBrunch from "./landing/CoastalBrunch";
-import UrbanIzakaya from "./landing/UrbanIzakaya";
+import ClassicPeddler from "./landing/ClassicPeddler";
+import Citrus from "./landing/Citrus";
+import NightMarket from "./landing/NightMarket";
+import Garden from "./landing/Garden";
+import Sunset from "./landing/Sunset";
 
 /**
- * The five landing pages.
+ * The five landing pages, ported from the Templates folder.
  *
- * Five separate websites, not one website with five hero crops. Each file
- * under ./landing owns its own masthead, typeface, section order, footer and
- * treatment of the food, and they are meant to share as little as possible --
- * what they do share is in ./landing/kit.jsx and ./landing/data.js, and none
- * of it carries a look.
+ * Every photo, the restaurant's name and its address, phone and email come
+ * from the restaurant (edited in the CSD under Website → Landing Page); only
+ * the marketing copy has a per-design default (./landing/content.js). None of
+ * them prints the whole menu: each shows the two or three featured dishes and
+ * hands the customer on to the menu page.
  *
- * They are five KINDS OF RESTAURANT rather than five colour schemes, because
- * that is what an owner is actually choosing between. Only one of the five is
- * light, only one leads with ordering rather than atmosphere, and only one
- * sets its food as a printed course list.
- *
- * None of them prints the whole menu. A landing page that lists every dish is
- * the ordering page with no basket, only slower -- so each shows the two or
- * three the operator picked in Manage Website and hands the customer on.
- *
- * Keys must match LANDING_TEMPLATES in the backend model. The five keys the
- * first attempt used are translated to these in services/landingPayload.js so
- * a store that chose one keeps the nearest design instead of being reset.
+ * Keys must match LANDING_TEMPLATES in the backend model. Older keys are
+ * translated in services/landingPayload.js so a store keeps the nearest design.
  */
 
 const THEMES = {
-  "fine-dining": FineDining,
-  "farm-to-table": FarmToTable,
-  "omakase": Omakase,
-  "coastal-brunch": CoastalBrunch,
-  "urban-izakaya": UrbanIzakaya,
+  peddler: ClassicPeddler,
+  citrus: Citrus,
+  night: NightMarket,
+  garden: Garden,
+  sunset: Sunset,
 };
 
 export const TEMPLATE_KEYS = Object.keys(THEMES);
@@ -59,7 +49,7 @@ export default function LandingTemplate({ landing, store, menuPath, slug }) {
   // An unknown key means the database holds a template this build does not
   // ship yet -- a rollback, or a key added backend-first. Show the default
   // rather than a blank page.
-  const Page = THEMES[landing?.template] || FineDining;
+  const Page = THEMES[landing?.template] || ClassicPeddler;
   return (
     <>
       <Page

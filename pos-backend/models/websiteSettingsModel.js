@@ -39,11 +39,11 @@ const BUTTON_STYLES = ["rounded", "pill", "square"];
  * because that is what an owner is actually choosing between.
  */
 const LANDING_TEMPLATES = [
-  "fine-dining",
-  "farm-to-table",
-  "omakase",
-  "coastal-brunch",
-  "urban-izakaya",
+  "peddler",
+  "citrus",
+  "night",
+  "garden",
+  "sunset",
 ];
 
 /**
@@ -58,11 +58,18 @@ const LANDING_TEMPLATES = [
  * saved under one. They are translated on read in services/landingPayload.js.
  */
 const LEGACY_LANDING_TEMPLATES = Object.freeze({
-  "hero-classic": "fine-dining",
-  "split-showcase": "farm-to-table",
-  "minimal-center": "coastal-brunch",
-  "photo-fullbleed": "omakase",
-  "card-stack": "urban-izakaya",
+  // Second set (replaced by the Templates folder designs).
+  "fine-dining": "night",
+  "farm-to-table": "garden",
+  omakase: "night",
+  "coastal-brunch": "sunset",
+  "urban-izakaya": "citrus",
+  // First set.
+  "hero-classic": "peddler",
+  "split-showcase": "garden",
+  "minimal-center": "sunset",
+  "photo-fullbleed": "night",
+  "card-stack": "citrus",
 });
 
 const HEX = /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/;
@@ -130,6 +137,32 @@ const bannerSchema = new mongoose.Schema({
  * "Handcrafted with Heart", "Since 1993" -- and they are the cheapest way for
  * a landing page to say something specific rather than generic.
  */
+/**
+ * The words on a landing design, set per restaurant in the CSD. Empty means
+ * "use the design's own wording" (customer-web landing/content.js).
+ */
+const landingCopySchema = new mongoose.Schema(
+  {
+    kicker: { type: String, default: "", maxlength: 60 },
+    headline: { type: String, default: "", maxlength: 80 },
+    headlineAccent: { type: String, default: "", maxlength: 80 },
+    lead: { type: String, default: "", maxlength: 300 },
+    heroBadge: { type: String, default: "", maxlength: 30 },
+    heroNote: { type: String, default: "", maxlength: 40 },
+    storyTitle: { type: String, default: "", maxlength: 80 },
+    storyAccent: { type: String, default: "", maxlength: 80 },
+    menuTitle: { type: String, default: "", maxlength: 80 },
+    menuAccent: { type: String, default: "", maxlength: 80 },
+    ctaTitle: { type: String, default: "", maxlength: 80 },
+    ctaLead: { type: String, default: "", maxlength: 160 },
+    ctaText: { type: String, default: "", maxlength: 40 },
+    visitTitle: { type: String, default: "", maxlength: 80 },
+    hoursText: { type: String, default: "", maxlength: 120 },
+    footerTagline: { type: String, default: "", maxlength: 80 },
+  },
+  { _id: false }
+);
+
 const landingFeatureSchema = new mongoose.Schema(
   {
     title: { type: String, default: "", maxlength: 60 },
@@ -171,6 +204,7 @@ const landingSchema = new mongoose.Schema(
 
     features: { type: [landingFeatureSchema], default: [] },
     gallery: { type: [mediaRefSchema], default: [] },
+    copy: { type: landingCopySchema, default: () => ({}) },
 
     /**
      * The two or three dishes the landing page puts in front of a customer.

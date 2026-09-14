@@ -91,6 +91,25 @@ const buildLandingPayload = (settings = {}, restaurant = null, store = null) => 
     // and give the two copies a way to disagree.
     featuredItems: (landing.featuredItems || []).map(String).slice(0, 3),
 
+    // The restaurant's own name and public contact details, so the landing
+    // design can print them from the small bootstrap response.
+    name,
+    contact: {
+      phone: settings.contact?.phone || "",
+      email: settings.contact?.email || "",
+      addressLine1: settings.contact?.addressLine1 || "",
+      addressLine2: settings.contact?.addressLine2 || "",
+      city: settings.contact?.city || "",
+      postalCode: settings.contact?.postalCode || "",
+    },
+
+    // The design's words; empty values fall back to the design's defaults.
+    copy: {
+      ...(landing.copy?.toObject ? landing.copy.toObject() : landing.copy || {}),
+      lead: landing.copy?.lead || landing.subheadline || "",
+      headline: landing.copy?.headline || "",
+    },
+
     showAbout: landing.showAbout !== false,
     showMenuPreview: landing.showMenuPreview !== false,
     showGallery: landing.showGallery !== false,
