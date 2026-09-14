@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import "./styles/sunset.css";
 import { useGoogleFont } from "./data";
 import { landingContent } from "./content";
-import { Wordmark, Nav, Lines, VisitDetails, PoweredBy } from "./parts";
+import { Wordmark, Nav, Lines, VisitDetails, PoweredBy, Photo } from "./parts";
 
 /** Templates/Food-Peddler-Preview-04-Sunset — warm peach, playful serif. */
 export default function Sunset({ landing, store, menuPath, onBookTable }) {
@@ -41,7 +41,7 @@ export default function Sunset({ landing, store, menuPath, onBookTable }) {
           </div>
           <div className="hero-visual">
             <div className="floating-tag">{c.heroBadge}</div>
-            <img src={c.heroImage} alt={c.heroAlt} />
+            <Photo srcs={c.heroImages} alt={c.heroAlt} />
           </div>
         </section>
 
@@ -83,7 +83,7 @@ export default function Sunset({ landing, store, menuPath, onBookTable }) {
             <div className="menu-row">
               {c.dishes.map((d, i) => (
                 <Link key={d.id} to={menuPath} className={`menu-card ${i === 0 ? "wide" : "compact"}`}>
-                  <img src={d.image} alt={d.name} />
+                  <Photo srcs={d.images} alt={d.name} />
                   <div className="card-copy">
                     <div className="card-topline"><span className="tag">{d.tag}</span><span>{d.price}</span></div>
                     <h3>{d.name}</h3>

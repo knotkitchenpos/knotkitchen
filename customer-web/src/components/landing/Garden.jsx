@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import "./styles/garden.css";
 import { useGoogleFont } from "./data";
 import { landingContent } from "./content";
-import { Wordmark, Nav, Lines, VisitDetails, PoweredBy } from "./parts";
+import { Wordmark, Nav, Lines, VisitDetails, PoweredBy, Photo } from "./parts";
 
 /** Templates/Food-Peddler-Preview-03-Garden — fresh greens, photo first. */
 export default function Garden({ landing, store, menuPath, onBookTable }) {
@@ -24,7 +24,7 @@ export default function Garden({ landing, store, menuPath, onBookTable }) {
         <section className="hero section-shell">
           <div className="hero-visual">
             <div className="card-badge">{c.heroBadge}</div>
-            <img src={c.heroImage} alt={c.heroAlt} />
+            <Photo srcs={c.heroImages} alt={c.heroAlt} />
           </div>
           <div className="hero-copy">
             <p className="eyebrow">{c.kicker}</p>
@@ -82,7 +82,7 @@ export default function Garden({ landing, store, menuPath, onBookTable }) {
             <div className="menu-grid">
               {c.dishes.map((d, i) => (
                 <Link key={d.id} to={menuPath} className={`menu-card ${cardClass[i]}`}>
-                  <img src={d.image} alt={d.name} />
+                  <Photo srcs={d.images} alt={d.name} />
                   <div className="card-copy">
                     <div className="card-topline"><span className="tag">{d.tag}</span><span>{d.price}</span></div>
                     <h3>{d.name}</h3>

@@ -133,7 +133,8 @@ export function landingContent(key, landing = {}, store = null) {
     id: String(p.id),
     name: p.name,
     text: p.description || "",
-    image: p.image || d.images[i + 1] || d.images[1],
+    // Tried in order: a missing upload falls through to the design's photo.
+    images: [p.image, d.images[i + 1] || d.images[1]].filter(Boolean),
     tag: p.isVegetarian ? "Veg" : p.category || "Favourite",
     price: `${Array.isArray(p.variants) && p.variants.length > 1 ? "From " : ""}${money(symbol, p.price)}`,
   }));
@@ -148,7 +149,7 @@ export function landingContent(key, landing = {}, store = null) {
     headline: pick(copy.headline, d.headline),
     headlineAccent: pick(copy.headlineAccent, d.headlineAccent),
     lead: pick(copy.lead, d.lead),
-    heroImage: landing.backgroundImage || dishes[0]?.image || d.images[0],
+    heroImages: [landing.backgroundImage, ...dishes.map((x) => x.images[0]), d.images[0]].filter(Boolean),
     heroAlt: landing.backgroundAlt || name,
     heroBadge: pick(copy.heroBadge, d.heroBadge),
     heroNote: pick(copy.heroNote, d.heroNote || ""),

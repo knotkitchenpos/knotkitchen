@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import "./styles/peddler.css";
 import { useGoogleFont } from "./data";
 import { landingContent } from "./content";
-import { Wordmark, Lines, VisitDetails, PoweredBy, useMenuToggle } from "./parts";
+import { Wordmark, Lines, VisitDetails, PoweredBy, useMenuToggle, Photo } from "./parts";
 
 /** Templates/Food-Peddler-Preview — dark hero, sun disc, rotated photo. */
 export default function ClassicPeddler({ landing, store, menuPath, onBookTable }) {
@@ -53,7 +53,7 @@ export default function ClassicPeddler({ landing, store, menuPath, onBookTable }
           <div className="hero-art reveal">
             <div className="sun-disc" />
             <Link className="hero-image-frame" to={menuPath} aria-label={`Order from ${c.name}`}>
-              <img src={c.heroImage} alt={c.heroAlt} />
+              <Photo srcs={c.heroImages} alt={c.heroAlt} />
             </Link>
             {c.heroNote ? <p className="scribble">{c.heroNote}</p> : null}
             <span className="hero-sticker">{c.heroBadge}</span>
@@ -102,7 +102,7 @@ export default function ClassicPeddler({ landing, store, menuPath, onBookTable }
               {[lead, ...rest].map((d, i) => (
                 <Link key={d.id} className={`dish-card ${i === 0 ? "dish-card-large" : ""}`} to={menuPath}>
                   <div className="dish-image">
-                    <img src={d.image} alt={d.name} />
+                    <Photo srcs={d.images} alt={d.name} />
                     <span className="dish-tag">{d.tag}</span>
                   </div>
                   <div className="dish-meta">

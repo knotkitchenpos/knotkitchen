@@ -31,8 +31,8 @@ test("the restaurant's name, details and words reach the landing page", () => {
 test("every design prints the restaurant's photos, name and details rather than the template's", () => {
   for (const file of ["ClassicPeddler.jsx", "Citrus.jsx", "NightMarket.jsx", "Garden.jsx", "Sunset.jsx"]) {
     const src = WEB("components", "landing", file);
-    assert.match(src, /src=\{c\.heroImage\}/, `${file}: hero photo`);
-    assert.match(src, /src=\{d\.image\}/, `${file}: dish photos`);
+    assert.match(src, /<Photo srcs=\{c\.heroImages\}/, `${file}: hero photo`);
+    assert.match(src, /<Photo srcs=\{d\.images\}/, `${file}: dish photos`);
     assert.match(src, /<VisitDetails c=\{c\} \/>/, `${file}: address, phone, email`);
     assert.match(src, /<Wordmark c=\{c\}/, `${file}: restaurant name`);
     assert.ok(!/Food Peddler|tapashk|86468|demo-store-1/i.test(src), `${file} still carries the template's own details`);

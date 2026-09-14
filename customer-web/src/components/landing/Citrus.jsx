@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import "./styles/citrus.css";
 import { useGoogleFont } from "./data";
 import { landingContent } from "./content";
-import { Wordmark, Nav, Lines, VisitDetails, PoweredBy } from "./parts";
+import { Wordmark, Nav, Lines, VisitDetails, PoweredBy, Photo } from "./parts";
 
 /** Templates/Food-Peddler-Preview-01-Citrus — warm cream, rounded cards. */
 export default function Citrus({ landing, store, menuPath, onBookTable }) {
@@ -44,7 +44,7 @@ export default function Citrus({ landing, store, menuPath, onBookTable }) {
           </div>
           <div className="hero-visual">
             <div className="badge">{c.heroBadge}</div>
-            <img src={c.heroImage} alt={c.heroAlt} />
+            <Photo srcs={c.heroImages} alt={c.heroAlt} />
           </div>
         </section>
 
@@ -89,7 +89,7 @@ export default function Citrus({ landing, store, menuPath, onBookTable }) {
             </div>
             <div className="feature-layout">
               <Link to={menuPath} className="menu-card highlight">
-                <img src={highlight.image} alt={highlight.name} />
+                <Photo srcs={highlight.images} alt={highlight.name} />
                 <div className="card-copy">
                   <div className="card-topline"><span className="tag">{highlight.tag}</span><span>{highlight.price}</span></div>
                   <h3>{highlight.name}</h3>
@@ -99,7 +99,7 @@ export default function Citrus({ landing, store, menuPath, onBookTable }) {
               <div className="menu-stack">
                 {small.map((d) => (
                   <Link key={d.id} to={menuPath} className="menu-card small">
-                    <img src={d.image} alt={d.name} />
+                    <Photo srcs={d.images} alt={d.name} />
                     <div className="card-copy">
                       <div className="card-topline"><span className="tag">{d.tag}</span><span>{d.price}</span></div>
                       <h3>{d.name}</h3>

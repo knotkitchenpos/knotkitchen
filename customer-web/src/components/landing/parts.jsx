@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import "./styles/shared.css";
 import { Link } from "react-router-dom";
 import { telHref } from "./content";
@@ -94,5 +94,26 @@ export function PoweredBy({ className = "powered" }) {
         KnotKitchen
       </a>
     </p>
+  );
+}
+
+/**
+ * An image that tries each source in turn. A restaurant's upload can go
+ * missing (deleted, or never finished uploading); the page should show the
+ * next photo rather than a broken-image icon in the hero.
+ */
+export function Photo({ srcs, alt = "", className }) {
+  const list = (srcs || []).filter(Boolean);
+  const key = list.join("|");
+  const [i, setI] = useState(0);
+  useEffect(() => setI(0), [key]);
+  if (!list.length) return null;
+  return (
+    <img
+      src={list[Math.min(i, list.length - 1)]}
+      alt={alt}
+      className={className}
+      onError={() => setI((n) => (n < list.length - 1 ? n + 1 : n))}
+    />
   );
 }
