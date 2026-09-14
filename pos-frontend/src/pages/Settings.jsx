@@ -48,11 +48,6 @@ const I = {
       <path d="M18 2v6a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V2" /><path d="M12 2v20" /><path d="M6 12h12" />
     </svg>
   ),
-  grid: () => (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-      <rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" />
-    </svg>
-  ),
   users: () => (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
       <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />
@@ -76,11 +71,6 @@ const I = {
   globe: () => (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="12" r="10" /><line x1="2" y1="12" x2="22" y2="12" /><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
-    </svg>
-  ),
-  headset: () => (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M3 18v-6a9 9 0 0 1 18 0v6" /><path d="M21 19a2 2 0 0 1-2 2h-1a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h3ZM3 19a2 2 0 0 0 2 2h1a2 2 0 0 0 2-2v-3a2 2 0 0 0-2-2H3Z" />
     </svg>
   ),
   logout: () => (
@@ -1741,23 +1731,21 @@ const MENU_ITEMS = [
   { id: "device", title: "2. Device Configuration", desc: "Printer paper sizes, auto-print & e-bill settings.", Icon: I.printer, mode: "view" },
   { id: "properties", title: "3. Store Properties", desc: "14 store details & protection PIN.", Icon: I.store, mode: "view" },
   { id: "menu", title: "4. Manage Menu", desc: "Categories, dishes, variants and add-ons.", Icon: I.utensils, path: "/manage-menu" },
-  { id: "table", title: "5. Manage Table", desc: "Table layouts and session status.", Icon: I.grid, path: "/tables" },
-  { id: "staff", title: "6. Manage Staff", desc: "Add/delete staff and PIN privileges.", Icon: I.users, mode: "view" },
-  { id: "toggles", title: "7. Order Toggles & Auto-Ready", desc: "Channel ON/OFF & auto-ready durations.", Icon: I.toggle, mode: "view" },
-  { id: "timings", title: "8. Website Timing & Holidays", desc: "Collection, delivery and table booking hours, Close for Today and holidays for the website.", Icon: I.calendar, mode: "view" },
-  { id: "rules", title: "9. Rules, Charges & Promotions", desc: "Min orders, delivery slabs, GST, coupons, free items.", Icon: I.fileText, mode: "view" },
-  { id: "reports", title: "10. Reports", desc: "Sales, revenue and order breakdowns.", Icon: I.chart, path: "/reports" },
+  { id: "staff", title: "5. Manage Staff", desc: "Add/delete staff and PIN privileges.", Icon: I.users, mode: "view" },
+  { id: "toggles", title: "6. Order Toggles & Auto-Ready", desc: "Channel ON/OFF & auto-ready durations.", Icon: I.toggle, mode: "view" },
+  { id: "timings", title: "7. Website Timing & Holidays", desc: "Collection, delivery and table booking hours, Close for Today and holidays for the website.", Icon: I.calendar, mode: "view" },
+  { id: "rules", title: "8. Rules, Charges & Promotions", desc: "Min orders, delivery slabs, GST, coupons, free items.", Icon: I.fileText, mode: "view" },
+  { id: "reports", title: "9. Reports", desc: "Sales, revenue and order breakdowns.", Icon: I.chart, path: "/reports" },
   // Reachable even when the account is locked -- it is the only screen that
   // can clear a lock, so it must never be gated. See middlewares/accountLock.js.
   { id: "billing", title: "Billing & Subscription", desc: "Business Balance, plan, invoices and transactions.", Icon: I.fileText, path: "/settings/billing" },
 
-  { id: "website", title: "11. Manage Website", desc: "Landing page, branding, colours, domain and payments.", Icon: I.globe, path: "/website" },
+  { id: "website", title: "10. Manage Website", desc: "Landing page, branding, colours, domain and payments.", Icon: I.globe, path: "/website" },
 
   // Activity Log stays CSD-only: it is the audit trail of who did what,
   // including support's own actions, and is locked server-side in
   // middlewares/csdOnly.js rather than merely hidden here.
-  { id: "support", title: "12. Help & Support", desc: "Get help or report an issue.", Icon: I.headset, path: "/support" },
-  { id: "logout", title: "13. Logout", desc: "Securely sign out of the POS system.", Icon: I.logout, action: "logout" },
+  { id: "logout", title: "11. Logout", desc: "Securely sign out of the POS system.", Icon: I.logout, action: "logout" },
 ];
 
 const Settings = () => {

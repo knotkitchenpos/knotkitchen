@@ -23,6 +23,14 @@ const IconChart = ({ active }) => (
     <path d="M7 15v3M12 10v8M17 6v12" />
   </svg>
 );
+const IconTables = ({ active }) => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.9} strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="7" height="7" rx="1.5" />
+    <rect x="14" y="3" width="7" height="7" rx="1.5" />
+    <rect x="3" y="14" width="7" height="7" rx="1.5" />
+    <rect x="14" y="14" width="7" height="7" rx="1.5" />
+  </svg>
+);
 const IconHeadset = ({ active }) => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.9} strokeLinecap="round" strokeLinejoin="round">
     <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
@@ -49,22 +57,17 @@ const IconArrowRight = () => (
 /**
  * Main-area navigation.
  *
- * Per the redesign requirement:
- *   - Settings must NOT appear here (it lives in the bottom pinned
- *     footer, using the gear icon).
- *   - Help & Support must NOT appear here (it lives inside
- *     Settings → Help & Support). The `/home` route is still
- *     reachable via that Settings entry — we're only removing the
- *     duplicate top-level button so the sidebar has a single
- *     canonical access path.
- *
- * DO NOT re-add "/home" or "/settings" to this array — that would
- * re-introduce the duplicate buttons the QA screenshot flagged.
+ * Each screen has ONE way in. Manage Tables and Help & Support live here and
+ * are no longer listed in Settings; Settings itself is the pinned footer
+ * button. Do not add "/settings" (or "/home") here -- that re-introduces the
+ * duplicate buttons the QA screenshot flagged.
  */
 const NAV = [
   { path: "/menu", label: "Product", Icon: IconBag },
   { path: "/orders", label: "Orders", Icon: IconClipboard },
+  { path: "/tables", label: "Manage Tables", Icon: IconTables },
   { path: "/reports", label: "Reports", Icon: IconChart },
+  { path: "/support", label: "Help & Support", Icon: IconHeadset },
 ];
 
 const Sidebar = ({ mobileOpen = false, onMobileClose }) => {
