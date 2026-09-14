@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import ProductCard from "./components/ProductCard";
 import { formatPrice } from "./theme";
 import { dispatchLabel } from "./dispatch";
+import { SUPPORT_PHONE } from "../constants/support";
 
 /**
  * "default-restaurant" theme renderer.
@@ -595,7 +596,7 @@ const DefaultRestaurantTheme = ({ data, cart, onSelectProduct, onOpenCart }) => 
 
         <div className="max-w-6xl mx-auto px-4 mt-4 pt-4 text-center text-xs text-white/50 flex flex-col sm:flex-row items-center justify-between gap-2">
           <span>© {new Date().getFullYear()} {store.name}. All rights reserved.</span>
-          <span>Powered by KnotKitchen POS · Support Helpline: +91 98765 43210</span>
+          <span>Powered by KnotKitchen POS · Support Helpline: {SUPPORT_PHONE}</span>
         </div>
       </footer>
 
@@ -641,7 +642,7 @@ const DefaultRestaurantTheme = ({ data, cart, onSelectProduct, onOpenCart }) => 
               )}
               {activePolicyModal === "refund" && (
                 <p>
-                  Cancellation requests are accepted before food preparation begins. For issues with completed orders, please contact our support team at {contact?.phone || "+91 98765 43210"} within 30 minutes of delivery.
+                  Cancellation requests are accepted before food preparation begins. For issues with completed orders, please contact our support team at {contact?.phone || SUPPORT_PHONE} within 30 minutes of delivery.
                 </p>
               )}
               {activePolicyModal === "cookies" && (

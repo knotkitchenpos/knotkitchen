@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { enqueueSnackbar } from "notistack";
 import { FiPrinter, FiGlobe, FiBell, FiHeadphones, FiX, FiPhoneCall, FiCheckCircle } from "react-icons/fi";
+import { SUPPORT_PHONE, SUPPORT_TEL } from "../constants/support";
 
 /* SVG Support Agent Illustration matching reference image */
 const SupportIllustration = () => (
@@ -202,10 +203,10 @@ const Support = () => {
           <div className="pt-2 text-center space-y-1">
             <p className="text-[13px] font-bold text-[#64748B]">Support Helpline</p>
             <a
-              href="tel:+919876543210"
+              href={SUPPORT_TEL}
               className="text-[16px] font-extrabold text-[#0F172A] hover:text-[#C2410C] transition-colors block"
             >
-              +91 98765 43210
+              {SUPPORT_PHONE}
             </a>
           </div>
         </div>

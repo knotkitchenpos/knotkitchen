@@ -15,6 +15,7 @@
  */
 
 const crypto = require("crypto");
+const { SUPPORT_PHONE } = require("../constants/support");
 const RechargeOrder = require("../models/rechargeOrderModel");
 const Restaurant = require("../models/restaurantModel");
 const { resolvePlatformGateway } = require("./paymentGateway");
@@ -49,7 +50,7 @@ const platformOrThrow = () => {
   const gw = resolvePlatformGateway();
   if (!gw.enabled) {
     throw new RechargeError(
-      "KnotKitchen's payment gateway is not set up yet, so balance top-ups cannot be taken. Please contact KnotKitchen support.",
+      "KnotKitchen's payment gateway is not set up yet, so balance top-ups cannot be taken. Please contact KnotKitchen support on " + SUPPORT_PHONE + ".",
       503,
       "GATEWAY_NOT_CONFIGURED",
     );

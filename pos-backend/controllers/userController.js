@@ -1,4 +1,5 @@
 const createHttpError = require("http-errors");
+const { SUPPORT_PHONE } = require("../constants/support");
 const User = require("../models/userModel");
 const ProductId = require("../models/productIdModel");
 const Restaurant = require("../models/restaurantModel");
@@ -97,10 +98,10 @@ const validateProductId = async ({ productId, forSignup = false }) => {
     throw createHttpError(400, "Invalid Product ID.");
   }
   if (product.status === "INACTIVE" || product.status === "EXPIRED") {
-    throw createHttpError(400, "This Product ID is inactive. Please contact support.");
+    throw createHttpError(400, `This Product ID is inactive. Please contact KnotKitchen support on ${SUPPORT_PHONE}.`);
   }
   if (product.isActive === false) {
-    throw createHttpError(400, "This Product ID is inactive. Please contact support.");
+    throw createHttpError(400, `This Product ID is inactive. Please contact KnotKitchen support on ${SUPPORT_PHONE}.`);
   }
   if (forSignup && product.allowsRegistration === false) {
     throw createHttpError(400, "This Product ID does not permit registration.");
@@ -468,7 +469,7 @@ const login = async (req, res, next) => {
     const product = await ProductId.findOne({ productId: normalizedId, isDeleted: { $ne: true } });
     if (!product) return next(createHttpError(400, "Invalid Product ID."));
     if (product.status === "INACTIVE" || product.status === "EXPIRED" || product.isActive === false) {
-      return next(createHttpError(400, "This Product ID is inactive. Please contact support."));
+      return next(createHttpError(400, `This Product ID is inactive. Please contact KnotKitchen support on ${SUPPORT_PHONE}.`));
     }
 
     // ---------- PATH 1: Product ID + OTP ----------
@@ -483,7 +484,7 @@ const login = async (req, res, next) => {
 
       const store = await Store.findOne({ restaurantId: restaurant._id, isDeleted: { $ne: true } });
       const ownerPhone = await resolveStoreOwnerPhone(restaurant, store);
-      if (!ownerPhone) return next(createHttpError(400, "Store has no registered owner phone. Contact support."));
+      if (!ownerPhone) return next(createHttpError(400, `Store has no registered owner phone. Contact KnotKitchen support on ${SUPPORT_PHONE}.`));
 
       let otpOk = false;
       if (config.allowDevOtp && otpRaw === config.devOtpCode) {

@@ -1,6 +1,7 @@
 const crypto = require("crypto");
 const bcrypt = require("bcrypt");
 const createHttpError = require("http-errors");
+const { SUPPORT_PHONE } = require("../constants/support");
 const config = require("../config/config");
 const OtpVerification = require("../models/otpModel");
 const { sendOtp: sendFast2SmsOtp, Fast2SmsError } = require("./fast2smsProvider");
@@ -73,7 +74,7 @@ const sendOtpSms = async (phone, otp) => {
       // NOT silently accept OTP requests.
       throw createHttpError(
         502,
-        "SMS provider is not configured. Please contact support."
+        `SMS provider is not configured. Please contact KnotKitchen support on ${SUPPORT_PHONE}.`
       );
     }
     try {

@@ -96,9 +96,9 @@ test("the storefront read stays open to the till", () => {
 
 test("Manage Website is reachable from the POS, the Activity Log is not", () => {
   const settings = FE("src", "pages", "Settings.jsx");
-  assert.match(settings, /title: "11\. Manage Website"/, "the tile is missing from POS Settings");
+  assert.match(settings, /title: "\d+\. Manage Website"/, "the tile is missing from POS Settings");
   assert.ok(
-    !/title: "11\. Activity Log & Audit Trail"/.test(settings),
+    !/title: "\d+\. Activity Log & Audit Trail"/.test(settings),
     "the Activity Log is support's, and stays out of the POS",
   );
 

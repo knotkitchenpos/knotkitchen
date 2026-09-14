@@ -14,6 +14,7 @@ import { useDispatch } from "react-redux";
 import { setUser } from "../../redux/slices/userSlice";
 import { setActiveStoreId } from "../../utils/storeSession";
 import { useNavigate } from "react-router-dom";
+import { SUPPORT_PHONE, SUPPORT_TEL } from "../../constants/support";
 
 /**
  * POS sign-in — email/password migration (2026-08-31, replaces phone + OTP).
@@ -455,7 +456,8 @@ const Login = () => {
             </button>
 
             <p className="text-[11px] text-[#77839A] text-center">
-              Forgot your password? Contact KnotKitchen support.
+              Forgot your password? Contact KnotKitchen support on{" "}
+              <a href={SUPPORT_TEL} className="font-bold underline">{SUPPORT_PHONE}</a>.
             </p>
           </motion.form>
         )}
@@ -638,7 +640,8 @@ const Login = () => {
             </button>
 
             <p className="text-[11px] text-[#77839A] text-center">
-              Owner phone doesn&apos;t match? Contact KnotKitchen support.
+              Owner phone doesn&apos;t match? Contact KnotKitchen support on{" "}
+              <a href={SUPPORT_TEL} className="font-bold underline">{SUPPORT_PHONE}</a>.
             </p>
           </motion.form>
         )}
