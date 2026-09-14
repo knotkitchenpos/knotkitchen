@@ -8,6 +8,7 @@ import { printHtmlDocument } from "../utils/printDocument";
 import { isPreparing, isReady, isCancelled, statusLabel } from "../constants/orderStatus";
 import { sourceLabel, tableLabel, orderDisplayId } from "../utils/orderLabels";
 import { receiptAddress } from "../utils/address";
+import { buildQuickDates } from "../utils/quickDates.js";
 
 /**
  * Module 5 — Reports.
@@ -60,36 +61,6 @@ const orderTypeLabel = (t) => {
   return t || "Other";
 };
 
-
-/**
- * Build a horizontal strip of dates centred on the currently-viewed day
- * (or the range end, so the user always has some context to scroll from).
- * We render 14 days back through 3 days ahead — enough to cover a normal
- * fortnight review without an infinite scroller.
- */
-/**
- * Build a horizontal strip of dates ending on Today (or the active date if
- * earlier, capped at Today). The user explicitly requested that Today / current
- * date MUST be the LAST (rightmost) item in the strip — no future dates.
- */
-const buildQuickDates = (anchor) => {
-  const todayDate = new Date();
-  todayDate.setHours(0, 0, 0, 0);
-
-  const anchorDay = anchor ? new Date(anchor) : new Date(todayDate);
-  anchorDay.setHours(0, 0, 0, 0);
-
-  const endDay = anchorDay > todayDate ? new Date(todayDate) : new Date(anchorDay);
-
-  const days = [];
-  // Render 14 days back through 0 (where offset 0 = endDay = Today)
-  for (let offset = -14; offset <= 0; offset += 1) {
-    const d = new Date(endDay);
-    d.setDate(d.getDate() + offset);
-    days.push(d);
-  }
-  return days;
-};
 
 /* ---------- Calendar modal ---------- */
 
@@ -546,12 +517,9 @@ const Reports = () => {
     return `${fmtDate(from)} → ${fmtDate(to)}`;
   }, [responseWindow]);
 
-  // Anchor the quick-date strip on the latest chosen day so scrolling
-  // "back" (older dates) reveals more history without hunting.
-  const quickDates = useMemo(
-    () => buildQuickDates(mode === "range" ? rangeTo : selectedDate),
-    [mode, selectedDate, rangeTo]
-  );
+  // Reach back far enough to show the start of the selection.
+  const stripFocus = mode === "range" ? rangeFrom : selectedDate;
+  const quickDates = useMemo(() => buildQuickDates(stripFocus), [stripFocus]);
 
   // Mouse drag-to-scroll support for the quick date selector (Module 5 §3)
   const dateStripRef = useRef(null);
@@ -589,12 +557,18 @@ const Reports = () => {
     }
   };
 
-  // Scroll to the far right (where Today is located) when dates render/update
+  // Keep the selected day in view; with Today selected that is the far right.
+  // Scrolls only the strip, never the page.
   useEffect(() => {
-    if (dateStripRef.current) {
-      dateStripRef.current.scrollLeft = dateStripRef.current.scrollWidth;
+    const strip = dateStripRef.current;
+    if (!strip) return;
+    const chip = strip.querySelector(`[data-day="${stripFocus}"]`);
+    if (!chip) {
+      strip.scrollLeft = strip.scrollWidth;
+      return;
     }
-  }, [quickDates]);
+    strip.scrollLeft = chip.offsetLeft - strip.offsetLeft - (strip.clientWidth - chip.offsetWidth) / 2;
+  }, [quickDates, stripFocus]);
 
   const doPrint = () => {
     if (!summary) return;
@@ -770,6 +744,7 @@ const Reports = () => {
               return (
                 <button
                   key={s}
+                  data-day={s}
                   type="button"
                   onClick={() => {
                     if (dragMoved.current) return;
