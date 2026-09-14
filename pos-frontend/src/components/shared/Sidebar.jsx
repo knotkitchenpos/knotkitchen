@@ -43,17 +43,6 @@ const IconSettingsGear = ({ active }) => (
     <circle cx="12" cy="12" r="3" />
   </svg>
 );
-const IconArrowLeft = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M19 12H5M12 19l-7-7 7-7" />
-  </svg>
-);
-const IconArrowRight = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="M5 12h14M12 5l7 7-7 7" />
-  </svg>
-);
-
 /**
  * Main-area navigation.
  *
@@ -71,6 +60,7 @@ const NAV = [
 ];
 
 const Sidebar = ({ mobileOpen = false, onMobileClose }) => {
+  // Desktop: collapsed to icons, expanded while the pointer is over it.
   const [collapsed, setCollapsed] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
@@ -82,6 +72,8 @@ const Sidebar = ({ mobileOpen = false, onMobileClose }) => {
 
   const go = (path) => {
     navigate(path);
+    // A tap on a touch screen never "leaves", so close after choosing.
+    setCollapsed(true);
     onMobileClose?.();
   };
 
@@ -126,7 +118,7 @@ const Sidebar = ({ mobileOpen = false, onMobileClose }) => {
         })}
       </nav>
 
-      {/* Footer: Module 6 §1 Settings Icon + Collapse */}
+      {/* Footer: Module 6 §1 Settings Icon */}
       <div className={`relative shrink-0 pb-5 space-y-2 ${isCollapsed ? "px-2" : "px-4"}`}>
         <button
           onClick={() => go("/settings")}
@@ -140,17 +132,6 @@ const Sidebar = ({ mobileOpen = false, onMobileClose }) => {
           <IconSettingsGear active={isActive("/settings")} />
           {!isCollapsed && <span className="text-[15px] font-semibold">Settings</span>}
         </button>
-
-        <button
-          onClick={() => setCollapsed((c) => !c)}
-          title={isCollapsed ? "Expand" : "Collapse"}
-          className={`w-full flex items-center rounded-xl text-[#9AA3B8] hover:text-white hover:bg-[#161C33] transition-colors ${
-            isCollapsed ? "justify-center py-3.5" : "gap-4 px-4 py-3.5"
-          }`}
-        >
-          {isCollapsed ? <IconArrowRight /> : <IconArrowLeft />}
-          {!isCollapsed && <span className="text-[15px] font-semibold">Collapse</span>}
-        </button>
       </div>
     </div>
   );
@@ -158,12 +139,20 @@ const Sidebar = ({ mobileOpen = false, onMobileClose }) => {
   return (
     <>
       {/* Desktop */}
+      {/* The aside keeps the collapsed width in the layout; the panel widens
+          OVER the page on hover, so the screen underneath never reflows. */}
       <aside
-        className={`hidden lg:block shrink-0 h-full transition-[width] duration-200 ${
-          collapsed ? "w-[84px]" : "w-[236px]"
-        }`}
+        className="hidden lg:block relative shrink-0 h-full w-[84px] z-40"
+        onMouseEnter={() => setCollapsed(false)}
+        onMouseLeave={() => setCollapsed(true)}
       >
-        <Panel isCollapsed={collapsed} />
+        <div
+          className={`absolute inset-y-0 left-0 overflow-hidden transition-[width,box-shadow] duration-200 ${
+            collapsed ? "w-[84px]" : "w-[236px] shadow-2xl shadow-black/40"
+          }`}
+        >
+          <Panel isCollapsed={collapsed} />
+        </div>
       </aside>
 
       {/* Mobile drawer */}
