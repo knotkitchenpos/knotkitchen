@@ -232,4 +232,9 @@
 .kkt-citrus .menu-stack{display:grid;gap:24px}
 .kkt-citrus .menu-card.highlight img{height:420px}
 .kkt-citrus .menu-card.small img{height:180px}
+.kkt-citrus .mini-stats{display:flex;flex-wrap:wrap;gap:10px 22px;margin-top:28px;padding-top:18px;border-top:1px solid var(--line);font-size:.82rem;font-weight:700;color:var(--muted)}
+.kkt-citrus .mini-stats strong{color:var(--primary);margin-right:4px}
+.kkt-citrus .story-panel{display:grid;gap:8px;padding:22px;border-radius:22px;background:var(--panel);border:1px solid var(--line)}
+.kkt-citrus .story-panel span{color:var(--primary);font-size:.7rem;font-weight:800;letter-spacing:.14em;text-transform:uppercase}
+.kkt-citrus .story-panel strong{font-family:var(--display);font-size:1.5rem;line-height:1.15;font-weight:400}
 @media (max-width:900px){.kkt-citrus .feature-layout{grid-template-columns:1fr}}
