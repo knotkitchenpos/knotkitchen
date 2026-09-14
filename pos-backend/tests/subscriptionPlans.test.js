@@ -100,7 +100,7 @@ test("the POS shows what the upgrade will actually cost before committing", () =
   const page = FE("src", "pages", "Billing.jsx");
   assert.match(page, /getSubscriptionQuote\(p\.code\)/);
   assert.match(page, /You pay \{money\(upgradeQuotes\[plan\.code\]\)\} now/);
-  assert.match(page, /plan\.isAvailable === false && !current/, "locked plans are marked");
+  assert.match(page, /plan\.isAvailable === false && !own/, "locked plans are marked, but a restaurant can always renew its own");
 });
 
 test("REGRESSION: no downgrade, while a plan is active or after it ends", () => {
