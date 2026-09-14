@@ -113,11 +113,17 @@ const resolveStorefront = async ({ identifier, host } = {}) => {
     return { ok: false, status: 403, reason: "STORE_UNAVAILABLE", settings, store };
   }
 
+  // Required here: accountLock pulls in billing services this module must not
+  // load for every storefront import.
+  const { isOrderingLocked } = require("./accountLock");
+
   return {
     ok: true,
     settings,
     store,
     restaurant,
+    // Locked for non-payment: the site stays up, ordering and booking stop.
+    orderingLocked: await isOrderingLocked(restaurantId),
     restaurantId: restaurantId || null,
     outletId: settings.outletId || null,
     storeId: settings.storeId,

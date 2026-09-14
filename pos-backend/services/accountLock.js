@@ -153,6 +153,27 @@ const evaluateLock = async (restaurantId, on = new Date()) => {
   return { ...assessment, changed: false, locked: wasLocked };
 };
 
+/**
+ * Is this restaurant locked for non-payment? Read by the customer-facing side:
+ * a locked restaurant's website and table QR stop taking new orders, because
+ * nobody on its POS can accept them.
+ *
+ * Fails open, like the staff gate: a database hiccup must not close a
+ * restaurant that has paid.
+ */
+const CUSTOMER_PAUSED_MESSAGE = "This restaurant is not taking online orders right now. Please order with the staff.";
+
+const isOrderingLocked = async (restaurantId) => {
+  if (!restaurantId) return false;
+  try {
+    const balance = await BusinessBalance.findOne({ restaurantId }).select("lockedAt").lean();
+    return Boolean(balance?.lockedAt);
+  } catch (err) {
+    console.warn("[AccountLock] ordering lock check failed, allowing:", err && err.message);
+    return false;
+  }
+};
+
 /** Never allowed to break the thing that called it. */
 const fireEvaluateLock = (restaurantId) => {
   evaluateLock(restaurantId).catch((err) => {
@@ -216,6 +237,8 @@ const stopLockSweeper = () => {
 };
 
 module.exports = {
+  CUSTOMER_PAUSED_MESSAGE,
+  isOrderingLocked,
   balanceEmptySince,
   assessAccount,
   evaluateLock,

@@ -23,6 +23,7 @@ const WebsiteCheckout = require("../models/websiteCheckoutModel");
 const { resolveGateway } = require("../services/paymentGateway");
 const { localDate } = require("../services/tableBookings");
 const { availabilityAt, websiteAvailability } = require("../services/websiteAvailability");
+const { CUSTOMER_PAUSED_MESSAGE } = require("../services/accountLock");
 const config = require("../config/config");
 const { buildStorefrontUrl } = require("../services/websiteProvisioningService");
 
@@ -133,7 +134,7 @@ const toPublicProduct = (item, menu, timezone) => {
  * The POS menu is the single source of truth — there is no separate website
  * menu collection (§8).
  */
-const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezone, restaurant, preview = false }) => {
+const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezone, restaurant, orderingLocked = false, preview = false }) => {
   // Hard tenant filter: only this restaurant's published menus.
   const menus = restaurantId
     ? await Menu.find({
@@ -190,6 +191,12 @@ const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezon
   // Website Timing & Holidays: each channel's own hours, Close for Today and
   // the Holiday Calendar. See services/websiteAvailability.
   const availability = websiteAvailability(settings, timezone);
+  // Locked for non-payment closes every channel, whatever the hours say.
+  if (orderingLocked && !preview) {
+    for (const channel of ["collection", "delivery", "table"]) {
+      availability[channel] = { open: false, kind: "locked", reason: CUSTOMER_PAUSED_MESSAGE, windows: [] };
+    }
+  }
   const anyOrdering = availability.collection.open || availability.delivery.open;
   const openState = preview
     ? { isOpen: true, reason: "", nextOpen: null }
@@ -375,6 +382,7 @@ const buildStorefrontOrder = (finalize) => async (req, res, next) => {
     const now = new Date();
     const availability = availabilityAt(settings, channel, now, timezone);
     if (!availability.open) return next(createHttpError(409, availability.reason));
+    if (ctx.orderingLocked) return next(createHttpError(409, CUSTOMER_PAUSED_MESSAGE));
 
     if (requestedType === "pickup" && settings.ordering?.pickupEnabled === false) {
       return next(createHttpError(409, "This restaurant does not offer pickup."));

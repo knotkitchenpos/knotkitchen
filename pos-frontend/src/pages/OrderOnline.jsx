@@ -109,6 +109,9 @@ export default function OrderOnline() {
   const [cust, setCust] = useState({ name: "", phone: "" });
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState("");
+  // The restaurant is locked for non-payment: the menu shows, a seated party
+  // can still call a waiter and pay, but nothing new can be ordered.
+  const [paused, setPaused] = useState("");
   const [banner, setBanner] = useState(""); // in-page success/info banner
   const [callingWaiter, setCallingWaiter] = useState(false);
   const [cartOpen, setCartOpen] = useState(false);
@@ -151,6 +154,7 @@ export default function OrderOnline() {
         setTable(d.table);
         setRestaurant(d.restaurant);
         setMenu(d.menu || []);
+        setPaused(d.orderingPaused ? d.orderingPausedMessage || "Ordering is paused right now." : "");
         setSession(d.activeSession || null);
         rememberClaim(d.sessionToken);
         setErr("");
@@ -536,6 +540,12 @@ export default function OrderOnline() {
               </button>
             )}
           </div>
+
+          {paused ? (
+            <p role="status" className="mt-3 rounded-xl bg-amber-100 px-3 py-2 text-[12.5px] font-semibold text-amber-900">
+              {paused}
+            </p>
+          ) : null}
 
           {/* Search + tabs */}
           <div className="mt-3 relative">
@@ -940,11 +950,13 @@ export default function OrderOnline() {
               )}
               <button
                 onClick={checkout}
-                disabled={placing}
+                disabled={placing || Boolean(paused)}
                 className="w-full py-3 rounded-2xl font-extrabold text-white text-sm disabled:opacity-60"
                 style={{ background: primary }}
               >
-                {placing
+                {paused
+                  ? "Ordering is paused"
+                  : placing
                   ? "Sending…"
                   : session
                     ? `Add to ${tableName} · ${money(cartTotal)}`

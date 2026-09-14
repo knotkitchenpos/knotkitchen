@@ -15,6 +15,8 @@ const priceService = require("../services/price");
 // it eagerly pulls in socket.io which touches mongoose internals and breaks
 // tests that mock mongoose before the models are loaded (tableQROrdering.test).
 const getSocket = () => require("../services/socket");
+// Lazy for the same reason: billing services load models these tests mock.
+const accountLock = () => require("../services/accountLock");
 const crypto = require("crypto");
 const mongoose = require("mongoose");
 const { PREPARING, SETTLED_STATUSES, CANCELLED_STATUSES, canonicalStatus } = require("../constants/orderStatus");
@@ -336,6 +338,10 @@ router.route("/table/:token").get(qrReadLimiter, resolveTableScope, async (req, 
         // The claim for the session above. The page carries it in its URL so
         // a reload, a locked phone or a bookmark all stay in the same order.
         sessionToken,
+        // Locked for non-payment: the menu still shows and a seated party can
+        // still call a waiter and pay, but no new orders go in.
+        orderingPaused: await accountLock().isOrderingLocked(restaurantId),
+        orderingPausedMessage: accountLock().CUSTOMER_PAUSED_MESSAGE,
         // Say so explicitly rather than quietly returning a different party's
         // session: the page must stop, not adopt whoever is here now.
         sessionExpired: expired,
@@ -378,6 +384,9 @@ router.route("/session/items/:token").post(qrWriteLimiter, resolveTableScope, as
     const { table, restaurantId, outletId } = req.scope;
     const { items, customerCount, customerName, customerPhone, requestId } = req.body;
     if (!table.qrEnabled) return res.status(403).json({ success: false, message: "QR ordering disabled for this table." });
+    if (await accountLock().isOrderingLocked(restaurantId)) {
+      return res.status(409).json({ success: false, code: "ORDERING_PAUSED", message: accountLock().CUSTOMER_PAUSED_MESSAGE });
+    }
     if (!items || !items.length) return res.status(400).json({ success: false, message: "items required!" });
 
     if (requestId) {
@@ -899,6 +908,9 @@ router.route("/order/:token").post(qrWriteLimiter, resolveTableScope, async (req
     const { table, restaurantId, outletId } = req.scope;
     const { items, customerName, phone, guests, requestId } = req.body;
     if (!items || !items.length) return res.status(400).json({ success: false, message: "items required!" });
+    if (await accountLock().isOrderingLocked(restaurantId)) {
+      return res.status(409).json({ success: false, code: "ORDERING_PAUSED", message: accountLock().CUSTOMER_PAUSED_MESSAGE });
+    }
 
     if (requestId) {
       const dup = await Order.findOne({ restaurantId, table: table._id, requestId, isDeleted: { $ne: true } });

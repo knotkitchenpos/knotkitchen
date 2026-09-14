@@ -16,6 +16,7 @@ const {
   formatTime,
 } = require("../services/tableBookings");
 const { availabilityAt, windowsOn } = require("../services/websiteAvailability");
+const { CUSTOMER_PAUSED_MESSAGE } = require("../services/accountLock");
 
 /**
  * Bookable times on a date: the booking slot grid, kept to Restaurant Time
@@ -116,13 +117,13 @@ const getPublicBookingSlots = async (req, res, next) => {
     const date = dates.includes(req.query.date) ? req.query.date : dates[0];
     // Closed for Today or a holiday closes the whole website, bookings included.
     const now = availabilityAt(ctx.settings, "table", new Date(), timeZone);
-    const websiteClosed = now.kind === "holiday" || now.kind === "closedToday";
+    const websiteClosed = now.kind === "holiday" || now.kind === "closedToday" || ctx.orderingLocked;
 
     res.status(200).json({
       success: true,
       data: {
         enabled: config.enabled && !websiteClosed,
-        closedReason: websiteClosed ? now.reason : "",
+        closedReason: ctx.orderingLocked ? CUSTOMER_PAUSED_MESSAGE : websiteClosed ? now.reason : "",
         openTime: config.openTime,
         closeTime: config.closeTime,
         hoursLabel: hoursLabelFor(ctx.settings, config, date),
@@ -149,6 +150,7 @@ const createPublicTableBooking = async (req, res, next) => {
     const body = req.body || {};
 
     if (!config.enabled) throw createHttpError(409, "Table booking is not available for this restaurant.");
+    if (ctx.orderingLocked) throw createHttpError(409, CUSTOMER_PAUSED_MESSAGE);
     const rightNow = availabilityAt(settings, "table", new Date(), timeZone);
     if (rightNow.kind === "holiday" || rightNow.kind === "closedToday") throw createHttpError(409, rightNow.reason);
 
