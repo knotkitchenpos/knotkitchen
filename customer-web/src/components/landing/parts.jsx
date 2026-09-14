@@ -13,7 +13,9 @@ export function Wordmark({ c, markClass = "", plain = false }) {
   const [first, ...rest] = c.words;
   return (
     <>
-      {c.logo ? <img src={c.logo} alt="" className="kkt-logo" /> : null}
+      {c.logo ? (
+        <img src={c.logo} alt="" className="kkt-logo" onError={(e) => { e.currentTarget.style.display = "none"; }} />
+      ) : null}
       {plain ? (
         c.name
       ) : (
