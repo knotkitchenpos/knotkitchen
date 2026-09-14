@@ -39,15 +39,11 @@ const ALWAYS_OPEN = [
   "/api/restaurant/me",
   "/api/csd",
 
-  // Customers. Never gated by default -- see the note above.
-  "/api/public",
-  "/api/storefront",
-  "/api/qr",
-  "/api/table-qr",
-  "/api/online-orders",
-  "/api/customer",
+  // Gateway callbacks. (Diners never sign in, so customer-facing routes are
+  // never reached by this middleware at all -- listing them here only ever
+  // exempted STAFF calls under the same prefix, such as accepting website
+  // orders, which a locked restaurant must not be able to do.)
   "/api/payment",
-  "/api/payment-link",
 
   // Infrastructure and the public receipt page.
   "/health",
@@ -67,7 +63,11 @@ const enforceAccountLock = async (req, res, next) => {
   try {
     const restaurantId = req.user?.restaurantId;
     if (!restaurantId) return next();
-    if (isOpen(req.path)) return next();
+    // This runs inside each router, where req.path is relative to where the
+    // router is mounted ("/" for GET /api/business-balance). The allow-list is
+    // written as full paths, so it has to be matched against the full path --
+    // matching req.path alone left Billing itself locked.
+    if (isOpen(`${req.baseUrl || ""}${req.path}`)) return next();
 
     const balance = await BusinessBalance.findOne({ restaurantId })
       .select("lockedAt lockedReason")

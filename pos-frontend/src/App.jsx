@@ -14,6 +14,7 @@ import {
 } from "./pages";
 
 import Sidebar from "./components/shared/Sidebar";
+import { AccountLockBanner, LockRedirect, useAccountLock } from "./components/shared/AccountLock";
 import useLoadData from "./hooks/useLoadData";
 import useRealtimeSync from "./hooks/useRealtimeSync";
 import { isPublicPath } from "./utils/publicRoutes";
@@ -48,6 +49,8 @@ function Layout() {
   // payment-link URL (/pay/<token>) fell through and rendered a customer's
   // payment page inside the staff sidebar.
   const bare = isPublicPath(location.pathname) || location.pathname === "/website/preview";
+  // Unpaid: warn during the grace period, then only Billing stays open.
+  const lock = useAccountLock(Boolean(isAuth) && !bare);
 
   if (isLoading) return <FullScreenLoader />;
 
@@ -98,14 +101,20 @@ function Layout() {
             <path d="M3 6h18M3 12h18M3 18h18" />
           </svg>
         </button>
+        {isAuth && <AccountLockBanner {...lock} />}
+        {lock.locked ? <LockRedirect /> : null}
         {routes}
       </main>
-      {isAuth && <MarketplaceOrderPopup />}
-      {isAuth && <NewOrderPopup />}
-      {isAuth && <WaiterCallPopup />}
-      {isAuth && <TableBookingPopup />}
-      {isAuth && <PrepDuePopup />}
-      {isAuth && <AddedItemsPopup />}
+      {isAuth && !lock.locked && (
+        <>
+          <MarketplaceOrderPopup />
+          <NewOrderPopup />
+          <WaiterCallPopup />
+          <TableBookingPopup />
+          <PrepDuePopup />
+          <AddedItemsPopup />
+        </>
+      )}
     </div>
   );
 }

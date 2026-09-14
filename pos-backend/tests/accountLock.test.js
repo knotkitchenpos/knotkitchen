@@ -37,20 +37,13 @@ test("CRITICAL: a locked restaurant can still reach everything it needs to pay",
   }
 });
 
-test("CRITICAL: a lock never reaches the restaurant's own customers", () => {
-  // Blocking these punishes diners for a dispute between KnotKitchen and the
-  // restaurant -- someone mid-meal could not settle their table bill.
-  for (const p of [
-    "/api/qr/session/abc",
-    "/api/table-qr/scan",
-    "/api/storefront/checkout",
-    "/api/public/store/148379/menu",
-    "/api/online-orders",
-    "/api/payment-link/verify",
-    "/r/o_abc_def",
-  ]) {
-    assert.equal(isOpen(p), true, `${p} is customer-facing and must never be gated`);
-  }
+test("CRITICAL: a lock never reaches the restaurant's own customers", async () => {
+  // Blocking diners punishes them for a dispute between KnotKitchen and the
+  // restaurant. They never sign in, and the gate only looks at signed-in staff.
+  const { enforceAccountLock } = require("../middlewares/accountLock");
+  let passed = false;
+  await enforceAccountLock({ baseUrl: "/api/qr", path: "/session/abc" }, {}, () => (passed = true));
+  assert.equal(passed, true);
 });
 
 test("the POS itself IS gated", () => {
@@ -64,6 +57,10 @@ test("the POS itself IS gated", () => {
     "/api/analytics",
     "/api/restaurant/settings",
     "/api/team",
+    // Staff screens under prefixes that also carry customer routes.
+    "/api/online-orders",
+    "/api/customer",
+    "/api/payment-link",
   ]) {
     assert.equal(isOpen(p), false, `${p} should be gated by a lock`);
   }
@@ -88,9 +85,89 @@ test("the allow-list is short enough to read", () => {
   assert.ok(ALWAYS_OPEN.length <= 24, `allow-list has grown to ${ALWAYS_OPEN.length} entries`);
 });
 
+test("REGRESSION: the allow-list is matched on the full path, not the router-relative one", async () => {
+  // The gate runs inside each router, where GET /api/business-balance has
+  // req.path "/". Matching that alone kept Billing locked with everything else.
+  const { BusinessBalance } = require("../models/businessBalanceModel");
+  const { enforceAccountLock } = require("../middlewares/accountLock");
+  const original = BusinessBalance.findOne;
+  BusinessBalance.findOne = () => ({ select: () => ({ lean: async () => ({ lockedAt: new Date() }) }) });
+  const call = async (baseUrl, reqPath) => {
+    let status = null;
+    let passed = false;
+    await enforceAccountLock(
+      { user: { restaurantId: "r1" }, baseUrl, path: reqPath },
+      { status: (s) => ((status = s), { json: () => {} }) },
+      () => (passed = true),
+    );
+    return { status, passed };
+  };
+  try {
+    assert.deepEqual(await call("/api/business-balance", "/"), { status: null, passed: true });
+    assert.deepEqual(await call("/api/subscription", "/plans"), { status: null, passed: true });
+    assert.deepEqual(await call("/api/order", "/"), { status: 402, passed: false });
+    assert.deepEqual(await call("/api/online-orders", "/abc/status"), { status: 402, passed: false });
+  } finally {
+    BusinessBalance.findOne = original;
+  }
+});
+
 // ---------------------------------------------------------------------------
 // The decision
 // ---------------------------------------------------------------------------
+
+/** Run `fn` against accountLock with its reads replaced. */
+const withAssess = async ({ lastEntry = null, dues = { count: 0 }, subscription = null, graceHours = 24 }, fn) => {
+  const Module = require("module");
+  const orig = Module._load;
+  Module._load = function (r) {
+    if (r === "./pricing") return { getPlatformConfig: async () => ({ graceHours }) };
+    if (r === "./orderCharge") return { outstandingDues: async () => dues };
+    if (r === "../models/platformSubscriptionModel") {
+      return { PlatformSubscription: { findOne: () => ({ lean: async () => subscription }) } };
+    }
+    if (r === "../models/businessBalanceModel") {
+      return {
+        BusinessBalance: {},
+        LedgerEntry: { findOne: () => ({ sort: () => ({ select: () => ({ lean: async () => lastEntry }) }) }) },
+      };
+    }
+    return orig.apply(this, arguments);
+  };
+  delete require.cache[require.resolve("../services/accountLock")];
+  try {
+    return await fn(require("../services/accountLock"));
+  } finally {
+    Module._load = orig;
+    delete require.cache[require.resolve("../services/accountLock")];
+  }
+};
+
+test("an empty Business Balance locks the POS 24 hours after it ran out", async () => {
+  const ranOut = new Date("2026-09-14T10:00:00Z");
+  await withAssess({ lastEntry: { createdAt: ranOut, balanceAfterPaise: 0 } }, async (svc) => {
+    const inBuffer = await svc.assessAccount("r1", new Date("2026-09-15T09:00:00Z"));
+    assert.equal(inBuffer.shouldLock, false, "23 hours in: still usable");
+    assert.equal(inBuffer.locksAt.toISOString(), "2026-09-15T10:00:00.000Z", "and the POS is told when it locks");
+    assert.match(inBuffer.lockWarning, /run out/);
+
+    const after = await svc.assessAccount("r1", new Date("2026-09-15T10:01:00Z"));
+    assert.equal(after.shouldLock, true);
+    assert.match(after.reasons.join(" "), /Business Balance ran out/);
+  });
+});
+
+test("a balance with money, or one that never had any, is not a reason to lock", async () => {
+  await withAssess({ lastEntry: { createdAt: new Date("2026-01-01"), balanceAfterPaise: 5000 } }, async (svc) => {
+    assert.equal((await svc.assessAccount("r1", new Date("2026-09-15"))).shouldLock, false);
+  });
+  await withAssess({ lastEntry: null }, async (svc) => {
+    const res = await svc.assessAccount("r1", new Date("2026-09-15"));
+    assert.equal(res.shouldLock, false);
+    assert.equal(res.locksAt, null);
+  });
+});
+
 
 test("SOURCE: a lock is only applied after the configured grace period", () => {
   const src = SRC("services/accountLock.js");

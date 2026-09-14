@@ -4,6 +4,7 @@ const { isVerifiedUser } = require("../middlewares/tokenVerification");
 const { getBalance, history } = require("../services/ledger");
 const { createRecharge, finalizeRecharge, RechargeError } = require("../services/recharge");
 const { outstandingDues } = require("../services/orderCharge");
+const { assessAccount } = require("../services/accountLock");
 const { formatINR, toRupees } = require("../services/money");
 
 const router = express.Router();
@@ -37,9 +38,10 @@ const asAmount = (paise) => ({
 router.get("/", isVerifiedUser, async (req, res, next) => {
   try {
     const restaurantId = ownRestaurantId(req);
-    const [balance, dues] = await Promise.all([
+    const [balance, dues, assessment] = await Promise.all([
       getBalance(restaurantId),
       outstandingDues(restaurantId),
+      assessAccount(restaurantId),
     ]);
 
     res.status(200).json({
@@ -49,6 +51,9 @@ router.get("/", isVerifiedUser, async (req, res, next) => {
         locked: Boolean(balance.lockedAt),
         lockedAt: balance.lockedAt,
         lockedReason: balance.lockedReason,
+        // Not locked yet, but will be at `locksAt` unless the restaurant pays.
+        locksAt: balance.lockedAt ? null : assessment.locksAt,
+        lockWarning: balance.lockedAt ? "" : assessment.lockWarning,
         dues: { count: dues.count, ...asAmount(dues.totalPaise), oldestAt: dues.oldestAt },
       },
     });

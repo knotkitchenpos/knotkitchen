@@ -64,6 +64,8 @@ const useAutoReceiptPrint = () => {
         if (payload.table && typeof payload.table === "object") order.table = payload.table;
         await printOrderReceipt(order, { auto: true, config });
       } catch (err) {
+        // Locked for non-payment: the POS is on Billing, nothing to print.
+        if (err?.response?.data?.code === "ACCOUNT_LOCKED") return;
         enqueueSnackbar(`Receipt not printed: ${err?.message || "printer error"}`, { variant: "warning" });
       }
     };

@@ -42,7 +42,7 @@ test("REGRESSION: the popup is the ONLY listener for created orders", () => {
     !fs.existsSync(path.join(__dirname, "..", "src/components/dashboard/QRTableOrderPopup.jsx")),
     "the old popup must be gone, not merely unmounted",
   );
-  assert.match(SRC("src/App.jsx"), /\{isAuth && <NewOrderPopup \/>\}/);
+  assert.equal((SRC("src/App.jsx").match(/<NewOrderPopup \/>/g) || []).length, 1, "mounted exactly once");
   assert.ok(!/QRTableOrderPopup/.test(SRC("src/App.jsx")));
 });
 

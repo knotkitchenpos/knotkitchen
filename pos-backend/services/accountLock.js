@@ -1,12 +1,13 @@
 /**
  * Locking an account that has not paid, and unlocking it the moment it does.
  *
- * Two things put a restaurant past due, and both get the same configured grace
- * period (24 hours by default):
+ * Three things put a restaurant past due, and all get the same configured
+ * grace period (24 hours by default):
  *
- *   unpaid per-order fees   a website order was charged while the balance was
- *                           empty, so the fee sits PENDING
- *   an expired subscription the period ended and was not renewed
+ *   an empty Business Balance  it ran out and was not recharged
+ *   unpaid per-order fees      a website order was charged while the balance
+ *                              was empty, so the fee sits PENDING
+ *   an expired subscription    the period ended and was not renewed
  *
  * What "locked" means is deliberately narrow. The spec is explicit that a
  * locked restaurant can still sign in, open Billing, see what it owes and pay
@@ -24,12 +25,25 @@
  * for two extra queries to re-derive something that changes twice a month.
  */
 
-const { BusinessBalance } = require("../models/businessBalanceModel");
+const { BusinessBalance, LedgerEntry } = require("../models/businessBalanceModel");
 const { PlatformSubscription } = require("../models/platformSubscriptionModel");
 const { getPlatformConfig } = require("./pricing");
 const { formatINR } = require("./money");
 
 const HOUR_MS = 60 * 60 * 1000;
+
+/**
+ * When the balance hit zero, or null if it has money (or never had any).
+ * The newest statement row carries the balance after it; if that is zero, the
+ * balance has been empty since that row.
+ */
+const balanceEmptySince = async (restaurantId) => {
+  const last = await LedgerEntry.findOne({ restaurantId })
+    .sort({ createdAt: -1 })
+    .select("createdAt balanceAfterPaise")
+    .lean();
+  return last && last.balanceAfterPaise <= 0 ? last.createdAt : null;
+};
 
 /**
  * Should this restaurant be locked right now, and why?
@@ -47,12 +61,28 @@ const assessAccount = async (restaurantId, on = new Date()) => {
   // require would resolve to undefined on whichever side loaded second.
   const { outstandingDues } = require("./orderCharge");
 
-  const [dues, subscription] = await Promise.all([
+  const [dues, subscription, emptySince] = await Promise.all([
     outstandingDues(restaurantId),
     PlatformSubscription.findOne({ restaurantId }).lean(),
+    balanceEmptySince(restaurantId),
   ]);
 
   const reasons = [];
+  // When each pending problem turns into a lock, so the POS can warn first.
+  const deadlines = [];
+
+  // The balance ran out. Read from the statement rather than a stored flag, so
+  // a restaurant that was already at zero when this rule arrived is covered
+  // without a migration. A restaurant that has never had money has nothing
+  // that "ran out" -- the subscription rule covers it.
+  if (emptySince) {
+    const since = new Date(emptySince).getTime();
+    if (now - since > graceMs) {
+      reasons.push("The Business Balance ran out and was not recharged within the grace period.");
+    } else {
+      deadlines.push({ at: since + graceMs, why: "Your Business Balance has run out." });
+    }
+  }
 
   if (dues.count > 0 && dues.oldestAt) {
     const dueSince = new Date(dues.oldestAt).getTime();
@@ -60,6 +90,8 @@ const assessAccount = async (restaurantId, on = new Date()) => {
       reasons.push(
         `${dues.count} unpaid order charge(s) totalling ${formatINR(dues.totalPaise)}.`,
       );
+    } else {
+      deadlines.push({ at: dueSince + graceMs, why: `${dues.count} order charge(s) are unpaid.` });
     }
   }
 
@@ -69,12 +101,19 @@ const assessAccount = async (restaurantId, on = new Date()) => {
     const endedAt = new Date(subscription.currentPeriodEnd).getTime();
     if (now > endedAt + graceMs) {
       reasons.push("The subscription expired and the grace period has passed.");
+    } else if (now >= endedAt) {
+      deadlines.push({ at: endedAt + graceMs, why: "Your subscription has ended." });
     }
   }
+
+  deadlines.sort((a, b) => a.at - b.at);
 
   return {
     shouldLock: reasons.length > 0,
     reasons,
+    // Not locked yet, but will be at this moment unless it is dealt with.
+    locksAt: reasons.length === 0 && deadlines.length ? new Date(deadlines[0].at) : null,
+    lockWarning: reasons.length === 0 ? deadlines.map((d) => d.why).join(" ") : "",
     duesPaise: dues.totalPaise,
     duesCount: dues.count,
     graceHours: config.graceHours,
@@ -133,15 +172,18 @@ const fireEvaluateLock = (restaurantId) => {
 const sweepLocks = async (on = new Date()) => {
   const Order = require("../models/orderModel");
 
-  const [withDues, expired, alreadyLocked] = await Promise.all([
+  const [withDues, expired, alreadyLocked, empty] = await Promise.all([
     Order.distinct("restaurantId", { "platformCharge.status": "PENDING" }),
     PlatformSubscription.distinct("restaurantId", {
       currentPeriodEnd: { $ne: null, $lt: new Date(on) },
     }),
     BusinessBalance.distinct("restaurantId", { lockedAt: { $ne: null } }),
+    // ponytail: includes restaurants that never recharged (one cheap read each
+    // per sweep); track the moment a debit empties the balance if this grows.
+    BusinessBalance.distinct("restaurantId", { balancePaise: { $lte: 0 } }),
   ]);
 
-  const candidates = [...new Set([...withDues, ...expired, ...alreadyLocked].map(String))];
+  const candidates = [...new Set([...withDues, ...expired, ...alreadyLocked, ...empty].map(String))];
 
   let locked = 0;
   let unlocked = 0;
@@ -174,6 +216,7 @@ const stopLockSweeper = () => {
 };
 
 module.exports = {
+  balanceEmptySince,
   assessAccount,
   evaluateLock,
   fireEvaluateLock,

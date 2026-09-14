@@ -77,6 +77,12 @@ axiosWrapper.interceptors.response.use(
       url.includes("/api/user/store/set-password") ||
       url.includes("/api/user/impersonate");
 
+    // The account was locked for non-payment. The POS moves to Billing; see
+    // components/shared/AccountLock.jsx.
+    if (error.response?.status === 402 && error.response?.data?.code === "ACCOUNT_LOCKED") {
+      window.dispatchEvent(new Event("kk:account-locked"));
+    }
+
     if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isAuthEndpoint) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
