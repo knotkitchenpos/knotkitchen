@@ -70,7 +70,7 @@ const sanitizeSettings = (doc) => {
  * A mediaId belonging to another tenant is rejected — this is the check that
  * stops Store A from embedding Store B's private assets.
  */
-const resolveMediaRef = async (input, tenant) => {
+const resolveMediaRef = async (input, tenant, stored = new Map()) => {
   if (input === null) return { mediaId: null, url: "", thumbnailUrl: "", alt: "" };
   if (!input || typeof input !== "object") return undefined;
   if (!input.mediaId) return undefined;
@@ -83,7 +83,17 @@ const resolveMediaRef = async (input, tenant) => {
     storeId: tenant.storeId,
     isDeleted: { $ne: true },
   });
-  if (!asset) throw createHttpError(404, "Selected image was not found in your media library.");
+  if (!asset) {
+    // The editor sends back every image the site already has on every save.
+    // One whose library record has since gone must not block an unrelated
+    // change (switching the template was refused with this error): an image
+    // already on THIS store's site is kept as it is. Only a newly chosen image
+    // has to be in the library -- which is still what stops Store A
+    // embedding Store B's assets.
+    const already = stored.get(String(input.mediaId));
+    if (already) return already;
+    throw createHttpError(404, "Selected image was not found in your media library.");
+  }
 
   return {
     mediaId: asset._id,
@@ -91,6 +101,28 @@ const resolveMediaRef = async (input, tenant) => {
     thumbnailUrl: asset.thumbnailUrl || asset.url,
     alt: clampText(input.alt, 200) || asset.altText || "",
   };
+};
+
+/** Every image reference the settings already hold, by mediaId. */
+const storedMediaRefs = (settings) => {
+  const refs = new Map();
+  const walk = (node) => {
+    if (!node || typeof node !== "object" || node instanceof Date) return;
+    if (Array.isArray(node)) return node.forEach(walk);
+    if (node.mediaId && typeof node.url === "string") {
+      refs.set(String(node.mediaId), {
+        mediaId: node.mediaId,
+        url: node.url,
+        thumbnailUrl: node.thumbnailUrl || node.url,
+        alt: node.alt || "",
+      });
+    }
+    for (const [key, value] of Object.entries(node)) {
+      if (key !== "_id" && key !== "mediaId") walk(value);
+    }
+  };
+  walk(settings && typeof settings.toObject === "function" ? settings.toObject() : settings);
+  return refs;
 };
 
 /** Load (auto-provisioning if missing) the caller's website settings. */
@@ -175,6 +207,7 @@ const updateWebsiteSettings = async (req, res, next) => {
   try {
     // req.websiteTarget: the CSD editing a chosen store (csdWebsiteController).
     const { tenant, settings } = req.websiteTarget || (await loadOwnSettings(req));
+    const stored = storedMediaRefs(settings);
     const prevSnapshot = sanitizeSettings(settings);
     const body = req.body || {};
 
@@ -223,7 +256,7 @@ const updateWebsiteSettings = async (req, res, next) => {
       for (const banner of body.banners.slice(0, 10)) {
         const title = clampText(banner?.title, 120);
         if (!title) continue;
-        const image = banner?.image ? await resolveMediaRef(banner.image, tenant) : undefined;
+        const image = banner?.image ? await resolveMediaRef(banner.image, tenant, stored) : undefined;
         banners.push({
           title,
           description: clampText(banner?.description, 400) || "",
@@ -247,7 +280,7 @@ const updateWebsiteSettings = async (req, res, next) => {
 
       for (const key of ["logo", "favicon", "coverImage"]) {
         if (b[key] !== undefined) {
-          const ref = await resolveMediaRef(b[key], tenant);
+          const ref = await resolveMediaRef(b[key], tenant, stored);
           if (ref !== undefined) settings.branding[key] = ref;
         }
       }
@@ -304,7 +337,7 @@ const updateWebsiteSettings = async (req, res, next) => {
 
       for (const key of ["backgroundImage", "aboutImage"]) {
         if (l[key] !== undefined) {
-          const ref = await resolveMediaRef(l[key], tenant);
+          const ref = await resolveMediaRef(l[key], tenant, stored);
           if (ref !== undefined) settings.landing[key] = ref;
         }
       }
@@ -314,7 +347,7 @@ const updateWebsiteSettings = async (req, res, next) => {
       if (Array.isArray(l.features)) {
         const features = [];
         for (const f of l.features.slice(0, 3)) {
-          const image = await resolveMediaRef(f?.image, tenant);
+          const image = await resolveMediaRef(f?.image, tenant, stored);
           features.push({
             title: clampText(f?.title, 60) || "",
             text: clampText(f?.text, 240) || "",
@@ -327,7 +360,7 @@ const updateWebsiteSettings = async (req, res, next) => {
       if (Array.isArray(l.gallery)) {
         const gallery = [];
         for (const g of l.gallery.slice(0, 12)) {
-          const image = await resolveMediaRef(g, tenant);
+          const image = await resolveMediaRef(g, tenant, stored);
           if (image && image.url) gallery.push(image);
         }
         settings.landing.gallery = gallery;
@@ -540,7 +573,7 @@ const updateWebsiteSettings = async (req, res, next) => {
       for (const offer of body.offers.slice(0, 20)) {
         const title = clampText(offer?.title, 120);
         if (!title) continue;
-        const image = offer?.image ? await resolveMediaRef(offer.image, tenant) : undefined;
+        const image = offer?.image ? await resolveMediaRef(offer.image, tenant, stored) : undefined;
         offers.push({
           title,
           description: clampText(offer?.description, 400) || "",
@@ -746,4 +779,5 @@ const validateGatewayCredentials = async (req, res, next) => {
   }
 };
 
-module.exports = { getWebsiteSettings, updateWebsiteSettings, previewWebsite, validateGatewayCredentials, loadOwnSettings, settingsResponse };
+module.exports = {
+  storedMediaRefs, getWebsiteSettings, updateWebsiteSettings, previewWebsite, validateGatewayCredentials, loadOwnSettings, settingsResponse };
