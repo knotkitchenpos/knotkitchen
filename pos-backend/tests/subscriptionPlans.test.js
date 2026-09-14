@@ -103,13 +103,16 @@ test("the POS shows what the upgrade will actually cost before committing", () =
   assert.match(page, /plan\.isAvailable === false && !current/, "locked plans are marked");
 });
 
-test("REGRESSION: no downgrade while a plan is active", () => {
-  // Switching to a cheaper plan mid-period cost nothing and kept the paid-up
-  // period. quote() now refuses it; purchasePlan always goes through quote().
+test("REGRESSION: no downgrade, while a plan is active or after it ends", () => {
+  // quote() refuses any cheaper plan once the restaurant has had a plan;
+  // purchasePlan always goes through quote().
   const src = require("node:fs").readFileSync(require.resolve("../services/subscription"), "utf8");
   const q = src.slice(src.indexOf("const quote = async"), src.indexOf("const purchasePlan"));
   assert.match(q, /if \(priced\.pricePaise < currentPricePaise\)/);
   assert.match(q, /throw new SubscriptionError\([\s\S]*?lower plan[\s\S]*?409/);
+  // Not gated on the period still running.
+  assert.match(q, /if \(subscription\.planCode && subscription\.planCode !== planCode\) \{\s*const current = await resolvePlanPrice/);
+  assert.ok(!/while \$\{subscription\.planName[^`]*is active/.test(q), "the refusal must not suggest it lifts when the plan ends");
   const buy = src.slice(src.indexOf("const purchasePlan"), src.indexOf("const statusFor"));
   assert.match(buy, /await quote\(\{ restaurantId, planCode, on \}\)/);
 

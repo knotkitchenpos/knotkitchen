@@ -141,19 +141,16 @@ const quote = async ({ restaurantId, planCode, on = new Date() }) => {
   const active = isActiveAt(subscription, on);
   const isUpgrade = active && subscription.planCode && subscription.planCode !== planCode;
 
-  // No downgrades mid-period. Moving to a cheaper plan while the current one
-  // is running used to cost nothing and keep the paid-up period -- a free
-  // refund of the difference. A lower plan can be chosen once this one ends.
-  if (isUpgrade) {
+  // Never a downgrade. Once a restaurant has had a plan, that plan is its
+  // floor: renew it or move up, whether it is still running or has ended.
+  // (Mid-period, a cheaper plan also used to cost nothing and keep the paid-up
+  // period -- a free refund of the difference.)
+  if (subscription.planCode && subscription.planCode !== planCode) {
     const current = await resolvePlanPrice({ restaurantId, planCode: subscription.planCode, on, config });
     const currentPricePaise = current ? current.pricePaise : Number(subscription.lastPaidPricePaise) || 0;
     if (priced.pricePaise < currentPricePaise) {
-      // The period end is the exclusive midnight, so the last day is the one before.
-      const ends = new Date(new Date(subscription.currentPeriodEnd).getTime() - 1).toLocaleDateString("en-IN", {
-        day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata",
-      });
       throw new SubscriptionError(
-        `You can't move to a lower plan while ${subscription.planName || "your plan"} is active. You can choose ${priced.plan.name} when it ends on ${ends}.`,
+        `${priced.plan.name} is a lower plan than ${subscription.planName || "your plan"}. You can renew ${subscription.planName || "your plan"} or upgrade.`,
         409,
       );
     }

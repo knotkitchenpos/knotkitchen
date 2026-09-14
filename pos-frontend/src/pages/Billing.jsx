@@ -321,16 +321,17 @@ const Billing = () => {
           ) : (
             <div className="space-y-2">
               {plans.map((plan) => {
-                const current = subscription?.planCode === plan.code && subscription?.active;
+                const own = subscription?.planCode === plan.code;
+                const current = own && subscription?.active;
                 // Listed but closed to new subscriptions. Shown rather than
-                // hidden so a restaurant can see the whole ladder.
-                const locked = plan.isAvailable === false && !current;
-                // No downgrades while a plan is running (the server refuses
-                // them too). A lower plan opens up when the current one ends.
+                // hidden so a restaurant can see the whole ladder. A
+                // restaurant's own plan can always be renewed.
+                const locked = plan.isAvailable === false && !own;
+                // Never a downgrade, running or ended (the server refuses it
+                // too): a restaurant renews its plan or moves up.
                 const currentPlan = plans.find((p) => p.code === subscription?.planCode);
                 const lower =
-                  !current && !locked && subscription?.active && currentPlan &&
-                  Number(plan.price) < Number(currentPlan.price);
+                  !own && !locked && currentPlan && Number(plan.price) < Number(currentPlan.price);
                 return (
                   <div
                     key={plan.code}
@@ -362,10 +363,9 @@ const Billing = () => {
                       </p>
                       {/* An upgrade mid-period is charged on the difference for
                           the days that remain, never the full price again. */}
-                      {lower && subscription?.currentPeriodEnd && (
+                      {lower && (
                         <p className="text-[11.5px] font-semibold text-[#94A3B8]">
-                          Available after your plan ends on{" "}
-                          {new Date(subscription.currentPeriodEnd).toLocaleDateString("en-IN", { dateStyle: "medium" })}
+                          Plans can&apos;t be downgraded. Renew {currentPlan.name} or upgrade.
                         </p>
                       )}
                       {upgradeQuotes[plan.code] != null && !current && !locked && !lower && (
@@ -380,7 +380,7 @@ const Billing = () => {
                       onClick={() => changePlan(plan.code)}
                       className="shrink-0 rounded-xl bg-[#0F172A] px-4 py-2 text-[12.5px] font-extrabold text-white hover:bg-[#1E293B] disabled:opacity-40"
                     >
-                      {current ? "Active" : locked ? "Locked" : lower ? "Not now" : subscription?.active ? "Upgrade" : "Subscribe"}
+                      {current ? "Active" : locked ? "Locked" : lower ? "Not available" : own ? "Renew" : subscription?.planCode ? "Upgrade" : "Subscribe"}
                     </button>
                   </div>
                 );
