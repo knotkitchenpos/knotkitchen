@@ -102,7 +102,10 @@ const Billing = () => {
 
   useEffect(() => {
     let cancelled = false;
-    const open = plans.filter((p) => p.isAvailable !== false && p.code !== subscription?.planCode);
+    const currentPrice = Number(plans.find((p) => p.code === subscription?.planCode)?.price) || 0;
+    const open = plans.filter(
+      (p) => p.isAvailable !== false && p.code !== subscription?.planCode && Number(p.price) >= currentPrice,
+    );
     if (!open.length) return undefined;
     Promise.all(
       open.map((p) =>
@@ -322,6 +325,12 @@ const Billing = () => {
                 // Listed but closed to new subscriptions. Shown rather than
                 // hidden so a restaurant can see the whole ladder.
                 const locked = plan.isAvailable === false && !current;
+                // No downgrades while a plan is running (the server refuses
+                // them too). A lower plan opens up when the current one ends.
+                const currentPlan = plans.find((p) => p.code === subscription?.planCode);
+                const lower =
+                  !current && !locked && subscription?.active && currentPlan &&
+                  Number(plan.price) < Number(currentPlan.price);
                 return (
                   <div
                     key={plan.code}
@@ -342,6 +351,9 @@ const Billing = () => {
                         {locked && (
                           <span className="ml-2 text-[11px] font-bold text-[#94A3B8]">LOCKED</span>
                         )}
+                        {lower && (
+                          <span className="ml-2 text-[11px] font-bold text-[#94A3B8]">LOWER PLAN</span>
+                        )}
                       </p>
                       <p className="text-[12px] text-[#64748B]">
                         {money(plan.price)} / {subscription?.periodDays || 30} days
@@ -350,7 +362,13 @@ const Billing = () => {
                       </p>
                       {/* An upgrade mid-period is charged on the difference for
                           the days that remain, never the full price again. */}
-                      {upgradeQuotes[plan.code] != null && !current && !locked && (
+                      {lower && subscription?.currentPeriodEnd && (
+                        <p className="text-[11.5px] font-semibold text-[#94A3B8]">
+                          Available after your plan ends on{" "}
+                          {new Date(subscription.currentPeriodEnd).toLocaleDateString("en-IN", { dateStyle: "medium" })}
+                        </p>
+                      )}
+                      {upgradeQuotes[plan.code] != null && !current && !locked && !lower && (
                         <p className="text-[11.5px] font-bold text-[#15803D]">
                           You pay {money(upgradeQuotes[plan.code])} now
                         </p>
@@ -358,11 +376,11 @@ const Billing = () => {
                     </div>
                     <button
                       type="button"
-                      disabled={buy.isPending || current || locked}
+                      disabled={buy.isPending || current || locked || lower}
                       onClick={() => changePlan(plan.code)}
                       className="shrink-0 rounded-xl bg-[#0F172A] px-4 py-2 text-[12.5px] font-extrabold text-white hover:bg-[#1E293B] disabled:opacity-40"
                     >
-                      {current ? "Active" : locked ? "Locked" : subscription?.active ? "Switch" : "Subscribe"}
+                      {current ? "Active" : locked ? "Locked" : lower ? "Not now" : subscription?.active ? "Upgrade" : "Subscribe"}
                     </button>
                   </div>
                 );

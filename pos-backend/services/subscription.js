@@ -141,6 +141,23 @@ const quote = async ({ restaurantId, planCode, on = new Date() }) => {
   const active = isActiveAt(subscription, on);
   const isUpgrade = active && subscription.planCode && subscription.planCode !== planCode;
 
+  // No downgrades mid-period. Moving to a cheaper plan while the current one
+  // is running used to cost nothing and keep the paid-up period -- a free
+  // refund of the difference. A lower plan can be chosen once this one ends.
+  if (isUpgrade) {
+    const current = await resolvePlanPrice({ restaurantId, planCode: subscription.planCode, on, config });
+    const currentPricePaise = current ? current.pricePaise : Number(subscription.lastPaidPricePaise) || 0;
+    if (priced.pricePaise < currentPricePaise) {
+      const ends = new Date(subscription.currentPeriodEnd).toLocaleDateString("en-IN", {
+        day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata",
+      });
+      throw new SubscriptionError(
+        `You can't move to a lower plan while ${subscription.planName || "your plan"} is active. You can choose ${priced.plan.name} when it ends on ${ends}.`,
+        409,
+      );
+    }
+  }
+
   // An upgrade mid-period is charged on the difference for the days that
   // remain; anything else is the full price of a fresh period.
   const charge = isUpgrade
