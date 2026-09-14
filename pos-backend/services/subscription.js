@@ -148,7 +148,8 @@ const quote = async ({ restaurantId, planCode, on = new Date() }) => {
     const current = await resolvePlanPrice({ restaurantId, planCode: subscription.planCode, on, config });
     const currentPricePaise = current ? current.pricePaise : Number(subscription.lastPaidPricePaise) || 0;
     if (priced.pricePaise < currentPricePaise) {
-      const ends = new Date(subscription.currentPeriodEnd).toLocaleDateString("en-IN", {
+      // The period end is the exclusive midnight, so the last day is the one before.
+      const ends = new Date(new Date(subscription.currentPeriodEnd).getTime() - 1).toLocaleDateString("en-IN", {
         day: "numeric", month: "short", year: "numeric", timeZone: "Asia/Kolkata",
       });
       throw new SubscriptionError(
