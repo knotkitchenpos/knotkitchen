@@ -394,10 +394,8 @@ const OrderDetailsModal = ({ order, onClose }) => {
 /* ---------- Printed report renderer (Module 5 §8) ---------- */
 
 /**
- * The printed report is a SUMMARY. It deliberately omits the per-order
- * listing, and the "Waiting / Preparing" and "Cash Orders" lines, all of
- * which remain on screen -- printing them was noise on a paper handout.
- * "Unpaid / Cash Orders" is a different line and is still printed.
+ * The printed report is a SUMMARY: the same cards as the screen, without
+ * the per-order listing.
  */
 const buildPrintHtml = ({ header, summary, windowLabel }) => {
   const row = (label, value) => `
@@ -429,22 +427,30 @@ const buildPrintHtml = ({ header, summary, windowLabel }) => {
   <div class="section">
     <h2>Summary</h2>
     <table class="kv">
-      ${row("All Orders", `${summary.total.count} · ${money(summary.total.amount)}`)}
-      ${row("System Orders", bkt(summary.system))}
-      ${row("Website Orders", bkt(summary.website))}
-      ${row("Outside Orders", bkt(summary.outside))}
-      ${row("Paid Orders", bkt(summary.paid))}
-      ${row("Unpaid / Cash Orders", bkt(summary.unpaidCash))}
-      ${row("Collection Orders", bkt(summary.collection))}
-      ${row("Delivery Orders", bkt(summary.delivery))}
-      ${row("Table Orders", bkt(summary.table))}
-      ${row("Pay by Link Orders", bkt(summary.payByLink))}
+      ${REPORT_CARDS.map((c) => row(c.label, bkt(summary[c.key]))).join("")}
     </table>
   </div>
 </body></html>`;
 };
 
-/* ---------- Summary card ---------- */
+/* ---------- Summary cards ---------- */
+
+/**
+ * Source (where the order started), payment method (how it was paid) and
+ * type are independent -- see buildReportBuckets on the server.
+ */
+const REPORT_CARDS = [
+  { key: "total", label: "Total Orders", tint: "#FD5302" },
+  { key: "system", label: "System Orders" },
+  { key: "website", label: "Website Orders" },
+  { key: "tableQr", label: "Table QR Orders" },
+  { key: "outside", label: "Outside Orders" },
+  { key: "cash", label: "Cash Orders", tint: "#EA580C" },
+  { key: "upi", label: "UPI Orders", tint: "#16A34A" },
+  { key: "gateway", label: "Gateway Orders", tint: "#0891B2" },
+  { key: "delivery", label: "Delivery Orders", tint: "#2563EB" },
+  { key: "collection", label: "Collection Orders" },
+];
 
 const SummaryCard = ({ label, count, amount, tint }) => (
   <div className="bg-white border border-[#E2E8F0] rounded-xl px-4 py-3">
@@ -605,13 +611,7 @@ const Reports = () => {
     [orders, selectedOrderId]
   );
 
-  const empty = { count: 0, amount: 0 };
-  const s = summary || {
-    total: empty, system: empty, website: empty, outside: empty,
-    paid: empty, unpaidCash: empty, delivery: empty, collection: empty,
-    table: empty, payByLink: empty, preparing: empty, cancelled: empty,
-    completed: empty, cash: empty,
-  };
+  const s = summary || {};
 
   return (
     <div className="h-full w-full overflow-y-auto bg-[#F8FAFC]">
@@ -831,16 +831,9 @@ const Reports = () => {
 
         {/* ===== Summary (Module 5 §5) ===== */}
         <div className="mt-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3">
-          <SummaryCard label="Total Orders" count={s.total.count} amount={s.total.amount} tint="#FD5302" />
-          <SummaryCard label="System Orders" count={s.system.count} amount={s.system.amount} />
-          <SummaryCard label="Website Orders" count={s.website.count} amount={s.website.amount} />
-          <SummaryCard label="Outside Orders" count={s.outside.count} amount={s.outside.amount} />
-          <SummaryCard label="Paid Orders" count={s.paid.count} amount={s.paid.amount} tint="#16A34A" />
-          <SummaryCard label="Unpaid / Cash Orders" count={s.unpaidCash.count} amount={s.unpaidCash.amount} tint="#EA580C" />
-          <SummaryCard label="Delivery Orders" count={s.delivery.count} amount={s.delivery.amount} tint="#2563EB" />
-          <SummaryCard label="Collection Orders" count={s.collection.count} amount={s.collection.amount} />
-          <SummaryCard label="Table Orders" count={s.table.count} amount={s.table.amount} />
-          <SummaryCard label="Pay by Link Orders" count={s.payByLink.count} amount={s.payByLink.amount} tint="#0891B2" />
+          {REPORT_CARDS.map((c) => (
+            <SummaryCard key={c.key} label={c.label} count={s[c.key]?.count} amount={s[c.key]?.amount} tint={c.tint} />
+          ))}
         </div>
 
         {/* ===== Order list (Module 5 §6) ===== */}

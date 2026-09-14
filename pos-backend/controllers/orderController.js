@@ -68,6 +68,7 @@ const {
   TERMINAL_STATUSES,
   canonicalStatus,
   isFinished,
+  isCancelled,
 } = require("../constants/orderStatus");
 
 
@@ -883,48 +884,62 @@ const markOrderReady = async (req, res, next) => {
  * GET /api/order/report
  *
  * Module 5 — Reports payload for the selected period. Everything derives
- * from REAL orders in the database (no synthetic figures) and every
- * category is computed with mutually-exclusive rules so nothing can
- * double-count against a total.
+ * from REAL orders in the database (no synthetic figures).
  *
  * Query params:
  *   date=YYYY-MM-DD                — single day (default: today)
  *   from=YYYY-MM-DD&to=YYYY-MM-DD  — inclusive date range
  *
- * Category rules (Module 5 §5):
- *   - System   = source === "POS"
- *   - Website  = source === "WEBSITE"
- *   - Outside  = source is anything else (MARKETPLACE, QR, PHONE, blank).
- *     Every order lands in exactly ONE of these three source buckets.
- *   - Delivery / Collection / Table are read from orderType. Each order
- *     falls into exactly ONE type bucket (or "Other" if unrecognised).
- *   - Paid vs Unpaid/Cash reads payments[0].status.
- *     A "Pay by Link" order is counted in its own bucket AND (if paid)
- *     in Paid — the spec keeps Pay-by-Link separate from Paid/Unpaid on
- *     the summary but does not exclude it from those base rollups.
+ * Every card is a count and a value, and the three groups are independent:
  *
- * Cancelled orders are included in the raw list but never contribute to
- * the revenue totals — otherwise a big refund could inflate today's
- * takings.
+ *   Source — where the order was STARTED. Written once when the order is
+ *   created and never changed by how it is paid, so a till order settled
+ *   through the table QR is still a System order.
+ *     System   = POS / PHONE (and anything unrecognised — our own channels)
+ *     Website  = WEBSITE (collection and delivery from the store site)
+ *     Table QR = QR
+ *     Outside  = MARKETPLACE (Swiggy, Zomato, ...)
+ *
+ *   Payment method — how it was paid. An order with no method yet counts
+ *   in none of these.
+ *     Cash / UPI / Gateway
+ *
+ *   Type — Delivery / Collection.
+ *
+ * Cancelled orders count as orders but never add value — otherwise a
+ * big refund could inflate today's takings.
  */
+const REPORT_METHOD = {
+  cash: "cash",
+  upi: "upi",
+  qr_code: "upi",
+  qr: "upi",
+  online: "gateway",
+  "payment gateway": "gateway",
+  "pay by link": "gateway",
+  paymentlink: "gateway",
+  payment_link: "gateway",
+  link: "gateway",
+};
+
+const reportMethodOf = (o) => {
+  const raw = o.payments?.[0]?.method || o.paymentMethod || "";
+  return REPORT_METHOD[String(raw).trim().toLowerCase()] || null;
+};
+
 const buildReportBuckets = (orders) => {
   const bucket = () => ({ count: 0, amount: 0 });
   const summary = {
     total: bucket(),
     system: bucket(),
     website: bucket(),
+    tableQr: bucket(),
     outside: bucket(),
-    paid: bucket(),
-    unpaidCash: bucket(),
+    cash: bucket(),
+    upi: bucket(),
+    gateway: bucket(),
     delivery: bucket(),
     collection: bucket(),
-    table: bucket(),
-    payByLink: bucket(),
-    // Also useful on the printed report (Module 5 §8):
-    preparing: bucket(),
-    completed: bucket(),
-    cancelled: bucket(),
-    cash: bucket(),
   };
 
   const inc = (b, amt) => {
@@ -933,52 +948,24 @@ const buildReportBuckets = (orders) => {
   };
 
   for (const o of orders) {
-    const status = String(o.orderStatus || "");
-    const isCancelled = status === "Cancelled";
-    const amount = isCancelled
+    const amount = isCancelled(o.orderStatus)
       ? 0
       : Number(o.bills?.totalWithTax || o.bills?.total || 0);
 
     inc(summary.total, amount);
 
-    // ---- Source (mutually exclusive) ----
-    //
-    // "Outside" means a third-party delivery platform -- Swiggy, Zomato --
-    // and nothing else. It used to be the catch-all `else`, so every table
-    // QR order and every phone order was reported as an outside order
-    // alongside genuine marketplace ones.
-    //
-    // QR and PHONE are our own channels and belong with the till. An
-    // unrecognised source counts as ours too: a new internal source added
-    // later must not silently inflate the marketplace figure the way QR did.
     const source = String(o.source || "").toUpperCase();
     if (source === "MARKETPLACE") inc(summary.outside, amount);
     else if (source === "WEBSITE") inc(summary.website, amount);
+    else if (source === "QR") inc(summary.tableQr, amount);
     else inc(summary.system, amount);
 
-    // ---- Type (mutually exclusive) ----
+    const method = reportMethodOf(o);
+    if (method) inc(summary[method], amount);
+
     const type = String(o.orderType || "").toLowerCase();
     if (type === "delivery") inc(summary.delivery, amount);
     else if (type === "collection" || type === "takeaway") inc(summary.collection, amount);
-    else if (type === "dine-in") inc(summary.table, amount);
-
-    // ---- Payment / method ----
-    const payment = o.payments?.[0];
-    const payStatus = String(payment?.status || "pending").toLowerCase();
-    const method = String(o.paymentMethod || payment?.method || "").toLowerCase();
-    if (payStatus === "paid") inc(summary.paid, amount);
-    else if (!isCancelled) inc(summary.unpaidCash, amount);
-
-    // "Pay by Link" is a discrete method, orthogonal to paid/unpaid.
-    if (method === "paymentlink" || method === "link") {
-      inc(summary.payByLink, amount);
-    }
-    if (method === "cash") inc(summary.cash, amount);
-
-    // ---- Status roll-ups for the printed report ----
-    if (status === "Cancelled") inc(summary.cancelled, amount);
-    else if (status === "Completed") inc(summary.completed, amount);
-    else inc(summary.preparing, amount); // Preparing + Ready count as "waiting"
   }
 
   return summary;

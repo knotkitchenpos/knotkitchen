@@ -100,6 +100,9 @@ const addRoundToKitchenOrder = async ({ session, validatedItems, tableId, create
           restaurantId: session.restaurantId,
           outletId: session.outletId,
           createdBy: createdBy || null,
+          // The order belongs to whoever opened the table, not whoever added
+          // this round: Reports count a QR-opened table as a Table QR order.
+          source: session.source === "QR" ? "QR" : "POS",
         },
       ],
       { session: mongoSession },
@@ -331,16 +334,15 @@ const COUNTER_SETTLED_METHODS = ["CASH", "UPI", "CARD", "QR_CODE"];
  *
  * The session stores the rail it was taken on (CASH, ONLINE, …); the order
  * shows the operator-facing name. Anything paid through the gateway reads
- * "Pay by Link", which is what the rest of the POS already calls a payment
- * the customer made themselves rather than at the counter.
+ * "Payment Gateway" (Pay by Link itself is gone from the POS).
  */
 const PAYMENT_METHOD_LABELS = {
   CASH: "Cash",
   UPI: "UPI",
   CARD: "Card",
   QR_CODE: "UPI",
-  ONLINE: "Pay by Link",
-  PAYMENT_LINK: "Pay by Link",
+  ONLINE: "Payment Gateway",
+  PAYMENT_LINK: "Payment Gateway",
   WALLET: "Wallet",
   SPLIT: "Split",
 };

@@ -15,21 +15,20 @@
 
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const fs = require("fs");
-const path = require("path");
 
 const Order = require("../models/orderModel");
 
-/** The classification, mirrored from orderController's report summary. */
+const { buildReportBuckets } = require("../controllers/orderController");
+
+/** Which source card an order with this source lands on. */
 const bucketFor = (source) => {
-  const s = String(source || "").toUpperCase();
-  if (s === "MARKETPLACE") return "outside";
-  if (s === "WEBSITE") return "website";
-  return "system";
+  const summary = buildReportBuckets([{ source, bills: { totalWithTax: 1 } }]);
+  return ["system", "website", "tableQr", "outside"].filter((k) => summary[k].count)[0];
 };
 
 test("REGRESSION: a table QR order is ours, not an outside order", () => {
-  assert.equal(bucketFor("QR"), "system");
+  // Table QR now has its own card; it is still never "outside".
+  assert.equal(bucketFor("QR"), "tableQr");
 });
 
 test("REGRESSION: a phone order is ours too", () => {
@@ -59,25 +58,13 @@ test("every source in the schema lands in exactly one bucket", () => {
   const sources = Order.schema.path("source").enumValues;
   assert.ok(sources.includes("MARKETPLACE"), "the enum still has a marketplace source");
 
-  const counts = { system: 0, website: 0, outside: 0 };
+  const counts = { system: 0, website: 0, tableQr: 0, outside: 0 };
   sources.forEach((s) => {
     counts[bucketFor(s)] += 1;
   });
 
   assert.equal(counts.outside, 1, "exactly one source is external");
   assert.equal(counts.website, 1);
-  assert.equal(counts.system, sources.length - 2);
-});
-
-test("REGRESSION: the controller no longer uses a catch-all else for outside", () => {
-  const src = fs.readFileSync(path.join(__dirname, "..", "controllers", "orderController.js"), "utf8");
-  const block = src.slice(src.indexOf("---- Source (mutually exclusive)"));
-  const decision = block.slice(0, block.indexOf("---- Type"));
-
-  assert.match(decision, /MARKETPLACE/, "outside must be selected by name");
-  assert.ok(
-    !/else\s+inc\(summary\.outside/.test(decision),
-    "outside must never be the fallback bucket again",
-  );
-  assert.match(decision, /else inc\(summary\.system/, "unknown sources fall to system");
+  assert.equal(counts.tableQr, 1);
+  assert.equal(counts.system, sources.length - 3);
 });

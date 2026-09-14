@@ -528,8 +528,10 @@ router.route("/session/items/:token").post(qrWriteLimiter, resolveTableScope, as
               table: tableInTxn._id, restaurantId, outletId, createdBy: null, tableSessionId: session._id, orderDate: new Date(),
               // Origin tag → POS UI can distinguish QR-scan orders from
               // walk-in POS / marketplace / phone orders, and the realtime
-              // popup can show "New QR Order — Table {n}".
-              source: "QR",
+              // popup can show "New QR Order — Table {n}". A table the till
+              // opened stays a System order even when the diner orders
+              // through the QR: the source is where the table was started.
+              source: session.source === "POS" ? "POS" : "QR",
             },
           ],
           { session: mongoSession }
@@ -920,6 +922,7 @@ router.route("/order/:token").post(qrWriteLimiter, resolveTableScope, async (req
       ...(completeDueAt ? { completeDueAt } : {}),
       items: validatedItems.map((it) => ({ menuItemId: it.menuItemId, name: it.name, quantity: it.quantity, price: it.price, total: it.total, modifiers: it.modifiers || [], note: it.note || "", status: "pending" })),
       table: table._id, restaurantId, outletId, orderDate: new Date(), createdBy: null,
+      source: "QR",
     });
     await Table.findOneAndUpdate({ _id: table._id }, { status: "occupied" });
     res.status(201).json({ success: true, data: order });

@@ -119,12 +119,12 @@ test("REGRESSION: settling a table writes paymentMethod and payments onto its or
   assert.match(block, /completeDueAt: null/, "a settled order must not still be swept");
 });
 
-test("a gateway payment reads as 'Pay by Link', a counter payment as its own name", () => {
+test("a gateway payment reads as 'Payment Gateway', a counter payment as its own name", () => {
   const { displayPaymentMethod } = loadMethodLabels();
   assert.equal(displayPaymentMethod("CASH"), "Cash");
   assert.equal(displayPaymentMethod("UPI"), "UPI");
-  assert.equal(displayPaymentMethod("ONLINE"), "Pay by Link");
-  assert.equal(displayPaymentMethod("PAYMENT_LINK"), "Pay by Link");
+  assert.equal(displayPaymentMethod("ONLINE"), "Payment Gateway");
+  assert.equal(displayPaymentMethod("PAYMENT_LINK"), "Payment Gateway");
 });
 
 /**
