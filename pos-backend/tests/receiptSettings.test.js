@@ -49,3 +49,41 @@ test("a website link that is not an address is refused", async () => {
   const { error } = await save({}, { websiteLink: "not a link <b>" });
   assert.equal(error.status, 400);
 });
+
+test("a logo saved in Store Properties reaches the website's logo too, and only uploaded images are taken", async () => {
+  const bcrypt = require("bcrypt");
+  const WebsiteSettings = require("../models/websiteSettingsModel");
+  const { updateStoreProperties } = require("../controllers/restaurantController");
+  const AuditLog = require("../models/auditLogModel");
+
+  const doc = { name: "Demo", securityPin: await bcrypt.hash("1234", 4), branding: { logo: "" }, address: {}, save: async () => doc };
+  const settings = { branding: { logo: { url: "" } }, save: async () => settings };
+  const saved = { restaurant: Restaurant.findOne, settings: WebsiteSettings.findOne, log: AuditLog.create };
+  Restaurant.findOne = async () => doc;
+  WebsiteSettings.findOne = async () => settings;
+  AuditLog.create = async () => ({});
+  const run = async (body) => {
+    let error;
+    await updateStoreProperties(
+      { body: { pin: "1234", ...body }, user: { restaurantId: "r1", role: "Owner" } },
+      { status: () => ({ json: () => {} }) },
+      (err) => (error = err),
+    );
+    return error;
+  };
+  try {
+    assert.equal(await run({ restaurantLogo: "https://api.knotkitchen.com/uploads/logo.png" }), undefined);
+    assert.equal(doc.branding.logo, "https://api.knotkitchen.com/uploads/logo.png");
+    assert.equal(settings.branding.logo.url, "https://api.knotkitchen.com/uploads/logo.png");
+
+    assert.equal((await run({ restaurantLogo: "javascript:alert(1)" })).status, 400);
+
+    assert.equal(await run({ restaurantLogo: "" }), undefined);
+    assert.equal(doc.branding.logo, "");
+    assert.equal(settings.branding.logo.url, "", "removing the logo removes it everywhere");
+  } finally {
+    Restaurant.findOne = saved.restaurant;
+    WebsiteSettings.findOne = saved.settings;
+    AuditLog.create = saved.log;
+  }
+});

@@ -331,7 +331,10 @@ const getStoreProperties = async (req, res, next) => {
         ownerEmail: restaurant.ownerEmail || owner?.email || "",
         fssaiNumber: restaurant.fssaiNumber || "",
         gstNumber: restaurant.taxId || "",
-        restaurantLogo: restaurant.branding?.logo || settings?.branding?.logo?.url || "",
+        // The website's logo is the one CSD and Manage Website edit; the two
+        // are kept in step on every save, so this order only matters for
+        // stores saved before they were.
+        restaurantLogo: settings?.branding?.logo?.url || restaurant.branding?.logo || "",
         posSettings: receiptSettingsOf(restaurant),
         // The website link printed on receipts when none is typed in.
         websiteUrl: buildStorefrontUrl(settings),
@@ -455,9 +458,17 @@ const updateStoreProperties = async (req, res, next) => {
     if (props.fssaiNumber !== undefined) restaurant.fssaiNumber = String(props.fssaiNumber).trim();
     if (props.gstNumber !== undefined) restaurant.taxId = String(props.gstNumber).trim();
     if (props.googleMapsLink !== undefined) restaurant.mapsLink = String(props.googleMapsLink).trim();
+    // One logo for the whole store: the POS, receipts, the table QR page and
+    // the website all show it, so it is written to both places it is read from.
+    let logoChanged = false;
     if (props.restaurantLogo !== undefined) {
+      const logo = cleanImageUrl(props.restaurantLogo);
+      if (String(props.restaurantLogo || "").trim() && !logo) {
+        return next(createHttpError(400, "The logo must be an uploaded image."));
+      }
       restaurant.branding = restaurant.branding || {};
-      restaurant.branding.logo = String(props.restaurantLogo).trim();
+      logoChanged = (restaurant.branding.logo || "") !== logo;
+      restaurant.branding.logo = logo;
     }
 
     restaurant.address = restaurant.address || {};
@@ -469,6 +480,15 @@ const updateStoreProperties = async (req, res, next) => {
     if (props.longitude !== undefined) restaurant.address.lng = Number(props.longitude) || null;
 
     await restaurant.save();
+
+    if (props.restaurantLogo !== undefined) {
+      const logo = restaurant.branding.logo;
+      const settings = await WebsiteSettings.findOne({ restaurantId: restaurant._id, isDeleted: false });
+      if (settings && (logoChanged || (settings.branding?.logo?.url || "") !== logo)) {
+        settings.branding.logo = { mediaId: null, url: logo, thumbnailUrl: logo, alt: logo ? `${restaurant.name} logo` : "" };
+        await settings.save();
+      }
+    }
 
     await logActivity({
       req,

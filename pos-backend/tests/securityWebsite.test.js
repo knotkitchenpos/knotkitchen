@@ -274,12 +274,16 @@ test("Website settings: an unchanged unconfigured activeGateway does not block a
     }),
   };
 
+  const restaurantUpdates = [];
+  const RestaurantMock = { updateOne: async (filter, update) => restaurantUpdates.push({ filter, update }) };
+
   const Module = require("module");
   const orig = Module._load;
   Module._load = function (r) {
     if (r === "../models/websiteSettingsModel") return { findOne: async () => mockSettings };
     if (r === "../models/storeModel") return {};
     if (r === "../models/mediaAssetModel") return MediaAssetMock;
+    if (r === "../models/restaurantModel") return RestaurantMock;
     // Unmocked, this reaches for a real Mongo connection and stalls the test
     // for the driver's full server-selection timeout before succeeding.
     if (r === "../services/auditService") return { logActivity: async () => {} };
@@ -324,6 +328,10 @@ test("Website settings: an unchanged unconfigured activeGateway does not block a
   );
   assert.ok(responded, "the save should have produced a response");
   assert.equal(mockSettings.branding.logo.url, "https://cdn.example.com/logo.png");
+  // The POS and receipts read the restaurant's copy; it must follow.
+  assert.deepEqual(restaurantUpdates, [
+    { filter: { _id: RESTAURANT_ID }, update: { $set: { "branding.logo": "https://cdn.example.com/logo.png" } } },
+  ]);
 });
 
 test("Website settings: switching TO an unconfigured gateway is still refused", async () => {

@@ -214,7 +214,6 @@ const ensureAccessToken = async (session) => {
  */
 const resolveBrandLogo = async (restaurantId, restaurant) => {
   const own = String(restaurant?.branding?.logo || "").trim();
-  if (own) return own;
   try {
     const WebsiteSettings = require("../models/websiteSettingsModel");
     const settings = await WebsiteSettings.findOne({
@@ -223,11 +222,12 @@ const resolveBrandLogo = async (restaurantId, restaurant) => {
     })
       .select("branding.logo")
       .lean();
-    return settings?.branding?.logo?.url || "";
+    // Same precedence as Store Properties: the website's logo first.
+    return settings?.branding?.logo?.url || own;
   } catch {
     // A missing logo is a cosmetic loss; failing the diner's whole page over
     // it is not.
-    return "";
+    return own;
   }
 };
 

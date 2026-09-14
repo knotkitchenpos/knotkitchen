@@ -19,7 +19,7 @@ import {
   updateStoreProperties,
   verifyPin,
 } from "../https";
-import { getWebsiteSettings, updateWebsiteSettings } from "../https/storefrontApi";
+import { getWebsiteSettings, updateWebsiteSettings, uploadMedia } from "../https/storefrontApi";
 import { removeUser } from "../redux/slices/userSlice";
 import SecurityPinModal from "../components/common/SecurityPinModal";
 import { checkActionAuthorization } from "../utils/security";
@@ -184,6 +184,81 @@ const ManageCacheView = () => {
 /* ---------- Device Configuration: components/settings/DeviceConfiguration.jsx ---------- */
 const DeviceConfigurationView = DeviceConfiguration;
 
+/**
+ * The store's logo: uploaded here, shown everywhere -- the POS header, the
+ * invoice, printed receipts, the table QR page and the website. Saved with
+ * the rest of Store Properties.
+ */
+const StoreLogoField = ({ value, disabled, onChange }) => {
+  const fileRef = React.useRef(null);
+  const [uploading, setUploading] = useState(false);
+  const [broken, setBroken] = useState(false);
+
+  const onFile = async (file) => {
+    if (!file) return;
+    setUploading(true);
+    try {
+      const res = await uploadMedia(file, { folder: "logo", altText: "Store logo" });
+      const url = res.data?.data?.url;
+      if (!url) throw new Error("Upload failed.");
+      setBroken(false);
+      onChange(url);
+      enqueueSnackbar("Logo uploaded. Press Save Store Properties to apply it.", { variant: "info" });
+    } catch (err) {
+      enqueueSnackbar(err?.response?.data?.message || err.message || "Upload failed.", { variant: "error" });
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  };
+
+  return (
+    <div className="flex flex-wrap items-center gap-4 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3">
+      <div className="h-20 w-20 shrink-0 rounded-xl border border-[#E2E8F0] bg-white flex items-center justify-center overflow-hidden">
+        {value && !broken ? (
+          <img src={value} alt="Store logo" className="h-full w-full object-contain p-1" onError={() => setBroken(true)} />
+        ) : (
+          <span className="text-[11px] font-bold text-[#94A3B8]">No logo</span>
+        )}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-[13.5px] font-extrabold text-[#0F172A]">Store Logo</p>
+        <p className="text-[11.5px] text-[#64748B]">
+          Shown on the POS, invoices, printed receipts, the table QR page and your website. PNG, JPG or WebP; a square image works best.
+        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={disabled || uploading}
+            onClick={() => fileRef.current?.click()}
+            className="h-[34px] px-3.5 rounded-xl bg-[#0F172A] text-white text-[12.5px] font-bold hover:bg-[#1E293B] disabled:opacity-40"
+          >
+            {uploading ? "Uploading…" : value ? "Change logo" : "Upload logo"}
+          </button>
+          {value ? (
+            <button
+              type="button"
+              disabled={disabled || uploading}
+              onClick={() => onChange("")}
+              className="h-[34px] px-3 rounded-xl border border-[#E2E8F0] text-[12.5px] font-bold text-[#DC2626] hover:bg-white disabled:opacity-40"
+            >
+              Remove
+            </button>
+          ) : null}
+          {disabled ? <span className="text-[11.5px] text-[#94A3B8]">Unlock with your PIN to change it.</span> : null}
+        </div>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          hidden
+          onChange={(e) => onFile(e.target.files?.[0])}
+        />
+      </div>
+    </div>
+  );
+};
+
 /* ---------- Module 7 §1 & §2: Store Properties ---------- */
 const StorePropertiesView = () => {
   const qc = useQueryClient();
@@ -297,6 +372,12 @@ const StorePropertiesView = () => {
             </span>
           )}
         </div>
+
+        <StoreLogoField
+          value={formData.restaurantLogo || ""}
+          disabled={!pinVerified}
+          onChange={(url) => setFormData((f) => ({ ...f, restaurantLogo: url }))}
+        />
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-[13px]">
           <div>
@@ -423,15 +504,6 @@ const StorePropertiesView = () => {
               disabled={!pinVerified}
               value={formData.gstNumber || ""}
               onChange={(e) => setFormData({ ...formData, gstNumber: e.target.value })}
-              className="w-full h-[38px] px-3 mt-1 rounded-xl border border-[#E2E8F0] font-bold text-[#0F172A] disabled:bg-[#F8FAFC]"
-            />
-          </div>
-          <div>
-            <label className="text-[11.5px] font-bold text-[#94A3B8]">Restaurant Logo URL</label>
-            <input
-              disabled={!pinVerified}
-              value={formData.restaurantLogo || ""}
-              onChange={(e) => setFormData({ ...formData, restaurantLogo: e.target.value })}
               className="w-full h-[38px] px-3 mt-1 rounded-xl border border-[#E2E8F0] font-bold text-[#0F172A] disabled:bg-[#F8FAFC]"
             />
           </div>

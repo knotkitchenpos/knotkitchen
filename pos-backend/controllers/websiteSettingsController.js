@@ -1,6 +1,7 @@
 const createHttpError = require("http-errors");
 const mongoose = require("mongoose");
 const WebsiteSettings = require("../models/websiteSettingsModel");
+const Restaurant = require("../models/restaurantModel");
 const MediaAsset = require("../models/mediaAssetModel");
 const Store = require("../models/storeModel");
 const { resolveTenantFromUser } = require("../services/tenantContext");
@@ -249,6 +250,14 @@ const updateWebsiteSettings = async (req, res, next) => {
           const ref = await resolveMediaRef(b[key], tenant);
           if (ref !== undefined) settings.branding[key] = ref;
         }
+      }
+      // The same logo is shown on the POS and printed on receipts, which read
+      // it from the restaurant (Settings > Store Properties). Keep them equal.
+      if (b.logo !== undefined && settings.restaurantId) {
+        await Restaurant.updateOne(
+          { _id: settings.restaurantId },
+          { $set: { "branding.logo": settings.branding.logo?.url || "" } },
+        );
       }
     }
 
