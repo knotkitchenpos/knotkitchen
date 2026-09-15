@@ -33,7 +33,9 @@ android {
     }
     buildTypes {
         release {
-            signingConfig keystorePath ? signingConfigs.release : null
+            if (keystorePath) {
+                signingConfig signingConfigs.release
+            }
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
