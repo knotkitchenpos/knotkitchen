@@ -168,27 +168,30 @@ test("a balance with money, or one that never had any, is not a reason to lock",
   });
 });
 
-test("a store CSD marked 'no subscription required' never locks for its plan", async () => {
-  // Expired a week ago, well past grace.
-  const subscription = { currentPeriodEnd: new Date("2026-09-08T18:30:00Z") };
+test("a demo store (CSD) never locks, whatever it owes", async () => {
+  const subscription = { currentPeriodEnd: new Date("2026-09-08T18:30:00Z") }; // expired a week ago
+  const ranOut = { createdAt: new Date("2026-09-10T00:00:00Z"), balanceAfterPaise: 0 };
+  const dues = { count: 2, totalPaise: 1800, oldestAt: new Date("2026-09-10T00:00:00Z") };
   const on = new Date("2026-09-15T12:00:00Z");
 
-  await withAssess({ subscription }, async (svc) => {
-    assert.equal((await svc.assessAccount("r1", on)).shouldLock, true, "without the exemption it locks");
+  await withAssess({ subscription, lastEntry: ranOut, dues }, async (svc) => {
+    assert.equal((await svc.assessAccount("r1", on)).shouldLock, true, "a normal store locks");
   });
-  await withAssess({ subscription, override: { subscriptionExempt: true } }, async (svc) => {
+  await withAssess({ subscription, lastEntry: ranOut, dues, override: { billingExempt: true } }, async (svc) => {
     const res = await svc.assessAccount("r1", on);
     assert.equal(res.shouldLock, false);
-    assert.equal(res.lockWarning, "", "and no countdown banner either");
+    assert.equal(res.locksAt, null);
+    assert.equal(res.lockWarning, "", "and no countdown banner");
   });
+});
 
-  // The exemption is the subscription only: an empty balance still locks.
-  const ranOut = { createdAt: new Date("2026-09-10T00:00:00Z"), balanceAfterPaise: 0 };
-  await withAssess({ subscription, lastEntry: ranOut, override: { subscriptionExempt: true } }, async (svc) => {
-    const res = await svc.assessAccount("r1", on);
-    assert.equal(res.shouldLock, true);
-    assert.match(res.reasons.join(" "), /Business Balance ran out/);
-  });
+test("SOURCE: a demo store is never charged", () => {
+  const pricing = SRC("services/pricing.js");
+  assert.equal((pricing.match(/enabled: Boolean\(charge\.enabled\) && started && !ovr\?\.billingExempt,/g) || []).length, 2,
+    "neither the per-order nor the per-e-bill charge");
+  const sub = SRC("services/subscription.js");
+  const q = sub.slice(sub.indexOf("const quote = async"), sub.indexOf("const purchasePlan"));
+  assert.match(q, /billingExempt\) \{\s*throw new SubscriptionError\(/, "and a subscription cannot be bought");
 });
 
 test("SOURCE: a lock is only applied after the configured grace period", () => {
@@ -203,7 +206,7 @@ test("SOURCE: a restaurant that never subscribed is not overdue", () => {
   // Nothing to be late with. Locking it would be locking someone out for not
   // having started yet.
   const src = SRC("services/accountLock.js");
-  assert.match(src, /if \(subscription\?\.currentPeriodEnd && !override\?\.subscriptionExempt\)/);
+  assert.match(src, /if \(subscription\?\.currentPeriodEnd\) \{/);
 });
 
 test("SOURCE: paying re-evaluates the lock immediately", () => {

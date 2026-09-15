@@ -35,7 +35,7 @@ const ChargesDialog = ({ storeId, charges, onClose, onSaved }) => {
     gstPercent: String(charges.gstPercent ?? ""),
     monthlySubscription: String(charges.monthlySubscription ?? ""),
   });
-  const [exempt, setExempt] = useState(Boolean(charges.subscriptionExempt));
+  const [exempt, setExempt] = useState(Boolean(charges.billingExempt));
   const [errors, setErrors] = useState({});
   const [banner, setBanner] = useState("");
   const [busy, setBusy] = useState(false);
@@ -56,7 +56,7 @@ const ChargesDialog = ({ storeId, charges, onClose, onSaved }) => {
         onlinePaidOrderCharge: Number(form.onlinePaidOrderCharge),
         gstPercent: Number(form.gstPercent),
         monthlySubscription: Number(form.monthlySubscription),
-        subscriptionExempt: exempt,
+        billingExempt: exempt,
       });
       onSaved();
     } catch (err) {
@@ -102,9 +102,9 @@ const ChargesDialog = ({ storeId, charges, onClose, onSaved }) => {
             <input type="checkbox" checked={exempt} onChange={(e) => setExempt(e.target.checked)}
               className="mt-0.5 h-4 w-4 accent-brand-600" />
             <span>
-              <span className="block text-sm font-semibold text-navy-900">No subscription required</span>
+              <span className="block text-sm font-semibold text-navy-900">Demo store — never billed</span>
               <span className="block text-xs text-navy-500">
-                The POS never locks for an expired or missing plan. An empty balance or unpaid order charges still lock it.
+                No subscription needed, no per-order or e-bill charges, and the POS never locks. For demo and testing stores only.
               </span>
             </span>
           </label>

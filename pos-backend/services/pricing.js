@@ -169,7 +169,8 @@ const resolveOrderCharge = async ({ restaurantId, on = new Date(), config, overr
     : Number(charge.amountPaise || 0);
 
   return {
-    enabled: Boolean(charge.enabled) && started,
+    // A demo store (CSD) is never charged per order.
+    enabled: Boolean(charge.enabled) && started && !ovr?.billingExempt,
     started,
     amountPaise,
     taxable: charge.taxable !== false,
@@ -195,7 +196,8 @@ const resolveEBillCharge = async ({ restaurantId, on = new Date(), config, overr
   const hasCustom = ovr && ovr.ebillCharge !== null && ovr.ebillCharge !== undefined;
 
   return {
-    enabled: Boolean(charge.enabled) && started,
+    // A demo store (CSD) is never charged per e-bill.
+    enabled: Boolean(charge.enabled) && started && !ovr?.billingExempt,
     started,
     amountPaise: hasCustom ? toPaise(ovr.ebillCharge) : Number(charge.amountPaise || 0),
     taxable: charge.taxable !== false,

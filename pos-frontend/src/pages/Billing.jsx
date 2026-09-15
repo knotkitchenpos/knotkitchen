@@ -299,7 +299,7 @@ const Billing = () => {
             subscription?.active
               ? `Renews ${new Date(subscription.currentPeriodEnd).toLocaleDateString("en-IN", { dateStyle: "medium" })}`
               : subscription?.exempt
-                ? "No subscription required for this store"
+                ? "Demo store — no subscription or charges"
                 : "No active plan"
           }
           right={
@@ -312,11 +312,16 @@ const Billing = () => {
                     : "bg-[#F1F5F9] text-[#64748B]"
               }`}
             >
-              {subscription?.active ? "ACTIVE" : subscription?.exempt ? "NOT REQUIRED" : subscription?.inGrace ? "GRACE" : "INACTIVE"}
+              {subscription?.active ? "ACTIVE" : subscription?.exempt ? "DEMO" : subscription?.inGrace ? "GRACE" : "INACTIVE"}
             </span>
           }
         >
-          {plans.length === 0 ? (
+          {subscription?.exempt ? (
+            <p className="text-[13px] text-[#64748B]">
+              KnotKitchen has set this store up as a demo store. It needs no subscription, is never
+              charged per order or per e-bill, and is never locked.
+            </p>
+          ) : plans.length === 0 ? (
             <p className="text-[13px] text-[#94A3B8]">
               No plans are available at the moment.
             </p>

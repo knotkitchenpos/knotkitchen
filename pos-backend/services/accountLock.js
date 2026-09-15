@@ -68,6 +68,20 @@ const assessAccount = async (restaurantId, on = new Date()) => {
     getOverride(restaurantId),
   ]);
 
+  // A demo store set in CSD is never locked, for any reason.
+  if (override?.billingExempt) {
+    return {
+      shouldLock: false,
+      reasons: [],
+      locksAt: null,
+      lockWarning: "",
+      duesPaise: 0,
+      duesCount: 0,
+      graceHours: config.graceHours,
+      lockScope: config.lockScope || "STAFF",
+    };
+  }
+
   const reasons = [];
   // When each pending problem turns into a lock, so the POS can warn first.
   const deadlines = [];
@@ -97,9 +111,8 @@ const assessAccount = async (restaurantId, on = new Date()) => {
   }
 
   // A subscription that was never bought is not overdue -- a restaurant that
-  // has not subscribed yet has nothing to be late with. A store CSD has marked
-  // "no subscription required" is never late with one either.
-  if (subscription?.currentPeriodEnd && !override?.subscriptionExempt) {
+  // has not subscribed yet has nothing to be late with.
+  if (subscription?.currentPeriodEnd) {
     const endedAt = new Date(subscription.currentPeriodEnd).getTime();
     if (now > endedAt + graceMs) {
       reasons.push("The subscription expired and the grace period has passed.");

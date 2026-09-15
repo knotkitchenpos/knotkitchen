@@ -74,11 +74,11 @@ const csdStoreChargesSchema = new mongoose.Schema(
     },
 
     /**
-     * No subscription required: an expired or missing plan never locks this
-     * restaurant. For KnotKitchen's own demo and partner stores. It waives the
-     * SUBSCRIPTION only -- an empty balance or unpaid order charges still lock.
+     * A demo / test store: never billed and never locked. No subscription is
+     * needed (and none can be bought), no per-order or e-bill charge is taken,
+     * and nothing -- an expired plan, an empty balance -- locks the POS.
      */
-    subscriptionExempt: { type: Boolean, default: false },
+    billingExempt: { type: Boolean, default: false },
 
     notes: { type: String, default: "", maxlength: 1000 },
 

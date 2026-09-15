@@ -132,6 +132,11 @@ const quote = async ({ restaurantId, planCode, on = new Date() }) => {
   const config = await getPlatformConfig();
   const subscription = await getSubscription(restaurantId);
 
+  // purchasePlan goes through here, so a demo store can never be charged.
+  if ((await getOverride(restaurantId))?.billingExempt) {
+    throw new SubscriptionError("This is a demo store. It does not need a subscription and is never charged for one.", 409);
+  }
+
   const priced = await resolvePlanPrice({ restaurantId, planCode, on, config });
   if (!priced) throw new SubscriptionError("That plan is not available.", 404);
   if (!priced.plan.isAvailable && subscription.planCode !== planCode) {
@@ -306,8 +311,8 @@ const statusFor = async (restaurantId, on = new Date()) => {
     planCode: subscription.planCode,
     planName: subscription.planName,
     active,
-    // Set by CSD: this store may use the POS without a plan.
-    exempt: Boolean(override?.subscriptionExempt),
+    // Set by CSD: a demo store, never billed and never locked.
+    exempt: Boolean(override?.billingExempt),
     inGrace: !active && Boolean(graceEnds) && new Date(on) < graceEnds,
     currentPeriodStart: subscription.currentPeriodStart,
     currentPeriodEnd: subscription.currentPeriodEnd,
