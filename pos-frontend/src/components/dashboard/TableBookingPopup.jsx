@@ -226,7 +226,7 @@ const TableBookingPopup = () => {
   }
 
   return (
-    <div className="fixed bottom-4 right-4 z-[70] flex flex-col gap-2 w-[340px] max-w-[calc(100vw-2rem)]">
+    <div className="fixed bottom-[calc(76px+env(safe-area-inset-bottom))] lg:bottom-4 right-4 z-[70] flex flex-col gap-2 w-[340px] max-w-[calc(100vw-2rem)]">
       {pending.map((b) => (
         <div key={b._id} role="alert" className="rounded-2xl border-2 border-[#FD5302] bg-white shadow-2xl p-4">
           <p className="text-[11px] font-bold uppercase tracking-wide text-[#C2410C]">Table booking request</p>

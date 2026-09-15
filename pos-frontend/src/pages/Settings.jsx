@@ -1193,7 +1193,7 @@ const TimingsHolidaysView = () => {
                       the action buttons to the far edge of the card and opened a
                       chasm across the middle of every row. */}
                   {isOpen ? (
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex flex-wrap items-center gap-2 sm:shrink-0">
                       {/* Opening / Start Time Input */}
                       <input
                         type="time"
@@ -1233,7 +1233,7 @@ const TimingsHolidaysView = () => {
                   ) : (
                     // 125 + 8 + 22 (arrow) + 8 + (145 + 6 + 125) — the width of the time
                     // block above, so the buttons sit in the same place either way.
-                    <div className="w-[439px] shrink-0 text-[13px] font-bold text-[#94A3B8] italic">
+                    <div className="w-full sm:w-[439px] shrink-0 text-[13px] font-bold text-[#94A3B8] italic">
                       Closed all day
                     </div>
                   )}
@@ -1242,7 +1242,7 @@ const TimingsHolidaysView = () => {
                       Reserved slot rather than a conditional element, so one
                       overnight day doesn't shove its own buttons out of line
                       with every other row. */}
-                  <div className="w-[104px] shrink-0">
+                  <div className="sm:w-[104px] shrink-0">
                     {isOpen && (Number(dayData.closeDay) !== dayIndex || overnight) && (
                       <span className="px-2.5 py-1 rounded-md bg-[#FFF1E8] text-[#C2410C] text-[11px] font-extrabold flex items-center gap-1 w-fit">
                         <span>🌙</span> Overnight
@@ -1253,7 +1253,7 @@ const TimingsHolidaysView = () => {
                   {/* Actions: Add Hour & Submit. Right-aligned inside a fixed
                       slot so Submit keeps its column on closed days, where
                       Add Hour isn't rendered. */}
-                  <div className="w-[168px] shrink-0 flex items-center justify-end gap-2">
+                  <div className="sm:w-[168px] shrink-0 flex items-center justify-end gap-2">
                     {isOpen && (
                       <button
                         type="button"
@@ -1276,7 +1276,7 @@ const TimingsHolidaysView = () => {
 
                 {/* Additional Operating Periods */}
                 {isOpen && (dayData.periods || []).map((period, pIdx) => (
-                  <div key={pIdx} className="pl-[204px] flex items-center gap-3 text-[13px]">
+                  <div key={pIdx} className="sm:pl-[204px] flex flex-wrap items-center gap-3 text-[13px]">
                     <span className="text-[11px] font-extrabold text-[#94A3B8] uppercase">Slot {pIdx + 2}:</span>
                     <input
                       type="time"
@@ -1786,7 +1786,7 @@ const Settings = () => {
 
   return (
     <div className="h-full w-full overflow-y-auto bg-[#F8FAFC]">
-      <div className="max-w-[1100px] mx-auto px-7 py-6">
+      <div className="max-w-[1100px] mx-auto px-4 sm:px-7 py-4 sm:py-6">
 
         {/* Header */}
         <div className="flex items-center gap-3 mb-6">
@@ -1799,7 +1799,7 @@ const Settings = () => {
             </button>
           )}
           <div>
-            <h1 className="text-[28px] font-extrabold text-[#0F172A] tracking-tight">
+            <h1 className="text-[22px] sm:text-[28px] font-extrabold text-[#0F172A] tracking-tight">
               {activeMeta ? activeMeta.title : "Settings"}
             </h1>
             <p className="text-[13.5px] text-[#94A3B8] mt-0.5">

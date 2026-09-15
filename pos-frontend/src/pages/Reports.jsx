@@ -589,12 +589,12 @@ const Reports = () => {
 
   return (
     <div className="h-full w-full overflow-y-auto bg-[#F8FAFC]">
-      <div className="max-w-[1400px] mx-auto px-7 py-6">
+      <div className="max-w-[1400px] mx-auto px-4 sm:px-7 py-4 sm:py-6">
 
         {/* ===== Header (Module 5 §1) ===== */}
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
-            <h1 className="text-[28px] font-extrabold text-[#0F172A] tracking-tight">Reports</h1>
+            <h1 className="text-[22px] sm:text-[28px] font-extrabold text-[#0F172A] tracking-tight">Reports</h1>
             <p className="text-[13.5px] text-[#94A3B8] mt-1">
               {restaurantName}
               {restaurantAddress ? ` · ${restaurantAddress}` : ""}
@@ -732,7 +732,7 @@ const Reports = () => {
             onMouseMove={handleMouseMove}
             onMouseUp={handleMouseUpOrLeave}
             onMouseLeave={handleMouseUpOrLeave}
-            className="flex items-center gap-2 overflow-x-auto py-1 px-8 select-none cursor-grab active:cursor-grabbing scrollbar-none w-full"
+            className="flex items-center gap-2 overflow-x-auto py-1 px-2 sm:px-8 select-none cursor-grab active:cursor-grabbing scrollbar-none w-full"
           >
             {quickDates.map((d) => {
               const s = localDay(d);
@@ -832,12 +832,12 @@ const Reports = () => {
                 <button
                   key={o._id}
                   onClick={() => setSelectedOrderId(o._id)}
-                  className="w-full text-left flex items-center gap-4 px-5 py-3 hover:bg-[#F8FAFC] transition-colors"
+                  className="w-full text-left flex flex-wrap sm:flex-nowrap items-center gap-x-3 gap-y-1.5 sm:gap-4 px-4 sm:px-5 py-3 hover:bg-[#F8FAFC] transition-colors"
                 >
-                  <span className="text-[13px] font-extrabold text-[#0F172A] w-[110px] shrink-0">
+                  <span className="text-[13px] font-extrabold text-[#0F172A] sm:w-[110px] shrink-0">
                     #{orderDisplayId(o)}
                   </span>
-                  <span className="text-[12.5px] text-[#64748B] w-[70px] shrink-0">
+                  <span className="text-[12.5px] text-[#64748B] sm:w-[70px] shrink-0">
                     {fmtTime(o.createdAt)}
                   </span>
                   <span className="text-[12px] font-bold px-2 py-[3px] rounded-md bg-[#F1F5F9] text-[#334155] shrink-0">
@@ -846,7 +846,7 @@ const Reports = () => {
                   <span className="text-[11.5px] font-bold px-2 py-[3px] rounded-md bg-[#FFF1E8] text-[#C2410C] shrink-0">
                     {sourceLabel(o.source)}
                   </span>
-                  <span className="text-[11.5px] text-[#64748B] flex-1 truncate">
+                  <span className="text-[11.5px] text-[#64748B] basis-full sm:basis-auto order-last sm:order-none flex-1 truncate">
                     {o.customerDetails?.name || "Walk-in"}
                     {o.customerDetails?.phone ? ` · ${o.customerDetails.phone}` : ""}
                   </span>
@@ -861,7 +861,7 @@ const Reports = () => {
                         : "bg-[#F0FDF4] text-[#15803D]"
                     }`}
                   >{statusLabel(o.orderStatus)}</span>
-                  <span className="text-[13.5px] font-extrabold text-[#0F172A] w-[90px] text-right shrink-0">
+                  <span className="text-[13.5px] font-extrabold text-[#0F172A] ml-auto sm:ml-0 sm:w-[90px] text-right shrink-0">
                     {money(o.bills?.totalWithTax || o.bills?.total)}
                   </span>
                 </button>

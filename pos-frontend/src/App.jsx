@@ -13,7 +13,7 @@ import {
   Impersonate, Billing, WebsiteSettings,
 } from "./pages";
 
-import Sidebar from "./components/shared/Sidebar";
+import Sidebar, { MobileNav } from "./components/shared/Sidebar";
 import { AccountLockBanner, LockRedirect, useAccountLock } from "./components/shared/AccountLock";
 import useLoadData from "./hooks/useLoadData";
 import useRealtimeSync from "./hooks/useRealtimeSync";
@@ -88,19 +88,13 @@ function Layout() {
   }
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-[#F8FAFC]">
+    // dvh, not vh: on a phone 100vh runs under the browser's toolbar and
+    // hides the bottom navigation.
+    <div className="flex h-dvh w-full overflow-hidden bg-[#F8FAFC]">
       <Sidebar mobileOpen={mobileOpen} onMobileClose={() => setMobileOpen(false)} />
-      <main className="flex min-h-0 flex-1 min-w-0 flex-col overflow-hidden">
-        {/* Mobile menu button */}
-        <button
-          onClick={() => setMobileOpen(true)}
-          className="lg:hidden fixed bottom-5 left-5 z-30 w-12 h-12 rounded-full bg-[#FD5302] text-white shadow-lg flex items-center justify-center"
-          aria-label="Open menu"
-        >
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round">
-            <path d="M3 6h18M3 12h18M3 18h18" />
-          </svg>
-        </button>
+      {/* Below lg the bottom navigation covers the last 60px (+ the home bar). */}
+      <main className={`flex min-h-0 flex-1 min-w-0 flex-col overflow-hidden ${lock.locked ? "" : "pb-[calc(60px+env(safe-area-inset-bottom))] lg:pb-0"}`}>
+        {!lock.locked && <MobileNav onMore={() => setMobileOpen(true)} />}
         {isAuth && <AccountLockBanner {...lock} />}
         {lock.locked ? <LockRedirect /> : null}
         {routes}

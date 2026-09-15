@@ -168,10 +168,10 @@ const Support = () => {
   };
 
   return (
-    <div className="min-h-screen w-full bg-white text-[#0F172A] flex flex-col font-sans">
+    <div className="h-full overflow-y-auto w-full bg-white text-[#0F172A] flex flex-col font-sans">
 
       {/* Header matching reference image */}
-      <header className="w-full px-6 py-4 border-b border-[#E2E8F0] flex items-center justify-between bg-white shrink-0">
+      <header className="w-full px-4 sm:px-6 py-4 border-b border-[#E2E8F0] flex items-center justify-between bg-white shrink-0">
         <h1 className="text-[20px] font-bold text-[#0F172A] tracking-tight">Help & Support</h1>
         <button
           onClick={() => navigate(-1)}
@@ -183,7 +183,7 @@ const Support = () => {
       </header>
 
       {/* Main Content Area (Two Columns on Desktop) */}
-      <main className="flex-1 max-w-6xl w-full mx-auto px-6 py-8 md:py-12 flex flex-col md:flex-row items-center md:items-start justify-between gap-10 md:gap-16">
+      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 md:py-12 flex flex-col md:flex-row items-center md:items-start justify-between gap-10 md:gap-16">
 
         {/* Left Column: Illustration, Request Callback & Helpline */}
         <div className="w-full md:w-1/2 flex flex-col items-center text-center space-y-6">

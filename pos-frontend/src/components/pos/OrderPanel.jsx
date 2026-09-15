@@ -103,7 +103,11 @@ const ORDER_TYPES = [
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
-const OrderPanel = () => {
+/**
+ * @param {boolean}  [mobileOpen]    below lg the cart is a full-screen sheet; this shows it
+ * @param {Function} [onMobileClose]
+ */
+const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
   const dispatch = useDispatch();
   const qc = useQueryClient();
   const cart = useSelector((s) => s.cart);
@@ -661,9 +665,27 @@ const OrderPanel = () => {
   const discountLabel = formatDiscountLabel(discount);
 
   return (
-    <aside className="w-[380px] shrink-0 h-full bg-white border-l border-[#E2E8F0] flex flex-col">
+    // Below lg the cart is hidden until "View cart" opens it full screen. The
+    // modals below live inside this aside, so it is display:none rather than
+    // unmounted -- an open invoice survives closing the sheet.
+    <aside
+      className={`${
+        mobileOpen ? "fixed inset-0 z-[60] flex pb-[env(safe-area-inset-bottom)]" : "hidden"
+      } lg:static lg:z-auto lg:flex lg:pb-0 w-full lg:w-[380px] shrink-0 h-full bg-white border-l border-[#E2E8F0] flex-col`}
+    >
+      {/* ===== Phone header ===== */}
+      <div className="lg:hidden h-[56px] px-2 flex items-center gap-1 border-b border-[#E2E8F0] shrink-0">
+        <button
+          onClick={onMobileClose}
+          className="h-11 px-3 rounded-xl text-[#334155] text-[14px] font-bold flex items-center gap-1.5 hover:bg-[#F8FAFC]"
+        >
+          <span className="text-[20px] leading-none">←</span> Menu
+        </button>
+        <span className="ml-auto min-w-0 truncate pr-3 text-[15px] font-extrabold text-[#0F172A]">{displayName}</span>
+      </div>
+
       {/* ===== Store header ===== */}
-      <div className="px-4 py-3.5 flex items-center gap-3 border-b border-[#E2E8F0] shrink-0">
+      <div className="hidden lg:flex px-4 py-3.5 items-center gap-3 border-b border-[#E2E8F0] shrink-0">
         <div
           className={`w-[42px] h-[42px] rounded-full flex items-center justify-center shrink-0 overflow-hidden ${
             restaurantLogo ? "bg-white border border-[#E2E8F0]" : "bg-[#0B1120]"
@@ -960,7 +982,7 @@ const OrderPanel = () => {
                   <div className="flex items-center justify-center gap-4 pt-1.5">
                     <button
                       onClick={() => dispatch(removeItem(item.id))}
-                      className="w-7 h-7 rounded-full border-2 border-[#EF4444] text-[#EF4444] flex items-center justify-center text-[14px] font-bold hover:bg-[#FEE2E2] transition-colors"
+                      className="w-9 h-9 lg:w-7 lg:h-7 rounded-full border-2 border-[#EF4444] text-[#EF4444] flex items-center justify-center text-[14px] font-bold hover:bg-[#FEE2E2] transition-colors"
                       title="Remove line"
                       aria-label="Remove line"
                     >
@@ -968,7 +990,7 @@ const OrderPanel = () => {
                     </button>
                     <button
                       onClick={() => dispatch(updateQuantity({ id: item.id, quantity: (item.quantity || 1) + 1 }))}
-                      className="w-7 h-7 rounded-full border-2 border-[#22C55E] text-[#22C55E] flex items-center justify-center text-[14px] font-bold hover:bg-[#DCFCE7] transition-colors"
+                      className="w-9 h-9 lg:w-7 lg:h-7 rounded-full border-2 border-[#22C55E] text-[#22C55E] flex items-center justify-center text-[14px] font-bold hover:bg-[#DCFCE7] transition-colors"
                       title="Increase quantity"
                       aria-label="Increase quantity"
                     >
@@ -983,7 +1005,7 @@ const OrderPanel = () => {
                           ? dispatch(removeItem(item.id))
                           : dispatch(updateQuantity({ id: item.id, quantity: item.quantity - 1 }))
                       }
-                      className="w-7 h-7 rounded-full border-2 border-[#94A3B8] text-[#475569] flex items-center justify-center text-[16px] font-bold hover:bg-[#F1F5F9] transition-colors"
+                      className="w-9 h-9 lg:w-7 lg:h-7 rounded-full border-2 border-[#94A3B8] text-[#475569] flex items-center justify-center text-[16px] font-bold hover:bg-[#F1F5F9] transition-colors"
                       title="Decrease quantity"
                       aria-label="Decrease quantity"
                     >
@@ -994,7 +1016,7 @@ const OrderPanel = () => {
                         setNoteFor(item);
                         setNoteText(item.note || "");
                       }}
-                      className="w-7 h-7 rounded-full border-2 border-[#FD5302] text-[#C2410C] flex items-center justify-center text-[13px] hover:bg-[#FFF1E8] transition-colors"
+                      className="w-9 h-9 lg:w-7 lg:h-7 rounded-full border-2 border-[#FD5302] text-[#C2410C] flex items-center justify-center text-[13px] hover:bg-[#FFF1E8] transition-colors"
                       title="Item settings / add note"
                       aria-label="Item settings"
                     >

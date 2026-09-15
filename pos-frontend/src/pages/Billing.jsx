@@ -215,7 +215,7 @@ const Billing = () => {
   if (isLoading) return <div className="p-6 text-[13px] text-[#94A3B8]">Loading billing…</div>;
 
   return (
-    <div className="h-full overflow-y-auto bg-[#F8FAFC] p-5 space-y-5">
+    <div className="h-full overflow-y-auto bg-[#F8FAFC] p-4 sm:p-5 space-y-5">
       <header>
         <h1 className="text-[20px] font-extrabold text-[#0F172A]">Billing</h1>
         <p className="text-[13px] text-[#64748B]">

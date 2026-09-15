@@ -503,7 +503,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
     : category?.name || "";
 
   return (
-    <div className="flex-1 min-w-0 h-full flex flex-col bg-white">
+    <div className="flex-1 min-w-0 min-h-0 h-full flex flex-col bg-white">
       {/*
         §1: Top toolbar only. NO "Products" heading. Only:
           - Search
@@ -511,8 +511,9 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
           - Add Product
           - Grid / List toggle
       */}
-      <div className="px-5 pt-4 pb-3 shrink-0 flex items-center gap-2.5">
-        <div className="relative flex-1 max-w-[440px]">
+      <div className="px-3 sm:px-5 pt-3 sm:pt-4 pb-3 shrink-0 flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-2.5">
+        {/* Phones: search takes its own row, the buttons wrap below it. */}
+        <div className="relative basis-full sm:basis-auto flex-1 sm:max-w-[440px]">
           <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#94A3B8]">
             <IconSearch />
           </span>
@@ -536,14 +537,14 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
           onClick={onAddCategory}
           className="h-[40px] px-3.5 rounded-xl border border-[#FD5302] text-[#C2410C] bg-white text-[13px] font-bold flex items-center gap-1.5 hover:bg-[#FFF1E8] transition-colors"
         >
-          <IconPlus size={14} /> Add Category
+          <IconPlus size={14} /> <span className="sm:hidden">Category</span><span className="hidden sm:inline">Add Category</span>
         </button>
 
         <button
           onClick={onAddProduct}
           className="h-[40px] px-3.5 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold flex items-center gap-1.5 hover:bg-[#D64502] transition-colors"
         >
-          <IconPlus size={14} /> Add Product
+          <IconPlus size={14} /> <span className="sm:hidden">Product</span><span className="hidden sm:inline">Add Product</span>
         </button>
 
         <div className="ml-auto flex items-center rounded-xl border border-[#E2E8F0] overflow-hidden h-[40px]">
@@ -575,8 +576,8 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
           in-context add.
       */}
       {!searching && (
-        <div className="px-5 pb-3 shrink-0">
-          <div className="flex flex-wrap gap-1.5 max-h-[132px] overflow-y-auto no-scrollbar">
+        <div className="px-3 sm:px-5 pb-3 shrink-0">
+          <div className="flex flex-wrap gap-1.5 max-h-[88px] sm:max-h-[132px] overflow-y-auto no-scrollbar">
             {menus.map((m, i) => {
               const on = category?._id === m._id;
               return (
@@ -629,7 +630,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
       )}
 
       {/* Section heading (the ONLY heading on this screen). */}
-      <div className="px-5 pb-2 shrink-0 flex items-center justify-between">
+      <div className="px-3 sm:px-5 pb-2 shrink-0 flex items-center justify-between gap-2">
         <h2 className="text-[16px] font-extrabold text-[#0F172A]">{heading}</h2>
         {showPopular && menus.length > 0 && (
           <button
@@ -658,7 +659,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
       </div>
 
       {/* Scrollable content */}
-      <div className="flex-1 min-h-0 overflow-y-auto px-5 pb-5">
+      <div className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-5 pb-5">
         {isLoading ? (
           <div className="flex justify-center py-20">
             <div className="w-9 h-9 rounded-full border-[3px] border-[#FD5302] border-t-transparent animate-spin" />

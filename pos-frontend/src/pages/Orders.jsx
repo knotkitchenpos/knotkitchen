@@ -180,6 +180,12 @@ const Orders = () => {
   const [q, setQ] = useState("");
   const [typeFilter, setTypeFilter] = useState("all");
   const [selectedId, setSelectedId] = useState(null);
+  // Phones: the detail pane opens full screen over the list.
+  const [detailOpen, setDetailOpen] = useState(false);
+  const openOrder = (id) => {
+    setSelectedId(id);
+    setDetailOpen(true);
+  };
   const [clock, setClock] = useState(new Date());
 
   /**
@@ -396,8 +402,8 @@ const Orders = () => {
     <div className="flex h-full w-full overflow-hidden">
       {/* ===== Center: Orders list ===== */}
       <div className="flex-1 min-w-0 h-full flex flex-col bg-white">
-        <div className="px-7 pt-6 pb-4 shrink-0">
-          <h1 className="text-[28px] font-extrabold text-[#0F172A] tracking-tight">Orders</h1>
+        <div className="px-4 sm:px-7 pt-4 sm:pt-6 pb-3 sm:pb-4 shrink-0">
+          <h1 className="text-[24px] sm:text-[28px] font-extrabold text-[#0F172A] tracking-tight">Orders</h1>
         </div>
 
         {/* Stat cards removed on operator request — the per-tab counters
@@ -406,7 +412,7 @@ const Orders = () => {
             duplicate row was noise. */}
 
         {/* Tabs */}
-        <div className="px-7 pb-3 shrink-0 flex flex-wrap items-center gap-1.5">
+        <div className="px-4 sm:px-7 pb-3 shrink-0 flex flex-nowrap sm:flex-wrap overflow-x-auto no-scrollbar items-center gap-1.5">
           {TABS.map((t) => {
             const on = tab === t.key;
             const n = counts[t.key] ?? 0;
@@ -414,7 +420,7 @@ const Orders = () => {
               <button
                 key={t.key}
                 onClick={() => setTab(t.key)}
-                className={`h-[38px] px-4 rounded-lg text-[13.5px] font-bold flex items-center gap-2 transition-colors ${
+                className={`h-[38px] px-4 rounded-lg text-[13.5px] font-bold flex items-center gap-2 shrink-0 whitespace-nowrap transition-colors ${
                   on ? "bg-[#FD5302] text-white" : "bg-white text-[#475569] border border-[#E2E8F0] hover:border-[#CBD5E1]"
                 }`}
               >
@@ -428,7 +434,7 @@ const Orders = () => {
         </div>
 
         {/* Date filter (Module 4 §6) */}
-        <div className="px-7 pb-3 shrink-0 flex flex-wrap items-center gap-2">
+        <div className="px-4 sm:px-7 pb-3 shrink-0 flex flex-wrap items-center gap-2">
           <span className="text-[12.5px] font-bold text-[#94A3B8] flex items-center gap-1.5">
             <I.calendar /> Filter:
           </span>
@@ -482,20 +488,20 @@ const Orders = () => {
         </div>
 
         {/* Search + filters */}
-        <div className="px-7 pb-3 shrink-0 flex items-center gap-2">
-          <div className="relative flex-1 max-w-[420px]">
+        <div className="px-4 sm:px-7 pb-3 shrink-0 flex items-center gap-2">
+          <div className="relative flex-1 min-w-0 max-w-[420px]">
             <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#94A3B8]"><I.search /></span>
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Search by order ID, customer name, phone number…"
+              placeholder="Search order ID, name, phone…"
               className="w-full h-[40px] pl-10 pr-3 rounded-xl border border-[#E2E8F0] text-[13.5px] placeholder:text-[#94A3B8] focus:border-[#FD5302]"
             />
           </div>
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
-            className="h-[40px] px-3 rounded-xl border border-[#E2E8F0] text-[13.5px] font-semibold text-[#475569] focus:border-[#FD5302]"
+            className="h-[40px] w-[112px] sm:w-auto shrink-0 px-2 sm:px-3 rounded-xl border border-[#E2E8F0] text-[13.5px] font-semibold text-[#475569] focus:border-[#FD5302]"
           >
             <option value="all">Order Type</option>
             <option value="collection">Collection</option>
@@ -505,7 +511,7 @@ const Orders = () => {
           </select>
           <button
             onClick={() => refetch()}
-            className="w-[40px] h-[40px] rounded-xl border border-[#E2E8F0] text-[#475569] flex items-center justify-center hover:border-[#FD5302] hover:text-[#C2410C]"
+            className="w-[40px] h-[40px] shrink-0 rounded-xl border border-[#E2E8F0] text-[#475569] flex items-center justify-center hover:border-[#FD5302] hover:text-[#C2410C]"
             title="Refresh"
           >
             <span className={isFetching ? "animate-spin" : ""}><I.refresh /></span>
@@ -513,7 +519,7 @@ const Orders = () => {
         </div>
 
         {/* Order rows */}
-        <div className="flex-1 min-h-0 overflow-y-auto px-7 pb-6">
+        <div className="flex-1 min-h-0 overflow-y-auto px-3 sm:px-7 pb-6">
           {isLoading ? (
             <div className="flex justify-center py-20">
               <div className="w-9 h-9 rounded-full border-[3px] border-[#FD5302] border-t-transparent animate-spin" />
@@ -535,14 +541,14 @@ const Orders = () => {
                     key={o._id}
                     role="button"
                     tabIndex={0}
-                    onClick={() => setSelectedId(o._id)}
+                    onClick={() => openOrder(o._id)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
                         e.preventDefault();
-                        setSelectedId(o._id);
+                        openOrder(o._id);
                       }
                     }}
-                    className={`w-full text-left flex items-center gap-4 px-4 py-3 rounded-xl border-l-[3px] border transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#FD5302]/40 ${
+                    className={`w-full text-left flex items-center gap-2.5 sm:gap-4 px-3 sm:px-4 py-3 rounded-xl border-l-[3px] border transition-all cursor-pointer focus:outline-none focus:ring-2 focus:ring-[#FD5302]/40 ${
                       on ? "border-[#FD5302] bg-[#FFF6F0]" : "border-[#E2E8F0] bg-white hover:border-[#CBD5E1]"
                     }`}
                     style={{ borderLeftColor: ring }}
@@ -559,7 +565,7 @@ const Orders = () => {
                     </div>
 
                     {/* ID + time */}
-                    <div className="shrink-0 w-[110px]">
+                    <div className="hidden sm:block shrink-0 w-[110px]">
                       <p className="text-[13px] font-extrabold text-[#0F172A]">
                         #{orderDisplayId(o)}
                       </p>
@@ -568,7 +574,7 @@ const Orders = () => {
 
                     {/* Type icon */}
                     <span
-                      className="w-9 h-9 rounded-full flex items-center justify-center shrink-0"
+                      className="hidden md:flex w-9 h-9 rounded-full items-center justify-center shrink-0"
                       style={{ background: meta.bg, color: meta.fg }}
                     >
                       <meta.Icon s={17} />
@@ -585,12 +591,14 @@ const Orders = () => {
                           {meta.label}
                         </span>
                       </div>
-                      <p className="text-[11.5px] text-[#94A3B8] mt-0.5">
+                      <p className="text-[11.5px] text-[#94A3B8] mt-0.5 truncate">
+                        <span className="sm:hidden">#{orderDisplayId(o)} · {timeOf(o.createdAt)} · </span>
                         {sourceLabel(o.source)} · {o.items?.length || 0} Items
                       </p>
                     </div>
 
-                    {/* Status + amount */}
+                    {/* Status + amount (stacked on phones) */}
+                    <div className="shrink-0 flex flex-col-reverse sm:flex-row items-end sm:items-center gap-1 sm:gap-4">
                     <span
                       className={`px-2 py-[3px] rounded-md text-[11px] font-bold shrink-0 ${
                         cancelled
@@ -604,24 +612,18 @@ const Orders = () => {
                     >
                       {statusLabel(o.orderStatus)}
                     </span>
-                    <span className="text-[14.5px] font-extrabold text-[#0F172A] w-[80px] text-right shrink-0">
+                    <span className="text-[14.5px] font-extrabold text-[#0F172A] sm:w-[80px] text-right shrink-0">
                       {money(o.bills?.totalWithTax || o.bills?.total)}
                     </span>
+                    </div>
 
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setSelectedId(o._id);
-                        // Bring the details pane into view on smaller screens
-                        // where it might be below the fold.
-                        if (typeof document !== "undefined") {
-                          document
-                            .getElementById("order-detail-pane")
-                            ?.scrollIntoView({ behavior: "smooth", block: "start" });
-                        }
+                        openOrder(o._id);
                       }}
-                      className="h-[32px] px-3.5 rounded-lg border border-[#FD5302] text-[#C2410C] text-[12.5px] font-bold flex items-center shrink-0 hover:bg-[#FFF1E8]"
+                      className="hidden sm:flex h-[32px] px-3.5 rounded-lg border border-[#FD5302] text-[#C2410C] text-[12.5px] font-bold flex items-center shrink-0 hover:bg-[#FFF1E8]"
                     >
                       View
                     </button>
@@ -632,7 +634,7 @@ const Orders = () => {
           )}
         </div>
 
-        <div className="px-7 py-3 border-t border-[#E2E8F0] shrink-0">
+        <div className="px-4 sm:px-7 py-3 border-t border-[#E2E8F0] shrink-0">
           <p className="text-[12.5px] text-[#94A3B8]">
             Showing {list.length} of {orders.length} orders {windowLabel && `— ${windowLabel}`}
           </p>
@@ -640,14 +642,28 @@ const Orders = () => {
       </div>
 
       {/* ===== Right: Order detail ===== */}
-      <aside id="order-detail-pane" className="w-[400px] shrink-0 h-full bg-white border-l border-[#E2E8F0] flex flex-col">
+      {/* Below lg the detail pane is a full-screen sheet opened from a row. */}
+      <aside
+        id="order-detail-pane"
+        className={`${
+          detailOpen ? "fixed inset-0 z-[60] flex pb-[env(safe-area-inset-bottom)]" : "hidden"
+        } lg:static lg:z-auto lg:flex lg:pb-0 w-full lg:w-[400px] shrink-0 h-full bg-white border-l border-[#E2E8F0] flex-col`}
+      >
+        <div className="lg:hidden h-[56px] px-2 flex items-center border-b border-[#E2E8F0] shrink-0">
+          <button
+            onClick={() => setDetailOpen(false)}
+            className="h-11 px-3 rounded-xl text-[#334155] text-[14px] font-bold flex items-center gap-1.5 hover:bg-[#F8FAFC]"
+          >
+            <span className="text-[20px] leading-none">←</span> Orders
+          </button>
+        </div>
         {/*
           Store header — MUST show the RESTAURANT/STORE name and logo,
           not the logged-in user. Previously this fell back to
           `user.name` which surfaced staff/owner names like "raja" in
           place of the restaurant name (see BUG 3 in the QA report).
         */}
-        <div className="px-4 py-3.5 flex items-center gap-3 border-b border-[#E2E8F0] shrink-0">
+        <div className="hidden lg:flex px-4 py-3.5 items-center gap-3 border-b border-[#E2E8F0] shrink-0">
           <div
             className={`w-[42px] h-[42px] rounded-full flex items-center justify-center shrink-0 overflow-hidden ${
               storeDisplayLogo ? "bg-white border border-[#E2E8F0]" : "bg-[#0B1120]"

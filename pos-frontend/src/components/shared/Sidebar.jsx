@@ -158,13 +158,64 @@ const Sidebar = ({ mobileOpen = false, onMobileClose }) => {
       {/* Mobile drawer */}
       {mobileOpen && (
         <div className="lg:hidden">
-          <div onClick={onMobileClose} className="fixed inset-0 z-40 bg-black/60" />
-          <aside className="fixed top-0 left-0 bottom-0 w-[260px] z-50">
+          <div onClick={onMobileClose} className="fixed inset-0 z-[55] bg-black/60" />
+          <aside className="fixed top-0 left-0 bottom-0 w-[260px] max-w-[85vw] z-[56] pb-[env(safe-area-inset-bottom)]">
             <Panel isCollapsed={false} />
           </aside>
         </div>
       )}
     </>
+  );
+};
+
+/**
+ * Phone and tablet navigation (below lg), fixed to the bottom of the screen.
+ * The first four screens get a tab each; "More" opens the drawer, which also
+ * holds Help & Support and Settings.
+ */
+const TABS = [
+  { path: "/menu", label: "Product", Icon: IconBag },
+  { path: "/orders", label: "Orders", Icon: IconClipboard },
+  { path: "/tables", label: "Tables", Icon: IconTables },
+  { path: "/reports", label: "Reports", Icon: IconChart },
+];
+
+const IconMore = () => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <path d="M4 6h16M4 12h16M4 18h16" />
+  </svg>
+);
+
+export const MobileNav = ({ onMore }) => {
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
+  const isOn = (path) => (path === "/menu" ? pathname === "/menu" || pathname === "/" : pathname.startsWith(path));
+  const moreOn = !TABS.some((t) => isOn(t.path));
+
+  const tab = (key, label, Icon, on, onClick) => (
+    <button
+      key={key}
+      onClick={onClick}
+      aria-current={on ? "page" : undefined}
+      className={`flex-1 min-w-0 flex flex-col items-center justify-center gap-0.5 h-full text-[11px] font-bold ${
+        on ? "text-[#FD5302]" : "text-[#9AA3B8]"
+      }`}
+    >
+      <Icon active={on} />
+      <span className="truncate max-w-full px-1">{label}</span>
+    </button>
+  );
+
+  return (
+    <nav
+      className="lg:hidden fixed inset-x-0 bottom-0 z-50 bg-[#0B1120] border-t border-white/10 pb-[env(safe-area-inset-bottom)]"
+      aria-label="Main"
+    >
+      <div className="flex h-[60px]">
+        {TABS.map(({ path, label, Icon }) => tab(path, label, Icon, isOn(path), () => navigate(path)))}
+        {tab("more", "More", IconMore, moreOn, onMore)}
+      </div>
+    </nav>
   );
 };
 

@@ -77,7 +77,7 @@ const PrepDuePopup = () => {
   };
 
   return (
-    <div className="fixed bottom-4 left-4 z-[70] flex flex-col gap-2 w-[340px] max-w-[calc(100vw-2rem)]">
+    <div className="fixed bottom-[calc(76px+env(safe-area-inset-bottom))] lg:bottom-4 left-4 z-[70] flex flex-col gap-2 w-[340px] max-w-[calc(100vw-2rem)]">
       {due.map((o) => (
         <div key={o.orderId} role="alert" className="rounded-2xl border-2 border-[#7C3AED] bg-white shadow-2xl p-4">
           <p className="text-[11px] font-bold uppercase tracking-wide text-[#6D28D9]">Time to start preparing</p>

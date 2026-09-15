@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
+import { useSelector } from "react-redux";
+import { getTotalPrice } from "../redux/slices/cartSlice";
 import ProductPanel from "../components/pos/ProductPanel";
 import OrderPanel from "../components/pos/OrderPanel";
 import AddCategoryModal from "../components/pos/AddCategoryModal";
@@ -30,6 +32,10 @@ const Menu = () => {
   const queryClient = useQueryClient();
   const [showAddCategory, setShowAddCategory] = useState(false);
   const [showAddProduct, setShowAddProduct] = useState(false);
+  // Phones: the cart opens full screen from the bar at the bottom.
+  const [cartOpen, setCartOpen] = useState(false);
+  const cartCount = useSelector((s) => s.cart.reduce((n, i) => n + (i.quantity || 1), 0));
+  const cartSubtotal = useSelector(getTotalPrice);
 
   const { data: menusRes } = useQuery({ queryKey: ["menus"], queryFn: getMenus });
   const menus = menusRes?.data?.data || [];
@@ -60,13 +66,26 @@ const Menu = () => {
   return (
     <div className="flex h-full w-full overflow-hidden">
       {/* Middle: Products */}
-      <ProductPanel
-        onAddCategory={() => setShowAddCategory(true)}
-        onAddProduct={() => setShowAddProduct(true)}
-      />
+      <div className="flex-1 min-w-0 h-full flex flex-col">
+        <ProductPanel
+          onAddCategory={() => setShowAddCategory(true)}
+          onAddProduct={() => setShowAddProduct(true)}
+        />
+
+        {/* Phones: cart summary bar */}
+        <div className="lg:hidden shrink-0 border-t border-[#E2E8F0] bg-white p-2.5">
+          <button
+            onClick={() => setCartOpen(true)}
+            className="w-full h-[52px] rounded-xl bg-[#FD5302] text-white px-4 flex items-center justify-between text-[15px] font-bold active:bg-[#D64502]"
+          >
+            <span>View cart ({cartCount})</span>
+            <span className="font-extrabold">₹{Number(cartSubtotal || 0).toFixed(2)} →</span>
+          </button>
+        </div>
+      </div>
 
       {/* Right: Order cart */}
-      <OrderPanel />
+      <OrderPanel mobileOpen={cartOpen} onMobileClose={() => setCartOpen(false)} />
 
       {showAddCategory && (
         <AddCategoryModal

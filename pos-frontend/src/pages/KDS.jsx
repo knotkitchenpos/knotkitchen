@@ -41,7 +41,7 @@ export default function KDS() {
   };
 
   return (
-    <div className="p-6">
+    <div className="h-full overflow-y-auto p-4 sm:p-6">
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold text-content">Kitchen Display System</h1>

@@ -41,6 +41,18 @@ select:focus {
   outline: none;
 }
 
+/*
+ * Every POS dialog is a centred card on a `fixed inset-0 flex items-center
+ * justify-center` backdrop. On a phone a tall card ran off the screen with its
+ * buttons out of reach and nothing to scroll. Let the backdrop scroll, and
+ * centre "safely" so a card taller than the screen starts at the top instead
+ * of being cut off above it.
+ */
+.fixed.inset-0.flex.items-center.justify-center {
+  overflow-y: auto;
+  align-items: safe center;
+}
+
 /* Scrollbars */
 .no-scrollbar::-webkit-scrollbar {
   display: none;

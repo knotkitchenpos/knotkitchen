@@ -218,7 +218,7 @@ const OnlineOrders = () => {
   };
 
   return (
-    <div className="p-4 sm:p-6">
+    <div className="h-full overflow-y-auto p-4 sm:p-6">
       <div className="flex flex-wrap items-center gap-3 mb-5">
         <h1 className="text-2xl font-bold text-[#F5F7FA]">Online Orders</h1>
         <span
