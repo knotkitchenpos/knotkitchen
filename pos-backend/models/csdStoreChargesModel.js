@@ -73,6 +73,13 @@ const csdStoreChargesSchema = new mongoose.Schema(
       default: [],
     },
 
+    /**
+     * No subscription required: an expired or missing plan never locks this
+     * restaurant. For KnotKitchen's own demo and partner stores. It waives the
+     * SUBSCRIPTION only -- an empty balance or unpaid order charges still lock.
+     */
+    subscriptionExempt: { type: Boolean, default: false },
+
     notes: { type: String, default: "", maxlength: 1000 },
 
     // Kept on the document as well as in AuditLog so the pricing history is

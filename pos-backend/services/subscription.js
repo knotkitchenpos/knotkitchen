@@ -14,7 +14,7 @@
 
 const { PlatformSubscription, PlatformInvoice } = require("../models/platformSubscriptionModel");
 const Restaurant = require("../models/restaurantModel");
-const { getPlatformConfig, resolvePlanPrice } = require("./pricing");
+const { getPlatformConfig, resolvePlanPrice, getOverride } = require("./pricing");
 const { computeTax } = require("./tax");
 const { debit, InsufficientBalanceError } = require("./ledger");
 const { amountInWords, formatINR } = require("./money");
@@ -289,7 +289,10 @@ const purchasePlan = async ({ restaurantId, planCode, on = new Date(), createdBy
 /** Status as of now, without changing anything. */
 const statusFor = async (restaurantId, on = new Date()) => {
   const config = await getPlatformConfig();
-  const subscription = await getSubscription(restaurantId);
+  const [subscription, override] = await Promise.all([
+    getSubscription(restaurantId),
+    getOverride(restaurantId),
+  ]);
   const active = isActiveAt(subscription, on);
 
   const graceEnds = subscription.currentPeriodEnd
@@ -303,6 +306,8 @@ const statusFor = async (restaurantId, on = new Date()) => {
     planCode: subscription.planCode,
     planName: subscription.planName,
     active,
+    // Set by CSD: this store may use the POS without a plan.
+    exempt: Boolean(override?.subscriptionExempt),
     inGrace: !active && Boolean(graceEnds) && new Date(on) < graceEnds,
     currentPeriodStart: subscription.currentPeriodStart,
     currentPeriodEnd: subscription.currentPeriodEnd,

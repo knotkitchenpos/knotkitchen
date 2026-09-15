@@ -27,7 +27,7 @@
 
 const { BusinessBalance, LedgerEntry } = require("../models/businessBalanceModel");
 const { PlatformSubscription } = require("../models/platformSubscriptionModel");
-const { getPlatformConfig } = require("./pricing");
+const { getPlatformConfig, getOverride } = require("./pricing");
 const { formatINR } = require("./money");
 
 const HOUR_MS = 60 * 60 * 1000;
@@ -61,10 +61,11 @@ const assessAccount = async (restaurantId, on = new Date()) => {
   // require would resolve to undefined on whichever side loaded second.
   const { outstandingDues } = require("./orderCharge");
 
-  const [dues, subscription, emptySince] = await Promise.all([
+  const [dues, subscription, emptySince, override] = await Promise.all([
     outstandingDues(restaurantId),
     PlatformSubscription.findOne({ restaurantId }).lean(),
     balanceEmptySince(restaurantId),
+    getOverride(restaurantId),
   ]);
 
   const reasons = [];
@@ -96,8 +97,9 @@ const assessAccount = async (restaurantId, on = new Date()) => {
   }
 
   // A subscription that was never bought is not overdue -- a restaurant that
-  // has not subscribed yet has nothing to be late with.
-  if (subscription?.currentPeriodEnd) {
+  // has not subscribed yet has nothing to be late with. A store CSD has marked
+  // "no subscription required" is never late with one either.
+  if (subscription?.currentPeriodEnd && !override?.subscriptionExempt) {
     const endedAt = new Date(subscription.currentPeriodEnd).getTime();
     if (now > endedAt + graceMs) {
       reasons.push("The subscription expired and the grace period has passed.");

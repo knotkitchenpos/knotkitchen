@@ -298,19 +298,21 @@ const Billing = () => {
           subtitle={
             subscription?.active
               ? `Renews ${new Date(subscription.currentPeriodEnd).toLocaleDateString("en-IN", { dateStyle: "medium" })}`
-              : "No active plan"
+              : subscription?.exempt
+                ? "No subscription required for this store"
+                : "No active plan"
           }
           right={
             <span
               className={`rounded-full px-3 py-1 text-[11px] font-extrabold ${
-                subscription?.active
+                subscription?.active || subscription?.exempt
                   ? "bg-[#DCFCE7] text-[#15803D]"
                   : subscription?.inGrace
                     ? "bg-[#FEF3C7] text-[#B45309]"
                     : "bg-[#F1F5F9] text-[#64748B]"
               }`}
             >
-              {subscription?.active ? "ACTIVE" : subscription?.inGrace ? "GRACE" : "INACTIVE"}
+              {subscription?.active ? "ACTIVE" : subscription?.exempt ? "NOT REQUIRED" : subscription?.inGrace ? "GRACE" : "INACTIVE"}
             </span>
           }
         >

@@ -174,6 +174,7 @@ const getRestaurant = async (req, res, next) => {
           onlinePaidOrderCharge: charges.onlinePaidOrderCharge,
           gstPercent: charges.gstPercent,
           monthlySubscription: charges.monthlySubscription,
+          subscriptionExempt: Boolean(charges.subscriptionExempt),
           plan: restaurant?.subscription?.plan || "free",
           subscriptionStatus: restaurant?.subscription?.status || "",
           usingDefaults: !!charges.isDefault,
@@ -513,6 +514,13 @@ const updateCharges = async (req, res, next) => {
       else patch[key] = n;
     }
     if (b.notes !== undefined) patch.notes = str(b.notes).slice(0, 1000);
+    if (b.subscriptionExempt !== undefined) {
+      if (typeof b.subscriptionExempt !== "boolean") {
+        fieldErrors.subscriptionExempt = "Must be true or false.";
+      } else {
+        patch.subscriptionExempt = b.subscriptionExempt;
+      }
+    }
 
     /**
      * A negotiated price for a specific plan -- "ABC pays 999 for Growth"
@@ -557,6 +565,7 @@ const updateCharges = async (req, res, next) => {
       onlinePaidOrderCharge: existing.onlinePaidOrderCharge,
       gstPercent: existing.gstPercent,
       monthlySubscription: existing.monthlySubscription,
+      subscriptionExempt: Boolean(existing.subscriptionExempt),
     };
 
     for (const [k, v] of Object.entries(patch)) {
@@ -577,6 +586,12 @@ const updateCharges = async (req, res, next) => {
     }
     await existing.save();
 
+    // Exempting a store that is already locked for its subscription should
+    // unlock it now, not at the next sweep; removing the exemption re-checks.
+    if (patch.subscriptionExempt !== undefined && restaurant?._id) {
+      require("../services/accountLock").fireEvaluateLock(restaurant._id);
+    }
+
     await csdAudit({
       req, staff: req.csdStaff,
       action: "CSD_STORE_CHARGES_UPDATED",
@@ -594,6 +609,7 @@ const updateCharges = async (req, res, next) => {
         gstPercent: existing.gstPercent,
         monthlySubscription: existing.monthlySubscription,
         ebillCharge: existing.ebillCharge,
+        subscriptionExempt: Boolean(existing.subscriptionExempt),
         planPrices: existing.planPrices || [],
         notes: existing.notes,
         plan: restaurant?.subscription?.plan || "free",

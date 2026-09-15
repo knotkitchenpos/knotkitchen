@@ -117,11 +117,11 @@ test("REGRESSION: the allow-list is matched on the full path, not the router-rel
 // ---------------------------------------------------------------------------
 
 /** Run `fn` against accountLock with its reads replaced. */
-const withAssess = async ({ lastEntry = null, dues = { count: 0 }, subscription = null, graceHours = 24 }, fn) => {
+const withAssess = async ({ lastEntry = null, dues = { count: 0 }, subscription = null, graceHours = 24, override = null }, fn) => {
   const Module = require("module");
   const orig = Module._load;
   Module._load = function (r) {
-    if (r === "./pricing") return { getPlatformConfig: async () => ({ graceHours }) };
+    if (r === "./pricing") return { getPlatformConfig: async () => ({ graceHours }), getOverride: async () => override };
     if (r === "./orderCharge") return { outstandingDues: async () => dues };
     if (r === "../models/platformSubscriptionModel") {
       return { PlatformSubscription: { findOne: () => ({ lean: async () => subscription }) } };
@@ -168,6 +168,28 @@ test("a balance with money, or one that never had any, is not a reason to lock",
   });
 });
 
+test("a store CSD marked 'no subscription required' never locks for its plan", async () => {
+  // Expired a week ago, well past grace.
+  const subscription = { currentPeriodEnd: new Date("2026-09-08T18:30:00Z") };
+  const on = new Date("2026-09-15T12:00:00Z");
+
+  await withAssess({ subscription }, async (svc) => {
+    assert.equal((await svc.assessAccount("r1", on)).shouldLock, true, "without the exemption it locks");
+  });
+  await withAssess({ subscription, override: { subscriptionExempt: true } }, async (svc) => {
+    const res = await svc.assessAccount("r1", on);
+    assert.equal(res.shouldLock, false);
+    assert.equal(res.lockWarning, "", "and no countdown banner either");
+  });
+
+  // The exemption is the subscription only: an empty balance still locks.
+  const ranOut = { createdAt: new Date("2026-09-10T00:00:00Z"), balanceAfterPaise: 0 };
+  await withAssess({ subscription, lastEntry: ranOut, override: { subscriptionExempt: true } }, async (svc) => {
+    const res = await svc.assessAccount("r1", on);
+    assert.equal(res.shouldLock, true);
+    assert.match(res.reasons.join(" "), /Business Balance ran out/);
+  });
+});
 
 test("SOURCE: a lock is only applied after the configured grace period", () => {
   const src = SRC("services/accountLock.js");
@@ -181,7 +203,7 @@ test("SOURCE: a restaurant that never subscribed is not overdue", () => {
   // Nothing to be late with. Locking it would be locking someone out for not
   // having started yet.
   const src = SRC("services/accountLock.js");
-  assert.match(src, /if \(subscription\?\.currentPeriodEnd\)/);
+  assert.match(src, /if \(subscription\?\.currentPeriodEnd && !override\?\.subscriptionExempt\)/);
 });
 
 test("SOURCE: paying re-evaluates the lock immediately", () => {
