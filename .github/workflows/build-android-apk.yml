@@ -11,8 +11,14 @@ permissions:
   contents: read
 
 jobs:
-  build-debug-apk:
+  build-apk:
     runs-on: ubuntu-latest
+    env:
+      KK_VERSION_CODE: ${{ github.run_number }}
+      KK_VERSION_NAME: 1.0.${{ github.run_number }}
+      # Release signing runs only once the keystore secrets exist. See
+      # pos-frontend/android/app/build.gradle for how they are read.
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
 
     steps:
       - name: Checkout repository
@@ -35,8 +41,12 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      # packages: "" -- the action's default list still names "tools", which
+      # the SDK no longer ships, and sdkmanager fails the whole job on it.
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: ""
 
       - name: Install Android SDK packages
         run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
@@ -53,14 +63,35 @@ jobs:
         working-directory: pos-frontend/android
         run: ./gradlew assembleDebug
 
-      - name: Upload downloadable APK
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: knotkitchen-pos-debug-apk
-          # Paths are relative to the workspace root, NOT to the previous
-          # step's working-directory. The Android project lives under
-          # pos-frontend/, so the old `android/...` path pointed at nothing and
-          # would have failed this step (if-no-files-found: error) even on a
-          # successful build. The build has never got this far to show it.
+          # Paths are relative to the workspace root, not the step's
+          # working-directory.
           path: pos-frontend/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Build signed release APK and App Bundle
+        if: env.HAS_KEYSTORE == 'true'
+        working-directory: pos-frontend/android
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KK_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KK_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KK_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          export KK_KEYSTORE_PATH="$RUNNER_TEMP/knotkitchen-release.jks"
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$KK_KEYSTORE_PATH"
+          ./gradlew assembleRelease bundleRelease
+          rm -f "$KK_KEYSTORE_PATH"
+
+      - name: Upload signed release
+        if: env.HAS_KEYSTORE == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: knotkitchen-pos-release
+          path: |
+            pos-frontend/android/app/build/outputs/apk/release/app-release.apk
+            pos-frontend/android/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error

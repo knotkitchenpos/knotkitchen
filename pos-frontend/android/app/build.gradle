@@ -7,8 +7,9 @@ android {
         applicationId "com.knotkitchen.pos"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 1
-        versionName "1.0"
+        // CI sets these from the run number; a local build is 1 / 1.0.
+        versionCode (System.getenv("KK_VERSION_CODE") ?: "1").toInteger()
+        versionName System.getenv("KK_VERSION_NAME") ?: "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,8 +17,23 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // Release signing comes from the environment only (see
+    // .github/workflows/build-android-apk.yml). The keystore and its passwords
+    // are never committed.
+    def keystorePath = System.getenv("KK_KEYSTORE_PATH")
+    signingConfigs {
+        release {
+            if (keystorePath) {
+                storeFile file(keystorePath)
+                storePassword System.getenv("KK_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("KK_KEY_ALIAS")
+                keyPassword System.getenv("KK_KEY_PASSWORD")
+            }
+        }
+    }
     buildTypes {
         release {
+            signingConfig keystorePath ? signingConfigs.release : null
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }

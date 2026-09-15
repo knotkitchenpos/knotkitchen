@@ -10,7 +10,9 @@ import {
   bluetoothAvailable,
   chooseBluetoothPrinter,
   chooseUsbPrinter,
+  listNativePrinters,
   loadPrinterConfig,
+  nativePrinting,
   savePrinterConfig,
   supports,
 } from "../../utils/printerDevice";
@@ -64,6 +66,24 @@ const ToggleRow = ({ title, note, checked, onChange, children }) => (
   </div>
 );
 
+/** App only: pick one of several printers the phone found. */
+const PrinterChoices = ({ choices, kind, onPick }) =>
+  choices?.kind === kind ? (
+    <div className="rounded-xl border border-[#E2E8F0] divide-y divide-[#E2E8F0] max-w-[420px]">
+      {choices.list.map((p) => (
+        <button
+          key={p.bluetooth?.address || `${p.usb?.vendorId}:${p.usb?.productId}`}
+          type="button"
+          onClick={() => onPick(kind, p)}
+          className="w-full min-h-[48px] px-3 text-left text-[13.5px] font-bold text-[#0F172A] hover:bg-[#F8FAFC]"
+        >
+          {p.name}
+          {p.bluetooth ? <span className="block text-[11px] font-medium text-[#94A3B8]">{p.bluetooth.address}</span> : null}
+        </button>
+      ))}
+    </div>
+  ) : null;
+
 const CONNECTIONS = [
   { key: "usb", label: "USB" },
   { key: "bluetooth", label: "Bluetooth" },
@@ -90,6 +110,8 @@ const DeviceConfiguration = () => {
   const [device, setDevice] = useState(loadPrinterConfig);
   const [tab, setTab] = useState(device.type === "bluetooth" ? "bluetooth" : "usb");
   const [connecting, setConnecting] = useState(false);
+  // App only: printers to pick from when more than one is found.
+  const [choices, setChoices] = useState(null);
   const [btOn, setBtOn] = useState(null);
   const patchDevice = (patch) => setDevice((d) => ({ ...d, ...patch }));
 
@@ -97,12 +119,31 @@ const DeviceConfiguration = () => {
     bluetoothAvailable().then(setBtOn);
   }, []);
 
+  const pickPrinter = (kind, picked) => {
+    setChoices(null);
+    patchDevice({ type: kind, usb: undefined, bluetooth: undefined, ...picked });
+    enqueueSnackbar(`${picked.name} connected. Choose the paper size and press Save.`, { variant: "success" });
+  };
+
   const connect = async (kind) => {
     setConnecting(true);
+    setChoices(null);
     try {
+      if (nativePrinting) {
+        const found = await listNativePrinters(kind);
+        if (!found.length) {
+          throw new Error(
+            kind === "usb"
+              ? "No USB printer found. Plug it in with a USB OTG cable, allow access if the phone asks, and try again."
+              : "No paired printer found. Pair the printer in the phone's Settings › Bluetooth first, then try again.",
+          );
+        }
+        if (found.length === 1) pickPrinter(kind, found[0]);
+        else setChoices({ kind, list: found });
+        return;
+      }
       const picked = kind === "usb" ? await chooseUsbPrinter() : await chooseBluetoothPrinter();
-      patchDevice({ type: kind, ...picked });
-      enqueueSnackbar(`${picked.name} connected. Choose the paper size and press Save.`, { variant: "success" });
+      pickPrinter(kind, picked);
     } catch (err) {
       // Closing the browser's chooser is not an error worth shouting about.
       if (err?.name !== "NotFoundError") enqueueSnackbar(err?.message || "Could not connect.", { variant: "error" });
@@ -253,6 +294,8 @@ const DeviceConfiguration = () => {
                   This browser cannot reach USB printers directly. Open the POS in Chrome or Edge, or use the computer&apos;s printer driver below.
                 </p>
               )}
+              <PrinterChoices choices={choices} kind="usb" onPick={pickPrinter} />
+              {!nativePrinting && (
               <div className="rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] p-3">
                 <p className="font-bold text-[#0F172A]">Printer installed on a Windows computer?</p>
                 <p className="text-[12px] text-[#64748B] mt-0.5">
@@ -268,15 +311,23 @@ const DeviceConfiguration = () => {
                   {isThis("system") ? "Using the computer's printer driver" : "Use the computer's printer driver"}
                 </button>
               </div>
+              )}
             </div>
           )}
 
           {tab === "bluetooth" && (
             <div className="mt-4 space-y-3 text-[13px]">
-              <p className="text-[#64748B]">
-                Turn on the printer and put it in pairing mode. Make sure Bluetooth is on for this device, then press{" "}
-                <strong>Search &amp; connect</strong> and pick the printer.
-              </p>
+              {nativePrinting ? (
+                <p className="text-[#64748B]">
+                  Pair the printer once in the phone&apos;s <strong>Settings › Bluetooth</strong> (the PIN is usually 0000
+                  or 1234). Then press <strong>Search &amp; connect</strong> and pick it.
+                </p>
+              ) : (
+                <p className="text-[#64748B]">
+                  Turn on the printer and put it in pairing mode. Make sure Bluetooth is on for this device, then press{" "}
+                  <strong>Search &amp; connect</strong> and pick the printer.
+                </p>
+              )}
               {!supports.bluetooth() ? (
                 <p className="text-[12.5px] text-[#B45309] bg-[#FFFBEB] border border-[#FDE68A] rounded-xl p-3">
                   This browser cannot use Bluetooth printers. Open the POS in Chrome or Edge.
@@ -289,6 +340,7 @@ const DeviceConfiguration = () => {
                   <button type="button" className={btnPrimary} disabled={connecting} onClick={() => connect("bluetooth")}>
                     {connecting ? "Connecting…" : isThis("bluetooth") ? "Reconnect / change printer" : "Search & connect"}
                   </button>
+                  <PrinterChoices choices={choices} kind="bluetooth" onPick={pickPrinter} />
                 </>
               )}
             </div>

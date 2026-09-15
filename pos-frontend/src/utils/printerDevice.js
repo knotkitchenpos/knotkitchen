@@ -13,7 +13,18 @@
  *   system     The browser's print dialog, through the computer's own driver.
  *              Silent only when Chrome runs with --kiosk-printing.
  *   (LAN is not offered yet.)
+ *
+ * In the Android app neither WebUSB nor Web Bluetooth exists, so usb and
+ * bluetooth go through the app's ThermalPrinter plugin instead
+ * (android/.../ThermalPrinterPlugin.java). That also reaches classic Bluetooth
+ * printers, which most cheap thermal printers are and no browser can use.
  */
+
+import { Capacitor, registerPlugin } from "@capacitor/core";
+
+/** True inside the Android app. */
+export const nativePrinting = Capacitor.isNativePlatform();
+const ThermalPrinter = registerPlugin("ThermalPrinter");
 
 const KEY = "kk.receiptPrinter.v1";
 
@@ -38,8 +49,30 @@ export const savePrinterConfig = (config) => {
 };
 
 export const supports = {
-  usb: () => typeof navigator !== "undefined" && Boolean(navigator.usb),
-  bluetooth: () => typeof navigator !== "undefined" && Boolean(navigator.bluetooth),
+  usb: () => nativePrinting || (typeof navigator !== "undefined" && Boolean(navigator.usb)),
+  bluetooth: () => nativePrinting || (typeof navigator !== "undefined" && Boolean(navigator.bluetooth)),
+};
+
+/**
+ * App only: the printers this phone can print to right now. Bluetooth lists
+ * the devices already PAIRED in Android settings; USB, the ones plugged in.
+ */
+export const listNativePrinters = async (kind) => {
+  if (kind === "usb") {
+    const { devices } = await ThermalPrinter.listUsb();
+    return devices.map((d) => ({ name: d.name, usb: { vendorId: d.vendorId, productId: d.productId } }));
+  }
+  const { devices } = await ThermalPrinter.listBluetooth();
+  return devices.map((d) => ({ name: d.name, bluetooth: { address: d.address } }));
+};
+
+/** Uint8Array to base64, in slices: spreading 100 KB into one call overflows the stack. */
+const toBase64 = (bytes) => {
+  let binary = "";
+  for (let at = 0; at < bytes.length; at += 0x8000) {
+    binary += String.fromCharCode.apply(null, bytes.subarray(at, at + 0x8000));
+  }
+  return btoa(binary);
 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -130,6 +163,13 @@ const connectBluetooth = async (device) => {
 };
 
 export const bluetoothAvailable = async () => {
+  if (nativePrinting) {
+    try {
+      return (await ThermalPrinter.available()).bluetoothOn;
+    } catch {
+      return true;
+    }
+  }
   if (!supports.bluetooth()) return false;
   try {
     return await navigator.bluetooth.getAvailability();
@@ -173,6 +213,16 @@ export const USB_CHUNK = 16384;
 
 /** Send a print job to the configured USB or Bluetooth printer. */
 export const sendToPrinter = async (config, bytes) => {
+  if (nativePrinting && (config.type === "usb" || config.type === "bluetooth")) {
+    await ThermalPrinter.print({
+      type: config.type,
+      data: toBase64(bytes),
+      address: config.bluetooth?.address,
+      vendorId: config.usb?.vendorId,
+      productId: config.usb?.productId,
+    });
+    return;
+  }
   if (config.type === "usb") {
     const { device, endpoint } = await usbFor(config);
     for (let at = 0; at < bytes.length; at += USB_CHUNK) {
