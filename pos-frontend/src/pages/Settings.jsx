@@ -211,7 +211,7 @@ const StoreLogoField = ({ value, disabled, onChange }) => {
           <span className="text-[11px] font-bold text-[#94A3B8]">No logo</span>
         )}
       </div>
-      <div className="min-w-0 flex-1">
+      <div className="min-w-[220px] flex-1">
         <p className="text-[13.5px] font-extrabold text-[#0F172A]">Store Logo</p>
         <p className="text-[11.5px] text-[#64748B]">
           Shown on the POS, invoices, printed receipts, the table QR page and your website. PNG, JPG or WebP; a square image works best.
@@ -333,8 +333,8 @@ const StorePropertiesView = () => {
     <div className="space-y-5">
       {/* Read-Only or Protected Form */}
       <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
-        <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
-          <div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E2E8F0] pb-3">
+          <div className="min-w-0">
             <h4 className="text-[16px] font-extrabold text-[#0F172A]">Store Properties</h4>
             <p className="text-[12px] text-[#94A3B8]">Editing protected properties requires PIN verification</p>
           </div>
@@ -346,7 +346,8 @@ const StorePropertiesView = () => {
                 value={pin}
                 onChange={(e) => setPin(e.target.value)}
                 placeholder="Enter PIN"
-                className="h-[36px] w-[140px] px-3 rounded-xl border border-[#E2E8F0] text-[13px] font-bold"
+                inputMode="numeric"
+                className="h-[40px] w-[140px] px-3 rounded-xl border border-[#E2E8F0] text-[13px] font-bold"
               />
               <button
                 onClick={() => verifyMutation.mutate(pin)}
@@ -515,8 +516,8 @@ const StorePropertiesView = () => {
       {/* Owner PIN Management */}
       {(user?.role === "Owner" || user?.role === "owner") && (
         <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-3">
-          <div className="flex items-center justify-between">
-            <div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="min-w-0">
               <h4 className="text-[15px] font-extrabold text-[#0F172A]">Protection PIN Management</h4>
               <p className="text-[12px] text-[#94A3B8]">Owner can change the security PIN</p>
             </div>
@@ -1104,13 +1105,13 @@ const TimingsHolidaysView = () => {
     <div className="space-y-6 text-[#0F172A]">
 
       {/* Main Workspace Card */}
-      <div className="bg-white border border-[#E2E8F0] rounded-2xl p-6 shadow-sm space-y-6">
+      <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 sm:p-6 shadow-sm space-y-6">
 
         {/* Top Horizontal Tabs */}
-        <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
-          <h3 className="text-[20px] font-extrabold tracking-tight text-[#0F172A]">{channelTitle}</h3>
+        <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 border-b border-[#E2E8F0] pb-3">
+          <h3 className="text-[18px] sm:text-[20px] font-extrabold tracking-tight text-[#0F172A]">{channelTitle}</h3>
 
-          <div className="flex items-center gap-8 text-[14px]">
+          <div className="flex items-center gap-5 sm:gap-8 text-[14px] max-w-full overflow-x-auto no-scrollbar">
             {[
               { key: "collection", label: "Collection Time" },
               { key: "delivery", label: "Delivery Time" },
@@ -1669,7 +1670,7 @@ const RulesChargesView = () => {
       <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
         <h4 className="text-[15px] font-extrabold text-[#0F172A]">Delivery Distance Slabs</h4>
         <p className="text-[12px] text-[#94A3B8]">Distance calculated server-side. Orders beyond max distance are rejected.</p>
-        <div className="grid grid-cols-4 gap-3 text-[13px] items-end">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[13px] items-end">
           <div><label className="text-[11px] font-bold text-[#94A3B8]">Max Distance (km)</label><input type="number" min={0} value={maxDist} onChange={(e)=>setMaxDist(e.target.value)} className="w-full h-[36px] px-2 mt-1 rounded-xl border border-[#E2E8F0] font-bold"/></div>
           <div><label className="text-[11px] font-bold text-[#94A3B8]">Min km</label><input type="number" value={sMin} onChange={(e)=>setSMin(e.target.value)} placeholder="0" className="w-full h-[36px] px-2 mt-1 rounded-xl border border-[#E2E8F0] font-bold"/></div>
           <div><label className="text-[11px] font-bold text-[#94A3B8]">Max km</label><input type="number" value={sMax} onChange={(e)=>setSMax(e.target.value)} placeholder="3" className="w-full h-[36px] px-2 mt-1 rounded-xl border border-[#E2E8F0] font-bold"/></div>
@@ -1683,7 +1684,7 @@ const RulesChargesView = () => {
       {/* §5 Coupons */}
       <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
         <h4 className="text-[15px] font-extrabold text-[#0F172A]">Website Coupons</h4>
-        <div className="grid grid-cols-4 gap-3 text-[13px] items-end">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[13px] items-end">
           <div><label className="text-[11px] font-bold text-[#94A3B8]">Code</label><input value={cCode} onChange={(e)=>setCCode(e.target.value)} placeholder="WELCOME10" className="w-full h-[36px] px-2 mt-1 rounded-xl border border-[#E2E8F0] font-bold uppercase"/></div>
           <div><label className="text-[11px] font-bold text-[#94A3B8]">Type</label><select value={cType} onChange={(e)=>setCType(e.target.value)} className="w-full h-[36px] px-2 mt-1 rounded-xl border border-[#E2E8F0] font-bold"><option value="percent">%</option><option value="fixed">₹</option></select></div>
           <div><label className="text-[11px] font-bold text-[#94A3B8]">Value</label><input type="number" value={cVal} onChange={(e)=>setCVal(e.target.value)} className="w-full h-[36px] px-2 mt-1 rounded-xl border border-[#E2E8F0] font-bold"/></div>
@@ -1698,10 +1699,10 @@ const RulesChargesView = () => {
       <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
         <h4 className="text-[15px] font-extrabold text-[#0F172A]">Free Item Promotions</h4>
         <p className="text-[12px] text-[#94A3B8]">Server-side only. Price forced to ₹0. Shown on receipt.</p>
-        <div className="grid grid-cols-3 gap-3 text-[13px] items-end">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-[13px] items-end">
           <div><label className="text-[11px] font-bold text-[#94A3B8]">Item Name</label><input value={fName} onChange={(e)=>setFName(e.target.value)} placeholder="Free Gulab Jamun" className="w-full h-[36px] px-2 mt-1 rounded-xl border border-[#E2E8F0] font-bold"/></div>
           <div><label className="text-[11px] font-bold text-[#94A3B8]">Min Order ₹</label><input type="number" value={fMin} onChange={(e)=>setFMin(e.target.value)} placeholder="500" className="w-full h-[36px] px-2 mt-1 rounded-xl border border-[#E2E8F0] font-bold"/></div>
-          <button onClick={()=>{if(!fName){enqueueSnackbar("Item name required",{variant:"warning"});return;}const u=[...freeRules,{itemName:fName.trim(),minOrderAmount:+fMin||0,applyTo:"both",isActive:true}];setFreeRules(u);setFName("");setFMin("");mut.mutate({freeItemConfig:u});}} className="h-[36px] px-4 rounded-xl bg-[#FD5302] text-white text-[12px] font-bold">Add Rule</button>
+          <button onClick={()=>{if(!fName){enqueueSnackbar("Item name required",{variant:"warning"});return;}const u=[...freeRules,{itemName:fName.trim(),minOrderAmount:+fMin||0,applyTo:"both",isActive:true}];setFreeRules(u);setFName("");setFMin("");mut.mutate({freeItemConfig:u});}} className="col-span-2 sm:col-span-1 h-[36px] px-4 rounded-xl bg-[#FD5302] text-white text-[12px] font-bold">Add Rule</button>
         </div>
         {freeRules.length>0&&<div className="pt-2 border-t border-[#E2E8F0] space-y-2 text-[13px]">{freeRules.map((r,i)=><div key={i} className="flex justify-between p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]"><span className="font-bold">{r.itemName} (min ₹{r.minOrderAmount||0})</span><button onClick={()=>{const u=freeRules.filter((_,j)=>j!==i);setFreeRules(u);mut.mutate({freeItemConfig:u});}} className="text-[#DC2626] font-bold text-[12px]">Remove</button></div>)}</div>}
       </div>
@@ -1789,11 +1790,11 @@ const Settings = () => {
       <div className="max-w-[1100px] mx-auto px-4 sm:px-7 py-4 sm:py-6">
 
         {/* Header */}
-        <div className="flex items-center gap-3 mb-6">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-5 sm:mb-6">
           {activeSubView && (
             <button
               onClick={() => setActiveSubView(null)}
-              className="h-[36px] px-3 rounded-xl border border-[#E2E8F0] bg-white text-[#334155] text-[13px] font-bold hover:border-[#CBD5E1]"
+              className="h-[36px] px-3 shrink-0 whitespace-nowrap rounded-xl border border-[#E2E8F0] bg-white text-[#334155] text-[13px] font-bold hover:border-[#CBD5E1]"
             >
               ← Back
             </button>

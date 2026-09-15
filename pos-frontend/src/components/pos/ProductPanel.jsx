@@ -577,7 +577,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
       */}
       {!searching && (
         <div className="px-3 sm:px-5 pb-3 shrink-0">
-          <div className="flex flex-wrap gap-1.5 max-h-[88px] sm:max-h-[132px] overflow-y-auto no-scrollbar">
+          <div className="flex flex-nowrap sm:flex-wrap gap-1.5 sm:max-h-[132px] overflow-x-auto sm:overflow-x-hidden sm:overflow-y-auto no-scrollbar">
             {menus.map((m, i) => {
               const on = category?._id === m._id;
               return (
@@ -588,7 +588,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
                     setCatId(on ? null : m._id);
                   }}
                   style={{ background: TILE_COLORS[i % TILE_COLORS.length] }}
-                  className={`h-[38px] px-3.5 rounded-lg text-white text-[12.5px] font-bold leading-tight max-w-[220px] truncate transition-all ${
+                  className={`shrink-0 h-[38px] px-3.5 rounded-lg text-white text-[12.5px] font-bold leading-tight max-w-[220px] truncate transition-all ${
                     on ? "ring-[3px] ring-[#0F172A]/25 shadow-md scale-[1.02]" : "hover:brightness-110"
                   }`}
                   title={m.name}
@@ -600,7 +600,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
 
             <button
               onClick={onAddCategory}
-              className="h-[38px] px-3.5 rounded-lg border border-dashed border-[#CBD5E1] bg-[#F8FAFC] text-[#475569] text-[12.5px] font-bold flex items-center gap-1 hover:border-[#FD5302] hover:text-[#C2410C] transition-colors"
+              className="shrink-0 h-[38px] px-3.5 rounded-lg border border-dashed border-[#CBD5E1] bg-[#F8FAFC] text-[#475569] text-[12.5px] font-bold flex items-center gap-1 hover:border-[#FD5302] hover:text-[#C2410C] transition-colors"
             >
               <IconPlus size={13} /> Add Category
             </button>

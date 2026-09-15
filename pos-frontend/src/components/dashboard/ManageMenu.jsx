@@ -1076,10 +1076,10 @@ const ManageMenu = () => {
 
 
   return (
-    <div className="flex h-full w-full bg-[#F8FAFC] overflow-hidden text-[#0F172A]">
+    <div className="flex flex-col md:flex-row h-full w-full bg-[#F8FAFC] overflow-hidden text-[#0F172A]">
 
-      {/* Column 1: Left Navigation Sidebar */}
-      <div className="w-[200px] shrink-0 border-r border-[#E2E8F0] bg-white flex flex-col py-3">
+      {/* Column 1: Left Navigation Sidebar (a tab row on phones) */}
+      <div className="w-full md:w-[200px] shrink-0 border-b md:border-b-0 md:border-r border-[#E2E8F0] bg-white flex flex-row md:flex-col md:py-3">
         {NAV_TABS.map((tab) => {
           const active = activeTab === tab.id;
           return (
@@ -1090,25 +1090,25 @@ const ManageMenu = () => {
                 setActiveCategory(null);
                 setSelectedIds(new Set());
               }}
-              className={`w-full text-left px-5 py-3 text-[13.5px] font-semibold flex items-center justify-between transition-colors ${
+              className={`flex-1 md:flex-none md:w-full text-center md:text-left px-5 py-3 text-[13.5px] font-semibold flex items-center justify-center md:justify-between transition-colors ${
                 active
-                  ? "text-[#C2410C] bg-[#FFF1E8] border-r-4 border-[#FD5302] font-bold"
+                  ? "text-[#C2410C] bg-[#FFF1E8] border-b-4 md:border-b-0 md:border-r-4 border-[#FD5302] font-bold"
                   : "text-[#64748B] hover:text-[#0F172A] hover:bg-[#F8FAFC]"
               }`}
             >
               <span>{tab.label}</span>
-              <IconChevronRight />
+              <span className="hidden md:inline"><IconChevronRight /></span>
             </button>
           );
         })}
       </div>
 
       {/* Column 2: Main List & Action Bar */}
-      <div className="flex-1 min-w-0 flex flex-col h-full bg-white border-r border-[#E2E8F0]">
+      <div className="flex-1 min-w-0 min-h-0 flex flex-col md:h-full bg-white border-r border-[#E2E8F0]">
 
         {/* Top Header / Action Bar */}
-        <div className="px-6 py-4 border-b border-[#E2E8F0] flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
+        <div className="px-3 sm:px-6 py-3 sm:py-4 border-b border-[#E2E8F0] flex flex-wrap items-center justify-between gap-3 shrink-0">
+          <div className="flex flex-wrap items-center gap-3 min-w-0">
             {/* Back Button */}
             {activeTab === "product" && activeSubcategory && (
               <button
@@ -1218,7 +1218,7 @@ const ManageMenu = () => {
             )}
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             {/* Cache Publishing Buttons (Module 9) */}
             <button
               onClick={async () => {
@@ -1433,7 +1433,7 @@ const ManageMenu = () => {
         </div>
 
         {/* Main Item List */}
-        <div className="flex-1 overflow-y-auto divide-y divide-[#E2E8F0]">
+        <div className="flex-1 min-h-0 overflow-y-auto divide-y divide-[#E2E8F0]">
           {isLoading ? (
             <div className="p-12 text-center text-[#94A3B8]">Loading menu data…</div>
           ) : currentItems.length === 0 && !activeGroup && (activeTab === "groups" || !categorySubcategories.length) ? (
@@ -1622,12 +1622,12 @@ const ManageMenu = () => {
                             reorderGroupsMut.mutate({ groupOrder: newList.map((g) => g.name) });
                           }
                         }}
-                        className={`px-6 py-3.5 flex items-center justify-between gap-4 transition-colors ${
+                        className={`px-3 sm:px-6 py-3 sm:py-3.5 flex flex-wrap sm:flex-nowrap items-center justify-between gap-x-4 gap-y-2 transition-colors ${
                           selected ? "bg-[#FFF1E8]/40" : "hover:bg-[#F8FAFC]"
                         }`}
                       >
                         {/* Left elements: ON/OFF toggle, Checkbox, Group Name */}
-                        <div className="flex items-center gap-4 min-w-0 flex-1">
+                        <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1 basis-full sm:basis-0">
                           {/* ON/OFF Switch */}
                           <button
                             type="button"
@@ -1671,7 +1671,7 @@ const ManageMenu = () => {
                         </div>
 
                         {/* Right elements: Manage button & Drag handle */}
-                        <div className="flex items-center gap-4 shrink-0">
+                        <div className="flex items-center gap-3 sm:gap-4 shrink-0 ml-auto">
                           <button
                             type="button"
                             onClick={(e) => {
@@ -1756,11 +1756,11 @@ const ManageMenu = () => {
                     setActiveSubcategory(null);
                     setSelectedIds(new Set());
                   }}
-                  className={`px-6 py-4 flex items-center justify-between gap-4 transition-colors cursor-pointer ${
+                  className={`px-3 sm:px-6 py-3 sm:py-4 flex flex-wrap sm:flex-nowrap items-center justify-between gap-x-4 gap-y-2 transition-colors cursor-pointer ${
                     selected ? "bg-[#FFF1E8]/40" : "hover:bg-[#F8FAFC]"
                   } ${draggedCategoryIndex === catIndex ? "opacity-50" : ""}`}
                 >
-                  <div className="flex items-center gap-4 min-w-0 flex-1">
+                  <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1 basis-full sm:basis-0">
                     {/* Selection Checkbox */}
                     <input
                       type="checkbox"
@@ -1797,7 +1797,7 @@ const ManageMenu = () => {
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-4 shrink-0">
+                  <div className="flex items-center gap-3 sm:gap-4 shrink-0 ml-auto">
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1901,11 +1901,11 @@ const ManageMenu = () => {
                     }}
                     onDragEnd={() => setDraggedProductIndex(null)}
                     onClick={() => setViewingProduct(item)}
-                    className={`px-6 py-4 flex items-center justify-between gap-4 transition-colors cursor-pointer ${
+                    className={`px-3 sm:px-6 py-3 sm:py-4 flex flex-wrap sm:flex-nowrap items-center justify-between gap-x-4 gap-y-2 transition-colors cursor-pointer ${
                       selected ? "bg-[#FFF1E8]/40" : "hover:bg-[#F8FAFC]"
                     } ${draggedProductIndex === prodIndex ? "opacity-50" : ""}`}
                   >
-                    <div className="flex items-center gap-4 min-w-0 flex-1">
+                    <div className="flex items-center gap-3 sm:gap-4 min-w-0 flex-1 basis-full sm:basis-0">
                       <input
                         type="checkbox"
                         checked={selected}
@@ -1970,7 +1970,7 @@ const ManageMenu = () => {
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-4 shrink-0">
+                    <div className="flex items-center gap-3 sm:gap-4 shrink-0 ml-auto">
                       <span className="font-extrabold text-[14px] text-[#0F172A]">{displayPrice(item)}</span>
 
                       <button
@@ -2133,7 +2133,7 @@ const ManageMenu = () => {
                   {hasSubcategories ? (
                     directProducts.length > 0 ? (
                       <div>
-                        <div className="px-6 py-2.5 bg-white border-b border-[#E2E8F0]">
+                        <div className="px-3 sm:px-6 py-2.5 bg-white border-b border-[#E2E8F0]">
                           <h4 className="text-[11.5px] font-extrabold text-[#64748B] uppercase tracking-wider">
                             Direct Products ({directProducts.length})
                           </h4>

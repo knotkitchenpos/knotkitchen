@@ -681,13 +681,13 @@ const Tables = () => {
                 {/* Hidden-until-hover ONLY where a pointer can hover. A phone or
                     tablet has no hover state, so these controls were simply
                     invisible there -- QR, Edit and Delete were unreachable. */}
-                <div className="absolute top-2 right-2 z-20 flex gap-1.5 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100">
+                <div className="absolute top-2 right-2 z-20 flex gap-1.5 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:none)]:static [@media(hover:none)]:justify-end [@media(hover:none)]:mb-1.5">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       setQrModalTable(table);
                     }}
-                    className="p-1.5 rounded-lg bg-white border border-[#E2E8F0] text-[#C2410C] shadow-md hover:scale-105"
+                    className="p-1.5 [@media(hover:none)]:p-2 rounded-lg bg-white border border-[#E2E8F0] text-[#C2410C] shadow-md hover:scale-105"
                     title="View QR Code"
                   >
                     <IconQr size={13} />
@@ -697,7 +697,7 @@ const Tables = () => {
                       e.stopPropagation();
                       openEditModal(table);
                     }}
-                    className="p-1.5 rounded-lg bg-white border border-[#E2E8F0] text-[#0F172A] shadow-md hover:scale-105"
+                    className="p-1.5 [@media(hover:none)]:p-2 rounded-lg bg-white border border-[#E2E8F0] text-[#0F172A] shadow-md hover:scale-105"
                     title="Edit Table"
                   >
                     <FiEdit2 size={13} />
@@ -707,7 +707,7 @@ const Tables = () => {
                       e.stopPropagation();
                       handleDeleteTable(table);
                     }}
-                    className="p-1.5 rounded-lg bg-[#DC2626] text-white shadow-md hover:scale-105"
+                    className="p-1.5 [@media(hover:none)]:p-2 rounded-lg bg-[#DC2626] text-white shadow-md hover:scale-105"
                     title="Delete Table"
                   >
                     <FiTrash2 size={13} />
