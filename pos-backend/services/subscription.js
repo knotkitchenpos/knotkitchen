@@ -261,7 +261,7 @@ const purchasePlan = async ({ restaurantId, planCode, on = new Date(), createdBy
     kind: q.isUpgrade ? "UPGRADE" : "SUBSCRIPTION",
     description: q.isUpgrade
       ? `Upgrade to ${q.planName} (${q.remainingDays} days remaining)`
-      : `${q.planName} plan — 30 days`,
+      : `${q.planName} plan — ${config.subscriptionDays} day${Number(config.subscriptionDays) === 1 ? "" : "s"}`,
     amountPaise: q.chargePaise,
     tax: q.tax,
     config,
