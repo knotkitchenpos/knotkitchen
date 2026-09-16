@@ -133,3 +133,15 @@ test("every receipt print goes through the one renderer", () => {
   assert.match(SRC("src/App.jsx"), /useAutoReceiptPrint\(\);/);
   assert.match(SRC("src/components/settings/DeviceConfiguration.jsx"), /key: "lan", label: "LAN \/ Network", disabled: true/);
 });
+
+test("REGRESSION: a connected printer is kept at once, not only on Save", () => {
+  // Orders > Print reads the SAVED printer. A printer connected in Settings
+  // but not yet saved left that empty, so Print opened the browser's dialog.
+  const settings = fs.readFileSync(path.join(__dirname, "..", "src/components/settings/DeviceConfiguration.jsx"), "utf8");
+  assert.match(settings, /const patchDevice = \(patch\) => setDevice\(\(d\) => savePrinterConfig\(\{ \.\.\.d, \.\.\.patch \}\)\);/);
+
+  // And the Bluetooth write goes to a printer service, never a standard one.
+  const device = fs.readFileSync(path.join(__dirname, "..", "src/utils/printerDevice.js"), "utf8");
+  assert.match(device, /if \(STANDARD_SERVICE\.test\(service\.uuid\)\) continue;/);
+  assert.match(device, /PRINTER_SERVICES\.includes\(service\.uuid\) \? 2 : 0/);
+});

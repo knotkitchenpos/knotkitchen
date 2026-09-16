@@ -113,7 +113,10 @@ const DeviceConfiguration = () => {
   // App only: printers to pick from when more than one is found.
   const [choices, setChoices] = useState(null);
   const [btOn, setBtOn] = useState(null);
-  const patchDevice = (patch) => setDevice((d) => ({ ...d, ...patch }));
+  // Kept the moment it changes, not on Save: this is the printer plugged into
+  // THIS device, and Orders > Print read the saved copy -- so a printer that
+  // was connected but not yet saved opened the print dialog instead.
+  const patchDevice = (patch) => setDevice((d) => savePrinterConfig({ ...d, ...patch }));
 
   useEffect(() => {
     bluetoothAvailable().then(setBtOn);
@@ -122,7 +125,7 @@ const DeviceConfiguration = () => {
   const pickPrinter = (kind, picked) => {
     setChoices(null);
     patchDevice({ type: kind, usb: undefined, bluetooth: undefined, ...picked });
-    enqueueSnackbar(`${picked.name} connected. Choose the paper size and press Save.`, { variant: "success" });
+    enqueueSnackbar(`${picked.name} connected. Choose the paper size, then Test Print.`, { variant: "success" });
   };
 
   const connect = async (kind) => {

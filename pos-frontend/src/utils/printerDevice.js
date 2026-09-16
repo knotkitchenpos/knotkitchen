@@ -149,17 +149,28 @@ const PRINTER_SERVICES = [
 
 let bt = null; // { device, characteristic }
 
+/** Services every BLE device has and none prints through (Generic Access/Attribute, Device Info, Battery). */
+const STANDARD_SERVICE = /^0000(1800|1801|180a|180f)-/;
+
 const connectBluetooth = async (device) => {
   const server = device.gatt.connected ? device.gatt : await device.gatt.connect();
+  // The first writable characteristic anywhere was sometimes a standard one
+  // (a device-name field, say): the job was "sent", nothing printed. Prefer a
+  // known printer service, never a standard one, and a characteristic that
+  // takes unacknowledged writes.
+  const found = [];
   for (const service of await server.getPrimaryServices()) {
+    if (STANDARD_SERVICE.test(service.uuid)) continue;
     for (const ch of await service.getCharacteristics()) {
       if (ch.properties.writeWithoutResponse || ch.properties.write) {
-        bt = { device, characteristic: ch };
-        return bt;
+        found.push({ ch, score: (PRINTER_SERVICES.includes(service.uuid) ? 2 : 0) + (ch.properties.writeWithoutResponse ? 1 : 0) });
       }
     }
   }
-  throw new Error("This Bluetooth device does not accept print data.");
+  found.sort((a, b) => b.score - a.score);
+  if (!found.length) throw new Error("This Bluetooth device does not accept print data.");
+  bt = { device, characteristic: found[0].ch };
+  return bt;
 };
 
 export const bluetoothAvailable = async () => {
