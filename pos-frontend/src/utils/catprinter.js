@@ -60,15 +60,19 @@ const FEED_48 = packet(0xa1, [0x30, 0x00]); // 48 dots, little-endian
  * The full job for a monochrome bitmap as toMonochrome() packs it (MSB-first,
  * 1 = black). Wider images are cropped to 384, narrower ones left-aligned.
  *
- * `energy` is how hard the head burns (0..0xffff). ponytail: one fixed value;
- * expose it in Settings if receipts come out faint or scorched.
+ * `energy` is how hard the head burns (0..0xffff); `speed` is the step
+ * timing, higher = slower, and slower heats more evenly. The printer's own
+ * default speed raced through a receipt and left it faint and streaky.
+ * ponytail: fixed values; expose them in Settings if a printer comes out
+ * faint or scorched at these.
  */
-export const catJob = (bits, width, height, { energy = 0xffff } = {}) => {
+export const catJob = (bits, width, height, { energy = 0xc000, speed = 48 } = {}) => {
   const srcRowBytes = Math.ceil(width / 8);
   const rowBytes = CAT_WIDTH / 8;
   const chunks = [
     GET_STATE,
     QUALITY_200DPI,
+    packet(0xbd, [speed & 0xff]),
     packet(0xaf, [(energy >> 8) & 0xff, energy & 0xff]),
     APPLY_ENERGY,
     LATTICE_START,
