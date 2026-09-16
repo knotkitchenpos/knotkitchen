@@ -5,7 +5,12 @@ import android.annotation.SuppressLint;
 import android.app.PendingIntent;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothGatt;
+import android.bluetooth.BluetoothGattCallback;
+import android.bluetooth.BluetoothGattCharacteristic;
+import android.bluetooth.BluetoothGattService;
 import android.bluetooth.BluetoothManager;
+import android.bluetooth.BluetoothProfile;
 import android.bluetooth.BluetoothSocket;
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -35,9 +40,16 @@ import com.getcapacitor.annotation.PermissionCallback;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.Arrays;
+import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Semaphore;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 /**
  * Raw ESC/POS to a receipt printer, for the Android app.
@@ -48,6 +60,9 @@ import java.util.concurrent.Executors;
  * (serial port profile), which no browser can reach at all.
  *
  *   bluetooth  a printer already paired in Android settings, over RFCOMM/SPP
+ *              (classic) or GATT (BLE, the 57 mm mini printers and some
+ *              receipt printers). A BLE printer paired only for classic
+ *              took the SPP connection and printed nothing.
  *   usb        a printer on USB OTG, over its bulk OUT endpoint
  */
 @CapacitorPlugin(
@@ -61,6 +76,20 @@ public class ThermalPrinterPlugin extends Plugin {
     // Calibration knobs: printers differ in how fast they drain their buffer.
     private static final int BT_CHUNK = 1024;
     private static final int USB_CHUNK = 16384;
+
+    // Services the BLE printers put their write characteristic under; same
+    // list as utils/printerDevice.js. Standard services never print.
+    private static final List<String> BLE_PRINTER_SERVICES = Arrays.asList(
+        "000018f0-0000-1000-8000-00805f9b34fb",
+        "e7810a71-73ae-499d-8c15-faa9aef0c3f2",
+        "49535343-fe7d-4ae5-8fa9-9fafd205e455",
+        "0000ff00-0000-1000-8000-00805f9b34fb",
+        "0000ffe0-0000-1000-8000-00805f9b34fb",
+        "0000fee7-0000-1000-8000-00805f9b34fb",
+        "0000ae30-0000-1000-8000-00805f9b34fb",
+        "0000af30-0000-1000-8000-00805f9b34fb"
+    );
+    private static final List<String> BLE_STANDARD_SERVICES = Arrays.asList("00001800", "00001801", "0000180a", "0000180f");
 
     // One job at a time: two receipts interleaved on one printer is garbage.
     private final ExecutorService io = Executors.newSingleThreadExecutor();
@@ -138,6 +167,22 @@ public class ThermalPrinterPlugin extends Plugin {
             return;
         }
         String address = call.getString("address", "");
+        BluetoothDevice remote;
+        try {
+            remote = adapter.getRemoteDevice(address);
+        } catch (IllegalArgumentException e) {
+            call.reject("The printer's Bluetooth address is not valid. Choose it again in Device Configuration.");
+            return;
+        }
+        // The web side asks for BLE for the mini printers (they are BLE only,
+        // whatever the pairing says); a device Android itself knows as LE
+        // gets it too. Everything else is a classic serial-port printer.
+        boolean ble = Boolean.TRUE.equals(call.getBoolean("ble", false))
+            || remote.getType() == BluetoothDevice.DEVICE_TYPE_LE;
+        if (ble) {
+            printBle(call, bytes, remote, call.getInt("pace", 5));
+            return;
+        }
         BluetoothSocket socket = null;
         try {
             // Discovery slows a connection down, but stopping it needs
@@ -174,6 +219,127 @@ public class ThermalPrinterPlugin extends Plugin {
             call.reject("Could not reach the Bluetooth printer. Check it is on and nearby. (" + e.getMessage() + ")");
         } finally {
             closeQuietly(socket);
+        }
+    }
+
+    /**
+     * BLE: connect, negotiate a larger MTU, find the printer's write
+     * characteristic, stream the job in MTU-sized writes. Runs on the io
+     * thread; the GATT callbacks hand results back through latches.
+     */
+    @SuppressLint("MissingPermission")
+    private void printBle(PluginCall call, byte[] bytes, BluetoothDevice device, int pace) {
+        final CountDownLatch ready = new CountDownLatch(1);
+        final Semaphore written = new Semaphore(0);
+        final AtomicReference<BluetoothGattCharacteristic> tx = new AtomicReference<>();
+        final AtomicReference<String> failure = new AtomicReference<>();
+        final AtomicInteger mtu = new AtomicInteger(23);
+
+        BluetoothGattCallback callback = new BluetoothGattCallback() {
+            @Override
+            public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
+                if (newState == BluetoothProfile.STATE_CONNECTED) {
+                    // Bigger writes; onMtuChanged continues. Some stacks refuse
+                    // the request outright, then discover at the default size.
+                    if (!gatt.requestMtu(512)) gatt.discoverServices();
+                } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                    failure.compareAndSet(null, "The printer disconnected.");
+                    ready.countDown();
+                    written.release();
+                }
+            }
+
+            @Override
+            public void onMtuChanged(BluetoothGatt gatt, int size, int status) {
+                if (status == BluetoothGatt.GATT_SUCCESS) mtu.set(size);
+                gatt.discoverServices();
+            }
+
+            @Override
+            public void onServicesDiscovered(BluetoothGatt gatt, int status) {
+                BluetoothGattCharacteristic best = null;
+                int bestScore = -1;
+                for (BluetoothGattService service : gatt.getServices()) {
+                    String uuid = service.getUuid().toString().toLowerCase();
+                    if (BLE_STANDARD_SERVICES.contains(uuid.substring(0, 8))) continue;
+                    for (BluetoothGattCharacteristic ch : service.getCharacteristics()) {
+                        int props = ch.getProperties();
+                        boolean noResponse = (props & BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0;
+                        boolean write = (props & BluetoothGattCharacteristic.PROPERTY_WRITE) != 0;
+                        if (!noResponse && !write) continue;
+                        int score = (BLE_PRINTER_SERVICES.contains(uuid) ? 2 : 0) + (noResponse ? 1 : 0);
+                        if (score > bestScore) {
+                            bestScore = score;
+                            best = ch;
+                        }
+                    }
+                }
+                if (best == null) failure.compareAndSet(null, "This Bluetooth device does not accept print data.");
+                tx.set(best);
+                ready.countDown();
+            }
+
+            @Override
+            public void onCharacteristicWrite(BluetoothGatt gatt, BluetoothGattCharacteristic ch, int status) {
+                if (status != BluetoothGatt.GATT_SUCCESS) failure.compareAndSet(null, "The printer refused the data (GATT " + status + ").");
+                written.release();
+            }
+        };
+
+        BluetoothGatt gatt = null;
+        try {
+            gatt = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                ? device.connectGatt(getContext(), false, callback, BluetoothDevice.TRANSPORT_LE)
+                : device.connectGatt(getContext(), false, callback);
+            if (gatt == null) {
+                call.reject("Could not open a Bluetooth connection to the printer.");
+                return;
+            }
+            if (!ready.await(20, TimeUnit.SECONDS)) {
+                call.reject("The printer did not answer. Check it is on and nearby, then try again.");
+                return;
+            }
+            BluetoothGattCharacteristic ch = tx.get();
+            if (ch == null || failure.get() != null) {
+                call.reject(failure.get() != null ? failure.get() : "This Bluetooth device does not accept print data.");
+                return;
+            }
+            boolean noResponse = (ch.getProperties() & BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0;
+            ch.setWriteType(noResponse
+                ? BluetoothGattCharacteristic.WRITE_TYPE_NO_RESPONSE
+                : BluetoothGattCharacteristic.WRITE_TYPE_DEFAULT);
+            int chunk = Math.max(20, mtu.get() - 3);
+            for (int at = 0; at < bytes.length; at += chunk) {
+                ch.setValue(Arrays.copyOfRange(bytes, at, Math.min(bytes.length, at + chunk)));
+                if (!gatt.writeCharacteristic(ch)) {
+                    call.reject("The printer stopped accepting data part-way through.");
+                    return;
+                }
+                // Each write is acknowledged by onCharacteristicWrite; then a
+                // pause so an unacknowledged write cannot outrun the buffer.
+                if (!written.tryAcquire(3, TimeUnit.SECONDS) || failure.get() != null) {
+                    call.reject(failure.get() != null ? failure.get() : "The printer stopped answering part-way through.");
+                    return;
+                }
+                Thread.sleep(pace);
+            }
+            // Let the last packets drain before the link drops.
+            Thread.sleep(Math.min(3000, 300 + bytes.length / 40));
+            call.resolve();
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            call.reject("Printing was interrupted.");
+        } catch (Exception e) {
+            call.reject("Could not reach the Bluetooth printer. Check it is on and nearby. (" + e.getMessage() + ")");
+        } finally {
+            if (gatt != null) {
+                try {
+                    gatt.disconnect();
+                    gatt.close();
+                } catch (Exception ignored) {
+                    // nothing to recover
+                }
+            }
         }
     }
 

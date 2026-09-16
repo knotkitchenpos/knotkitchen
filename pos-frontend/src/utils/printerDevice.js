@@ -226,12 +226,17 @@ export const USB_CHUNK = 16384;
 /** Send a print job to the configured USB or Bluetooth printer. */
 export const sendToPrinter = async (config, bytes) => {
   if (nativePrinting && (config.type === "usb" || config.type === "bluetooth")) {
+    const cat = config.protocol === "cat";
     await ThermalPrinter.print({
       type: config.type,
       data: toBase64(bytes),
       address: config.bluetooth?.address,
       vendorId: config.usb?.vendorId,
       productId: config.usb?.productId,
+      // The mini printers are BLE only, whatever the pairing says, and pace
+      // at about 20 ms per write.
+      ble: cat,
+      pace: cat ? 20 : 5,
     });
     return;
   }
