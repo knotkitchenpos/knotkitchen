@@ -1,0 +1,11 @@
+node_modules/
+uploads/*
+!uploads/.gitkeep
+*.log
+.DS_Store
+.env
+
+# Contains real agent credentials (bcrypt hashes) and agreement/PII data —
+# never belongs in version control. Server bootstraps it at runtime from
+# ADMIN_USERNAME/ADMIN_PASSWORD if it doesn't exist.
+server/data/database.json

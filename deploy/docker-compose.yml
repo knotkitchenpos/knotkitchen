@@ -254,12 +254,13 @@ services:
 
   # ---------------------------------------------------------------------------
   # Partner Onboarding & Agreement portal  →  agreement.${BASE_DOMAIN}
-  # Separate repo (knotkitchenpos/onboard), cloned as a sibling of this repo
-  # at /srv/onboard on the VPS.
+  # Lives in this repo under onboard/ (it was a separate repo, knotkitchenpos/
+  # onboard, cloned to /srv/onboard; that repo is gone), so it deploys with
+  # every push like the other apps.
   # ---------------------------------------------------------------------------
   onboard-portal:
     build:
-      context: ../../onboard
+      context: ../onboard
       dockerfile: Dockerfile
     image: knotkitchen/onboard-portal:latest
     restart: unless-stopped
