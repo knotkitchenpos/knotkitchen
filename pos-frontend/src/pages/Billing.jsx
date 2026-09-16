@@ -10,6 +10,8 @@ import {
   getSubscriptionPlans,
   purchasePlan,
   getSubscriptionQuote,
+  getSubscriptionTerms,
+  purchaseInstallation,
   getPlatformInvoices,
 } from "../https";
 import { useSelector } from "react-redux";
@@ -42,6 +44,74 @@ const loadCashfree = () =>
 const PRESETS = [500, 1000, 2000, 5000, 10000];
 
 const money = (amount) => amount?.label || "₹0.00";
+const paise = (n) => `₹${(Number(n || 0) / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const dateOf = (d) => (d ? new Date(d).toLocaleDateString("en-IN", { dateStyle: "medium" }) : "—");
+
+/**
+ * Agreement v2.0, Schedule 1: the order summary the restaurant accepts before
+ * money moves. Every line the server will invoice is shown first, tax on its
+ * own line, and the acceptance is recorded with the purchase.
+ */
+const OrderSummary = ({ summary, onClose, onConfirm, busy }) => {
+  const [accepted, setAccepted] = useState(false);
+  if (!summary) return null;
+  const { title, lines, total, terms, agreementVersion } = summary;
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-label={title}>
+      <div className="w-full max-w-[440px] rounded-2xl bg-white p-5 shadow-2xl">
+        <h3 className="text-[16px] font-extrabold text-[#0F172A]">{title}</h3>
+        <p className="mt-0.5 text-[12px] text-[#64748B]">Order summary · KnotKitchen Restaurant Service Agreement {agreementVersion}</p>
+        <div className="mt-4 divide-y divide-[#F1F5F9] rounded-xl border border-[#E2E8F0] text-[13px]">
+          {lines.map((l) => (
+            <div key={l.label} className={`flex justify-between gap-3 px-3 py-2 ${l.muted ? "text-[#94A3B8]" : "text-[#0F172A]"}`}>
+              <span>{l.label}</span>
+              <span className="font-semibold tabular-nums">{l.value}</span>
+            </div>
+          ))}
+          <div className="flex justify-between gap-3 px-3 py-2 text-[14px] font-extrabold text-[#0F172A]">
+            <span>Total payable now</span>
+            <span className="tabular-nums">{total}</span>
+          </div>
+        </div>
+        {terms?.length > 0 && (
+          <ul className="mt-3 list-disc space-y-1 pl-5 text-[12px] text-[#64748B]">
+            {terms.map((t) => (
+              <li key={t}>{t}</li>
+            ))}
+          </ul>
+        )}
+        <label className="mt-4 flex items-start gap-2 text-[12.5px] text-[#0F172A]">
+          <input type="checkbox" className="mt-0.5" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
+          <span>
+            I have read the order summary above and accept it and the KnotKitchen Restaurant Service Agreement {agreementVersion}
+            on behalf of this restaurant. It will be paid from the Business Balance.
+          </span>
+        </label>
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <button type="button" onClick={onClose} disabled={busy} className="h-[42px] rounded-xl border border-[#E2E8F0] text-[13px] font-bold text-[#334155]">
+            Back
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={!accepted || busy}
+            className="h-[42px] rounded-xl bg-[#FD5302] text-[13px] font-extrabold text-white disabled:opacity-50"
+          >
+            {busy ? "Working…" : "Accept and pay"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/** Clause 6.1: the commitment a restaurant may choose, or none. */
+const COMMITMENT_CHOICES = [
+  { months: 0, label: "Month to month", sub: "No discount, no commitment" },
+  { months: 3, label: "3 months", sub: "5% off the plan fee" },
+  { months: 6, label: "6 months", sub: "10% off the plan fee" },
+  { months: 12, label: "12 months", sub: "20% off the plan fee" },
+];
 
 const Card = ({ title, subtitle, children, right }) => (
   <section className="rounded-2xl border border-[#E2E8F0] bg-white p-5">
@@ -85,6 +155,18 @@ const Billing = () => {
     queryKey: ["subscription", "invoices"],
     queryFn: getPlatformInvoices,
   });
+  const { data: termsRes } = useQuery({
+    queryKey: ["subscription", "terms"],
+    queryFn: getSubscriptionTerms,
+  });
+  const terms = termsRes?.data?.data;
+
+  // Clause 6: chosen once, applied to every period it covers.
+  const [commitmentMonths, setCommitmentMonths] = useState(0);
+  const [installOption, setInstallOption] = useState("");
+  // The order summary awaiting acceptance, and what to run once accepted.
+  const [summary, setSummary] = useState(null);
+  const [pendingAction, setPendingAction] = useState(null);
 
   const balance = balanceRes?.data?.data;
   const transactions = txRes?.data?.data || [];
@@ -94,7 +176,6 @@ const Billing = () => {
 
   const user = useSelector((st) => st.user);
   const [pinOpen, setPinOpen] = useState(false);
-  const [pendingPlan, setPendingPlan] = useState(null);
   // What each plan would actually cost RIGHT NOW. On an upgrade the server
   // charges the difference for the days left in the period, not the full
   // price again, and the operator should see that before committing.
@@ -109,8 +190,8 @@ const Billing = () => {
     if (!open.length) return undefined;
     Promise.all(
       open.map((p) =>
-        getSubscriptionQuote(p.code)
-          .then((r) => [p.code, r?.data?.data?.charge])
+        getSubscriptionQuote(p.code, commitmentMonths)
+          .then((r) => [p.code, r?.data?.data])
           .catch(() => [p.code, null]),
       ),
     ).then((rows) => {
@@ -121,21 +202,94 @@ const Billing = () => {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plansRes, subscription?.planCode]);
+  }, [plansRes, subscription?.planCode, commitmentMonths]);
+
+  /** Run `action` now, or after the Store Properties PIN for a Staff member. */
+  const authorise = (action) => {
+    const auth = checkActionAuthorization(user, { isOwnerOnly: false });
+    if (auth.status === "REQUIRE_PIN") {
+      setPendingAction(() => action);
+      setPinOpen(true);
+      return;
+    }
+    action();
+  };
 
   /**
    * Changing the plan is the Owner's decision. A Staff member has to enter
    * the Store Properties PIN first; the server enforces the same rule, so
    * this modal is the prompt, not the protection.
    */
-  const changePlan = (planCode) => {
-    const auth = checkActionAuthorization(user, { isOwnerOnly: false });
-    if (auth.status === "REQUIRE_PIN") {
-      setPendingPlan(planCode);
-      setPinOpen(true);
+  const changePlan = async (planCode) => {
+    let q;
+    try {
+      q = (await getSubscriptionQuote(planCode, commitmentMonths))?.data?.data;
+    } catch (err) {
+      enqueueSnackbar(err?.response?.data?.message || "Could not price that plan.", { variant: "error" });
       return;
     }
-    buy.mutate(planCode);
+    if (!q) return;
+    const run = () => buy.mutate({ planCode, commitmentMonths, accepted: true });
+    // A plain renewal on the same terms was accepted already; anything new is
+    // shown as an order summary first (Agreement clause 2.2).
+    if (!q.acceptanceRequired) {
+      authorise(run);
+      return;
+    }
+    const lines = [
+      { label: `${q.planName} plan · ${subscription?.periodDays || 30} days${q.isUpgrade ? ` (upgrade, ${q.remainingDays} days left)` : ""}`, value: money(q.charge) },
+    ];
+    if (q.discountPaise > 0) {
+      lines.push({ label: `${q.commitment.months}-month commitment discount (${q.commitment.discountPercent}%)`, value: `− ${money(q.discount)}` });
+      lines.push({ label: "Plan fee after discount", value: money(q.netCharge) });
+    }
+    lines.push({
+      label: q.tax?.applicable ? `GST ${q.tax.percent}%${q.tax.interState ? " (IGST)" : " (CGST + SGST)"}` : "GST",
+      value: q.tax?.applicable ? paise(q.tax.totalTaxPaise) : "Not applicable (KnotKitchen is not GST-registered)",
+      muted: !q.tax?.applicable,
+    });
+    const termsList = [];
+    if (q.commitment) {
+      termsList.push(
+        `${q.commitment.months}-month commitment: ${q.commitment.discountPercent}% off the ${q.planName} plan fee for ${q.commitment.periodsTotal} billing periods, then the standard fee. The discount never applies to the Installation Charge, per-order charges, domains, add-ons or taxes.`,
+      );
+      termsList.push("If the subscription is not renewed before the commitment ends, the discount received so far becomes payable (Agreement clause 6.5).");
+    }
+    termsList.push("Plan fees for a period that has started are not refunded (clause 12A.1). Plans cannot be downgraded.");
+    setSummary({
+      title: q.isUpgrade ? `Upgrade to ${q.planName}` : subscription?.planCode === planCode ? `Renew ${q.planName}` : `Subscribe to ${q.planName}`,
+      lines,
+      total: money(q.total),
+      terms: termsList,
+      agreementVersion: q.agreementVersion || "v2.0",
+      onConfirm: () => authorise(run),
+    });
+  };
+
+  const payInstallation = () => {
+    const option = terms?.installationOptions?.find((o) => o.code === installOption);
+    if (!option) {
+      enqueueSnackbar("Choose an installation option first.", { variant: "warning" });
+      return;
+    }
+    const run = () => installBuy.mutate({ optionCode: option.code, accepted: true });
+    const lines = [{ label: `Installation Charge · ${option.name}`, value: money(option.amount) }];
+    lines.push({
+      label: option.tax?.applicable ? `GST ${option.tax.percent}%${option.tax.interState ? " (IGST)" : " (CGST + SGST)"}` : "GST",
+      value: option.tax?.applicable ? paise(option.tax.totalTaxPaise) : "Not applicable (KnotKitchen is not GST-registered)",
+      muted: !option.tax?.applicable,
+    });
+    setSummary({
+      title: "Installation Charge",
+      lines,
+      total: option.total ? money(option.total) : money(option.amount),
+      terms: [
+        "One-time charge for installation, set-up and onboarding" + (option.equipment ? `, and the loan of a ${option.equipment}, which remains KnotKitchen's property` : "") + ".",
+        "Refundable when you leave: 25% before completing 12 months from activation, 100% on or after the 12-month anniversary, less any unpaid dues or unreturned equipment, with an itemised statement (Agreement clause 5.6).",
+      ],
+      agreementVersion: subscription?.agreementVersion || "v2.0",
+      onConfirm: () => authorise(run),
+    });
   };
 
   const refreshMoney = () => {
@@ -196,10 +350,11 @@ const Billing = () => {
   };
 
   const buy = useMutation({
-    mutationFn: (planCode) => purchasePlan({ planCode }),
+    mutationFn: (body) => purchasePlan(body),
     onSuccess: (res) => {
       const d = res?.data?.data;
       enqueueSnackbar(`${d?.planName || "Plan"} is active.`, { variant: "success" });
+      setSummary(null);
       refreshMoney();
       qc.invalidateQueries({ queryKey: ["subscription", "invoices"] });
     },
@@ -209,6 +364,21 @@ const Billing = () => {
         err?.response?.data?.message || "That plan could not be activated.",
         { variant: err?.response?.status === 402 ? "warning" : "error" },
       );
+    },
+  });
+
+  const installBuy = useMutation({
+    mutationFn: (body) => purchaseInstallation(body),
+    onSuccess: () => {
+      enqueueSnackbar("Installation Charge paid. You can now choose a plan.", { variant: "success" });
+      setSummary(null);
+      refreshMoney();
+      qc.invalidateQueries({ queryKey: ["subscription", "invoices"] });
+    },
+    onError: (err) => {
+      enqueueSnackbar(err?.response?.data?.message || "The Installation Charge could not be paid.", {
+        variant: err?.response?.status === 402 ? "warning" : "error",
+      });
     },
   });
 
@@ -321,12 +491,83 @@ const Billing = () => {
               KnotKitchen has set this store up as a demo store. It needs no subscription, is never
               charged per order or per e-bill, and is never locked.
             </p>
+          ) : subscription?.installationRequired ? (
+            /* Clause 5.4: the Installation Charge comes before the first plan. */
+            <div className="space-y-2">
+              <p className="text-[13px] text-[#64748B]">
+                Choose how KnotKitchen will be installed at your restaurant. This one-time charge is paid
+                before your first plan and is refundable when you leave (25% before 12 months, 100% after).
+              </p>
+              {(terms?.installationOptions || []).map((o) => (
+                <label
+                  key={o.code}
+                  className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border p-3 ${
+                    installOption === o.code ? "border-[#FD5302] bg-[#FFF7ED]" : "border-[#E2E8F0]"
+                  }`}
+                >
+                  <span className="flex items-center gap-3">
+                    <input type="radio" name="installation" checked={installOption === o.code} onChange={() => setInstallOption(o.code)} />
+                    <span>
+                      <span className="block text-[14px] font-extrabold text-[#0F172A]">{o.name}</span>
+                      <span className="block text-[12px] text-[#64748B]">
+                        {o.equipment ? `${o.equipment} on loan, stays KnotKitchen's` : "Set-up and onboarding only"}
+                      </span>
+                    </span>
+                  </span>
+                  <span className="text-[14px] font-extrabold text-[#0F172A]">
+                    {money(o.amount)}
+                    {o.tax?.applicable && <span className="block text-[11px] font-semibold text-[#94A3B8]">+ GST</span>}
+                  </span>
+                </label>
+              ))}
+              <button
+                type="button"
+                disabled={!installOption || installBuy.isPending}
+                onClick={payInstallation}
+                className="mt-1 rounded-xl bg-[#0F172A] px-4 py-2 text-[12.5px] font-extrabold text-white hover:bg-[#1E293B] disabled:opacity-40"
+              >
+                Continue
+              </button>
+            </div>
           ) : plans.length === 0 ? (
             <p className="text-[13px] text-[#94A3B8]">
               No plans are available at the moment.
             </p>
           ) : (
             <div className="space-y-2">
+              {subscription?.commitment?.running ? (
+                <p className="rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] px-3 py-2 text-[12.5px] text-[#166534]">
+                  <span className="font-extrabold">{subscription.commitment.months}-month commitment</span> ·{" "}
+                  {subscription.commitment.discountPercent}% off the plan fee ·{" "}
+                  {subscription.commitment.periodsUsed} of {subscription.commitment.periodsTotal} periods used
+                  {subscription.commitment.endsAt ? ` · current period ends ${dateOf(subscription.commitment.endsAt)}` : ""}
+                </p>
+              ) : subscription?.commitment?.repaymentDuePaise > 0 ? (
+                <p className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-[12.5px] text-[#991B1B]">
+                  Your {subscription.commitment.months}-month commitment ended early. The discount received,{" "}
+                  {paise(subscription.commitment.repaymentDuePaise)} plus GST where applicable, is collected from your next top-up.
+                </p>
+              ) : (
+                <div>
+                  <p className="text-[12px] font-bold text-[#64748B]">Commitment (optional)</p>
+                  <div className="mt-1.5 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+                    {COMMITMENT_CHOICES.map((c) => (
+                      <button
+                        key={c.months}
+                        type="button"
+                        aria-pressed={commitmentMonths === c.months}
+                        onClick={() => setCommitmentMonths(c.months)}
+                        className={`rounded-xl border px-2 py-2 text-left ${
+                          commitmentMonths === c.months ? "border-[#FD5302] bg-[#FFF7ED] ring-1 ring-[#FD5302]" : "border-[#E2E8F0]"
+                        }`}
+                      >
+                        <span className="block text-[12.5px] font-extrabold text-[#0F172A]">{c.label}</span>
+                        <span className="block text-[11px] text-[#64748B]">{c.sub}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
               {plans.map((plan) => {
                 const own = subscription?.planCode === plan.code;
                 const current = own && subscription?.active;
@@ -377,7 +618,8 @@ const Billing = () => {
                       )}
                       {upgradeQuotes[plan.code] != null && !current && !locked && !lower && (
                         <p className="text-[11.5px] font-bold text-[#15803D]">
-                          You pay {money(upgradeQuotes[plan.code])} now
+                          You pay {money(upgradeQuotes[plan.code].total)} now
+                          {upgradeQuotes[plan.code].discountPaise > 0 && ` (${upgradeQuotes[plan.code].commitment.discountPercent}% off, GST included)`}
                         </p>
                       )}
                     </div>
@@ -396,6 +638,23 @@ const Billing = () => {
           )}
         </Card>
       </div>
+
+      {subscription?.installation && (
+        <Card title="Installation" subtitle="Agreement clause 5. One-time, refundable when you leave.">
+          <p className="text-[13px] text-[#0F172A]">
+            <span className="font-extrabold">{subscription.installation.optionName}</span> ·{" "}
+            {paise(subscription.installation.amountPaise)} paid on {dateOf(subscription.installation.paidAt)}
+            {subscription.activatedAt ? ` · activated ${dateOf(subscription.activatedAt)}` : ""}
+          </p>
+          <p className="mt-1 text-[12px] text-[#64748B]">
+            If you left today you would get back {paise(subscription.installation.refund?.refundPaise)} (
+            {subscription.installation.refund?.percent}%), less any unpaid dues or unreturned equipment.
+            {subscription.installation.refund?.anniversaryAt && !subscription.installation.refund?.completed12Months
+              ? ` 100% from ${dateOf(subscription.installation.refund.anniversaryAt)}.`
+              : ""}
+          </p>
+        </Card>
+      )}
 
       {/* ------------------------------------------------------------ */}
       <Card title="Invoices" subtitle="Opens in a new tab. Use your browser's Print to save a PDF.">
@@ -480,18 +739,25 @@ const Billing = () => {
         )}
       </Card>
 
+      <OrderSummary
+        summary={summary}
+        busy={buy.isPending || installBuy.isPending}
+        onClose={() => setSummary(null)}
+        onConfirm={() => summary?.onConfirm?.()}
+      />
+
       <SecurityPinModal
         isOpen={pinOpen}
         title="Plan changes need authorisation"
         actionLabel="Change plan"
         onClose={() => {
           setPinOpen(false);
-          setPendingPlan(null);
+          setPendingAction(null);
         }}
         onSuccess={() => {
           setPinOpen(false);
-          if (pendingPlan) buy.mutate(pendingPlan);
-          setPendingPlan(null);
+          if (pendingAction) pendingAction();
+          setPendingAction(null);
         }}
       />
     </div>

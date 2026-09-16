@@ -98,8 +98,8 @@ test("an upgrade is charged on the difference, not the full price again", () => 
 
 test("the POS shows what the upgrade will actually cost before committing", () => {
   const page = FE("src", "pages", "Billing.jsx");
-  assert.match(page, /getSubscriptionQuote\(p\.code\)/);
-  assert.match(page, /You pay \{money\(upgradeQuotes\[plan\.code\]\)\} now/);
+  assert.match(page, /getSubscriptionQuote\(p\.code, commitmentMonths\)/);
+  assert.match(page, /You pay \{money\(upgradeQuotes\[plan\.code\]\.total\)\} now/);
   assert.match(page, /plan\.isAvailable === false && !own/, "locked plans are marked, but a restaurant can always renew its own");
 });
 
@@ -114,7 +114,7 @@ test("REGRESSION: no downgrade, while a plan is active or after it ends", () => 
   assert.match(q, /if \(subscription\.planCode && subscription\.planCode !== planCode\) \{\s*const current = await resolvePlanPrice/);
   assert.ok(!/while \$\{subscription\.planName[^`]*is active/.test(q), "the refusal must not suggest it lifts when the plan ends");
   const buy = src.slice(src.indexOf("const purchasePlan"), src.indexOf("const statusFor"));
-  assert.match(buy, /await quote\(\{ restaurantId, planCode, on \}\)/);
+  assert.match(buy, /await quote\(\{ restaurantId, planCode, commitmentMonths, on \}\)/);
 
   const ui = require("node:fs").readFileSync(require.resolve("../../pos-frontend/src/pages/Billing.jsx"), "utf8");
   assert.match(ui, /disabled=\{buy\.isPending \|\| current \|\| locked \|\| lower\}/);

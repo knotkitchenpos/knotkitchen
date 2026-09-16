@@ -2,7 +2,26 @@ const express = require("express");
 const createHttpError = require("http-errors");
 const { isVerifiedUser } = require("../middlewares/tokenVerification");
 const { listPlansFor } = require("../services/pricing");
-const { quote, purchasePlan, statusFor, SubscriptionError } = require("../services/subscription");
+const {
+  quote,
+  purchasePlan,
+  purchaseInstallation,
+  listSchedules,
+  statusFor,
+  SubscriptionError,
+} = require("../services/subscription");
+const { INSTALLATION_OPTIONS, COMMITMENTS } = require("../services/commercialTerms");
+const { getPlatformConfig } = require("../services/pricing");
+const { computeTax } = require("../services/tax");
+const Restaurant = require("../models/restaurantModel");
+
+/** Who accepted, from where. Recorded on the Commercial Schedule (Schedule 3). */
+const acceptanceFrom = (req) => ({
+  accepted: req.body?.accepted === true,
+  user: req.user,
+  ip: req.ip || "",
+  userAgent: String(req.headers["user-agent"] || "").slice(0, 300),
+});
 const { PlatformInvoice } = require("../models/platformSubscriptionModel");
 const { urlForInvoice } = require("../services/receiptLink");
 const { toRupees, formatINR } = require("../services/money");
@@ -71,10 +90,17 @@ router.get("/quote/:planCode", isVerifiedUser, async (req, res, next) => {
     const q = await quote({
       restaurantId: ownRestaurantId(req),
       planCode: String(req.params.planCode),
+      commitmentMonths: Number(req.query.commitmentMonths) || 0,
     });
     res.status(200).json({
       success: true,
-      data: { ...q, charge: asAmount(q.chargePaise), total: asAmount(q.totalPaise) },
+      data: {
+        ...q,
+        charge: asAmount(q.chargePaise),
+        discount: asAmount(q.discountPaise),
+        netCharge: asAmount(q.netChargePaise),
+        total: asAmount(q.totalPaise),
+      },
     });
   } catch (err) {
     asSubscriptionError(err, next);
@@ -98,7 +124,9 @@ router.post("/purchase", isVerifiedUser, requireProtectedAction, async (req, res
     const result = await purchasePlan({
       restaurantId: ownRestaurantId(req),
       planCode,
+      commitmentMonths: Number(req.body?.commitmentMonths) || 0,
       createdBy: req.user?._id,
+      acceptance: acceptanceFrom(req),
     });
 
     res.status(201).json({
@@ -120,6 +148,63 @@ router.post("/purchase", isVerifiedUser, requireProtectedAction, async (req, res
     });
   } catch (err) {
     asSubscriptionError(err, next);
+  }
+});
+
+// GET /api/subscription/terms — the selectable options, as the Agreement lists them.
+router.get("/terms", isVerifiedUser, async (req, res, next) => {
+  try {
+    // Clause 5.3: tax shown with the option, before it is chosen.
+    const [config, restaurant] = await Promise.all([
+      getPlatformConfig(),
+      Restaurant.findById(ownRestaurantId(req)).select("address").lean(),
+    ]);
+    res.status(200).json({
+      success: true,
+      data: {
+        installationOptions: INSTALLATION_OPTIONS.map((o) => {
+          const tax = computeTax({ amountPaise: o.amountPaise, gst: config.gst, restaurantState: restaurant?.address?.state });
+          return { ...o, amount: asAmount(o.amountPaise), tax, total: asAmount(tax.totalPaise) };
+        }),
+        commitments: COMMITMENTS,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/subscription/installation — pay the Installation Charge (clause 5).
+router.post("/installation", isVerifiedUser, requireProtectedAction, async (req, res, next) => {
+  try {
+    const result = await purchaseInstallation({
+      restaurantId: ownRestaurantId(req),
+      optionCode: String(req.body?.optionCode || ""),
+      createdBy: req.user?._id,
+      acceptance: acceptanceFrom(req),
+    });
+    res.status(201).json({
+      success: true,
+      data: {
+        installation: result.subscription.installation,
+        charged: asAmount(result.charged),
+        invoice: result.invoice
+          ? { id: result.invoice._id, number: result.invoice.invoiceNumber, total: asAmount(result.invoice.totalPaise), url: urlForInvoice(result.invoice._id) }
+          : null,
+        schedule: result.schedule ? { version: result.schedule.version, hash: result.schedule.hash } : null,
+      },
+    });
+  } catch (err) {
+    asSubscriptionError(err, next);
+  }
+});
+
+// GET /api/subscription/schedule — every Commercial Schedule this restaurant accepted, newest first.
+router.get("/schedule", isVerifiedUser, async (req, res, next) => {
+  try {
+    res.status(200).json({ success: true, data: await listSchedules(ownRestaurantId(req)) });
+  } catch (err) {
+    next(err);
   }
 });
 

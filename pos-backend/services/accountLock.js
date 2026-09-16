@@ -110,6 +110,12 @@ const assessAccount = async (restaurantId, on = new Date()) => {
     }
   }
 
+  // Clause 6.5: a commitment ended early leaves its discount to be repaid.
+  const repayment = Number(subscription?.commitment?.repaymentDuePaise) || 0;
+  if (repayment > 0) {
+    reasons.push(`Commitment discount of ${formatINR(repayment)} is due (the commitment ended early).`);
+  }
+
   // A subscription that was never bought is not overdue -- a restaurant that
   // has not subscribed yet has nothing to be late with.
   if (subscription?.currentPeriodEnd) {
@@ -207,6 +213,15 @@ const fireEvaluateLock = (restaurantId) => {
  */
 const sweepLocks = async (on = new Date()) => {
   const Order = require("../models/orderModel");
+
+  // Commitments whose period ended unrenewed lapse first, so the sweep below
+  // sees the repayment they leave behind. Required here for the same cycle
+  // reason as orderCharge above.
+  try {
+    await require("./subscription").lapseCommitments(on);
+  } catch (err) {
+    console.warn("[AccountLock] commitment lapse failed:", err.message);
+  }
 
   const [withDues, expired, alreadyLocked, empty] = await Promise.all([
     Order.distinct("restaurantId", { "platformCharge.status": "PENDING" }),

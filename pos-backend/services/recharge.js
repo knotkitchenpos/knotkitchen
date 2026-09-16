@@ -207,6 +207,8 @@ const finalizeRecharge = async ({ gatewayOrderId }) => {
   let settled = null;
   try {
     settled = await settlePendingCharges(intent.restaurantId);
+    // A lapsed commitment's discount repayment is collected the same way.
+    await require("./subscription").settleCommitmentRepayment(intent.restaurantId);
   } catch (err) {
     console.warn("[recharge] settling dues after top-up failed:", err.message);
   }

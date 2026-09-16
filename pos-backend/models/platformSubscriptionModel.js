@@ -48,9 +48,68 @@ const subscriptionSchema = new mongoose.Schema(
 
     autoRenew: { type: Boolean, default: false },
     cancelledAt: { type: Date, default: null },
+
+    // Agreement v2.0, clause 15.3: the first period bought is the Activation
+    // Date, and the 12 months of clause 5.6 run from it. Never moves.
+    activatedAt: { type: Date, default: null },
+
+    // Clause 5: the one-time Installation Charge, paid before Activation.
+    installation: {
+      optionCode: { type: String, default: "" },
+      optionName: { type: String, default: "" },
+      amountPaise: { type: Number, default: 0 },
+      paidAt: { type: Date, default: null },
+      invoiceId: { type: mongoose.Schema.Types.ObjectId, default: null },
+      ledgerEntryId: { type: mongoose.Schema.Types.ObjectId, default: null },
+    },
+
+    // Clause 6: a Commitment Period is `periodsTotal` Billing Periods bought
+    // at `discountPercent` off. `periodsUsed` counts the ones bought so far.
+    // Leaving early (clause 6.5, discount-repayment model): the discount
+    // received so far becomes due, and the discount ends.
+    commitment: {
+      months: { type: Number, default: 0 },
+      discountPercent: { type: Number, default: 0 },
+      periodsTotal: { type: Number, default: 0 },
+      periodsUsed: { type: Number, default: 0 },
+      startedAt: { type: Date, default: null },
+      endsAt: { type: Date, default: null },
+      completedAt: { type: Date, default: null },
+      discountGrantedPaise: { type: Number, default: 0 },
+      lapsedAt: { type: Date, default: null },
+      repaymentDuePaise: { type: Number, default: 0 },
+      repaidAt: { type: Date, default: null },
+    },
   },
   { timestamps: true },
 );
+
+/**
+ * Schedule 1 of the Agreement: the commercial values the restaurant saw and
+ * accepted in the app. One row per acceptance, never edited; a later change
+ * is a new version. The hash fingerprints `values` (services/commercialTerms).
+ */
+const commercialScheduleSchema = new mongoose.Schema(
+  {
+    restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: "Restaurant", required: true, index: true },
+    storeId: { type: String, default: "", index: true },
+    version: { type: Number, required: true },
+    agreementVersion: { type: String, default: "v2.0" },
+    reason: { type: String, default: "" }, // INSTALLATION | SUBSCRIPTION | COMMITMENT | UPGRADE
+    values: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
+    hash: { type: String, required: true },
+    acceptedAt: { type: Date, required: true },
+    acceptedBy: {
+      userId: { type: mongoose.Schema.Types.ObjectId, default: null },
+      name: { type: String, default: "" },
+      role: { type: String, default: "" },
+    },
+    ip: { type: String, default: "" },
+    userAgent: { type: String, default: "" },
+  },
+  { timestamps: true },
+);
+commercialScheduleSchema.index({ restaurantId: 1, version: -1 }, { unique: true });
 
 const lineSchema = new mongoose.Schema(
   {
@@ -96,7 +155,11 @@ const invoiceSchema = new mongoose.Schema(
     },
     storeId: { type: String, default: "", index: true },
 
-    kind: { type: String, enum: ["SUBSCRIPTION", "UPGRADE", "OTHER"], default: "SUBSCRIPTION" },
+    kind: {
+      type: String,
+      enum: ["SUBSCRIPTION", "UPGRADE", "INSTALLATION", "COMMITMENT_REPAYMENT", "OTHER"],
+      default: "SUBSCRIPTION",
+    },
 
     // Both parties as they were on the day. A restaurant that renames itself
     // must not rewrite the name on last year's bills.
@@ -171,4 +234,5 @@ module.exports = {
   EDITABLE_AFTER_ISSUE,
   PlatformSubscription: mongoose.model("PlatformSubscription", subscriptionSchema),
   PlatformInvoice: mongoose.model("PlatformInvoice", invoiceSchema),
+  CommercialSchedule: mongoose.model("CommercialSchedule", commercialScheduleSchema),
 };

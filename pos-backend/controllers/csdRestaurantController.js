@@ -17,6 +17,7 @@ const { buildStorefrontUrl } = require("../services/websiteProvisioningService")
 const { csdAudit } = require("../services/csdAuditService");
 const config = require("../config/config");
 const { formatAddress } = require("../services/address");
+const { statusFor } = require("../services/subscription");
 
 const str = (v) => String(v ?? "").trim();
 const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
@@ -71,6 +72,27 @@ const getRestaurant = async (req, res, next) => {
         closeTime: row?.closeTime || null,
       };
     });
+
+    // Agreement v2.0 terms as the POS sees them: installation, commitment,
+    // the refund the restaurant would get today, and the accepted Schedule 1.
+    let agreementTerms = null;
+    if (restaurant?._id) {
+      try {
+        const st = await statusFor(restaurant._id);
+        agreementTerms = {
+          agreementVersion: st.agreementVersion,
+          activatedAt: st.activatedAt,
+          installation: st.installation,
+          installationRequired: st.installationRequired,
+          commitment: st.commitment,
+          schedule: st.schedule,
+          planName: st.planName,
+          currentPeriodEnd: st.currentPeriodEnd,
+        };
+      } catch (err) {
+        console.warn("[csd] agreement terms unavailable:", err.message);
+      }
+    }
 
     const charges = (await CsdStoreCharges.findOne({ storeId }).lean()) || {
       ...CsdStoreCharges.DEFAULTS,
@@ -179,6 +201,7 @@ const getRestaurant = async (req, res, next) => {
           subscriptionStatus: restaurant?.subscription?.status || "",
           usingDefaults: !!charges.isDefault,
           notes: charges.notes || "",
+          agreementTerms,
           // Drives whether the UI renders Edit controls at all (§29). The
           // server enforces it regardless — see requireCsdAdmin on the route.
           canEdit: req.csdStaff.role === "admin",

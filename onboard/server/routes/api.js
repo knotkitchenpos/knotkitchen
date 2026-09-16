@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
 const bcrypt = require('bcryptjs');
@@ -264,6 +265,33 @@ router.post('/agreements', (req, res) => {
     }
   }
 
+  // Schedule 3 of the Agreement: what was accepted, when, from where. Kept
+  // from the first submission and never overwritten by a later save.
+  const previous = db.agreements[agId] || {};
+  const nowIso = new Date().toISOString();
+  const text = agreement.agreement_text || '';
+  const acceptance = previous.acceptance || {};
+  const submitted = String(agreement.status || '').toLowerCase() === 'submitted';
+  if (submitted && !acceptance.submittedAt) {
+    Object.assign(acceptance, {
+      submittedAt: nowIso,
+      submittedAtIst: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false }),
+      agreementVersion: (text.match(/\*\*Agreement Version:\*\* (v[\d.]+)/) || [])[1] || '',
+      agreementHash: crypto.createHash('sha256').update(text).digest('hex'),
+      signedCopyHash: (() => {
+        const f = processedFiles.esigned;
+        try {
+          return f && f.url ? crypto.createHash('sha256').update(fs.readFileSync(path.join(UPLOADS_DIR, agId, path.basename(f.url)))).digest('hex') : '';
+        } catch (e) { return ''; }
+      })(),
+      ip: req.ip || '',
+      userAgent: String(req.headers['user-agent'] || '').slice(0, 300),
+      agent: req.user ? { username: req.user.username, name: req.user.name } : null,
+      signatory: agreement.data ? { name: agreement.data.o_name || '', designation: agreement.data.o_designation || '', entityType: agreement.data.b_type || '' } : null,
+      signatureMethod: 'handwritten-scanned',
+    });
+  }
+
   db.agreements[agId] = {
     id: agId,
     r_name: agreement.r_name || (agreement.data ? agreement.data.r_display || agreement.data.r_name : '—'),
@@ -274,6 +302,7 @@ router.post('/agreements', (req, res) => {
     data: agreement.data || {},
     files: processedFiles,
     agreement_text: agreement.agreement_text || '',
+    acceptance,
   };
   writeDb(db);
   res.json({ success: true, agreement: db.agreements[agId] });

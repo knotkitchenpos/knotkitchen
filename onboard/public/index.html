@@ -378,6 +378,9 @@ a{color:var(--primary-dark);}
 .field input.err,.field select.err{border-color:var(--danger);}
 .field .errmsg{color:var(--danger);font-size:12px;margin-top:5px;display:none;}
 .field .field-hint{font-size:12px;color:var(--ink-soft);margin:-4px 0 8px;}
+.agr-table{border-collapse:collapse;margin:8px 0;font-size:13px;width:auto;}
+.agr-table th,.agr-table td{border:1px solid var(--line-soft);padding:4px 10px;text-align:left;}
+.agr-table th{font-weight:700;background:var(--line-soft);}
 .field label.section-label{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--ink);margin-bottom:8px;}
 .field.invalid .errmsg{display:block;}
 
@@ -588,6 +591,7 @@ a{color:var(--primary-dark);}
   </div>
 </div>
 
+<script src="js/agreement_v2.js"></script>
 <script src="js/api.js"></script>
 <script src="js/details_modal.js"></script>
 <script>
@@ -865,313 +869,10 @@ function commitmentDiscount(v){
 }
 
 /* ============ AGREEMENT TEMPLATE ============ */
-/* NOTE: Placeholder legal draft — swap AGREEMENT_TEMPLATE with KnotKitchen's exact
-   approved clause text when available. All bracket placeholders below are
-   auto-replaced from onboarding data at generation time. This is the exact
-   content supplied by KnotKitchen — clause wording is never altered by the
-   app. An Annexure A is appended (not part of the original clauses) purely
-   to record the Restaurant's selections, as the source document does not
-   itself contain placeholders for the chosen printer/plan/statutory IDs. */
-const AGREEMENT_TEMPLATE = `## RESTAURANT SERVICE AGREEMENT
-
-**Agreement ID:** [AGREEMENT_ID]\\
-**Effective Date:** [EFFECTIVE_DATE]
-
-This Agreement is entered into between **KnotKitchen** ("KnotKitchen") and:
-
-**Restaurant/Business Name:** [RESTAURANT_NAME]\\
-**Legal Business Name:** [LEGAL_NAME]\\
-**Owner Name:** [OWNER]\\
-**Business Address:** [ADDRESS]\\
-**Owner Phone:** [PHONE]\\
-**Owner Email:** [EMAIL]
-
-Together referred to as the "Parties".
-
----
-
-## 1. SERVICES
-
-KnotKitchen provides restaurant technology and related services, which may include:
-
-- Cloud-based POS for order management, billing and e-bills.
-- Dedicated restaurant website for online ordering, where included in the selected plan.
-- Supported third-party integrations such as Swiggy, Zomato and other platforms.
-- Google Business Profile management and local SEO assistance, where selected.
-- KnotKitchen-provided devices/equipment under applicable plans, subject to the applicable terms and conditions.
-
-Services available to the Restaurant depend on the selected subscription plan.
-
----
-
-## 2. SUBSCRIPTION PLAN
-
-The Restaurant may select its preferred KnotKitchen subscription plan directly through the KnotKitchen application.
-
-KnotKitchen may offer plans including **Essential, Connect, Growth and Scale**, with different features and benefits.
-
-The applicable plan, subscription fee, billing cycle and included services will be displayed in the KnotKitchen application at the time of selection.
-
-The Restaurant's selected plan and applicable charges will be recorded in the KnotKitchen system.
-
-KnotKitchen may modify its plans, features and pricing from time to time. Any applicable changes will be communicated or displayed through the KnotKitchen application.
-
----
-
-## 3. PAID ORDERS
-
-KnotKitchen may apply a charge or commission on paid orders received through the Restaurant's KnotKitchen website or other applicable KnotKitchen services.
-
-The applicable paid-order charge will **not be fixed in this Agreement**.
-
-The charge may be determined based on factors including the Restaurant's sales/order volume and other applicable commercial factors.
-
-The applicable charge, if any, will be communicated to and/or displayed in the KnotKitchen application before it becomes applicable to the Restaurant.
-
-The Restaurant agrees to pay the applicable charge shown in the KnotKitchen application for the relevant period or orders.
-
-KnotKitchen may revise the applicable paid-order charge based on the Restaurant's sales, order volume or other applicable commercial terms, subject to reasonable notice through the KnotKitchen application.
-
----
-
-## 4. PAYMENT & KNOTKITCHEN WALLET
-
-Website payments may be processed through a payment gateway connected to the Restaurant's own account.
-
-KnotKitchen may maintain a Wallet for the Restaurant from which applicable charges may be deducted, including:
-
-- Subscription fees.
-- Paid-order charges.
-- Delivery charges where delivery is arranged through KnotKitchen.
-- Other applicable KnotKitchen charges.
-
-If the Restaurant independently arranges delivery, KnotKitchen will not charge a KnotKitchen delivery fee.
-
-If the Wallet has insufficient balance for a due payment, the Restaurant will receive a **24-hour grace period**. If payment is not received within this period, KnotKitchen may suspend/lock the applicable POS or services until payment is made.
-
-Unused Wallet balance may be refunded upon termination after adjustment of outstanding dues.
-
-Applicable GST and other taxes will be charged in addition to KnotKitchen fees where legally applicable.
-
----
-
-## 5. EQUIPMENT, PRINTER & INSTALLATION
-
-Where applicable, KnotKitchen may provide a tablet/device or printer.
-
-All KnotKitchen-provided equipment remains the property of KnotKitchen.
-
-### Installation charges
-
-**No Printer Needed:** ₹2,000\\
-**2-Inch Thermal Receipt Printer:** ₹2,000\\
-**3-Inch Thermal Receipt Printer:** ₹3,000
-
-The applicable amount is refundable according to the termination terms below.
-
-Normal technical/software issues will be handled by KnotKitchen. The Restaurant is responsible for repair or replacement costs resulting from misuse, negligence, physical/liquid damage, loss or theft.
-
-KnotKitchen-owned equipment must be returned upon termination.
-
-The Restaurant may not sell, transfer, modify or otherwise dispose of KnotKitchen-owned equipment.
-
----
-
-## 6. MINIMUM COMMITMENT, DISCOUNT & EARLY TERMINATION
-
-### 6.1 Minimum Commitment Period
-
-The Restaurant agrees to maintain an active subscription with KnotKitchen for the minimum commitment period selected at the time of entering into this Agreement. The applicable commitment periods and corresponding subscription discounts are:
-
-| Minimum Commitment         | Discount on Subscription |
-| -------------------------- | -----------------------: |
-| **3 Months**               |                   **5%** |
-| **6 Months (Half-Yearly)** |                  **10%** |
-| **12 Months (Annual)**     |                  **20%** |
-
-The applicable discount shall remain valid only for the corresponding minimum commitment period and shall be subject to the terms of this Agreement.
-
-### 6.2 Early Cancellation / Termination
-
-If the Restaurant chooses to cancel, terminate, or discontinue the subscription before completion of the applicable minimum commitment period, the Restaurant shall be liable to pay an **Early Termination Charge equivalent to 50% of the subscription charges payable for the remaining months of the minimum commitment period**.
-
-For the purpose of calculating the Early Termination Charge, the remaining subscription charges shall be calculated based on the **discounted subscription price applicable to the Restaurant's selected commitment plan**, unless otherwise specified in this Agreement.
-
-**Example:** If a Restaurant selects a 12-month commitment and cancels after 8 months, 4 months remain in the minimum commitment period. The Early Termination Charge shall be **50% of the subscription charges for those remaining 4 months**.
-
-### 6.3 Effect of Cancellation
-
-Cancellation of the subscription does not automatically waive any outstanding subscription fees, Early Termination Charges, taxes, or other amounts payable by the Restaurant under this Agreement. All such amounts shall become due and payable upon termination or cancellation.
-
-### 6.4 Non-Refundability
-
-Any subscription amount already paid for a commitment period shall be non-refundable upon early cancellation, except where a refund is expressly required under applicable law or specifically agreed to in writing by KnotKitchen.
-
-### 6.5 Renewal After Commitment Period
-
-Upon completion of the selected minimum commitment period, the Restaurant's subscription shall automatically continue on a **month-to-month basis at KnotKitchen's prevailing standard subscription rates**.
-
-Any discount provided under the 3-month, 6-month, or 12-month minimum commitment plan shall **expire upon completion of the applicable commitment period** and shall not carry forward or apply to subsequent renewals.
-
-The Restaurant shall thereafter be charged the **normal applicable subscription price**, excluding any promotional discount or commitment-based discount, unless a new commitment period is expressly agreed upon by both parties.
-
-### 6.6 Refund on Termination (Equipment)
-
-**Before 6 months:** 50% of the applicable refundable installation amount.
-
-**After 6 months:** 100% of the applicable refundable installation amount.
-
-Refunds are subject to adjustment for outstanding dues, equipment damage, loss, theft, Early Termination Charges or other amounts payable under this Agreement.
-
-Upon termination, KnotKitchen services and the Restaurant's KnotKitchen website may be deactivated, and all KnotKitchen-owned equipment must be returned.
-
-Either Party may terminate this Agreement by providing **seven (7) days' prior notice**, subject to the Early Termination Charges above where the minimum commitment period has not been completed.
-
----
-
-## 7. RESTAURANT RESPONSIBILITIES
-
-The Restaurant is responsible for:
-
-- Providing accurate business and document information.
-- Maintaining required licenses and registrations.
-- Menu, pricing and restaurant information.
-- Food quality, preparation, packaging and fulfilment.
-- Customer order cancellation and refund decisions.
-- Maintaining its payment gateway account.
-- Protecting account credentials.
-- Paying applicable KnotKitchen charges.
-
-KnotKitchen provides technology and software and is not responsible for the Restaurant's food quality or independent business operations.
-
----
-
-## 8. CUSTOMER DATA & PRIVACY
-
-KnotKitchen may process customer and restaurant information as necessary to provide and operate its services.
-
-Customer information will not be sold or improperly used for unrelated promotional purposes.
-
-The Parties shall comply with applicable privacy and data-protection laws.
-
-The Restaurant shall not misuse or unlawfully disclose customer information obtained through KnotKitchen.
-
----
-
-## 9. THIRD-PARTY SERVICES
-
-KnotKitchen may integrate third-party services including payment gateways, delivery platforms and food-ordering platforms.
-
-Such services are subject to the respective third party's availability, policies and technical systems. KnotKitchen is not responsible for outages or changes caused by third-party providers.
-
----
-
-## 10. SOFTWARE & INTELLECTUAL PROPERTY
-
-KnotKitchen owns or has the right to use its software, technology, branding, designs and related intellectual property.
-
-The Restaurant receives a limited right to use KnotKitchen services during the active Agreement period.
-
-The Restaurant may not copy, resell, sublicense, reverse engineer, modify or commercially redistribute KnotKitchen software or intellectual property.
-
----
-
-## 11. WEBSITE
-
-Where a website is included in the Restaurant's plan, KnotKitchen will provide the applicable website and online-ordering functionality.
-
-The Restaurant is responsible for the accuracy of its menu, pricing, business information and content.
-
-The website will be taken offline upon termination of the Agreement unless otherwise agreed in writing.
-
----
-
-## 12. CONFIDENTIALITY
-
-Both Parties shall keep confidential non-public business, technical, financial and customer information received from the other Party, except where disclosure is required by law or necessary for providing the services.
-
----
-
-## 13. SUSPENSION
-
-KnotKitchen may suspend services for:
-
-- Non-payment after the applicable grace period.
-- Material breach of this Agreement.
-- Fraudulent or unlawful activity.
-- Misuse of KnotKitchen systems or equipment.
-- Security or legal reasons.
-
----
-
-## 14. ELECTRONIC SIGNATURE
-
-This Agreement may be executed through a legally recognized electronic-signature/eSign process.
-
-The Restaurant confirms that its authorized representative has reviewed the Agreement and has authority to sign it.
-
-The electronically signed Agreement, signature information, timestamps and applicable audit records may be retained electronically.
-
-The Restaurant shall download the generated Agreement, complete the applicable eSign process, and upload the signed Agreement to the KnotKitchen onboarding portal.
-
----
-
-## 15. VERIFICATION & ONBOARDING
-
-Submission of the signed Agreement does not automatically constitute final approval.
-
-KnotKitchen may verify the Restaurant's information, documents and signed Agreement.
-
-After successful verification, KnotKitchen will contact the Restaurant to complete setup and activation.
-
----
-
-## 16. LIABILITY
-
-KnotKitchen is not responsible for losses caused by third-party services, payment gateways, delivery platforms, internet failures, Restaurant-provided information, Restaurant operations, food quality or circumstances beyond KnotKitchen's reasonable control.
-
-Nothing in this Agreement limits any liability that cannot legally be limited.
-
----
-
-## 17. GOVERNING LAW
-
-This Agreement shall be governed by the laws of India.
-
-Subject to applicable law, disputes shall be subject to the jurisdiction of the competent courts of **Kolkata, West Bengal, India**.
-
----
-
-## 18. AGREEMENT ACCEPTANCE
-
-By electronically signing this Agreement, the Restaurant confirms that:
-
-- The information provided is accurate.
-- The signatory is authorized to represent the Restaurant.
-- The Restaurant has reviewed and accepted this Agreement.
-- The Restaurant agrees to the selected plan and applicable charges.
-- The Restaurant accepts the equipment, payment, refund, privacy and termination terms.
-
-### KNOTKITCHEN
-
-**Sales Agent:** [SALES_AGENT]\\
-**Date:** [DATE]\\
-
-
-### RESTAURANT
-
-**Restaurant:** [RESTAURANT_NAME]\\
-**Authorized Signatory:** OWNER\\
-**Date:** [DATE]
-
----
-
-**Agreement ID:** [AGREEMENT_ID]\\
-**Agreement Version:** [VERSION]\\
-**Generated On:** [GENERATED_DATE]
-
-ANNEXURE_A_PLACEHOLDER
-**End of Agreement**`;
+/* The clause text lives in js/agreement_v2.js (v2.0). Bracket placeholders
+   are replaced from onboarding data at generation time; clause wording is
+   never altered by the app. Annexure A records the Restaurant's profile. */
+const AGREEMENT_TEMPLATE = window.AGREEMENT_TEMPLATE_V2;
 
 function buildAnnexure(){
   const d = state.data;
@@ -1201,7 +902,20 @@ function buildAgreementText(){
     '[EFFECTIVE_DATE]': state.agreement.date,
     '[GENERATED_DATE]': state.agreement.date,
     '[DATE]': state.agreement.date,
-    '[VERSION]': 'v1.0',
+    '[VERSION]': window.AGREEMENT_VERSION || 'v2.0',
+    '[ENTITY_TYPE]': d.b_type || '—',
+    '[RESTAURANT_GSTIN]': d.b_gst==='yes' ? (d.b_gstin || '—') : 'Not registered under GST',
+    '[RESTAURANT_PAN]': d.b_pan || '—',
+    '[FSSAI]': d.b_fssai || '—',
+    '[FSSAI_VALIDITY]': d.b_fssai_valid || '—',
+    '[DESIGNATION]': d.o_designation || 'Owner',
+    '[KK_PARTY_NAME]': (window.KK_PARTY||{}).name || 'KnotKitchen',
+    '[KK_PARTY_DESCRIPTION]': (window.KK_PARTY||{}).description || '',
+    '[KK_PARTY_ADDRESS]': (window.KK_PARTY||{}).address || '—',
+    '[KK_PARTY_PAN]': (window.KK_PARTY||{}).pan || '—',
+    '[KK_PARTY_GST]': (window.KK_PARTY||{}).gst || 'not registered under GST',
+    '[KK_SUPPORT_EMAIL]': (window.KK_PARTY||{}).supportEmail || '—',
+    '[KK_WHATSAPP_PROVIDER]': (window.KK_PARTY||{}).whatsappProvider || '—',
     '[RESTAURANT_NAME]': d.r_name || d.r_display || '—',
     '[LEGAL_NAME]': d.b_legalname || '—',
     '[OWNER]': d.o_name || '—',
@@ -1231,13 +945,20 @@ function mdToHtml(md){
   t = t.replace(/^---$/gm,'<hr>');
   t = t.replace(/\*\*(.*?)\*\*/g,'<strong>$1</strong>');
   t = t.replace(/\*(.*?)\*/g,'<em>$1</em>');
+  t = t.replace(/(^\|.*(?:\n\|.*)*)/gm, m=>{
+    const rows = m.split('\n').filter(r=>!/^\|\s*:?-{3,}/.test(r));
+    const cells = r=>r.replace(/^\||\|$/g,'').split('|').map(c=>c.trim());
+    const head = rows.length ? '<tr>'+cells(rows[0]).map(c=>'<th>'+c+'</th>').join('')+'</tr>' : '';
+    const body = rows.slice(1).map(r=>'<tr>'+cells(r).map(c=>'<td>'+c+'</td>').join('')+'</tr>').join('');
+    return '<table class="agr-table">'+head+body+'</table>';
+  });
   t = t.replace(/(^- .*(?:\n- .*)*)/gm, m=>{
     const items = m.split('\n').map(l=>'<li>'+l.replace(/^- /,'')+'</li>').join('');
     return '<ul>'+items+'</ul>';
   });
   t = t.split(/\n{2,}/).map(block=>{
     const trimmed = block.trim();
-    if(/^<h\d|^<ul|^<hr/.test(trimmed)) return block;
+    if(/^<h\d|^<ul|^<hr|^<table/.test(trimmed)) return block;
     if(trimmed==='') return '';
     return '<p>'+block+'</p>';
   }).join('\n');
@@ -1254,6 +975,8 @@ function mdToPlain(md){
     .replace(/^# (.*)$/gm,'$1')
     .replace(/^---$/gm,'')
     .replace(/^- /gm,'• ')
+    .replace(/^\|\s*:?-{3,}.*$/gm,'')
+    .replace(/^\|(.*)\|$/gm,(m,row)=>row.split('|').map(c=>c.trim()).join('  —  '))
     .replace(/\n{3,}/g,'\n\n');
 }
 

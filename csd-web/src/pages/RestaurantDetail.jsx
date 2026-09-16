@@ -598,6 +598,51 @@ const RestaurantDetail = () => {
           )}
         </Card>
 
+        {/* Agreement v2.0: what the restaurant chose and accepted in the POS. */}
+        <Card title="Agreement terms">
+          {!charges.agreementTerms ? (
+            <p className="text-sm text-navy-400">No POS billing record for this store yet.</p>
+          ) : (
+            <dl>
+              <Row label="Agreement">{charges.agreementTerms.agreementVersion}</Row>
+              <Row label="Activated">
+                {charges.agreementTerms.activatedAt
+                  ? new Date(charges.agreementTerms.activatedAt).toLocaleDateString("en-IN", { dateStyle: "medium" })
+                  : "Not yet"}
+              </Row>
+              <Row label="Installation">
+                {charges.agreementTerms.installation
+                  ? `${charges.agreementTerms.installation.optionName} · ₹${(charges.agreementTerms.installation.amountPaise / 100).toLocaleString("en-IN")} paid ${new Date(charges.agreementTerms.installation.paidAt).toLocaleDateString("en-IN", { dateStyle: "medium" })}`
+                  : charges.agreementTerms.installationRequired
+                    ? "Not paid yet"
+                    : "Not required"}
+              </Row>
+              {charges.agreementTerms.installation?.refund && (
+                <Row label="Refund if terminated today">
+                  ₹{(charges.agreementTerms.installation.refund.refundPaise / 100).toLocaleString("en-IN")} ({charges.agreementTerms.installation.refund.percent}%)
+                  {charges.agreementTerms.installation.refund.anniversaryAt && !charges.agreementTerms.installation.refund.completed12Months
+                    ? ` · 100% from ${new Date(charges.agreementTerms.installation.refund.anniversaryAt).toLocaleDateString("en-IN", { dateStyle: "medium" })}`
+                    : ""}
+                </Row>
+              )}
+              <Row label="Commitment">
+                {charges.agreementTerms.commitment?.running
+                  ? `${charges.agreementTerms.commitment.months} months · ${charges.agreementTerms.commitment.discountPercent}% · ${charges.agreementTerms.commitment.periodsUsed}/${charges.agreementTerms.commitment.periodsTotal} periods used`
+                  : charges.agreementTerms.commitment?.repaymentDuePaise > 0
+                    ? `Ended early · ₹${(charges.agreementTerms.commitment.repaymentDuePaise / 100).toLocaleString("en-IN")} discount repayment due`
+                    : charges.agreementTerms.commitment?.completed
+                      ? `${charges.agreementTerms.commitment.months} months · completed`
+                      : "None (month to month)"}
+              </Row>
+              <Row label="Schedule 1">
+                {charges.agreementTerms.schedule
+                  ? `v${charges.agreementTerms.schedule.version} accepted ${new Date(charges.agreementTerms.schedule.acceptedAt).toLocaleDateString("en-IN", { dateStyle: "medium" })} · ${String(charges.agreementTerms.schedule.hash).slice(0, 12)}…`
+                  : "Not accepted yet"}
+              </Row>
+            </dl>
+          )}
+        </Card>
+
         <Card title="Restaurant staff">
           {staff.length === 0 ? (
             <p className="text-sm text-navy-400">No staff records.</p>

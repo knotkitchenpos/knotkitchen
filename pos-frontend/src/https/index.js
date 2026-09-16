@@ -320,7 +320,11 @@ export const verifyRecharge = (data) =>
 
 export const getSubscriptionStatus = () => axiosWrapper.get("/api/subscription");
 export const getSubscriptionPlans = () => axiosWrapper.get("/api/subscription/plans");
-export const getSubscriptionQuote = (planCode) =>
-  axiosWrapper.get(`/api/subscription/quote/${planCode}`);
+export const getSubscriptionQuote = (planCode, commitmentMonths = 0) =>
+  axiosWrapper.get(`/api/subscription/quote/${planCode}`, { params: { commitmentMonths } });
 export const purchasePlan = (data) => axiosWrapper.post("/api/subscription/purchase", data);
+// Agreement v2.0: the selectable installation options and commitments, priced for this store.
+export const getSubscriptionTerms = () => axiosWrapper.get("/api/subscription/terms");
+export const purchaseInstallation = (data) => axiosWrapper.post("/api/subscription/installation", data);
+export const getCommercialSchedules = () => axiosWrapper.get("/api/subscription/schedule");
 export const getPlatformInvoices = () => axiosWrapper.get("/api/subscription/invoices");
