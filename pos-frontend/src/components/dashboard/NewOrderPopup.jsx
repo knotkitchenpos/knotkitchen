@@ -3,7 +3,8 @@ import { useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 import { io } from "socket.io-client";
 import { enqueueSnackbar } from "notistack";
-import { updateOnlineOrderStatus } from "../../https/storefrontApi";
+import { listAwaitingOrders, updateOnlineOrderStatus } from "../../https/storefrontApi";
+import { AWAITING_ACCEPTANCE, PREPARING } from "../../constants/orderStatus";
 import useAlertBeep from "../../hooks/useAlertBeep";
 import { getActiveStoreId } from "../../utils/storeSession";
 import { tableLabel as labelForTable } from "../../utils/orderLabels";
@@ -28,7 +29,18 @@ const BACKEND_URL = import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, "") || "";
  * dragged out of the way by its header and left there — the alert keeps
  * sounding until somebody accepts or cancels, which is the part that must not
  * be dismissable by accident.
+ *
+ * Every till at the counter must ring, and one decision must silence them
+ * all. The card used to exist only as a live socket event: a phone whose
+ * screen was off, or whose browser had been switched away from, had no
+ * socket at that moment and simply never saw the order, while the computer
+ * next to it did. So on every (re)connect, and whenever the page comes back
+ * into view, the till asks for the orders still awaiting a decision; and a
+ * status change from any till drops the card on the others.
  */
+
+/** Still nobody's decision: a website order starts Pending, a QR order Preparing. */
+const UNDECIDED = new Set([AWAITING_ACCEPTANCE, PREPARING]);
 
 /** Channels a CUSTOMER ordered through. POS is staff typing, and never alerts. */
 const ALERTING_SOURCES = new Set(["QR", "WEBSITE"]);
@@ -61,17 +73,40 @@ const NewOrderPopup = () => {
       query: { restaurantId, storeId: getActiveStoreId() },
     });
 
-    const join = () => socket.emit("joinRestaurant", { restaurantId });
-
-    const onCreated = (payload) => {
-      const source = String(payload?.source || "").toUpperCase();
-      if (!ALERTING_SOURCES.has(source)) return;
+    // A retried emit, or a catch-up that overlaps a live event, must not
+    // stack two cards for one order.
+    const add = (payload) =>
       setQueue((prev) => {
-        // A retried emit must not stack two cards for one order.
         const id = String(payload?.orderId || "");
         if (id && prev.some((p) => String(p.orderId) === id)) return prev;
         return [...prev, payload];
       });
+
+    const catchUp = async () => {
+      try {
+        const { data } = await listAwaitingOrders();
+        (data?.data || [])
+          .filter((o) => ALERTING_SOURCES.has(String(o?.source || "").toUpperCase()))
+          .forEach(add);
+      } catch {
+        /* the live event still works without this */
+      }
+    };
+
+    const join = () => {
+      socket.emit("joinRestaurant", { restaurantId });
+      catchUp();
+    };
+    // A phone's browser pauses in the background and may keep a socket that
+    // missed events; re-check when it is looked at again.
+    const onVisible = () => {
+      if (document.visibilityState === "visible") catchUp();
+    };
+
+    const onCreated = (payload) => {
+      const source = String(payload?.source || "").toUpperCase();
+      if (!ALERTING_SOURCES.has(source)) return;
+      add(payload);
       try {
         enqueueSnackbar(
           source === "WEBSITE" ? "New website order" : "New table order",
@@ -82,12 +117,23 @@ const NewOrderPopup = () => {
       }
     };
 
+    // Decided on another till (or by the diner cancelling): stop ringing here.
+    const onStatus = (payload) => {
+      if (UNDECIDED.has(payload?.orderStatus)) return;
+      const id = String(payload?.orderId || "");
+      if (id) setQueue((prev) => prev.filter((p) => String(p.orderId) !== id));
+    };
+
     socket.on("connect", join);
     socket.on("onlineOrder:created", onCreated);
+    socket.on("onlineOrder:status", onStatus);
+    document.addEventListener("visibilitychange", onVisible);
 
     return () => {
       socket.off("connect", join);
       socket.off("onlineOrder:created", onCreated);
+      socket.off("onlineOrder:status", onStatus);
+      document.removeEventListener("visibilitychange", onVisible);
       socket.disconnect();
     };
   }, [restaurantId]);

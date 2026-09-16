@@ -88,3 +88,44 @@ test("the backend really does emit for a website order", () => {
   assert.match(storefront, /emitOrderCreated\(\{ restaurantId, outletId, storeId, order \}\);/);
   assert.match(BE("services/socket.js"), /emitEvent\("onlineOrder:created", payload, rooms\)/);
 });
+
+// ---------------------------------------------------------------------------
+// Every till rings, and one decision silences them all
+// ---------------------------------------------------------------------------
+
+test("REGRESSION: a till catches up on undecided orders when it (re)connects", () => {
+  // The card existed only as a live socket event. A phone with its screen
+  // off had no socket at that moment and never saw the order; the computer
+  // next to it did.
+  assert.match(POPUP, /listAwaitingOrders/);
+  const join = POPUP.slice(POPUP.indexOf("const join = "), POPUP.indexOf("const onVisible"));
+  assert.match(join, /catchUp\(\);/, "the catch-up runs on every connect, not only the first");
+  assert.match(POPUP, /document\.visibilityState === "visible"\) catchUp\(\);/);
+  assert.match(POPUP, /removeEventListener\("visibilitychange", onVisible\)/);
+
+  const api = SRC("src/https/storefrontApi.js");
+  assert.match(api, /listAwaitingOrders = \(\) => axiosWrapper\.get\("\/api\/online-orders\/awaiting"\)/);
+});
+
+test("the catch-up list is the same shape as the live event", () => {
+  // One builder for both, so a late card renders exactly like a live one.
+  const socket = BE("services/socket.js");
+  assert.match(socket, /const orderCreatedPayload = \(order, storeId = ""\) =>/);
+  assert.match(socket, /const payload = orderCreatedPayload\(order, storeId\);/);
+  const ctrl = BE("controllers/onlineOrderController.js");
+  assert.match(ctrl, /orders\.map\(\(o\) => orderCreatedPayload\(o, o\.storeId\)\)/);
+  // Undecided per channel: website orders start Pending, QR orders Preparing.
+  assert.match(ctrl, /\{ source: "WEBSITE", orderStatus: AWAITING_ACCEPTANCE \}/);
+  assert.match(ctrl, /\{ source: "QR", orderStatus: PREPARING \}/);
+  // Declared before "/:id", or "awaiting" is parsed as an order id.
+  const routes = BE("routes/onlineOrderRoute.js");
+  assert.ok(routes.indexOf('router.get("/awaiting"') < routes.indexOf('router.get("/:id"'));
+});
+
+test("a decision on one till drops the card on the others", () => {
+  assert.match(POPUP, /socket\.on\("onlineOrder:status", onStatus\)/);
+  assert.match(POPUP, /if \(UNDECIDED\.has\(payload\?\.orderStatus\)\) return;/);
+  assert.match(POPUP, /prev\.filter\(\(p\) => String\(p\.orderId\) !== id\)/);
+  // Accepting emits the status change the other tills listen for.
+  assert.match(BE("controllers/onlineOrderController.js"), /emitEvent\("onlineOrder:status"|emitOrderStatusChanged\(\{/);
+});

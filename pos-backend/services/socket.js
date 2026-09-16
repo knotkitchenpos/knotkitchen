@@ -134,16 +134,11 @@ const emitToTable = (tableId, event, payload) => {
 };
 
 /**
- * Online order created (§13, §31).
- *
- * The payload is scoped to the owning restaurant's room ONLY — private order
- * data is never broadcast platform-wide. The event carries enough detail for
- * the POS to render the "New Online Order" card without an extra fetch, while
- * the POS still reconciles via its REST endpoint on reconnect (§32).
+ * What the POS "New order" card renders. One builder for the live event and
+ * for the catch-up list (GET /api/online-orders/awaiting), so a card that
+ * arrives late looks exactly like one that arrived live.
  */
-const emitOrderCreated = ({ restaurantId, outletId, storeId, order }) => {
-  if (!io || !order) return;
-
+const orderCreatedPayload = (order, storeId = "") => {
   // If order.table is a populated Mongoose document (from .populate('table')),
   // extract the friendly identifier; otherwise fall back to the raw ObjectId
   // so the POS popup can at least display "Table {id-suffix}".
@@ -204,6 +199,20 @@ const emitOrderCreated = ({ restaurantId, outletId, storeId, order }) => {
     paymentStatus: order.payments?.[0]?.status || "pending",
     createdAt: order.createdAt || new Date(),
   };
+  return payload;
+};
+
+/**
+ * Online order created (§13, §31).
+ *
+ * The payload is scoped to the owning restaurant's room ONLY — private order
+ * data is never broadcast platform-wide. The event carries enough detail for
+ * the POS to render the "New Online Order" card without an extra fetch, while
+ * the POS still reconciles via its REST endpoint on reconnect (§32).
+ */
+const emitOrderCreated = ({ restaurantId, outletId, storeId, order }) => {
+  if (!io || !order) return;
+  const payload = orderCreatedPayload(order, storeId);
 
   const rooms = [];
   if (restaurantId) rooms.push(`restaurant:${restaurantId}`);
@@ -270,6 +279,7 @@ module.exports = {
   emitToRestaurant,
   emitToOutlet,
   emitToTable,
+  orderCreatedPayload,
   emitOrderCreated,
   emitOrderStatusChanged,
   emitTableSessionUpdated,

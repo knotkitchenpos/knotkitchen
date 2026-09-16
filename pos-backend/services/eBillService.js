@@ -35,6 +35,15 @@ const { fireEBillCharge } = require("./ebillCharge");
  * because it already holds a document it loaded within a tenant; the HTTP
  * path always passes one.
  */
+/**
+ * The kitchen order behind a table session. A session has one (rounds are
+ * appended to it), and the POS names the table's order by THAT document's
+ * number, so a receipt built from the session alone quoted the sessionCode
+ * instead and the operator could not match the e-bill to the order.
+ */
+const orderForSession = (sessionId) =>
+  Order.findOne({ tableSessionId: sessionId, isDeleted: { $ne: true } }, null, { sort: { createdAt: 1 } });
+
 const loadEBillSubject = async ({ orderId, tableSessionId, scopeQuery = {} }) => {
   let order = null;
   let tableSession = null;
@@ -56,6 +65,7 @@ const loadEBillSubject = async ({ orderId, tableSessionId, scopeQuery = {} }) =>
     }).populate("tableId");
     if (!tableSession) return null;
     if (tableSession.billId) bill = await Bill.findById(tableSession.billId);
+    if (!order) order = await orderForSession(tableSession._id);
     restaurantId = tableSession.restaurantId;
   }
 
@@ -219,6 +229,7 @@ const fireAutoEBill = (subject) => {
 };
 
 module.exports = {
+  orderForSession,
   loadEBillSubject,
   deliverEBill,
   maybeSendAutoEBill,

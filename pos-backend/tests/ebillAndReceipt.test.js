@@ -146,3 +146,44 @@ test("sendEBillMessage fails gracefully for invalid phone numbers", async () => 
   assert.equal(res.sent, false);
   assert.equal(res.deliveryStatus, "FAILED");
 });
+
+// ---------------------------------------------------------------------------
+// A table order is known by ONE number everywhere
+// ---------------------------------------------------------------------------
+
+test("REGRESSION: a table session's receipt quotes its order's number, not the session code", () => {
+  // The Orders screen names a table order by its Order document. The e-bill
+  // built from the session alone quoted sessionCode, so the customer's bill
+  // and the operator's screen disagreed about the very same order.
+  const tableSession = {
+    _id: "sess-02",
+    sessionCode: "TBL2-1234",
+    status: "CLOSED",
+    tableId: { tableNumber: 2 },
+    items: [{ name: "Tea", price: 20, quantity: 1, total: 20 }],
+    bills: { subtotal: 20, tax: 1, charges: 0, totalWithTax: 21 },
+    payment: { method: "CASH", status: "PAID" },
+  };
+  const order = { _id: "65f1c2d3e4f5a6b7c8d9e0f1", tableSessionId: "sess-02", items: [], orderNumber: "" };
+
+  const receipt = buildReceipt({ tableSession, order, restaurant: {} });
+  // Same rule as the POS: orderNumber, else the last six characters of the id.
+  assert.equal(receipt.orderNumber, "D9E0F1");
+  assert.equal(receipt.tableOrder.tableSessionCode, "TBL2-1234", "the session code is still on the bill");
+  assert.equal(receipt.quantities, 1, "items still come from the session, not the order");
+  assert.equal(receipt.total, 21);
+});
+
+test("SOURCE: every place that builds a session receipt loads the session's order", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const read = (rel) => fs.readFileSync(path.join(__dirname, "..", rel), "utf8");
+
+  assert.match(
+    read("services/eBillService.js"),
+    /Order\.findOne\(\{ tableSessionId: sessionId, isDeleted: \{ \$ne: true \} \}, null, \{ sort: \{ createdAt: 1 \} \}\)/,
+  );
+  assert.match(read("services/eBillService.js"), /if \(!order\) order = await orderForSession\(tableSession\._id\);/);
+  assert.match(read("controllers/receiptController.js"), /order: await orderForSession\(session\._id\),/);
+  assert.match(read("controllers/publicReceiptController.js"), /order = await orderForSession\(tableSession\._id\);/);
+});

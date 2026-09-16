@@ -6,6 +6,7 @@ const {
   getOnlineOrder,
   updateOnlineOrderStatus,
   listPrepDueOrders,
+  listAwaitingOrders,
   startPreparingOrder,
   resolveAddedItems,
   getOnlineOrderStats,
@@ -22,6 +23,7 @@ router.get("/stats/summary", isVerifiedUser, getOnlineOrderStats);
 
 router.get("/", isVerifiedUser, listOnlineOrders);
 router.get("/prep-due", isVerifiedUser, listPrepDueOrders);
+router.get("/awaiting", isVerifiedUser, listAwaitingOrders);
 router.post("/:id/start-preparing", isVerifiedUser, startPreparingOrder);
 router.get("/:id", isVerifiedUser, getOnlineOrder);
 router.put("/:id/status", isVerifiedUser, updateOnlineOrderStatus);

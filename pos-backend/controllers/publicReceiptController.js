@@ -17,6 +17,7 @@ const TableSession = require("../models/tableSessionModel");
 const Restaurant = require("../models/restaurantModel");
 const { buildReceipt } = require("../services/receiptService");
 const { readToken } = require("../services/receiptLink");
+const { orderForSession } = require("../services/eBillService");
 const { orderItemExtras, itemDisplayName } = require("../services/orderItemExtras");
 
 const esc = (value) =>
@@ -186,6 +187,8 @@ const viewPublicReceipt = async (req, res) => {
         .populate("tableId");
       if (!tableSession) return res.status(404).type("html").send(notFound());
       if (tableSession.billId) bill = await Bill.findById(tableSession.billId);
+      // Same number as the POS shows for this table's order.
+      order = await orderForSession(tableSession._id);
       restaurantId = tableSession.restaurantId;
     }
 

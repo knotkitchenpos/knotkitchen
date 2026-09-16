@@ -4,7 +4,7 @@ const Bill = require("../models/billModel");
 const TableSession = require("../models/tableSessionModel");
 const Restaurant = require("../models/restaurantModel");
 const { buildReceipt } = require("../services/receiptService");
-const { loadEBillSubject, deliverEBill } = require("../services/eBillService");
+const { loadEBillSubject, deliverEBill, orderForSession } = require("../services/eBillService");
 
 /**
  * GET /api/receipts/order/:orderId
@@ -65,6 +65,7 @@ const getReceiptForSession = async (req, res, next) => {
     }
 
     const receipt = buildReceipt({
+      order: await orderForSession(session._id),
       tableSession: session,
       bill,
       restaurant,

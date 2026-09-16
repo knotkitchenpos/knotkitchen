@@ -211,7 +211,7 @@ test("REGRESSION: the new-order popup acts on the id the payload actually carrie
   assert.match(socket, /orderId: String\(order\._id\),/, "which is what the emitter sends");
   // The only `_id` in that payload belongs to the TABLE, not the order --
   // which is exactly why reading `current._id` found nothing.
-  const created = socket.slice(socket.indexOf("const emitOrderCreated"), socket.indexOf("const emitOrderStatusChanged"));
+  const created = socket.slice(socket.indexOf("const orderCreatedPayload"), socket.indexOf("const emitOrderStatusChanged"));
   assert.ok(!/^ {4}_id:/m.test(created), "no top-level _id -- the popup must not expect one");
   assert.match(created, /_id: tableDoc\._id,/, "the nested one is the table's");
 });

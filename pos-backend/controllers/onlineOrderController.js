@@ -2,10 +2,11 @@ const createHttpError = require("http-errors");
 const mongoose = require("mongoose");
 const Order = require("../models/orderModel");
 const { resolveTenantFromUser } = require("../services/tenantContext");
-const { emitOrderStatusChanged, emitTableSessionUpdated } = require("../services/socket");
+const { emitOrderStatusChanged, emitTableSessionUpdated, orderCreatedPayload } = require("../services/socket");
 const {
   isFinished,
   AWAITING_ACCEPTANCE,
+  PREPARING,
   CANCELLED,
   READY_STATUSES,
   SETTLED_STATUSES,
@@ -245,6 +246,41 @@ const listPrepDueOrders = async (req, res, next) => {
       .sort({ prepStartAt: 1 })
       .limit(50);
     res.status(200).json({ success: true, data: orders.map(prepDuePayload) });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/online-orders/awaiting — customer orders nobody has decided on yet,
+ * in the shape of the `onlineOrder:created` event.
+ *
+ * The "New order" card used to exist only as a live socket event. A till whose
+ * socket was down at that moment -- a phone with its screen off, the app
+ * switched away to something else -- never saw the order, while the other
+ * till at the counter did. Every device now asks for this list on (re)connect.
+ *
+ * "Undecided" per channel: a website order is created Pending and Accept moves
+ * it to In Progress; a QR table order is created Preparing (the kitchen starts
+ * at once) and Accept likewise moves it to In Progress. Limited to the last
+ * twelve hours so a stale order does not ring every till on every reload.
+ */
+const listAwaitingOrders = async (req, res, next) => {
+  try {
+    const scoped = await tenantScope(req);
+    if (!scoped) return res.status(200).json({ success: true, data: [] });
+    const orders = await Order.find({
+      ...scoped.scope,
+      createdAt: { $gte: new Date(Date.now() - 12 * 60 * 60 * 1000) },
+      $or: [
+        { source: "WEBSITE", orderStatus: AWAITING_ACCEPTANCE },
+        { source: "QR", orderStatus: PREPARING },
+      ],
+    })
+      .sort({ createdAt: 1 })
+      .limit(50)
+      .populate("table", "tableNumber displayId tableName");
+    res.status(200).json({ success: true, data: orders.map((o) => orderCreatedPayload(o, o.storeId)) });
   } catch (error) {
     next(error);
   }
@@ -531,6 +567,7 @@ module.exports = {
   getOnlineOrder,
   updateOnlineOrderStatus,
   listPrepDueOrders,
+  listAwaitingOrders,
   startPreparingOrder,
   getOnlineOrderStats,
   toPosOrderView,
