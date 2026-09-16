@@ -28,7 +28,8 @@ const ThermalPrinter = registerPlugin("ThermalPrinter");
 
 const KEY = "kk.receiptPrinter.v1";
 
-export const DEFAULT_CONFIG = { type: "", name: "", paper: "80", autoPrint: false };
+/** protocol: "escpos" for receipt printers; "cat" for the 57 mm mini printers (see utils/catprinter.js). */
+export const DEFAULT_CONFIG = { type: "", name: "", paper: "80", autoPrint: false, protocol: "escpos" };
 
 export const loadPrinterConfig = () => {
   try {
@@ -248,8 +249,9 @@ export const sendToPrinter = async (config, bytes) => {
       const chunk = bytes.slice(at, at + BLE_CHUNK);
       if (fast) {
         await characteristic.writeValueWithoutResponse(chunk);
-        // Unacknowledged writes can outrun the printer's buffer.
-        await sleep(4);
+        // Unacknowledged writes can outrun the printer's buffer. The mini
+        // printers have a small one and pace at about 20 ms per write.
+        await sleep(config.protocol === "cat" ? 20 : 4);
       } else {
         await characteristic.writeValueWithResponse(chunk);
       }

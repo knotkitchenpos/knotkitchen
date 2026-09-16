@@ -145,3 +145,40 @@ test("REGRESSION: a connected printer is kept at once, not only on Save", () => 
   assert.match(device, /if \(STANDARD_SERVICE\.test\(service\.uuid\)\) continue;/);
   assert.match(device, /PRINTER_SERVICES\.includes\(service\.uuid\) \? 2 : 0/);
 });
+
+test("cat printer job: framed packets, CRC-8, LSB-first rows, 384 wide", async () => {
+  const { catJob, packet, crc8, looksLikeCatPrinter, CAT_WIDTH } = await import("../src/utils/catprinter.js");
+  // CRC-8 poly 0x07: "123456789" -> 0xF4 (the standard check value).
+  assert.equal(crc8(new TextEncoder().encode("123456789")), 0xf4);
+  const p = packet(0xa1, [0x30, 0x00]);
+  assert.deepEqual([...p], [0x51, 0x78, 0xa1, 0x00, 0x02, 0x00, 0x30, 0x00, crc8([0x30, 0x00]), 0xff]);
+
+  // Two rows of 384 px; row 0 has only the leftmost pixel black (MSB-first: 0x80).
+  const width = CAT_WIDTH;
+  const rowBytes = width / 8;
+  const bits = new Uint8Array(rowBytes * 2);
+  bits[0] = 0x80;
+  const job = catJob(bits, width, 2);
+  // Find the first row packet (cmd 0xa2) and check the bit order flipped to LSB-first (0x01).
+  let at = 0;
+  const rows = [];
+  while (at < job.length) {
+    const len = job[at + 4];
+    if (job[at + 2] === 0xa2) rows.push(job.subarray(at + 6, at + 6 + len));
+    at += 8 + len;
+  }
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].length, 48);
+  assert.equal(rows[0][0], 0x01);
+  assert.equal(job[job.length - 1], 0xff, "the stream is whole packets");
+
+  assert.ok(looksLikeCatPrinter("P1-7604"));
+  assert.ok(looksLikeCatPrinter("GB03"));
+  assert.ok(!looksLikeCatPrinter("MTP-II"));
+  assert.ok(!looksLikeCatPrinter("Xprinter XP-58"));
+
+  // The receipt path picks the encoder and forces 57 mm paper for it.
+  const print = fs.readFileSync(path.join(__dirname, "..", "src/utils/printReceipt.js"), "utf8");
+  assert.match(print, /const encode = cat \? catJob : rasterJob;/);
+  assert.match(print, /const paper = cat \|\| printer\.paper === "58" \? "58" : "80";/);
+});

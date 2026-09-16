@@ -17,6 +17,7 @@ import {
   supports,
 } from "../../utils/printerDevice";
 import { printOrderReceipt, receiptContextFrom, renderReceiptCanvas, SAMPLE_ORDER } from "../../utils/printReceipt";
+import { looksLikeCatPrinter } from "../../utils/catprinter";
 
 /**
  * Settings > Device Configuration.
@@ -95,6 +96,11 @@ const PAPERS = [
   { key: "58", label: "58 mm", sub: "2 inch" },
 ];
 
+const PROTOCOLS = [
+  { key: "escpos", label: "Receipt printer", sub: "ESC/POS · billing / KOT printers" },
+  { key: "cat", label: "Mini printer", sub: "iPrint · Fun Print · Tiny Print · 57 mm" },
+];
+
 const btnPrimary =
   "h-[40px] px-4 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold hover:bg-[#D64502] disabled:opacity-50";
 const btnGhost =
@@ -124,7 +130,10 @@ const DeviceConfiguration = () => {
 
   const pickPrinter = (kind, picked) => {
     setChoices(null);
-    patchDevice({ type: kind, usb: undefined, bluetooth: undefined, ...picked });
+    // A mini printer only prints its own language on 57 mm paper; the name
+    // usually gives it away, and the choice below is there when it does not.
+    const cat = looksLikeCatPrinter(picked.name);
+    patchDevice({ type: kind, usb: undefined, bluetooth: undefined, ...picked, ...(cat ? { protocol: "cat", paper: "58" } : {}) });
     enqueueSnackbar(`${picked.name} connected. Choose the paper size, then Test Print.`, { variant: "success" });
   };
 
@@ -349,6 +358,32 @@ const DeviceConfiguration = () => {
             </div>
           )}
 
+          {(isThis("usb") || isThis("bluetooth")) && (
+            <div className="mt-5 pt-4 border-t border-[#E2E8F0]">
+              <p className="text-[13px] font-bold text-[#0F172A]">Printer type</p>
+              <p className="text-[11.5px] text-[#94A3B8] mt-0.5">
+                A mini sticker printer speaks its own language. If the printer says it is connected but nothing comes
+                out, choose Mini printer.
+              </p>
+              <div className="mt-2 grid grid-cols-2 gap-2 max-w-[360px]">
+                {PROTOCOLS.map((p) => (
+                  <button
+                    key={p.key}
+                    type="button"
+                    aria-pressed={(device.protocol || "escpos") === p.key}
+                    onClick={() => patchDevice({ protocol: p.key, ...(p.key === "cat" ? { paper: "58" } : {}) })}
+                    className={`h-[56px] rounded-xl border text-left px-3 ${
+                      (device.protocol || "escpos") === p.key ? "border-[#FD5302] bg-[#FFF6F0] ring-1 ring-[#FD5302]" : "border-[#E2E8F0] bg-white"
+                    }`}
+                  >
+                    <span className="block text-[14px] font-extrabold text-[#0F172A]">{p.label}</span>
+                    <span className="block text-[11.5px] text-[#64748B]">{p.sub}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
           <div className="mt-5 pt-4 border-t border-[#E2E8F0]">
             <p className="text-[13px] font-bold text-[#0F172A]">Paper size</p>
             <div className="mt-2 grid grid-cols-2 gap-2 max-w-[360px]">
@@ -357,8 +392,9 @@ const DeviceConfiguration = () => {
                   key={p.key}
                   type="button"
                   aria-pressed={device.paper === p.key}
+                  disabled={device.protocol === "cat" && p.key !== "58"}
                   onClick={() => patchDevice({ paper: p.key })}
-                  className={`h-[56px] rounded-xl border text-left px-3 ${
+                  className={`h-[56px] rounded-xl border text-left px-3 disabled:opacity-40 ${
                     device.paper === p.key ? "border-[#FD5302] bg-[#FFF6F0] ring-1 ring-[#FD5302]" : "border-[#E2E8F0] bg-white"
                   }`}
                 >

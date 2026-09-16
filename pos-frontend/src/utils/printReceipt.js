@@ -3,6 +3,7 @@ import { printHtmlDocument } from "./printDocument";
 import { formatAddress } from "./address";
 import { layoutReceipt, paperOf } from "./receiptLayout.js";
 import { ditherInPlace, rasterJob, toMonochrome } from "./escpos.js";
+import { catJob } from "./catprinter.js";
 import { loadPrinterConfig, sendToPrinter } from "./printerDevice.js";
 
 /**
@@ -125,13 +126,16 @@ const printCanvasWithDialog = (canvas, paper) => {
 export const printOrderReceipt = async (order, { auto = false, config, context } = {}) => {
   const printer = config || loadPrinterConfig();
   const { store, settings } = context || (await loadReceiptContext());
-  const paper = printer.paper === "58" ? "58" : "80";
+  // A mini printer is always 57 mm and speaks its own language, not ESC/POS.
+  const cat = printer.protocol === "cat";
+  const paper = cat || printer.paper === "58" ? "58" : "80";
   const canvas = await renderReceiptCanvas({ order, store, settings, paper });
 
   if (printer.type === "usb" || printer.type === "bluetooth") {
     const pixels = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
     const bits = toMonochrome(pixels.data, canvas.width, canvas.height);
-    await sendToPrinter(printer, rasterJob(bits, canvas.width, canvas.height));
+    const encode = cat ? catJob : rasterJob;
+    await sendToPrinter(printer, encode(bits, canvas.width, canvas.height));
     return { printed: true, via: printer.type };
   }
   if (auto && printer.type !== "system") return { printed: false, via: "none" };
