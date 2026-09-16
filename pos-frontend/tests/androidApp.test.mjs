@@ -57,3 +57,11 @@ test("release signing reads only the environment; keys are never committed", () 
   assert.ok(!/storePassword\s+"/.test(gradle), "no password literal");
   assert.match(SRC("android/.gitignore"), /^\*\.jks$/m);
 });
+
+test("REGRESSION: printing does not need BLUETOOTH_SCAN", () => {
+  // cancelDiscovery() needs BLUETOOTH_SCAN on Android 12+. The app never
+  // scans, so it does not hold that permission, and every print was rejected
+  // with "Need android.permission.BLUETOOTH_SCAN permission".
+  const java = JAVA("ThermalPrinterPlugin.java");
+  assert.match(java, /try \{\s*adapter\.cancelDiscovery\(\);\s*\} catch \(SecurityException ignored\)/);
+});

@@ -140,7 +140,15 @@ public class ThermalPrinterPlugin extends Plugin {
         String address = call.getString("address", "");
         BluetoothSocket socket = null;
         try {
-            adapter.cancelDiscovery();
+            // Discovery slows a connection down, but stopping it needs
+            // BLUETOOTH_SCAN on Android 12+, which this app does not hold: it
+            // never scans, only lists paired printers. Without the guard every
+            // print failed with "Need android.permission.BLUETOOTH_SCAN".
+            try {
+                adapter.cancelDiscovery();
+            } catch (SecurityException ignored) {
+                // not scanning anyway
+            }
             BluetoothDevice device = adapter.getRemoteDevice(address);
             socket = device.createRfcommSocketToServiceRecord(SPP);
             try {
