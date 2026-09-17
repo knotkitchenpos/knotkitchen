@@ -1,7 +1,6 @@
 const createHttpError = require("http-errors");
 const KDSOrder = require("../models/kdsModel");
 const Order = require("../models/orderModel");
-const AuditLog = require("../models/auditLogModel");
 const { PREPARING, READY, COMPLETED } = require("../constants/orderStatus");
 const { fireAutoEBill } = require("../services/eBillService");
 

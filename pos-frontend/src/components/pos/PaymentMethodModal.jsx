@@ -1,5 +1,6 @@
 import React from "react";
 import { ModalShell } from "./ModalShell";
+import { money } from "../../utils";
 
 /**
  * Finish Order → Payment Method chooser (Module 2 §5).
@@ -31,7 +32,6 @@ const IconQR = () => (
         <path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20h1" />
     </svg>
 );
-const money = (n) => `₹${Number(n || 0).toFixed(2)}`;
 
 const Row = ({ label, value, strong = false, muted = false, positive = false, negative = false }) => (
     <div className="flex items-center justify-between text-[13.5px]">

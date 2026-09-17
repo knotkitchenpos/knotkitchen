@@ -1,4 +1,5 @@
 const createHttpError = require("http-errors");
+const { logActivity } = require("../services/auditService");
 const Team = require("../models/teamModel");
 const User = require("../models/userModel");
 const AuditLog = require("../models/auditLogModel");
@@ -143,15 +144,12 @@ const addStaff = async (req, res, next) => {
       emailVerified: !!email,
     });
 
-    await AuditLog.create({
-      userId: req.user._id,
-      restaurantId,
+    await logActivity({
+      req,
       action: "STAFF.CREATE",
       resource: "User",
       resourceId: staff._id,
       description: `Staff member added: ${name} (${role})`,
-      ipAddress: req.ip,
-      userAgent: req.get("user-agent"),
     });
 
     res.status(201).json({ success: true, message: "Staff member added!", data: staff.toSafeJSON() });

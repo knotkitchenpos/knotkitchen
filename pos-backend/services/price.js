@@ -1,4 +1,5 @@
 const Menu = require("../models/menuModel");
+const { round2 } = require("./money");
 const { AUDIENCES, menuViewFor } = require("./menuCache");
 const { capFor } = require("./modifierGroups");
 const { getChannelPrice } = require("./businessHours");
@@ -304,15 +305,15 @@ const calculateUnitPrice = ({
  */
 const calculateBill = ({ items, taxRate = TAX_RATE, discount = 0, additionalCharges = 0 }) => {
   const subtotal = items.reduce((s, i) => s + i.price * i.quantity, 0);
-  const tax = Math.round(subtotal * taxRate * 100) / 100;
-  const charges = Math.round(additionalCharges * 100) / 100;
+  const tax = round2(subtotal * taxRate);
+  const charges = round2(additionalCharges);
   const discountedSubtotal = Math.max(0, subtotal - discount);
-  const totalWithTax = Math.round((discountedSubtotal + tax + charges) * 100) / 100;
+  const totalWithTax = round2(discountedSubtotal + tax + charges);
 
   return {
-    subtotal: Math.round(subtotal * 100) / 100,
+    subtotal: round2(subtotal),
     tax,
-    discount: Math.round(discount * 100) / 100,
+    discount: round2(discount),
     charges,
     totalWithTax,
   };

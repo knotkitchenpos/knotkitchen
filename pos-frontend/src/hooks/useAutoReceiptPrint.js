@@ -1,12 +1,10 @@
 import { useEffect } from "react";
-import { io } from "socket.io-client";
 import { useSelector } from "react-redux";
 import { enqueueSnackbar } from "notistack";
 import { getOrderById } from "../https";
-import { getActiveStoreId } from "../utils/storeSession";
 import { loadPrinterConfig } from "../utils/printerDevice";
 import { printKot, printOrderReceipt } from "../utils/printReceipt";
-import { SOCKET_URL } from "../config";
+import { acquireSocket, releaseSocket } from "../socket";
 
 /**
  * Auto Receipt Print and Auto KOT: every new order prints on this device's
@@ -48,12 +46,7 @@ const useAutoReceiptPrint = () => {
   useEffect(() => {
     if (!restaurantId) return undefined;
 
-    const socket = io(SOCKET_URL, {
-      withCredentials: true,
-      transports: ["websocket", "polling"],
-      query: { restaurantId, storeId: getActiveStoreId() },
-    });
-    const join = () => socket.emit("joinRestaurant", { restaurantId });
+    const socket = acquireSocket(restaurantId);
 
     const onCreated = async (payload) => {
       const config = loadPrinterConfig();
@@ -100,14 +93,12 @@ const useAutoReceiptPrint = () => {
       }
     };
 
-    socket.on("connect", join);
     socket.on("onlineOrder:created", onCreated);
     socket.on("kitchen:round", onRound);
     return () => {
-      socket.off("connect", join);
       socket.off("onlineOrder:created", onCreated);
       socket.off("kitchen:round", onRound);
-      socket.disconnect();
+      releaseSocket();
     };
   }, [restaurantId]);
 };

@@ -11,6 +11,7 @@ const logActivity = async ({
   resource,
   entityType,
   entityId,
+  resourceId,
   previousValue,
   newValue,
   description,
@@ -19,6 +20,8 @@ const logActivity = async ({
   try {
     const activeUser = user || req?.user;
     if (!activeUser) return null;
+    // Callers say `entityId` or `resourceId`; the record carries both.
+    const id = entityId || resourceId || null;
 
     const now = new Date();
     const dateFormatted = now.toLocaleDateString("en-GB", {
@@ -68,8 +71,8 @@ const logActivity = async ({
       action: action || "SETTINGS_UPDATE",
       resource: resource || entityType || "General",
       entityType: entityType || resource || "General",
-      entityId: entityId || null,
-      resourceId: entityId || null,
+      entityId: id,
+      resourceId: id,
       description: description || `${action} by ${activeUser.name || activeUser.phone || "User"}`,
       previousValue: cleanPrev,
       newValue: cleanNew,

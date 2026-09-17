@@ -6,7 +6,6 @@ export { default as Menu } from './Menu.jsx'
 export { default as KDS } from "./KDS.jsx"
 export { default as OrderOnline } from "./OrderOnline.jsx"
 export { default as PaymentLink } from "./PaymentLink.jsx"
-export { default as Storefront } from "./Storefront.jsx"
 export { default as WebsiteSettings } from "./WebsiteSettings.jsx"
 export { default as OnlineOrders } from "./OnlineOrders.jsx"
 export { default as Reports } from "./Reports.jsx"

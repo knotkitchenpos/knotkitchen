@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { inr as money } from "../../utils";
 
 /**
  * Why an order is being cancelled or refunded, and for a refund, how much.
@@ -11,7 +12,6 @@ const REASONS = {
   refund: ["Wrong item served", "Food quality complaint", "Order was late", "Overcharged", "Customer cancelled after paying"],
 };
 
-const money = (n) => `₹${Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const paidOnline = (o) => {
   const m = String(o?.payments?.[0]?.method || o?.paymentMethod || "").toLowerCase();
   return Boolean(o?.paymentData?.gatewayOrderId) || ["online", "payment gateway", "paymentlink", "link"].includes(m);

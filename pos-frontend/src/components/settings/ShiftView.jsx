@@ -6,6 +6,7 @@ import { closeShift, getCurrentShift, getShifts, getStoreProperties, openShift }
 import SecurityPinModal from "../common/SecurityPinModal";
 import { checkActionAuthorization } from "../../utils/security";
 import { printHtmlDocument } from "../../utils/printDocument";
+import { inr as money, dateTimeIN as when } from "../../utils";
 
 /**
  * Settings > Shift & Day End.
@@ -15,9 +16,6 @@ import { printHtmlDocument } from "../../utils/printDocument";
  * them. Opening and closing are owner or PIN actions, like publishing.
  */
 
-const money = (n) => `₹${Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-const when = (d) =>
-  d ? new Date(d).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hour12: true }) : "";
 
 const inputClass =
   "h-[44px] w-full rounded-xl border border-[#E2E8F0] px-3 text-[15px] font-bold text-[#0F172A] outline-none focus:border-[#FD5302]";

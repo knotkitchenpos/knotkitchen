@@ -1,9 +1,7 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { io } from "socket.io-client";
 import { useSelector } from "react-redux";
-import { getActiveStoreId } from "../utils/storeSession";
-import { SOCKET_URL } from "../config";
+import { acquireSocket, releaseSocket } from "../socket";
 
 /**
  * Keep the whole POS current without anyone pressing refresh.
@@ -19,10 +17,6 @@ import { SOCKET_URL } from "../config";
  * by hand -- a socket payload is a summary, and reconciling it with whatever
  * shape each screen expects is how two screens end up disagreeing. Invalidate,
  * let the query refetch, and there is one source of truth.
- *
- * A sixth socket, not a consolidation: the five existing ones (KDS, online
- * orders, and three popups) each do feature-specific work beyond refreshing,
- * and folding them together is a bigger change than the bug being fixed here.
  */
 
 
@@ -53,13 +47,7 @@ const useRealtimeSync = () => {
   useEffect(() => {
     if (!restaurantId) return undefined;
 
-    const socket = io(SOCKET_URL, {
-      // The server authenticates from the same HTTP-only cookie axiosWrapper
-      // uses; without credentials the socket cannot join a tenant room.
-      withCredentials: true,
-      transports: ["websocket", "polling"],
-      query: { restaurantId, storeId: getActiveStoreId() },
-    });
+    const socket = acquireSocket(restaurantId);
 
     const invalidate = (keys) => {
       keys.forEach((key) => queryClient.invalidateQueries({ queryKey: [key] }));
@@ -71,20 +59,18 @@ const useRealtimeSync = () => {
       return [event, handler];
     });
 
-    // Re-join on every connect, not just the first. A dropped connection is
-    // normal on a tablet that sleeps, and a reconnect that does not re-join
-    // its room is a socket that looks healthy and receives nothing.
+    // Catch up on whatever was missed while disconnected (the shared socket
+    // re-joins its room on every connect).
     const onConnect = () => {
-      socket.emit("joinRestaurant", { restaurantId });
-      // Catch up on whatever was missed while disconnected.
       invalidate(["orders", "tables", "kds-orders", "menus", "dashboard"]);
     };
     socket.on("connect", onConnect);
+    if (socket.connected) onConnect();
 
     return () => {
       socket.off("connect", onConnect);
       handlers.forEach(([event, handler]) => socket.off(event, handler));
-      socket.disconnect();
+      releaseSocket();
     };
   }, [restaurantId, queryClient]);
 };

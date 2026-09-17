@@ -331,7 +331,7 @@ const verifyAndCaptureLinkPayment = async (req, res, next) => {
   mongoSession.startTransaction();
   try {
     const { token } = req.params;
-    const { idempotencyKey, paymentMethod = "ONLINE" } = req.body;
+    const { paymentMethod = "ONLINE" } = req.body;
 
     const link = await PaymentLink.findOne({ linkToken: token, isDeleted: { $ne: true } }).session(mongoSession);
     if (!link) throw createHttpError(404, "Payment link not found.");
@@ -407,8 +407,13 @@ const verifyAndCaptureLinkPayment = async (req, res, next) => {
       throw createHttpError(501, "This payment method cannot be confirmed here.");
     }
 
-    // Idempotency check
-    const effectiveIdempotencyKey = idempotencyKey || `pay-link-${link._id}-${transactionId}`;
+    // Idempotency: derived from the link and the gateway transaction, never
+    // taken from the body. This is a public endpoint and the replay branch
+    // returns the matched transaction, so a caller-chosen key would let one
+    // customer read another's payment record. The webhook derives the same
+    // key (services/paymentLinkSettlement.js), so browser and webhook collapse
+    // to one transaction.
+    const effectiveIdempotencyKey = `pay-link-${link._id}-${transactionId}`;
     const existingTxn = await PaymentTransaction.findOne({
       restaurantId: link.restaurantId,
       idempotencyKey: effectiveIdempotencyKey,

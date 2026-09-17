@@ -1,4 +1,5 @@
 const createHttpError = require("http-errors");
+const { logActivity } = require("../services/auditService");
 const { SUPPORT_PHONE } = require("../constants/support");
 const User = require("../models/userModel");
 const ProductId = require("../models/productIdModel");
@@ -10,7 +11,6 @@ const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
 const config = require("../config/config");
 const sessionCookies = require("../services/sessionCookies");
-const AuditLog = require("../models/auditLogModel");
 const { provisionWebsiteForStore } = require("../services/websiteProvisioningService");
 
 const provisionWebsiteSafely = async (params) => {
@@ -401,25 +401,21 @@ const register = async (req, res, next) => {
     // Auto-login after registration
     await signTokensAndSetCookies(newUser, req, res);
 
-    await AuditLog.create({
-      userId: newUser._id,
-      restaurantId: restaurant._id,
+    await logActivity({
+      req,
+      user: newUser,
       action: "USER.REGISTER",
       resource: "User",
       resourceId: newUser._id,
       description: `New user registered: ${name} with Product ID ${product.productId}`,
-      ipAddress: req.ip,
-      userAgent: req.get("user-agent"),
     });
-    await AuditLog.create({
-      userId: newUser._id,
-      restaurantId: restaurant._id,
+    await logActivity({
+      req,
+      user: newUser,
       action: "PRODUCT_ID.ASSIGNED",
       resource: "ProductId",
       resourceId: product._id,
       description: `Product ID ${product.productId} assigned to restaurant ${restaurant._id}`,
-      ipAddress: req.ip,
-      userAgent: req.get("user-agent"),
     });
 
     res.status(201).json({
@@ -509,15 +505,13 @@ const login = async (req, res, next) => {
       await user.save();
       await signTokensAndSetCookies(user, req, res);
 
-      await AuditLog.create({
-        userId: user._id,
-        restaurantId: user.restaurantId,
+      await logActivity({
+        req,
+        user,
         action: "USER.LOGIN_OTP",
         resource: "User",
         resourceId: user._id,
         description: `OTP login for ${otpService.maskPhone(ownerPhone)} (Product ID ${product.productId})`,
-        ipAddress: req.ip,
-        userAgent: req.get("user-agent"),
       });
 
       return res.status(200).json({
@@ -585,15 +579,13 @@ const login = async (req, res, next) => {
 
     await signTokensAndSetCookies(foundUser, req, res);
 
-    await AuditLog.create({
-      userId: foundUser._id,
-      restaurantId: foundUser.restaurantId,
+    await logActivity({
+      req,
+      user: foundUser,
       action: "USER.LOGIN",
       resource: "User",
       resourceId: foundUser._id,
       description: `User logged in (Product ID ${product.productId})`,
-      ipAddress: req.ip,
-      userAgent: req.get("user-agent"),
     });
 
     res.status(200).json({

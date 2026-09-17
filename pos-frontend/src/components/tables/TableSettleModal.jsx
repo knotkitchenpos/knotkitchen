@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { money } from "../../utils";
 
 /**
  * Complete Order → how was this table paid?
@@ -52,7 +53,6 @@ const METHODS = [
   },
 ];
 
-const money = (n) => `₹${Number(n || 0).toFixed(2)}`;
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 const TableSettleModal = ({ table, session, busy, onClose, onConfirm }) => {

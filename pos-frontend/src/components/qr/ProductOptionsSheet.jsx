@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { capOf } from "../../utils/modifierGroups";
+import { money as formatMoney } from "../../utils";
 
 /**
  * Options a diner must pick before a product can go in the cart.
@@ -35,7 +36,7 @@ const ProductOptionsSheet = ({ item, currency = "₹", primary = "#FD5302", onCl
   const [picked, setPicked] = useState({});
   const [qty, setQty] = useState(1);
 
-  const money = (n) => `${currency}${Number(n || 0).toFixed(2)}`;
+  const money = (n) => formatMoney(n, currency);
   const groupKey = (g, i) => String(g._id || g.name || i);
   const optionKey = (o, i) => String(o._id || o.name || i);
 

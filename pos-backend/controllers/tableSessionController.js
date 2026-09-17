@@ -1,11 +1,12 @@
 const mongoose = require("mongoose");
+const { logActivity } = require("../services/auditService");
 const { buildCooldownUpdate } = require("../services/tableCooldownService");
 const { userScope } = require("../services/tenantContext");
+const { round2 } = require("../services/money");
 const { resolveGstForRestaurant } = require("../services/gst");
 const Table = require("../models/tableModel");
 const TableSession = require("../models/tableSessionModel");
 const Order = require("../models/orderModel");
-const AuditLog = require("../models/auditLogModel");
 const PaymentTransaction = require("../models/paymentTransactionModel");
 const Bill = require("../models/billModel");
 const priceService = require("../services/price");
@@ -391,7 +392,7 @@ const enrichItems = async ({ items, restaurantId, outletId, addedBy = "SYSTEM" }
       name: variant?.name ? `${item.name} (${variant.name})` : item.name,
       quantity: Number(rawItem.quantity),
       price: unitPrice,
-      total: Math.round(unitPrice * Number(rawItem.quantity) * 100) / 100,
+      total: round2(unitPrice * Number(rawItem.quantity)),
       modifiers: components,
       note: rawItem.note || "",
       addedBy,
@@ -526,21 +527,14 @@ const addItemsToSession = async (req, res, next) => {
     return next(error);
   }
 
-  try {
-    await AuditLog.create({
-      userId: req.user?._id,
-      restaurantId: result.session.restaurantId,
-      action: "TABLE_SESSION.ITEMS_ADDED",
-      resource: "TableSession",
-      resourceId: result.session._id,
-      description: `Added ${result.validatedItems.length} item(s) to ${result.session.sessionCode}`,
-      ipAddress: req.ip,
-      userAgent: req.get("user-agent"),
-    });
-  } catch (auditErr) {
-    // Audit logging is best-effort — never fail the order on audit failure
-    console.warn("Audit log failed:", auditErr.message);
-  }
+  // Best-effort: logActivity never throws, so a failed audit cannot fail the order.
+  await logActivity({
+    req,
+    action: "TABLE_SESSION.ITEMS_ADDED",
+    resource: "TableSession",
+    resourceId: result.session._id,
+    description: `Added ${result.validatedItems.length} item(s) to ${result.session.sessionCode}`,
+  });
 
   res.status(200).json({
     success: true,

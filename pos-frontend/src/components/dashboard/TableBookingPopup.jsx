@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
-import { io } from "socket.io-client";
 import { enqueueSnackbar } from "notistack";
 import { useQueryClient } from "@tanstack/react-query";
 import {
@@ -10,13 +9,13 @@ import {
   cancelTableBooking,
 } from "../../https";
 import useAlertBeep from "../../hooks/useAlertBeep";
-import { getActiveStoreId } from "../../utils/storeSession";
-import { SOCKET_URL } from "../../config";
+import { acquireSocket, releaseSocket } from "../../socket";
+import { localDay, timeIN } from "../../utils";
 
 
 const dayLabel = (ymd) => {
   const today = new Date();
-  const fmt = (d) => d.toLocaleDateString("en-CA");
+  const fmt = localDay;
   if (ymd === fmt(today)) return "Today";
   if (ymd === fmt(new Date(today.getTime() + 86400000))) return "Tomorrow";
   const [y, m, d] = String(ymd).split("-").map(Number);
@@ -47,11 +46,7 @@ const TableBookingPopup = () => {
   useEffect(() => {
     if (!restaurantId) return undefined;
 
-    const socket = io(SOCKET_URL, {
-      withCredentials: true,
-      transports: ["websocket", "polling"],
-      query: { restaurantId, storeId: getActiveStoreId() },
-    });
+    const socket = acquireSocket(restaurantId);
 
     const restore = async () => {
       try {
@@ -62,10 +57,7 @@ const TableBookingPopup = () => {
       }
     };
 
-    const onConnect = () => {
-      socket.emit("joinRestaurant", { restaurantId });
-      restore();
-    };
+    const onConnect = () => restore();
 
     const onCreated = ({ booking } = {}) => {
       if (!booking?._id) return;
@@ -84,11 +76,12 @@ const TableBookingPopup = () => {
     socket.on("connect", onConnect);
     socket.on("tableBooking:created", onCreated);
     socket.on("tableBooking:updated", onUpdated);
+    if (socket.connected) onConnect();
     return () => {
       socket.off("connect", onConnect);
       socket.off("tableBooking:created", onCreated);
       socket.off("tableBooking:updated", onUpdated);
-      socket.disconnect();
+      releaseSocket();
     };
   }, [restaurantId, queryClient]);
 
@@ -149,9 +142,7 @@ const TableBookingPopup = () => {
 
   if (picking) {
     const { booking, tables = [], blockFrom } = picking;
-    const blockLabel = blockFrom
-      ? new Date(blockFrom).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })
-      : "";
+    const blockLabel = timeIN(blockFrom);
     return (
       <div className="fixed inset-0 z-[75] bg-black/40 flex items-center justify-center p-4" role="dialog" aria-modal="true">
         <div className="w-full max-w-lg bg-white rounded-2xl shadow-2xl overflow-hidden">

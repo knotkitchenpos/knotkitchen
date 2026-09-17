@@ -8,6 +8,7 @@ import { isPreparing, isReady, isCancelled, statusLabel } from "../constants/ord
 import { sourceLabel, tableLabel, orderDisplayId } from "../utils/orderLabels";
 import { receiptAddress } from "../utils/address";
 import { buildQuickDates } from "../utils/quickDates.js";
+import { money, localDay, dateGB as fmtDate, time12 as fmtTime } from "../utils";
 
 /**
  * Module 5 — Reports.
@@ -28,21 +29,6 @@ import { buildQuickDates } from "../utils/quickDates.js";
 
 /* ---------- Small helpers ---------- */
 
-const money = (n) => `₹${Number(n || 0).toFixed(2)}`;
-
-/** LOCAL-timezone YYYY-MM-DD. `.toISOString()` would drift for non-UTC tz. */
-const localDay = (d = new Date()) => {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-};
-
-const fmtDate = (d) =>
-  new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
-
-const fmtTime = (d) =>
-  new Date(d).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
 
 /** e.g. "17 November, Monday" — matches the Module 5 §3 example format. */
 const fmtQuickDate = (d) => {

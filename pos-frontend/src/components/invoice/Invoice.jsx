@@ -8,6 +8,7 @@ import { enqueueSnackbar } from "notistack";
 import { printOrderReceipt } from "../../utils/printReceipt";
 import { sendEBill } from "../../https";
 import { itemDisplayName, itemExtras, resolveItemAmounts } from "../../utils/orderItems";
+import { money } from "../../utils";
 
 /**
  * Invoice / receipt modal (Module 3 §5, §6, §7, §8).
@@ -34,7 +35,6 @@ import { itemDisplayName, itemExtras, resolveItemAmounts } from "../../utils/ord
  *     already open, the order is already saved.
  */
 
-const money = (n) => `₹${Number(n || 0).toFixed(2)}`;
 
 const Invoice = ({
     orderInfo,

@@ -1,5 +1,6 @@
 import { itemDisplayName, itemExtras, resolveItemAmounts } from "./orderItems.js";
 import { orderDisplayId, tableLabel } from "./orderLabels.js";
+import { inr } from "./index.js";
 
 /**
  * The printed receipt, laid out in printer dots for one paper width.
@@ -25,9 +26,9 @@ export const paperOf = (size) => PAPER[String(size) === "58" ? 58 : 80];
 const FAMILY = "Arial, Helvetica, sans-serif";
 export const font = (size, bold = false) => `${bold ? "bold " : ""}${size}px ${FAMILY}`;
 
-const num = (n) =>
-  Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-export const rupees = (n) => `₹${num(n)}`;
+// The rate and price columns carry no symbol; only the totals block does.
+const num = (n) => inr(n).slice(1);
+export const rupees = inr;
 
 /** Split text into lines no wider than `maxWidth`; a word too long for a line is broken. */
 export const wrap = (text, fnt, maxWidth, measure) => {

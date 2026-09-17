@@ -20,7 +20,6 @@ import {
   // endpoint programmatically.
   exportMenuCsv,
   getMenus,
-  importMenuCsv,
   previewMenuCsv,
   saveGroupToDishes,
   deleteGroupFromDishes,
@@ -34,33 +33,11 @@ import {
   uploadMediaAsset,
   updateDishStatus,
 } from "../../https";
-
-/* ---------- Icons ---------- */
-const IconFolder = () => (
-  <span className="w-8 h-8 rounded-lg bg-[#FF6A1F]/10 text-[#FF6A1F] flex items-center justify-center shrink-0 font-bold">
-    📁
-  </span>
-);
-const IconDoc = () => (
-  <span className="w-8 h-8 rounded-lg bg-[#0249FD]/10 text-[#0249FD] flex items-center justify-center shrink-0 font-bold">
-    📄
-  </span>
-);
-const IconDots = () => (
-  <span className="text-[#94A3B8] font-bold text-lg cursor-grab select-none tracking-tighter">
-    :::
-  </span>
-);
-const IconChevronRight = () => (
-  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-    <path d="m9 18 6-6-6-6" />
-  </svg>
-);
-const IconX = () => (
-  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
-    <path d="M18 6 6 18M6 6l12 12" />
-  </svg>
-);
+import { IconChevronRight, IconDoc, IconDots, IconFolder, IconX } from "./manageMenu/icons";
+import ConfirmDialog from "./manageMenu/ConfirmDialog";
+import CsvPreviewModal from "./manageMenu/CsvPreviewModal";
+import ViewProductModal from "./manageMenu/ViewProductModal";
+import BulkGroupPickerModal from "./manageMenu/BulkGroupPickerModal";
 
 const NAV_TABS = [
   { id: "product", label: "Products" },
@@ -462,7 +439,6 @@ const ManageMenu = () => {
     });
   };
 
-
   // Only invalidate the draft menu query for Manage Menu UI.
   // POS (system) and Website cache are NOT automatically updated when editing products;
   // they update only when the user clicks "Publish" (Manage Cache > Publish System).
@@ -716,7 +692,6 @@ const ManageMenu = () => {
     }
   };
 
-
   const resetCategoryForm = () => {
     setCatName("");
     setCatDesc("");
@@ -798,7 +773,6 @@ const ManageMenu = () => {
     setProdDaysOfWeek(Array.isArray(sch.daysOfWeek) && sch.daysOfWeek.length ? sch.daysOfWeek : [0, 1, 2, 3, 4, 5, 6]);
     setShowCreateProduct(true);
   };
-
 
   // Subcategories calculation inside activeCategory
   const categorySubcategories = useMemo(() => {
@@ -1067,7 +1041,6 @@ const ManageMenu = () => {
       addDishMut.mutate(payload);
     }
   };
-
 
   return (
     <div className="flex flex-col md:flex-row h-full w-full bg-[#F8FAFC] overflow-hidden text-[#0F172A]">
@@ -2147,9 +2120,6 @@ const ManageMenu = () => {
         </div>
       </div>
 
-
-
-
       {/* Drawers: Create / Manage Category / Subcategory Slide-Over Drawer */}
       {(showCreateCategory || showCreateSubcategory) && (
         <div className="fixed inset-0 z-[100] bg-black/50 flex justify-end">
@@ -2705,184 +2675,24 @@ const ManageMenu = () => {
         </div>
       )}
 
-      {/* Modal: CSV Import Preview (Module 5 §6) */}
-      {csvPreviewData && (
-        <div className="fixed inset-0 z-[110] bg-black/60 flex items-center justify-center p-4">
-          <div className="w-full max-w-[500px] bg-white rounded-2xl p-6 shadow-2xl space-y-4 text-[#0F172A]">
-            <h3 className="text-[18px] font-extrabold">CSV Import Preview</h3>
+      <CsvPreviewModal
+        data={csvPreviewData}
+        pendingText={csvPendingText}
+        invalidate={invalidate}
+        onClose={() => {
+          setCsvPreviewData(null);
+          setCsvPendingText("");
+        }}
+      />
 
-            <div className="p-3 bg-[#FEF2F2] border border-[#FECACA] rounded-xl text-[#B91C1C] text-[12.5px] font-bold">
-              ⚠️ Warning: {csvPreviewData.warning || "This import will replace the existing menu completely."}
-            </div>
-
-            <div className="grid grid-cols-2 gap-3 text-[13px]">
-              <div className="p-3 rounded-xl bg-[#F8FAFC] border">
-                <span className="text-[#64748B] text-[11px] font-bold">Categories</span>
-                <p className="text-lg font-extrabold">{csvPreviewData.categoriesCount}</p>
-              </div>
-              <div className="p-3 rounded-xl bg-[#F8FAFC] border">
-                <span className="text-[#64748B] text-[11px] font-bold">Subcategories</span>
-                <p className="text-lg font-extrabold">{csvPreviewData.subcategoriesCount}</p>
-              </div>
-              <div className="p-3 rounded-xl bg-[#F8FAFC] border">
-                <span className="text-[#64748B] text-[11px] font-bold">Products</span>
-                <p className="text-lg font-extrabold">{csvPreviewData.productsCount}</p>
-              </div>
-              <div className="p-3 rounded-xl bg-[#F8FAFC] border">
-                <span className="text-[#64748B] text-[11px] font-bold">Groups & Extras</span>
-                <p className="text-lg font-extrabold">{csvPreviewData.groupsCount} Groups ({csvPreviewData.extrasCount} Extras)</p>
-              </div>
-            </div>
-
-            <div className="text-[12px] text-[#64748B] font-semibold">
-              Total Records: {csvPreviewData.totalRows}. The import lands in Manage Menu as a draft. Click{" "}
-              <span className="font-extrabold text-[#0F172A]">Publish</span> when you want the tills and the
-              website to pick it up.
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <button
-                onClick={() => setCsvPreviewData(null)}
-                className="flex-1 h-[42px] rounded-xl border border-[#CBD5E1] text-[#475569] font-extrabold hover:bg-[#F8FAFC]"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={async () => {
-                  try {
-                    const res = await importMenuCsv(csvPendingText);
-                    enqueueSnackbar(res.data.message || "Menu completely replaced!", { variant: "success" });
-                    invalidate();
-                    setCsvPreviewData(null);
-                    setCsvPendingText("");
-                  } catch (err) {
-                    enqueueSnackbar(err.response?.data?.message || "Failed to replace menu", { variant: "error" });
-                  }
-                }}
-                className="flex-1 h-[42px] rounded-xl bg-[#DC2626] text-white font-extrabold shadow-md hover:bg-[#B91C1C]"
-              >
-                Replace Menu Completely
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* View Product Details Modal (Module 4) */}
-      {viewingProduct && (
-        <div className="fixed inset-0 z-[110] bg-black/60 flex items-center justify-center p-4">
-          <div className="w-full max-w-[480px] bg-white rounded-2xl p-6 shadow-2xl space-y-4 text-[#0F172A]">
-            <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
-              <div className="flex items-center gap-2">
-                <h3 className="text-[18px] font-extrabold">{viewingProduct?.name || "Product"}</h3>
-                <span className={`text-[10.5px] font-extrabold px-2 py-0.5 rounded border ${
-                  viewingProduct?.isVegetarian !== false
-                    ? "bg-[#DCFCE7] text-[#15803D] border-[#86EFAC]"
-                    : "bg-[#FEE2E2] text-[#B91C1C] border-[#FCA5A5]"
-                }`}>
-                  {viewingProduct?.isVegetarian !== false ? "🌱 Veg" : "🔴 Non-Veg"}
-                </span>
-              </div>
-              <button onClick={() => setViewingProduct(null)} className="text-[#94A3B8] hover:text-[#0F172A]">
-                <IconX />
-              </button>
-            </div>
-
-            {viewingProduct?.imageUrl || viewingProduct?.image ? (
-              <img src={viewingProduct?.imageUrl || viewingProduct?.image} alt={viewingProduct?.name || "Product"} className="w-full h-44 object-cover rounded-xl border" />
-            ) : null}
-
-            <div className="space-y-3 text-[13px]">
-              {viewingProduct?.description && (
-                <p className="text-[#475569] font-medium leading-relaxed">{viewingProduct.description}</p>
-              )}
-
-              <div className="grid grid-cols-2 gap-3 pt-2 border-t border-[#E2E8F0]">
-                <div className="p-3 rounded-xl bg-[#F8FAFC] border">
-                  <span className="text-[#64748B] text-[11px] font-bold">Standard Price</span>
-                  <p className="text-lg font-extrabold text-[#C2410C]">₹{viewingProduct?.price || 0}</p>
-                </div>
-                <div className="p-3 rounded-xl bg-[#F8FAFC] border">
-                  <span className="text-[#64748B] text-[11px] font-bold">Display Status</span>
-                  <p className="text-[13px] font-extrabold">
-                    {viewingProduct?.isAvailable !== false ? "🟢 Display ON" : "🔴 Display OFF"}
-                  </p>
-                </div>
-              </div>
-
-              {/* Assigned Groups & Components details */}
-              {Array.isArray(viewingProduct?.modifierGroups) && viewingProduct.modifierGroups.length > 0 ? (
-                <div className="p-3 rounded-xl bg-[#F8FAFC] border space-y-2 text-[12px]">
-                  <p className="font-extrabold text-[#0F172A]">Assigned Groups & Components ({viewingProduct.modifierGroups.length})</p>
-                  <div className="space-y-1.5">
-                    {viewingProduct.modifierGroups.map((g, idx) => (
-                      <div key={g?.name || g?._id || idx} className="p-2.5 rounded-lg bg-white border border-[#E2E8F0]">
-                        <div className="flex items-center justify-between font-extrabold text-[#0F172A]">
-                          <span>🧩 {g?.name || "Group"}</span>
-                          <span className="text-[10.5px] font-bold text-[#C2410C] bg-[#FFF1E8] px-2 py-0.5 rounded-md">
-                            {g?.required ? "Required" : "Optional"} · max {g?.maxSelections || 1}
-                          </span>
-                        </div>
-                        {Array.isArray(g?.options) && g.options.length > 0 && (
-                          <p className="text-[11.5px] font-semibold text-[#475569] mt-1">
-                            {g.options.map((o) => `${o?.name || "Item"} (₹${o?.price || 0})`).join(", ")}
-                          </p>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              ) : (
-                <div className="p-3 rounded-xl bg-[#F8FAFC] border text-[12px] text-[#94A3B8]">
-                  No groups or components assigned to this product yet.
-                </div>
-              )}
-
-              {viewingProduct.samePrice === false && viewingProduct.channelPrices && (
-                <div className="p-3 rounded-xl bg-[#F8FAFC] border space-y-1.5 text-[11.5px]">
-                  <p className="font-extrabold text-[#0F172A] mb-1">Channel Prices</p>
-                  <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                    <span>POS Collection: <b>₹{viewingProduct.channelPrices.posCollection}</b></span>
-                    <span>POS Delivery: <b>₹{viewingProduct.channelPrices.posDelivery}</b></span>
-                    <span>POS Table: <b>₹{viewingProduct.channelPrices.posTable}</b></span>
-                    <span>Web Collection: <b>₹{viewingProduct.channelPrices.websiteCollection}</b></span>
-                    <span>Web Delivery: <b>₹{viewingProduct.channelPrices.websiteDelivery}</b></span>
-                    <span>Web Table: <b>₹{viewingProduct.channelPrices.websiteTable}</b></span>
-                  </div>
-                </div>
-              )}
-
-              {viewingProduct.schedule?.enabled && (
-                <div className="p-3 rounded-xl bg-[#F8FAFC] border text-[12px] space-y-1">
-                  <p className="font-extrabold text-[#0F172A]">Product Time Schedule</p>
-                  <p className="font-bold text-[#C2410C]">
-                    {viewingProduct.schedule.startTime || "09:00"} – {viewingProduct.schedule.endTime || "23:00"}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            <div className="flex gap-3 pt-3 border-t border-[#E2E8F0]">
-              <button
-                onClick={() => setViewingProduct(null)}
-                className="flex-1 h-[42px] rounded-xl border border-[#CBD5E1] font-bold text-[#475569] hover:bg-[#F8FAFC]"
-              >
-                Close
-              </button>
-              <button
-                onClick={() => {
-                  const item = viewingProduct;
-                  setViewingProduct(null);
-                  populateProductForm(item);
-                }}
-                className="flex-1 h-[42px] rounded-xl bg-[#FD5302] text-white font-bold shadow-md hover:bg-[#D64502]"
-              >
-                Edit Product
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ViewProductModal
+        product={viewingProduct}
+        onClose={() => setViewingProduct(null)}
+        onEdit={(item) => {
+          setViewingProduct(null);
+          populateProductForm(item);
+        }}
+      />
 
       {/* Drawer: Create / Edit Product Slide-Over Drawer */}
       {showCreateProduct && (
@@ -3402,219 +3212,21 @@ const ManageMenu = () => {
         </div>
       )}
 
-      {/* Modal: Bulk Group Picker — appears after choosing "+ Add Group
-          to Selected" or "− Remove Group from Selected" from the
-          selection Manage menu. Lists every existing group so the
-          operator can simply tick which ones to apply to the current
-          product selection instead of typing group names. */}
-      {bulkGroupPickerMode && (
-        <div className="fixed inset-0 z-[120] bg-black/60 flex items-center justify-center p-4">
-          <div className="w-full max-w-[460px] max-h-[80vh] bg-white rounded-2xl shadow-2xl flex flex-col text-[#0F172A]">
-            <div className="flex items-center justify-between border-b border-[#E2E8F0] px-5 py-4">
-              <div>
-                <h3 className="text-[16px] font-extrabold">
-                  {bulkGroupPickerMode === "remove"
-                    ? "Remove Groups from Selected Products"
-                    : "Add Groups to Selected Products"}
-                </h3>
-                <p className="text-[11.5px] text-[#94A3B8] mt-0.5">
-                  {bulkGroupPickerMode === "remove"
-                    ? `Pick which groups to detach from ${selectedIds.size} selected product${selectedIds.size === 1 ? "" : "s"}.`
-                    : `Pick which groups to attach to ${selectedIds.size} selected product${selectedIds.size === 1 ? "" : "s"}.`}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setBulkGroupPickerMode(null);
-                  setBulkPickedGroups(new Set());
-                }}
-                className="text-[#94A3B8] hover:text-[#0F172A] text-2xl leading-none"
-                aria-label="Close bulk group picker"
-              >
-                ×
-              </button>
-            </div>
+      <BulkGroupPickerModal
+        mode={bulkGroupPickerMode}
+        picked={bulkPickedGroups}
+        setPicked={setBulkPickedGroups}
+        groups={groupsList}
+        selectedCount={selectedIds.size}
+        pending={bulkAddGroupMut.isPending || bulkRemoveGroupMut.isPending}
+        onClose={() => {
+          setBulkGroupPickerMode(null);
+          setBulkPickedGroups(new Set());
+        }}
+        onApply={applyBulkGroupPicker}
+      />
 
-            <div className="flex-1 min-h-0 overflow-y-auto px-5 py-4">
-              {groupsList.length === 0 ? (
-                <div className="py-10 text-center text-[13px] text-[#94A3B8] space-y-2">
-                  <p className="font-bold text-[#475569]">No groups exist yet.</p>
-                  <p>Create a group first from the Groups tab, then come back to bulk-assign it.</p>
-                </div>
-              ) : (
-                <>
-                  <div className="flex items-center justify-between text-[12px] font-bold text-[#64748B] pb-2 border-b border-[#E2E8F0] mb-2">
-                    <span>{bulkPickedGroups.size} of {groupsList.length} selected</span>
-                    <div className="flex items-center gap-3">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setBulkPickedGroups(new Set(groupsList.map((g) => g.name)))
-                        }
-                        className="text-[#C2410C] hover:underline"
-                      >
-                        Select all
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setBulkPickedGroups(new Set())}
-                        className="text-[#94A3B8] hover:text-[#DC2626]"
-                      >
-                        Clear
-                      </button>
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    {groupsList.map((g) => {
-                      const checked = bulkPickedGroups.has(g.name);
-                      return (
-                        <label
-                          key={g.name}
-                          className={`flex items-center justify-between p-2.5 rounded-xl border cursor-pointer text-[13px] font-bold transition-colors ${
-                            checked
-                              ? "border-[#FD5302] bg-[#FFF1E8]/40"
-                              : "border-[#E2E8F0] hover:bg-[#F8FAFC]"
-                          }`}
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => {
-                                const next = new Set(bulkPickedGroups);
-                                if (next.has(g.name)) next.delete(g.name);
-                                else next.add(g.name);
-                                setBulkPickedGroups(next);
-                              }}
-                              className="w-4 h-4 accent-[#FD5302] shrink-0"
-                            />
-                            <span className="truncate text-[#0F172A]">{g.name}</span>
-                          </div>
-                          <span className="text-[10.5px] font-semibold text-[#64748B] shrink-0 ml-2">
-                            {(g.options || []).length} component{(g.options || []).length === 1 ? "" : "s"}
-                            {g.dishIds?.size ? ` · on ${g.dishIds.size} product${g.dishIds.size === 1 ? "" : "s"}` : ""}
-                          </span>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </>
-              )}
-            </div>
-
-            <div className="border-t border-[#E2E8F0] px-5 py-3 flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setBulkGroupPickerMode(null);
-                  setBulkPickedGroups(new Set());
-                }}
-                className="h-[40px] px-4 rounded-xl border border-[#E2E8F0] text-[#475569] text-[13px] font-bold hover:bg-[#F8FAFC]"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={applyBulkGroupPicker}
-                disabled={
-                  bulkPickedGroups.size === 0 ||
-                  bulkAddGroupMut.isPending ||
-                  bulkRemoveGroupMut.isPending
-                }
-                className={`h-[40px] px-5 rounded-xl text-white text-[13px] font-extrabold shadow-md disabled:opacity-50 ${
-                  bulkGroupPickerMode === "remove"
-                    ? "bg-[#DC2626] hover:bg-[#B91C1C]"
-                    : "bg-[#FD5302] hover:bg-[#D64502]"
-                }`}
-              >
-                {bulkAddGroupMut.isPending || bulkRemoveGroupMut.isPending
-                  ? "Applying…"
-                  : bulkGroupPickerMode === "remove"
-                  ? `Remove ${bulkPickedGroups.size || ""} Group${bulkPickedGroups.size === 1 ? "" : "s"}`
-                  : `Add ${bulkPickedGroups.size || ""} Group${bulkPickedGroups.size === 1 ? "" : "s"}`}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/*
-        Shared confirmation modal.
-
-        Every destructive action in Manage Menu (Delete Product,
-        Delete Category, Delete Group, Delete Component, Bulk Delete)
-        now routes through `askConfirm()` which populates `confirmState`.
-        The old `window.confirm()` calls have been replaced so the biller
-        never loses an item to an accidental mis-click, and so the
-        confirmation UX matches the rest of the app (no native browser
-        dialog).
-      */}
-      {confirmState && (
-        <div
-          className="fixed inset-0 z-[200] bg-black/60 flex items-center justify-center p-4"
-          onClick={closeConfirm}
-          role="dialog"
-          aria-modal="true"
-        >
-          <div
-            className="w-full max-w-[440px] bg-white rounded-2xl shadow-2xl p-6 space-y-4 text-[#0F172A]"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start gap-3">
-              <span
-                className={`w-10 h-10 rounded-full flex items-center justify-center text-[18px] font-extrabold shrink-0 ${
-                  confirmState.tone === "danger"
-                    ? "bg-[#FEE2E2] text-[#DC2626]"
-                    : "bg-[#FFF1E8] text-[#C2410C]"
-                }`}
-                aria-hidden="true"
-              >
-                {confirmState.tone === "danger" ? "!" : "?"}
-              </span>
-              <div className="min-w-0 flex-1">
-                <h3 className="text-[16.5px] font-extrabold text-[#0F172A] leading-snug">
-                  {confirmState.title}
-                </h3>
-                {confirmState.message && (
-                  <p className="mt-1 text-[13px] leading-relaxed text-[#475569]">
-                    {confirmState.message}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-center justify-end gap-2 pt-2">
-              <button
-                type="button"
-                onClick={closeConfirm}
-                className="h-[40px] px-4 rounded-xl border border-[#E2E8F0] text-[#475569] text-[13px] font-bold hover:bg-[#F8FAFC]"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  const fn = confirmState.onConfirm;
-                  // Close the modal FIRST so the confirm callback can open
-                  // another modal (e.g. success toast + re-render) without
-                  // fighting our closeConfirm() call.
-                  closeConfirm();
-                  if (typeof fn === "function") fn();
-                }}
-                className={`h-[40px] px-5 rounded-xl text-white text-[13px] font-extrabold shadow-md ${
-                  confirmState.tone === "danger"
-                    ? "bg-[#DC2626] hover:bg-[#B91C1C]"
-                    : "bg-[#FD5302] hover:bg-[#D64502]"
-                }`}
-                autoFocus
-              >
-                {confirmState.confirmLabel || "Confirm"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <ConfirmDialog state={confirmState} onClose={closeConfirm} />
     </div>
   );
 };

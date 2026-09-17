@@ -18,7 +18,6 @@ const getSocket = () => require("../services/socket");
 // Lazy for the same reason: billing services load models these tests mock.
 const accountLock = () => require("../services/accountLock");
 const crypto = require("crypto");
-const mongoose = require("mongoose");
 const { PREPARING, SETTLED_STATUSES, CANCELLED_STATUSES, canonicalStatus } = require("../constants/orderStatus");
 // Lazy for the same reason as getSocket above: autoReadyService pulls in the
 // Order/WebsiteSettings models, and requiring them at module load breaks the

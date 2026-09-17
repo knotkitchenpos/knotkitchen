@@ -4,6 +4,7 @@ import { useOnlineOrders } from "../hooks/useOnlineOrders";
 import { updateOnlineOrderStatus } from "../https/storefrontApi";
 import { isAwaitingAcceptance, statusLabel } from "../constants/orderStatus";
 import { orderDisplayId } from "../utils/orderLabels";
+import { money } from "../utils";
 
 /**
  * POS → Online Orders (§14).
@@ -46,7 +47,6 @@ const NEXT_ACTIONS = {
   Ready: [{ action: "completed", label: "Complete", style: "bg-green-600 hover:bg-green-500" }],
 };
 
-const money = (n) => `₹${(Number(n) || 0).toFixed(2)}`;
 
 const OrderCard = ({ order, onAction, busy }) => {
   const actions = NEXT_ACTIONS[order.orderStatus] || [];

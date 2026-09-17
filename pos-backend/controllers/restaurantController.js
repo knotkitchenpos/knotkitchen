@@ -4,6 +4,7 @@ const Outlet = require("../models/outletModel");
 const Team = require("../models/teamModel");
 const User = require("../models/userModel");
 const AuditLog = require("../models/auditLogModel");
+const { logActivity } = require("../services/auditService");
 
 // ===== Restaurant Onboarding =====
 const onboardRestaurant = async (req, res, next) => {
@@ -64,16 +65,14 @@ const onboardRestaurant = async (req, res, next) => {
       permissions: ["*"], // Full access
     });
 
-    // Audit log
-    await AuditLog.create({
-      userId: req.user._id,
-      restaurantId: restaurant._id,
+    // req.user was loaded before the restaurant existed; log under the new one.
+    await logActivity({
+      req,
+      user: { _id: req.user._id, restaurantId: restaurant._id, phone: req.user.phone, role: req.user.role, name: req.user.name },
       action: "RESTAURANT.CREATE",
       resource: "Restaurant",
       resourceId: restaurant._id,
       description: `Restaurant onboarded: ${name}`,
-      ipAddress: req.ip,
-      userAgent: req.get("user-agent"),
     });
 
     res.status(201).json({
@@ -120,15 +119,12 @@ const updateRestaurant = async (req, res, next) => {
       return next(error);
     }
 
-    await AuditLog.create({
-      userId: req.user._id,
-      restaurantId: restaurant._id,
+    await logActivity({
+      req,
       action: "RESTAURANT.UPDATE",
       resource: "Restaurant",
       resourceId: restaurant._id,
       description: `Restaurant updated: ${restaurant.name}`,
-      ipAddress: req.ip,
-      userAgent: req.get("user-agent"),
     });
 
     res.status(200).json({ success: true, message: "Restaurant updated!", data: restaurant });
@@ -165,15 +161,12 @@ const addOutlet = async (req, res, next) => {
       email,
     });
 
-    await AuditLog.create({
-      userId: req.user._id,
-      restaurantId,
+    await logActivity({
+      req,
       action: "OUTLET.CREATE",
       resource: "Outlet",
       resourceId: outlet._id,
       description: `Outlet created: ${name}`,
-      ipAddress: req.ip,
-      userAgent: req.get("user-agent"),
     });
 
     res.status(201).json({ success: true, message: "Outlet added!", data: outlet });
@@ -289,7 +282,6 @@ const cleanWebsiteLink = (value) => {
   if (/^https?:\/\/\S+$/i.test(v)) return v;
   return /^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(\/\S*)?$/i.test(v) ? `https://${v}` : "";
 };
-const { logActivity } = require("../services/auditService");
 
 const DEFAULT_PIN = "8796";
 

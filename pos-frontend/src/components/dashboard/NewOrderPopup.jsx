@@ -1,14 +1,13 @@
 import { useEffect, useRef, useState } from "react";
 import { useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
-import { io } from "socket.io-client";
 import { enqueueSnackbar } from "notistack";
 import { listAwaitingOrders, updateOnlineOrderStatus } from "../../https/storefrontApi";
 import { AWAITING_ACCEPTANCE, PREPARING } from "../../constants/orderStatus";
 import useAlertBeep from "../../hooks/useAlertBeep";
-import { getActiveStoreId } from "../../utils/storeSession";
 import { tableLabel as labelForTable } from "../../utils/orderLabels";
-import { SOCKET_URL } from "../../config";
+import { acquireSocket, releaseSocket } from "../../socket";
+import { timeIN } from "../../utils";
 
 
 /**
@@ -67,11 +66,7 @@ const NewOrderPopup = () => {
   useEffect(() => {
     if (!restaurantId) return undefined;
 
-    const socket = io(SOCKET_URL, {
-      withCredentials: true,
-      transports: ["websocket", "polling"],
-      query: { restaurantId, storeId: getActiveStoreId() },
-    });
+    const socket = acquireSocket(restaurantId);
 
     // A retried emit, or a catch-up that overlaps a live event, must not
     // stack two cards for one order.
@@ -93,10 +88,7 @@ const NewOrderPopup = () => {
       }
     };
 
-    const join = () => {
-      socket.emit("joinRestaurant", { restaurantId });
-      catchUp();
-    };
+    const join = () => catchUp();
     // A phone's browser pauses in the background and may keep a socket that
     // missed events; re-check when it is looked at again.
     const onVisible = () => {
@@ -127,6 +119,7 @@ const NewOrderPopup = () => {
     socket.on("connect", join);
     socket.on("onlineOrder:created", onCreated);
     socket.on("onlineOrder:status", onStatus);
+    if (socket.connected) join();
     document.addEventListener("visibilitychange", onVisible);
 
     return () => {
@@ -134,7 +127,7 @@ const NewOrderPopup = () => {
       socket.off("onlineOrder:created", onCreated);
       socket.off("onlineOrder:status", onStatus);
       document.removeEventListener("visibilitychange", onVisible);
-      socket.disconnect();
+      releaseSocket();
     };
   }, [restaurantId]);
 
@@ -259,7 +252,7 @@ const NewOrderPopup = () => {
                 {String(current.orderType || "").toLowerCase() === "delivery"
                   ? "Delivery"
                   : current.scheduledFor
-                  ? `Pickup at ${new Date(current.scheduledFor).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}`
+                  ? `Pickup at ${timeIN(current.scheduledFor)}`
                   : "Pickup now"}
               </span>
               {current.paymentStatus === "paid" || current.payments?.[0]?.status === "paid" ? (

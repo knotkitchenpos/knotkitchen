@@ -23,6 +23,7 @@ import { itemDisplayName, itemExtras } from "../utils/orderItems";
 import { isPreparing, isReady, isSettled, isCancelled, statusLabel, COMPLETED } from "../constants/orderStatus";
 import { sourceLabel, tableLabel, orderDisplayId } from "../utils/orderLabels";
 import { sendTableEBill } from "../utils/sendTableEBill";
+import { money, time12 as timeOf, time12, dateGB, dateTimeIN } from "../utils";
 
 /* ---------- Icons ---------- */
 const I = {
@@ -84,9 +85,6 @@ const I = {
 };
 
 /* ---------- Helpers ---------- */
-const money = (n) => `₹${Number(n || 0).toFixed(2)}`;
-const timeOf = (d) =>
-  new Date(d).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
 const minsAgo = (d) => Math.max(0, Math.round((Date.now() - new Date(d).getTime()) / 60000));
 
 const typeMeta = (t) => {
@@ -392,7 +390,7 @@ const Orders = () => {
     if (!responseWindow) return "";
     const fromDay = new Date(responseWindow.from);
     const toDay = new Date(responseWindow.to);
-    const fmt = (d) => d.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
+    const fmt = dateGB;
     if (responseWindow.source === "today") return `Today · ${fmt(fromDay)}`;
     if (responseWindow.source === "single") return fmt(fromDay);
     return `${fmt(fromDay)} → ${fmt(toDay)}`;
@@ -694,10 +692,10 @@ const Orders = () => {
           </span>
           <div className="text-right shrink-0 leading-tight">
             <p className="text-[12.5px] font-bold text-[#0F172A]">
-              {clock.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
+              {time12(clock)}
             </p>
             <p className="text-[10px] text-[#94A3B8]">
-              {clock.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+              {dateGB(clock)}
             </p>
           </div>
         </div>
@@ -840,7 +838,7 @@ const Orders = () => {
                       <span className="font-bold">Refunded {money(r.amount)}:</span> {r.reason}
                       {r.refundedByName ? ` · ${r.refundedByName}` : ""}
                       {r.refundedAt
-                        ? ` · ${new Date(r.refundedAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
+                        ? ` · ${dateTimeIN(r.refundedAt)}`
                         : ""}
                     </p>
                   ))}

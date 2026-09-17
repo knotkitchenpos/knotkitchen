@@ -75,16 +75,21 @@ test("SOURCE: a reconnect re-joins its room and catches up", () => {
   // one that does not catch up silently loses whatever happened meanwhile.
   const hook = SRC("src/hooks/useRealtimeSync.js");
   assert.match(hook, /socket\.on\("connect", onConnect\)/);
-  assert.match(hook, /socket\.emit\("joinRestaurant"/);
   const onConnect = hook.slice(hook.indexOf("const onConnect"), hook.indexOf("socket.on(\"connect\""));
   assert.match(onConnect, /invalidate\(\[/, "and refresh what was missed");
+  // The shared socket owns the room join, on every connect.
+  const shared = SRC("src/socket.js");
+  assert.match(shared, /socket\.on\("connect", \(\) => socket\.emit\("joinRestaurant"/);
 });
 
 test("SOURCE: the socket is torn down when the shell unmounts", () => {
   // Without this, signing out and back in leaks a connection each time.
   const hook = SRC("src/hooks/useRealtimeSync.js");
-  assert.match(hook, /socket\.disconnect\(\);/);
+  assert.match(hook, /releaseSocket\(\);/);
   assert.match(hook, /handlers\.forEach\(\(\[event, handler\]\) => socket\.off\(event, handler\)\)/);
+  // ...and the shared socket closes when the last consumer lets go.
+  const shared = SRC("src/socket.js");
+  assert.match(shared, /holders === 0 && socket\) \{\n\s*socket\.disconnect\(\);/);
 });
 
 test("SOURCE: payloads are not merged into the cache by hand", () => {

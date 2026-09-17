@@ -13,6 +13,7 @@ import {
   updateIngredient,
   upsertRecipe,
 } from "../../https";
+import { dateTimeIN as when } from "../../utils";
 
 /**
  * Settings > Inventory.
@@ -35,7 +36,6 @@ const inputClass = "h-[40px] w-full rounded-xl border border-[#E2E8F0] bg-white 
 const btnPrimary = "h-[40px] px-4 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold hover:bg-[#D64502] disabled:opacity-50";
 const btnGhost = "h-[36px] px-3 rounded-xl border border-[#E2E8F0] text-[#334155] text-[12.5px] font-bold hover:bg-[#F8FAFC] disabled:opacity-50";
 const qty = (n) => Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 3 });
-const when = (d) => (d ? new Date(d).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" }) : "");
 
 /* ------------------------------------------------------------------ stock */
 

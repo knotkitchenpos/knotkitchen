@@ -5,7 +5,6 @@ const { requirePermission, requireOwnerOnly, requireProtectedAction } = require(
 const {
   getWebsiteSettings,
   updateWebsiteSettings,
-  previewWebsite,
   validateGatewayCredentials,
 } = require("../controllers/websiteSettingsController");
 
@@ -23,7 +22,6 @@ router.route("/settings")
   .get(isVerifiedUser, getWebsiteSettings)
   .put(isVerifiedUser, requireProtectedAction, updateWebsiteSettings);
 
-router.route("/preview").get(isVerifiedUser, previewWebsite);
 router
   .route("/validate-gateway")
   .post(isVerifiedUser, requireOwnerOnly, validateGatewayCredentials);

@@ -1,15 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
-import { io } from "socket.io-client";
 import { enqueueSnackbar } from "notistack";
 import { listPrepDueOrders, startPreparingOrder } from "../../https/storefrontApi";
 import useAlertBeep from "../../hooks/useAlertBeep";
-import { getActiveStoreId } from "../../utils/storeSession";
-import { SOCKET_URL } from "../../config";
+import { acquireSocket, releaseSocket } from "../../socket";
+import { timeIN as clock } from "../../utils";
 
 
-const clock = (d) =>
-  d ? new Date(d).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }) : "";
 
 /**
  * "Order for 7:00 PM — time to start preparing."
@@ -29,17 +26,12 @@ const PrepDuePopup = () => {
 
   useEffect(() => {
     if (!restaurantId) return undefined;
-    const socket = io(SOCKET_URL, {
-      withCredentials: true,
-      transports: ["websocket", "polling"],
-      query: { restaurantId, storeId: getActiveStoreId() },
-    });
+    const socket = acquireSocket(restaurantId);
 
     const add = (list) =>
       setDue((prev) => [...prev, ...list.filter((o) => o?.orderId && !prev.some((p) => p.orderId === o.orderId))]);
 
     const onConnect = async () => {
-      socket.emit("joinRestaurant", { restaurantId });
       try {
         const { data } = await listPrepDueOrders();
         add(data?.data || []);
@@ -53,11 +45,12 @@ const PrepDuePopup = () => {
     socket.on("connect", onConnect);
     socket.on("order:prepDue", onDue);
     socket.on("order:prepStarted", onStarted);
+    if (socket.connected) onConnect();
     return () => {
       socket.off("connect", onConnect);
       socket.off("order:prepDue", onDue);
       socket.off("order:prepStarted", onStarted);
-      socket.disconnect();
+      releaseSocket();
     };
   }, [restaurantId]);
 

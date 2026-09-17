@@ -677,32 +677,6 @@ const updateWebsiteSettings = async (req, res, next) => {
   }
 };
 
-/**
- * GET /api/website/preview (§26)
- * Returns the same payload shape the public storefront consumes, but built
- * from the caller's own (possibly unpublished) settings and authenticated
- * session — so an admin can preview without exposing anything publicly.
- */
-const previewWebsite = async (req, res, next) => {
-  try {
-    const { tenant, settings } = await loadOwnSettings(req);
-    const { buildStorefrontPayload } = require("./storefrontController");
-
-    const payload = await buildStorefrontPayload({
-      settings,
-      restaurantId: tenant.restaurantId,
-      storeId: tenant.storeId,
-      // Preview intentionally ignores the "website disabled" and business-hour
-      // gates so the owner can always see their site.
-      preview: true,
-    });
-
-    res.status(200).json({ success: true, data: payload });
-  } catch (error) {
-    next(error);
-  }
-};
-
 const validateGatewayCredentials = async (req, res, next) => {
   try {
     const { tenant, settings } = await loadOwnSettings(req);
@@ -799,4 +773,4 @@ const validateGatewayCredentials = async (req, res, next) => {
 };
 
 module.exports = {
-  storedMediaRefs, getWebsiteSettings, updateWebsiteSettings, previewWebsite, validateGatewayCredentials, loadOwnSettings, settingsResponse };
+  storedMediaRefs, getWebsiteSettings, updateWebsiteSettings, validateGatewayCredentials, loadOwnSettings, settingsResponse };

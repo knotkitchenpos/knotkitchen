@@ -18,6 +18,7 @@ import { useSelector } from "react-redux";
 import SecurityPinModal from "../components/common/SecurityPinModal";
 import { checkActionAuthorization } from "../utils/security";
 import { loadCashfree } from "../utils/cashfree";
+import { inr } from "../utils";
 
 /**
  * Settings → Billing.
@@ -35,7 +36,7 @@ import { loadCashfree } from "../utils/cashfree";
 const PRESETS = [500, 1000, 2000, 5000, 10000];
 
 const money = (amount) => amount?.label || "₹0.00";
-const paise = (n) => `₹${(Number(n || 0) / 100).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const paise = (n) => inr((Number(n) || 0) / 100);
 const dateOf = (d) => (d ? new Date(d).toLocaleDateString("en-IN", { dateStyle: "medium" }) : "—");
 
 /**

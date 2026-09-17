@@ -1,4 +1,5 @@
 const createHttpError = require("http-errors");
+const { round2 } = require("../services/money");
 const mongoose = require("mongoose");
 const Order = require("../models/orderModel");
 const { resolveTenantFromUser } = require("../services/tenantContext");
@@ -494,9 +495,8 @@ const resolveAddedItems = async (req, res, next) => {
         ? Number(order.bills.tax || 0) / Number(order.bills.subtotal)
         : 0;
       order.bills.subtotal = subtotal;
-      order.bills.tax = Math.round(subtotal * taxRate * 100) / 100;
-      order.bills.totalWithTax =
-        Math.round((subtotal + order.bills.tax + Number(order.bills.charges || 0)) * 100) / 100;
+      order.bills.tax = round2(subtotal * taxRate);
+      order.bills.totalWithTax = round2(subtotal + order.bills.tax + Number(order.bills.charges || 0));
     }
 
     if (live.length === 0 && !isFinished(order.orderStatus)) {

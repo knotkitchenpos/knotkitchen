@@ -9,7 +9,7 @@ import { useState } from "react";
 import { useSelector } from "react-redux";
 import {
   Home, Auth, Orders, Tables, Menu, KDS, OrderOnline, PaymentLink,
-  Storefront, OnlineOrders, Reports, Settings, ManageMenuPage, Support,
+  OnlineOrders, Reports, Settings, ManageMenuPage, Support,
   Impersonate, Billing, WebsiteSettings,
 } from "./pages";
 
@@ -78,11 +78,9 @@ function Layout() {
 
       <Route path="/website" element={<ProtectedRoutes><WebsiteSettings /></ProtectedRoutes>} />
 
-      <Route path="/website/preview" element={<ProtectedRoutes><Storefront preview /></ProtectedRoutes>} />
       <Route path="/order" element={<OrderOnline />} />
       <Route path="/t/:token" element={<OrderOnline />} />
       <Route path="/pay/:token" element={<PaymentLink />} />
-      <Route path="/store/:slug" element={<Storefront />} />
       <Route path="*" element={<div className="p-8">Not Found</div>} />
     </Routes>
   );

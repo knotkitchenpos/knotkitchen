@@ -1,12 +1,10 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
-import { io } from "socket.io-client";
 import { enqueueSnackbar } from "notistack";
 import { dismissWaiterCall } from "../../https";
 import { getTables } from "../../https";
 import useAlertBeep from "../../hooks/useAlertBeep";
-import { getActiveStoreId } from "../../utils/storeSession";
-import { SOCKET_URL } from "../../config";
+import { acquireSocket, releaseSocket } from "../../socket";
 
 
 /**
@@ -25,7 +23,6 @@ const WaiterCallPopup = () => {
   const restaurantId = useSelector((s) => s.user?.restaurantId);
   const [calls, setCalls] = useState([]);
   const [busyId, setBusyId] = useState(null);
-  const socketRef = useRef(null);
 
   // Beeps while anything is outstanding, and stops the moment the list empties.
   useAlertBeep(calls.length > 0);
@@ -33,12 +30,7 @@ const WaiterCallPopup = () => {
   useEffect(() => {
     if (!restaurantId) return undefined;
 
-    const socket = io(SOCKET_URL, {
-      withCredentials: true,
-      transports: ["websocket", "polling"],
-      query: { restaurantId, storeId: getActiveStoreId() },
-    });
-    socketRef.current = socket;
+    const socket = acquireSocket(restaurantId);
 
     // A call only arrives as a socket event, so a till that reloads, or whose
     // socket dropped when the diner tapped, would never hear it. The Table
@@ -63,10 +55,7 @@ const WaiterCallPopup = () => {
       }
     };
 
-    const join = () => {
-      socket.emit("joinRestaurant", { restaurantId });
-      restore();
-    };
+    const join = () => restore();
 
     const onCalled = (payload) => {
       if (!payload?.tableId) return;
@@ -93,13 +82,13 @@ const WaiterCallPopup = () => {
     socket.on("connect", join);
     socket.on("waiter:called", onCalled);
     socket.on("waiter:cleared", onCleared);
+    if (socket.connected) join();
 
     return () => {
       socket.off("connect", join);
       socket.off("waiter:called", onCalled);
       socket.off("waiter:cleared", onCleared);
-      socket.disconnect();
-      socketRef.current = null;
+      releaseSocket();
     };
   }, [restaurantId]);
 

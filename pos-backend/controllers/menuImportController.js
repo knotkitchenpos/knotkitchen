@@ -10,7 +10,7 @@
 
 const createHttpError = require("http-errors");
 const Menu = require("../models/menuModel");
-const AuditLog = require("../models/auditLogModel");
+const { logActivity } = require("../services/auditService");
 const { parseMenuText } = require("../services/menuTextParser");
 const { buildMenuPayload, buildPreviewTree } = require("../services/menuImportMapper");
 const { MENU_TEMPLATE, FORMAT_DOCS, COMMAND_REFERENCE } = require("../services/menuTemplate");
@@ -170,15 +170,12 @@ const importMenu = async (req, res, next) => {
       updated.push({ id: existing._id, name: existing.name, items: existing.items.length });
     }
 
-    await AuditLog.create({
-      userId: req.user._id,
-      restaurantId: req.user.restaurantId,
+    await logActivity({
+      req,
       action: "MENU.IMPORT",
       resource: "Menu",
       description: `Structured text menu import: ${parsed.stats.categories} categories, ${parsed.stats.items} items (${created.length} created, ${updated.length} updated, mode=${mode})`,
-      ipAddress: req.ip,
-      userAgent: req.get("user-agent"),
-    }).catch(() => {}); // auditing must never block a successful import
+    });
 
     res.status(201).json({
       success: true,

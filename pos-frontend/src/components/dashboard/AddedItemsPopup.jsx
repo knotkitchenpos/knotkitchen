@@ -1,11 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
-import { io } from "socket.io-client";
 import { enqueueSnackbar } from "notistack";
 import { resolveAddedItems } from "../../https/storefrontApi";
 import useAlertBeep from "../../hooks/useAlertBeep";
-import { getActiveStoreId } from "../../utils/storeSession";
-import { SOCKET_URL } from "../../config";
+import { acquireSocket, releaseSocket } from "../../socket";
 
 
 /**
@@ -27,21 +25,13 @@ const AddedItemsPopup = () => {
   // Which lines the operator ticked. Empty means "the whole batch", which is
   // what the single Cancel button used to do and stays the default.
   const [picked, setPicked] = useState({});
-  const socketRef = useRef(null);
 
   useAlertBeep(queue.length > 0);
 
   useEffect(() => {
     if (!restaurantId) return undefined;
 
-    const socket = io(SOCKET_URL, {
-      withCredentials: true,
-      transports: ["websocket", "polling"],
-      query: { restaurantId, storeId: getActiveStoreId() },
-    });
-    socketRef.current = socket;
-
-    const join = () => socket.emit("joinRestaurant", { restaurantId });
+    const socket = acquireSocket(restaurantId);
 
     const onAdded = (payload) => {
       if (!payload?.orderId) return;
@@ -61,14 +51,11 @@ const AddedItemsPopup = () => {
       }
     };
 
-    socket.on("connect", join);
     socket.on("tableOrder:itemsAdded", onAdded);
 
     return () => {
-      socket.off("connect", join);
       socket.off("tableOrder:itemsAdded", onAdded);
-      socket.disconnect();
-      socketRef.current = null;
+      releaseSocket();
     };
   }, [restaurantId]);
 

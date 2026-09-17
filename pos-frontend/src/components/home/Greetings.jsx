@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import { useSelector } from "react-redux";
 import { FiClock, FiCalendar } from "react-icons/fi";
+import { formatDate } from "../../utils";
 
 const Greetings = () => {
   const userData = useSelector((state) => state.user);
@@ -11,14 +12,6 @@ const Greetings = () => {
     const timer = setInterval(() => setDateTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
-
-  const formatDate = (date) => {
-    const months = [
-      'January', 'February', 'March', 'April', 'May', 'June',
-      'July', 'August', 'September', 'October', 'November', 'December'
-    ];
-    return `${months[date.getMonth()]} ${String(date.getDate()).padStart(2, "0")}, ${date.getFullYear()}`;
-  };
 
   const formatTime = (date) =>
     `${String(date.getHours()).padStart(2, "0")}:${String(

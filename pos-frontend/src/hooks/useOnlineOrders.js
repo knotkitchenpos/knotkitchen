@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { io } from "socket.io-client";
 import { listOnlineOrders } from "../https/storefrontApi";
-import { getActiveStoreId } from "../utils/storeSession";
-import { SOCKET_URL } from "../config";
+import { acquireSocket, releaseSocket } from "../socket";
 
 
 /**
@@ -21,7 +19,6 @@ export function useOnlineOrders(restaurantId) {
   const [loading, setLoading] = useState(true);
   const [newOrderAlert, setNewOrderAlert] = useState(null);
 
-  const socketRef = useRef(null);
   const lastSyncRef = useRef(null);
 
   const mergeOrders = useCallback((incoming) => {
@@ -64,22 +61,14 @@ export function useOnlineOrders(restaurantId) {
   useEffect(() => {
     if (!restaurantId) return undefined;
 
-    const socket = io(SOCKET_URL, {
-      // The backend authenticates Socket.IO from the same HTTP-only access
-      // cookie used by axiosWrapper. Without credentials the socket cannot
-      // join a tenant room.
-      withCredentials: true,
-      transports: ["websocket", "polling"],
-      query: { restaurantId, storeId: getActiveStoreId() },
-    });
-    socketRef.current = socket;
+    const socket = acquireSocket(restaurantId);
 
     const join = () => {
       setConnected(true);
-      socket.emit("joinRestaurant", { restaurantId });
       // Catch up on anything missed while we were away.
       fetchOrders({ since: lastSyncRef.current });
     };
+    const onDisconnect = () => setConnected(false);
 
     const onCreated = (payload) => {
       if (payload?.source !== "WEBSITE") return;
@@ -91,16 +80,17 @@ export function useOnlineOrders(restaurantId) {
     const onStatus = () => fetchOrders();
 
     socket.on("connect", join);
-    socket.on("disconnect", () => setConnected(false));
+    socket.on("disconnect", onDisconnect);
     socket.on("onlineOrder:created", onCreated);
     socket.on("onlineOrder:status", onStatus);
+    if (socket.connected) join();
 
     return () => {
       socket.off("connect", join);
+      socket.off("disconnect", onDisconnect);
       socket.off("onlineOrder:created", onCreated);
       socket.off("onlineOrder:status", onStatus);
-      socket.disconnect();
-      socketRef.current = null;
+      releaseSocket();
     };
   }, [restaurantId, fetchOrders]);
 

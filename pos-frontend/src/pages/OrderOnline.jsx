@@ -10,6 +10,7 @@ import {
   qrVerifyPayment,
 } from "../https/publicApi";
 import { loadCashfree } from "../utils/cashfree";
+import { money as formatMoney } from "../utils";
 
 /**
  * Customer-facing table-QR menu (mobile-first).
@@ -200,7 +201,7 @@ export default function OrderOnline() {
   const sessionItemCount = sessionItems.reduce((s, i) => s + (i.quantity || 0), 0);
 
   const currency = restaurant?.currency === "USD" ? "$" : "₹";
-  const money = (n) => `${currency}${Number(n || 0).toFixed(2)}`;
+  const money = (n) => formatMoney(n, currency);
 
   /** A product needs a choice before it can be ordered. */
   const hasOptions = (item) =>

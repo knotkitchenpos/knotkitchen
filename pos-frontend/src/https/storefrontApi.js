@@ -1,29 +1,13 @@
-import axios from "axios";
-import { BACKEND_URL } from "../config";
 import { axiosWrapper } from "./axiosWrapper";
 
 /**
- * Storefront API clients.
- *
- * `publicStorefront` is a bare axios instance with NO credentials: the customer
- * website must never send POS session cookies. `axiosWrapper` (cookie-based)
- * is used only for the authenticated POS/admin endpoints below.
+ * Website and online-order API calls. All authenticated (cookie session via
+ * axiosWrapper); the customer-facing storefront lives in customer-web.
  */
-export const publicStorefront = axios.create({
-  baseURL: BACKEND_URL,
-  headers: { "Content-Type": "application/json", Accept: "application/json" },
-  withCredentials: false,
-});
 
-// ---------- Public (customer website) ----------
-export const getStorefront = (slug) => publicStorefront.get(`/api/storefront/${slug}`);
-export const placeStorefrontOrder = (slug, data) =>
-  publicStorefront.post(`/api/storefront/${slug}/orders`, data);
-
-// ---------- Authenticated: website settings ----------
+// ---------- Website settings ----------
 export const getWebsiteSettings = () => axiosWrapper.get("/api/website/settings");
 export const updateWebsiteSettings = (data) => axiosWrapper.put("/api/website/settings", data);
-export const previewWebsite = () => axiosWrapper.get("/api/website/preview");
 export const validateGatewayCredentials = (data) => axiosWrapper.post("/api/website/validate-gateway", data);
 
 // ---------- Authenticated: media library ----------

@@ -38,6 +38,7 @@ import { QRCodeCanvas } from "qrcode.react";
 import { setOrderType } from "../redux/slices/orderTypeSlice";
 import { updateTable as updateTableAction, setSessionId } from "../redux/slices/customerSlice";
 import { readStoreScoped, writeStoreScoped } from "../utils/storeSession";
+import { localDay } from "../utils";
 
 const IconQr = ({ size = 13 }) => (
   <svg
@@ -764,7 +765,7 @@ const Tables = () => {
                   >
                     <p className="text-[11px] font-bold text-[#C2410C] truncate">
                       {table.booking.blocking ? "Reserved" : "Pre-booked"} · {table.booking.timeLabel}
-                      {table.booking.bookingDate !== new Date().toLocaleDateString("en-CA")
+                      {table.booking.bookingDate !== localDay()
                         ? ` · ${table.booking.bookingDate}`
                         : ""}
                     </p>

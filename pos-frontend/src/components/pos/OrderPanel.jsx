@@ -47,6 +47,7 @@ import DeliveryModal from "./DeliveryModal";
 import DiscountModal from "./DiscountModal";
 import PaymentMethodModal from "./PaymentMethodModal";
 import TableModal from "./TableModal";
+import { money as formatMoney, time12, dateGB } from "../../utils";
 
 /* ---------- Icons (drawn to match the reference) ---------- */
 const IconBag = () => (
@@ -677,7 +678,7 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
     }
   };
 
-  const money = (n) => `${currencySymbol}${Number(n || 0).toFixed(2)}`;
+  const money = (n) => formatMoney(n, currencySymbol);
   const discountLabel = formatDiscountLabel(discount);
 
   return (
@@ -750,10 +751,10 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
           <span className="text-[#94A3B8]"><IconClock /></span>
           <div className="text-right leading-tight">
             <p className="text-[12.5px] font-bold text-[#0F172A]">
-              {clock.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
+              {time12(clock)}
             </p>
             <p className="text-[10px] text-[#94A3B8]">
-              {clock.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" })}
+              {dateGB(clock)}
             </p>
           </div>
         </div>
