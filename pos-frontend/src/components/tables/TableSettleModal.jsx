@@ -70,10 +70,6 @@ const TableSettleModal = ({ table, session, busy, onClose, onConfirm }) => {
   // A tip is on top of the bill; the buyer turns the receipt into a GST bill.
   const [tip, setTip] = useState("");
   const tipAmt = Math.max(0, round2(tip));
-  const [b2b, setB2b] = useState(false);
-  const [company, setCompany] = useState(session?.customerCompany || "");
-  const [gstin, setGstin] = useState(session?.customerGstin || "");
-  const gstinOk = !gstin || /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(gstin);
   const guests = Math.max(1, Number(session?.customerCount) || 1);
   const perHead = round2(payable / guests);
   const grand = round2(payable + tipAmt);
@@ -167,35 +163,6 @@ const TableSettleModal = ({ table, session, busy, onClose, onConfirm }) => {
               <div className="flex justify-between text-[14px] text-[#0F172A]">
                 <span className="font-bold">To collect</span>
                 <span className="font-extrabold tabular-nums">{money(grand)}</span>
-              </div>
-            )}
-          </div>
-
-          <div>
-            <button
-              type="button"
-              onClick={() => setB2b((v) => !v)}
-              className="text-[12.5px] font-bold text-[#C2410C] hover:underline"
-            >
-              {b2b ? "No GST bill needed" : "GST bill for a company (B2B)?"}
-            </button>
-            {b2b && (
-              <div className="mt-2 grid grid-cols-1 gap-2">
-                <input
-                  value={company}
-                  onChange={(e) => setCompany(e.target.value)}
-                  maxLength={160}
-                  placeholder="Company name"
-                  className="h-[40px] rounded-lg border border-[#E2E8F0] px-3 text-[13px] font-medium"
-                />
-                <input
-                  value={gstin}
-                  onChange={(e) => setGstin(e.target.value.toUpperCase())}
-                  maxLength={15}
-                  placeholder="Company GSTIN (15 characters)"
-                  className={`h-[40px] rounded-lg border px-3 text-[13px] font-medium uppercase ${gstinOk ? "border-[#E2E8F0]" : "border-[#FCA5A5]"}`}
-                />
-                {!gstinOk && <p className="text-[11.5px] text-[#DC2626]">A GSTIN looks like 19ABCDE1234F1Z5.</p>}
               </div>
             )}
           </div>
@@ -339,13 +306,12 @@ const TableSettleModal = ({ table, session, busy, onClose, onConfirm }) => {
                 method: split ? "SPLIT" : method,
                 amount: grand,
                 tip: tipAmt || undefined,
-                buyer: b2b && (company.trim() || gstin.trim()) ? { company: company.trim(), gstin: gstin.trim() } : undefined,
                 splits: split ? parts.map((p) => ({ method: p.method, amount: round2(p.amount) })) : undefined,
                 sendEBill: Boolean(phone && alsoEBill),
                 phone,
               })
             }
-            disabled={busy || payable <= 0 || (split && !splitOk) || (b2b && !gstinOk)}
+            disabled={busy || payable <= 0 || (split && !splitOk)}
             className="flex-[2] h-[44px] rounded-xl bg-[#FD5302] text-white text-[13.5px] font-extrabold hover:bg-[#D64502] disabled:opacity-60"
           >
             {busy ? "Completing…" : `Mark Paid · ${money(grand)}`}
