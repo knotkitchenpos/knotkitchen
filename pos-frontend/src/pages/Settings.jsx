@@ -26,6 +26,7 @@ import { checkActionAuthorization } from "../utils/security";
 import ActivityLogView from "../components/dashboard/ActivityLogView";
 import DeviceConfiguration from "../components/settings/DeviceConfiguration";
 import ShiftView from "../components/settings/ShiftView";
+import InventoryView from "../components/settings/InventoryView";
 
 /* ---------- Icons ---------- */
 const I = {
@@ -67,6 +68,11 @@ const I = {
   chart: () => (
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
       <path d="M3 3v18h18" /><path d="M18 17V9" /><path d="M13 17V5" /><path d="M8 17v-3" />
+    </svg>
+  ),
+  boxes: () => (
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M21 8 12 3 3 8v8l9 5 9-5z" /><path d="M3 8l9 5 9-5" /><path d="M12 13v8" />
     </svg>
   ),
   cash: () => (
@@ -1762,6 +1768,7 @@ const MENU_ITEMS = [
   { id: "rules", title: "8. Rules, Charges & Promotions", desc: "Min orders, delivery slabs, GST, coupons, free items.", Icon: I.fileText, mode: "view" },
   { id: "reports", title: "9. Reports", desc: "Sales, revenue and order breakdowns.", Icon: I.chart, path: "/reports" },
   { id: "shift", title: "Shift & Day End", desc: "Open the till with a float, close with a cash count, print the Z report.", Icon: I.cash, mode: "view" },
+  { id: "inventory", title: "Inventory", desc: "Ingredients, stock levels, recipes per dish, wastage. Sales deplete stock automatically.", Icon: I.boxes, mode: "view" },
   // Reachable even when the account is locked -- it is the only screen that
   // can clear a lock, so it must never be gated. See middlewares/accountLock.js.
   { id: "billing", title: "Billing & Subscription", desc: "Business Balance, plan, invoices and transactions.", Icon: I.fileText, path: "/settings/billing" },
@@ -1851,6 +1858,8 @@ const Settings = () => {
           <RulesChargesView />
         ) : activeSubView === "shift" ? (
           <ShiftView />
+        ) : activeSubView === "inventory" ? (
+          <InventoryView />
         ) : activeSubView === "activity" ? (
           <ActivityLogView />
         ) : (

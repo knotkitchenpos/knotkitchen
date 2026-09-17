@@ -8,6 +8,8 @@ const orderItemSchema = new mongoose.Schema({
   total: { type: Number, required: true },
   modifiers: [{ name: String, price: Number }],
   note: { type: String, default: "" },
+  // Stock for this line has been taken off the shelf (services/inventory.js).
+  stockDepleted: { type: Boolean, default: false },
 
   // --- Website/storefront line detail (additive; POS lines simply omit these) ---
   // The Menu document id (category) + the embedded item id. Together they
@@ -262,6 +264,17 @@ orderSchema.index(
   { unique: true, partialFilterExpression: { requestId: { $ne: "" } } }
 );
 orderSchema.index({ tableSessionId: 1 });
+
+// Every channel creates orders through save(); stock comes off here, once
+// per line. Never fails the order: a stock error is logged, the sale stands.
+orderSchema.post("save", function depleteStock(doc) {
+  if (!doc || doc.isDeleted) return;
+  setImmediate(() => {
+    require("../services/inventory")
+      .depleteOrder(doc)
+      .catch((err) => console.warn("[inventory] depletion failed for order", String(doc._id), err.message));
+  });
+});
 
 // --- Website order indexes ---
 // POS "new online orders" query + analytics rollups.

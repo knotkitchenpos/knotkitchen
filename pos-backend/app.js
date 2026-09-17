@@ -197,11 +197,13 @@ app.use("/api/marketplace", require("./routes/marketplaceRoute"));
 app.use("/api/restaurant", require("./routes/restaurantRoute"));
 app.use("/api/team", require("./routes/teamRoute"));
 app.use("/api/kds", require("./routes/kdsRoute"));
-// Inventory, loyalty, analytics, notification, offline and plugin routes are
-// NOT mounted. They are inline CRUD that trusts a restaurantId from the URL
-// or body (any signed-in user could read another store's data), and no
-// screen calls them. Each comes back behind a tenant-scoped controller when
-// its feature is built. The files stay in routes/ as the starting point.
+// Inventory is back behind a tenant-scoped controller (controllers/inventoryController.js).
+app.use("/api/inventory", require("./routes/inventoryRoute"));
+// Loyalty, analytics, notification, offline and plugin routes are NOT
+// mounted. They are inline CRUD that trusts a restaurantId from the URL or
+// body (any signed-in user could read another store's data), and no screen
+// calls them. Each comes back behind a tenant-scoped controller when its
+// feature is built. The files stay in routes/ as the starting point.
 app.use("/api/billing", require("./routes/billingRoute"));
 // The restaurant's KnotKitchen Business Balance. Scoped to the caller's own
 // restaurant throughout -- no route here takes a restaurantId.

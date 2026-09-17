@@ -70,6 +70,17 @@ export const updateOrderStatus = ({ orderId, orderStatus }) =>
  * collect") and so the backend can fire the customer notification without
  * having to sniff the payload of a generic status change.
  */
+/* ---------- Inventory ---------- */
+export const getIngredients = () => axiosWrapper.get("/api/inventory/ingredients");
+export const createIngredient = (d) => axiosWrapper.post("/api/inventory/ingredients", d);
+export const updateIngredient = (id, d) => axiosWrapper.put(`/api/inventory/ingredients/${id}`, d);
+export const deleteIngredient = (id) => axiosWrapper.delete(`/api/inventory/ingredients/${id}`);
+export const recordStockMovement = (d) => axiosWrapper.post("/api/inventory/movements", d);
+export const getStockMovements = (params) => axiosWrapper.get("/api/inventory/movements", { params });
+export const getRecipes = () => axiosWrapper.get("/api/inventory/recipes");
+export const upsertRecipe = (menuItemId, d) => axiosWrapper.put(`/api/inventory/recipes/${menuItemId}`, d);
+export const deleteRecipe = (menuItemId) => axiosWrapper.delete(`/api/inventory/recipes/${menuItemId}`);
+
 /* ---------- Shifts & day-end ---------- */
 export const getCurrentShift = () => axiosWrapper.get("/api/shift/current");
 export const getShifts = (limit = 30) => axiosWrapper.get("/api/shift", { params: { limit } });

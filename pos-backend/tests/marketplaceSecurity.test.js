@@ -68,7 +68,7 @@ test("unscoped inline routes are not mounted", () => {
   const fs = require("fs");
   const path = require("path");
   const app = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
-  for (const p of ["inventory", "loyalty", "analytics", "notification", "offline", "plugin"]) {
+  for (const p of ["loyalty", "analytics", "notification", "offline", "plugin"]) {
     assert.ok(!app.includes(`app.use("/api/${p}"`), `/api/${p} must stay unmounted until tenant-scoped`);
   }
 });
