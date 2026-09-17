@@ -368,7 +368,19 @@ const OrderDetailsModal = ({ order, onClose }) => {
  * The printed report is a SUMMARY: the same cards as the screen, without
  * the per-order listing.
  */
-const buildPrintHtml = ({ header, summary, windowLabel }) => {
+const BREAKDOWN_TABLES = [
+  { key: "byItem", title: "Top dishes", cols: ["Dish", "Qty", "Sales"], cells: (r) => [r.name, r.quantity, money(r.amount)] },
+  { key: "byCategory", title: "By category", cols: ["Category", "Qty", "Sales"], cells: (r) => [r.name, r.quantity, money(r.amount)] },
+  {
+    key: "byHour",
+    title: "By hour",
+    cols: ["Hour", "Orders", "Sales"],
+    cells: (r) => [`${String(r.hour).padStart(2, "0")}:00 – ${String(r.hour + 1).padStart(2, "0")}:00`, r.count, money(r.amount)],
+  },
+  { key: "byStaff", title: "By staff", cols: ["Who", "Orders", "Sales"], cells: (r) => [r.name, r.count, money(r.amount)] },
+];
+
+const buildPrintHtml = ({ header, summary, breakdown, windowLabel }) => {
   const row = (label, value) => `
     <tr>
       <td style="padding:4px 8px;border-bottom:1px solid #E2E8F0;font-weight:600;">${label}</td>
@@ -401,8 +413,53 @@ const buildPrintHtml = ({ header, summary, windowLabel }) => {
       ${REPORT_CARDS.map((c) => row(c.label, bkt(summary[c.key]))).join("")}
     </table>
   </div>
+  ${BREAKDOWN_TABLES.map((t) => {
+    const rows = breakdown?.[t.key] || [];
+    if (!rows.length) return "";
+    return `<div class="section"><h2>${t.title}</h2><table>
+      <tr>${t.cols.map((c, i) => `<th style="text-align:${i ? "right" : "left"};padding:4px 8px;border-bottom:2px solid #0F172A;">${c}</th>`).join("")}</tr>
+      ${rows.map((r) => `<tr>${t.cells(r).map((v, i) => `<td style="padding:4px 8px;border-bottom:1px solid #E2E8F0;text-align:${i ? "right" : "left"};">${v}</td>`).join("")}</tr>`).join("")}
+    </table></div>`;
+  }).join("")}
 </body></html>`;
 };
+
+/** One of the four breakdown tables on screen. */
+const BreakdownTable = ({ t, rows }) => (
+  <div className="bg-white border border-[#E2E8F0] rounded-xl overflow-hidden">
+    <div className="px-4 py-3 border-b border-[#E2E8F0]">
+      <h3 className="text-[14px] font-extrabold text-[#0F172A]">{t.title}</h3>
+    </div>
+    {rows.length === 0 ? (
+      <p className="px-4 py-6 text-center text-[12.5px] text-[#94A3B8]">Nothing yet.</p>
+    ) : (
+      <div className="max-h-[320px] overflow-y-auto">
+        <table className="w-full text-[12.5px]">
+          <thead className="sticky top-0 bg-[#F8FAFC] text-[11px] uppercase tracking-wide text-[#94A3B8]">
+            <tr>
+              {t.cols.map((c, i) => (
+                <th key={c} className={`px-4 py-2 font-bold ${i ? "text-right" : "text-left"}`}>
+                  {c}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[#F1F5F9]">
+            {rows.map((r, idx) => (
+              <tr key={idx}>
+                {t.cells(r).map((v, i) => (
+                  <td key={i} className={`px-4 py-2 ${i ? "text-right font-bold text-[#0F172A]" : "text-[#334155] truncate max-w-[220px]"}`}>
+                    {v}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    )}
+  </div>
+);
 
 /* ---------- Summary cards ---------- */
 
@@ -469,6 +526,7 @@ const Reports = () => {
   });
 
   const summary = data?.data?.data?.summary;
+  const breakdown = data?.data?.data?.breakdown;
   const orders = data?.data?.data?.orders || [];
   const responseWindow = data?.data?.data?.window;
 
@@ -575,6 +633,7 @@ const Reports = () => {
     const html = buildPrintHtml({
       header: { name: restaurantName, address: restaurantAddress },
       summary,
+      breakdown,
       windowLabel,
     });
     printHtmlDocument(html);
@@ -810,6 +869,15 @@ const Reports = () => {
             <SummaryCard key={c.key} label={c.label} count={s[c.key]?.count} amount={s[c.key]?.amount} tint={c.tint} />
           ))}
         </div>
+
+        {/* ===== Breakdown: dish, category, hour, staff ===== */}
+        {breakdown && (
+          <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-3">
+            {BREAKDOWN_TABLES.map((t) => (
+              <BreakdownTable key={t.key} t={t} rows={breakdown[t.key] || []} />
+            ))}
+          </div>
+        )}
 
         {/* ===== Order list (Module 5 §6) ===== */}
         <div className="mt-6 bg-white border border-[#E2E8F0] rounded-xl overflow-hidden">

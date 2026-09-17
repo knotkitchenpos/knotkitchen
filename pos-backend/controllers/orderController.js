@@ -1065,7 +1065,8 @@ const getOrdersReport = async (req, res, next) => {
     const orders = await Order.find(filter)
       .sort({ createdAt: -1 })
       .limit(1000)
-      .populate("table");
+      .populate("table")
+      .populate("createdBy", "name");
 
     // Canonical status (Preparing instead of legacy Pending / In Progress)
     // so the frontend can drive its filters from a single vocabulary.
@@ -1076,6 +1077,15 @@ const getOrdersReport = async (req, res, next) => {
     });
 
     const summary = buildReportBuckets(projected);
+
+    // By dish / category / hour / staff. Categories come from the tenant's
+    // menus: a line only carries the dish, not the category it sat in.
+    const { buildReportBreakdown, categoryLookup } = require("../services/reportBreakdown");
+    const menus = await getMenuModel()
+      .find(req.user?.restaurantId ? { restaurantId: req.user.restaurantId } : { createdBy: req.user?._id })
+      .select("name items._id items.name")
+      .lean();
+    const breakdown = buildReportBreakdown(projected, { categoryOf: categoryLookup(menus) });
 
     await logActivity({
       req,
@@ -1093,6 +1103,7 @@ const getOrdersReport = async (req, res, next) => {
           source: window.source,
         },
         summary,
+        breakdown,
         orders: projected,
       },
     });
