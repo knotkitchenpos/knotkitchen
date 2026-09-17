@@ -81,10 +81,16 @@ const tableSessionSchema = new mongoose.Schema(
     bills: {
       subtotal: { type: Number, default: 0 },
       tax: { type: Number, default: 0 },
+      taxPercent: { type: Number, default: 0 },
       discount: { type: Number, default: 0 },
       charges: { type: Number, default: 0 },
+      serviceCharge: { type: Number, default: 0 },
+      tip: { type: Number, default: 0 },
       totalWithTax: { type: Number, default: 0 },
     },
+    // B2B bill details, when a company asks for a GST bill.
+    customerCompany: { type: String, default: "" },
+    customerGstin: { type: String, default: "" },
 
     payment: {
       method: { type: String, default: "" },

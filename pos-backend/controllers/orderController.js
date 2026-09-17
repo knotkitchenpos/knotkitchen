@@ -102,6 +102,7 @@ const sanitizeBills = (bills = {}) => ({
   subtotal: safeNumber(bills.subtotal, 0, { min: 0, max: 1e9 }),
   total: safeNumber(bills.total, safeNumber(bills.subtotal, 0), { min: 0, max: 1e9 }),
   tax: safeNumber(bills.tax, 0, { min: 0, max: 1e9 }),
+  taxPercent: safeNumber(bills.taxPercent, 0, { min: 0, max: 100 }),
   totalWithTax: safeNumber(bills.totalWithTax, safeNumber(bills.total, 0), { min: 0, max: 1e9 }),
   discount: safeNumber(bills.discount, 0, { min: 0, max: 1e9 }),
   deliveryFee: safeNumber(bills.deliveryFee, 0, { min: 0, max: 1e9 }),
@@ -243,6 +244,8 @@ const addOrder = async (req, res, next) => {
     const custAddress = customerDetails?.address ? String(customerDetails.address).trim().slice(0, 300) : "";
     const custCity = customerDetails?.city ? String(customerDetails.city).trim().slice(0, 120) : "";
     const custPin = customerDetails?.pinCode ? String(customerDetails.pinCode).trim().slice(0, 20) : "";
+    // B2B bill: company + GSTIN, validated so a typo is refused at the till.
+    const buyer = require("../services/gst").buyerFrom(customerDetails || {});
     const custDeliveryNote = customerDetails?.deliveryNote
       ? String(customerDetails.deliveryNote).trim().slice(0, 400)
       : "";
@@ -458,6 +461,7 @@ const addOrder = async (req, res, next) => {
         ...(custCity ? { city: custCity } : {}),
         ...(custPin ? { pinCode: custPin } : {}),
         ...(custDeliveryNote ? { deliveryNote: custDeliveryNote } : {}),
+        ...(buyer ? { company: buyer.company, gstin: buyer.gstin } : {}),
       },
       orderType: normalizedOrderType,
       orderStatus: initialStatus,

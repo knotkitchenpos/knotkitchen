@@ -67,17 +67,25 @@ const TableSettleModal = ({ table, session, busy, onClose, onConfirm }) => {
     { method: "CASH", amount: "" },
     { method: "UPI", amount: "" },
   ]);
+  // A tip is on top of the bill; the buyer turns the receipt into a GST bill.
+  const [tip, setTip] = useState("");
+  const tipAmt = Math.max(0, round2(tip));
+  const [b2b, setB2b] = useState(false);
+  const [company, setCompany] = useState(session?.customerCompany || "");
+  const [gstin, setGstin] = useState(session?.customerGstin || "");
+  const gstinOk = !gstin || /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/.test(gstin);
   const guests = Math.max(1, Number(session?.customerCount) || 1);
   const perHead = round2(payable / guests);
+  const grand = round2(payable + tipAmt);
   const partsSum = round2(parts.reduce((t, p) => t + (Number(p.amount) || 0), 0));
-  const splitOk = parts.length >= 2 && parts.every((p) => Number(p.amount) > 0) && Math.abs(partsSum - payable) < 0.01;
+  const splitOk = parts.length >= 2 && parts.every((p) => Number(p.amount) > 0) && Math.abs(partsSum - grand) < 0.01;
   const setPart = (i, patch) =>
     setParts((prev) => {
       const next = prev.map((p, k) => (k === i ? { ...p, ...patch } : p));
       // Keep the last part as "the rest" when an earlier amount changes.
       if (patch.amount !== undefined && i < next.length - 1) {
         const others = next.slice(0, -1).reduce((t, p) => t + (Number(p.amount) || 0), 0);
-        next[next.length - 1] = { ...next[next.length - 1], amount: String(Math.max(0, round2(payable - others))) };
+        next[next.length - 1] = { ...next[next.length - 1], amount: String(Math.max(0, round2(grand - others))) };
       }
       return next;
     });
@@ -131,7 +139,7 @@ const TableSettleModal = ({ table, session, busy, onClose, onConfirm }) => {
             </div>
             {Number(bills.charges) > 0 && (
               <div className="flex justify-between text-[#475569]">
-                <span>Charges</span>
+                <span>{Number(bills.serviceCharge) > 0 ? "Service charge" : "Charges"}</span>
                 <span className="font-bold tabular-nums">{money(bills.charges)}</span>
               </div>
             )}
@@ -139,6 +147,57 @@ const TableSettleModal = ({ table, session, busy, onClose, onConfirm }) => {
               <span className="font-extrabold">Payable</span>
               <span className="font-extrabold tabular-nums">{money(payable)}</span>
             </div>
+            <div className="flex items-center justify-between gap-3 pt-1 text-[#475569]">
+              <label htmlFor="settle-tip" className="text-[12.5px]">
+                Tip (optional)
+              </label>
+              <input
+                id="settle-tip"
+                type="number"
+                min="0"
+                step="1"
+                inputMode="decimal"
+                value={tip}
+                onChange={(e) => setTip(e.target.value)}
+                placeholder="0"
+                className="h-[34px] w-[110px] rounded-lg border border-[#E2E8F0] bg-white px-2 text-right text-[13px] font-bold tabular-nums"
+              />
+            </div>
+            {tipAmt > 0 && (
+              <div className="flex justify-between text-[14px] text-[#0F172A]">
+                <span className="font-bold">To collect</span>
+                <span className="font-extrabold tabular-nums">{money(grand)}</span>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <button
+              type="button"
+              onClick={() => setB2b((v) => !v)}
+              className="text-[12.5px] font-bold text-[#C2410C] hover:underline"
+            >
+              {b2b ? "No GST bill needed" : "GST bill for a company (B2B)?"}
+            </button>
+            {b2b && (
+              <div className="mt-2 grid grid-cols-1 gap-2">
+                <input
+                  value={company}
+                  onChange={(e) => setCompany(e.target.value)}
+                  maxLength={160}
+                  placeholder="Company name"
+                  className="h-[40px] rounded-lg border border-[#E2E8F0] px-3 text-[13px] font-medium"
+                />
+                <input
+                  value={gstin}
+                  onChange={(e) => setGstin(e.target.value.toUpperCase())}
+                  maxLength={15}
+                  placeholder="Company GSTIN (15 characters)"
+                  className={`h-[40px] rounded-lg border px-3 text-[13px] font-medium uppercase ${gstinOk ? "border-[#E2E8F0]" : "border-[#FCA5A5]"}`}
+                />
+                {!gstinOk && <p className="text-[11.5px] text-[#DC2626]">A GSTIN looks like 19ABCDE1234F1Z5.</p>}
+              </div>
+            )}
           </div>
 
           <div>
@@ -229,7 +288,7 @@ const TableSettleModal = ({ table, session, busy, onClose, onConfirm }) => {
                     + Add a part
                   </button>
                   <span className={`font-bold tabular-nums ${splitOk ? "text-[#16A34A]" : "text-[#DC2626]"}`}>
-                    {money(partsSum)} of {money(payable)}
+                    {money(partsSum)} of {money(grand)}
                   </span>
                 </div>
               </div>
@@ -278,16 +337,18 @@ const TableSettleModal = ({ table, session, busy, onClose, onConfirm }) => {
             onClick={() =>
               onConfirm({
                 method: split ? "SPLIT" : method,
-                amount: payable,
+                amount: grand,
+                tip: tipAmt || undefined,
+                buyer: b2b && (company.trim() || gstin.trim()) ? { company: company.trim(), gstin: gstin.trim() } : undefined,
                 splits: split ? parts.map((p) => ({ method: p.method, amount: round2(p.amount) })) : undefined,
                 sendEBill: Boolean(phone && alsoEBill),
                 phone,
               })
             }
-            disabled={busy || payable <= 0 || (split && !splitOk)}
+            disabled={busy || payable <= 0 || (split && !splitOk) || (b2b && !gstinOk)}
             className="flex-[2] h-[44px] rounded-xl bg-[#FD5302] text-white text-[13.5px] font-extrabold hover:bg-[#D64502] disabled:opacity-60"
           >
-            {busy ? "Completing…" : `Mark Paid · ${money(payable)}`}
+            {busy ? "Completing…" : `Mark Paid · ${money(grand)}`}
           </button>
         </div>
       </div>

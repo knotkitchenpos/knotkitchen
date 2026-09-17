@@ -1587,6 +1587,9 @@ const RulesChargesView = () => {
       : String(ordering.taxPercent),
   );
   const [taxInclusive, setTaxInclusive] = useState(ordering.taxInclusive === true);
+  const [serviceCharge, setServiceCharge] = useState(
+    ordering.serviceChargePercent ? String(ordering.serviceChargePercent) : "",
+  );
   const [packApply, setPackApply] = useState(ordering.packingApplyTo || "both");
   const [maxDist, setMaxDist] = useState(ordering.deliverySlabsConfig?.maxDistanceKm ?? 7);
   const [slabs, setSlabs] = useState(ordering.deliverySlabsConfig?.slabs || []);
@@ -1646,6 +1649,20 @@ const RulesChargesView = () => {
             </select>
           </div>
           <div>
+            <label className="text-[11.5px] font-bold text-[#94A3B8]">Service charge on table bills (%)</label>
+            <input
+              type="number"
+              min={0}
+              max={25}
+              step="0.5"
+              value={serviceCharge}
+              onChange={(e) => setServiceCharge(e.target.value)}
+              placeholder="0 (none)"
+              className="w-full h-[38px] px-3 mt-1 rounded-xl border border-[#E2E8F0] font-bold"
+            />
+            <p className="mt-1 text-[11px] text-[#94A3B8]">Dine-in only, on the discounted subtotal. Printed as its own line; a guest may ask for it to be removed.</p>
+          </div>
+          <div>
             <label className="text-[11.5px] font-bold text-[#94A3B8]">Packing applies to</label>
             <select value={packApply} onChange={(e)=>setPackApply(e.target.value)} className="w-full h-[38px] px-3 mt-1 rounded-xl border border-[#E2E8F0] font-bold">
               <option value="both">Both</option><option value="website">Website</option><option value="system">System</option>
@@ -1661,6 +1678,7 @@ const RulesChargesView = () => {
                   packingApplyTo: packApply,
                   taxPercent: Math.min(100, Math.max(0, Number(gstPercent) || 0)),
                   taxInclusive,
+                  serviceChargePercent: Math.min(25, Math.max(0, Number(serviceCharge) || 0)),
                 },
               })
             }

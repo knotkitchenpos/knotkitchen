@@ -398,6 +398,8 @@ const orderingSchema = new mongoose.Schema(
     packagingFee: { type: Number, default: 0, min: 0 },
     taxPercent: { type: Number, default: 0, min: 0, max: 100 },
     taxInclusive: { type: Boolean, default: false },
+    // Dine-in only: a percentage of the discounted subtotal, added to table bills.
+    serviceChargePercent: { type: Number, default: 0, min: 0, max: 25 },
     currency: { type: String, default: "INR" },
     currencySymbol: { type: String, default: "₹" },
     acceptPreOrders: { type: Boolean, default: true },

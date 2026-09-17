@@ -22,6 +22,30 @@
 /** Normalised GST number, or "" when the store has none. */
 const gstinOf = (restaurant) => String(restaurant?.taxId || "").trim().toUpperCase();
 
+/** 15-character GSTIN: 2-digit state, 10-char PAN, entity code, "Z", check digit. */
+const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
+const isValidGstin = (value) => GSTIN_RE.test(String(value || "").trim().toUpperCase());
+
+/** SAC for restaurant service; printed on a B2B bill so the buyer can claim credit. */
+const RESTAURANT_SAC = "996331";
+
+/**
+ * The buyer named on a B2B bill: { company, gstin } or null. Throws with a
+ * readable message on a malformed GSTIN so a typo is caught at the till,
+ * not by the buyer's accountant.
+ */
+const buyerFrom = (input = {}) => {
+  const company = String(input?.company || input?.buyerCompany || "").trim().slice(0, 160);
+  const gstin = String(input?.gstin || input?.buyerGstin || "").trim().toUpperCase();
+  if (!company && !gstin) return null;
+  if (gstin && !isValidGstin(gstin)) {
+    const err = new Error("That GSTIN does not look right (15 characters, e.g. 19ABCDE1234F1Z5).");
+    err.status = 400;
+    throw err;
+  }
+  return { company, gstin };
+};
+
 /**
  * @param {object} args
  * @param {object} args.restaurant  the store (for its GST number)
@@ -76,7 +100,10 @@ const resolveGstForRestaurant = async (restaurantId, environment = "system") => 
       WebsiteSettings.findOne({ restaurantId }).select("ordering").lean(),
     ]);
 
-    return resolveGst({ restaurant, ordering: settings?.ordering, environment });
+    // The dine-in service charge rides along: same settings document, and
+    // the table bill needs both at once.
+    const pct = Number(settings?.ordering?.serviceChargePercent) || 0;
+    return { ...resolveGst({ restaurant, ordering: settings?.ordering, environment }), serviceChargePercent: Math.max(0, Math.min(25, pct)) };
   } catch {
     // A store we cannot read is a store we cannot prove is registered, so it
     // is not charged. Failing open here would re-create the original bug.
@@ -84,4 +111,4 @@ const resolveGstForRestaurant = async (restaurantId, environment = "system") => 
   }
 };
 
-module.exports = { resolveGst, resolveGstForRestaurant, gstinOf };
+module.exports = { resolveGst, resolveGstForRestaurant, gstinOf, isValidGstin, buyerFrom, RESTAURANT_SAC };

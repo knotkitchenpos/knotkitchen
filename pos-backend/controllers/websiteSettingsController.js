@@ -447,6 +447,8 @@ const updateWebsiteSettings = async (req, res, next) => {
       }
       const tax = Number(o.taxPercent);
       if (Number.isFinite(tax) && tax >= 0 && tax <= 100) settings.ordering.taxPercent = tax;
+      const svc = Number(o.serviceChargePercent);
+      if (Number.isFinite(svc) && svc >= 0 && svc <= 25) settings.ordering.serviceChargePercent = svc;
       assign(settings.ordering, "currency", clampText(o.currency, 8));
       assign(settings.ordering, "currencySymbol", clampText(o.currencySymbol, 4));
 

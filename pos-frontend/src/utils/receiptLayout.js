@@ -62,7 +62,7 @@ const ORDER_TYPES = { delivery: "Delivery", "dine-in": "Table", collection: "Col
  * The lines of money under the items. Subtotal always; the rest only when
  * they are not zero, and Total only when something changed the subtotal.
  */
-export const billLines = (bills = {}, itemsSubtotal = 0) => {
+export const billLines = (bills = {}, itemsSubtotal = 0, { gstSplit = false } = {}) => {
   const subtotal = Number(bills.subtotal || bills.total || itemsSubtotal || 0);
   const lines = [{ label: "Subtotal", amount: subtotal, strong: true }];
   const add = (label, value, sign = "") => {
@@ -71,9 +71,25 @@ export const billLines = (bills = {}, itemsSubtotal = 0) => {
   add("Discount", bills.discount, "- ");
   add("Packing charge", bills.packagingFee);
   add("Delivery charge", bills.deliveryFee);
-  add("GST", bills.tax);
+  add("Service charge", bills.serviceCharge);
+  // A GST-registered store shows the intra-state split the buyer needs to
+  // claim credit; anyone else just "GST".
+  const tax = Number(bills.tax) || 0;
+  const pct = Number(bills.taxPercent) || 0;
+  if (tax > 0 && gstSplit) {
+    const half = Math.round((tax / 2) * 100) / 100;
+    const at = pct ? ` @ ${(pct / 2).toLocaleString("en-IN", { maximumFractionDigits: 2 })}%` : "";
+    lines.push({ label: `CGST${at}`, amount: half });
+    lines.push({ label: `SGST${at}`, amount: Math.round((tax - half) * 100) / 100 });
+  } else {
+    add(pct ? `GST @ ${pct.toLocaleString("en-IN", { maximumFractionDigits: 2 })}%` : "GST", tax);
+  }
   const total = Number(bills.totalWithTax || bills.total || subtotal);
   if (Math.abs(total - subtotal) > 0.004) lines.push({ label: "Total", amount: total, strong: true, big: true });
+  if (Number(bills.tip) > 0) {
+    lines.push({ label: "Tip", amount: Number(bills.tip) });
+    lines.push({ label: "Paid", amount: Math.round((total + Number(bills.tip)) * 100) / 100, strong: true });
+  }
   return lines;
 };
 
@@ -153,6 +169,13 @@ export const layoutReceipt = ({ order = {}, store = {}, settings = {}, images = 
   pair("Type", [type, table].filter(Boolean).join(" · "));
   pair("Customer", order.customerDetails?.name);
   pair("Phone", order.customerDetails?.phone);
+  // B2B bill: who it is made out to, and their GSTIN.
+  const buyerCompany = String(order.customerDetails?.company || "").trim();
+  const buyerGstin = String(order.customerDetails?.gstin || "").trim();
+  if (buyerCompany || buyerGstin) {
+    pair("Bill to", buyerCompany || "Registered buyer", { bold: true });
+    pair("Buyer GSTIN", buyerGstin);
+  }
   rule(true);
 
   // ---- Items: Item | Rate | Qty | Price ----
@@ -228,7 +251,8 @@ export const layoutReceipt = ({ order = {}, store = {}, settings = {}, images = 
 
   // ---- Totals ----
   const itemsSubtotal = rows.reduce((sum, r) => sum + r.lineTotal, 0);
-  for (const line of billLines(order.bills || {}, itemsSubtotal)) {
+  const registered = Boolean(store.gstNumber);
+  for (const line of billLines(order.bills || {}, itemsSubtotal, { gstSplit: registered })) {
     const s = line.big ? P.body + 4 : P.body;
     const fnt = font(s, Boolean(line.strong));
     ops.push({ type: "text", text: `${line.label}:`, x: P.pad, y, font: fnt, align: "left" });
@@ -237,6 +261,8 @@ export const layoutReceipt = ({ order = {}, store = {}, settings = {}, images = 
   }
   const method = String(order.paymentMethod || order.payments?.[0]?.method || "").trim();
   if (method) pair("Paid by", method.charAt(0).toUpperCase() + method.slice(1));
+  // GST bill: the service code the buyer's return needs.
+  if (registered && Number(order.bills?.tax) > 0) text("SAC 996331 · Restaurant service", { size: P.small, align: "center" });
 
   // ---- Footer ----
   const advert = String(settings.customMessage || "").trim();

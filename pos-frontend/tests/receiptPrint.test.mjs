@@ -134,6 +134,28 @@ test("every receipt print goes through the one renderer", () => {
   assert.match(SRC("src/components/settings/DeviceConfiguration.jsx"), /key: "lan", label: "LAN \/ Network", disabled: true/);
 });
 
+test("GST bill: CGST/SGST split for a registered store, buyer and SAC printed", () => {
+  const bills = { subtotal: 1000, tax: 50, taxPercent: 5, serviceCharge: 100, totalWithTax: 1150, tip: 20 };
+  const plain = billLines(bills, 1000).map((l) => l.label);
+  assert.deepEqual(plain, ["Subtotal", "Service charge", "GST @ 5%", "Total", "Tip", "Paid"]);
+  const split = billLines(bills, 1000, { gstSplit: true });
+  assert.deepEqual(split.map((l) => l.label), ["Subtotal", "Service charge", "CGST @ 2.5%", "SGST @ 2.5%", "Total", "Tip", "Paid"]);
+  assert.equal(split[2].amount + split[3].amount, 50);
+  assert.equal(split[split.length - 1].amount, 1170);
+
+  const order = { ...ORDER, bills, customerDetails: { name: "Asha", company: "Acme Pvt Ltd", gstin: "19ABCDE1234F1Z5" } };
+  const layout = layoutReceipt({ order, store: { name: "Asha's", gstNumber: "19XXXXX1234X1Z9" }, settings: {}, paper: 80, measure });
+  const texts = textOps(layout).map((o) => o.text);
+  assert.ok(texts.includes("Acme Pvt Ltd"));
+  assert.ok(texts.includes("19ABCDE1234F1Z5"));
+  assert.ok(texts.some((t) => t.startsWith("CGST")));
+  assert.ok(texts.includes("SAC 996331 · Restaurant service"));
+  // An unregistered store prints none of that.
+  const plainLayout = layoutReceipt({ order, store: { name: "Asha's" }, settings: {}, paper: 80, measure });
+  const pt = textOps(plainLayout).map((o) => o.text);
+  assert.ok(!pt.some((t) => t.startsWith("CGST")) && !pt.some((t) => t.startsWith("SAC")));
+});
+
 test("KOT: quantities, names, extras and notes; no prices, no address", () => {
   const order = { ...ORDER, table: { tableNumber: 4 }, orderType: "dine-in", instructions: "Serve together" };
   order.items = [{ ...ORDER.items[0], note: "less spicy" }, ORDER.items[1]];

@@ -280,15 +280,22 @@ const recalculateSessionBill = async (session) => {
   // store has a GST number and a rate; otherwise the rate is zero.
   const gst = await resolveGstForRestaurant(session.restaurantId, "system");
 
+  // Dine-in service charge: a percentage of the discounted subtotal, from
+  // Settings > Rules & Charges (read with the GST settings). Zero unless set.
+  const pct = Math.max(0, Math.min(25, Number(gst.serviceChargePercent) || 0));
+  const live = session.items.filter((i) => i.status !== "cancelled").map((i) => ({ price: i.price, quantity: i.quantity }));
+  const discount = session.bills?.discount || 0;
+  const subtotal = live.reduce((s, i) => s + i.price * i.quantity, 0);
+  const serviceCharge = pct > 0 ? Math.round(Math.max(0, subtotal - discount) * pct) / 100 : 0;
+
   const bills = priceService.calculateBill({
-    items: session.items
-      .filter((i) => i.status !== "cancelled")
-      .map((i) => ({ price: i.price, quantity: i.quantity })),
-    discount: session.bills?.discount || 0,
-    additionalCharges: session.bills?.charges || 0,
+    items: live,
+    discount,
+    additionalCharges: serviceCharge,
     taxRate: gst.rate,
   });
-  session.bills = bills;
+  const tip = Number(session.bills?.tip) || 0;
+  session.bills = { ...bills, serviceCharge, taxPercent: Math.round(gst.rate * 10000) / 100, tip };
   await session.save();
   return session;
 };
@@ -916,6 +923,15 @@ const recordSessionPayment = async (req, res, next) => {
 
     const session = await TableSession.findOne({ _id: id, ...scopeQuery, isDeleted: { $ne: true } }).session(mongoSession);
     if (!session) throw createHttpError(404, "Table session not found!");
+
+    // A tip left at settle, and the buyer for a B2B (GST) bill. Both optional.
+    const tip = Math.max(0, Math.min(100000, Math.round((Number(req.body.tip) || 0) * 100) / 100));
+    const buyer = require("../services/gst").buyerFrom(req.body.buyer || {});
+    if (buyer) {
+      session.customerCompany = buyer.company;
+      session.customerGstin = buyer.gstin;
+    }
+    if (tip > 0) session.bills.tip = tip;
     // STATE VALIDATION: prevent CLOSED → pay again and PAID → pay again
     assertCanTransition(session, ["OCCUPIED", "PROCESSING", "BILL_REQUESTED", "PAYMENT_PENDING"], "PAID");
     if (session.payment?.status === "PAID") {
@@ -928,8 +944,10 @@ const recordSessionPayment = async (req, res, next) => {
       throw createHttpError(400, "Invalid payment method!");
     }
 
-    const payableAmount = session.bills?.totalWithTax || 0;
-    if (!payableAmount || payableAmount <= 0) {
+    // The bill, plus any tip: that is what changes hands.
+    const billAmount = session.bills?.totalWithTax || 0;
+    const payableAmount = Math.round((billAmount + tip) * 100) / 100;
+    if (!billAmount || billAmount <= 0) {
       throw createHttpError(400, "No payable amount on this session.");
     }
 
@@ -1095,7 +1113,13 @@ const recordSessionPayment = async (req, res, next) => {
         {
           $set: {
             orderStatus: PAID,
-            "bills.totalWithTax": payableAmount,
+            "bills.totalWithTax": billAmount,
+            "bills.serviceCharge": session.bills?.serviceCharge || 0,
+            "bills.taxPercent": session.bills?.taxPercent || 0,
+            "bills.tax": session.bills?.tax || 0,
+            "bills.tip": tip,
+            tips: tip,
+            ...(buyer ? { "customerDetails.company": buyer.company, "customerDetails.gstin": buyer.gstin } : {}),
             paymentMethod:
               parts.length > 1
                 ? require("../services/splitPayment").splitLabel(parts, displayPaymentMethod)

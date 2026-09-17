@@ -37,6 +37,8 @@ const shiftSchema = new mongoose.Schema(
       gateway: moneySchema,
       other: moneySchema,
       cashRefunds: moneySchema,
+      tips: moneySchema,
+      cashTips: moneySchema,
       expectedCash: moneySchema, // openingCash + cash - cashRefunds
       difference: moneySchema, // closingCash - expectedCash
     },

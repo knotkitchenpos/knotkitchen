@@ -21,7 +21,7 @@ const methodOf = (order) => {
  * @param {number} openingCash
  */
 const shiftSummary = (orders, openingCash = 0) => {
-  const s = { orders: 0, cancelled: 0, sales: 0, refunds: 0, cash: 0, upi: 0, gateway: 0, other: 0, cashRefunds: 0 };
+  const s = { orders: 0, cancelled: 0, sales: 0, refunds: 0, cash: 0, upi: 0, gateway: 0, other: 0, cashRefunds: 0, tips: 0, cashTips: 0 };
   for (const o of orders || []) {
     if (isCancelled(o.orderStatus)) {
       s.cancelled += 1;
@@ -35,9 +35,12 @@ const shiftSummary = (orders, openingCash = 0) => {
     const m = methodOf(o);
     s[m] += net;
     if (m === "cash") s.cashRefunds += refunded;
+    const tip = Number(o.tips || o.bills?.tip) || 0;
+    s.tips += tip;
+    if (m === "cash") s.cashTips += tip;
   }
   for (const k of Object.keys(s)) s[k] = round2(s[k]);
-  s.expectedCash = round2(Number(openingCash || 0) + s.cash);
+  s.expectedCash = round2(Number(openingCash || 0) + s.cash + s.cashTips);
   return s;
 };
 

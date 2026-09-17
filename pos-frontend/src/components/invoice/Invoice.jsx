@@ -255,9 +255,17 @@ const Invoice = ({
                                 <span>{money(safeBills.deliveryFee)}</span>
                             </p>
                         )}
+                        {Number(safeBills.serviceCharge) > 0 && (
+                            <p className="flex justify-between">
+                                <span className="text-white/50">Service charge</span>
+                                <span>{money(safeBills.serviceCharge)}</span>
+                            </p>
+                        )}
                         {Number(safeBills.tax) > 0 && (
                             <p className="flex justify-between">
-                                <span className="text-white/50">GST / Tax</span>
+                                <span className="text-white/50">
+                                    GST{Number(safeBills.taxPercent) > 0 ? ` @ ${safeBills.taxPercent}%` : ""}
+                                </span>
                                 <span>{money(safeBills.tax)}</span>
                             </p>
                         )}

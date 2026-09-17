@@ -71,6 +71,9 @@ const orderSchema = new mongoose.Schema({
     city: { type: String, default: "" },
     pinCode: { type: String, default: "" },
     deliveryNote: { type: String, default: "" },
+    // B2B bill: the buyer's business, printed with their GSTIN.
+    company: { type: String, default: "" },
+    gstin: { type: String, default: "" },
   },
   orderType: {
     type: String,
@@ -154,10 +157,16 @@ const orderSchema = new mongoose.Schema({
     subtotal: { type: Number, default: 0 },
     total: { type: Number, default: 0 },
     tax: { type: Number, default: 0 },
+    // GST rate the tax was charged at, so the receipt can print CGST/SGST @ rate.
+    taxPercent: { type: Number, default: 0 },
     totalWithTax: { type: Number, default: 0 },
     discount: { type: Number, default: 0 },
     deliveryFee: { type: Number, default: 0 },
     packagingFee: { type: Number, default: 0 },
+    // Dine-in service charge (Settings > Rules & Charges), inside totalWithTax.
+    serviceCharge: { type: Number, default: 0 },
+    // A tip left at settle. NOT inside totalWithTax: it is not sales.
+    tip: { type: Number, default: 0 },
   },
   items: [orderItemSchema],
   table: { type: mongoose.Schema.Types.ObjectId, ref: "Table" },
