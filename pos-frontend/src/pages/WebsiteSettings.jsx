@@ -403,6 +403,14 @@ const WebsiteSettings = () => {
           </>
         ) : null}
 
+        {["general", "content", "contact", "legal", "media"].includes(tab) ? (
+          <p className="mb-4 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] p-3 text-xs text-[#9A3412]">
+            Saved changes to the website&apos;s look and text stay as a draft. They go live when someone presses{" "}
+            <span className="font-bold">Publish System</span> in Settings &rsaquo; Manage Cache. Domain, on/off and
+            payment settings apply as soon as they are saved.
+          </p>
+        ) : null}
+
         {/* ---------- CONTENT: about, description, popular items ---------- */}
         {tab === "content" ? (
           <div className="space-y-5">

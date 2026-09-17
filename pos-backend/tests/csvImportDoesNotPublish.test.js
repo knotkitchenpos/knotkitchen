@@ -6,9 +6,8 @@
  * publishes EVERY menu the user owns -- so an import also pushed out unrelated
  * edits that were still being worked on elsewhere in Manage Menu.
  *
- * Publishing to the tills is the operator's decision, taken in Manage Cache.
- * The customer website is a separate matter: it reads the draft, so an import
- * IS live there straight away and the importer says so.
+ * Publishing is the operator's decision, taken in Manage Cache. One button
+ * there publishes the tills and the customer website together.
  */
 
 const { test } = require("node:test");
@@ -48,7 +47,7 @@ test("publishing to the tills is still reachable, just not automatic", () => {
   assert.match(routes, /publish\/system/);
   assert.ok(
     !/publish\/website/.test(routes),
-    "there is no website publish -- the site reads the live menu",
+    "there is no separate website publish -- Publish System covers both",
   );
 });
 

@@ -15,16 +15,15 @@ test("Website Module 3: Public store menu returns categories, products with Veg/
   // A Menu document is a CATEGORY holding items — the previous fixture modelled
   // each menu as a bare dish, which is not a shape production ever returns.
   //
-  // The public menu endpoint serves the LIVE menu, so the fixture carries a
-  // stale websiteSnapshot at a different price. A response quoting 999 would
-  // mean a read path had gone back to the snapshot, and every store that ever
-  // pressed the old Publish Website button would start serving whatever it
-  // held on that day.
+  // The public menu endpoint serves the PUBLISHED website snapshot (Manage
+  // Cache › Publish System), so the fixture carries a draft at a different
+  // price. A response quoting the draft price would mean an unpublished edit
+  // had leaked to customers.
   const paneer = {
     _id: "d1",
     name: "Paneer Tikka",
     description: "Cottage cheese grilled in tandoor",
-    price: 280,
+    price: 999, // draft: repriced but not yet published
     isVegetarian: true,
     showOnWebsite: true,
     isAvailable: true,
@@ -33,7 +32,7 @@ test("Website Module 3: Public store menu returns categories, products with Veg/
     _id: "d2",
     name: "Chicken Tikka",
     description: "Spicy grilled chicken kebab",
-    price: 350,
+    price: 999, // draft: repriced but not yet published
     isVegetarian: false,
     showOnWebsite: true,
     isAvailable: true,
@@ -49,7 +48,7 @@ test("Website Module 3: Public store menu returns categories, products with Veg/
       hasPublishedToWebsite: true,
       websiteSnapshot: {
         name: "Starters",
-        items: [{ ...paneer, price: 999 }, { ...chicken, price: 999 }],
+        items: [{ ...paneer, price: 280 }, { ...chicken, price: 350 }],
       },
     },
   ];
@@ -116,7 +115,7 @@ test("Website Module 3: Public store menu returns categories, products with Veg/
   assert.equal(vegItem.name, "Paneer Tikka");
   assert.equal(nonVegItem.name, "Chicken Tikka");
 
-  // Live prices, not the 999 left behind in the retired snapshot.
+  // Published prices, not the draft's.
   assert.equal(vegItem.price, 280);
   assert.equal(nonVegItem.price, 350);
 });

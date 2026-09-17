@@ -173,13 +173,9 @@ test("REGRESSION: publishing does not switch Display Status back on", () => {
     !/menu\.published = true/.test(block),
     "publish must not re-enable a category the operator switched off",
   );
-  // It must still do the thing it is for. Only the tills have a snapshot --
-  // the customer website reads the live menu.
+  // It must still do the thing it is for: one button, both snapshots.
   assert.match(block, /menu\.systemSnapshot = \{ name: menu\.name, items: snapshotItems \}/);
-  assert.ok(
-    !/menu\.websiteSnapshot = /.test(block),
-    "a website snapshot would put the publish step back in front of the shop window",
-  );
+  assert.match(block, /menu\.websiteSnapshot = \{ name: menu\.name, items: snapshotItems \}/);
 });
 
 test("publishing copies the draft verbatim — it does not filter products", () => {

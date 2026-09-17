@@ -1,4 +1,5 @@
 const WebsiteSettings = require("../models/websiteSettingsModel");
+const { applyPublishedSnapshot } = require("./websitePublish");
 const Store = require("../models/storeModel");
 const Restaurant = require("../models/restaurantModel");
 const config = require("../config/config");
@@ -85,6 +86,11 @@ const resolveStorefront = async ({ identifier, host } = {}) => {
   if (!settings && host) settings = await findSettingsByHost(host);
 
   if (!settings) return { ok: false, status: 404, reason: "STORE_NOT_FOUND" };
+
+  // The public site shows what was last published from Manage Cache, not the
+  // Manage Website draft. Operational fields (enabled, hours, gateways) stay
+  // live; see PUBLISHED_FIELDS.
+  applyPublishedSnapshot(settings);
 
   const store = await Store.findOne({ storeId: settings.storeId, isDeleted: { $ne: true } });
   if (!store) return { ok: false, status: 404, reason: "STORE_NOT_FOUND" };

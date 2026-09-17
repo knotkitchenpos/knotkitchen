@@ -206,13 +206,14 @@ test("Manage Website Activity Log: publishing to the tills logs a Published even
   Module._load = function (r, p, m) {
     if (r === "../models/menuModel") return MenuMock;
     if (r === "../models/auditLogModel") return AuditLogMock;
+    // Publish also snapshots Manage Website; no settings doc here.
+    if (r === "../models/websiteSettingsModel") return { findOne: async () => null };
     return orig.apply(this, arguments);
   };
 
   delete require.cache[require.resolve("../controllers/menuController")];
   delete require.cache[require.resolve("../services/auditService")];
-  // There is no website publish any more -- the customer site reads the live
-  // menu. The tills still have one, and it is still audited.
+  // One button publishes the tills and the website, and it is audited.
   const { publishSystemCache } = require("../controllers/menuController");
 
   const res = {

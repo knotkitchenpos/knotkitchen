@@ -1452,11 +1452,13 @@ const toggleDishAvailability = async (req, res, next) => {
 /**
  * Module 6 §4 — Manage Cache.
  *
- * Bulk publish EVERY menu belonging to the tenant to the requested target.
- * We track two independent publish timestamps:
+ * Bulk publish EVERY menu belonging to the tenant. The "system" target is the
+ * one button the operator has, and it publishes both surfaces at once:
  *
- *   `lastPublishedToSystemAt`  — POS view (Menu.jsx / Product panel)
- *   `lastPublishedToWebsiteAt` — customer-facing storefront
+ *   `systemSnapshot`  + `lastPublishedToSystemAt`  — POS view (Menu.jsx / Product panel)
+ *   `websiteSnapshot` + `lastPublishedToWebsiteAt` — customer-facing storefront
+ *
+ * along with the Manage Website draft (see WebsiteSettings.PUBLISHED_FIELDS).
  *
  * The Menu.published flag remains a per-category on/off switch so an owner
  * can hide an entire category without triggering a publish. This endpoint
@@ -1491,12 +1493,29 @@ const publishAllMenusForUser = async (user, target) => {
       menu.systemVersion = (menu.systemVersion || 0) + 1;
       menu.systemSnapshot = { name: menu.name, items: snapshotItems };
     }
+    if (target === "system" || target === "website") {
+      menu.hasPublishedToWebsite = true;
+      menu.lastPublishedToWebsiteAt = now;
+      menu.websiteVersion = (menu.websiteVersion || 0) + 1;
+      menu.websiteSnapshot = { name: menu.name, items: snapshotItems };
+    }
 
     try {
       await menu.save();
       updated += 1;
     } catch (err) {
       console.warn("[publishCache] menu save failed:", menu._id, err.message);
+    }
+  }
+
+  // Manage Website edits wait for the same button.
+  if (user?.restaurantId) {
+    const WebsiteSettings = require("../models/websiteSettingsModel");
+    const settings = await WebsiteSettings.findOne({ restaurantId: user.restaurantId, isDeleted: { $ne: true } });
+    if (settings) {
+      settings.publishedSnapshot = require("../services/websitePublish").snapshotForPublish(settings);
+      settings.markModified("publishedSnapshot");
+      await settings.save();
     }
   }
 
@@ -1513,8 +1532,8 @@ const publishToTarget = async (req, res, target) => {
     req,
     action: "Menu Published",
     resource: "System Cache",
-    newValue: `${updated} menu(s) published to the tills`,
-    description: "Menu published to the POS tills",
+    newValue: `${updated} menu(s) published to the tills and the website`,
+    description: "Menu and website changes published to the POS tills and the customer website",
   });
 
   // Tell every other till. Publishing is exactly the case where one device
@@ -1533,7 +1552,7 @@ const publishToTarget = async (req, res, target) => {
 
   return res.status(200).json({
     success: true,
-    message: `${target === "website" ? "Website" : "System"} cache refreshed. ${updated} menu(s) republished.`,
+    message: `Published. ${updated} menu(s) and the website are now up to date.`,
     data: {
       target,
       count: updated,

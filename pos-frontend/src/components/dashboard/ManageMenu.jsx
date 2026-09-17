@@ -471,7 +471,7 @@ const ManageMenu = () => {
 
   // Only invalidate the draft menu query for Manage Menu UI.
   // POS (system) and Website cache are NOT automatically updated when editing products;
-  // they update only when the user manually clicks "Publish POS" or "Publish Web".
+  // they update only when the user clicks "Publish" (Manage Cache > Publish System).
   //
   // We use `refetchQueries` (not just `invalidateQueries`) so the fresh data
   // arrives BEFORE the operator's next click — the previous invalidate-only
@@ -1236,13 +1236,10 @@ const ManageMenu = () => {
                 }
               }}
               className="h-[36px] px-3.5 rounded-xl bg-[#0F172A] text-white text-[12.5px] font-bold hover:bg-[#1E293B]"
-              title="Publish draft menu to POS counters"
+              title="Publish draft menu to the POS counters and the customer website"
             >
-              Publish POS
+              Publish
             </button>
-
-            {/* There is no "Publish Web" button. The customer website reads
-                this menu directly, so anything saved here is already live. */}
 
             {/*
               §UI: the CSV "Download Template" affordance has been removed
@@ -2744,9 +2741,9 @@ const ManageMenu = () => {
             </div>
 
             <div className="text-[12px] text-[#64748B] font-semibold">
-              Total Records: {csvPreviewData.totalRows}. The import goes live on your customer website
-              straight away. Click <span className="font-extrabold text-[#0F172A]">Publish POS</span> when
-              you want the tills to pick it up too.
+              Total Records: {csvPreviewData.totalRows}. The import lands in Manage Menu as a draft. Click{" "}
+              <span className="font-extrabold text-[#0F172A]">Publish</span> when you want the tills and the
+              website to pick it up.
             </div>
 
             <div className="flex gap-3 pt-2">

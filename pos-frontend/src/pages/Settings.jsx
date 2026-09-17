@@ -130,9 +130,9 @@ const ManageCacheView = () => {
   return (
     <div className="space-y-4">
       <p className="text-[13px] text-[#64748B] leading-relaxed">
-        Your customer website always shows the menu exactly as it is in Manage Menu — there is
-        nothing to publish. The tills are different: they keep serving the last published copy so
-        prices cannot change under a cashier mid-service. Publish when you want the tills to catch up.
+        The POS tills and your customer website keep serving the last published copy of the menu
+        and of Manage Website, so prices cannot change under a cashier or a customer mid-order.
+        Edits in Manage Menu and Manage Website stay as drafts until you publish here.
       </p>
 
       <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
@@ -140,7 +140,7 @@ const ManageCacheView = () => {
           <div>
             <h4 className="text-[15px] font-extrabold text-[#0F172A]">Update System Cache</h4>
             <p className="text-[12.5px] text-[#64748B] mt-0.5">
-              Publishes menu changes to the POS / System tills.
+              Publishes Manage Menu and Manage Website changes to the POS tills and the customer website.
             </p>
           </div>
           <button

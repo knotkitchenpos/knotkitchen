@@ -566,6 +566,11 @@ const websiteSettingsSchema = new mongoose.Schema(
 
     status: { type: String, enum: ["draft", "published"], default: "published" },
     draft: { type: mongoose.Schema.Types.Mixed, default: null },
+    // What the public website serves for the fields in PUBLISHED_FIELDS.
+    // Written only by "Publish System" (Settings › Manage Cache); the fields
+    // on the document itself are the draft Manage Website edits. Null until
+    // the first publish, in which case the website serves the draft.
+    publishedSnapshot: { type: mongoose.Schema.Types.Mixed, default: null },
     publishedAt: { type: Date, default: Date.now },
     version: { type: Number, default: 1 },
 
