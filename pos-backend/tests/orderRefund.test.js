@@ -57,10 +57,17 @@ test("validateRefund: reason required, amount within what is left, blank = all",
   assert.equal(validateRefund(paid({ refunds: [{ amount: 500 }] }), { reason: "x" }).ok, false);
 });
 
-test("cancel needs the PIN guard; refund is owner-only", () => {
+test("cancel needs the PIN guard; refund is for the owner or a manager", () => {
+  const { isManagerUser } = require("../middlewares/requirePermission");
+  assert.equal(isManagerUser({ role: "Owner" }), true);
+  assert.equal(isManagerUser({ role: "Manager" }), true);
+  assert.equal(isManagerUser({ role: "Admin" }), true);
+  assert.equal(isManagerUser({ role: "Cashier" }), false);
+  assert.equal(isManagerUser({ role: "Staff" }), false);
+  assert.equal(isManagerUser(null), false);
   const routes = fs.readFileSync(path.join(__dirname, "..", "routes", "orderRoute.js"), "utf8");
   assert.match(routes, /"\/:id\/cancel"\)\.put\(isVerifiedUser, requireProtectedAction, cancelOrder\)/);
-  assert.match(routes, /"\/:id\/refund"\)\.post\(isVerifiedUser, requireOwnerOnly, refundOrder\)/);
+  assert.match(routes, /"\/:id\/refund"\)\.post\(isVerifiedUser, requireManager, refundOrder\)/);
   const ctrl = fs.readFileSync(path.join(__dirname, "..", "controllers", "orderController.js"), "utf8");
   assert.match(ctrl, /A reason is required to cancel an order/);
   assert.match(ctrl, /const amount = netAmount\(o\)/, "report buckets are net of refunds");

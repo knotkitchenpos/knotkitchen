@@ -96,4 +96,24 @@ const requireProtectedAction = async (req, res, next) => {
   }
 };
 
-module.exports = { requirePermission, requireOwnerOnly, requireProtectedAction, isOwnerUser };
+/**
+ * Store management only: the owner, or a user whose role is Admin or
+ * Manager. Waiters, cashiers and other staff are refused, PIN or not.
+ */
+const isManagerUser = (user) => {
+  if (isOwnerUser(user)) return true;
+  const role = String(user?.role || "").toLowerCase();
+  return role === "admin" || role === "manager";
+};
+
+const requireManager = async (req, res, next) => {
+  try {
+    if (!req.user) return next(createHttpError(401, "Authentication required."));
+    if (isManagerUser(req.user)) return next();
+    return next(createHttpError(403, "Only the store owner or a manager can do this."));
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { requirePermission, requireOwnerOnly, requireProtectedAction, requireManager, isOwnerUser, isManagerUser };

@@ -16,7 +16,7 @@ import {
 import TableSettleModal from "../components/tables/TableSettleModal";
 import ReasonModal from "../components/orders/ReasonModal";
 import SecurityPinModal from "../components/common/SecurityPinModal";
-import { checkActionAuthorization, isOwner } from "../utils/security";
+import { checkActionAuthorization, isManager } from "../utils/security";
 import { getMyRestaurant } from "../https/newModules";
 import { printKot, printOrderReceipt } from "../utils/printReceipt";
 import { itemDisplayName, itemExtras } from "../utils/orderItems";
@@ -1070,9 +1070,9 @@ const Orders = () => {
 
               {isSettled(selected.orderStatus) ? (
                 <button
-                  disabled={voidMutation.isPending || !isOwner(user)}
+                  disabled={voidMutation.isPending || !isManager(user)}
                   onClick={() => askReason("refund", selected)}
-                  title={isOwner(user) ? "Give money back on this paid order. Online payments go back through Cashfree." : "Only the store owner can refund"}
+                  title={isManager(user) ? "Give money back on this paid order. Online payments go back through Cashfree." : "Only the store owner or a manager can refund"}
                   className="h-[46px] rounded-xl border border-[#FCA5A5] text-[#DC2626] text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#FEF2F2] disabled:opacity-40"
                 >
                   Refund

@@ -6,6 +6,13 @@ export const isOwner = (user) => {
   return r === "owner" || r === "superadmin";
 };
 
+/** Owner, Admin or Manager: the people who may move money (refunds). */
+export const isManager = (user) => {
+  if (isOwner(user)) return true;
+  const r = String(user?.role || "").toLowerCase();
+  return r === "admin" || r === "manager";
+};
+
 export const isStaff = (user) => {
   if (!user || !user.role) return false;
   const r = String(user.role).toLowerCase();
