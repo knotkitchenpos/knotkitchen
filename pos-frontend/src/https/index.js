@@ -70,6 +70,14 @@ export const updateOrderStatus = ({ orderId, orderStatus }) =>
  * collect") and so the backend can fire the customer notification without
  * having to sniff the payload of a generic status change.
  */
+/* ---------- Offline ---------- */
+export const syncOfflineOrders = (orders) => axiosWrapper.post("/api/offline/orders/sync", { orders });
+
+/* ---------- Customers (CRM) ---------- */
+export const getCustomers = (search) => axiosWrapper.get("/api/customer", { params: search ? { search } : {} });
+export const updateCustomer = (id, d) => axiosWrapper.put(`/api/customer/${id}`, d);
+export const getCustomerOrders = (id) => axiosWrapper.get(`/api/customer/${id}/orders`);
+
 /* ---------- Inventory ---------- */
 export const getIngredients = () => axiosWrapper.get("/api/inventory/ingredients");
 export const createIngredient = (d) => axiosWrapper.post("/api/inventory/ingredients", d);

@@ -52,4 +52,36 @@ const getCustomer = async (req, res, next) => {
   } catch (error) { next(error); }
 };
 
-module.exports = { upsertCustomer, listCustomers, getCustomer };
+/** PUT /:id { name, email, notes, tags } -- the bits staff maintain by hand. */
+const updateCustomer = async (req, res, next) => {
+  try {
+    const customer = await Customer.findOne({ _id: req.params.id, ...getScopedQuery(req) });
+    if (!customer) throw createHttpError(404, "Customer not found!");
+    const { name, email, notes, tags } = req.body || {};
+    if (name !== undefined) customer.name = String(name).trim().slice(0, 120);
+    if (email !== undefined) customer.email = String(email).trim().slice(0, 160);
+    if (notes !== undefined) customer.notes = String(notes).trim().slice(0, 1000);
+    if (Array.isArray(tags)) customer.tags = tags.map((t) => String(t).trim().slice(0, 30)).filter(Boolean).slice(0, 20);
+    await customer.save();
+    res.status(200).json({ success: true, data: customer });
+  } catch (error) { next(error); }
+};
+
+/** GET /:id/orders -- the customer's last 50 orders, by id or by phone. */
+const customerOrders = async (req, res, next) => {
+  try {
+    const customer = await Customer.findOne({ _id: req.params.id, ...getScopedQuery(req) }).lean();
+    if (!customer) throw createHttpError(404, "Customer not found!");
+    const Order = require("../models/orderModel");
+    const or = [{ customerId: customer._id }];
+    if (customer.phone) or.push({ "customerDetails.phone": customer.phone });
+    const data = await Order.find({ restaurantId: req.user.restaurantId, isDeleted: { $ne: true }, $or: or })
+      .sort({ createdAt: -1 })
+      .limit(50)
+      .select("orderNumber orderType orderStatus source bills createdAt items.name items.quantity")
+      .lean();
+    res.status(200).json({ success: true, data });
+  } catch (error) { next(error); }
+};
+
+module.exports = { upsertCustomer, listCustomers, getCustomer, updateCustomer, customerOrders };

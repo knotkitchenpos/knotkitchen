@@ -5,6 +5,7 @@ import { useLocation } from "react-router-dom";
 import { enqueueSnackbar } from "notistack";
 import { capOf } from "../../utils/modifierGroups";
 import { getMenus, getPopularItems } from "../../https";
+import { readStoreScoped, writeStoreScoped } from "../../utils/storeSession";
 import { addItems } from "../../redux/slices/cartSlice";
 import { ModalShell } from "./ModalShell";
 
@@ -152,9 +153,21 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
   const [selectedVariantId, setSelectedVariantId] = useState(null);
   const [selectedModifiers, setSelectedModifiers] = useState({});
 
+  // The last menu the server sent is kept on the device, so the till can
+  // still take orders (offline queue) when the internet is down.
   const { data: menusRes, isLoading } = useQuery({
     queryKey: ["menus", "system"],
-    queryFn: () => getMenus({ source: "system" }),
+    queryFn: async () => {
+      try {
+        const res = await getMenus({ source: "system" });
+        writeStoreScoped("kk.menu.system.v1", res?.data);
+        return res;
+      } catch (err) {
+        const cached = readStoreScoped("kk.menu.system.v1", null);
+        if (cached && !err?.response) return { data: cached };
+        throw err;
+      }
+    },
     staleTime: Infinity,
     refetchOnWindowFocus: false,
   });

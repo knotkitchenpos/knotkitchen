@@ -5,6 +5,7 @@ import { layoutKot, layoutReceipt, paperOf } from "./receiptLayout.js";
 import { ditherInPlace, rasterJob, toMonochrome } from "./escpos.js";
 import { catJob } from "./catprinter.js";
 import { loadPrinterConfig, sendToPrinter } from "./printerDevice.js";
+import { readStoreScoped, writeStoreScoped } from "./storeSession.js";
 
 /**
  * Print a receipt for a saved order -- the one way the POS prints a bill.
@@ -36,8 +37,21 @@ export const receiptContextFrom = (props = {}, posSettings = props.posSettings) 
   settings: { ...(posSettings || {}), websiteLink: posSettings?.websiteLink || props.websiteUrl || "" },
 });
 
-export const loadReceiptContext = async () =>
-  receiptContextFrom((await getStoreProperties())?.data?.data || {});
+/**
+ * Store Properties for the receipt. The last good copy is kept on the
+ * device so an order taken offline still prints with the right header.
+ */
+export const loadReceiptContext = async () => {
+  try {
+    const props = (await getStoreProperties())?.data?.data || {};
+    writeStoreScoped("kk.receiptProps.v1", props);
+    return receiptContextFrom(props);
+  } catch (err) {
+    const cached = readStoreScoped("kk.receiptProps.v1", null);
+    if (cached && !err?.response) return receiptContextFrom(cached);
+    throw err;
+  }
+};
 
 /** An image as a bitmap the canvas can read back. A missing or blocked image is left off the receipt. */
 const loadBitmap = async (url) => {

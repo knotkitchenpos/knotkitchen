@@ -27,6 +27,7 @@ import ActivityLogView from "../components/dashboard/ActivityLogView";
 import DeviceConfiguration from "../components/settings/DeviceConfiguration";
 import ShiftView from "../components/settings/ShiftView";
 import InventoryView from "../components/settings/InventoryView";
+import CustomersView from "../components/settings/CustomersView";
 
 /* ---------- Icons ---------- */
 const I = {
@@ -1769,6 +1770,7 @@ const MENU_ITEMS = [
   { id: "reports", title: "9. Reports", desc: "Sales, revenue and order breakdowns.", Icon: I.chart, path: "/reports" },
   { id: "shift", title: "Shift & Day End", desc: "Open the till with a float, close with a cash count, print the Z report.", Icon: I.cash, mode: "view" },
   { id: "inventory", title: "Inventory", desc: "Ingredients, stock levels, recipes per dish, wastage. Sales deplete stock automatically.", Icon: I.boxes, mode: "view" },
+  { id: "customers", title: "Customers", desc: "Everyone who ordered: visits, spend, notes and tags.", Icon: I.users, mode: "view" },
   // Reachable even when the account is locked -- it is the only screen that
   // can clear a lock, so it must never be gated. See middlewares/accountLock.js.
   { id: "billing", title: "Billing & Subscription", desc: "Business Balance, plan, invoices and transactions.", Icon: I.fileText, path: "/settings/billing" },
@@ -1860,6 +1862,8 @@ const Settings = () => {
           <ShiftView />
         ) : activeSubView === "inventory" ? (
           <InventoryView />
+        ) : activeSubView === "customers" ? (
+          <CustomersView />
         ) : activeSubView === "activity" ? (
           <ActivityLogView />
         ) : (

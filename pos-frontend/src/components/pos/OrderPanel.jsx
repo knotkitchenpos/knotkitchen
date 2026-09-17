@@ -40,6 +40,7 @@ import { getMyRestaurant } from "../../https/newModules";
 import { getWebsiteSettings } from "../../https/storefrontApi";
 import Invoice from "../invoice/Invoice";
 import { toOrderItems } from "../../utils/orderItems";
+import { enqueueOrder, isNetworkError, localOrderView } from "../../utils/offlineQueue";
 import { tableLabel } from "../../utils/orderLabels";
 import CollectionModal from "./CollectionModal";
 import DeliveryModal from "./DeliveryModal";
@@ -297,9 +298,20 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
 
   const tableUpdate = useMutation({ mutationFn: (d) => updateTable(d) });
 
-  /* The single order-create mutation: create, then show the invoice. */
+  /* The single order-create mutation: create, then show the invoice.
+   * No internet: the order is kept on this device and synced later; the
+   * cashier sees the same invoice and can print it. */
   const orderMutation = useMutation({
-    mutationFn: (d) => addOrder(d),
+    mutationFn: async (d) => {
+      try {
+        return await addOrder(d);
+      } catch (err) {
+        if (!isNetworkError(err)) throw err;
+        const entry = enqueueOrder(d);
+        enqueueSnackbar(`No internet: order ${entry.localNumber} saved on this device, it will sync later.`, { variant: "warning" });
+        return { data: { data: localOrderView(entry), offline: true } };
+      }
+    },
     onSuccess: (res) => {
       const data = res.data?.data;
       if (data?.table) {

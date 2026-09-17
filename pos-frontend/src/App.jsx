@@ -26,6 +26,8 @@ import TableBookingPopup from "./components/dashboard/TableBookingPopup";
 import PrepDuePopup from "./components/dashboard/PrepDuePopup";
 import AddedItemsPopup from "./components/dashboard/AddedItemsPopup";
 import useAutoReceiptPrint from "./hooks/useAutoReceiptPrint";
+import useOfflineQueue from "./hooks/useOfflineQueue";
+import OfflineBanner from "./components/shared/OfflineBanner";
 
 function ProtectedRoutes({ children }) {
   const { isAuth } = useSelector((state) => state.user);
@@ -42,6 +44,8 @@ function Layout() {
   useAutoReceiptPrint();
   const location = useLocation();
   const { isAuth } = useSelector((state) => state.user);
+  // Orders taken with no internet wait on this device and sync when it is back.
+  const offline = useOfflineQueue(Boolean(isAuth));
   const [mobileOpen, setMobileOpen] = useState(false);
 
   // Chrome-less pages: everything a guest can open, plus the owner's own
@@ -95,6 +99,7 @@ function Layout() {
       {/* Below lg the bottom navigation covers the last 60px (+ the home bar). */}
       <main className={`flex min-h-0 flex-1 min-w-0 flex-col overflow-hidden ${lock.locked ? "" : "pb-[calc(60px+env(safe-area-inset-bottom))] lg:pb-0"}`}>
         {!lock.locked && <MobileNav onMore={() => setMobileOpen(true)} />}
+        {isAuth && <OfflineBanner online={offline.online} queued={offline.queued} onSync={offline.flush} />}
         {isAuth && <AccountLockBanner {...lock} />}
         {lock.locked ? <LockRedirect /> : null}
         {routes}
