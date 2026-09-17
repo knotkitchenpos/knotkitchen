@@ -74,3 +74,10 @@ test("REGRESSION: a table payment on a standalone mongod no longer calls into a 
   assert.ok(!/mongoSession\.(commit|abort)Transaction/.test(fn), "guard the fallback where mongoSession is null");
   assert.match(fn, /mongoSession\?\.commitTransaction\(\)/);
 });
+
+test("REGRESSION: the table-session payment key is unique per restaurant, not globally", () => {
+  const model = read("models", "tableSessionModel.js");
+  assert.match(model, /\{ restaurantId: 1, "paymentHistory\.idempotencyKey": 1 \}/);
+  assert.ok(!/\{ "paymentHistory\.idempotencyKey": 1 \}/.test(model), "the global index spec must not come back");
+  assert.ok(fs.existsSync(path.join(__dirname, "..", "migrations", "010-tenant-scope-payment-idempotency-index.js")), "and the old index is dropped by a migration");
+});

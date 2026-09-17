@@ -157,9 +157,11 @@ tableSessionSchema.index(
 tableSessionSchema.index({ restaurantId: 1, status: 1 });
 tableSessionSchema.index({ outletId: 1, status: 1 });
 
-// Duplicate-payment guard at DB level: one successful payment per idempotency key
+// Duplicate-payment guard at DB level: one successful payment per idempotency
+// key, per restaurant. The key is chosen by the till, so the index is scoped
+// like every other idempotency index (see migrations/010 for the old global one).
 tableSessionSchema.index(
-  { "paymentHistory.idempotencyKey": 1 },
+  { restaurantId: 1, "paymentHistory.idempotencyKey": 1 },
   {
     unique: true,
     partialFilterExpression: { "paymentHistory.idempotencyKey": { $ne: "" }, "paymentHistory.status": "PAID" },

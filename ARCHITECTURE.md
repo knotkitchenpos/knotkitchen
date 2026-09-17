@@ -513,11 +513,14 @@ The customer website is `customer-web` only. The POS used to carry a second copy
 
 - **Order totals** are `services/price.js#computeTotals`, used by the table bill (`calculateBill`), the website (`orderPricingService`) and order edits (`onlineOrderController`). Discount reduces the tax base; service and packaging charges are inside it; delivery is outside; `ordering.taxInclusive` extracts tax instead of adding it. Bills carry `taxPercent` and `taxInclusive` so an edit can be re-struck at the rate it was billed at.
 - **A stored line's amount** is `services/orderItemAmounts.js#resolveItemAmounts` (receipts and reports alike): a legacy POS line keeps the line total in `price` with `total` at 0.
-- **Once-only writes** go through `services/idempotency.js#findOrCreate`: the ledger, storefront orders (placed and paid-then-placed), the customer record, offline sync, and both QR order paths. The payment-link capture creates inside a transaction and catches the lost race at the transaction boundary instead. The table-session `paymentHistory` guard is an in-document array and stays as it is; its unique index is global rather than per restaurant, which is an index migration when it matters.
+- **Once-only writes** go through `services/idempotency.js#findOrCreate`: the ledger, storefront orders (placed and paid-then-placed), the customer record, offline sync, and both QR order paths. The payment-link capture creates inside a transaction and catches the lost race at the transaction boundary instead. The table-session `paymentHistory` guard is an in-document array; its unique index is `{ restaurantId, paymentHistory.idempotencyKey }` like every other idempotency index (migration 010 drops the old global one).
 
-### 11.5 Known debt, deliberately left
+### 11.5 Manage Menu
 
-- `components/dashboard/ManageMenu.jsx` (~2300 lines) still owns every form's state; the drawers under `manageMenu/` receive it as props. Moving the state into each drawer is the next cut.
+`components/dashboard/ManageMenu.jsx` is the list, the drill-down and the mutations. Each drawer under `manageMenu/` owns its own form state and loads it when it opens from the record the page hands it (`editing`, null for create); the page never holds a form field. A drawer keys its load on the record's identity, not the object, so a background refetch of the menu does not wipe what is being typed.
+
+### 11.6 Known debt, deliberately left
+
 - `customer-web/src/lib/dispatch.js` mirrors `services/menuCache.dispatchLabel`; a test keeps them in step because the apps cannot import from each other.
 
 ### DEVELOPMENT RULE

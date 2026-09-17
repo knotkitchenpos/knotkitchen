@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
-import { selectionTypeOf } from "../../utils/modifierGroups";
 import { readStoreScoped, writeStoreScoped } from "../../utils/storeSession";
 import {
   addCategory,
@@ -121,73 +120,14 @@ const ManageMenu = () => {
   };
   const closeConfirm = () => setConfirmState(null);
 
-  // Group Management Form states (Module 4 & 7)
+  // What each drawer is editing (null = create). The form state itself lives
+  // in the drawer; the page only says which record to load into it.
   const [editingGroup, setEditingGroup] = useState(null);
-  const [editingCompIndex, setEditingCompIndex] = useState(null);
-  const [groupName, setGroupName] = useState("");
-  const [groupRequired, setGroupRequired] = useState(false);
-  const [groupMax, setGroupMax] = useState("1");
-  // OFF by default: the customer may pick as many options as they like. ON
-  // caps them at groupMax. Previously a "multiple" group always carried a
-  // number, so there was no way to express "no limit".
-  const [groupMaxEnabled, setGroupMaxEnabled] = useState(false);
-  // Starts EMPTY. A group used to open with a placeholder component already
-  // in the list, which then had to be noticed and deleted.
-  const [extrasList, setExtrasList] = useState([]);
-  const [extraNameInput, setExtraNameInput] = useState("");
-  const [extraPriceInput, setExtraPriceInput] = useState("0");
-  const [assignedDishIds, setAssignedDishIds] = useState(new Set());
-
-  // Form states for Category/Subcategory
+  const [editingComponent, setEditingComponent] = useState(null); // { index, name, price }
   const [editingCategory, setEditingCategory] = useState(null);
   const [editingSubcategory, setEditingSubcategory] = useState(null);
-  const [catPublished, setCatPublished] = useState(true);
-  // Only meaningful while Display Status is OFF — they let a hidden category
-  // still appear on one surface.
-  const [catShowOnPos, setCatShowOnPos] = useState(false);
-  const [catShowOnWebsite, setCatShowOnWebsite] = useState(false);
-  const [catName, setCatName] = useState("");
-  const [catDesc, setCatDesc] = useState("");
-  const [dispatchAll, setDispatchAll] = useState(true);
-  const [dispatchCol, setDispatchCol] = useState(true);
-  const [dispatchDel, setDispatchDel] = useState(true);
-  const [dispatchTbl, setDispatchTbl] = useState(true);
-  const [bgColor, setBgColor] = useState("#0249fd");
-  const [textColor, setTextColor] = useState("#ffffff");
-
-  // Product Form & View states (Module 4)
   const [editingProduct, setEditingProduct] = useState(null);
   const [viewingProduct, setViewingProduct] = useState(null);
-  const [prodAvailable, setProdAvailable] = useState(true);
-  const [prodScheduleEnabled, setProdScheduleEnabled] = useState(false);
-  const [prodStartTime, setProdStartTime] = useState("09:00");
-  const [prodEndTime, setProdEndTime] = useState("23:00");
-  const [prodDaysOfWeek, setProdDaysOfWeek] = useState([0, 1, 2, 3, 4, 5, 6]);
-
-  // Form states for Product
-  const [prodName, setProdName] = useState("");
-  const [prodDesc, setProdDesc] = useState("");
-  const [prodPrice, setProdPrice] = useState("100");
-  const [prodSamePrice, setProdSamePrice] = useState(true);
-  const [channelPrices, setChannelPrices] = useState({
-    posCollection: "100",
-    posDelivery: "100",
-    posTable: "100",
-    websiteCollection: "100",
-    websiteDelivery: "100",
-    websiteTable: "100",
-  });
-  const [prodVeg, setProdVeg] = useState(true);
-  const [prodDisplay, setProdDisplay] = useState("both"); // both, system, website
-  // Only meaningful while Display Status is OFF — they keep the product live
-  // on exactly one surface instead of removing it from both.
-  const [prodOffOnPos, setProdOffOnPos] = useState(false);
-  const [prodOffOnWebsite, setProdOffOnWebsite] = useState(false);
-  const [prodImageUrl, setProdImageUrl] = useState("");
-  const [uploadingImg, setUploadingImg] = useState(false);
-  // Names of modifier groups assigned to the product being created/edited (Module 4) - array preserves selection order
-  const [prodAssignedGroupNames, setProdAssignedGroupNames] = useState([]);
-  const [selectionType, setSelectionType] = useState("single"); // "single" | "multiple"
 
   const { data: menusRes, isLoading } = useQuery({ queryKey: ["menus"], queryFn: getMenus });
   const menus = menusRes?.data?.data || [];
@@ -460,7 +400,7 @@ const ManageMenu = () => {
       enqueueSnackbar("Main Category added!", { variant: "success" });
       invalidate();
       setShowCreateCategory(false);
-      resetCategoryForm();
+      setEditingCategory(null);
     },
     onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to add category", { variant: "error" }),
   });
@@ -471,7 +411,7 @@ const ManageMenu = () => {
       enqueueSnackbar("Category updated!", { variant: "success" });
       invalidate();
       setShowCreateCategory(false);
-      resetCategoryForm();
+      setEditingCategory(null);
     },
     onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to update category", { variant: "error" }),
   });
@@ -482,7 +422,7 @@ const ManageMenu = () => {
       enqueueSnackbar("Subcategory added!", { variant: "success" });
       invalidate();
       setShowCreateSubcategory(false);
-      resetCategoryForm();
+      setEditingSubcategory(null);
     },
     onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to add subcategory", { variant: "error" }),
   });
@@ -493,7 +433,7 @@ const ManageMenu = () => {
       enqueueSnackbar("Subcategory updated!", { variant: "success" });
       invalidate();
       setShowCreateSubcategory(false);
-      resetCategoryForm();
+      setEditingSubcategory(null);
     },
     onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to update subcategory", { variant: "error" }),
   });
@@ -504,7 +444,7 @@ const ManageMenu = () => {
       enqueueSnackbar("Product added!", { variant: "success" });
       invalidate();
       setShowCreateProduct(false);
-      resetProductForm();
+      setEditingProduct(null);
     },
     onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to add product", { variant: "error" }),
   });
@@ -516,7 +456,6 @@ const ManageMenu = () => {
       invalidate();
       setShowCreateProduct(false);
       setEditingProduct(null);
-      resetProductForm();
     },
     onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to update product", { variant: "error" }),
   });
@@ -691,85 +630,8 @@ const ManageMenu = () => {
     }
   };
 
-  const resetCategoryForm = () => {
-    setCatName("");
-    setCatDesc("");
-    setDispatchAll(true);
-    setDispatchCol(true);
-    setDispatchDel(true);
-    setDispatchTbl(true);
-    setBgColor("#0249fd");
-    setTextColor("#ffffff");
-    setCatPublished(true);
-    setEditingCategory(null);
-    setEditingSubcategory(null);
-  };
-
-  const resetProductForm = () => {
-    setProdName("");
-    setProdDesc("");
-    setProdPrice("100");
-    setProdSamePrice(true);
-    setChannelPrices({
-      posCollection: "100",
-      posDelivery: "100",
-      posTable: "100",
-      websiteCollection: "100",
-      websiteDelivery: "100",
-      websiteTable: "100",
-    });
-    setProdVeg(true);
-    setProdDisplay("both");
-    setProdImageUrl("");
-    setDispatchAll(true);
-    setDispatchCol(true);
-    setDispatchDel(true);
-    setDispatchTbl(true);
-    setProdAvailable(true);
-    setProdOffOnPos(false);
-    setProdOffOnWebsite(false);
-    setProdScheduleEnabled(false);
-    setProdStartTime("09:00");
-    setProdEndTime("23:00");
-    setProdDaysOfWeek([0, 1, 2, 3, 4, 5, 6]);
-    setProdAssignedGroupNames([]);
-    setEditingProduct(null);
-  };
-
-  const populateProductForm = (item) => {
+  const openProductDrawer = (item) => {
     setEditingProduct(item);
-    const existingGroupNames = Array.isArray(item?.modifierGroups)
-      ? item.modifierGroups.map((g) => g?.name).filter(Boolean)
-      : [];
-    setProdAssignedGroupNames(existingGroupNames);
-    setProdName(item.name || "");
-    setProdDesc(item.description || "");
-    setProdPrice(String(item.price ?? "100"));
-    setProdSamePrice(item.samePrice !== false);
-    setChannelPrices({
-      posCollection: String(item.channelPrices?.posCollection ?? item.price ?? "100"),
-      posDelivery: String(item.channelPrices?.posDelivery ?? item.price ?? "100"),
-      posTable: String(item.channelPrices?.posTable ?? item.price ?? "100"),
-      websiteCollection: String(item.channelPrices?.websiteCollection ?? item.price ?? "100"),
-      websiteDelivery: String(item.channelPrices?.websiteDelivery ?? item.price ?? "100"),
-      websiteTable: String(item.channelPrices?.websiteTable ?? item.price ?? "100"),
-    });
-    setProdVeg(item.isVegetarian !== false);
-    setProdDisplay(item.displayTarget || "both");
-    setProdImageUrl(item.imageUrl || item.image || "");
-    const dt = item.dispatchType || { collection: true, delivery: true, table: true };
-    setDispatchAll(Boolean(dt.collection && dt.delivery && dt.table));
-    setDispatchCol(Boolean(dt.collection));
-    setDispatchDel(Boolean(dt.delivery));
-    setDispatchTbl(Boolean(dt.table));
-    setProdAvailable(item.isAvailable !== false);
-    setProdOffOnPos(item.visibleOnPosWhenOff === true);
-    setProdOffOnWebsite(item.visibleOnWebsiteWhenOff === true);
-    const sch = item.schedule || {};
-    setProdScheduleEnabled(Boolean(sch.enabled));
-    setProdStartTime(sch.startTime || "09:00");
-    setProdEndTime(sch.endTime || "23:00");
-    setProdDaysOfWeek(Array.isArray(sch.daysOfWeek) && sch.daysOfWeek.length ? sch.daysOfWeek : [0, 1, 2, 3, 4, 5, 6]);
     setShowCreateProduct(true);
   };
 
@@ -903,142 +765,6 @@ const ManageMenu = () => {
         setShowBulkMenu(false);
       },
     });
-  };
-
-  const handleSaveCategory = () => {
-    if (!catName.trim()) {
-      enqueueSnackbar("Category name is required.", { variant: "warning" });
-      return;
-    }
-    const dispatchType = dispatchAll
-      ? { collection: true, delivery: true, table: true }
-      : { collection: dispatchCol, delivery: dispatchDel, table: dispatchTbl };
-
-    if (showCreateSubcategory && activeCategory) {
-      if (editingSubcategory) {
-        updateSubcatMut.mutate({
-          menuId: activeCategory._id,
-          subcategoryId: editingSubcategory?._id || editingSubcategory?.id,
-          oldName: typeof editingSubcategory === "string" ? editingSubcategory : editingSubcategory?.name || editingSubcategory?._id || "",
-          name: catName,
-          description: catDesc,
-          dispatchType,
-          published: catPublished,
-          textColor,
-        });
-      } else {
-        addSubcatMut.mutate({
-          menuId: activeCategory._id,
-          name: catName,
-          description: catDesc,
-          dispatchType,
-          textColor,
-        });
-      }
-    } else {
-      if (editingCategory) {
-        updateCategoryMut.mutate({
-          menuId: editingCategory._id,
-          name: catName,
-          description: catDesc,
-          dispatchType,
-          published: catPublished,
-          showOnPos: catPublished ? false : catShowOnPos,
-          showOnWebsite: catPublished ? false : catShowOnWebsite,
-          textColor,
-        });
-      } else {
-        addCategoryMut.mutate({
-          name: catName,
-          description: catDesc,
-          dispatchType,
-          published: catPublished,
-          showOnPos: catPublished ? false : catShowOnPos,
-          showOnWebsite: catPublished ? false : catShowOnWebsite,
-          textColor,
-        });
-      }
-    }
-  };
-
-  const handleSaveProduct = () => {
-    if (!prodName.trim() || !activeCategory) {
-      enqueueSnackbar("Product name is required.", { variant: "warning" });
-      return;
-    }
-
-    const priceNum = Number(prodPrice);
-    if (!Number.isFinite(priceNum) || priceNum < 0) {
-      enqueueSnackbar("Price cannot be negative.", { variant: "warning" });
-      return;
-    }
-
-    if (!prodSamePrice) {
-      for (const [k, v] of Object.entries(channelPrices)) {
-        if (Number(v) < 0) {
-          enqueueSnackbar(`Channel price for ${k} cannot be negative.`, { variant: "warning" });
-          return;
-        }
-      }
-    }
-
-    const dispatchType = dispatchAll
-      ? { collection: true, delivery: true, table: true }
-      : { collection: dispatchCol, delivery: dispatchDel, table: dispatchTbl };
-
-    const schedule = {
-      enabled: prodScheduleEnabled,
-      startTime: prodStartTime || "09:00",
-      endTime: prodEndTime || "23:00",
-      daysOfWeek: prodDaysOfWeek,
-    };
-
-    const payload = {
-      menuId: activeCategory?._id,
-      category: activeCategory?.name || "",
-      subcategory: activeSubcategory || undefined,
-      name: prodName,
-      price: priceNum,
-      description: prodDesc,
-      dispatchType,
-      bgColor,
-      textColor,
-      samePrice: prodSamePrice,
-      channelPrices: prodSamePrice
-        ? undefined
-        : {
-            posCollection: Number(channelPrices.posCollection) || priceNum,
-            posDelivery: Number(channelPrices.posDelivery) || priceNum,
-            posTable: Number(channelPrices.posTable) || priceNum,
-            websiteCollection: Number(channelPrices.websiteCollection) || priceNum,
-            websiteDelivery: Number(channelPrices.websiteDelivery) || priceNum,
-            websiteTable: Number(channelPrices.websiteTable) || priceNum,
-          },
-      isVegetarian: prodVeg,
-      displayTarget: prodDisplay,
-      visibleOnPosWhenOff: prodAvailable ? false : prodOffOnPos,
-      visibleOnWebsiteWhenOff: prodAvailable ? false : prodOffOnWebsite,
-      imageUrl: prodImageUrl,
-      isAvailable: prodAvailable,
-      schedule,
-      modifierGroups: prodAssignedGroupNames
-        .map((name) => {
-          const g = allGroupsMap.get(name);
-          if (!g) return { name, required: false, maxSelections: 1, options: [] };
-          return {
-            name: g.name,
-            required: Boolean(g.required),
-            maxSelections: g.maxSelections || 1,
-            options: Array.isArray(g.options) ? g.options : [],
-          };
-        }),
-    };
-
-    if (editingProduct) {
-      updateDishMut.mutate({ ...payload, itemId: editingProduct._id });
-    } else {
-      addDishMut.mutate(payload);
-    }
   };
 
   return (
@@ -1323,7 +1049,7 @@ const ManageMenu = () => {
               !activeCategory ? (
                 <button
                   onClick={() => {
-                    resetCategoryForm();
+                    setEditingCategory(null);
                     setShowCreateCategory(true);
                   }}
                   className="h-[36px] px-3.5 rounded-xl bg-[#FD5302] text-white text-[12.5px] font-bold hover:bg-[#D64502]"
@@ -1351,7 +1077,6 @@ const ManageMenu = () => {
                       setShowCreateProduct(false);
                       setEditingCategory(null);
                       setEditingSubcategory(null);
-                      resetCategoryForm();
                       setShowCreateSubcategory(true);
                     }}
                     className="h-[36px] px-3 rounded-xl border border-[#FD5302] text-[#C2410C] text-[12.5px] font-bold hover:bg-[#FFF1E8]"
@@ -1366,7 +1091,6 @@ const ManageMenu = () => {
                       setShowCreateCategory(false);
                       setShowCreateSubcategory(false);
                       setEditingProduct(null);
-                      resetProductForm();
                       setShowCreateProduct(true);
                     }}
                     className="h-[36px] px-3 rounded-xl bg-[#FD5302] text-white text-[12.5px] font-bold hover:bg-[#D64502]"
@@ -1378,13 +1102,8 @@ const ManageMenu = () => {
             ) : (
               <button
                 onClick={() => {
-                  setGroupName("");
-                  setGroupRequired(false);
-                  setGroupMax("1");
-                  setSelectionType("single");
-                  setExtrasList([]);
-                  setGroupMaxEnabled(false);
-                  setAssignedDishIds(new Set());
+                  setEditingGroup(null);
+                  setEditingComponent(null);
                   setShowManageGroup(true);
                 }}
                 className="h-[36px] px-3.5 rounded-xl bg-[#FD5302] text-white text-[12.5px] font-bold hover:bg-[#D64502]"
@@ -1429,13 +1148,7 @@ const ManageMenu = () => {
                     <button
                       onClick={() => {
                         setEditingGroup(activeGroup);
-                        setGroupName(activeGroup.name);
-                        setGroupRequired(activeGroup.required);
-                        setGroupMax(String(activeGroup.maxSelections || 1));
-                        setGroupMaxEnabled(activeGroup.maxSelectionEnabled === true);
-                        setSelectionType(selectionTypeOf(activeGroup));
-                        setExtrasList((activeGroup.options || []).map((o) => ({ name: o?.name || "", price: String(o?.price ?? "0") })));
-                        setAssignedDishIds(new Set(activeGroup.dishIds));
+                        setEditingComponent(null);
                         setShowManageGroup(true);
                       }}
                       className="h-[38px] px-4 rounded-xl bg-[#0F172A] text-white text-[13px] font-bold hover:bg-[#1E293B]"
@@ -1469,16 +1182,7 @@ const ManageMenu = () => {
                             <button
                               onClick={() => {
                                 setEditingGroup(activeGroup);
-                                setGroupName(activeGroup.name);
-                                setGroupRequired(activeGroup.required);
-                                setGroupMax(String(activeGroup.maxSelections || 1));
-                                setGroupMaxEnabled(activeGroup.maxSelectionEnabled === true);
-                                setSelectionType(selectionTypeOf(activeGroup));
-                                setExtrasList((activeGroup.options || []).map((o) => ({ name: o?.name || "", price: String(o?.price ?? "0") })));
-                                setAssignedDishIds(new Set(activeGroup.dishIds));
-                                setExtraNameInput(opt.name);
-                                setExtraPriceInput(String(opt.price));
-                                setEditingCompIndex(idx);
+                                setEditingComponent({ index: idx, name: opt.name, price: opt.price });
                                 setShowManageGroup(true);
                               }}
                               className="h-[28px] px-2 rounded-lg border border-[#E2E8F0] text-[11px] font-bold text-[#334155] hover:bg-[#FFF1E8]"
@@ -1547,14 +1251,8 @@ const ManageMenu = () => {
                     <p className="font-bold text-[15px] text-[#475569]">No Groups Found</p>
                     <button
                       onClick={() => {
-                        setGroupName("");
-                        setGroupRequired(false);
-                        setGroupMax("1");
-                        setSelectionType("single");
-                        setExtrasList([]);
-                        setGroupMaxEnabled(false);
-                        setAssignedDishIds(new Set());
                         setEditingGroup(null);
+                        setEditingComponent(null);
                         setShowManageGroup(true);
                       }}
                       className="h-[36px] px-4 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold hover:bg-[#D64502]"
@@ -1640,13 +1338,7 @@ const ManageMenu = () => {
                             onClick={(e) => {
                               e.stopPropagation();
                               setEditingGroup(group);
-                              setGroupName(group.name);
-                              setGroupRequired(group.required);
-                              setGroupMax(String(group.maxSelections || 1));
-                              setGroupMaxEnabled(group.maxSelectionEnabled === true);
-                              setSelectionType(selectionTypeOf(group));
-                              setExtrasList((group.options || []).map((o) => ({ name: o?.name || "", price: String(o?.price ?? "0") })));
-                              setAssignedDishIds(new Set(group.dishIds));
+                              setEditingComponent(null);
                               setShowManageGroup(true);
                             }}
                             className="h-[34px] px-4 rounded-lg bg-[#0F172A] text-white text-[12.5px] font-bold hover:bg-[#1E293B]"
@@ -1765,18 +1457,6 @@ const ManageMenu = () => {
                       onClick={(e) => {
                         e.stopPropagation();
                         setEditingCategory(menu);
-                        setCatName(menu.name);
-                        setCatDesc(menu.description || "");
-                        setCatPublished(menu.published !== false);
-                        const dt = menu.dispatchType || { collection: true, delivery: true, table: true };
-                        setDispatchAll(Boolean(dt.collection && dt.delivery && dt.table));
-                        setDispatchCol(Boolean(dt.collection));
-                        setDispatchDel(Boolean(dt.delivery));
-                        setDispatchTbl(Boolean(dt.table));
-                        setBgColor(menu.bgColor || "#FD5302");
-                        setCatShowOnPos(menu.showOnPos === true);
-                        setCatShowOnWebsite(menu.showOnWebsite === true);
-                        setTextColor(menu.textColor || "#ffffff");
                         setShowCreateCategory(true);
                       }}
                       className="h-[34px] px-3.5 rounded-xl border border-[#CBD5E1] text-[#334155] text-[12px] font-bold hover:bg-[#FFF1E8]"
@@ -1939,7 +1619,7 @@ const ManageMenu = () => {
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
-                          populateProductForm(item);
+                          openProductDrawer(item);
                         }}
                         className="h-[34px] px-3.5 rounded-xl border border-[#CBD5E1] text-[#334155] text-[12px] font-bold hover:bg-[#FFF1E8]"
                       >
@@ -2065,18 +1745,6 @@ const ManageMenu = () => {
                                       (s) => (typeof s === "string" ? s : s?.name) === subcat
                                     );
                                     setEditingSubcategory(subcatObj || { name: subcat });
-                                    setCatName(subcat);
-                                    setCatDesc(typeof subcatObj === "object" ? subcatObj?.description || "" : "");
-                                    setCatPublished(typeof subcatObj === "object" ? subcatObj?.published !== false : true);
-                                    const dt = typeof subcatObj === "object" && subcatObj?.dispatchType
-                                      ? subcatObj.dispatchType
-                                      : { collection: true, delivery: true, table: true };
-                                    setDispatchAll(Boolean(dt.collection && dt.delivery && dt.table));
-                                    setDispatchCol(Boolean(dt.collection));
-                                    setDispatchDel(Boolean(dt.delivery));
-                                    setDispatchTbl(Boolean(dt.table));
-                                    setBgColor(typeof subcatObj === "object" ? subcatObj?.bgColor || "#0249fd" : "#0249fd");
-                                    setTextColor(typeof subcatObj === "object" ? subcatObj?.textColor || "#ffffff" : "#ffffff");
                                     setShowCreateSubcategory(true);
                                   }}
                                   className="h-[28px] px-2.5 rounded-lg border border-[#CBD5E1] text-[11.5px] font-bold text-[#334155] hover:bg-[#FFF1E8] hover:border-[#FD5302]"
@@ -2120,72 +1788,36 @@ const ManageMenu = () => {
       </div>
 
       <CategoryDrawer
-        {...{
-          addCategoryMut,
-          addSubcatMut,
-          catDesc,
-          catName,
-          catPublished,
-          catShowOnPos,
-          catShowOnWebsite,
-          dispatchAll,
-          dispatchCol,
-          dispatchDel,
-          dispatchTbl,
-          editingCategory,
-          editingSubcategory,
-          handleSaveCategory,
-          resetCategoryForm,
-          setCatDesc,
-          setCatName,
-          setCatPublished,
-          setCatShowOnPos,
-          setCatShowOnWebsite,
-          setDispatchAll,
-          setDispatchCol,
-          setDispatchDel,
-          setDispatchTbl,
-          setShowCreateCategory,
-          setShowCreateSubcategory,
-          showCreateCategory,
-          showCreateSubcategory,
-          updateCategoryMut,
-          updateSubcatMut,
+        open={showCreateCategory || showCreateSubcategory}
+        mode={showCreateSubcategory ? "subcategory" : "category"}
+        editing={showCreateSubcategory ? editingSubcategory : editingCategory}
+        activeCategory={activeCategory}
+        addCategoryMut={addCategoryMut}
+        updateCategoryMut={updateCategoryMut}
+        addSubcatMut={addSubcatMut}
+        updateSubcatMut={updateSubcatMut}
+        onClose={() => {
+          setShowCreateCategory(false);
+          setShowCreateSubcategory(false);
+          setEditingCategory(null);
+          setEditingSubcategory(null);
         }}
       />
 
       <GroupDrawer
-        {...{
-          askConfirm,
-          assignedDishIds,
-          deleteGroupMut,
-          editingCompIndex,
-          editingGroup,
-          extraNameInput,
-          extraPriceInput,
-          extrasList,
-          groupMax,
-          groupMaxEnabled,
-          groupName,
-          groupRequired,
-          handleDeleteGroup,
-          menus,
-          saveGroupMut,
-          selectionType,
-          setAssignedDishIds,
-          setCustomCreatedGroups,
-          setEditingCompIndex,
-          setEditingGroup,
-          setExtraNameInput,
-          setExtraPriceInput,
-          setExtrasList,
-          setGroupMax,
-          setGroupMaxEnabled,
-          setGroupName,
-          setGroupRequired,
-          setSelectionType,
-          setShowManageGroup,
-          showManageGroup,
+        open={showManageGroup}
+        editing={editingGroup}
+        component={editingComponent}
+        menus={menus}
+        saveGroupMut={saveGroupMut}
+        deleteGroupMut={deleteGroupMut}
+        askConfirm={askConfirm}
+        handleDeleteGroup={handleDeleteGroup}
+        setCustomCreatedGroups={setCustomCreatedGroups}
+        onClose={() => {
+          setShowManageGroup(false);
+          setEditingGroup(null);
+          setEditingComponent(null);
         }}
       />
 
@@ -2204,62 +1836,22 @@ const ManageMenu = () => {
         onClose={() => setViewingProduct(null)}
         onEdit={(item) => {
           setViewingProduct(null);
-          populateProductForm(item);
+          openProductDrawer(item);
         }}
       />
 
       <ProductDrawer
-        {...{
-          addDishMut,
-          channelPrices,
-          dispatchAll,
-          dispatchCol,
-          dispatchDel,
-          dispatchTbl,
-          editingProduct,
-          groupsList,
-          handleSaveProduct,
-          prodAssignedGroupNames,
-          prodAvailable,
-          prodDaysOfWeek,
-          prodDesc,
-          prodDisplay,
-          prodEndTime,
-          prodImageUrl,
-          prodName,
-          prodOffOnPos,
-          prodOffOnWebsite,
-          prodPrice,
-          prodSamePrice,
-          prodScheduleEnabled,
-          prodStartTime,
-          prodVeg,
-          resetProductForm,
-          setChannelPrices,
-          setDispatchAll,
-          setDispatchCol,
-          setDispatchDel,
-          setDispatchTbl,
-          setProdAssignedGroupNames,
-          setProdAvailable,
-          setProdDaysOfWeek,
-          setProdDesc,
-          setProdDisplay,
-          setProdEndTime,
-          setProdImageUrl,
-          setProdName,
-          setProdOffOnPos,
-          setProdOffOnWebsite,
-          setProdPrice,
-          setProdSamePrice,
-          setProdScheduleEnabled,
-          setProdStartTime,
-          setProdVeg,
-          setShowCreateProduct,
-          setUploadingImg,
-          showCreateProduct,
-          updateDishMut,
-          uploadingImg,
+        open={showCreateProduct}
+        editing={editingProduct}
+        activeCategory={activeCategory}
+        activeSubcategory={activeSubcategory}
+        groupsList={groupsList}
+        allGroupsMap={allGroupsMap}
+        addDishMut={addDishMut}
+        updateDishMut={updateDishMut}
+        onClose={() => {
+          setShowCreateProduct(false);
+          setEditingProduct(null);
         }}
       />
 
