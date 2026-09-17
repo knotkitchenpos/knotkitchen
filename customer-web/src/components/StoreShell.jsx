@@ -1,4 +1,5 @@
 import React, { useRef, useState } from "react";
+import { LegalLinks } from "./landing/parts";
 import { Link } from "react-router-dom";
 import ProductCard from "./ProductCard";
 import { dispatchLabel } from "../lib/dispatch";
@@ -117,7 +118,7 @@ export default function StoreShell({
           })
         )}
 
-        {s.contact ? <Footer contact={s.contact} openingHours={s.openingHours} /> : null}
+        {s.contact ? <Footer contact={s.contact} openingHours={s.openingHours} legal={s.legal} /> : null}
       </main>
 
       {selected ? (
@@ -229,20 +230,34 @@ function Notice({ tone = "info", children }) {
   );
 }
 
-function Footer({ contact, openingHours }) {
+function Footer({ contact, openingHours, legal }) {
   const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   return (
     <footer className="mt-12 border-t pt-6 pb-10 text-sm text-slate-600 grid sm:grid-cols-2 gap-6">
       <div>
         <h3 className="font-semibold text-slate-900 mb-2">Contact</h3>
-        {contact?.phone ? <div>📞 {contact.phone}</div> : null}
-        {contact?.email ? <div>✉️ {contact.email}</div> : null}
+        {contact?.phone ? (
+          <div>
+            📞 <a href={`tel:${String(contact.phone).replace(/[^\d+]/g, "")}`}>{contact.phone}</a>
+          </div>
+        ) : null}
+        {contact?.email ? (
+          <div>
+            ✉️ <a href={`mailto:${contact.email}`}>{contact.email}</a>
+          </div>
+        ) : null}
         {contact?.addressLine1 ? (
           <div className="mt-1">
             {contact.addressLine1}
+            {contact.addressLine2 ? `, ${contact.addressLine2}` : ""}
             {contact.city ? `, ${contact.city}` : ""}
             {contact.postalCode ? ` ${contact.postalCode}` : ""}
           </div>
+        ) : null}
+        {contact?.mapUrl ? (
+          <a href={contact.mapUrl} target="_blank" rel="noreferrer" className="inline-block mt-1 underline underline-offset-2">
+            Open in Google Maps ↗
+          </a>
         ) : null}
       </div>
       {openingHours?.length ? (
@@ -258,6 +273,16 @@ function Footer({ contact, openingHours }) {
           </ul>
         </div>
       ) : null}
+      <div className="sm:col-span-2 border-t pt-4 text-xs text-slate-500">
+        <LegalLinks fssai={legal?.fssaiNumber || ""} />
+        <p className="mt-2">
+          Website designed, hosted &amp; secured by{" "}
+          <a href="https://knotkitchen.com" target="_blank" rel="noreferrer" className="underline">
+            KnotKitchen
+          </a>
+          .
+        </p>
+      </div>
     </footer>
   );
 }

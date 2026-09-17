@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import "./styles/night.css";
 import { useGoogleFont } from "./data";
 import { landingContent } from "./content";
-import { Wordmark, Nav, Lines, VisitDetails, PoweredBy, Photo } from "./parts";
+import { Wordmark, Nav, Lines, VisitDetails, PoweredBy, Photo, LegalLinks } from "./parts";
 
 /** Templates/Food-Peddler-Preview-02-Night — dark, late-night premium. */
 export default function NightMarket({ landing, store, menuPath, onBookTable }) {
@@ -124,6 +124,7 @@ export default function NightMarket({ landing, store, menuPath, onBookTable }) {
           <Wordmark c={c} plain />
         </div>
         <p>{c.footerTagline}</p>
+        <LegalLinks fssai={c.fssai} />
         <PoweredBy />
       </footer>
     </div>

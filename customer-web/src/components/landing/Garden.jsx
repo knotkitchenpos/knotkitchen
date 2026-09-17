@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import "./styles/garden.css";
 import { useGoogleFont } from "./data";
 import { landingContent } from "./content";
-import { Wordmark, Nav, Lines, VisitDetails, PoweredBy, Photo } from "./parts";
+import { Wordmark, Nav, Lines, VisitDetails, PoweredBy, Photo, LegalLinks } from "./parts";
 
 /** Templates/Food-Peddler-Preview-03-Garden — fresh greens, photo first. */
 export default function Garden({ landing, store, menuPath, onBookTable }) {
@@ -123,6 +123,7 @@ export default function Garden({ landing, store, menuPath, onBookTable }) {
           <Wordmark c={c} />
         </div>
         <p>{c.footerTagline}</p>
+        <LegalLinks fssai={c.fssai} />
         <PoweredBy />
       </footer>
     </div>

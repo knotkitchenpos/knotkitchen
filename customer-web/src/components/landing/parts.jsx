@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from "react";
 import "./styles/shared.css";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { telHref } from "./content";
+import { landingRoute, legalPath } from "../../lib/landingRoute";
+import { LEGAL_PAGES } from "../../lib/legalPages";
 
 /**
  * Small pieces the five designs from Templates/ share. Class names are the
@@ -54,7 +56,7 @@ export function useMenuToggle() {
   return { open, toggle: () => setOpen((v) => !v), close: () => setOpen(false) };
 }
 
-/** Name, address, phone and email -- the restaurant's own details. */
+/** Name, address (with a map link), phone and email -- the restaurant's own details, from the POS. */
 export function VisitDetails({ c }) {
   return (
     <>
@@ -66,6 +68,14 @@ export function VisitDetails({ c }) {
             {line}
           </React.Fragment>
         ))}
+        {c.mapUrl ? (
+          <>
+            <br />
+            <a href={c.mapUrl} target="_blank" rel="noreferrer" className="kkt-map">
+              Open in Google Maps ↗
+            </a>
+          </>
+        ) : null}
       </p>
       {c.phone || c.email ? (
         <p>
@@ -86,6 +96,24 @@ export function Lines({ lines }) {
       {line}
     </React.Fragment>
   ));
+}
+
+/**
+ * The five legal pages every restaurant site carries, plus the FSSAI licence
+ * where the restaurant has one. Sits in every design's footer.
+ */
+export function LegalLinks({ fssai = "" }) {
+  const route = landingRoute(useLocation().pathname);
+  return (
+    <nav className="kkt-legal-links" aria-label="Legal">
+      {LEGAL_PAGES.map((p) => (
+        <Link key={p.key} to={legalPath(route, p.key)}>
+          {p.title}
+        </Link>
+      ))}
+      {fssai ? <span className="kkt-fssai">FSSAI Lic. No. {fssai}</span> : null}
+    </nav>
+  );
 }
 
 export function PoweredBy({ className = "powered" }) {

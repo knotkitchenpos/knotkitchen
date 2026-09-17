@@ -1,0 +1,36 @@
+/* The legal pages: the policy template's own look (serif body, accent rules),
+   with the accent taken from the store's theme so it sits with the site. */
+.kk-legal{--lg-ink:#1a1a1a;--lg-sub:#555;--lg-line:#e2e2e2;--lg-accent:var(--primary,#b5442e);--lg-bg:#fdfcfb;
+  font-family:Georgia,'Times New Roman',serif;color:var(--lg-ink);background:var(--lg-bg);min-height:100vh}
+.kk-legal .wrap{max-width:880px;margin:0 auto;padding:28px 20px 90px;line-height:1.7}
+.kk-legal .back{font-family:Arial,sans-serif;font-size:.85rem;color:var(--lg-accent);text-decoration:none;display:inline-block;margin-bottom:18px}
+.kk-legal .back:hover{text-decoration:underline}
+.kk-legal h1{font-size:1.9rem;border-bottom:3px solid var(--lg-accent);padding-bottom:10px;margin:0 0 6px;line-height:1.25}
+.kk-legal .sub{color:var(--lg-sub);font-size:.95rem;margin:0 0 26px}
+.kk-legal .toc-title{font-family:Arial,sans-serif;font-size:.8rem;color:var(--lg-sub);margin-bottom:4px}
+.kk-legal nav{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:34px;font-family:Arial,sans-serif;font-size:.82rem;
+  position:sticky;top:0;background:var(--lg-bg);padding:10px 0;z-index:5}
+.kk-legal nav a{background:#fff;border:1px solid var(--lg-line);padding:6px 11px;border-radius:20px;text-decoration:none;color:var(--lg-accent);min-height:32px;display:inline-flex;align-items:center}
+.kk-legal nav a:hover,.kk-legal nav a.on{background:var(--lg-accent);color:#fff;border-color:var(--lg-accent)}
+.kk-legal h2{font-size:1.45rem;margin-top:48px;padding-top:18px;border-top:2px solid var(--lg-line);color:var(--lg-accent)}
+.kk-legal h2:first-of-type{margin-top:0;border-top:0;padding-top:0}
+.kk-legal h3{font-size:1.1rem;margin-top:28px;color:#333}
+.kk-legal h4{font-size:1rem;margin-top:20px;font-style:italic}
+.kk-legal p,.kk-legal li{font-size:.98rem}
+.kk-legal .callout{background:#fff8f6;border-left:4px solid var(--lg-accent);padding:14px 18px;margin:20px 0;font-size:.92rem}
+.kk-legal ol.legal{padding-left:22px}
+.kk-legal ol.legal li{margin-bottom:10px}
+.kk-legal ul{padding-left:22px}
+.kk-legal .tbl{overflow-x:auto;margin:18px 0}
+.kk-legal table{width:100%;border-collapse:collapse;font-size:.9rem;font-family:Arial,sans-serif;min-width:480px}
+.kk-legal th,.kk-legal td{border:1px solid var(--lg-line);padding:8px 10px;text-align:left;vertical-align:top}
+.kk-legal th{background:#f6efe9}
+.kk-legal a{color:var(--lg-accent)}
+.kk-legal footer{margin-top:60px;font-size:.8rem;color:var(--lg-sub);text-align:center;font-family:Arial,sans-serif}
+.kk-legal .contact-box{background:#fff;border:1px solid var(--lg-line);border-radius:10px;padding:16px 18px;margin:18px 0;font-family:Arial,sans-serif;font-size:.92rem;line-height:1.6}
+.kk-legal .contact-box b{display:block;margin-bottom:4px}
+@media (max-width:640px){
+  .kk-legal .wrap{padding:18px 14px 70px}
+  .kk-legal h1{font-size:1.5rem}
+  .kk-legal h2{font-size:1.25rem;margin-top:36px}
+}

@@ -4,6 +4,7 @@ import MediaLibrary from "../components/media/MediaLibrary";
 import SecurityPinModal from "../components/common/SecurityPinModal";
 import { isOwner, checkActionAuthorization } from "../utils/security";
 import { getWebsiteSettings, updateWebsiteSettings, validateGatewayCredentials } from "../https/storefrontApi";
+import { getMenus } from "../https";
 
 /**
  * Settings → Website (§3, §19, §26).
@@ -15,9 +16,20 @@ import { getWebsiteSettings, updateWebsiteSettings, validateGatewayCredentials }
 
 const TABS = [
   { key: "general", label: "Domain & General" },
-  { key: "payments", label: "Payment Gateway" },
+  { key: "content", label: "About & Popular Items" },
   { key: "contact", label: "Contact" },
+  { key: "legal", label: "Legal Pages" },
+  { key: "payments", label: "Payment Gateway" },
   { key: "media", label: "Website Images" },
+];
+
+/** Manage Website > Legal: the windows the policy pages print, with their defaults. */
+const LEGAL_FIELDS = [
+  ["refundWindowHours", "Refund request window (hours after delivery)", 24],
+  ["refundAckHours", "Acknowledge a refund request within (hours)", 24],
+  ["refundDecisionDays", "Decide a refund within (business days)", 3],
+  ["refundProcessingDays", "Pay an approved refund within (business days)", 7],
+  ["returnWindowDays", "Return window for packaged items (days)", 7],
 ];
 
 const Field = ({ label, hint, children }) => (
@@ -73,6 +85,26 @@ const WebsiteSettings = () => {
 
   const [pinModalOpen, setPinModalOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
+
+  // Every dish on the website menu, for the Popular Items picker. The list
+  // comes from the live menu, so a renamed or repriced dish is already right.
+  const [dishes, setDishes] = useState([]);
+  const [dishQuery, setDishQuery] = useState("");
+  useEffect(() => {
+    let live = true;
+    getMenus({ source: "website" })
+      .then((res) => {
+        const menus = res?.data?.data || res?.data?.menus || [];
+        const list = (Array.isArray(menus) ? menus : []).flatMap((m) =>
+          (m.items || []).map((it) => ({ id: String(it._id), name: it.name, category: m.name, price: it.price, image: it.image || it.imageUrl || "" })),
+        );
+        if (live) setDishes(list);
+      })
+      .catch(() => live && setDishes([]));
+    return () => {
+      live = false;
+    };
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -371,25 +403,189 @@ const WebsiteSettings = () => {
           </>
         ) : null}
 
+        {/* ---------- CONTENT: about, description, popular items ---------- */}
+        {tab === "content" ? (
+          <div className="space-y-5">
+            <Field
+              label="Store description"
+              hint="One or two lines under the restaurant name, and the description search engines show. Up to 400 characters."
+            >
+              <textarea
+                className={`${inputClass} min-h-[80px]`}
+                maxLength={400}
+                value={settings.branding?.siteDescription || ""}
+                onChange={(e) => patch("branding.siteDescription", e.target.value)}
+              />
+            </Field>
+            <Field label="About us" hint="The story section of the website. Up to 4000 characters.">
+              <textarea
+                className={`${inputClass} min-h-[180px]`}
+                maxLength={4000}
+                value={settings.landing?.aboutText || settings.branding?.aboutText || ""}
+                onChange={(e) => patch("landing.aboutText", e.target.value)}
+              />
+            </Field>
+            <div>
+              <p className="text-sm font-bold text-[#475569] mb-1.5">Popular items</p>
+              <p className="text-xs text-[#94A3B8] mb-2">
+                Up to three dishes shown on the home page. Name, photo and price come from the menu, so they stay in
+                step with the POS. Choose none and the website shows the three best sellers of the last 30 days.
+              </p>
+              {dishes.length ? (
+                <>
+                  <input
+                    className={`${inputClass} mb-2`}
+                    placeholder="Search dishes…"
+                    value={dishQuery}
+                    onChange={(e) => setDishQuery(e.target.value)}
+                  />
+                  <div className="max-h-72 overflow-y-auto rounded-xl border border-[#E2E8F0] bg-white">
+                    {dishes
+                      .filter((d) => `${d.name} ${d.category}`.toLowerCase().includes(dishQuery.trim().toLowerCase()))
+                      .slice(0, 200)
+                      .map((d) => {
+                        const chosen = (settings.landing?.featuredItems || []).map(String);
+                        const on = chosen.includes(d.id);
+                        const full = chosen.length >= 3 && !on;
+                        return (
+                          <label
+                            key={d.id}
+                            className={`flex items-center gap-3 border-b border-[#F1F5F9] px-3 py-2.5 last:border-0 ${
+                              full ? "opacity-40" : "cursor-pointer hover:bg-[#F8FAFC]"
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={on}
+                              disabled={full}
+                              onChange={() =>
+                                patch("landing.featuredItems", on ? chosen.filter((x) => x !== d.id) : [...chosen, d.id])
+                              }
+                              className="h-4 w-4 rounded border-[#CBD5E1]"
+                            />
+                            {d.image ? <img src={d.image} alt="" className="h-9 w-9 rounded-lg object-cover" /> : null}
+                            <span className="min-w-0 flex-1">
+                              <span className="block truncate text-sm font-bold text-[#0F172A]">{d.name}</span>
+                              <span className="block truncate text-xs text-[#94A3B8]">
+                                {d.category}
+                                {d.price != null ? ` · ₹${d.price}` : ""}
+                              </span>
+                            </span>
+                          </label>
+                        );
+                      })}
+                  </div>
+                  <p className="mt-2 text-xs text-[#94A3B8]">{(settings.landing?.featuredItems || []).length} of 3 chosen.</p>
+                </>
+              ) : (
+                <p className="text-xs text-[#94A3B8]">No dishes on the website menu yet. Add them under Manage Menu first.</p>
+              )}
+            </div>
+          </div>
+        ) : null}
+
         {/* ---------- CONTACT ---------- */}
         {tab === "contact" ? (
-          <div className="grid sm:grid-cols-2 gap-4">
-            {[
-              ["phone", "Phone"],
-              ["email", "Email"],
-              ["addressLine1", "Address Line 1"],
-              ["addressLine2", "Address Line 2"],
-              ["city", "City"],
-              ["postalCode", "Postcode"],
-            ].map(([key, label]) => (
-              <Field key={key} label={label}>
-                <input
-                  className={inputClass}
-                  value={settings.contact?.[key] || ""}
-                  onChange={(e) => patch(`contact.${key}`, e.target.value)}
-                />
-              </Field>
-            ))}
+          <>
+            <p className="mb-4 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3 text-xs text-[#64748B]">
+              Leave a field blank to use the restaurant&apos;s details from Settings › Store Properties (address, phone,
+              email, Google Maps pin). Fill it in only to show something different on the website.
+            </p>
+            <div className="grid sm:grid-cols-2 gap-4">
+              {[
+                ["phone", "Phone"],
+                ["email", "Email"],
+                ["addressLine1", "Address Line 1"],
+                ["addressLine2", "Address Line 2"],
+                ["city", "City"],
+                ["postalCode", "Postcode"],
+                ["mapUrl", "Google Maps link"],
+              ].map(([key, label]) => (
+                <Field key={key} label={label}>
+                  <input
+                    className={inputClass}
+                    placeholder={key === "mapUrl" ? "https://maps.app.goo.gl/…" : "From Store Properties"}
+                    value={settings.contact?.[key] || ""}
+                    onChange={(e) => patch(`contact.${key}`, e.target.value)}
+                  />
+                </Field>
+              ))}
+            </div>
+          </>
+        ) : null}
+
+        {/* ---------- LEGAL PAGES ---------- */}
+        {tab === "legal" ? (
+          <div className="space-y-5">
+            <p className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3 text-xs text-[#64748B]">
+              The website carries five legal pages, linked from every footer: Terms &amp; Conditions, Privacy Policy,
+              Refund &amp; Cancellation Policy, Return Policy, and Shipping &amp; Delivery Policy. The restaurant&apos;s
+              name, address, FSSAI number, GSTIN, phone and email are taken from Store Properties. The values below are
+              the parts the policies let you set.
+            </p>
+            <div>
+              <p className="text-sm font-bold text-[#475569] mb-1.5">Grievance officer</p>
+              <div className="grid sm:grid-cols-2 gap-4">
+                {[
+                  ["grievanceName", "Name", "The owner, unless someone else handles complaints"],
+                  ["grievanceEmail", "Email", "Defaults to the contact email"],
+                  ["grievancePhone", "Phone", "Defaults to the contact phone"],
+                  ["grievanceHours", "Hours", "e.g. 10 AM – 8 PM, all days"],
+                ].map(([key, label, hint]) => (
+                  <Field key={key} label={label} hint={hint}>
+                    <input
+                      className={inputClass}
+                      value={settings.legal?.[key] || ""}
+                      onChange={(e) => patch(`legal.${key}`, e.target.value)}
+                    />
+                  </Field>
+                ))}
+              </div>
+            </div>
+            <div>
+              <p className="text-sm font-bold text-[#475569] mb-1.5">Refund and return windows</p>
+              <div className="grid sm:grid-cols-2 gap-4">
+                {LEGAL_FIELDS.map(([key, label, fallback]) => (
+                  <Field key={key} label={label} hint={`Default ${fallback}`}>
+                    <input
+                      type="number"
+                      min={1}
+                      className={inputClass}
+                      value={settings.legal?.[key] ?? fallback}
+                      onChange={(e) => patch(`legal.${key}`, e.target.value === "" ? "" : Number(e.target.value))}
+                    />
+                  </Field>
+                ))}
+                <Field label="Courts of" hint="City whose courts hear disputes. Defaults to the restaurant's city.">
+                  <input
+                    className={inputClass}
+                    value={settings.legal?.jurisdictionCity || ""}
+                    onChange={(e) => patch("legal.jurisdictionCity", e.target.value)}
+                  />
+                </Field>
+              </div>
+            </div>
+            {storefrontUrl ? (
+              <div className="flex flex-wrap gap-2 text-xs">
+                {[
+                  ["terms", "Terms & Conditions"],
+                  ["privacy", "Privacy Policy"],
+                  ["refund-cancellation", "Refund & Cancellation"],
+                  ["return", "Return Policy"],
+                  ["shipping-delivery", "Shipping & Delivery"],
+                ].map(([key, label]) => (
+                  <a
+                    key={key}
+                    href={`${storefrontUrl.replace(/\/$/, "")}/legal/${key}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="rounded-full border border-[#E2E8F0] px-3 py-1.5 font-semibold text-[#C2410C] hover:border-[#FD5302]"
+                  >
+                    {label} ↗
+                  </a>
+                ))}
+              </div>
+            ) : null}
           </div>
         ) : null}
 

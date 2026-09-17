@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import "./styles/peddler.css";
 import { useGoogleFont } from "./data";
 import { landingContent } from "./content";
-import { Wordmark, Lines, VisitDetails, PoweredBy, useMenuToggle, Photo } from "./parts";
+import { Wordmark, Lines, VisitDetails, PoweredBy, useMenuToggle, Photo, LegalLinks } from "./parts";
 
 /** Templates/Food-Peddler-Preview — dark hero, sun disc, rotated photo. */
 export default function ClassicPeddler({ landing, store, menuPath, onBookTable }) {
@@ -155,6 +155,7 @@ export default function ClassicPeddler({ landing, store, menuPath, onBookTable }
           <Wordmark c={c} />
         </a>
         <p>{c.footerTagline}</p>
+        <LegalLinks fssai={c.fssai} />
         <PoweredBy className="footer-note" />
       </footer>
     </div>

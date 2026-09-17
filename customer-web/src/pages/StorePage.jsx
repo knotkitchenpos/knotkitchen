@@ -7,6 +7,7 @@ import StoreShell from "../components/StoreShell";
 import LoadingSkeleton from "../components/LoadingSkeleton";
 import ErrorPage from "../components/ErrorPage";
 import LandingTemplate from "../components/LandingTemplates";
+import LegalPage from "./LegalPage";
 import { landingRoute } from "../lib/landingRoute";
 import { startCheckout, verifyCheckout } from "../lib/api";
 
@@ -59,7 +60,8 @@ const writePending = (slug, id) => {
 export default function StorePage({ slug, host }) {
   const identity = useMemo(() => ({ slug, host }), [slug, host]);
   const { bootstrap, store, error, loading } = useStorefront(identity);
-  const { isMenu, homePath, menuPath } = landingRoute(useLocation().pathname);
+  const route = landingRoute(useLocation().pathname);
+  const { isMenu, homePath, menuPath } = route;
 
   // Bootstrap arrives first, so apply meta/theme from whichever is available.
   useDocumentMeta(store || bootstrap);
@@ -180,6 +182,12 @@ export default function StorePage({ slug, host }) {
   // fresh and the other from cache. Preferring whichever arrived last meant a
   // stale storefront could overwrite a fresh bootstrap, and the template
   // appeared to switch and then switch back.
+  // The legal pages read the full payload's `legal` block; they render the
+  // shell straight away and fill in when it lands.
+  if (route.legalKey) {
+    return <LegalPage store={store} bootstrap={bootstrap} route={route} />;
+  }
+
   const landing = newerLanding(store?.landing, bootstrap?.landing);
   if (!isMenu && landing) {
     return <LandingTemplate landing={landing} store={store} menuPath={menuPath} slug={effectiveSlug} />;

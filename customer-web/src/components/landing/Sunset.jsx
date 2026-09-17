@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import "./styles/sunset.css";
 import { useGoogleFont } from "./data";
 import { landingContent } from "./content";
-import { Wordmark, Nav, Lines, VisitDetails, PoweredBy, Photo } from "./parts";
+import { Wordmark, Nav, Lines, VisitDetails, PoweredBy, Photo, LegalLinks } from "./parts";
 
 /** Templates/Food-Peddler-Preview-04-Sunset — warm peach, playful serif. */
 export default function Sunset({ landing, store, menuPath, onBookTable }) {
@@ -124,6 +124,7 @@ export default function Sunset({ landing, store, menuPath, onBookTable }) {
           <Wordmark c={c} markClass="brand-mark" />
         </div>
         <p>{c.footerTagline}</p>
+        <LegalLinks fssai={c.fssai} />
         <PoweredBy />
       </footer>
     </div>

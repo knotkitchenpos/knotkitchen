@@ -1,3 +1,12 @@
+/* Every design's footer: the legal pages and the FSSAI licence. Inherits the
+   footer's own colour so it reads as part of it. */
+.kkt-legal-links{display:flex;flex-wrap:wrap;gap:6px 14px;width:100%;font-size:12px;line-height:1.5;opacity:.85}
+.kkt-legal-links a{color:inherit;text-decoration:none;border-bottom:1px solid transparent}
+.kkt-legal-links a:hover{border-bottom-color:currentColor}
+.kkt-fssai{margin-left:auto;white-space:nowrap}
+.kkt-map{font-size:.92em;text-decoration:underline;text-underline-offset:3px}
+@media (max-width:640px){.kkt-fssai{margin-left:0;width:100%}}
+
 /* Pieces the five designs share (logo beside the name, Book a Table in the nav). */
 .kkt-logo{display:inline-block;height:1em;width:auto;margin-right:.3em;vertical-align:-.12em;border-radius:6px;object-fit:contain}
 .kkt-book{font:inherit;color:inherit;background:none;border:0;padding:0;cursor:pointer}

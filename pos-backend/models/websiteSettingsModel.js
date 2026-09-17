@@ -464,6 +464,29 @@ const contactSchema = new mongoose.Schema(
   { _id: false }
 );
 
+/**
+ * Manage Website > Legal: the restaurant-specific values the five legal
+ * pages (Terms, Privacy, Refund & Cancellation, Return, Shipping & Delivery)
+ * substitute into their text. Blank means "use the default the policy was
+ * written for" (services/websitePublicInfo.js).
+ */
+const legalSchema = new mongoose.Schema(
+  {
+    grievanceName: { type: String, default: "", maxlength: 120 },
+    grievanceEmail: { type: String, default: "", maxlength: 160 },
+    grievancePhone: { type: String, default: "", maxlength: 30 },
+    grievanceHours: { type: String, default: "", maxlength: 80 },
+    refundWindowHours: { type: Number, default: 24, min: 1, max: 720 },
+    refundAckHours: { type: Number, default: 24, min: 1, max: 720 },
+    refundDecisionDays: { type: Number, default: 3, min: 1, max: 60 },
+    refundProcessingDays: { type: Number, default: 7, min: 1, max: 60 },
+    returnWindowDays: { type: Number, default: 7, min: 1, max: 90 },
+    jurisdictionCity: { type: String, default: "", maxlength: 80 },
+    updatedAt: { type: Date, default: null },
+  },
+  { _id: false }
+);
+
 const offerSchema = new mongoose.Schema({
   title: { type: String, required: true, maxlength: 120 },
   description: { type: String, default: "", maxlength: 400 },
@@ -512,6 +535,7 @@ const websiteSettingsSchema = new mongoose.Schema(
     theme: { type: themeSettingsSchema, default: () => ({}) },
     ordering: { type: orderingSchema, default: () => ({}) },
     contact: { type: contactSchema, default: () => ({}) },
+    legal: { type: legalSchema, default: () => ({}) },
     offers: { type: [offerSchema], default: [] },
     openingHours: { type: [openingHourSchema], default: [] },
     useBusinessHours: { type: Boolean, default: false },

@@ -552,6 +552,23 @@ const updateWebsiteSettings = async (req, res, next) => {
       }
     }
 
+    // ---- Legal pages ----
+    // Numbers are windows in hours/days; a blank or zero means "default".
+    if (body.legal && typeof body.legal === "object") {
+      const l = body.legal;
+      if (!settings.legal) settings.legal = {};
+      for (const [key, max] of [["grievanceName", 120], ["grievanceEmail", 160], ["grievancePhone", 30], ["grievanceHours", 80], ["jurisdictionCity", 80]]) {
+        assign(settings.legal, key, clampText(l[key], max));
+      }
+      for (const [key, cap] of [["refundWindowHours", 720], ["refundAckHours", 720], ["refundDecisionDays", 60], ["refundProcessingDays", 60], ["returnWindowDays", 90]]) {
+        if (l[key] !== undefined) {
+          const n = Math.round(Number(l[key]));
+          if (Number.isFinite(n) && n >= 1 && n <= cap) settings.legal[key] = n;
+        }
+      }
+      settings.legal.updatedAt = new Date();
+    }
+
     // ---- Opening hours ----
     if (Array.isArray(body.openingHours)) {
       const timePattern = /^([01]\d|2[0-3]):[0-5]\d$/;

@@ -1,5 +1,6 @@
 const createHttpError = require("http-errors");
 const crypto = require("crypto");
+const mongoose = require("mongoose");
 const Menu = require("../models/menuModel");
 const Order = require("../models/orderModel");
 const Customer = require("../models/customerModel");
@@ -18,6 +19,7 @@ const {
 } = require("../services/menuCache");
 const { getTheme } = require("../services/themeRegistry");
 const { buildLandingPayload } = require("../services/landingPayload");
+const { mergedContact, buildLegalPayload } = require("../services/websitePublicInfo");
 const { emitOrderCreated } = require("../services/socket");
 const WebsiteCheckout = require("../models/websiteCheckoutModel");
 const { resolveGateway } = require("../services/paymentGateway");
@@ -134,6 +136,29 @@ const toPublicProduct = (item, menu, timezone) => {
  * The POS menu is the single source of truth — there is no separate website
  * menu collection (§8).
  */
+/**
+ * The three dishes that sold most in the last 30 days, as menu item ids.
+ *
+ * "Popular items" on the landing page is the operator's pick when they made
+ * one; otherwise it should be what customers actually order, not the first
+ * three rows of the first category.
+ */
+const popularItemIds = async (restaurantId, limit = 3) => {
+  if (!restaurantId) return [];
+  // $match does not cast the way find() does; a string id would match nothing.
+  const rid = mongoose.isValidObjectId(restaurantId) ? new mongoose.Types.ObjectId(String(restaurantId)) : restaurantId;
+  const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+  const rows = await Order.aggregate([
+    { $match: { restaurantId: rid, createdAt: { $gte: since }, isDeleted: { $ne: true } } },
+    { $unwind: "$items" },
+    { $match: { "items.itemId": { $ne: null } } },
+    { $group: { _id: "$items.itemId", qty: { $sum: { $ifNull: ["$items.quantity", 1] } } } },
+    { $sort: { qty: -1, _id: 1 } },
+    { $limit: limit },
+  ]);
+  return rows.map((r) => String(r._id));
+};
+
 const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezone, restaurant, orderingLocked = false, preview = false }) => {
   // Hard tenant filter: only this restaurant's published menus.
   const menus = restaurantId
@@ -209,6 +234,18 @@ const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezon
 
   const theme = getTheme(settings.theme?.themeKey) || getTheme("default-restaurant");
 
+  // Popular items: the operator's pick, else the best sellers that are on the
+  // website right now. Ids only; the browser resolves them against the menu.
+  const landing = buildLandingPayload(settings, restaurant, null);
+  if (!landing.featuredItems.length) {
+    try {
+      const onSite = new Set(categories.flatMap((c) => c.products.map((p) => String(p.id))));
+      landing.featuredItems = (await popularItemIds(restaurantId, 6)).filter((id) => onSite.has(id)).slice(0, 3);
+    } catch (err) {
+      console.warn("[storefront] popular items unavailable:", err.message);
+    }
+  }
+
   return {
     store: {
       storeId,
@@ -224,7 +261,7 @@ const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezon
       delivery: { open: availability.delivery.open, reason: availability.delivery.reason, windows: availability.delivery.windows },
       table: { open: availability.table.open, reason: availability.table.reason },
     },
-    landing: buildLandingPayload(settings, restaurant, null),
+    landing,
     branding: {
       siteTitle: settings.branding?.siteTitle || settings.displayName || "",
       siteDescription: settings.branding?.siteDescription || "",
@@ -259,7 +296,11 @@ const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezon
       acceptPreOrders: settings.ordering?.acceptPreOrders !== false,
       specialInstructionsEnabled: settings.ordering?.specialInstructionsEnabled !== false,
     },
-    contact: settings.contact || {},
+    // Blank Contact fields fall back to the POS (Store Properties).
+    contact: mergedContact(settings, restaurant),
+    // What the legal pages print: restaurant identity from the POS, windows
+    // and the grievance officer from Manage Website > Legal.
+    legal: buildLegalPayload(settings, restaurant, { websiteUrl: buildStorefrontUrl(settings) }),
     offers: (settings.offers || [])
       .filter((o) => o.isActive)
       .map((o) => ({

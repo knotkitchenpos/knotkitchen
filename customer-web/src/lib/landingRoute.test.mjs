@@ -5,7 +5,7 @@
 
 import { strict as assert } from "node:assert";
 import { test } from "node:test";
-import { landingRoute } from "./landingRoute.js";
+import { landingRoute, legalPath } from "./landingRoute.js";
 
 test("root path is the landing page", () => {
   const r = landingRoute("/");
@@ -45,4 +45,25 @@ test("a store whose slug ends in 'menu' is not mistaken for the menu page", () =
   const r = landingRoute("/s/lunch-menu");
   assert.equal(r.isMenu, false);
   assert.equal(r.menuPath, "/s/lunch-menu/menu");
+});
+
+test("a legal page is neither the landing page nor the menu", () => {
+  const r = landingRoute("/legal/privacy");
+  assert.equal(r.isMenu, false);
+  assert.equal(r.legalKey, "privacy");
+  assert.equal(r.homePath, "/");
+  assert.equal(r.menuPath, "/menu");
+  assert.equal(legalPath(r, "terms"), "/legal/terms");
+});
+
+test("legal pages keep the path-based prefix", () => {
+  const r = landingRoute("/s/burger-house/legal/refund-cancellation/");
+  assert.equal(r.legalKey, "refund-cancellation");
+  assert.equal(r.homePath, "/s/burger-house");
+  assert.equal(legalPath(r, "return"), "/s/burger-house/legal/return");
+});
+
+test("ordinary paths carry no legal key", () => {
+  assert.equal(landingRoute("/menu").legalKey, "");
+  assert.equal(landingRoute("/").legalKey, "");
 });

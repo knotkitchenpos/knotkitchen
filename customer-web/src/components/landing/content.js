@@ -170,8 +170,10 @@ export function landingContent(key, landing = {}, store = null) {
     footerTagline: pick(copy.footerTagline, d.footerTagline),
     dishes,
     address: addressLines(contact) || [],
+    mapUrl: String(contact.mapUrl || "").trim(),
     phone: String(contact.phone || "").trim(),
     email: String(contact.email || "").trim(),
+    fssai: String(store?.legal?.fssaiNumber || "").trim(),
   };
 }
 

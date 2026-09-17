@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import "./styles/citrus.css";
 import { useGoogleFont } from "./data";
 import { landingContent } from "./content";
-import { Wordmark, Nav, Lines, VisitDetails, PoweredBy, Photo } from "./parts";
+import { Wordmark, Nav, Lines, VisitDetails, PoweredBy, Photo, LegalLinks } from "./parts";
 
 /** Templates/Food-Peddler-Preview-01-Citrus — warm cream, rounded cards. */
 export default function Citrus({ landing, store, menuPath, onBookTable }) {
@@ -140,6 +140,7 @@ export default function Citrus({ landing, store, menuPath, onBookTable }) {
           <Wordmark c={c} markClass="brand-mark" />
         </div>
         <p>{c.footerTagline}</p>
+        <LegalLinks fssai={c.fssai} />
         <PoweredBy />
       </footer>
     </div>

@@ -13,6 +13,7 @@
  */
 
 const { LANDING_TEMPLATES, LEGACY_LANDING_TEMPLATES } = require("../models/websiteSettingsModel");
+const { mergedContact } = require("./websitePublicInfo");
 
 /**
  * The template this store should render, translated if it is an old key.
@@ -92,16 +93,11 @@ const buildLandingPayload = (settings = {}, restaurant = null, store = null) => 
     featuredItems: (landing.featuredItems || []).map(String).slice(0, 3),
 
     // The restaurant's own name and public contact details, so the landing
-    // design can print them from the small bootstrap response.
+    // design can print them from the small bootstrap response. Blank Contact
+    // fields fall back to the POS (Store Properties), so "Find us" is never
+    // empty for a store that has an address on file.
     name,
-    contact: {
-      phone: settings.contact?.phone || "",
-      email: settings.contact?.email || "",
-      addressLine1: settings.contact?.addressLine1 || "",
-      addressLine2: settings.contact?.addressLine2 || "",
-      city: settings.contact?.city || "",
-      postalCode: settings.contact?.postalCode || "",
-    },
+    contact: mergedContact(settings, restaurant),
 
     // The design's words; empty values fall back to the design's defaults.
     copy: {
