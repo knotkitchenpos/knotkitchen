@@ -15,7 +15,6 @@ window.KK_PARTY = {
   pan: "[KNOTKITCHEN PAN]",
   gst: "not registered under GST",
   supportEmail: "[KNOTKITCHEN SUPPORT EMAIL]",
-  whatsappProvider: "[WHATSAPP MESSAGING PROVIDER]",
 };
 
 window.AGREEMENT_TEMPLATE_V2 = `## KNOTKITCHEN RESTAURANT SERVICE AGREEMENT
@@ -605,7 +604,7 @@ ANNEXURE_A_PLACEHOLDER
 
 **5. Security safeguards.** Encryption of data in transit (TLS); access control with role-based permissions and hashed credentials; logging and monitoring; regular backups; vulnerability management and patching; staff confidentiality obligations; incident-response procedure.
 
-**6. Sub-processors.** Cloud hosting: Hostinger (virtual private server); database hosting: MongoDB Atlas; payment gateway: Cashfree (contracted by the Restaurant directly for Customer payments; used by KnotKitchen for Wallet top-ups); SMS and OTP: Fast2SMS; WhatsApp messaging: [KK_WHATSAPP_PROVIDER]; marketplaces: as enabled by the Restaurant. KnotKitchen will notify the Restaurant in the application of a new sub-processor at least 15 days before it processes Customer Data; the Restaurant may object on reasonable data-protection grounds and, if the objection is not resolved, terminate the affected Service without commitment repayment.
+**6. Sub-processors.** Cloud hosting: Hostinger (virtual private server); database hosting: MongoDB Atlas; payment gateway: Cashfree (contracted by the Restaurant directly for Customer payments; used by KnotKitchen for Wallet top-ups); SMS, OTP and WhatsApp messaging: Fast2SMS; marketplaces: as enabled by the Restaurant. KnotKitchen will notify the Restaurant in the application of a new sub-processor at least 15 days before it processes Customer Data; the Restaurant may object on reasonable data-protection grounds and, if the objection is not resolved, terminate the affected Service without commitment repayment.
 
 **7. Assistance.** KnotKitchen will, at the Restaurant's request and at no charge for reasonable requests, provide the tools or information needed for the Restaurant to respond to a Customer's request for access, correction or erasure, to give required notices, and to respond to the Data Protection Board of India or another authority.
 
