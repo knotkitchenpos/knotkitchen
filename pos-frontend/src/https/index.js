@@ -112,6 +112,11 @@ export const getOrdersReport = (params) =>
 export const createTableSession = (data) =>
   axiosWrapper.post("/api/table-session/", data);
 export const getTableSessions = () => axiosWrapper.get("/api/table-session");
+/** The party moves to a free table; their order and bill follow. */
+export const moveTableSession = (sessionId, tableId) => axiosWrapper.post(`/api/table-session/${sessionId}/move`, { tableId });
+/** Another table's tab joins this one; one bill at the end. */
+export const mergeTableSessions = (sessionId, fromSessionId) =>
+  axiosWrapper.post(`/api/table-session/${sessionId}/merge`, { fromSessionId });
 export const getTableSessionById = (id) =>
   axiosWrapper.get(`/api/table-session/${id}`);
 export const addItemsToTableSession = ({ sessionId, ...data }) =>

@@ -5,6 +5,7 @@ import TableCard from "../components/tables/TableCard";
 import GuestCountModal from "../components/tables/GuestCountModal";
 import SessionDetailModal from "../components/tables/SessionDetailModal";
 import TableSettleModal from "../components/tables/TableSettleModal";
+import TablePickerModal from "../components/tables/TablePickerModal";
 import { sendTableEBill } from "../utils/sendTableEBill";
 import SecurityPinModal from "../components/common/SecurityPinModal";
 import PrintTableQRModal from "../components/tables/PrintTableQRModal";
@@ -19,6 +20,8 @@ import {
   deleteTable,
   getTableById,
   getTableSessionById,
+  moveTableSession,
+  mergeTableSessions,
   recordTableSessionPayment,
   cancelTableSessionItem,
   releaseTable,
@@ -125,6 +128,8 @@ const Tables = () => {
   const [sessionTable, setSessionTable] = useState(null);
   const [sessionData, setSessionData] = useState(null);
   const [sessionLoading, setSessionLoading] = useState(false);
+  // Move the party to a free table / merge another table's tab into this one.
+  const [picker, setPicker] = useState(null); // "move" | "merge"
 
   // Security PIN Modal
   const [pinModalOpen, setPinModalOpen] = useState(false);
@@ -233,11 +238,35 @@ const Tables = () => {
    * the next customer to scan the same QR gets a fresh order page -- the QR
    * itself never changes.
    */
+  const closeSessionModal = () => {
+    setPicker(null);
+    setSessionTable(null);
+    setSessionData(null);
+    queryClient.invalidateQueries({ queryKey: ["tables"] });
+  };
+  const moveMutation = useMutation({
+    mutationFn: ({ sessionId, tableId }) => moveTableSession(sessionId, tableId),
+    onSuccess: (res) => {
+      enqueueSnackbar(res?.data?.message || "Party moved.", { variant: "success" });
+      closeSessionModal();
+    },
+    onError: (e) => enqueueSnackbar(e.response?.data?.message || "Could not move the party.", { variant: "error" }),
+  });
+  const mergeMutation = useMutation({
+    mutationFn: ({ sessionId, fromSessionId }) => mergeTableSessions(sessionId, fromSessionId),
+    onSuccess: (res) => {
+      enqueueSnackbar(res?.data?.message || "Tables merged.", { variant: "success" });
+      closeSessionModal();
+    },
+    onError: (e) => enqueueSnackbar(e.response?.data?.message || "Could not merge the tables.", { variant: "error" }),
+  });
+
   const settleMutation = useMutation({
-    mutationFn: ({ sessionId, method, amount }) =>
+    mutationFn: ({ sessionId, method, amount, splits }) =>
       recordTableSessionPayment(sessionId, {
         method,
         amount,
+        splits,
         // A double-tap on a slow connection must not take payment twice.
         idempotencyKey: `settle-${sessionId}-${method}-${amount}`,
       }),
@@ -804,6 +833,8 @@ const Tables = () => {
           table={sessionTable}
           session={sessionData}
           onComplete={() => setSettleTarget({ table: sessionTable, session: sessionData })}
+          onMove={() => setPicker("move")}
+          onMerge={() => setPicker("merge")}
           onCancelItem={handleCancelSessionItem}
           cancelBusy={cancelItemMut.isPending}
           onRelease={handleReleaseTable}
@@ -1073,15 +1104,42 @@ const Tables = () => {
           session={settleTarget.session}
           busy={settleMutation.isPending}
           onClose={() => setSettleTarget(null)}
-          onConfirm={({ method, amount, sendEBill: alsoEBill, phone }) =>
+          onConfirm={({ method, amount, splits, sendEBill: alsoEBill, phone }) =>
             settleMutation.mutate({
               sessionId: settleTarget.session?._id,
               method,
               amount,
+              splits,
               sendEBill: alsoEBill,
               phone,
             })
           }
+        />
+      )}
+
+      {picker && sessionTable && (
+        <TablePickerModal
+          title={picker === "move" ? "Move the party to…" : "Merge which table into this one?"}
+          hint={
+            picker === "move"
+              ? "Their order and bill follow them. Only free tables are listed."
+              : "That table's items and guests join this bill and its table is freed."
+          }
+          busy={moveMutation.isPending || mergeMutation.isPending}
+          tables={tables.filter((t) =>
+            String(t._id) === String(sessionTable._id)
+              ? false
+              : picker === "move"
+              ? !t.session && t.status !== "reserved" && t.isEnabled !== false
+              : Boolean(t.session),
+          )}
+          onClose={() => setPicker(null)}
+          onPick={(t) => {
+            const sessionId = getSessionIdFromTable(sessionTable) || sessionData?._id;
+            if (!sessionId) return;
+            if (picker === "move") moveMutation.mutate({ sessionId, tableId: t._id });
+            else mergeMutation.mutate({ sessionId, fromSessionId: t.session._id });
+          }}
         />
       )}
 

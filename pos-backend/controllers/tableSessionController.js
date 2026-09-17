@@ -948,19 +948,34 @@ const recordSessionPayment = async (req, res, next) => {
       throw createHttpError(400, `Payment amount mismatch. Expected ₹${payableAmount}.`);
     }
 
-    const paid = isPaidOnSelection({ method: normalizedMethod, paymentStatus });
+    // A split: several counter methods that add up to the bill. Each part is
+    // its own history line and ledger entry; the session and the kitchen
+    // order read "Split (Cash ₹500 + UPI ₹300)".
+    let parts = [{ method: normalizedMethod, amount: payableAmount }];
+    if (normalizedMethod === "SPLIT") {
+      const { validateSplits } = require("../services/splitPayment");
+      const check = validateSplits(req.body.splits, payableAmount);
+      if (!check.ok) throw createHttpError(400, check.message);
+      parts = check.parts;
+    }
 
-    const paymentRecord = {
-      method: normalizedMethod,
-      amount: payableAmount,
-      status: paid ? "PAID" : "FAILED",
-      transactionId: transactionId || "",
-      idempotencyKey: idempotencyKey || "",
-      at: new Date(),
-      recordedBy: req.user?._id,
-    };
+    const paid =
+      normalizedMethod === "SPLIT"
+        ? parts.every((p) => isPaidOnSelection({ method: p.method, paymentStatus }))
+        : isPaidOnSelection({ method: normalizedMethod, paymentStatus });
+
     session.paymentHistory = session.paymentHistory || [];
-    session.paymentHistory.push(paymentRecord);
+    parts.forEach((p, i) => {
+      session.paymentHistory.push({
+        method: p.method,
+        amount: p.amount,
+        status: paid ? "PAID" : "FAILED",
+        transactionId: transactionId || "",
+        idempotencyKey: idempotencyKey ? (parts.length > 1 ? `${idempotencyKey}-${i}` : idempotencyKey) : "",
+        at: new Date(),
+        recordedBy: req.user?._id,
+      });
+    });
 
     session.payment = {
       method: normalizedMethod,
@@ -999,24 +1014,22 @@ const recordSessionPayment = async (req, res, next) => {
       addTimeline(session, "PAYMENT_FAILED", `Payment failed: ${normalizedMethod}`, "POS", req.user?._id);
     }
 
-    // Write standalone ledger entry (dedupe via PaymentTransaction unique index)
+    // Write standalone ledger entries, one per part (dedupe via PaymentTransaction unique index)
     await PaymentTransaction.create(
-      [
-        {
-          restaurantId: session.restaurantId,
-          outletId: session.outletId,
-          billId: session.billId || undefined,
-          tableSessionId: session._id,
-          customerId: session.customerId || undefined,
-          method: normalizedMethod,
-          amount: payableAmount,
-          status: paid ? "PAID" : "FAILED",
-          transactionId: transactionId || "",
-          idempotencyKey: idempotencyKey || "",
-          recordedBy: req.user?._id,
-          paidAt: paid ? new Date() : null,
-        },
-      ],
+      parts.map((p, i) => ({
+        restaurantId: session.restaurantId,
+        outletId: session.outletId,
+        billId: session.billId || undefined,
+        tableSessionId: session._id,
+        customerId: session.customerId || undefined,
+        method: p.method,
+        amount: p.amount,
+        status: paid ? "PAID" : "FAILED",
+        transactionId: transactionId || "",
+        idempotencyKey: idempotencyKey ? (parts.length > 1 ? `${idempotencyKey}-${i}` : idempotencyKey) : "",
+        recordedBy: req.user?._id,
+        paidAt: paid ? new Date() : null,
+      })),
       { session: mongoSession }
     );
 
@@ -1083,20 +1096,21 @@ const recordSessionPayment = async (req, res, next) => {
           $set: {
             orderStatus: PAID,
             "bills.totalWithTax": payableAmount,
-            paymentMethod: displayPaymentMethod(normalizedMethod),
+            paymentMethod:
+              parts.length > 1
+                ? require("../services/splitPayment").splitLabel(parts, displayPaymentMethod)
+                : displayPaymentMethod(normalizedMethod),
             completedAt: new Date(),
             // Nothing is left to sweep once the bill is settled.
             completeDueAt: null,
-            payments: [
-              {
-                method: normalizedMethod.toLowerCase(),
-                amount: payableAmount,
-                status: "paid",
-                transactionId: transactionId || "",
-                paidAt: new Date(),
-                ...(req.user?._id ? { paidBy: req.user._id } : {}),
-              },
-            ],
+            payments: parts.map((p) => ({
+              method: parts.length > 1 ? "split" : normalizedMethod.toLowerCase(),
+              amount: p.amount,
+              status: "paid",
+              transactionId: transactionId || "",
+              paidAt: new Date(),
+              ...(req.user?._id ? { paidBy: req.user._id } : {}),
+            })),
           },
         },
         { session: mongoSession }
@@ -1130,6 +1144,129 @@ const recordSessionPayment = async (req, res, next) => {
     next(error);
   } finally {
     mongoSession.endSession();
+  }
+};
+
+// ============================================================
+// Move a party to another table
+// ============================================================
+
+/**
+ * POST /api/table-session/:id/move { tableId }
+ *
+ * The party, their order and their bill go to another free table. The
+ * kitchen orders follow (their `table` is rewritten) so the KOT, the Orders
+ * screen and the e-bill all say the new table.
+ */
+const moveSession = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { tableId } = req.body || {};
+    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(tableId)) {
+      throw createHttpError(404, "Invalid id!");
+    }
+    const scopeQuery = getScopeQuery(req);
+    const session = await TableSession.findOne({ _id: id, ...scopeQuery, isDeleted: { $ne: true } });
+    if (!session) throw createHttpError(404, "Table session not found!");
+    assertNotSettled(session);
+    if (String(session.tableId) === String(tableId)) throw createHttpError(400, "The party is already at that table.");
+
+    const target = await Table.findOne({ _id: tableId, restaurantId: session.restaurantId, isDeleted: { $ne: true } });
+    if (!target) throw createHttpError(404, "Table not found!");
+    if (target.isEnabled === false) throw createHttpError(400, "That table is disabled.");
+    const busy = await TableSession.findOne({
+      tableId: target._id,
+      restaurantId: session.restaurantId,
+      status: { $in: ACTIVE_SESSION_STATUSES },
+      isDeleted: { $ne: true },
+    }).select("_id");
+    if (busy) throw createHttpError(409, "That table already has a party. Merge into it instead.");
+    validateCapacity(target, session.customerCount);
+
+    const from = session.tableId;
+    session.tableId = target._id;
+    addTimeline(session, "TABLE_MOVED", `Moved to ${target.displayId || target.tableName || `Table ${target.tableNumber}`}`, "POS", req.user?._id);
+    await session.save();
+
+    await Order.updateMany({ tableSessionId: session._id, isDeleted: { $ne: true } }, { $set: { table: target._id } });
+    const latest = await Order.findOne({ tableSessionId: session._id, isDeleted: { $ne: true } }).sort({ createdAt: -1 }).select("_id");
+    await Table.findOneAndUpdate({ _id: from }, { status: "available", currentOrderId: null, currentOccupancy: 0 });
+    await Table.findOneAndUpdate(
+      { _id: target._id },
+      { status: "occupied", currentOccupancy: session.customerCount || 1, currentOrderId: latest?._id || null },
+    );
+
+    for (const tid of [from, target._id]) {
+      emitTableSessionUpdated({ restaurantId: session.restaurantId, outletId: session.outletId, tableId: tid, session, reason: "moved" });
+    }
+    res.status(200).json({ success: true, message: "Party moved.", data: session });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ============================================================
+// Merge another table's party into this one
+// ============================================================
+
+/**
+ * POST /api/table-session/:id/merge { fromSessionId }
+ *
+ * Everything on the other table's tab -- its items, guests and kitchen
+ * orders -- joins this session; one bill at the end. The other session is
+ * closed as merged and its table freed.
+ */
+const mergeSessions = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { fromSessionId } = req.body || {};
+    if (!mongoose.Types.ObjectId.isValid(id) || !mongoose.Types.ObjectId.isValid(fromSessionId)) {
+      throw createHttpError(404, "Invalid id!");
+    }
+    if (String(id) === String(fromSessionId)) throw createHttpError(400, "Choose a different table to merge from.");
+    const scopeQuery = getScopeQuery(req);
+    const [target, source] = await Promise.all([
+      TableSession.findOne({ _id: id, ...scopeQuery, isDeleted: { $ne: true } }),
+      TableSession.findOne({ _id: fromSessionId, ...scopeQuery, isDeleted: { $ne: true } }),
+    ]);
+    if (!target || !source) throw createHttpError(404, "Table session not found!");
+    assertNotSettled(target);
+    assertNotSettled(source);
+
+    const sourceTable = await Table.findById(source.tableId).select("tableNumber tableName displayId");
+    const sourceLabel = sourceTable?.displayId || sourceTable?.tableName || `Table ${sourceTable?.tableNumber ?? "?"}`;
+
+    for (const it of source.items || []) {
+      const plain = it.toObject ? it.toObject() : { ...it };
+      delete plain._id;
+      target.items.push(plain);
+    }
+    target.customerCount = (Number(target.customerCount) || 1) + (Number(source.customerCount) || 1);
+    if (!target.customerName && source.customerName) target.customerName = source.customerName;
+    if (!target.customerPhone && source.customerPhone) target.customerPhone = source.customerPhone;
+    addTimeline(target, "TABLES_MERGED", `${sourceLabel} merged in (${(source.items || []).length} item(s))`, "POS", req.user?._id);
+    await recalculateSessionBill(target); // saves
+
+    // The other party's kitchen orders now belong here.
+    await Order.updateMany(
+      { tableSessionId: source._id, isDeleted: { $ne: true } },
+      { $set: { tableSessionId: target._id, table: target.tableId } },
+    );
+
+    source.status = "CLOSED";
+    source.closedAt = new Date();
+    source.closedBy = req.user?._id;
+    addTimeline(source, "SESSION_CLOSED", `Merged into another table's session ${target.sessionCode}`, "POS", req.user?._id);
+    await source.save();
+
+    await Table.findOneAndUpdate({ _id: source.tableId }, { status: "available", currentOrderId: null, currentOccupancy: 0 });
+    await Table.findOneAndUpdate({ _id: target.tableId }, { currentOccupancy: target.customerCount });
+
+    emitTableSessionUpdated({ restaurantId: target.restaurantId, outletId: target.outletId, tableId: target.tableId, session: target, reason: "merged" });
+    emitTableSessionUpdated({ restaurantId: source.restaurantId, outletId: source.outletId, tableId: source.tableId, session: source, reason: "merged_away" });
+    res.status(200).json({ success: true, message: `${sourceLabel} merged in.`, data: target });
+  } catch (error) {
+    next(error);
   }
 };
 
@@ -1530,6 +1667,8 @@ const findActiveSessionByTable = async ({ tableId, restaurantId }) =>
 module.exports = {
   addItemsToSession,
   addItemsToExistingSession,
+  moveSession,
+  mergeSessions,
   getSessions,
   getSessionById,
   requestBill,

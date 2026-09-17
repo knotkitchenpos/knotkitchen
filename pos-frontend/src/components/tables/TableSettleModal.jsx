@@ -53,11 +53,34 @@ const METHODS = [
 ];
 
 const money = (n) => `₹${Number(n || 0).toFixed(2)}`;
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 const TableSettleModal = ({ table, session, busy, onClose, onConfirm }) => {
   const [method, setMethod] = useState("CASH");
   const bills = session?.bills || {};
   const payable = Number(bills.totalWithTax || 0);
+
+  // Split: several counter methods adding up to the bill. Editing one part
+  // leaves the last part to absorb the remainder, so the sum always works.
+  const [split, setSplit] = useState(false);
+  const [parts, setParts] = useState([
+    { method: "CASH", amount: "" },
+    { method: "UPI", amount: "" },
+  ]);
+  const guests = Math.max(1, Number(session?.customerCount) || 1);
+  const perHead = round2(payable / guests);
+  const partsSum = round2(parts.reduce((t, p) => t + (Number(p.amount) || 0), 0));
+  const splitOk = parts.length >= 2 && parts.every((p) => Number(p.amount) > 0) && Math.abs(partsSum - payable) < 0.01;
+  const setPart = (i, patch) =>
+    setParts((prev) => {
+      const next = prev.map((p, k) => (k === i ? { ...p, ...patch } : p));
+      // Keep the last part as "the rest" when an earlier amount changes.
+      if (patch.amount !== undefined && i < next.length - 1) {
+        const others = next.slice(0, -1).reduce((t, p) => t + (Number(p.amount) || 0), 0);
+        next[next.length - 1] = { ...next[next.length - 1], amount: String(Math.max(0, round2(payable - others))) };
+      }
+      return next;
+    });
 
   // A table order had no way to send an e-bill at all. The only button lived
   // in the counter invoice, which is never rendered for a table session -- so
@@ -144,6 +167,73 @@ const TableSettleModal = ({ table, session, busy, onClose, onConfirm }) => {
               })}
             </div>
             <p className="mt-2 text-[11.5px] text-[#94A3B8]">{chosen?.hint}</p>
+
+            <button
+              type="button"
+              onClick={() => setSplit((v) => !v)}
+              className={`mt-3 h-[36px] w-full rounded-xl border text-[12.5px] font-bold ${
+                split ? "border-[#FD5302] bg-[#FFF1E8] text-[#C2410C]" : "border-[#E2E8F0] text-[#334155] hover:bg-[#F8FAFC]"
+              }`}
+            >
+              {split ? "Paying with one method instead" : "Split the bill between methods"}
+            </button>
+            {split && (
+              <div className="mt-2 space-y-2 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3">
+                {guests > 1 && (
+                  <p className="text-[11.5px] text-[#64748B]">
+                    {guests} guests · {money(perHead)} each if shared equally.
+                  </p>
+                )}
+                {parts.map((p, i) => (
+                  <div key={i} className="flex items-center gap-2">
+                    <select
+                      value={p.method}
+                      onChange={(e) => setPart(i, { method: e.target.value })}
+                      className="h-[40px] rounded-lg border border-[#E2E8F0] bg-white px-2 text-[12.5px] font-bold"
+                    >
+                      {METHODS.map((m) => (
+                        <option key={m.id} value={m.id}>
+                          {m.label}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputMode="decimal"
+                      value={p.amount}
+                      placeholder="0.00"
+                      onChange={(e) => setPart(i, { amount: e.target.value })}
+                      className="h-[40px] flex-1 rounded-lg border border-[#E2E8F0] bg-white px-3 text-[13px] font-bold tabular-nums"
+                    />
+                    {parts.length > 2 && (
+                      <button
+                        type="button"
+                        aria-label="Remove part"
+                        onClick={() => setParts((prev) => prev.filter((_, k) => k !== i))}
+                        className="h-[40px] w-[36px] rounded-lg border border-[#E2E8F0] bg-white text-[#94A3B8] hover:text-[#DC2626]"
+                      >
+                        &times;
+                      </button>
+                    )}
+                  </div>
+                ))}
+                <div className="flex items-center justify-between text-[12px]">
+                  <button
+                    type="button"
+                    disabled={parts.length >= 6}
+                    onClick={() => setParts((prev) => [...prev, { method: "CARD", amount: "" }])}
+                    className="font-bold text-[#C2410C] hover:underline disabled:opacity-40"
+                  >
+                    + Add a part
+                  </button>
+                  <span className={`font-bold tabular-nums ${splitOk ? "text-[#16A34A]" : "text-[#DC2626]"}`}>
+                    {money(partsSum)} of {money(payable)}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* E-bill. Offered only when there is somewhere to send it — an
@@ -186,9 +276,15 @@ const TableSettleModal = ({ table, session, busy, onClose, onConfirm }) => {
           <button
             type="button"
             onClick={() =>
-              onConfirm({ method, amount: payable, sendEBill: Boolean(phone && alsoEBill), phone })
+              onConfirm({
+                method: split ? "SPLIT" : method,
+                amount: payable,
+                splits: split ? parts.map((p) => ({ method: p.method, amount: round2(p.amount) })) : undefined,
+                sendEBill: Boolean(phone && alsoEBill),
+                phone,
+              })
             }
-            disabled={busy || payable <= 0}
+            disabled={busy || payable <= 0 || (split && !splitOk)}
             className="flex-[2] h-[44px] rounded-xl bg-[#FD5302] text-white text-[13.5px] font-extrabold hover:bg-[#D64502] disabled:opacity-60"
           >
             {busy ? "Completing…" : `Mark Paid · ${money(payable)}`}

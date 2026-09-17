@@ -10,6 +10,8 @@ const SessionDetailModal = ({
   onComplete,
   onCancelItem,
   onRelease,
+  onMove,
+  onMerge,
   releaseBusy = false,
   cancelBusy = false,
 }) => {
@@ -139,6 +141,26 @@ const SessionDetailModal = ({
             >
               Complete Order &amp; Take Payment
             </button>
+          )}
+          {session && (onMove || onMerge) && (
+            <div className="grid grid-cols-2 gap-2">
+              {onMove && (
+                <button
+                  onClick={onMove}
+                  className="py-3 rounded-xl border border-border text-content text-sm font-bold hover:border-accent hover:text-accent"
+                >
+                  Move table
+                </button>
+              )}
+              {onMerge && (
+                <button
+                  onClick={onMerge}
+                  className="py-3 rounded-xl border border-border text-content text-sm font-bold hover:border-accent hover:text-accent"
+                >
+                  Merge table into this
+                </button>
+              )}
+            </div>
           )}
           {/* The way out when there is nothing to take payment for. A party
               that cancelled everything leaves a zero total, which disables

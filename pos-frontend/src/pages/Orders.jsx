@@ -315,10 +315,11 @@ const Orders = () => {
   };
 
   const settleMutation = useMutation({
-    mutationFn: ({ sessionId, method, amount }) =>
+    mutationFn: ({ sessionId, method, amount, splits }) =>
       recordTableSessionPayment(sessionId, {
         method,
         amount,
+        splits,
         // A double-tap on a slow connection must not take payment twice.
         idempotencyKey: `settle-${sessionId}-${method}-${amount}`,
       }),
@@ -1119,11 +1120,12 @@ const Orders = () => {
           session={settleFor.session}
           busy={settleMutation.isPending}
           onClose={() => setSettleFor(null)}
-          onConfirm={({ method, amount, sendEBill: alsoEBill, phone }) =>
+          onConfirm={({ method, amount, splits, sendEBill: alsoEBill, phone }) =>
             settleMutation.mutate({
               sessionId: settleFor.session._id,
               method,
               amount,
+              splits,
               sendEBill: alsoEBill,
               phone,
             })

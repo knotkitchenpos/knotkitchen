@@ -114,7 +114,9 @@ test("REGRESSION: settling a table writes paymentMethod and payments onto its or
     SESSION_CTRL.indexOf("await mongoSession.commitTransaction();", start),
   );
   assert.ok(block.length > 0, "the settle block must still be findable");
-  assert.match(block, /paymentMethod: displayPaymentMethod\(normalizedMethod\)/);
+  // One method, or a split that names every part.
+  assert.match(block, /: displayPaymentMethod\(normalizedMethod\)/);
+  assert.match(block, /splitLabel\(parts, displayPaymentMethod\)/);
   assert.match(block, /status: "paid"/);
   assert.match(block, /completeDueAt: null/, "a settled order must not still be swept");
 });

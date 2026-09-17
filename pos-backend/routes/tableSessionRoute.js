@@ -10,6 +10,8 @@ const {
   recordSessionPayment,
   closeSessionWithoutPayment,
   cancelSessionItem,
+  moveSession,
+  mergeSessions,
 } = require("../controllers/tableSessionController");
 const { isVerifiedUser } = require("../middlewares/tokenVerification");
 const router = express.Router();
@@ -23,6 +25,9 @@ router.route("/:id/payment-pending").post(isVerifiedUser, markPaymentPending);
 router.route("/:id/bill").get(isVerifiedUser, getSessionBill);
 router.route("/:id/payment").post(isVerifiedUser, recordSessionPayment);
 router.route("/:id/close").post(isVerifiedUser, closeSessionWithoutPayment);
+// The party changes table, or two tables become one tab.
+router.route("/:id/move").post(isVerifiedUser, moveSession);
+router.route("/:id/merge").post(isVerifiedUser, mergeSessions);
 // Pull one dish off a live table order (out of stock, sent back). The
 // diner's QR page reads the same session, so it shows there too.
 router.route("/:id/items/:itemId/cancel").post(isVerifiedUser, cancelSessionItem);
