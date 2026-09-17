@@ -5,8 +5,8 @@ import { enqueueSnackbar } from "notistack";
 import { listPrepDueOrders, startPreparingOrder } from "../../https/storefrontApi";
 import useAlertBeep from "../../hooks/useAlertBeep";
 import { getActiveStoreId } from "../../utils/storeSession";
+import { SOCKET_URL } from "../../config";
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, "") || "";
 
 const clock = (d) =>
   d ? new Date(d).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" }) : "";
@@ -29,7 +29,7 @@ const PrepDuePopup = () => {
 
   useEffect(() => {
     if (!restaurantId) return undefined;
-    const socket = io(BACKEND_URL, {
+    const socket = io(SOCKET_URL, {
       withCredentials: true,
       transports: ["websocket", "polling"],
       query: { restaurantId, storeId: getActiveStoreId() },

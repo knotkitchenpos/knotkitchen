@@ -25,7 +25,6 @@ import {
   recordTableSessionPayment,
   cancelTableSessionItem,
   releaseTable,
-  regenerateQr,
   getOrCreateTableQr,
 } from "../https";
 import { enqueueSnackbar } from "notistack";
@@ -34,7 +33,7 @@ import { enqueueSnackbar } from "notistack";
 // in another icon package for a single glyph we render a small inline
 // QR-style SVG locally (`IconQr` below) — this keeps the bundle lean
 // and the previous unrelated build failure resolved.
-import { FiGrid, FiPlus, FiTrash2, FiEdit2, FiLayers, FiCheckCircle } from "react-icons/fi";
+import { FiGrid, FiPlus, FiTrash2, FiEdit2, FiLayers } from "react-icons/fi";
 import { QRCodeCanvas } from "qrcode.react";
 import { setOrderType } from "../redux/slices/orderTypeSlice";
 import { updateTable as updateTableAction, setSessionId } from "../redux/slices/customerSlice";
@@ -127,7 +126,7 @@ const Tables = () => {
   const [guestCountTable, setGuestCountTable] = useState(null);
   const [sessionTable, setSessionTable] = useState(null);
   const [sessionData, setSessionData] = useState(null);
-  const [sessionLoading, setSessionLoading] = useState(false);
+  const [, setSessionLoading] = useState(false);
   // Move the party to a free table / merge another table's tab into this one.
   const [picker, setPicker] = useState(null); // "move" | "merge"
 

@@ -1,8 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { useSelector } from "react-redux";
 import { getOrdersReport } from "../https";
-import { getMyRestaurant } from "../https/newModules";
+import { getMyRestaurant } from "../https";
 import { getWebsiteSettings } from "../https/storefrontApi";
 import { printHtmlDocument } from "../utils/printDocument";
 import { isPreparing, isReady, isCancelled, statusLabel } from "../constants/orderStatus";

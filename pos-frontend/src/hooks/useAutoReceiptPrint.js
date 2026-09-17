@@ -6,6 +6,7 @@ import { getOrderById } from "../https";
 import { getActiveStoreId } from "../utils/storeSession";
 import { loadPrinterConfig } from "../utils/printerDevice";
 import { printKot, printOrderReceipt } from "../utils/printReceipt";
+import { SOCKET_URL } from "../config";
 
 /**
  * Auto Receipt Print and Auto KOT: every new order prints on this device's
@@ -19,7 +20,6 @@ import { printKot, printOrderReceipt } from "../utils/printReceipt";
  * a ticket for the new lines, which arrive as `kitchen:round`.
  */
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, "") || window.location.origin;
 const PRINTED_KEY = "kk.autoPrinted.v1";
 
 /**
@@ -48,7 +48,7 @@ const useAutoReceiptPrint = () => {
   useEffect(() => {
     if (!restaurantId) return undefined;
 
-    const socket = io(BACKEND_URL, {
+    const socket = io(SOCKET_URL, {
       withCredentials: true,
       transports: ["websocket", "polling"],
       query: { restaurantId, storeId: getActiveStoreId() },

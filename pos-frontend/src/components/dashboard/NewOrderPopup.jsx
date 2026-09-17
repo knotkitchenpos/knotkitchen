@@ -8,8 +8,8 @@ import { AWAITING_ACCEPTANCE, PREPARING } from "../../constants/orderStatus";
 import useAlertBeep from "../../hooks/useAlertBeep";
 import { getActiveStoreId } from "../../utils/storeSession";
 import { tableLabel as labelForTable } from "../../utils/orderLabels";
+import { SOCKET_URL } from "../../config";
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, "") || "";
 
 /**
  * "New order" — one popup for every channel a customer orders through.
@@ -67,7 +67,7 @@ const NewOrderPopup = () => {
   useEffect(() => {
     if (!restaurantId) return undefined;
 
-    const socket = io(BACKEND_URL, {
+    const socket = io(SOCKET_URL, {
       withCredentials: true,
       transports: ["websocket", "polling"],
       query: { restaurantId, storeId: getActiveStoreId() },

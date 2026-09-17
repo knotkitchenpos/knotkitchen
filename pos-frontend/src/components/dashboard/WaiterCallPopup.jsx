@@ -2,12 +2,12 @@ import React, { useEffect, useRef, useState } from "react";
 import { useSelector } from "react-redux";
 import { io } from "socket.io-client";
 import { enqueueSnackbar } from "notistack";
-import { dismissWaiterCall } from "../../https/newModules";
+import { dismissWaiterCall } from "../../https";
 import { getTables } from "../../https";
 import useAlertBeep from "../../hooks/useAlertBeep";
 import { getActiveStoreId } from "../../utils/storeSession";
+import { SOCKET_URL } from "../../config";
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, "") || "";
 
 /**
  * "Waiter is called by Table N" — the POS side of the table QR's Call Waiter.
@@ -33,7 +33,7 @@ const WaiterCallPopup = () => {
   useEffect(() => {
     if (!restaurantId) return undefined;
 
-    const socket = io(BACKEND_URL, {
+    const socket = io(SOCKET_URL, {
       withCredentials: true,
       transports: ["websocket", "polling"],
       query: { restaurantId, storeId: getActiveStoreId() },

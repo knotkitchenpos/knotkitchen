@@ -4,7 +4,7 @@ import { getAvatarName } from "../../utils/index";
 import { useNavigate } from "react-router-dom";
 import { isReady as ready } from "../../constants/orderStatus";
 
-const OrderList = ({ key, order }) => {
+const OrderList = ({ order }) => {
   const isReady = ready(order.orderStatus);
   const navigate = useNavigate();
 

@@ -36,7 +36,7 @@ import {
   updateTable,
 } from "../../https";
 
-import { getMyRestaurant } from "../../https/newModules";
+import { getMyRestaurant } from "../../https";
 import { getWebsiteSettings } from "../../https/storefrontApi";
 import Invoice from "../invoice/Invoice";
 import { toOrderItems } from "../../utils/orderItems";

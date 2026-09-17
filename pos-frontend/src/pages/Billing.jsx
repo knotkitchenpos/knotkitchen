@@ -17,6 +17,7 @@ import {
 import { useSelector } from "react-redux";
 import SecurityPinModal from "../components/common/SecurityPinModal";
 import { checkActionAuthorization } from "../utils/security";
+import { loadCashfree } from "../utils/cashfree";
 
 /**
  * Settings → Billing.
@@ -31,16 +32,6 @@ import { checkActionAuthorization } from "../utils/security";
  */
 
 /** Cashfree JS v3, loaded on demand. Resolves null if it cannot load. */
-const loadCashfree = () =>
-  new Promise((resolve) => {
-    if (window.Cashfree) return resolve(window.Cashfree);
-    const el = document.createElement("script");
-    el.src = "https://sdk.cashfree.com/js/v3/cashfree.js";
-    el.onload = () => resolve(window.Cashfree || null);
-    el.onerror = () => resolve(null);
-    document.body.appendChild(el);
-  });
-
 const PRESETS = [500, 1000, 2000, 5000, 10000];
 
 const money = (amount) => amount?.label || "₹0.00";

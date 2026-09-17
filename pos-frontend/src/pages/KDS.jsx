@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getKDSOrders, updateKDSItemStatus, updateKDSOrderStatus } from "../https/newModules";
+import { getKDSOrders, updateKDSItemStatus, updateKDSOrderStatus } from "../https";
 import { useState } from "react";
 import { orderDisplayId } from "../utils/orderLabels";
 

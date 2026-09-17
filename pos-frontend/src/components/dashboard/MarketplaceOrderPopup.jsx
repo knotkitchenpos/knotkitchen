@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from "react";
 import { enqueueSnackbar } from "notistack";
 import { markOrderAsSeen } from "../../https/marketplace";
+import { BACKEND_URL } from "../../config";
 
 const MarketplaceOrderPopup = () => {
   const [orders, setOrders] = useState([]);
 
   useEffect(() => {
-    const baseUrl = (import.meta.env.VITE_BACKEND_URL || "").replace(/\/$/, "");
-    const es = new EventSource(baseUrl + "/api/marketplace/stream", {
+    const es = new EventSource(BACKEND_URL + "/api/marketplace/stream", {
       withCredentials: true,
     });
 

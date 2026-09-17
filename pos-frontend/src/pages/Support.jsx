@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { enqueueSnackbar } from "notistack";
-import { FiPrinter, FiGlobe, FiBell, FiHeadphones, FiX, FiPhoneCall, FiCheckCircle } from "react-icons/fi";
+import { FiPrinter, FiGlobe, FiBell, FiHeadphones, FiX, FiPhoneCall } from "react-icons/fi";
 import { SUPPORT_PHONE, SUPPORT_TEL } from "../constants/support";
 
 /* SVG Support Agent Illustration matching reference image */

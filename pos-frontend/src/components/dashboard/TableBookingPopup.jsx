@@ -11,8 +11,8 @@ import {
 } from "../../https";
 import useAlertBeep from "../../hooks/useAlertBeep";
 import { getActiveStoreId } from "../../utils/storeSession";
+import { SOCKET_URL } from "../../config";
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, "") || "";
 
 const dayLabel = (ymd) => {
   const today = new Date();
@@ -47,7 +47,7 @@ const TableBookingPopup = () => {
   useEffect(() => {
     if (!restaurantId) return undefined;
 
-    const socket = io(BACKEND_URL, {
+    const socket = io(SOCKET_URL, {
       withCredentials: true,
       transports: ["websocket", "polling"],
       query: { restaurantId, storeId: getActiveStoreId() },

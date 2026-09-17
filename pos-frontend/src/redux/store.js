@@ -4,7 +4,6 @@ import storage from "redux-persist/lib/storage";
 import customerSlice from "./slices/customerSlice"
 import cartSlice from "./slices/cartSlice";
 import userSlice from "./slices/userSlice";
-import themeSlice from "./slices/themeSlice";
 import orderTypeSlice from "./slices/orderTypeSlice";
 import heldOrdersSlice from "./slices/heldOrdersSlice";
 import discountSlice from "./slices/discountSlice";
@@ -23,7 +22,6 @@ const rootReducer = combineReducers({
     customer: customerSlice,
     cart : cartSlice,
     user : userSlice,
-    theme: themeSlice,
     orderType: orderTypeSlice,
     heldOrders: heldOrdersSlice,
     discount: discountSlice,
@@ -39,7 +37,7 @@ const store = configureStore({
                 ignoredActions: [FLUSH, REHYDRATE, PAUSE, PERSIST, PURGE, REGISTER],
             },
         }),
-    devTools: import.meta.env.NODE_ENV !== "production",
+    devTools: import.meta.env.DEV,
 });
 
 export const persistor = persistStore(store);

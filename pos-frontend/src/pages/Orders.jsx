@@ -17,7 +17,7 @@ import TableSettleModal from "../components/tables/TableSettleModal";
 import ReasonModal from "../components/orders/ReasonModal";
 import SecurityPinModal from "../components/common/SecurityPinModal";
 import { checkActionAuthorization, isManager } from "../utils/security";
-import { getMyRestaurant } from "../https/newModules";
+import { getMyRestaurant } from "../https";
 import { printKot, printOrderReceipt } from "../utils/printReceipt";
 import { itemDisplayName, itemExtras } from "../utils/orderItems";
 import { isPreparing, isReady, isSettled, isCancelled, statusLabel, COMPLETED } from "../constants/orderStatus";
@@ -116,7 +116,6 @@ const TABS = [
   { key: "Completed", statuses: ["Completed", "Served", "Delivered", "paid"] },
   { key: "Cancelled", statuses: ["Cancelled"] },
 ];
-
 
 const isFinished = (s) => ["Completed", "Cancelled"].includes(s);
 
@@ -344,26 +343,6 @@ const Orders = () => {
   });
 
   /* ---------- Stats ---------- */
-  // Note: "today" numbers on the stat cards are computed from the CURRENT
-  // window's orders. When the user filters by an older date the cards
-  // naturally reflect that day's totals, which is what an operator would
-  // expect ("show me what happened on Monday").
-  const stats = useMemo(() => {
-    let count = 0, revenue = 0, ongoing = 0, done = 0, cancelled = 0;
-    orders.forEach((o) => {
-      const refunded = (o.refunds || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
-      const amt = Math.max(0, Number(o.bills?.totalWithTax || o.bills?.total || 0) - refunded);
-      count += 1;
-      // isSettled, not === "Completed": the auto-complete sweep finishes
-      // orders as "Served" / "Delivered" and a settled table bill is "paid",
-      // so an exact match reported all of those as still ongoing.
-      if (!isCancelled(o.orderStatus)) revenue += amt;
-      if (isSettled(o.orderStatus)) done += 1;
-      else if (isCancelled(o.orderStatus)) cancelled += 1;
-      else ongoing += 1;
-    });
-    return { count, revenue, ongoing, done, cancelled };
-  }, [orders]);
 
   const counts = useMemo(() => {
     const c = { All: orders.length };
@@ -403,18 +382,6 @@ const Orders = () => {
     if (t === "dine-in") return o.table ? tableLabel(o.table, "Table Order") : "Table Order";
     return o.customerDetails?.name || "Walk-in Customer";
   };
-
-  const StatCard = ({ label, value, Icon, fg, bg }) => (
-    <div className="flex-1 min-w-[150px] bg-white border border-[#E2E8F0] rounded-xl px-4 py-3 flex items-start justify-between">
-      <div>
-        <p className="text-[12px] font-semibold text-[#94A3B8]">{label}</p>
-        <p className="text-[24px] font-extrabold text-[#0F172A] leading-tight mt-0.5">{value}</p>
-      </div>
-      <span className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0" style={{ background: bg, color: fg }}>
-        <Icon s={19} />
-      </span>
-    </div>
-  );
 
   // Human-friendly window label under the search bar so the biller can
   // see AT A GLANCE which day/range they're looking at. Server's window

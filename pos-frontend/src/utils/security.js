@@ -13,12 +13,6 @@ export const isManager = (user) => {
   return r === "admin" || r === "manager";
 };
 
-export const isStaff = (user) => {
-  if (!user || !user.role) return false;
-  const r = String(user.role).toLowerCase();
-  return r === "staff" || r === "cashier" || r === "waiter";
-};
-
 export const hasActivePinSession = () => {
   const token = sessionStorage.getItem("staffPinToken");
   const expiry = sessionStorage.getItem("staffPinTokenExpiry");
@@ -33,11 +27,6 @@ export const setPinSession = (pinToken, expiresAt) => {
       String(expiresAt || Date.now() + 15 * 60 * 1000)
     );
   }
-};
-
-export const clearPinSession = () => {
-  sessionStorage.removeItem("staffPinToken");
-  sessionStorage.removeItem("staffPinTokenExpiry");
 };
 
 /**

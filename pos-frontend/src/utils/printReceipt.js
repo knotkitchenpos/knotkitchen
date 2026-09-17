@@ -6,6 +6,7 @@ import { ditherInPlace, rasterJob, toMonochrome } from "./escpos.js";
 import { catJob } from "./catprinter.js";
 import { loadPrinterConfig, sendToPrinter } from "./printerDevice.js";
 import { readStoreScoped, writeStoreScoped } from "./storeSession.js";
+import { BACKEND_URL } from "../config";
 
 /**
  * Print a receipt for a saved order -- the one way the POS prints a bill.
@@ -17,7 +18,6 @@ import { readStoreScoped, writeStoreScoped } from "./storeSession.js";
  * stale or another store's branding.
  */
 
-const BACKEND_URL = (import.meta.env.VITE_BACKEND_URL || "").replace(/\/$/, "");
 const absolute = (url) => (url && url.startsWith("/") ? `${BACKEND_URL}${url}` : url);
 
 /** Store Properties (GET /api/restaurant/properties) as the receipt needs them. */

@@ -1,4 +1,5 @@
 import axios from "axios";
+import { BACKEND_URL } from "../config";
 import { isPublicPath } from "../utils/publicRoutes";
 import { getActiveStoreId } from "../utils/storeSession";
 
@@ -8,7 +9,7 @@ const defaultHeader = {
 };
 
 export const axiosWrapper = axios.create({
-  baseURL: import.meta.env.VITE_BACKEND_URL || "/",
+  baseURL: BACKEND_URL || "/",
   withCredentials: true,
   headers: { ...defaultHeader },
 });

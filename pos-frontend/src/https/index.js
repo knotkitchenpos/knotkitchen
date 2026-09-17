@@ -7,13 +7,10 @@ export const login = (data) => axiosWrapper.post("/api/user/login", data);
 export const register = (data) => axiosWrapper.post("/api/user/register", data);
 export const getUserData = () => axiosWrapper.get("/api/user");
 export const logout = () => axiosWrapper.post("/api/user/logout");
-export const changePassword = (data) => axiosWrapper.post("/api/user/change-password", data);
 
 // Store Auth Endpoints — password-based, 2026-08-31 migration off Fast2SMS.
 // The old sendStoreOtp/verifyStoreOtp/completeStoreSignup/sendLoginOtp
 // endpoints were removed together with the entire phone+OTP flow.
-export const validateStoreId = (data) => axiosWrapper.post("/api/user/store/validate-id", data);
-export const validateStoreOwner = (data) => axiosWrapper.post("/api/user/store/validate-owner", data);
 export const checkStoreStatus = (data) => axiosWrapper.post("/api/user/store/status", data);
 export const setupStorePassword = (data) => axiosWrapper.post("/api/user/store/setup-password", data);
 export const storeLogin = (data) => axiosWrapper.post("/api/user/store/login", data);
@@ -42,8 +39,6 @@ export const updateTable = ({ tableId, ...tableData }) =>
   axiosWrapper.put(`/api/table/${tableId}`, tableData);
 export const deleteTable = (tableId) =>
   axiosWrapper.delete(`/api/table/${tableId}`);
-export const regenerateQr = (tableId) =>
-  axiosWrapper.put(`/api/table/${tableId}/qr/regenerate`);
 
 // Payment Endpoints
 
@@ -125,12 +120,9 @@ export const getPopularItems = (params = {}) =>
 export const getOrdersReport = (params) =>
   axiosWrapper.get("/api/order/report", params ? { params } : undefined);
 
-
-
 // Table Session Endpoints (EPOS table ordering)
 export const createTableSession = (data) =>
   axiosWrapper.post("/api/table-session/", data);
-export const getTableSessions = () => axiosWrapper.get("/api/table-session");
 /** The party moves to a free table; their order and bill follow. */
 export const moveTableSession = (sessionId, tableId) => axiosWrapper.post(`/api/table-session/${sessionId}/move`, { tableId });
 /** Another table's tab joins this one; one bill at the end. */
@@ -149,25 +141,18 @@ export const getTableById = (tableId) => axiosWrapper.get(`/api/table/${tableId}
 // modern secure token via this endpoint.
 // Manage Table settings. Separate from Store Properties, which is PIN-gated:
 // how long a table rests after payment is an everyday floor setting.
-export const getTableSettings = () => axiosWrapper.get("/api/table/settings");
-export const updateTableSettings = (data) => axiosWrapper.put("/api/table/settings", data);
 
 export const getOrCreateTableQr = (tableId) =>
   axiosWrapper.get(`/api/table-qr/table/${tableId}`);
 export const regenerateTableQr = (tableId) =>
   axiosWrapper.post(`/api/table-qr/table/${tableId}/regenerate`);
 
-export const requestBillForSession = (sessionId) =>
-  axiosWrapper.post(`/api/table-session/${sessionId}/request-bill`);
 // Settle a table session at the counter. There was no wrapper for this at
 // all, which is why the POS had no way to complete a table order: the
 // session never reached PAID/CLOSED, so the table never entered its
 // cooldown and the QR kept serving the previous customer their old order.
 export const recordTableSessionPayment = (sessionId, data) =>
   axiosWrapper.post(`/api/table-session/${sessionId}/payment`, data);
-
-export const closeTableSessionWithoutPayment = (sessionId, data) =>
-  axiosWrapper.post(`/api/table-session/${sessionId}/close`, data);
 
 // Put a stranded table back into service. Every automatic path already frees
 // a table when its order is cancelled or settled, but a table left occupied
@@ -206,36 +191,21 @@ export const deleteDish = ({ menuId, itemId }) =>
 export const updateDishStatus = ({ menuId, itemId }) =>
   axiosWrapper.put(`/api/menu/${menuId}/dish/${itemId}/availability`);
 // Assign / clear a subcategory on a dish (POS redesign - optional grouping)
-export const updateDishSubcategory = ({ menuId, itemId, subcategory }) =>
-  axiosWrapper.put(`/api/menu/${menuId}/dish/${itemId}/subcategory`, { subcategory });
 export const reorderDishes = ({ menuId, itemIds }) =>
   axiosWrapper.put(`/api/menu/${menuId}/reorder`, { itemIds });
 // Drag-and-drop reorder for the top-level category rows in Manage Menu.
 export const reorderMenus = ({ menuIds }) =>
   axiosWrapper.put(`/api/menu/reorder-categories`, { menuIds });
 
-
 // Variant Endpoints
-export const addVariant = (data) =>
-  axiosWrapper.post(`/api/menu/${data.menuId}/dish/${data.itemId}/variant`, data);
-export const deleteVariant = ({ menuId, itemId, variantId }) =>
-  axiosWrapper.delete(`/api/menu/${menuId}/dish/${itemId}/variant/${variantId}`);
 
 // Add-on Endpoints
-export const addAddon = (data) =>
-  axiosWrapper.post(`/api/menu/${data.menuId}/dish/${data.itemId}/addon`, data);
-export const deleteAddon = ({ menuId, itemId, addonId }) =>
-  axiosWrapper.delete(`/api/menu/${menuId}/dish/${itemId}/addon/${addonId}`);
 
 // Modifier Group Endpoints
-export const addModifierGroup = (data) =>
-  axiosWrapper.post(`/api/menu/${data.menuId}/dish/${data.itemId}/modifier-group`, data);
 export const saveGroupToDishes = (data) =>
   axiosWrapper.post("/api/menu/group", data);
 export const deleteGroupFromDishes = (data) =>
   axiosWrapper.post("/api/menu/group/delete", data);
-export const renameGroupInDishes = (data) =>
-  axiosWrapper.put("/api/menu/group/rename", data);
 export const toggleGroupActive = (data) =>
   axiosWrapper.post("/api/menu/group/toggle-active", data);
 export const reorderGroups = (data) =>
@@ -244,33 +214,18 @@ export const bulkAddGroup = (data) =>
   axiosWrapper.post("/api/menu/group/bulk-add", data);
 export const bulkRemoveGroup = (data) =>
   axiosWrapper.post("/api/menu/group/bulk-remove", data);
-export const deleteModifierGroup = ({ menuId, itemId, groupId }) =>
-  axiosWrapper.delete(`/api/menu/${menuId}/dish/${itemId}/modifier-group/${groupId}`);
 
 // Combo Meal Endpoints
-export const toggleCombo = ({ menuId, itemId, ...data }) =>
-  axiosWrapper.put(`/api/menu/${menuId}/dish/${itemId}/combo`, data);
 
 // Pricing Rule Endpoints
-export const addPriceRule = (data) =>
-  axiosWrapper.post(`/api/menu/${data.menuId}/dish/${data.itemId}/price-rule`, data);
-export const deletePriceRule = ({ menuId, itemId, ruleId }) =>
-  axiosWrapper.delete(`/api/menu/${menuId}/dish/${itemId}/price-rule/${ruleId}`);
 
 // Availability Scheduling Endpoints (item level)
-export const updateItemSchedule = ({ menuId, itemId, ...data }) =>
-  axiosWrapper.put(`/api/menu/${menuId}/dish/${itemId}/schedule`, data);
 
 // Time-based Menu Endpoints (category level)
-export const updateMenuSchedule = ({ menuId, ...data }) =>
-  axiosWrapper.put(`/api/menu/${menuId}/schedule`, data);
 
 // Menu Versioning & Publishing Endpoints
 export const publishMenu = (menuId) => axiosWrapper.put(`/api/menu/${menuId}/publish`);
 export const unpublishMenu = (menuId) => axiosWrapper.put(`/api/menu/${menuId}/unpublish`);
-export const getMenuVersions = (menuId) => axiosWrapper.get(`/api/menu/${menuId}/versions`);
-export const rollbackMenu = ({ menuId, version }) =>
-  axiosWrapper.put(`/api/menu/${menuId}/rollback/${version}`);
 
 /**
  * Module 6 §4 — Manage Cache.
@@ -298,13 +253,7 @@ export const getStaffMembers = () => axiosWrapper.get("/api/restaurant/staff");
 export const deleteStaffMember = (staffId) => axiosWrapper.delete(`/api/restaurant/staff/${staffId}`);
 export const getActivityLogs = (params) => axiosWrapper.get("/api/restaurant/activity-logs", params ? { params } : undefined);
 
-
-
 // Structured Text (Notepad) Menu Import Endpoints
-export const getMenuImportFormat = () => axiosWrapper.get("/api/menu/import/format");
-export const previewMenuImport = (text) => axiosWrapper.post("/api/menu/import/preview", { text });
-export const importMenuText = ({ text, mode }) =>
-  axiosWrapper.post("/api/menu/import", { text, mode });
 
 // CSV Import / Export (Module 5)
 export const downloadMenuCsvTemplate = () => axiosWrapper.get("/api/menu/csv/template", { responseType: "blob" });
@@ -324,7 +273,6 @@ export const uploadMediaAsset = (formData) =>
 // Bill + PaymentLink and — critically — leaves the underlying Order in
 // "Pending" until the customer actually pays via /pay/:token. We NEVER mark
 // the order as paid at creation time.
-export const createPaymentLink = (data) => axiosWrapper.post("/api/payment-link", data);
 
 // Receipt & E-Bill endpoints (Module 3 §5, §7)
 // The backend (receiptController) builds a structured receipt from the
@@ -332,13 +280,7 @@ export const createPaymentLink = (data) => axiosWrapper.post("/api/payment-link"
 // tenant's configured SMS provider. The frontend E-Bill button is only
 // enabled when a customer phone exists — but this endpoint also refuses
 // to send if the phone is missing (defence in depth).
-export const getReceiptForOrder = (orderId) =>
-  axiosWrapper.get(`/api/receipts/order/${orderId}`);
 export const sendEBill = (data) => axiosWrapper.post("/api/receipts/send-ebill", data);
-
-
-
-
 
 /**
  * KnotKitchen Business Balance and subscription.
@@ -362,5 +304,11 @@ export const purchasePlan = (data) => axiosWrapper.post("/api/subscription/purch
 // Agreement v2.0: the selectable installation options and commitments, priced for this store.
 export const getSubscriptionTerms = () => axiosWrapper.get("/api/subscription/terms");
 export const purchaseInstallation = (data) => axiosWrapper.post("/api/subscription/installation", data);
-export const getCommercialSchedules = () => axiosWrapper.get("/api/subscription/schedule");
 export const getPlatformInvoices = () => axiosWrapper.get("/api/subscription/invoices");
+
+/* ---------- Restaurant, KDS, waiter calls ---------- */
+export const getMyRestaurant = () => axiosWrapper.get("/api/restaurant/me");
+export const getKDSOrders = (params) => axiosWrapper.get("/api/kds/", { params });
+export const updateKDSItemStatus = (kdsOrderId, itemId, data) => axiosWrapper.patch(`/api/kds/${kdsOrderId}/items/${itemId}`, data);
+export const updateKDSOrderStatus = (kdsOrderId, data) => axiosWrapper.patch(`/api/kds/${kdsOrderId}/status`, data);
+export const dismissWaiterCall = (tableId) => axiosWrapper.post(`/api/qr/waiter-call/${tableId}/dismiss`);

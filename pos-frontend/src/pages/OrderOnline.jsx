@@ -9,30 +9,7 @@ import {
   qrGetPaymentIntent,
   qrVerifyPayment,
 } from "../https/publicApi";
-
-/** Cashfree JS v3, loaded on demand. Resolves null if it cannot load. */
-function loadCashfree() {
-  return loadScript("https://sdk.cashfree.com/js/v3/cashfree.js", () => window.Cashfree);
-}
-
-/**
- * Load a third-party script once and hand back whatever global it defines.
- *
- * Deliberately resolves null rather than rejecting: a diner on a hotel wifi
- * that blocks the gateway CDN should get "we couldn't open the payment page",
- * not an unhandled rejection and a blank screen.
- */
-function loadScript(src, pick) {
-  return new Promise((resolve) => {
-    const existing = pick();
-    if (existing) return resolve(existing);
-    const el = document.createElement("script");
-    el.src = src;
-    el.onload = () => resolve(pick() || null);
-    el.onerror = () => resolve(null);
-    document.body.appendChild(el);
-  });
-}
+import { loadCashfree } from "../utils/cashfree";
 
 /**
  * Customer-facing table-QR menu (mobile-first).

@@ -1,28 +1,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { paymentLinkGet, paymentLinkVerify } from "../https/publicApi";
-
-/**
- * Load a gateway SDK once and hand back whatever global it defines.
- *
- * Resolves null rather than rejecting: a customer whose network blocks the
- * gateway CDN should get "could not be loaded", not a blank screen.
- */
-function loadScript(src, pick) {
-  return new Promise((resolve) => {
-    const existing = pick();
-    if (existing) return resolve(existing);
-    const s = document.createElement("script");
-    s.src = src;
-    s.onload = () => resolve(pick() || null);
-    s.onerror = () => resolve(null);
-    document.body.appendChild(s);
-  });
-}
-
-function loadCashfree() {
-  return loadScript("https://sdk.cashfree.com/js/v3/cashfree.js", () => window.Cashfree);
-}
+import { loadCashfree } from "../utils/cashfree";
 
 export default function PaymentLink() {
   const { token } = useParams();

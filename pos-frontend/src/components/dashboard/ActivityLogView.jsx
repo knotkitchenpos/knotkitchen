@@ -9,7 +9,7 @@ const ActivityLogView = () => {
   const [action, setAction] = useState("");
   const [selectedLog, setSelectedLog] = useState(null);
 
-  const { data: logRes, isLoading, refetch } = useQuery({
+  const { data: logRes, isLoading } = useQuery({
     queryKey: ["activity-logs", page, date, phone, action],
     queryFn: () => getActivityLogs({ page, limit: 30, date, phone, action }),
   });

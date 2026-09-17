@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { io } from "socket.io-client";
 import { useSelector } from "react-redux";
 import { getActiveStoreId } from "../utils/storeSession";
+import { SOCKET_URL } from "../config";
 
 /**
  * Keep the whole POS current without anyone pressing refresh.
@@ -24,7 +25,6 @@ import { getActiveStoreId } from "../utils/storeSession";
  * and folding them together is a bigger change than the bug being fixed here.
  */
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL || window.location.origin;
 
 /**
  * Which cached queries each event invalidates.
@@ -53,7 +53,7 @@ const useRealtimeSync = () => {
   useEffect(() => {
     if (!restaurantId) return undefined;
 
-    const socket = io(BACKEND_URL, {
+    const socket = io(SOCKET_URL, {
       // The server authenticates from the same HTTP-only cookie axiosWrapper
       // uses; without credentials the socket cannot join a tenant room.
       withCredentials: true,

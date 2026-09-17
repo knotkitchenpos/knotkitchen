@@ -1,10 +1,11 @@
 import React from "react";
+import { tableLabel } from "../../utils/orderLabels";
 
 /**
  * Pick a table: the free ones (to move a party) or the occupied ones (to
  * merge another party's tab into this one).
  */
-const label = (t) => t?.displayId || t?.tableName || `Table ${t?.tableNumber ?? "?"}`;
+const label = (t) => tableLabel(t, "Table ?");
 
 const TablePickerModal = ({ title, hint, tables, busy, onPick, onClose }) => (
   <div className="fixed inset-0 z-[75] flex items-end sm:items-center justify-center bg-black/50 p-0 sm:p-4" onClick={onClose}>

@@ -6,7 +6,7 @@ import { ModalShell, Field, inputCls } from "./ModalShell";
  * Collection orders permit optional customer details (Module 2 §5).
  * Indian +91 format supported.
  */
-const PHONE = /^(\+91[\s\-]?)?[6-9]\d{9}$|^[+]?[\d\s\-()]{7,20}$/;
+const PHONE = /^(\+91[\s-]?)?[6-9]\d{9}$|^[+]?[\d\s()-]{7,20}$/;
 
 const CollectionModal = ({ initialName = "", initialPhone = "", total = 0, busy, onClose, onConfirm }) => {
   const [name, setName] = useState(initialName);

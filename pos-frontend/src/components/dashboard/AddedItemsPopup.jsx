@@ -5,8 +5,8 @@ import { enqueueSnackbar } from "notistack";
 import { resolveAddedItems } from "../../https/storefrontApi";
 import useAlertBeep from "../../hooks/useAlertBeep";
 import { getActiveStoreId } from "../../utils/storeSession";
+import { SOCKET_URL } from "../../config";
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, "") || "";
 
 /**
  * "Added Items" — a diner at a table that is already mid-meal has ordered more.
@@ -34,7 +34,7 @@ const AddedItemsPopup = () => {
   useEffect(() => {
     if (!restaurantId) return undefined;
 
-    const socket = io(BACKEND_URL, {
+    const socket = io(SOCKET_URL, {
       withCredentials: true,
       transports: ["websocket", "polling"],
       query: { restaurantId, storeId: getActiveStoreId() },

@@ -68,7 +68,7 @@ export const sourceLabel = (src) => {
  * suffix is only the fallback for orders written before that, and the length
  * of that slice is the whole reason this function exists -- never inline it.
  */
-export const ORDER_ID_FALLBACK_LEN = 6;
+const ORDER_ID_FALLBACK_LEN = 6;
 
 export const orderDisplayId = (order, fallback = "N/A") => {
   if (!order) return fallback;

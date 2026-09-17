@@ -1,5 +1,4 @@
 import React from "react";
-import { motion } from "framer-motion";
 import { FiArrowRight, FiClipboard } from "react-icons/fi";
 import OrderList from "./OrderList";
 import { useQuery } from "@tanstack/react-query";
@@ -44,7 +43,7 @@ const RecentOrders = () => {
         </div>
       ) : (
         <div className="space-y-3 max-h-[500px] overflow-y-auto scrollbar-hide">
-          {orders.slice(0, 6).map((order, index) => (
+          {orders.slice(0, 6).map((order) => (
             <OrderList
               key={order._id}
               order={order}

@@ -2,8 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { io } from "socket.io-client";
 import { listOnlineOrders } from "../https/storefrontApi";
 import { getActiveStoreId } from "../utils/storeSession";
+import { SOCKET_URL } from "../config";
 
-const BACKEND_URL = import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, "") || "";
 
 /**
  * Realtime online-order feed for the POS (§13, §32).
@@ -64,7 +64,7 @@ export function useOnlineOrders(restaurantId) {
   useEffect(() => {
     if (!restaurantId) return undefined;
 
-    const socket = io(BACKEND_URL, {
+    const socket = io(SOCKET_URL, {
       // The backend authenticates Socket.IO from the same HTTP-only access
       // cookie used by axiosWrapper. Without credentials the socket cannot
       // join a tenant room.

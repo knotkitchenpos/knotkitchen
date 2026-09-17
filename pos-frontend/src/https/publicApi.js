@@ -1,9 +1,10 @@
 import axios from "axios";
+import { BACKEND_URL } from "../config";
 
 // Bare axios for public (no-cookie) endpoints: QR table view,
 // public session ordering, and payment link resolution/capture.
 export const publicApi = axios.create({
-  baseURL: import.meta.env.VITE_BACKEND_URL || "",
+  baseURL: BACKEND_URL,
   headers: { "Content-Type": "application/json", Accept: "application/json" },
   withCredentials: false,
 });
@@ -22,8 +23,6 @@ const withClaim = (path, claim) => (claim ? `${path}?s=${encodeURIComponent(clai
 
 export const qrGetTable = (token, claim) =>
   publicApi.get(withClaim(`/api/qr/table/${token}`, claim));
-export const qrGetSession = (token, claim) =>
-  publicApi.get(withClaim(`/api/qr/session/${token}`, claim));
 export const qrPlaceOrder = (token, data, claim) =>
   publicApi.post(`/api/qr/session/items/${token}`, { ...data, sessionToken: claim || "" }); // tenant-scoped via table token
 export const qrRequestBill = (token, claim) =>
