@@ -1758,6 +1758,8 @@ const RulesChargesView = () => {
 /* ---------- Main Settings layout (Module 6 & Module 7) ---------- */
 
 
+const SHOW_LATER_FEATURES = false;
+
 const MENU_ITEMS = [
   { id: "cache", title: "1. Manage Cache", desc: "Publish menu changes to Website or System cache.", Icon: I.database, mode: "view" },
   { id: "device", title: "2. Device Configuration", desc: "Printer paper sizes, auto-print & e-bill settings.", Icon: I.printer, mode: "view" },
@@ -1768,8 +1770,14 @@ const MENU_ITEMS = [
   { id: "timings", title: "7. Website Timing & Holidays", desc: "Collection, delivery and table booking hours, Close for Today and holidays for the website.", Icon: I.calendar, mode: "view" },
   { id: "rules", title: "8. Rules, Charges & Promotions", desc: "Min orders, delivery slabs, GST, coupons, free items.", Icon: I.fileText, mode: "view" },
   { id: "reports", title: "9. Reports", desc: "Sales, revenue and order breakdowns.", Icon: I.chart, path: "/reports" },
-  { id: "shift", title: "Shift & Day End", desc: "Open the till with a float, close with a cash count, print the Z report.", Icon: I.cash, mode: "view" },
-  { id: "inventory", title: "Inventory", desc: "Ingredients, stock levels, recipes per dish, wastage. Sales deplete stock automatically.", Icon: I.boxes, mode: "view" },
+  // Shift & Day End and Inventory are built (ShiftView, InventoryView) but
+  // hidden until the user wants them on. Flip SHOW_LATER_FEATURES to list them.
+  ...(SHOW_LATER_FEATURES
+    ? [
+        { id: "shift", title: "Shift & Day End", desc: "Open the till with a float, close with a cash count, print the Z report.", Icon: I.cash, mode: "view" },
+        { id: "inventory", title: "Inventory", desc: "Ingredients, stock levels, recipes per dish, wastage. Sales deplete stock automatically.", Icon: I.boxes, mode: "view" },
+      ]
+    : []),
   { id: "customers", title: "Customers", desc: "Everyone who ordered: visits, spend, notes and tags.", Icon: I.users, mode: "view" },
   // Reachable even when the account is locked -- it is the only screen that
   // can clear a lock, so it must never be gated. See middlewares/accountLock.js.
