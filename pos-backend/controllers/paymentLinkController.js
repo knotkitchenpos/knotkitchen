@@ -130,7 +130,7 @@ const createPaymentLink = async (req, res, next) => {
 
     const existingActiveLink = await PaymentLink.findOne(queryLink);
     if (existingActiveLink) {
-      const paymentUrl = `${process.env.FRONTEND_URL || "http://localhost:5173"}/pay/${existingActiveLink.linkToken}`;
+      const paymentUrl = `${config.frontendUrl}/pay/${existingActiveLink.linkToken}`;
       return res.status(200).json({
         success: true,
         message: "Active payment link already exists for this order/bill.",
@@ -216,7 +216,7 @@ const createPaymentLink = async (req, res, next) => {
       createdBy: req.user._id,
     });
 
-    const paymentUrl = `${process.env.FRONTEND_URL || "http://localhost:5173"}/pay/${linkToken}`;
+    const paymentUrl = `${config.frontendUrl}/pay/${linkToken}`;
 
     // 8. Fetch restaurant name for messaging
     const restaurant = await Restaurant.findById(link.restaurantId);

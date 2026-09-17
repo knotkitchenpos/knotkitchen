@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const { buildCooldownUpdate } = require("../services/tableCooldownService");
+const { userScope } = require("../services/tenantContext");
 const { resolveGstForRestaurant } = require("../services/gst");
 const Table = require("../models/tableModel");
 const TableSession = require("../models/tableSessionModel");
@@ -300,12 +301,7 @@ const recalculateSessionBill = async (session) => {
   return session;
 };
 
-const getScopeQuery = (req) => {
-  if (req.user?.restaurantId) {
-    return { restaurantId: req.user.restaurantId };
-  }
-  return { createdBy: req.user._id };
-};
+const getScopeQuery = (req) => userScope(req.user);
 
 /**
  * Validate capacity for a table.

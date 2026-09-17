@@ -51,4 +51,15 @@ const tenantFilter = ({ storeId, restaurantId }) => {
   return or.length === 1 ? or[0] : { $or: or };
 };
 
-module.exports = { resolveTenantFromUser, tenantFilter };
+/**
+ * The Mongo filter for "this user's own data" on restaurant-keyed
+ * collections (Menu, TableSession, Order): the restaurant when the user
+ * belongs to one, else what they created. Deliberately no outletId: the
+ * menu is shared by every outlet of a restaurant (see menuController).
+ */
+const userScope = (user) => {
+  if (user?.restaurantId) return { restaurantId: user.restaurantId };
+  return { createdBy: user?._id };
+};
+
+module.exports = { resolveTenantFromUser, tenantFilter, userScope };

@@ -8,7 +8,7 @@ A full-featured **Restaurant POS System** built using the **MERN Stack** to stre
 - 📋 **Order Management** - Create, track, and update orders in real-time
 - 🪑 **Table Management** - Assign, book, and manage restaurant tables
 - 🍔 **Menu System** - Browse and add items to cart with quantity controls
-- 💳 **Payment Processing** - Cash and online payments via Razorpay
+- 💳 **Payment Processing** - Cash, UPI, card and online payments via Cashfree
 - 🖨️ **Receipt Printing** - Print/download order receipts
 - 🎨 **Theme Support** - Light mode, dark mode, and system default
 
@@ -29,7 +29,7 @@ A full-featured **Restaurant POS System** built using the **MERN Stack** to stre
 - Express
 - MongoDB (Mongoose)
 - JWT Authentication
-- Razorpay Integration
+- Cashfree Payment Gateway
 
 ## 🚀 Getting Started
 

@@ -27,10 +27,7 @@ const { normalizeCap } = require("../services/modifierGroups");
  * menu carries an outletId. Adding the clause would hide every existing menu
  * the moment anyone set a user's outletId.
  */
-const menuScopeFor = (user) => {
-  if (user?.restaurantId) return { restaurantId: user.restaurantId };
-  return { createdBy: user?._id };
-};
+const { userScope: menuScopeFor } = require("../services/tenantContext");
 
 const { AUDIENCES, projectMenu, isVisibleOnPos, snapshotOf } = require("../services/menuCache");
 

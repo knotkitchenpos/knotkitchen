@@ -259,7 +259,7 @@ const kitchenStatusForSession = async (session) => {
 router.route("/tables/:tableId/generate").post(isVerifiedUser, requirePermission("TABLE_UPDATE"), async (req, res, next) => {
   try {
     const token = crypto.randomBytes(16).toString("hex");
-    const qrUrl = `${process.env.FRONTEND_URL || "http://localhost:5173"}/order?table=${token}`;
+    const qrUrl = `${config.frontendUrl}/order?table=${token}`;
     const table = await Table.findOneAndUpdate({ _id: req.params.tableId, restaurantId: req.user.restaurantId }, { qrToken: token, qrCode: qrUrl }, { new: true });
     if (!table) return res.status(404).json({ success: false, message: "Table not found!" });
     res.status(200).json({ success: true, data: table });

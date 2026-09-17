@@ -24,10 +24,7 @@ const createHttpError = require("http-errors");
  * menu carries an outletId. Adding the clause would hide every existing menu
  * the moment anyone set a user's outletId.
  */
-const menuScopeFor = (user) => {
-  if (user?.restaurantId) return { restaurantId: user.restaurantId };
-  return { createdBy: user?._id };
-};
+const { userScope: menuScopeFor } = require("../services/tenantContext");
 
 const STANDARD_HEADERS = ["Category", "Subcategory", "Item Name", "Description", "Veg/Non-Veg", "Price"];
 

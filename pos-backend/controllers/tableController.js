@@ -1,4 +1,5 @@
 const Table = require("../models/tableModel");
+const config = require("../config/config");
 const TableSession = require("../models/tableSessionModel");
 const { upcomingBookingsByTable } = require("./tableBookingController");
 const createHttpError = require("http-errors");
@@ -65,7 +66,7 @@ const addTable = async (req, res, next) => {
       outletId: req.user?.outletId,
       createdBy: req.user._id,
       qrToken,
-      qrCode: `${process.env.FRONTEND_URL || "http://localhost:5173"}/order?table=${qrToken}`,
+      qrCode: `${config.frontendUrl}/order?table=${qrToken}`,
       qrEnabled: true,
       status: "available",
     });
@@ -348,7 +349,7 @@ const regenerateQr = async (req, res, next) => {
       { _id: id, ...scopeQuery },
       {
         qrToken,
-        qrCode: `${process.env.FRONTEND_URL || "http://localhost:5173"}/order?table=${qrToken}`,
+        qrCode: `${config.frontendUrl}/order?table=${qrToken}`,
         qrEnabled: true,
       },
       { new: true }

@@ -465,3 +465,64 @@ Vertical growth path:
 * Front all three Node apps with a second Caddy replica behind Hostinger's
   load balancer if traffic requires it. Nothing in the code assumes a single
   instance.
+
+## 11. Code map: where things live
+
+The repository is five apps and one deploy folder. Each app keeps a flat,
+responsibility-named layout; there is no `src/` indirection on the backend and
+no per-feature folder tree on the frontends, on purpose: the tree is small
+enough that a name says what a file is.
+
+### pos-backend (Express + Mongoose)
+
+| Folder | Holds | Rule |
+|---|---|---|
+| `routes/*Route.js` | one router per URL prefix; middleware and the controller call only | no DB work in a route (`qrRoute.js` is the known exception, see §11.4) |
+| `controllers/*Controller.js` | request parsing, tenant scoping, the response | business rules that two controllers share go to a service |
+| `services/` | business rules and integrations: `price.js` (menu/order maths), `orderPricingService.js` (storefront totals), `gst.js`, `money.js` (rounding, paise), `refunds.js`, `shifts.js`, `inventory.js`, `menuCache.js` (publish gate), `tenantContext.js` (tenant filters), `socket.js`, `auditService.js`, `gateways/cashfree.js`, `messagingService.js` (Fast2SMS) | one authority per rule; `pricing.js` is platform *plan* pricing, not order pricing |
+| `models/*Model.js` | Mongoose schemas and indexes only | hooks are for invariants (e.g. stock depletion on Order save), not workflows |
+| `middlewares/` | auth (`tokenVerification`), permissions (`requirePermission`: `requireProtectedAction` = owner or PIN, `requireManager`, `requireOwnerOnly`), account lock, CSD auth | |
+| `constants/` | vocabularies: `orderStatus.js`, `paymentMethods.js` | never hand-write a status or method string elsewhere; tests enforce it |
+| `config/config.js` | every `process.env` read with its default | a few readers stay lazy on purpose (Fast2SMS key rotation, public-URL helpers exercised by tests) |
+| `tests/` | `node --test`, ~970 tests, run by CI | |
+
+### pos-frontend (Vite + React, the POS)
+
+| Folder | Holds |
+|---|---|
+| `src/config.js` | `BACKEND_URL`, `SOCKET_URL`, `CASHFREE_SDK_URL`: the only `import.meta.env` reads |
+| `src/https/` | every API call: `index.js` (POS), `storefrontApi.js` (website settings, online orders), `publicApi.js` (unauthenticated), `marketplace.js`; the axios instance and PIN header live in `axiosWrapper.js` |
+| `src/pages/` | one file per route; a page composes components and owns no shared logic |
+| `src/components/<area>/` | `pos/` (till), `orders/`, `tables/`, `settings/` (each Settings section is its own view), `dashboard/` (Manage Menu and the realtime popups), `home/`, `qr/`, `invoice/`, `shared/` |
+| `src/hooks/` | realtime sync, auto print, online orders, offline queue |
+| `src/utils/` | pure helpers: `orderLabels.js` (`tableLabel`, `orderDisplayId`), `receiptLayout.js` + `printReceipt.js` + `escpos.js` + `catprinter.js` + `printerDevice.js` (the one print path), `offlineQueue.js`, `security.js` (roles, PIN), `storeSession.js`, `cashfree.js` |
+| `src/constants/orderStatus.js` | the status vocabulary, mirrored from the backend |
+| `src/redux/` | cart, customer, order type, held orders, discount, user |
+| `src/storefront/` | the owner's in-POS website preview; a fork of customer-web kept separate on purpose |
+
+### customer-web, csd-web, onboard, pos-desktop
+
+- **customer-web**: `src/lib/` (API client, hostname → store, dispatch, legal page registry), `src/components/landing/` (the five designs and shared parts), `src/pages/legal/` (policy bodies). Tests in `src/lib/*.test.mjs`.
+- **csd-web**: `src/api/index.js` (the one client), `src/lib/format.js` (money and dates), `src/pages/`, `src/components/`.
+- **onboard**: `server/` (Express, `routes/api.js`, `middleware/{auth,serviceAuth}.js`), `public/index.html` plus `public/css/portal.css` and `public/js/` (agreement template, agreement text, markdown, PDF, API client). Tests in `tests/`.
+- **pos-desktop**: Electron shell for Windows (`main.js`, `preload.js`).
+
+### 11.4 Known debt, deliberately left
+
+- `routes/qrRoute.js` is a controller in a route file (1000 lines, public surface). It duplicates the table-session bill maths and socket emits; folding it into `tableSessionController` needs its own change with the QR tests as the net.
+- Three order-total engines exist (`services/price.js`, `services/orderPricingService.js`, and the tax back-derivation in `onlineOrderController`) with different rounding orders. Unifying them is a money change and needs new tests first.
+- Four idempotency schemes (storefront checkout, table payment, payment link, QR `requestId`).
+- `pos-frontend/src/storefront/` and `customer-web` are forks; nine popups and hooks each open their own socket.
+- POS money and date formatters are still per-file (three rounding behaviours); consolidate behind unit tests, not by search-and-replace.
+
+### DEVELOPMENT RULE
+
+Before creating a new file to fix a bug, first check whether the functionality
+belongs in an existing module. Prefer modifying and consolidating existing
+modules over creating duplicate fix files. A new file is justified only when it
+represents a genuinely separate responsibility: a new feature, a helper shared
+by more than one caller, or a component with its own state. Never leave
+`*Fix`, `*V2`, `*New`, `*Old`, `temp`, `backup` or copied files in the source
+tree, and never keep two implementations of one business rule: find the
+authority named above and change it there.
+
