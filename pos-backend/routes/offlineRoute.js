@@ -2,6 +2,7 @@ const express = require("express");
 const { isVerifiedUser } = require("../middlewares/tokenVerification");
 const Order = require("../models/orderModel");
 const { addOrder } = require("../controllers/orderController");
+const { findOrCreate } = require("../services/idempotency");
 
 const router = express.Router();
 
@@ -10,8 +11,8 @@ const router = express.Router();
  *
  * Orders the till took while the internet was down. Each one goes through
  * the SAME addOrder as a live order (allow-list, pricing, customer upsert,
- * sockets), then is stamped with the offline key so a retry cannot create
- * it twice, and back-dated to when it was actually taken.
+ * sockets), carrying the offline key from birth so a retry cannot create it
+ * twice, and is back-dated to when it was actually taken.
  */
 router.route("/orders/sync").post(isVerifiedUser, async (req, res, next) => {
   try {
@@ -29,17 +30,19 @@ router.route("/orders/sync").post(isVerifiedUser, async (req, res, next) => {
       }
       const key = `offline:${localId}`;
       try {
-        const existing = await Order.findOne({ restaurantId: req.user.restaurantId, idempotencyKey: key }).select("_id orderNumber").lean();
-        if (existing) {
-          synced.push({ localId, serverId: existing._id, orderNumber: existing.orderNumber, duplicate: true });
+        const { doc: created, duplicate } = await findOrCreate({
+          find: () => Order.findOne({ restaurantId: req.user.restaurantId, idempotencyKey: key }).select("_id orderNumber").lean(),
+          create: () => runAddOrder(req, entry.order, key),
+        });
+        if (duplicate) {
+          synced.push({ localId, serverId: created._id, orderNumber: created.orderNumber, duplicate: true });
           continue;
         }
-        const created = await runAddOrder(req, entry.order);
         const placedAt = new Date(entry.placedAt);
         const sane = !Number.isNaN(placedAt.getTime()) && Date.now() - placedAt.getTime() < 7 * 86400000 && placedAt.getTime() <= Date.now();
         await Order.updateOne(
           { _id: created._id },
-          { $set: { idempotencyKey: key, isOffline: true, syncStatus: "synced", ...(sane ? { createdAt: placedAt, orderDate: placedAt } : {}) } },
+          { $set: { isOffline: true, syncStatus: "synced", ...(sane ? { createdAt: placedAt, orderDate: placedAt } : {}) } },
         );
         synced.push({ localId, serverId: created._id, orderNumber: created.orderNumber });
       } catch (err) {
@@ -53,10 +56,11 @@ router.route("/orders/sync").post(isVerifiedUser, async (req, res, next) => {
 });
 
 /** Run the live addOrder against one queued order, capturing its result. */
-const runAddOrder = (req, body) =>
+const runAddOrder = (req, body, idempotencyKey) =>
   new Promise((resolve, reject) => {
     const fakeReq = Object.create(req);
     fakeReq.body = body;
+    fakeReq.idempotencyKey = idempotencyKey;
     const fakeRes = {
       status() {
         return this;

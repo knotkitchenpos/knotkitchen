@@ -15,7 +15,7 @@ const path = require("path");
 
 const read = (...p) => fs.readFileSync(path.join(__dirname, "..", ...p), "utf8");
 
-const QR_ROUTE = read("routes", "qrRoute.js");
+const QR_ROUTE = read("controllers", "qrController.js");
 const SESSION_CTRL = read("controllers", "tableSessionController.js");
 const ORDER_CTRL = read("controllers", "orderController.js");
 
@@ -152,7 +152,7 @@ test("REGRESSION: a QR scan cannot open a new session on a table in cooldown", (
 test("the cooldown check runs only when a session is being CREATED", () => {
   // A diner already mid-meal must never be locked out of their own table.
   const beforeCreation = QR_ROUTE.slice(
-    QR_ROUTE.indexOf('router.route("/session/items/:token")'),
+    QR_ROUTE.indexOf("const addSessionItems = async"),
     QR_ROUTE.indexOf("let created = false;"),
   );
   assert.ok(
@@ -258,8 +258,8 @@ test("REGRESSION: a restaurant without its own gateway never pays into the platf
 
 test("the QR payment amount comes from the session's own bill", () => {
   const block = QR_ROUTE.slice(
-    QR_ROUTE.indexOf('router.route("/payment-intent/:token")'),
-    QR_ROUTE.indexOf('router.route("/payment-verify/:token")'),
+    QR_ROUTE.indexOf("const paymentIntent = async"),
+    QR_ROUTE.indexOf("const paymentVerify = async"),
   );
   assert.match(block, /const payable = session\.bills\?\.totalWithTax \|\| 0/);
   assert.match(block, /amount: payable/, "the gateway order is opened for the bill");
@@ -277,7 +277,7 @@ test("the QR payment amount comes from the session's own bill", () => {
 
 test("Cashfree is verified by asking Cashfree, not by trusting the browser", () => {
   const cf = QR_ROUTE.slice(
-    QR_ROUTE.indexOf('router.route("/payment-verify/:token")'),
+    QR_ROUTE.indexOf("const paymentVerify = async"),
     QR_ROUTE.indexOf("settleSessionFromGateway"),
   );
 
@@ -294,7 +294,7 @@ test("Cashfree is verified by asking Cashfree, not by trusting the browser", () 
 test("a failed Cashfree status check does not report the payment as failed", () => {
   // The money may well have moved. Telling the diner it failed invites them
   // to pay twice.
-  const block = QR_ROUTE.slice(QR_ROUTE.indexOf('router.route("/payment-verify/:token")'));
+  const block = QR_ROUTE.slice(QR_ROUTE.indexOf("const paymentVerify = async"));
   assert.match(block, /status\(502\)/);
   assert.match(block, /could not confirm that payment/i);
 });

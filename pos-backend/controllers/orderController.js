@@ -383,8 +383,9 @@ const addOrder = async (req, res, next) => {
 
     // EXPLICIT ALLOW-LIST — no spreading `...req.body` (mass-assignment).
     // Fields NOT taken from req.body: restaurantId, outletId, storeId,
-    // createdBy, orderStatus, source, orderNumber, idempotencyKey,
-    // paymentMethod, payments, timeline, isDeleted, etc.
+    // createdBy, orderStatus, source, orderNumber, idempotencyKey (the
+    // offline sync sets it on the request, never the client), paymentMethod,
+    // payments, timeline, isDeleted, etc.
     const items = Array.isArray(req.body?.items) ? req.body.items.slice(0, 200).map(sanitizeItem) : [];
     const sanitizedBills = sanitizeBills(bills || {});
 
@@ -480,6 +481,7 @@ const addOrder = async (req, res, next) => {
       ...(normalizedPaymentMethod ? { paymentMethod: normalizedPaymentMethod } : {}),
       ...(paymentsForOrder.length ? { payments: paymentsForOrder } : {}),
       timeline: [{ status: initialStatus, timestamp: new Date(), user: req.user?.name || "POS" }],
+      ...(req.idempotencyKey ? { idempotencyKey: req.idempotencyKey } : {}),
     };
 
 

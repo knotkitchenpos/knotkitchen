@@ -42,15 +42,16 @@ test("every way a customer orders checks it", () => {
   const bookings = SRC("controllers/tableBookingController.js");
   assert.match(bookings, /if \(ctx\.orderingLocked\) throw createHttpError\(409, CUSTOMER_PAUSED_MESSAGE\)/, "table booking");
 
-  const qr = SRC("routes/qrRoute.js");
+  const qr = SRC("controllers/qrController.js");
   assert.equal((qr.match(/if \(await accountLock\(\)\.isOrderingLocked\(restaurantId\)\)/g) || []).length, 2, "both QR order routes");
   assert.match(qr, /orderingPaused: await accountLock\(\)\.isOrderingLocked\(restaurantId\)/, "the QR page is told");
 
   // A seated party can still pay and call a waiter: those routes are not gated.
-  for (const route of ["payment-intent", "payment-verify", "waiter-call/:token"]) {
-    const at = qr.indexOf(`router.route("/${route}`);
-    const body = qr.slice(at, qr.indexOf("router.route(", at + 10));
-    assert.ok(!/isOrderingLocked/.test(body), `${route} must stay open`);
+  for (const handler of ["paymentIntent", "paymentVerify", "callWaiter"]) {
+    const at = qr.indexOf(`const ${handler} = async`);
+    assert.ok(at >= 0, handler);
+    const body = qr.slice(at, qr.indexOf("\nconst ", at + 10));
+    assert.ok(!/isOrderingLocked/.test(body), `${handler} must stay open`);
   }
 
   const page = FE("src/pages/OrderOnline.jsx");

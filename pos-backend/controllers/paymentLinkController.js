@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const { isDuplicateKey } = require("../services/idempotency");
 const createHttpError = require("http-errors");
 const config = require("../config/config");
 const PaymentLink = require("../models/paymentLinkModel");
@@ -329,11 +330,13 @@ const verifyAndCaptureLinkPayment = async (req, res, next) => {
   const mongoose = require("mongoose");
   const mongoSession = await mongoose.startSession();
   mongoSession.startTransaction();
+  let link = null;
+  let effectiveIdempotencyKey = "";
   try {
     const { token } = req.params;
     const { paymentMethod = "ONLINE" } = req.body;
 
-    const link = await PaymentLink.findOne({ linkToken: token, isDeleted: { $ne: true } }).session(mongoSession);
+    link = await PaymentLink.findOne({ linkToken: token, isDeleted: { $ne: true } }).session(mongoSession);
     if (!link) throw createHttpError(404, "Payment link not found.");
     if (link.status === "PAID") throw createHttpError(400, "Payment link already paid.");
 
@@ -407,13 +410,13 @@ const verifyAndCaptureLinkPayment = async (req, res, next) => {
       throw createHttpError(501, "This payment method cannot be confirmed here.");
     }
 
-    // Idempotency: derived from the link and the gateway transaction, never
-    // taken from the body. This is a public endpoint and the replay branch
+    // Idempotency check: the key is derived from the link and the gateway
+    // transaction, never taken from the body. This is a public endpoint and the replay branch
     // returns the matched transaction, so a caller-chosen key would let one
     // customer read another's payment record. The webhook derives the same
     // key (services/paymentLinkSettlement.js), so browser and webhook collapse
     // to one transaction.
-    const effectiveIdempotencyKey = `pay-link-${link._id}-${transactionId}`;
+    effectiveIdempotencyKey = `pay-link-${link._id}-${transactionId}`;
     const existingTxn = await PaymentTransaction.findOne({
       restaurantId: link.restaurantId,
       idempotencyKey: effectiveIdempotencyKey,
@@ -532,6 +535,16 @@ const verifyAndCaptureLinkPayment = async (req, res, next) => {
     res.status(200).json({ success: true, data: txn[0] });
   } catch (error) {
     await mongoSession.abortTransaction();
+    // Two captures raced past the lookup and the unique index picked one:
+    // answer with the winner rather than 500 on a payment that succeeded.
+    if (isDuplicateKey(error) && link && effectiveIdempotencyKey) {
+      const winner = await PaymentTransaction.findOne({
+        restaurantId: link.restaurantId,
+        idempotencyKey: effectiveIdempotencyKey,
+        status: "PAID",
+      });
+      if (winner) return res.status(200).json({ success: true, data: winner, deduplicated: true });
+    }
     next(error);
   } finally {
     mongoSession.endSession();

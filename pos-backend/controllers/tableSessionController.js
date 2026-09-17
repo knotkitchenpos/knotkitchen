@@ -295,9 +295,10 @@ const recalculateSessionBill = async (session) => {
     discount,
     additionalCharges: serviceCharge,
     taxRate: gst.rate,
+    taxInclusive: gst.inclusive,
   });
   const tip = Number(session.bills?.tip) || 0;
-  session.bills = { ...bills, serviceCharge, taxPercent: Math.round(gst.rate * 10000) / 100, tip };
+  session.bills = { ...bills, serviceCharge, tip };
   await session.save();
   return session;
 };
@@ -833,6 +834,7 @@ const getSessionBill = async (req, res, next) => {
       discount: session.bills?.discount || 0,
       additionalCharges: session.bills?.charges || 0,
       taxRate: billGst.rate,
+      taxInclusive: billGst.inclusive,
     });
 
     const isSettled = session.status === "PAID" || session.status === "CLOSED";
@@ -869,7 +871,6 @@ const getSessionBill = async (req, res, next) => {
 // ============================================================
 const recordSessionPayment = async (req, res, next) => {
   let mongoSession = null;
-  let useTxn = true;
   try {
     mongoSession = await mongoose.startSession();
     mongoSession.startTransaction();
@@ -879,7 +880,6 @@ const recordSessionPayment = async (req, res, next) => {
       sessionErr?.code === 20 ||
       sessionErr?.name === "MongoServerError"
     ) {
-      useTxn = false;
       mongoSession = null;
     } else {
       return next(sessionErr);
@@ -928,7 +928,7 @@ const recordSessionPayment = async (req, res, next) => {
         (p) => p.idempotencyKey === idempotencyKey && p.status === "PAID"
       );
       if (existingPayment) {
-        await mongoSession.commitTransaction();
+        await mongoSession?.commitTransaction();
         return res.status(200).json({ success: true, message: "Payment already recorded!", data: session });
       }
     }
@@ -1120,7 +1120,7 @@ const recordSessionPayment = async (req, res, next) => {
     }
 
     await session.save({ session: mongoSession });
-    await mongoSession.commitTransaction();
+    await mongoSession?.commitTransaction();
 
     // AFTER the commit, never inside it -- an e-bill means an outbound HTTP
     // call to Fast2SMS, and holding a Mongo transaction open across a network
@@ -1142,10 +1142,10 @@ const recordSessionPayment = async (req, res, next) => {
       data: paid ? { ...(session.toObject ? session.toObject() : session), cooldownMinutes } : session,
     });
   } catch (error) {
-    await mongoSession.abortTransaction();
+    await mongoSession?.abortTransaction();
     next(error);
   } finally {
-    mongoSession.endSession();
+    mongoSession?.endSession();
   }
 };
 

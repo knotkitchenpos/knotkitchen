@@ -55,5 +55,5 @@ test("REGRESSION: a table keeps the source of whoever opened it", () => {
   // The till adding a round to a QR-opened table used to create a POS order.
   assert.match(SRC("controllers", "tableSessionController.js"), /source: session\.source === "QR" \? "QR" : "POS"/);
   // A diner ordering at a till-opened table used to create a QR order.
-  assert.match(SRC("routes", "qrRoute.js"), /source: session\.source === "POS" \? "POS" : "QR"/);
+  assert.match(SRC("controllers", "qrController.js"), /source: session\.source === "POS" \? "POS" : "QR"/);
 });

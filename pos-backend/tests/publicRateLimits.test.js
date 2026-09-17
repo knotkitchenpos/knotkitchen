@@ -94,7 +94,7 @@ test("REGRESSION: the waiter call is the tightest limit, and keyed per table", (
   // It rings until a person walks over and clears it, so the harm is to the
   // staff rather than the caller — an IP-keyed limit would not stop it.
   const src = routeSrc("qrRoute.js");
-  const block = src.slice(src.indexOf("qrWaiterLimiter = rateLimit"), src.indexOf("scopedMenu"));
+  const block = src.slice(src.indexOf("qrWaiterLimiter = rateLimit"), src.indexOf("router.route("));
   assert.match(block, /keyGenerator:.*req\.params\.token/, "keyed on the table");
   assert.ok(!/clientIp/.test(block), "must NOT be keyed on IP: switching network would reset it");
 });

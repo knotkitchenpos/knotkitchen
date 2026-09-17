@@ -19,6 +19,7 @@ const { resolveGst } = require("./gst");
  */
 
 const { round2 } = require("./money");
+const { computeTotals } = require("./price");
 
 const MAX_LINE_ITEMS = 50;
 const MAX_QUANTITY_PER_LINE = 30;
@@ -427,38 +428,33 @@ const calculateOrderTotals = ({
     packagingFee = Number(ordering.packagingFee) || 0;
   }
 
-  // ---- Tax / GST Applicability ----
+  // ---- Tax and total ----
   // One resolver, shared with the table/QR path: a rate is not enough on its
-  // own, the store must also carry a GST number.
-  let tax = 0;
+  // own, the store must also carry a GST number. One totals rule too
+  // (services/price.computeTotals): packaging inside the tax base, delivery
+  // outside, inclusive tax extracted rather than added.
   const gst = resolveGst({ restaurant, ordering, environment });
-  if (gst.applicable) {
-    const postDiscount = Math.max(0, round2(subtotal - discount));
-    const taxableBase = round2(postDiscount + packagingFee);
-    tax = gst.inclusive
-      ? round2(taxableBase - taxableBase / (1 + gst.percent / 100))
-      : round2((taxableBase * gst.percent) / 100);
-  }
-
-  // Module 8 §7: Deterministic Total calculation preventing negative totals
-  const postDiscount = Math.max(0, round2(subtotal - discount));
-  const totalWithTax = Math.max(
-    0,
-    // Use the resolved flag, not the raw setting: when GST is not applicable
-    // tax is 0 anyway, but reading the same source keeps the two in step.
-    round2(postDiscount + packagingFee + deliveryFee + (gst.inclusive ? 0 : tax))
-  );
+  const totals = computeTotals({
+    subtotal,
+    discount,
+    packagingFee,
+    deliveryFee,
+    taxRate: gst.applicable ? gst.rate : 0,
+    taxInclusive: gst.inclusive,
+  });
 
   return {
     items: pricedItems,
     bills: {
       subtotal,
       total: subtotal,
-      tax,
-      totalWithTax,
+      tax: totals.tax,
+      totalWithTax: totals.totalWithTax,
       discount,
       deliveryFee,
       packagingFee,
+      taxPercent: totals.taxPercent,
+      taxInclusive: totals.taxInclusive,
     },
   };
 };

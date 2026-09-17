@@ -90,10 +90,11 @@ test("there is no wait left to configure", () => {
 // ---- the QR serves a fresh order to the next customer ----------------
 
 test("REGRESSION: a CLOSED session is not active, so the next scan starts fresh", () => {
-  // getActiveSessionForTable decides what a scan is shown. If PAID or CLOSED
-  // appeared in this list, the next diner would be handed the last one's bill.
-  const qrRoute = fs.readFileSync(path.join(__dirname, "..", "routes", "qrRoute.js"), "utf8");
-  const fn = qrRoute.slice(qrRoute.indexOf("getActiveSessionForTable"));
+  // findActiveSessionByTable decides what a scan is shown (the QR controller
+  // uses the session controller's). If PAID or CLOSED appeared in this list,
+  // the next diner would be handed the last one's bill.
+  const ctrl = fs.readFileSync(path.join(__dirname, "..", "controllers", "tableSessionController.js"), "utf8");
+  const fn = ctrl.slice(ctrl.indexOf("const findActiveSessionByTable"));
   const statuses = fn.slice(fn.indexOf("$in"), fn.indexOf("]", fn.indexOf("$in")));
 
   assert.ok(statuses.includes("OPEN"), "an open session is still the diner's own");

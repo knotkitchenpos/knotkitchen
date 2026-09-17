@@ -1,5 +1,5 @@
 const createHttpError = require("http-errors");
-const { round2 } = require("../services/money");
+const { computeTotals } = require("../services/price");
 const mongoose = require("mongoose");
 const Order = require("../models/orderModel");
 const { resolveTenantFromUser } = require("../services/tenantContext");
@@ -491,12 +491,32 @@ const resolveAddedItems = async (req, res, next) => {
     const live = (order.items || []).filter((i) => i.status !== "cancelled");
     const subtotal = live.reduce((s, i) => s + (Number(i.total) || 0), 0);
     if (order.bills) {
-      const taxRate = Number(order.bills.subtotal) > 0
-        ? Number(order.bills.tax || 0) / Number(order.bills.subtotal)
-        : 0;
-      order.bills.subtotal = subtotal;
-      order.bills.tax = round2(subtotal * taxRate);
-      order.bills.totalWithTax = round2(subtotal + order.bills.tax + Number(order.bills.charges || 0));
+      const b = order.bills;
+      const serviceCharge = Number(b.serviceCharge ?? b.charges) || 0;
+      const packagingFee = Number(b.packagingFee) || 0;
+      // The rate the bill was struck at: stored on newer bills, else read back
+      // from what was taxed before this edit. Discount and fees stay.
+      const previousBase =
+        Math.max(0, Number(b.subtotal || 0) - Number(b.discount || 0)) + serviceCharge + packagingFee;
+      const taxRate =
+        Number(b.taxPercent) > 0
+          ? Number(b.taxPercent) / 100
+          : previousBase > 0
+          ? Number(b.tax || 0) / previousBase
+          : 0;
+      const totals = computeTotals({
+        subtotal,
+        discount: b.discount,
+        serviceCharge,
+        packagingFee,
+        deliveryFee: b.deliveryFee,
+        taxRate,
+        taxInclusive: b.taxInclusive,
+      });
+      b.subtotal = totals.subtotal;
+      b.discount = totals.discount;
+      b.tax = totals.tax;
+      b.totalWithTax = totals.totalWithTax;
     }
 
     if (live.length === 0 && !isFinished(order.orderStatus)) {

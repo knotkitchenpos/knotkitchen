@@ -477,9 +477,9 @@ enough that a name says what a file is.
 
 | Folder | Holds | Rule |
 |---|---|---|
-| `routes/*Route.js` | one router per URL prefix; middleware and the controller call only | no DB work in a route (`qrRoute.js` is the known exception, see §11.4) |
-| `controllers/*Controller.js` | request parsing, tenant scoping, the response | business rules that two controllers share go to a service |
-| `services/` | business rules and integrations: `price.js` (menu/order maths), `orderPricingService.js` (storefront totals), `gst.js`, `money.js` (`round2`, paise: the only rounding), `refunds.js`, `shifts.js`, `inventory.js`, `menuCache.js` (publish gate), `tenantContext.js` (tenant filters), `socket.js`, `auditService.js` (`logActivity`: the only audit write; `csdAuditService.js` adapts CSD staff onto it), `gateways/cashfree.js`, `messagingService.js` (Fast2SMS) | one authority per rule; `pricing.js` is platform *plan* pricing, not order pricing; never `AuditLog.create` from a controller |
+| `routes/*Route.js` | one router per URL prefix; middleware, rate limits and the controller call only | no DB work in a route |
+| `controllers/*Controller.js` | request parsing, tenant scoping, the response (`qrController.js` is the diner's table-QR API) | business rules that two controllers share go to a service |
+| `services/` | business rules and integrations: `price.js` (menu maths and `computeTotals`, the one order-total rule), `orderPricingService.js` (storefront pricing, delegates totals to it), `gst.js`, `money.js` (`round2`, paise: the only rounding), `idempotency.js` (`findOrCreate`: the one once-only pattern), `orderItemAmounts.js` (the one reading of a stored line), `refunds.js`, `shifts.js`, `inventory.js`, `menuCache.js` (publish gate), `tenantContext.js` (tenant filters), `socket.js`, `auditService.js` (`logActivity`: the only audit write; `csdAuditService.js` adapts CSD staff onto it), `gateways/cashfree.js`, `messagingService.js` (Fast2SMS) | one authority per rule; `pricing.js` is platform *plan* pricing, not order pricing; never `AuditLog.create` from a controller |
 | `models/*Model.js` | Mongoose schemas and indexes only | hooks are for invariants (e.g. stock depletion on Order save), not workflows |
 | `middlewares/` | auth (`tokenVerification`), permissions (`requirePermission`: `requireProtectedAction` = owner or PIN, `requireManager`, `requireOwnerOnly`), account lock, CSD auth | |
 | `constants/` | vocabularies: `orderStatus.js`, `paymentMethods.js` | never hand-write a status or method string elsewhere; tests enforce it |
@@ -494,7 +494,7 @@ enough that a name says what a file is.
 | `src/socket.js` | the one socket.io connection (`acquireSocket` / `releaseSocket`); it joins the tenant room on every connect. Consumers keep their own `socket.on` handlers and never call `io()` |
 | `src/https/` | every API call: `index.js` (POS), `storefrontApi.js` (website settings, online orders), `publicApi.js` (unauthenticated), `marketplace.js`; the axios instance and PIN header live in `axiosWrapper.js` |
 | `src/pages/` | one file per route; a page composes components and owns no shared logic |
-| `src/components/<area>/` | `pos/` (till), `orders/`, `tables/`, `settings/` (each Settings section is its own view), `dashboard/` (Manage Menu, its modals under `dashboard/manageMenu/`, and the realtime popups), `home/`, `qr/`, `invoice/`, `shared/` |
+| `src/components/<area>/` | `pos/` (till), `orders/`, `tables/`, `settings/` (each Settings section is its own view), `dashboard/` (Manage Menu, its drawers and modals under `dashboard/manageMenu/`, and the realtime popups), `home/`, `qr/`, `invoice/`, `shared/` |
 | `src/hooks/` | realtime sync, auto print, online orders, offline queue |
 | `src/utils/` | pure helpers: `index.js` (money and dates: `money` "₹1234.50", `inr` "₹1,234.50", `dateGB`, `time12`, `timeIN`, `dateTimeIN`, `localDay`), `orderLabels.js` (`tableLabel`, `orderDisplayId`), `receiptLayout.js` + `printReceipt.js` + `escpos.js` + `catprinter.js` + `printerDevice.js` (the one print path), `offlineQueue.js`, `security.js` (roles, PIN), `storeSession.js`, `cashfree.js` |
 | `src/constants/orderStatus.js` | the status vocabulary, mirrored from the backend |
@@ -509,12 +509,16 @@ The customer website is `customer-web` only. The POS used to carry a second copy
 - **onboard**: `server/` (Express, `routes/api.js`, `middleware/{auth,serviceAuth}.js`), `public/index.html` plus `public/css/portal.css` and `public/js/` (agreement template, agreement text, markdown, PDF, API client). Tests in `tests/`.
 - **pos-desktop**: Electron shell for Windows (`main.js`, `preload.js`).
 
-### 11.4 Known debt, deliberately left
+### 11.4 Money rules, stated once
 
-- `routes/qrRoute.js` is a controller in a route file (1000 lines, public surface). Ten test files pin its source text by slice (`router.route("...")` markers, helper names, statement order), so moving the handler bodies means rewriting those tests first. Its `getActiveSessionForTable` duplicates `tableSessionController.findActiveSessionByTable` for the same reason.
-- Two customer order-total engines: `services/price.js#calculateBill` (POS, table, QR) and `services/orderPricingService.js#calculateOrderTotals` (website). They disagree on three rules, and each disagreement changes money, so it is a product decision with tests, not a refactor: the table bill taxes the pre-discount subtotal, the website the post-discount one; `ordering.taxInclusive` is honoured by the website engine only; packaging is in the website tax base, service charge is outside the table one. `onlineOrderController` re-derives a bill after item accept/reject and drops `discount`, `deliveryFee` and `packagingFee` while doing so. Line amounts are read three ways (`orderItemAmounts.resolveItemAmounts`, `reportBreakdown.lineAmount`, `orderController.sanitizeItem`); the report one multiplies quantity back into legacy POS lines.
-- Idempotency is five schemes on four collections (ledger, storefront order, offline order, payment transaction, table-session payment). `services/ledger.js#applyMovement` is the complete pattern (lookup, create, catch E11000, re-read); the QR `requestId` and offline paths have no E11000 catch, and `tableSessionModel`'s `paymentHistory.idempotencyKey` index is not tenant-scoped. Make the ledger core shared before touching the others.
-- `components/dashboard/ManageMenu.jsx` is still ~3200 lines: the two form drawers (category, product) read twenty-odd `useState` values each and need a form-state object before they can move.
+- **Order totals** are `services/price.js#computeTotals`, used by the table bill (`calculateBill`), the website (`orderPricingService`) and order edits (`onlineOrderController`). Discount reduces the tax base; service and packaging charges are inside it; delivery is outside; `ordering.taxInclusive` extracts tax instead of adding it. Bills carry `taxPercent` and `taxInclusive` so an edit can be re-struck at the rate it was billed at.
+- **A stored line's amount** is `services/orderItemAmounts.js#resolveItemAmounts` (receipts and reports alike): a legacy POS line keeps the line total in `price` with `total` at 0.
+- **Once-only writes** go through `services/idempotency.js#findOrCreate`: the ledger, storefront orders (placed and paid-then-placed), the customer record, offline sync, and both QR order paths. The payment-link capture creates inside a transaction and catches the lost race at the transaction boundary instead. The table-session `paymentHistory` guard is an in-document array and stays as it is; its unique index is global rather than per restaurant, which is an index migration when it matters.
+
+### 11.5 Known debt, deliberately left
+
+- `components/dashboard/ManageMenu.jsx` (~2300 lines) still owns every form's state; the drawers under `manageMenu/` receive it as props. Moving the state into each drawer is the next cut.
+- `customer-web/src/lib/dispatch.js` mirrors `services/menuCache.dispatchLabel`; a test keeps them in step because the apps cannot import from each other.
 
 ### DEVELOPMENT RULE
 

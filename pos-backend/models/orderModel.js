@@ -161,6 +161,7 @@ const orderSchema = new mongoose.Schema({
     tax: { type: Number, default: 0 },
     // GST rate the tax was charged at, so the receipt can print CGST/SGST @ rate.
     taxPercent: { type: Number, default: 0 },
+    taxInclusive: { type: Boolean, default: false },
     totalWithTax: { type: Number, default: 0 },
     discount: { type: Number, default: 0 },
     deliveryFee: { type: Number, default: 0 },

@@ -1,4 +1,5 @@
 const createHttpError = require("http-errors");
+const { findOrCreate, isDuplicateKey } = require("../services/idempotency");
 const crypto = require("crypto");
 const mongoose = require("mongoose");
 const Menu = require("../models/menuModel");
@@ -459,7 +460,7 @@ const buildStorefrontOrder = (finalize) => async (req, res, next) => {
       : "";
 
     if (idempotencyKey) {
-      const existing = await Order.findOne({ restaurantId, idempotencyKey });
+      const existing = await findPlacedOrder(restaurantId, idempotencyKey);
       if (existing) {
         return res.status(200).json({
           success: true,
@@ -645,38 +646,42 @@ const buildStorefrontOrder = (finalize) => async (req, res, next) => {
   }
 };
 
-/** Place the order immediately and tell the POS. */
-const saveAndAnnounce = async ({ res, ctx, order, idempotencyKey, name, phone, email, priced }) => {
-  const { restaurantId, outletId, storeId } = ctx;
+/** The order a repeated submit already placed, if any (tenant-scoped, hashed key). */
+const findPlacedOrder = (restaurantId, idempotencyKey) =>
+  idempotencyKey ? Order.findOne({ restaurantId, idempotencyKey }) : null;
+
+/**
+ * Save, regenerating the order number once if the 6-digit random id
+ * collided: astronomically unlikely, but the partial-unique index in
+ * orderModel is the safety net and the generator's pre-flight `exists()`
+ * makes a second collision vanishingly rare.
+ */
+const saveWithFreshNumber = async (order, restaurantId) => {
   try {
     await order.save();
   } catch (err) {
-    // Unique index race on idempotencyKey: another concurrent submit won.
-    if (err?.code === 11000 && idempotencyKey) {
-      const existing = await Order.findOne({ restaurantId, idempotencyKey });
-      if (existing) {
-        return res.status(200).json({
-          success: true,
-          message: "Order already placed",
-          duplicate: true,
-          data: publicOrderView(existing),
-        });
-      }
-    }
-    // Unique index race on orderNumber: astronomically unlikely with
-    // 6-digit random IDs, but the partial-unique index in orderModel
-    // is the ultimate safety net. Regenerate and retry once — the new
-    // generator's pre-flight `exists()` check makes a second collision
-    // vanishingly rare.
-    if (err?.code === 11000 && String(err?.keyPattern?.orderNumber) === "1") {
-      order.orderNumber = await generateOrderNumberSafe({
-        source: "WEBSITE",
-        restaurantId,
-      });
-      await order.save();
-    } else {
-      throw err;
-    }
+    if (!(isDuplicateKey(err) && String(err?.keyPattern?.orderNumber) === "1")) throw err;
+    order.orderNumber = await generateOrderNumberSafe({ source: "WEBSITE", restaurantId });
+    await order.save();
+  }
+  return order;
+};
+
+/** Place the order immediately and tell the POS. */
+const saveAndAnnounce = async ({ res, ctx, order, idempotencyKey, name, phone, email, priced }) => {
+  const { restaurantId, outletId, storeId } = ctx;
+  // A concurrent submit that won the idempotency index answers for both.
+  const { doc: placed, duplicate } = await findOrCreate({
+    find: () => findPlacedOrder(restaurantId, idempotencyKey),
+    create: () => saveWithFreshNumber(order, restaurantId),
+  });
+  if (duplicate) {
+    return res.status(200).json({
+      success: true,
+      message: "Order already placed",
+      duplicate: true,
+      data: publicOrderView(placed),
+    });
   }
 
   // ---- CRM: upsert the customer record (best-effort) ----
@@ -854,30 +859,27 @@ const verifyStorefrontCheckout = async (req, res, next) => {
       channelMeta: { ...(data.channelMeta || {}), placedAt: new Date() },
     });
 
+    // The same find-or-create as an unpaid order: a retry that already
+    // placed this checkout's order adopts it instead of writing a second.
+    let placed;
     try {
-      await order.save();
+      ({ doc: placed } = await findOrCreate({
+        find: () => findPlacedOrder(restaurantId, data.idempotencyKey),
+        create: () => saveWithFreshNumber(order, restaurantId),
+      }));
     } catch (err) {
-      if (err?.code === 11000 && String(err?.keyPattern?.orderNumber) === "1") {
-        order.orderNumber = await generateOrderNumberSafe({ source: "WEBSITE", restaurantId });
-        await order.save();
-      } else if (err?.code === 11000 && data.idempotencyKey) {
-        const existing = await Order.findOne({ restaurantId, idempotencyKey: data.idempotencyKey });
-        if (!existing) throw err;
-        order._id = existing._id;
-      } else {
-        await WebsiteCheckout.updateOne({ _id: claimed._id }, { $set: { status: "PENDING" } });
-        throw err;
-      }
+      await WebsiteCheckout.updateOne({ _id: claimed._id }, { $set: { status: "PENDING" } });
+      throw err;
     }
 
-    await WebsiteCheckout.updateOne({ _id: claimed._id }, { $set: { status: "PLACED", orderId: order._id } });
+    await WebsiteCheckout.updateOne({ _id: claimed._id }, { $set: { status: "PLACED", orderId: placed._id } });
 
     try {
       await upsertCustomer({
         restaurantId,
         outletId,
-        name: order.customerDetails?.name,
-        phone: order.customerDetails?.phone,
+        name: placed.customerDetails?.name,
+        phone: placed.customerDetails?.phone,
         total: claimed.amount,
       });
     } catch (err) {
@@ -885,12 +887,12 @@ const verifyStorefrontCheckout = async (req, res, next) => {
     }
 
     try {
-      emitOrderCreated({ restaurantId, outletId, storeId, order });
+      emitOrderCreated({ restaurantId, outletId, storeId, order: placed });
     } catch (err) {
       console.warn("Realtime emit failed for website order:", err.message);
     }
 
-    res.status(201).json({ success: true, message: "Order placed successfully", data: publicOrderView(order) });
+    res.status(201).json({ success: true, message: "Order placed successfully", data: publicOrderView(placed) });
   } catch (error) {
     next(error);
   }
@@ -922,34 +924,31 @@ const publicOrderView = (order) => ({
 const upsertCustomer = async ({ restaurantId, outletId, name, phone, email, total }) => {
   if (!phone) return null;
 
-  const existing = await Customer.findOne({ restaurantId, phone, isDeleted: { $ne: true } });
-  if (existing) {
-    if (name) existing.name = name;
-    if (email && !existing.email) existing.email = email;
-    existing.visitCount = (existing.visitCount || 0) + 1;
-    existing.totalSpent = (existing.totalSpent || 0) + Number(total || 0);
-    existing.lastVisitAt = new Date();
-    await existing.save();
-    return existing;
-  }
+  // The phone is the natural key; two first orders placed together create
+  // one record and the loser adds its visit to it.
+  const { doc: customer, duplicate } = await findOrCreate({
+    find: () => Customer.findOne({ restaurantId, phone, isDeleted: { $ne: true } }),
+    create: () =>
+      Customer.create({
+        restaurantId,
+        outletId,
+        name,
+        phone,
+        ...(email ? { email } : {}),
+        visitCount: 1,
+        totalSpent: Number(total || 0),
+        lastVisitAt: new Date(),
+      }),
+  });
+  if (!duplicate) return customer;
 
-  try {
-    return await Customer.create({
-      restaurantId,
-      outletId,
-      name,
-      phone,
-      ...(email ? { email } : {}),
-      visitCount: 1,
-      totalSpent: Number(total || 0),
-      lastVisitAt: new Date(),
-    });
-  } catch (err) {
-    if (err.code === 11000) {
-      return Customer.findOne({ restaurantId, phone, isDeleted: { $ne: true } });
-    }
-    throw err;
-  }
+  if (name) customer.name = name;
+  if (email && !customer.email) customer.email = email;
+  customer.visitCount = (customer.visitCount || 0) + 1;
+  customer.totalSpent = (customer.totalSpent || 0) + Number(total || 0);
+  customer.lastVisitAt = new Date();
+  await customer.save();
+  return customer;
 };
 
 /** GET /api/storefront/:slug/orders/:orderId — customer order tracking. */

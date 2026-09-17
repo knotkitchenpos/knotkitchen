@@ -218,7 +218,7 @@ test("REGRESSION: a settled session's claim no longer buys read or write access"
   // that one is printed on the bill as `BL_<sessionCode>`, so anybody who saw
   // a receipt would hold it. The behaviour is covered in
   // tableQROrdering.test.js; this guards the wiring.
-  const src = SRC("routes", "qrRoute.js");
+  const src = SRC("controllers", "qrController.js");
   assert.match(src, /const claimFrom = \(req\) =>/);
   assert.match(src, /claimed !== \(session\?\.accessToken \|\| ""\)/);
   assert.match(src, /scan the QR code again/i, "and the diner is told what to do");
@@ -248,8 +248,8 @@ test("the claim is minted per session and never reaches anyone but the diner", (
 
   // sanitizeSession is the public projection. The claim must not be in it --
   // it is returned alongside, only to a request that already proved it.
-  const src = SRC("routes", "qrRoute.js");
-  const projection = src.slice(src.indexOf("const sanitizeSession"), src.indexOf("const getActiveSessionForTable"));
+  const src = SRC("controllers", "qrController.js");
+  const projection = src.slice(src.indexOf("const sanitizeSession"), src.indexOf("* The diner's claim on one session"));
   assert.ok(!/accessToken/.test(projection), "the claim is not part of a session anyone can read");
 });
 
@@ -297,7 +297,7 @@ test("REGRESSION: an appended kitchen line is linked from the right end", () => 
   // Both indexes count back from the end of their own list. Using items[idx]
   // on an APPEND linked every session item to a dish from an earlier round,
   // so cancelling one struck the wrong dish off the ticket.
-  const src = SRC("routes", "qrRoute.js");
+  const src = SRC("controllers", "qrController.js");
   assert.match(src, /const kitchenStartIdx = kitchenOrderDoc\.items\.length - validatedItems\.length;/);
   assert.match(src, /kitchenOrderDoc\.items\[kitchenStartIdx \+ idx\]\?\._id/);
   assert.ok(

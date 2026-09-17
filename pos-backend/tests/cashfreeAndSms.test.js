@@ -328,7 +328,7 @@ test("the webhook never answers 5xx, and 4xx only for a bad signature", () => {
 
 test("browser and webhook share one idempotency key, so whichever loses is a no-op", () => {
   const hook = read("controllers", "cashfreeWebhookController.js");
-  const qr = read("routes", "qrRoute.js");
+  const qr = read("controllers", "qrController.js");
   assert.match(hook, /idempotencyKey: `qr-online-\$\{status\.cfOrderId \|\| orderId\}`/);
   assert.match(qr, /idempotencyKey: `qr-online-\$\{transactionId\}`/);
 });

@@ -14,11 +14,13 @@
  *                    the database can end up in
  *
  * Idempotency is a unique index, not a lookup-then-write: a gateway callback
- * delivered three times races with itself, and only the index settles it.
+ * delivered three times races with itself, and only the index settles it
+ * (services/idempotency.findOrCreate).
  */
 
 const mongoose = require("mongoose");
 const { BusinessBalance, LedgerEntry } = require("../models/businessBalanceModel");
+const { findOrCreate } = require("./idempotency");
 
 class InsufficientBalanceError extends Error {
   constructor(required, available) {
@@ -29,8 +31,6 @@ class InsufficientBalanceError extends Error {
     this.availablePaise = available;
   }
 }
-
-const DUPLICATE_KEY = 11000;
 
 /** Read-only. Creates the row on first look so a new restaurant reads 0, not null. */
 const getBalance = async (restaurantId) => {
@@ -71,69 +71,61 @@ const applyMovement = async ({
   const amount = assertAmount(amountPaise);
   const signed = direction === "CREDIT" ? amount : -amount;
 
-  if (idempotencyKey) {
-    const already = await findByIdempotencyKey(idempotencyKey);
-    if (already) return { entry: already, duplicate: true };
-  }
+  const { doc, duplicate } = await findOrCreate({
+    find: () => findByIdempotencyKey(idempotencyKey),
+    create: async () => {
+      await getBalance(restaurantId);
+      const session = await mongoose.startSession();
+      try {
+        let result;
+        await session.withTransaction(async () => {
+          // The guard IS the query. A debit larger than the balance matches no
+          // document, so it cannot be applied -- there is no window between
+          // checking and subtracting for a second debit to slip through.
+          const filter =
+            direction === "DEBIT"
+              ? { restaurantId, balancePaise: { $gte: amount } }
+              : { restaurantId };
 
-  await getBalance(restaurantId);
+          const balance = await BusinessBalance.findOneAndUpdate(
+            filter,
+            { $inc: { balancePaise: signed } },
+            { new: true, session },
+          );
 
-  const session = await mongoose.startSession();
-  try {
-    let result;
-    await session.withTransaction(async () => {
-      // The guard IS the query. A debit larger than the balance matches no
-      // document, so it cannot be applied -- there is no window between
-      // checking and subtracting for a second debit to slip through.
-      const filter =
-        direction === "DEBIT"
-          ? { restaurantId, balancePaise: { $gte: amount } }
-          : { restaurantId };
+          if (!balance) {
+            const current = await BusinessBalance.findOne({ restaurantId }).session(session);
+            throw new InsufficientBalanceError(amount, current ? current.balancePaise : 0);
+          }
 
-      const balance = await BusinessBalance.findOneAndUpdate(
-        filter,
-        { $inc: { balancePaise: signed } },
-        { new: true, session },
-      );
-
-      if (!balance) {
-        const current = await BusinessBalance.findOne({ restaurantId }).session(session);
-        throw new InsufficientBalanceError(amount, current ? current.balancePaise : 0);
+          const [entry] = await LedgerEntry.create(
+            [
+              {
+                restaurantId,
+                direction,
+                kind,
+                amountPaise: amount,
+                balanceAfterPaise: balance.balancePaise,
+                description,
+                idempotencyKey,
+                refType,
+                refId,
+                meta,
+                createdBy,
+              },
+            ],
+            { session },
+          );
+          result = { entry, balance };
+        });
+        return result;
+      } finally {
+        session.endSession();
       }
-
-      const [entry] = await LedgerEntry.create(
-        [
-          {
-            restaurantId,
-            direction,
-            kind,
-            amountPaise: amount,
-            balanceAfterPaise: balance.balancePaise,
-            description,
-            idempotencyKey,
-            refType,
-            refId,
-            meta,
-            createdBy,
-          },
-        ],
-        { session },
-      );
-
-      result = { entry, balance, duplicate: false };
-    });
-    return result;
-  } catch (err) {
-    // Two callbacks arrived together and both got past the read above; the
-    // index caught the second. Not an error -- report what the winner wrote.
-    if (err && err.code === DUPLICATE_KEY && idempotencyKey) {
-      const existing = await findByIdempotencyKey(idempotencyKey);
-      if (existing) return { entry: existing, duplicate: true };
-    }
-    throw err;
-  } finally {
-    session.endSession();
-  }
+    },
+  });
+  // A repeated gateway callback is normal traffic: report what the winner wrote.
+  return duplicate ? { entry: doc, duplicate: true } : { ...doc, duplicate: false };
 };
 
 /** Money in. Recharges, refunds, admin credits. */

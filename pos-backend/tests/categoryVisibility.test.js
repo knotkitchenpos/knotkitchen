@@ -40,7 +40,7 @@ const {
 const read = (...p) => fs.readFileSync(path.join(__dirname, "..", ...p), "utf8");
 const MENU_CTRL = read("controllers", "menuController.js");
 const STOREFRONT_CTRL = read("controllers", "storefrontController.js");
-const QR_ROUTE = read("routes", "qrRoute.js");
+const QR_ROUTE = read("controllers", "qrController.js");
 
 // ---------------------------------------------------------------------------
 // The matrix itself

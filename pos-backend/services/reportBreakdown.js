@@ -9,12 +9,11 @@
 const { isCancelled } = require("../constants/orderStatus");
 
 const { round2 } = require("./money");
+const { resolveItemAmounts } = require("./orderItemAmounts");
 
-const lineAmount = (item) => {
-  const total = Number(item.total);
-  if (Number.isFinite(total) && total > 0) return total;
-  return (Number(item.unitPrice || item.price) || 0) * (Number(item.quantity) || 1);
-};
+// The one reading of a stored line (a legacy POS line keeps the LINE total
+// in `price`; multiplying quantity back in counted it twice here).
+const lineAmount = (item) => resolveItemAmounts(item).lineTotal;
 
 const top = (map, key, limit) =>
   [...map.values()]

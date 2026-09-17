@@ -519,7 +519,7 @@ function loadQrRoute() {
     if (r === "../models/tableQRModel") return TableQRMock;
     if (r === "../services/price") return priceMock;
     if (r === "mongoose") return mongooseMock;
-    if (r === "../controllers/tableSessionController") return sessionControllerMock;
+    if (r === "../controllers/tableSessionController" || r === "./tableSessionController") return sessionControllerMock;
     return orig.apply(this, arguments);
   };
   const router = require("../routes/qrRoute");

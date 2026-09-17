@@ -18,7 +18,7 @@ const path = require("path");
 
 const { validateCapacity } = require("../controllers/tableSessionController");
 
-const QR_ROUTE = fs.readFileSync(path.join(__dirname, "..", "routes", "qrRoute.js"), "utf8");
+const QR_ROUTE = fs.readFileSync(path.join(__dirname, "..", "controllers", "qrController.js"), "utf8");
 
 /** The block that runs only when a scan OPENS a table. */
 const creationBlock = (() => {
@@ -51,7 +51,7 @@ test("REGRESSION: the details are enforced ONLY when the session is created", ()
   // If this check moved outside the creation branch, a diner joining an open
   // table would be asked for details again.
   const beforeCreation = QR_ROUTE.slice(
-    QR_ROUTE.indexOf('router.route("/session/items/:token")'),
+    QR_ROUTE.indexOf("const addSessionItems = async"),
     QR_ROUTE.indexOf("let created = false;"),
   );
   assert.ok(

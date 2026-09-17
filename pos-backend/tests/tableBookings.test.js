@@ -64,6 +64,6 @@ test("a new order on a pre-booked table is refused on both the POS and the QR pa
   const path = require("node:path");
   const read = (...p) => fs.readFileSync(path.join(__dirname, "..", ...p), "utf8");
   assert.match(read("controllers", "tableSessionController.js"), /const block = await findActiveBlock\(table\._id\);\s+if \(block\) throw blockedError/);
-  assert.match(read("routes", "qrRoute.js"), /const block = await findActiveBlock\(tableInTxn\._id\);/);
+  assert.match(read("controllers", "qrController.js"), /const block = await findActiveBlock\(tableInTxn\._id\);/);
   assert.match(read("controllers", "tableController.js"), /if \(booking\.blocking && !session\) tObj\.status = "reserved"/);
 });

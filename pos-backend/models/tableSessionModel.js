@@ -82,6 +82,7 @@ const tableSessionSchema = new mongoose.Schema(
       subtotal: { type: Number, default: 0 },
       tax: { type: Number, default: 0 },
       taxPercent: { type: Number, default: 0 },
+      taxInclusive: { type: Boolean, default: false },
       discount: { type: Number, default: 0 },
       charges: { type: Number, default: 0 },
       serviceCharge: { type: Number, default: 0 },
