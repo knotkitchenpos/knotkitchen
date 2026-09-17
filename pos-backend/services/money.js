@@ -120,8 +120,12 @@ const amountInWords = (paise) => {
   return parts.filter(Boolean).join(" ");
 };
 
+/** Rupees to the paisa, as a number: 12.345 -> 12.35. The one rounding for order money. */
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+
 module.exports = {
   PAISE_PER_RUPEE,
+  round2,
   toPaise,
   toRupees,
   formatAmount,

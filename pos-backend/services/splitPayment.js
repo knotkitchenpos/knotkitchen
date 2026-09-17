@@ -7,7 +7,7 @@
  */
 const COUNTER_METHODS = ["CASH", "UPI", "CARD", "QR_CODE"];
 
-const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+const { round2 } = require("./money");
 
 /**
  * @returns {{ ok: boolean, message?: string, parts?: Array<{method: string, amount: number}> }}

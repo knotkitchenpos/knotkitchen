@@ -8,7 +8,7 @@
  */
 const { isCancelled } = require("../constants/orderStatus");
 
-const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+const { round2 } = require("./money");
 
 const lineAmount = (item) => {
   const total = Number(item.total);

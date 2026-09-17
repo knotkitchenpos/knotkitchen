@@ -23,7 +23,7 @@
  * bills printed for old orders come out right too.
  */
 
-const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+const { round2 } = require("./money");
 
 const resolveItemAmounts = (item = {}) => {
   const quantity = Math.max(1, Math.floor(Number(item.quantity) || 1));

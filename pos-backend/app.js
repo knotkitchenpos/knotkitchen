@@ -209,11 +209,6 @@ app.use("/api/kds", require("./routes/kdsRoute"));
 app.use("/api/inventory", require("./routes/inventoryRoute"));
 // Offline sync runs every queued order through the live addOrder (routes/offlineRoute.js).
 app.use("/api/offline", require("./routes/offlineRoute"));
-// Loyalty, analytics, notification and plugin routes are NOT mounted. They
-// are inline CRUD that trusts a restaurantId from the URL or body (any
-// signed-in user could read another store's data), and no screen calls
-// them. Each comes back behind a tenant-scoped controller when its feature
-// is built. The files stay in routes/ as the starting point.
 app.use("/api/billing", require("./routes/billingRoute"));
 // The restaurant's KnotKitchen Business Balance. Scoped to the caller's own
 // restaurant throughout -- no route here takes a restaurantId.

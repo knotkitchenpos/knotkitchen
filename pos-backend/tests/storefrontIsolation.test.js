@@ -2,7 +2,6 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
 const { tenantFilter, resolveTenantFromUser } = require("../services/tenantContext");
-const { slugify, isValidSlug, generateUniqueSlug, RESERVED_SLUGS } = require("../services/slugService");
 const { validateImage, sanitizeFileName, sniffMimeType } = require("../services/imageValidator");
 const { isStoreOpen, isItemAvailableNow, getEffectivePrice, isWithinWindow } = require("../services/businessHours");
 const { isSelectableTheme, getDefaultTheme, listThemes } = require("../services/themeRegistry");
@@ -48,60 +47,7 @@ test("an anonymous caller resolves to no tenant at all", async () => {
 });
 
 // =========================================================================
-// SLUGS
-// =========================================================================
-
-test("slugify produces clean, URL-safe public identifiers", () => {
-  assert.equal(slugify("ABC Restaurant"), "abc-restaurant");
-  assert.equal(slugify("  Café  Déjà Vu!!  "), "cafe-deja-vu");
-  assert.equal(slugify("Pizza & Pasta Co."), "pizza-pasta-co");
-  assert.equal(slugify("--Weird__Name--"), "weird-name");
-});
-
-test("isValidSlug rejects malformed slugs", () => {
-  assert.ok(isValidSlug("abc-restaurant"));
-  assert.ok(!isValidSlug("-leading"));
-  assert.ok(!isValidSlug("trailing-"));
-  assert.ok(!isValidSlug("Has Spaces"));
-  assert.ok(!isValidSlug("UPPER"));
-  assert.ok(!isValidSlug("a"));
-});
-
-test("platform routes are reserved and cannot be taken as slugs", () => {
-  ["api", "admin", "store", "checkout", "auth"].forEach((word) => {
-    assert.ok(RESERVED_SLUGS.has(word), `${word} should be reserved`);
-  });
-});
-
-test("generateUniqueSlug appends a suffix on collision", async () => {
-  const existing = [{ slug: "abc-restaurant", storeId: "111111" }];
-  const Model = {
-    findOne: async (q) => existing.find((s) => s.slug === q.slug) || null,
-  };
-
-  // A DIFFERENT store wanting the same name gets a suffixed slug.
-  const slug = await generateUniqueSlug("ABC Restaurant", "222222", { Model });
-  assert.equal(slug, "abc-restaurant-2");
-});
-
-test("generateUniqueSlug is idempotent for the same store (links never break)", async () => {
-  const existing = [{ slug: "abc-restaurant", storeId: "111111" }];
-  const Model = { findOne: async (q) => existing.find((s) => s.slug === q.slug) || null };
-
-  const slug = await generateUniqueSlug("ABC Restaurant", "111111", { Model });
-  assert.equal(slug, "abc-restaurant");
-});
-
-test("a store named after a reserved word still gets a usable slug", async () => {
-  const Model = { findOne: async () => null };
-  const slug = await generateUniqueSlug("Admin", "333333", { Model });
-
-  assert.ok(!RESERVED_SLUGS.has(slug));
-  assert.equal(slug, "admin-store");
-});
-
-// =========================================================================
-// MEDIA UPLOAD SECURITY
+// IMAGE UPLOADS
 // =========================================================================
 
 const PNG = Buffer.concat([

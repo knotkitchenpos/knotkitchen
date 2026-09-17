@@ -7,7 +7,7 @@ const str = (v) => String(v ?? "").trim();
 const escapeRegex = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
 const PHONE_RE = /^\d{10}$/;
-const normalizePhone = (v) => str(v).replace(/\D/g, "").slice(-10);
+const { normalizePhone } = require("../services/otpService");
 
 /**
  * Guard against locking the platform out of its own admin panel.

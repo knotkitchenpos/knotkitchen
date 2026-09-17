@@ -4,7 +4,7 @@
 const { isCancelled } = require("../constants/orderStatus");
 const { netAmount, refundedTotal } = require("./refunds");
 
-const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+const { round2 } = require("./money");
 
 /** cash | upi | gateway | other, from how the order was paid. */
 const methodOf = (order) => {

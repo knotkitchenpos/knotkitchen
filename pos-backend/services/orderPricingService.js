@@ -18,7 +18,7 @@ const { resolveGst } = require("./gst");
  * is rejected — it can never result in an underpriced order.
  */
 
-const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+const { round2 } = require("./money");
 
 const MAX_LINE_ITEMS = 50;
 const MAX_QUANTITY_PER_LINE = 30;

@@ -147,7 +147,6 @@ const mocks = {
   "../models/orderModel": noopModel,
   "../models/tableSessionModel": noopModel,
   "../models/restaurantModel": noopModel,
-  "../models/paymentModel": noopModel,
   "../services/messagingService": { sendPaymentLinkMessage: async () => {} },
   "../services/gateways/cashfree": cashfreeStub,
   mongoose: mongooseMock,

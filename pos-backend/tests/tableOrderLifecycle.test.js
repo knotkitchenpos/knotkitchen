@@ -129,17 +129,9 @@ test("a gateway payment reads as 'Payment Gateway', a counter payment as its own
   assert.equal(displayPaymentMethod("PAYMENT_LINK"), "Payment Gateway");
 });
 
-/**
- * displayPaymentMethod is module-private on purpose — nothing outside the
- * settle path should be renaming payment methods. Evaluate the literal from
- * source rather than exporting it just to satisfy a test.
- */
+/** The label map lives with the rest of the payment-method vocabulary. */
 function loadMethodLabels() {
-  const start = SESSION_CTRL.indexOf("const PAYMENT_METHOD_LABELS");
-  const end = SESSION_CTRL.indexOf("const enrichItems");
-  const snippet = SESSION_CTRL.slice(start, end);
-  // eslint-disable-next-line no-new-func
-  return new Function(`${snippet}; return { displayPaymentMethod };`)();
+  return require("../constants/paymentMethods");
 }
 
 // ---------------------------------------------------------------------------

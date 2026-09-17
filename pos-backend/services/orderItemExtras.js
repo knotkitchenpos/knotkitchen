@@ -30,7 +30,7 @@
  * Mirrors `pos-frontend/src/utils/orderItems.js` -- keep them in step.
  */
 
-const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+const { round2 } = require("./money");
 
 const normalise = (entry, fallbackName) => {
   const name = String(entry?.name || entry?.optionName || fallbackName || "").trim();

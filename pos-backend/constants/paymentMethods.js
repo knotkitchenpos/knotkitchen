@@ -111,7 +111,29 @@ const toOrderPaymentMethod = (value) => {
   return ORDER_PAYMENT_METHODS.includes(lower) ? lower : "online";
 };
 
+/**
+ * How a settled method reads on the order, the receipt and Reports. The
+ * session stores the rail it was taken on (CASH, ONLINE, …); the order shows
+ * the operator-facing name. Anything paid through the gateway reads
+ * "Payment Gateway".
+ */
+const PAYMENT_METHOD_LABELS = Object.freeze({
+  CASH: "Cash",
+  UPI: "UPI",
+  CARD: "Card",
+  QR_CODE: "UPI",
+  ONLINE: "Payment Gateway",
+  PAYMENT_LINK: "Payment Gateway",
+  WALLET: "Wallet",
+  SPLIT: "Split",
+});
+
+const displayPaymentMethod = (method) =>
+  PAYMENT_METHOD_LABELS[String(method || "").toUpperCase()] || String(method || "");
+
 module.exports = {
+  PAYMENT_METHOD_LABELS,
+  displayPaymentMethod,
   PAYMENT_METHODS,
   ORDER_PAYMENT_METHODS,
   METHOD_ALIASES,

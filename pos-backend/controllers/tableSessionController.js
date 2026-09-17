@@ -346,26 +346,7 @@ const validateCapacity = (table, customerCount) => {
  */
 const COUNTER_SETTLED_METHODS = ["CASH", "UPI", "CARD", "QR_CODE"];
 
-/**
- * How a settled method should read on the order, the receipt and Reports.
- *
- * The session stores the rail it was taken on (CASH, ONLINE, …); the order
- * shows the operator-facing name. Anything paid through the gateway reads
- * "Payment Gateway" (Pay by Link itself is gone from the POS).
- */
-const PAYMENT_METHOD_LABELS = {
-  CASH: "Cash",
-  UPI: "UPI",
-  CARD: "Card",
-  QR_CODE: "UPI",
-  ONLINE: "Payment Gateway",
-  PAYMENT_LINK: "Payment Gateway",
-  WALLET: "Wallet",
-  SPLIT: "Split",
-};
-
-const displayPaymentMethod = (method) =>
-  PAYMENT_METHOD_LABELS[String(method || "").toUpperCase()] || String(method || "");
+const { displayPaymentMethod } = require("../constants/paymentMethods");
 
 const isPaidOnSelection = ({ method, paymentStatus } = {}) =>
   paymentStatus === "success" ||

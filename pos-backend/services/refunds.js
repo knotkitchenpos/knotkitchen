@@ -8,7 +8,7 @@
  */
 const { isCancelled, isRefunded } = require("../constants/orderStatus");
 
-const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+const { round2 } = require("./money");
 
 const orderTotal = (order) => round2(order?.bills?.totalWithTax || order?.bills?.total || 0);
 
