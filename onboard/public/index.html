@@ -509,50 +509,99 @@ a{color:var(--primary-dark);}
 /* mobile stepper */
 .mobile-stepper{display:none;}
 
-/* ===== COMPREHENSIVE RESPONSIVE DESIGN SYSTEM ===== */
+/* ===== Responsive ===== */
+/* The top bar's real height, kept current by a ResizeObserver (see INIT), so
+   the sticky step chips and admin tabs sit exactly under it at any width. */
+:root{--topbar-h:66px;}
+.topbar{gap:12px;}
+#headerAuthNav{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;min-width:0;}
+#headerAuthNav .user-badge{max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:inline-block;line-height:1.4;}
+#headerAuthNav .btn{white-space:nowrap;}
+.btn,.login-btn{min-height:44px;}
+.admin-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+.admin-table-wrap .admin-table{min-width:640px;}
+
 @media(max-width:980px){
   .sidebar{display:none !important;}
   .mobile-stepper{
-    display:flex;gap:8px;overflow-x:auto;padding:12px 16px;background:#FFFFFF;border-bottom:1px solid #E5E7EB;
-    position:sticky;top:64px;z-index:30;-webkit-overflow-scrolling:touch;
+    display:flex;gap:8px;overflow-x:auto;padding:10px 16px;background:#FFFFFF;border-bottom:1px solid #E5E7EB;
+    position:sticky;top:var(--topbar-h);z-index:30;-webkit-overflow-scrolling:touch;scrollbar-width:none;
   }
   .mobile-stepper::-webkit-scrollbar{display:none;}
-  .mobile-step{flex:none;padding:7px 14px;border-radius:100px;font-size:12.5px;font-weight:600;border:1px solid #E5E7EB;color:#4B5563;white-space:nowrap;cursor:pointer;background:#F9FAFB;}
-  .mobile-step.active{border-color:#7C3AED;color:#7C3AED;background:#EDE9FE;}
-  .mobile-step.done{background:#10B981;border-color:#10B981;color:#FFFFFF;}
-  .main{padding:20px 16px 60px;}
-  .panel{padding:24px 20px;border-radius:16px;}
-  .topbar{padding:12px 20px;}
-  .topbar #headerAuthNav{flex-wrap:wrap;gap:8px;}
+  .mobile-step{flex:none;padding:8px 14px;border-radius:100px;font-size:12.5px;font-weight:600;border:1px solid #E5E7EB;color:#4B5563;white-space:nowrap;cursor:pointer;background:#F9FAFB;scroll-snap-align:start;}
+  .mobile-step.active{border-color:var(--primary);color:var(--primary-dark);background:var(--primary-tint);}
+  .mobile-step.done{background:var(--primary);border-color:var(--primary);color:#FFFFFF;}
+  .main{padding:16px 16px 72px;}
+  .panel{padding:24px 20px;border-radius:16px;max-width:none;}
+  .topbar{padding:10px 16px;}
+  /* Column flex with align-items:flex-start let the main area size itself
+     to its widest child (a 960px table), which pushed the whole page wide. */
+  .admin-layout{flex-direction:column;gap:16px;align-items:stretch;}
+  .admin-main-area{width:100%;max-width:100%;overflow-x:hidden;}
+  .dash-header-title,.sec-header-title,.dash-header-sub,.sec-header-sub{white-space:normal;}
+  .admin-sidebar{
+    width:100%;min-height:auto;border-right:none;border-bottom:1px solid #E2E8F0;border-radius:0;
+    padding:8px 12px;gap:0;flex-direction:row;align-items:center;
+    position:sticky;top:var(--topbar-h);z-index:30;background:#F8FAFC;
+  }
+  .admin-brand,.sidebar-section-label,.admin-user-info-row{display:none;}
+  .admin-nav{flex-direction:row;overflow-x:auto;gap:6px;flex:1;min-width:0;scrollbar-width:none;}
+  .admin-nav::-webkit-scrollbar{display:none;}
+  .admin-nav-item{white-space:nowrap;padding:9px 14px;font-size:13.5px;}
+  /* The top bar already has the Onboarding Form toggle; the tabs need the room. */
+  .admin-sidebar-footer{display:none;}
+  .admin-wrapper{padding:0;}
+  .admin-main-area{padding:16px 16px 0;}
+  .dash-header-title,.sec-header-title{font-size:20px;}
+  .db-section-card{padding:18px 16px;}
+  .admin-page-footer{flex-direction:column;gap:4px;align-items:flex-start;}
 }
 
 @media(max-width:640px){
-  .topbar{padding:10px 14px;flex-wrap:wrap;gap:8px;}
+  .topbar{padding:8px 12px;}
   .brand-name{font-size:16px;}
   .brand-mark{height:26px;}
-  .user-badge{font-size:12px;padding:4px 10px;}
+  /* Two rows on a phone: brand, then the actions. The name is already on
+     the sidebar/admin views, so the badge goes. */
+  .topbar{flex-wrap:wrap;row-gap:6px;}
+  #headerAuthNav{flex:1 1 100%;justify-content:space-between;gap:6px;}
+  #headerAuthNav .user-badge{display:none;}
+  #headerAuthNav .btn{padding:8px 12px !important;font-size:12.5px !important;min-height:38px;}
 
-  .login-card{padding:30px 20px;border-radius:16px;}
+  .login-wrapper{min-height:calc(100vh - var(--topbar-h));padding:20px 12px;}
+  .login-card{padding:28px 20px;border-radius:16px;}
   .login-header .login-logo{height:44px;margin-bottom:14px;}
   .login-header h2{font-size:21px;}
 
+  .main{padding:12px 12px 72px;}
   .panel{padding:18px 14px;border-radius:12px;}
   .panel h1{font-size:22px;}
-  .panel .lede{font-size:13.5px;}
+  .panel .lede{font-size:13.5px;margin-bottom:20px;}
+  /* 16px stops iOS zooming into every field. */
+  .field input[type=text],.field input[type=password],.field input[type=email],.field input[type=tel],.field input[type=date],.field select,.field textarea{font-size:16px;padding:12px 13px;}
 
   .field-row{grid-template-columns:1fr !important;gap:0;}
   .card-radio-group{grid-template-columns:1fr !important;gap:10px;}
+  .card-radio{padding:14px;}
   .review-grid{grid-template-columns:1fr !important;}
+  .agreement-meta{gap:12px 20px;}
 
   .btn-row{flex-direction:column-reverse;gap:10px;}
   .btn-row .btn{width:100% !important;justify-content:center;text-align:center;}
 
-  .admin-wrapper{padding:0 12px;margin:16px auto;}
-  .admin-header{flex-direction:column;align-items:flex-start;gap:12px;}
-  .admin-header button{width:100%;justify-content:center;}
+  .db-kpi-grid{gap:12px;}
+  .db-kpi-card{min-height:auto;padding:16px;}
+  .overview-mini-badges{gap:10px;}
+  .mini-badge-card{min-width:0;flex:1 1 100%;}
+  .admin-main-area{padding:12px 12px 0;}
 
-  .agreement-box{padding:18px 14px;max-height:420px;font-size:12.5px;}
+  .agreement-box{padding:16px 12px;max-height:60vh;font-size:12.5px;line-height:1.65;}
+  .agreement-box h3{font-size:18px;}
+  .agreement-box h4{font-size:15px;}
+  .agr-table{font-size:12px;display:block;overflow-x:auto;}
   .modal{padding:24px 18px;border-radius:16px;width:92%;}
+  .toast{left:12px;right:12px;transform:none;bottom:16px;text-align:center;}
+  .toast.show{transform:none;}
 }
 </style>
 </head>
@@ -2038,7 +2087,7 @@ function renderAgentsControlBar(){
 
 function renderAgentsTable(agents, filteredAgents){
   return `
-  <div style="background:#fff;border:1px solid #E5E7EB;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+  <div class="admin-table-wrap" style="background:#fff;border:1px solid #E5E7EB;border-radius:16px;box-shadow:0 1px 3px rgba(0,0,0,0.04);">
     <table class="admin-table" style="width:100%;border-collapse:collapse;text-align:left;">
       <thead>
         <tr style="background:#F9FAFB;border-bottom:1px solid #E5E7EB;">
@@ -2190,7 +2239,7 @@ function renderAgreementsManagementHtml(agreementList){
     </div>
 
     <!-- Table Container -->
-    <div style="background:#fff;border:1px solid #E5E7EB;border-radius:16px;overflow:hidden;box-shadow:0 1px 3px rgba(0,0,0,0.04);">
+    <div class="admin-table-wrap" style="background:#fff;border:1px solid #E5E7EB;border-radius:16px;box-shadow:0 1px 3px rgba(0,0,0,0.04);">
       <table class="admin-table" style="width:100%;border-collapse:collapse;text-align:left;">
         <thead>
           <tr style="background:#F9FAFB;border-bottom:1px solid #E5E7EB;">
@@ -3039,7 +3088,7 @@ function renderHeaderAuth(){
     c.innerHTML = '<div class="user-badge" style="background:var(--line-soft);color:var(--ink-soft);">🔐 Partner Login</div>';
     return;
   }
-  c.innerHTML = `<div class="user-badge">👤 ${currentUser.name} (${currentUser.role==='admin'?'Admin':'Sales Agent'})</div>` +
+  c.innerHTML = `<div class="user-badge" title="${currentUser.name} · ${currentUser.role==='admin'?'Admin':'Sales Agent'}">👤 ${currentUser.name}</div>` +
     (currentUser.role === 'admin' ? `<button type="button" class="btn btn-ghost" style="padding:7px 14px;font-size:13px;" onclick="switchView(currentView==='admin'?'app':'admin')">${currentView==='admin'?'📝 Onboarding Form':'⚙️ Admin Panel'}</button>` : '') +
     (currentView !== 'admin' ? `<button type="button" class="btn btn-ghost" style="padding:7px 14px;font-size:13px;" onclick="handleReset()">🔄 Reset</button>` : '') +
     `<button type="button" class="btn btn-primary" style="padding:7px 16px;font-size:13px;" onclick="handleLogout()">Logout 🚪</button>`;
@@ -3239,6 +3288,16 @@ async function completeSubmissionAndReset(){
 }
 
 /* ============ INIT ============ */
+// The sticky step chips and admin tabs sit under the top bar, whose height
+// changes as its buttons wrap on narrow screens.
+(function trackTopbarHeight(){
+  const bar = document.querySelector('.topbar');
+  if(!bar) return;
+  const apply = () => document.documentElement.style.setProperty('--topbar-h', bar.offsetHeight + 'px');
+  apply();
+  if(typeof ResizeObserver !== 'undefined') new ResizeObserver(apply).observe(bar);
+  window.addEventListener('resize', apply);
+})();
 document.getElementById('brandMarkImg').src = LOGO_MARK;
 document.getElementById('modalLogo').src = LOGO_MARK;
 loadState();
