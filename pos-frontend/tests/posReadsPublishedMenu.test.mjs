@@ -32,7 +32,7 @@ const walk = (dir, out = []) => {
 test("the till shows only the published menu", () => {
   const offenders = [];
   for (const file of walk(SRC)) {
-    const rel = path.relative(SRC, file).replace(/\/g, "/");
+    const rel = path.relative(SRC, file).split(path.sep).join("/");
     const src = fs.readFileSync(file, "utf8");
     // A bare getMenus() / queryFn: getMenus is a draft read.
     if (/queryFn:\s*getMenus\b(?!\()|getMenus\(\)/.test(src) && !DRAFT_READERS_ALLOWED.has(rel)) offenders.push(rel);
