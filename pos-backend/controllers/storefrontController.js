@@ -15,7 +15,6 @@ const {
   projectMenus,
   allowsOrderType,
   dispatchLabel,
-  WEBSITE_VISIBLE_QUERY,
 } = require("../services/menuCache");
 const { getTheme } = require("../services/themeRegistry");
 const { buildLandingPayload } = require("../services/landingPayload");
@@ -160,17 +159,15 @@ const popularItemIds = async (restaurantId, limit = 3) => {
 };
 
 const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezone, restaurant, orderingLocked = false, preview = false }) => {
-  // Hard tenant filter: only this restaurant's published menus.
+  // Hard tenant filter: only this restaurant's menus, then the PUBLISHED
+  // copy of each (dishes, Display Status, visibility, schedule, dispatch),
+  // minus the ones hidden on the website. One rule, from services/menuCache,
+  // shared with the checkout query below and with publicStoreController.
   const menus = restaurantId
-    ? await Menu.find({
-        restaurantId,
-        isDeleted: { $ne: true },
-        // One rule, from services/menuCache, shared with the checkout query
-        // below and with publicStoreController. Three hand-written copies of
-        // "is this category on the website?" had drifted apart -- see the
-        // note on the checkout query.
-        ...WEBSITE_VISIBLE_QUERY,
-      }).sort({ createdAt: 1 })
+    ? projectMenus(
+        await Menu.find({ restaurantId, isDeleted: { $ne: true } }).sort({ createdAt: 1 }),
+        AUDIENCES.WEBSITE,
+      )
     : [];
 
   const categories = [];
@@ -480,16 +477,9 @@ const buildStorefrontOrder = (finalize) => async (req, res, next) => {
     // price edit in Manage Menu would quietly charge the new price against a
     // site still displaying the old one — and an item only present in the
     // draft could be ordered at all.
-    const menuDocs = await Menu.find({
-      restaurantId,
-      isDeleted: { $ne: true },
-      // This clause was missing `showOnWebsite` entirely, while the browse
-      // query above had it. A category with Display Status OFF and Website
-      // Visibility ON was therefore shown to the customer and then refused at
-      // checkout: they could see the dish, add it, and have the order fail to
-      // price. Both now read the same rule.
-      ...WEBSITE_VISIBLE_QUERY,
-    });
+    // Visibility comes from the PUBLISHED flags inside projectMenus, the same
+    // rule the browse payload above uses, so what is shown is what prices.
+    const menuDocs = await Menu.find({ restaurantId, isDeleted: { $ne: true } });
     // Dispatch Type is authoritative here. The website asks for pickup vs
     // delivery at checkout rather than before browsing, so a delivery-only
     // category cannot be filtered out of the catalogue up front.

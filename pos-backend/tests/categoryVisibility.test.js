@@ -100,8 +100,8 @@ test("REGRESSION: the POS menu endpoint filters categories by POS visibility", (
   assert.match(MENU_CTRL, /isVisibleOnPos/, "menuController must import the rule");
   assert.match(
     MENU_CTRL,
-    /menus\.filter\(\(menu\) => isVisibleOnPos\(menu\)\)/,
-    "and apply it to the system audience",
+    /projected\.filter\(\(m\) => isVisibleOnPos\(m\)\)/,
+    "and apply it to the PUBLISHED copy, on the system audience",
   );
 });
 
@@ -112,11 +112,12 @@ test("Manage Menu (draft) still shows every category", () => {
     MENU_CTRL.indexOf("const getMenus"),
     MENU_CTRL.indexOf("PUT /api/menu/reorder-categories"),
   );
-  assert.match(block, /isSystemSource \? menus\.filter/, "draft must bypass the filter");
+  assert.match(block, /isSystemSource\s*\n?\s*\?\s*projected\.filter/, "draft must bypass the filter");
 });
 
 test("the table QR reads the same POS rule, not its own copy", () => {
-  assert.match(QR_ROUTE, /\.\.\.POS_VISIBLE_QUERY/);
+  assert.match(QR_ROUTE, /projectMenus\(docs, AUDIENCES\.SYSTEM\)/, "visibility comes from the published copy");
+  assert.ok(!/POS_VISIBLE_QUERY/.test(QR_ROUTE), "no live-flag filtering in the query");
   assert.ok(
     !/\$or: \[\{ published: true \}, \{ isPublished: true \}, \{ showOnPos: true \}\]/.test(QR_ROUTE),
     "the hand-written clause that disagreed with the shared rule is gone",
@@ -174,8 +175,8 @@ test("REGRESSION: publishing does not switch Display Status back on", () => {
     "publish must not re-enable a category the operator switched off",
   );
   // It must still do the thing it is for: one button, both snapshots.
-  assert.match(block, /menu\.systemSnapshot = \{ name: menu\.name, items: snapshotItems \}/);
-  assert.match(block, /menu\.websiteSnapshot = \{ name: menu\.name, items: snapshotItems \}/);
+  assert.match(block, /menu\.systemSnapshot = snapshot/);
+  assert.match(block, /menu\.websiteSnapshot = JSON\.parse\(JSON\.stringify\(snapshot\)\)/);
 });
 
 test("publishing copies the draft verbatim — it does not filter products", () => {
@@ -183,7 +184,10 @@ test("publishing copies the draft verbatim — it does not filter products", () 
     MENU_CTRL.indexOf("const publishAllMenusForUser"),
     MENU_CTRL.indexOf("const publishToTarget"),
   );
-  assert.match(block, /JSON\.parse\(JSON\.stringify\(menu\.items\)\)/);
+  // snapshotOf copies the draft (dishes and category settings) detached, unfiltered.
+  assert.match(block, /const snapshot = snapshotOf\(menu\)/);
+  const cache = fs.readFileSync(path.join(__dirname, "..", "services", "menuCache.js"), "utf8");
+  assert.match(cache, /snap\[key\] = JSON\.parse\(JSON\.stringify\(plain\[key\]\)\)/);
 });
 
 // ---------------------------------------------------------------------------
@@ -194,8 +198,11 @@ test("REGRESSION: the storefront prices from the same categories it displays", (
   // The checkout query was missing `showOnWebsite`, so a website-only category
   // was shown to the customer and then refused when they tried to order from
   // it: visible, addable, unpriceable.
-  const uses = STOREFRONT_CTRL.match(/\.\.\.WEBSITE_VISIBLE_QUERY/g) || [];
-  assert.equal(uses.length, 2, "both the browse and the checkout query use the shared rule");
+  // Both go through projectMenus(…, AUDIENCES.WEBSITE), whose visibility is
+  // the PUBLISHED flags; neither filters the live doc in the query.
+  const uses = STOREFRONT_CTRL.match(/AUDIENCES\.WEBSITE/g) || [];
+  assert.ok(uses.length >= 2, "both the browse and the checkout path project for the website");
+  assert.ok(!/WEBSITE_VISIBLE_QUERY/.test(STOREFRONT_CTRL), "no live-flag filtering in the storefront queries");
   assert.ok(
     !/\$or: \[\{ published: true \}, \{ published: \{ \$exists: false \}, isPublished: true \}\]/.test(
       STOREFRONT_CTRL,
@@ -235,5 +242,5 @@ test("a category with nothing published to the tills is not listed on the POS", 
     MENU_CTRL.indexOf("const getMenus"),
     MENU_CTRL.indexOf("PUT /api/menu/reorder-categories"),
   );
-  assert.match(block, /isSystemSource\s*\n?\s*\? projected\.filter\(\(m\) => Array\.isArray\(m\.items\) && m\.items\.length > 0\)/);
+  assert.match(block, /isSystemSource\s*\n?\s*\? projected\.filter\(\(m\) => isVisibleOnPos\(m\)\)\.filter\(\(m\) => Array\.isArray\(m\.items\) && m\.items\.length > 0\)/);
 });

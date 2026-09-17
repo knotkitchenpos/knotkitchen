@@ -125,7 +125,7 @@ test("Publish System writes the website snapshot and the Manage Website draft to
   const path = require("path");
   const src = fs.readFileSync(path.join(__dirname, "..", "controllers", "menuController.js"), "utf8");
   const block = src.slice(src.indexOf("const publishAllMenusForUser"), src.indexOf("const publishToTarget"));
-  assert.match(block, /menu\.websiteSnapshot = \{ name: menu\.name, items: snapshotItems \}/);
+  assert.match(block, /menu\.websiteSnapshot = JSON\.parse\(JSON\.stringify\(snapshot\)\)/);
   assert.match(block, /menu\.hasPublishedToWebsite = true/);
   assert.match(block, /snapshotForPublish\(settings\)/, "Manage Website draft is published by the same button");
 });

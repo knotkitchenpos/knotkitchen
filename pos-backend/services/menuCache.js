@@ -33,6 +33,36 @@ const AUDIENCES = Object.freeze({
 });
 
 /**
+ * Everything a published copy carries. Not just the dishes: Display Status,
+ * the per-surface visibility flags, Dispatch Type, the schedule, colours and
+ * order are Manage Menu edits too, and none of them reaches a till or the
+ * website before Publish System.
+ */
+const SNAPSHOT_FIELDS = Object.freeze([
+  "name",
+  "items",
+  "published",
+  "showOnPos",
+  "showOnWebsite",
+  "dispatchType",
+  "schedule",
+  "sortOrder",
+  "bgColor",
+  "textColor",
+  "description",
+]);
+
+/** A plain, detached copy of the fields above, as written on publish. */
+const snapshotOf = (menu) => {
+  const plain = menu && typeof menu.toObject === "function" ? menu.toObject() : { ...(menu || {}) };
+  const snap = {};
+  for (const key of SNAPSHOT_FIELDS) {
+    if (plain[key] !== undefined) snap[key] = JSON.parse(JSON.stringify(plain[key]));
+  }
+  return snap;
+};
+
+/**
  * The name + items a given audience should see for one menu.
  * Never mutates the document.
  *
@@ -79,6 +109,12 @@ const menuViewFor = (menu, audience) => {
 const toPlainItem = (item) =>
   item && typeof item.toObject === "function" ? item.toObject() : item;
 
+const publishedSnapshotFor = (menu, audience) => {
+  if (audience === AUDIENCES.SYSTEM) return menu?.hasPublishedToSystem && menu.systemSnapshot ? menu.systemSnapshot : null;
+  if (audience === AUDIENCES.WEBSITE) return menu?.hasPublishedToWebsite && menu.websiteSnapshot ? menu.websiteSnapshot : null;
+  return null;
+};
+
 const projectMenu = (menu, audience) => {
   const plain = menu && typeof menu.toObject === "function" ? menu.toObject() : { ...(menu || {}) };
   const view = menuViewFor(menu, audience);
@@ -88,18 +124,32 @@ const projectMenu = (menu, audience) => {
   // spread items (`{ ...item }`) behave differently for the two. One shape
   // keeps every downstream consumer honest.
   plain.items = (view.items || []).map(toPlainItem);
+  // The category's own settings come from the published copy as well. A
+  // snapshot written before these were captured leaves the live value in
+  // place until the next publish.
+  const snap = publishedSnapshotFor(menu, audience);
+  if (snap) {
+    const s = typeof snap.toObject === "function" ? snap.toObject() : snap;
+    for (const key of SNAPSHOT_FIELDS) {
+      if (key === "name" || key === "items") continue;
+      if (s[key] !== undefined && s[key] !== null) plain[key] = s[key];
+    }
+  }
   return plain;
 };
 
 /**
- * Project a list of menus, dropping the ones with nothing published for this
- * audience. Draft callers get everything, untouched in spirit.
+ * Project a list of menus for an audience: the published copy of each,
+ * minus the ones hidden on that surface (by their PUBLISHED flags) and the
+ * ones with nothing published. Draft callers get everything.
  */
 const projectMenus = (menus, audience) => {
   const list = Array.isArray(menus) ? menus : [];
   if (audience === AUDIENCES.DRAFT) return list.map((m) => projectMenu(m, audience));
+  const visible = audience === AUDIENCES.WEBSITE ? isVisibleOnWebsite : isVisibleOnPos;
   return list
     .map((m) => projectMenu(m, audience))
+    .filter((m) => visible(m))
     .filter((m) => Array.isArray(m.items) && m.items.length > 0);
 };
 
@@ -131,7 +181,11 @@ const hasUnpublishedChanges = (menu, audience) => {
 const isVisibleOnPos = (menu) => (menu ? menu.published !== false || menu.showOnPos === true : false);
 const isVisibleOnWebsite = (menu) => (menu ? menu.published !== false || menu.showOnWebsite === true : false);
 
-/** Mongo clauses matching the two rules above, for use in a find(). */
+/**
+ * Mongo clauses matching the two rules above. Kept for the DRAFT side only:
+ * for the tills and the website the flags that count are the PUBLISHED ones
+ * (see projectMenus), so public queries must not filter on the live doc.
+ */
 const POS_VISIBLE_QUERY = { $or: [{ published: { $ne: false } }, { showOnPos: true }] };
 const WEBSITE_VISIBLE_QUERY = { $or: [{ published: { $ne: false } }, { showOnWebsite: true }] };
 
@@ -192,6 +246,8 @@ const dispatchLabel = (dispatchType) => {
 
 module.exports = {
   AUDIENCES,
+  SNAPSHOT_FIELDS,
+  snapshotOf,
   ORDER_TYPES,
   isVisibleOnPos,
   isVisibleOnWebsite,

@@ -24,9 +24,11 @@ mongoose.connection.once("connected", () => {
         .catch((err) => console.error("[boot] CSD seed failed:", err?.message || err));
     // One-time: make every store's then-live website its published copy, so
     // the publish gate never blanked a site. No-op after the first run.
-    require("./services/publishGateSeed")
-        .seedPublishGate()
+    const seed = require("./services/publishGateSeed");
+    seed.seedPublishGate()
         .then((r) => console.log("[boot] publish gate seed:", JSON.stringify(r)))
+        .then(() => seed.seedSnapshotFields())
+        .then((r) => console.log("[boot] snapshot fields seed:", JSON.stringify(r)))
         .catch((err) => console.error("[boot] publish gate seed failed:", err?.message || err));
 });
 

@@ -1182,11 +1182,11 @@ const getPopularItems = async (req, res, next) => {
         ? { restaurantId: req.user.restaurantId }
         : { createdBy: req.user?._id }),
       isDeleted: { $ne: true },
-      published: { $ne: false },
     });
 
-    // POS surface: index the System Published catalogue, so "popular dishes"
-    // can never suggest an item the tills are not serving yet.
+    // POS surface: index the System Published catalogue (visibility from the
+    // published flags), so "popular dishes" can never suggest an item the
+    // tills are not serving yet.
     const publishedMenus = projectMenus(menus, AUDIENCES.SYSTEM);
 
     const dishesById = new Map();

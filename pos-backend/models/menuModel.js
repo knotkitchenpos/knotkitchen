@@ -203,9 +203,20 @@ const menuSchema = new mongoose.Schema({
     hasPublishedToSystem: { type: Boolean, default: false },
     lastPublishedToSystemAt: { type: Date, default: null },
     systemVersion: { type: Number, default: 0 },
+    // What the tills serve: the dishes AND the category's own settings as
+    // they were at Publish System (see services/menuCache SNAPSHOT_FIELDS).
     systemSnapshot: {
       name: { type: String },
       items: [menuItemSchema],
+      published: { type: Boolean },
+      showOnPos: { type: Boolean },
+      showOnWebsite: { type: Boolean },
+      dispatchType: { type: mongoose.Schema.Types.Mixed },
+      schedule: { type: mongoose.Schema.Types.Mixed },
+      sortOrder: { type: Number },
+      bgColor: { type: String },
+      textColor: { type: String },
+      description: { type: String },
     },
 
     // Display order for Manage Menu / storefront category chips. Older
@@ -221,6 +232,15 @@ const menuSchema = new mongoose.Schema({
     websiteSnapshot: {
       name: { type: String },
       items: [menuItemSchema],
+      published: { type: Boolean },
+      showOnPos: { type: Boolean },
+      showOnWebsite: { type: Boolean },
+      dispatchType: { type: mongoose.Schema.Types.Mixed },
+      schedule: { type: mongoose.Schema.Types.Mixed },
+      sortOrder: { type: Number },
+      bgColor: { type: String },
+      textColor: { type: String },
+      description: { type: String },
     },
 }, { timestamps: true });
 

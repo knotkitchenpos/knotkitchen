@@ -25,7 +25,7 @@ const { PREPARING, SETTLED_STATUSES, CANCELLED_STATUSES, canonicalStatus } = req
 // tests that mock mongoose before the models are loaded.
 const computeReadyDueAt = (args) => require("../services/autoReadyService").computeReadyDueAt(args);
 const computeCompleteDueAt = (args) => require("../services/autoReadyService").computeCompleteDueAt(args);
-const { AUDIENCES, ORDER_TYPES, projectMenus, allowsOrderType, POS_VISIBLE_QUERY } = require("../services/menuCache");
+const { AUDIENCES, ORDER_TYPES, projectMenus, allowsOrderType } = require("../services/menuCache");
 const { resolveGateway, isOnlinePaymentEnabled, PROVIDERS } = require("../services/paymentGateway");
 const config = require("../config/config");
 const { rateLimit, clientIp } = require("../middlewares/rateLimiter");
@@ -82,12 +82,8 @@ const scopedMenu = async (restaurantId, outletId) => {
     restaurantId,
     outletId: { $in: [outletId, null] },
     isDeleted: false,
-    // The same rule the tills use, from the same place. This clause used to be
-    // written out by hand here and did not quite agree with it: `published:
-    // true` instead of `!== false`, plus an `isPublished: true` alternative
-    // that could re-admit a category whose Display Status was off. A table QR
-    // is served from the system snapshot, so it follows POS visibility.
-    ...POS_VISIBLE_QUERY,
+    // A table QR is served from the system snapshot, so it follows POS
+    // visibility -- the PUBLISHED flags, applied inside projectMenus.
   });
   return projectMenus(docs, AUDIENCES.SYSTEM)
     // A table QR is unambiguously a TABLE order, so a category restricted to

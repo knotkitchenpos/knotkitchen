@@ -32,7 +32,7 @@ const menuScopeFor = (user) => {
   return { createdBy: user?._id };
 };
 
-const { AUDIENCES, projectMenu, isVisibleOnPos } = require("../services/menuCache");
+const { AUDIENCES, projectMenu, isVisibleOnPos, snapshotOf } = require("../services/menuCache");
 
 const getMenus = async (req, res, next) => {
   try {
@@ -53,21 +53,13 @@ const getMenus = async (req, res, next) => {
     const isSystemSource = req.query.source === "system" || req.headers["x-pos-source"] === "system";
     const audience = isSystemSource ? AUDIENCES.SYSTEM : AUDIENCES.DRAFT;
 
-    // Per-surface category visibility, applied HERE rather than by rewriting
-    // the catalogue.
-    //
-    // `isVisibleOnPos` existed and was exported but nothing ever called it, so
-    // the tills showed every category no matter what Display Status or POS
-    // Visibility said. Hiding a category "worked" only because updateCategory
-    // went round and switched off every product inside it — which is why the
-    // category still appeared on the till with nothing in it, and why the same
-    // products then showed as Sold Out on the website.
+    // Per-surface category visibility is applied AFTER projection, on the
+    // PUBLISHED flags: switching Display Status off in Manage Menu reaches
+    // the tills at Publish System, like every other edit.
     //
     // Manage Menu (draft) deliberately keeps showing everything: you cannot
     // edit a category you cannot see.
-    const visible = isSystemSource ? menus.filter((menu) => isVisibleOnPos(menu)) : menus;
-
-    const projected = visible.map((menu) => {
+    const projected = menus.map((menu) => {
       const obj = projectMenu(menu, audience);
       // Also sort the items array by their sortOrder so drag-reordered
       // products come back in the biller's chosen order (existing
@@ -86,7 +78,7 @@ const getMenus = async (req, res, next) => {
     // been published to the tills yet, or every product in it is gone. This
     // matches what projectMenus already does for the other system callers.
     const payload = isSystemSource
-      ? projected.filter((m) => Array.isArray(m.items) && m.items.length > 0)
+      ? projected.filter((m) => isVisibleOnPos(m)).filter((m) => Array.isArray(m.items) && m.items.length > 0)
       : projected;
 
     res.status(200).json({ success: true, data: payload });
@@ -1485,19 +1477,20 @@ const publishAllMenusForUser = async (user, target) => {
     menu.publishedAt = now;
     menu.set(timestampField, now);
 
-    const snapshotItems = JSON.parse(JSON.stringify(menu.items));
+    // The dishes and the category's own settings, detached from the draft.
+    const snapshot = snapshotOf(menu);
 
     if (target === "system") {
       menu.hasPublishedToSystem = true;
       menu.lastPublishedToSystemAt = now;
       menu.systemVersion = (menu.systemVersion || 0) + 1;
-      menu.systemSnapshot = { name: menu.name, items: snapshotItems };
+      menu.systemSnapshot = snapshot;
     }
     if (target === "system" || target === "website") {
       menu.hasPublishedToWebsite = true;
       menu.lastPublishedToWebsiteAt = now;
       menu.websiteVersion = (menu.websiteVersion || 0) + 1;
-      menu.websiteSnapshot = { name: menu.name, items: snapshotItems };
+      menu.websiteSnapshot = JSON.parse(JSON.stringify(snapshot));
     }
 
     try {

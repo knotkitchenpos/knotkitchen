@@ -59,13 +59,9 @@ test("Website Module 3: Public store menu returns categories, products with Veg/
 
   const MenuMock = {
     find: async (query) => {
-      // Visibility is expressed as an $or now — `published: true` OR the
-      // per-surface showOnWebsite override — so the old `query.published`
-      // check no longer describes what the controller asks for.
-      const clauses = query.$or || [];
-      const scopesToPublished = clauses.some((c) => c.published !== undefined);
-      const honoursOverride = clauses.some((c) => c.showOnWebsite === true);
-      if (query.restaurantId === RESTAURANT_ID && scopesToPublished && honoursOverride) {
+      // Visibility is no longer in the query: it comes from the PUBLISHED
+      // flags inside projectMenus, so the query is the tenant scope alone.
+      if (query.restaurantId === RESTAURANT_ID && query.$or === undefined && query.published === undefined) {
         return mockMenus;
       }
       return [];
