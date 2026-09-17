@@ -101,16 +101,28 @@ export const renderReceiptCanvas = async ({ order, store, settings, paper }) => 
   return canvas;
 };
 
-/** Print a canvas through the browser's print dialog, sized to the paper. */
-const printCanvasWithDialog = (canvas, paper) => {
+/** The receipt canvas as a printable HTML page, sized to the paper. */
+export const receiptHtml = (canvas, paper) => {
   const printable = paperOf(paper).width === 384 ? 48 : 72; // mm of printable width
+  const paperMm = paper === "58" ? 58 : 80;
+  const heightMm = Math.ceil((canvas.height / canvas.width) * printable);
   const html = `<!DOCTYPE html><html><head><title>Receipt</title><style>
-    @page { size: ${paper === "58" ? 58 : 80}mm auto; margin: 0; }
+    @page { size: ${paperMm}mm auto; margin: 0; }
     html, body { margin: 0; padding: 0; background: #fff; }
     img { display: block; width: ${printable}mm; margin: 0 auto; image-rendering: pixelated; }
   </style></head><body><img src="${canvas.toDataURL("image/png")}" alt="Receipt"></body></html>`;
-  return printHtmlDocument(html);
+  return { html, paperMm, heightMm };
 };
+
+/** Print a canvas through the browser's print dialog. */
+const printCanvasWithDialog = (canvas, paper) => printHtmlDocument(receiptHtml(canvas, paper).html);
+
+/**
+ * Inside the Windows app (pos-desktop) the computer's printer driver prints
+ * with no dialog: window.knotDesktop.printHtml goes straight to the spooler.
+ */
+export const desktopPrinting = () =>
+  typeof window !== "undefined" && typeof window.knotDesktop?.printHtml === "function";
 
 /**
  * Print `order`.
@@ -139,6 +151,11 @@ export const printOrderReceipt = async (order, { auto = false, config, context }
     return { printed: true, via: printer.type };
   }
   if (auto && printer.type !== "system") return { printed: false, via: "none" };
+  if (printer.type === "system" && desktopPrinting()) {
+    const { html, paperMm, heightMm } = receiptHtml(canvas, paper);
+    await window.knotDesktop.printHtml(html, { printer: printer.systemPrinter || "", paperMm, heightMm });
+    return { printed: true, via: "desktop" };
+  }
   printCanvasWithDialog(canvas, paper);
   return { printed: true, via: "dialog" };
 };

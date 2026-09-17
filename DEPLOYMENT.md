@@ -283,6 +283,20 @@ docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d pos-api
 ./deploy/rollback.sh
 ```
 
+### Counter apps (no VPS change)
+
+Both apps are shells around `business.knotkitchen.com`, so a deploy of
+`pos-frontend` updates them with no reinstall. Installers come from GitHub
+Actions artifacts:
+
+```bash
+# Android (debug APK; signed release once the keystore secrets exist)
+gh run download <run-id> -n knotkitchen-pos-debug-apk
+
+# Windows installer (see pos-desktop/README.md)
+gh run download <run-id> -n knotkitchen-pos-windows
+```
+
 ### A note on `down -v`
 
 `docker compose down -v` and `docker volume prune` destroy volumes. The three

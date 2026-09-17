@@ -1,0 +1,49 @@
+{
+  "name": "knotkitchen-pos-desktop",
+  "productName": "KnotKitchen POS",
+  "version": "1.0.0",
+  "description": "KnotKitchen POS for Windows counters: the live POS in a window, with silent receipt printing through the computer's printer driver.",
+  "private": true,
+  "main": "main.js",
+  "author": "KnotKitchen",
+  "license": "UNLICENSED",
+  "scripts": {
+    "start": "electron .",
+    "smoke": "electron . --smoke",
+    "dist": "electron-builder --win nsis --publish never",
+    "dist:portable": "electron-builder --win portable --publish never"
+  },
+  "devDependencies": {
+    "electron": "^33.2.1",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.knotkitchen.pos",
+    "productName": "KnotKitchen POS",
+    "artifactName": "KnotKitchen-POS-Setup-${version}.${ext}",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "chooser.html",
+      "offline.html",
+      "build/icon.png"
+    ],
+    "win": {
+      "target": ["nsis"],
+      "icon": "build/icon.png"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "runAfterFinish": true,
+      "deleteAppDataOnUninstall": false
+    }
+  }
+}

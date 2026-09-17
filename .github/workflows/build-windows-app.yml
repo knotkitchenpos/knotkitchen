@@ -1,0 +1,57 @@
+name: Build Windows App
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "pos-desktop/**"
+      - ".github/workflows/build-windows-app.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    env:
+      KK_VERSION: 1.0.${{ github.run_number }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: pos-desktop/package-lock.json
+
+      - name: Install dependencies
+        working-directory: pos-desktop
+        run: npm ci
+
+      - name: Stamp version
+        working-directory: pos-desktop
+        run: npm pkg set version=$env:KK_VERSION
+
+      - name: Smoke test (boots, lists printers, exits)
+        working-directory: pos-desktop
+        run: npm run smoke
+
+      # Unsigned: Windows SmartScreen shows "unknown publisher" on first run.
+      # A code-signing certificate (WIN_CSC_LINK / WIN_CSC_KEY_PASSWORD
+      # secrets) removes that; electron-builder picks them up automatically.
+      - name: Build installer
+        working-directory: pos-desktop
+        env:
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+        run: npm run dist
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: knotkitchen-pos-windows
+          path: pos-desktop/dist/*.exe
+          if-no-files-found: error

@@ -16,7 +16,13 @@ import {
   savePrinterConfig,
   supports,
 } from "../../utils/printerDevice";
-import { printOrderReceipt, receiptContextFrom, renderReceiptCanvas, SAMPLE_ORDER } from "../../utils/printReceipt";
+import {
+  desktopPrinting,
+  printOrderReceipt,
+  receiptContextFrom,
+  renderReceiptCanvas,
+  SAMPLE_ORDER,
+} from "../../utils/printReceipt";
 import { looksLikeCatPrinter } from "../../utils/catprinter";
 
 /**
@@ -126,6 +132,16 @@ const DeviceConfiguration = () => {
 
   useEffect(() => {
     bluetoothAvailable().then(setBtOn);
+  }, []);
+
+  // Windows app only: the printers the computer's driver knows about.
+  const [systemPrinters, setSystemPrinters] = useState([]);
+  useEffect(() => {
+    if (!desktopPrinting()) return;
+    window.knotDesktop
+      .listPrinters()
+      .then((list) => setSystemPrinters(Array.isArray(list) ? list : []))
+      .catch(() => setSystemPrinters([]));
   }, []);
 
   const pickPrinter = (kind, picked) => {
@@ -307,13 +323,42 @@ const DeviceConfiguration = () => {
                 </p>
               )}
               <PrinterChoices choices={choices} kind="usb" onPick={pickPrinter} />
-              {!nativePrinting && (
+              {!nativePrinting && desktopPrinting() && (
+              <div className="rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] p-3">
+                <p className="font-bold text-[#0F172A]">Printer installed on this computer</p>
+                <p className="text-[12px] text-[#64748B] mt-0.5">
+                  Receipts print straight to the printer you choose here, with no dialog. Install the printer&apos;s
+                  Windows driver first; it then appears in this list.
+                </p>
+                <select
+                  className="mt-2 h-[40px] w-full rounded-xl border border-[#E2E8F0] bg-white px-3 text-[13px] font-bold text-[#334155]"
+                  value={isThis("system") ? device.systemPrinter || "" : "__none"}
+                  onChange={(e) => {
+                    const name = e.target.value;
+                    if (name === "__none") return;
+                    patchDevice({ type: "system", name: name ? `Windows: ${name}` : "Default Windows printer", systemPrinter: name });
+                  }}
+                >
+                  <option value="__none" disabled>
+                    Choose a printer…
+                  </option>
+                  <option value="">Default Windows printer</option>
+                  {systemPrinters.map((p) => (
+                    <option key={p.name} value={p.name}>
+                      {p.name}
+                      {p.isDefault ? " (default)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              )}
+              {!nativePrinting && !desktopPrinting() && (
               <div className="rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] p-3">
                 <p className="font-bold text-[#0F172A]">Printer installed on a Windows computer?</p>
                 <p className="text-[12px] text-[#64748B] mt-0.5">
-                  Windows keeps USB printers for its own driver. Print through that driver instead: make the receipt printer
-                  the default printer. Receipts then open the print dialog; start Chrome with <code>--kiosk-printing</code> to
-                  print without it.
+                  Windows keeps USB printers for its own driver. Install the KnotKitchen POS Windows app to print through
+                  that driver silently. In a browser, make the receipt printer the default printer; receipts then open the
+                  print dialog (Chrome with <code>--kiosk-printing</code> skips it).
                 </p>
                 <button
                   type="button"

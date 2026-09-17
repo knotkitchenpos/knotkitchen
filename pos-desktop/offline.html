@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>KnotKitchen POS - offline</title>
+<style>
+  html, body { height: 100%; margin: 0; }
+  body {
+    display: flex; align-items: center; justify-content: center; padding: 24px; box-sizing: border-box;
+    background: #080F1F; color: #F5F7FA; text-align: center;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  img { width: 72px; height: 72px; }
+  h1 { font-size: 20px; margin: 20px 0 8px; }
+  p { font-size: 14px; color: #9AA3B8; margin: 0 auto 24px; max-width: 300px; line-height: 1.5; }
+  button { height: 48px; padding: 0 28px; border: 0; border-radius: 12px; background: #FD5302; color: #fff; font-size: 15px; font-weight: 700; }
+</style>
+</head>
+<body>
+  <main>
+    <img src="build/icon.png" alt="" />
+    <h1>No internet connection</h1>
+    <p>KnotKitchen POS needs the internet. Check Wi-Fi or mobile data, then try again.</p>
+    <button type="button" onclick="location.href=new URLSearchParams(location.search).get('back')||'https://business.knotkitchen.com/'">Try again</button>
+  </main>
+</body>
+</html>

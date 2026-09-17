@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Choose a device</title>
+<style>
+  html, body { margin: 0; height: 100%; font-family: system-ui, "Segoe UI", Roboto, sans-serif; background: #fff; color: #0F172A; }
+  body { display: flex; flex-direction: column; }
+  header { padding: 16px 18px 8px; }
+  h1 { font-size: 16px; margin: 0 0 4px; }
+  p { margin: 0; font-size: 12.5px; color: #64748B; }
+  ul { list-style: none; margin: 0; padding: 8px 12px; flex: 1; overflow-y: auto; }
+  li button { width: 100%; text-align: left; padding: 12px 14px; margin-bottom: 8px; border: 1px solid #E2E8F0; border-radius: 12px; background: #F8FAFC; font: inherit; font-weight: 700; cursor: pointer; }
+  li button:hover { border-color: #FD5302; background: #FFF1E8; }
+  li button small { display: block; font-weight: 500; color: #94A3B8; font-size: 11px; margin-top: 2px; }
+  .empty { padding: 40px 18px; text-align: center; color: #94A3B8; font-size: 13px; }
+  footer { padding: 10px 18px 16px; display: flex; justify-content: flex-end; }
+  footer button { height: 38px; padding: 0 16px; border: 1px solid #E2E8F0; border-radius: 10px; background: #fff; font: inherit; font-weight: 700; cursor: pointer; }
+</style>
+</head>
+<body>
+  <header>
+    <h1 id="title">Choose a printer</h1>
+    <p id="hint">Searching… turn the printer on and keep it close.</p>
+  </header>
+  <ul id="list"><li class="empty">Nothing found yet.</li></ul>
+  <footer><button type="button" id="cancel">Cancel</button></footer>
+  <script>
+    const list = document.getElementById("list");
+    const title = document.getElementById("title");
+    const hint = document.getElementById("hint");
+    document.getElementById("cancel").onclick = () => window.knotChooser.cancel();
+    window.knotChooser.onDevices(({ kind, devices }) => {
+      title.textContent = kind === "bluetooth" ? "Choose a Bluetooth printer" : kind === "usb" ? "Choose a USB printer" : "Choose a port";
+      hint.textContent = kind === "bluetooth" ? "Searching… turn the printer on and keep it close." : "Plugged-in devices this app may use.";
+      list.innerHTML = "";
+      if (!devices.length) {
+        list.innerHTML = '<li class="empty">Nothing found yet.</li>';
+        return;
+      }
+      for (const d of devices) {
+        const li = document.createElement("li");
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = d.name;
+        const s = document.createElement("small");
+        s.textContent = d.id;
+        b.appendChild(s);
+        b.onclick = () => window.knotChooser.pick(d.id);
+        li.appendChild(b);
+        list.appendChild(li);
+      }
+    });
+  </script>
+</body>
+</html>

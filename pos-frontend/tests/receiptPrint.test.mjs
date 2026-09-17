@@ -134,6 +134,18 @@ test("every receipt print goes through the one renderer", () => {
   assert.match(SRC("src/components/settings/DeviceConfiguration.jsx"), /key: "lan", label: "LAN \/ Network", disabled: true/);
 });
 
+test("Windows app: a system printer prints silently through window.knotDesktop", () => {
+  const src = SRC("src/utils/printReceipt.js");
+  assert.match(src, /printer\.type === "system" && desktopPrinting\(\)/);
+  assert.match(src, /window\.knotDesktop\.printHtml\(html, \{ printer: printer\.systemPrinter/);
+  // The dialog path stays for plain browsers.
+  assert.match(src, /printCanvasWithDialog\(canvas, paper\);\n  return \{ printed: true, via: "dialog" \}/);
+  // The desktop shell exposes exactly those two calls.
+  const preload = SRC("../pos-desktop/preload.js");
+  assert.match(preload, /listPrinters:/);
+  assert.match(preload, /printHtml:/);
+});
+
 test("REGRESSION: a connected printer is kept at once, not only on Save", () => {
   // Orders > Print reads the SAVED printer. A printer connected in Settings
   // but not yet saved left that empty, so Print opened the browser's dialog.
