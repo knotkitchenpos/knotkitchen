@@ -3,7 +3,7 @@ import assert from "node:assert";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { layoutReceipt, billLines, wrap, PAPER } from "../src/utils/receiptLayout.js";
+import { layoutKot, layoutReceipt, billLines, wrap, PAPER } from "../src/utils/receiptLayout.js";
 import { rasterJob, toMonochrome } from "../src/utils/escpos.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -134,6 +134,39 @@ test("every receipt print goes through the one renderer", () => {
   assert.match(SRC("src/components/settings/DeviceConfiguration.jsx"), /key: "lan", label: "LAN \/ Network", disabled: true/);
 });
 
+test("KOT: quantities, names, extras and notes; no prices, no address", () => {
+  const order = { ...ORDER, table: { tableNumber: 4 }, orderType: "dine-in", instructions: "Serve together" };
+  order.items = [{ ...ORDER.items[0], note: "less spicy" }, ORDER.items[1]];
+  const layout = layoutKot({ order, store: { name: "Asha's", address: "12 MG Road", gstNumber: "GST1" }, paper: 80, measure });
+  const texts = textOps(layout).map((o) => o.text);
+  assert.ok(texts.includes("KOT"));
+  assert.ok(texts.includes("12 x"), "quantity first");
+  assert.ok(texts.some((t) => t.startsWith("Paneer Butter Masala")));
+  assert.ok(texts.includes("+ Extra Cheese and Double Jalapenos on the side") || texts.some((t) => t.startsWith("+ Extra Cheese")));
+  assert.ok(texts.includes("** less spicy"), "the cook's note");
+  assert.ok(texts.includes("** Serve together"), "the order note");
+  assert.ok(texts.includes("Table 4") || texts.some((t) => /Table/.test(t)));
+  assert.ok(!texts.some((t) => /15,360|1,280|399|Subtotal|Total|Rate|Price/.test(t)), "no money on a kitchen ticket");
+  assert.ok(!texts.includes("12 MG Road") && !texts.some((t) => /GSTIN/.test(t)), "no address or GSTIN");
+  for (const o of layout.ops) {
+    if (o.type === "text") assert.ok(o.x >= 0 && o.x <= layout.width, `text inside the paper: ${o.text}`);
+  }
+  // A round: only the given lines, labelled as such.
+  const round = layoutKot({ order, items: [ORDER.items[1]], round: true, paper: 58, measure });
+  const rt = textOps(round).map((o) => o.text);
+  assert.ok(rt.includes("KOT · ADDED ITEMS"));
+  assert.ok(!rt.some((t) => t.startsWith("Paneer")));
+  assert.equal(round.width, PAPER[58].width);
+});
+
+test("Auto KOT prints on new orders and on table rounds", () => {
+  const hook = SRC("src/hooks/useAutoReceiptPrint.js");
+  assert.match(hook, /socket\.on\("kitchen:round", onRound\)/);
+  assert.match(hook, /if \(config\.kotPrint\) \{\s+await printKot\(order/);
+  const socket = fs.readFileSync(path.join(__dirname, "..", "..", "pos-backend", "services", "socket.js"), "utf8");
+  assert.match(socket, /emitEvent\("kitchen:round", payload, rooms\)/);
+});
+
 test("Windows app: a system printer prints silently through window.knotDesktop", () => {
   const src = SRC("src/utils/printReceipt.js");
   assert.match(src, /printer\.type === "system" && desktopPrinting\(\)/);
@@ -191,6 +224,6 @@ test("cat printer job: framed packets, CRC-8, LSB-first rows, 384 wide", async (
 
   // The receipt path picks the encoder and forces 57 mm paper for it.
   const print = fs.readFileSync(path.join(__dirname, "..", "src/utils/printReceipt.js"), "utf8");
-  assert.match(print, /const encode = cat \? catJob : rasterJob;/);
-  assert.match(print, /const paper = cat \|\| printer\.paper === "58" \? "58" : "80";/);
+  assert.match(print, /const encode = printer\.protocol === "cat" \? catJob : rasterJob;/);
+  assert.match(print, /printer\.protocol === "cat" \|\| printer\.paper === "58" \? "58" : "80"/);
 });

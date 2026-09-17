@@ -123,10 +123,20 @@ const addRoundToKitchenOrder = async ({ session, validatedItems, tableId, create
 };
 
 /** A new order pops up on the tills; an appended round only refreshes them. */
-const announceKitchenOrder = ({ session, order, appended }) => {
+const announceKitchenOrder = ({ session, order, appended, items, table }) => {
   try {
     const emit = appended ? emitOrderStatusChanged : emitOrderCreated;
     emit({ restaurantId: session.restaurantId, outletId: session.outletId, order });
+    // A round added mid-meal: the kitchen printer needs the new lines.
+    if (appended && items?.length) {
+      require("../services/socket").emitKitchenRound({
+        restaurantId: session.restaurantId,
+        outletId: session.outletId,
+        order,
+        items,
+        table,
+      });
+    }
   } catch (socketErr) {
     console.warn("[tableSession] socket emit failed:", socketErr.message);
   }
@@ -518,10 +528,16 @@ const addItemsToSession = async (req, res, next) => {
       await table.save({ session: mongoSession });
       await session.save({ session: mongoSession });
 
-      return { session, kitchenOrder, appended, validatedItems };
+      return { session, kitchenOrder, appended, validatedItems, table };
     }));
 
-    announceKitchenOrder({ session: result.session, order: result.kitchenOrder, appended: result.appended });
+    announceKitchenOrder({
+      session: result.session,
+      order: result.kitchenOrder,
+      appended: result.appended,
+      items: result.validatedItems,
+      table: result.table,
+    });
   } catch (error) {
     return next(error);
   }

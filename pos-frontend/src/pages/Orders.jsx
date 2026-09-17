@@ -13,7 +13,7 @@ import {
 } from "../https";
 import TableSettleModal from "../components/tables/TableSettleModal";
 import { getMyRestaurant } from "../https/newModules";
-import { printOrderReceipt } from "../utils/printReceipt";
+import { printKot, printOrderReceipt } from "../utils/printReceipt";
 import { itemDisplayName, itemExtras } from "../utils/orderItems";
 import { isPreparing, isReady, isSettled, isCancelled, statusLabel, COMPLETED, CANCELLED } from "../constants/orderStatus";
 import { sourceLabel, tableLabel, orderDisplayId } from "../utils/orderLabels";
@@ -954,7 +954,7 @@ const Orders = () => {
             </div>
 
             {/* Footer actions */}
-            <div className="px-4 py-3.5 border-t border-[#E2E8F0] shrink-0 grid grid-cols-3 gap-2">
+            <div className="px-4 py-3.5 border-t border-[#E2E8F0] shrink-0 grid grid-cols-4 gap-2">
               <button
                 onClick={() =>
                   printOrderReceipt(selected).catch((err) =>
@@ -964,6 +964,17 @@ const Orders = () => {
                 className="h-[46px] rounded-xl border border-[#E2E8F0] text-[#334155] text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#F8FAFC]"
               >
                 <I.print /> Print
+              </button>
+              <button
+                onClick={() =>
+                  printKot(selected).catch((err) =>
+                    enqueueSnackbar(err?.message || "Could not print the KOT.", { variant: "error" }),
+                  )
+                }
+                title="Kitchen order ticket: quantities and notes, no prices"
+                className="h-[46px] rounded-xl border border-[#E2E8F0] text-[#334155] text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#F8FAFC]"
+              >
+                KOT
               </button>
 
               {/* Module 4 §2 — Mark Ready. Uses the dedicated endpoint so the

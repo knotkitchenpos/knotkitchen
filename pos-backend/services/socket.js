@@ -227,6 +227,36 @@ const emitOrderCreated = ({ restaurantId, outletId, storeId, order }) => {
 };
 
 /** Order status changed in the POS — lets customer tracking update live. */
+/**
+ * Lines added to a table that already has a kitchen order. The tills print a
+ * KOT for just these lines (pos-frontend/src/hooks/useAutoReceiptPrint.js);
+ * a status event alone says nothing about what was added.
+ */
+const emitKitchenRound = ({ restaurantId, outletId, order, items, table }) => {
+  if (!io || !order || !Array.isArray(items) || !items.length) return;
+  const tableDoc = table && typeof table === "object" ? table : null;
+  const payload = {
+    orderId: String(order._id),
+    orderNumber: order.orderNumber || "",
+    roundId: `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`,
+    at: new Date(),
+    table: tableDoc
+      ? { _id: String(tableDoc._id), tableNumber: tableDoc.tableNumber ?? null, displayId: tableDoc.displayId || "", tableName: tableDoc.tableName || "" }
+      : order.table || null,
+    items: items.map((i) => ({
+      name: i.name,
+      quantity: i.quantity,
+      modifiers: (i.modifiers || []).map((m) => ({ name: m.name, price: m.price })),
+      note: i.note || "",
+    })),
+  };
+  const rooms = [];
+  if (restaurantId) rooms.push(`restaurant:${restaurantId}`);
+  if (outletId) rooms.push(`outlet:${outletId}`);
+  if (!rooms.length) return;
+  emitEvent("kitchen:round", payload, rooms);
+};
+
 const emitOrderStatusChanged = ({ restaurantId, outletId, storeId, order }) => {
   if (!io || !order) return;
   const payload = {
@@ -273,6 +303,7 @@ const emitTableSessionUpdated = ({ restaurantId, outletId, tableId, session, rea
 };
 
 module.exports = {
+  emitKitchenRound,
   initSocket,
   authenticateSocket,
   emitEvent,

@@ -256,3 +256,85 @@ export const layoutReceipt = ({ order = {}, store = {}, settings = {}, images = 
   y += P.pad * 3;
   return { width: W, height: Math.ceil(y), ops };
 };
+
+/**
+ * The kitchen order ticket (KOT): what the kitchen needs and nothing else.
+ *
+ * No prices, no store address. Quantity first and big, the dish name bold,
+ * the extras and the note under it, because a cook reads it at arm's length
+ * on a clip. `items` defaults to the whole order; a round added to a table
+ * passes just the new lines, and the ticket says so.
+ */
+export const layoutKot = ({ order = {}, items, store = {}, paper = 80, round = false, measure }) => {
+  const P = paperOf(paper);
+  const W = P.width;
+  const inner = W - P.pad * 2;
+  const ops = [];
+  let y = P.pad * 2;
+  const big = P.body + 4;
+
+  const text = (value, { size = P.body, bold = false, align = "left", x = P.pad, width = inner } = {}) => {
+    const fnt = font(size, bold);
+    for (const line of wrap(value, fnt, width, measure)) {
+      const tx = align === "center" ? x + width / 2 : align === "right" ? x + width : x;
+      ops.push({ type: "text", text: line, x: tx, y, font: fnt, align });
+      y += Math.round(size * 1.3);
+    }
+  };
+  const rule = (dashed = true, space = 8) => {
+    y += space;
+    ops.push({ type: "line", x1: P.pad, x2: W - P.pad, y, dashed, thickness: dashed ? 2 : 3 });
+    y += space + 3;
+  };
+  const pair = (label, value, { size = P.body, bold = false } = {}) => {
+    if (value === undefined || value === null || String(value).trim() === "") return;
+    const fnt = font(size, bold);
+    const labelW = Math.ceil(measure(`${label} `, fnt));
+    ops.push({ type: "text", text: label, x: P.pad, y, font: fnt, align: "left" });
+    for (const line of wrap(String(value), fnt, inner - labelW, measure)) {
+      ops.push({ type: "text", text: line, x: W - P.pad, y, font: fnt, align: "right" });
+      y += Math.round(size * 1.3);
+    }
+  };
+
+  text(round ? "KOT · ADDED ITEMS" : "KOT", { size: P.title + 4, bold: true, align: "center" });
+  if (store.name) text(store.name, { size: P.small, align: "center" });
+  rule(false, 6);
+
+  const placed = new Date(order.orderDate || order.createdAt || Date.now());
+  pair("Order", `#${orderDisplayId(order)}`, { bold: true });
+  const type = ORDER_TYPES[String(order.orderType || "").toLowerCase()];
+  const table = tableLabel(order.table);
+  pair(table ? "Table" : "Type", table || type, { bold: true, size: big });
+  pair("Time", placed.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }));
+  if (!table) pair("Customer", order.customerDetails?.name);
+  rule(true);
+
+  const lines = Array.isArray(items) ? items : order.items || [];
+  const qtyFont = font(big, true);
+  const qtyW = Math.ceil(Math.max(...lines.map((it) => measure(`${resolveItemAmounts(it).quantity} x`, qtyFont)), 0)) + P.gap;
+  const xName = P.pad + qtyW;
+  let count = 0;
+  lines.forEach((item, i) => {
+    const { quantity } = resolveItemAmounts(item);
+    count += quantity;
+    if (i) y += 8;
+    ops.push({ type: "text", text: `${quantity} x`, x: P.pad, y, font: qtyFont, align: "left" });
+    text(itemDisplayName(item) || "Item", { size: big, bold: true, x: xName, width: inner - qtyW });
+    for (const e of itemExtras(item)) {
+      text(e.quantity > 1 ? `+ ${e.quantity}x ${e.name}` : `+ ${e.name}`, { size: P.body, x: xName + 10, width: inner - qtyW - 10 });
+    }
+    const note = String(item.note || "").trim();
+    if (note) text(`** ${note}`, { size: P.body, bold: true, x: xName + 10, width: inner - qtyW - 10 });
+  });
+  rule(true);
+  const orderNote = String(order.instructions || order.deliveryNote || "").trim();
+  if (orderNote) {
+    text(`** ${orderNote}`, { size: P.body, bold: true });
+    y += 4;
+  }
+  pair("Items", String(count), { size: P.small });
+
+  y += P.pad * 3;
+  return { width: W, height: Math.ceil(y), ops };
+};

@@ -28,8 +28,11 @@ const ThermalPrinter = registerPlugin("ThermalPrinter");
 
 const KEY = "kk.receiptPrinter.v1";
 
-/** protocol: "escpos" for receipt printers; "cat" for the 57 mm mini printers (see utils/catprinter.js). */
-export const DEFAULT_CONFIG = { type: "", name: "", paper: "80", autoPrint: false, protocol: "escpos" };
+/**
+ * protocol: "escpos" for receipt printers; "cat" for the 57 mm mini printers (see utils/catprinter.js).
+ * autoPrint: a receipt for every new order. kotPrint: a kitchen ticket for every new order and table round.
+ */
+export const DEFAULT_CONFIG = { type: "", name: "", paper: "80", autoPrint: false, kotPrint: false, protocol: "escpos" };
 
 export const loadPrinterConfig = () => {
   try {

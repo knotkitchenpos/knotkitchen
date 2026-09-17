@@ -627,6 +627,14 @@ router.route("/session/items/:token").post(qrWriteLimiter, resolveTableScope, as
             })),
           bills: order.bills,
         });
+        // The kitchen printer's copy of the same addition.
+        getSocket().emitKitchenRound({
+          restaurantId: result.session.restaurantId,
+          outletId: result.session.outletId,
+          order,
+          items: (order.items || []).filter((i) => i.status === "pending").slice(-(result.addedCount || 0) || undefined),
+          table: order.table,
+        });
       } else {
         getSocket().emitOrderCreated({
           restaurantId: result.session.restaurantId,

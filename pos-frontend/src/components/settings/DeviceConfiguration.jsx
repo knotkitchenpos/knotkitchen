@@ -466,6 +466,12 @@ const DeviceConfiguration = () => {
             onChange={(v) => patchDevice({ autoPrint: v })}
           />
           <ToggleRow
+            title="Auto KOT Print"
+            note="Print a kitchen order ticket on this device's printer for every new order, and for every round of items added to a table. No prices, big quantities, the cook's notes. Turn this on for the printer that sits in the kitchen."
+            checked={Boolean(device.kotPrint)}
+            onChange={(v) => patchDevice({ kotPrint: v })}
+          />
+          <ToggleRow
             title="Auto E-Bill"
             note="When an order is Completed, send the e-bill to the customer's phone number, if they gave one. POS, website and table QR orders."
             checked={Boolean(form.autoEBill)}

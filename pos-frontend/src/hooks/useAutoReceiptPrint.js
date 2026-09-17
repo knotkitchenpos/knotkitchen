@@ -5,16 +5,18 @@ import { enqueueSnackbar } from "notistack";
 import { getOrderById } from "../https";
 import { getActiveStoreId } from "../utils/storeSession";
 import { loadPrinterConfig } from "../utils/printerDevice";
-import { printOrderReceipt } from "../utils/printReceipt";
+import { printKot, printOrderReceipt } from "../utils/printReceipt";
 
 /**
- * Auto Receipt Print: every new order prints on this device's printer the
- * moment it arrives -- till, website and table QR alike, before anyone
- * accepts it.
+ * Auto Receipt Print and Auto KOT: every new order prints on this device's
+ * printer the moment it arrives -- till, website and table QR alike, before
+ * anyone accepts it. The receipt and the kitchen ticket are separate
+ * switches (Settings > Device Configuration).
  *
- * All of them announce themselves as `onlineOrder:created` (the name predates
- * the till and QR using it). A round added to a table that already has an
- * order is not a new order and does not print.
+ * All new orders announce themselves as `onlineOrder:created` (the name
+ * predates the till and QR using it). A round added to a table that already
+ * has an order is not a new order: no receipt, but the kitchen still needs
+ * a ticket for the new lines, which arrive as `kitchen:round`.
  */
 
 const BACKEND_URL = import.meta.env.VITE_BACKEND_URL?.replace(/\/$/, "") || window.location.origin;
@@ -55,26 +57,56 @@ const useAutoReceiptPrint = () => {
 
     const onCreated = async (payload) => {
       const config = loadPrinterConfig();
-      if (!config.autoPrint || !config.type || !payload?.orderId) return;
+      if (!config.type || !payload?.orderId) return;
+      if (!config.autoPrint && !config.kotPrint) return;
       if (!claim(payload.orderId)) return;
+      let order;
       try {
-        const order = (await getOrderById(payload.orderId))?.data?.data;
+        order = (await getOrderById(payload.orderId))?.data?.data;
         if (!order) return;
         // The saved order holds only the table's id; the event has its name.
         if (payload.table && typeof payload.table === "object") order.table = payload.table;
-        await printOrderReceipt(order, { auto: true, config });
       } catch (err) {
         // Locked for non-payment: the POS is on Billing, nothing to print.
         if (err?.response?.data?.code === "ACCOUNT_LOCKED") return;
-        enqueueSnackbar(`Receipt not printed: ${err?.message || "printer error"}`, { variant: "warning" });
+        enqueueSnackbar(`Not printed: ${err?.message || "could not load the order"}`, { variant: "warning" });
+        return;
+      }
+      // Kitchen first: the cook is waiting, the customer copy can follow.
+      if (config.kotPrint) {
+        await printKot(order, { auto: true, config }).catch((err) =>
+          enqueueSnackbar(`KOT not printed: ${err?.message || "printer error"}`, { variant: "warning" }),
+        );
+      }
+      if (config.autoPrint) {
+        await printOrderReceipt(order, { auto: true, config }).catch((err) =>
+          enqueueSnackbar(`Receipt not printed: ${err?.message || "printer error"}`, { variant: "warning" }),
+        );
+      }
+    };
+
+    // Lines added to a table mid-meal: a ticket for just those lines.
+    const onRound = async (payload) => {
+      const config = loadPrinterConfig();
+      if (!config.kotPrint || !config.type || !payload?.orderId || !payload.items?.length) return;
+      if (!claim(`${payload.orderId}:${payload.roundId || payload.items.length}:${payload.at || ""}`)) return;
+      try {
+        await printKot(
+          { _id: payload.orderId, orderNumber: payload.orderNumber, orderType: "dine-in", table: payload.table, createdAt: payload.at },
+          { items: payload.items, round: true, auto: true, config },
+        );
+      } catch (err) {
+        enqueueSnackbar(`KOT not printed: ${err?.message || "printer error"}`, { variant: "warning" });
       }
     };
 
     socket.on("connect", join);
     socket.on("onlineOrder:created", onCreated);
+    socket.on("kitchen:round", onRound);
     return () => {
       socket.off("connect", join);
       socket.off("onlineOrder:created", onCreated);
+      socket.off("kitchen:round", onRound);
       socket.disconnect();
     };
   }, [restaurantId]);

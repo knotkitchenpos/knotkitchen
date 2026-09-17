@@ -1,7 +1,7 @@
 import { getStoreProperties } from "../https";
 import { printHtmlDocument } from "./printDocument";
 import { formatAddress } from "./address";
-import { layoutReceipt, paperOf } from "./receiptLayout.js";
+import { layoutKot, layoutReceipt, paperOf } from "./receiptLayout.js";
 import { ditherInPlace, rasterJob, toMonochrome } from "./escpos.js";
 import { catJob } from "./catprinter.js";
 import { loadPrinterConfig, sendToPrinter } from "./printerDevice.js";
@@ -57,14 +57,22 @@ export const renderReceiptCanvas = async ({ order, store, settings, paper }) => 
     settings.showLogo !== false ? loadBitmap(store.logo) : null,
     settings.showQrCode ? loadBitmap(settings.qrCodeImage) : null,
   ]);
+  return paintLayout((measure) => layoutReceipt({ order, store, settings, images: { logo, qr }, paper, measure }), { logo, qr });
+};
 
+/** The kitchen ticket for `order`, or for just `items` of it (a round added to a table). */
+export const renderKotCanvas = ({ order, items, store, paper, round = false }) =>
+  paintLayout((measure) => layoutKot({ order, items, store, paper, round, measure }), {});
+
+/** Lay out with the canvas's own text metrics, then draw every op. */
+const paintLayout = (layoutWith, { logo, qr }) => {
   const canvas = document.createElement("canvas");
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
   const measure = (text, font) => {
     ctx.font = font;
     return ctx.measureText(text).width;
   };
-  const layout = layoutReceipt({ order, store, settings, images: { logo, qr }, paper, measure });
+  const layout = layoutWith(measure);
 
   canvas.width = layout.width;
   canvas.height = layout.height;
@@ -138,15 +146,37 @@ export const desktopPrinting = () =>
 export const printOrderReceipt = async (order, { auto = false, config, context } = {}) => {
   const printer = config || loadPrinterConfig();
   const { store, settings } = context || (await loadReceiptContext());
-  // A mini printer is always 57 mm and speaks its own language, not ESC/POS.
-  const cat = printer.protocol === "cat";
-  const paper = cat || printer.paper === "58" ? "58" : "80";
+  const paper = paperFor(printer);
   const canvas = await renderReceiptCanvas({ order, store, settings, paper });
+  return sendCanvas(canvas, { printer, paper, auto });
+};
 
+/**
+ * Print a kitchen order ticket on this device's printer.
+ *
+ * @param {object} order
+ * @param {object} [options]
+ * @param {Array}  [options.items]  only these lines (a round added to a table); default: every line
+ * @param {boolean} [options.round] label the ticket as added items
+ * @param {boolean} [options.auto]  never open a dialog nobody asked for
+ */
+export const printKot = async (order, { items, round = false, auto = false, config, context } = {}) => {
+  const printer = config || loadPrinterConfig();
+  const { store } = context || (await loadReceiptContext());
+  const paper = paperFor(printer);
+  const canvas = renderKotCanvas({ order, items, store, paper, round });
+  return sendCanvas(canvas, { printer, paper, auto });
+};
+
+/** A mini printer is always 57 mm and speaks its own language, not ESC/POS. */
+const paperFor = (printer) => (printer.protocol === "cat" || printer.paper === "58" ? "58" : "80");
+
+/** Hand a rendered ticket to whatever this device prints with. */
+const sendCanvas = async (canvas, { printer, paper, auto }) => {
   if (printer.type === "usb" || printer.type === "bluetooth") {
     const pixels = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
     const bits = toMonochrome(pixels.data, canvas.width, canvas.height);
-    const encode = cat ? catJob : rasterJob;
+    const encode = printer.protocol === "cat" ? catJob : rasterJob;
     await sendToPrinter(printer, encode(bits, canvas.width, canvas.height));
     return { printed: true, via: printer.type };
   }
