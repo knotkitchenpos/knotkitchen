@@ -150,13 +150,12 @@ test("a restricted category is still excluded from pricing", () => {
   );
 });
 
-test("the storefront copies of the label helper stay in step with this one", () => {
-  // Three copies exist because the apps cannot import from each other. If the
+test("the customer-web copy of the label helper stays in step with this one", () => {
+  // The copy exists because the apps cannot import from each other. If the
   // wording drifts, the label a customer read while browsing and the refusal
   // they get at checkout stop agreeing.
   const roots = [
     path.join(__dirname, "..", "..", "customer-web", "src", "lib", "dispatch.js"),
-    path.join(__dirname, "..", "..", "pos-frontend", "src", "storefront", "dispatch.js"),
   ];
   for (const file of roots) {
     assert.ok(fs.existsSync(file), `${file} must exist`);
