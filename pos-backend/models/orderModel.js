@@ -267,10 +267,12 @@ orderSchema.index({ marketplace: 1, orderDate: -1 });
 orderSchema.index({ restaurantId: 1, createdAt: -1 });
 orderSchema.index({ "customerDetails.phone": 1 });
 
-// QR double-fire guard: one kitchen order per requestId per table
+// QR double-fire guard: one kitchen order per requestId per table.
+// `$gt: ""` (a non-empty string), never `$ne`: a partial index filter cannot
+// use $ne, and an index Mongo refuses is an index that silently does not exist.
 orderSchema.index(
   { restaurantId: 1, table: 1, requestId: 1 },
-  { unique: true, partialFilterExpression: { requestId: { $ne: "" } } }
+  { unique: true, partialFilterExpression: { requestId: { $gt: "" } } }
 );
 orderSchema.index({ tableSessionId: 1 });
 

@@ -81,3 +81,17 @@ test("REGRESSION: the table-session payment key is unique per restaurant, not gl
   assert.ok(!/\{ "paymentHistory\.idempotencyKey": 1 \}/.test(model), "the global index spec must not come back");
   assert.ok(fs.existsSync(path.join(__dirname, "..", "migrations", "010-tenant-scope-payment-idempotency-index.js")), "and the old index is dropped by a migration");
 });
+
+test("REGRESSION: no partial index filter uses $ne, which Mongo refuses", () => {
+  // Four unique guards (QR requestId, payment transactions, table-session
+  // payments, customer phone) were declared with `$ne: ""` and never existed
+  // in production: CannotCreateIndex, logged, ignored.
+  const dir = path.join(__dirname, "..", "models");
+  for (const file of fs.readdirSync(dir)) {
+    const src = fs.readFileSync(path.join(dir, file), "utf8");
+    for (const m of src.matchAll(/partialFilterExpression:\s*(\{[^\n]*\})/g)) {
+      assert.ok(!/\$ne\b/.test(m[1]), `${file}: ${m[1]}`);
+    }
+  }
+  assert.match(read("app.js"), /model\.on\("index", \(err\) =>/, "and a refused index is reported at boot");
+});

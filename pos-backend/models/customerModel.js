@@ -43,10 +43,12 @@ const customerSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// One customer per phone within a restaurant
+// One customer per phone within a restaurant. `isDeleted` defaults to false
+// on every document, so `isDeleted: false` covers them all; a partial index
+// filter cannot use $ne (see orderModel).
 customerSchema.index(
   { restaurantId: 1, phone: 1 },
-  { unique: true, partialFilterExpression: { phone: { $ne: "" }, isDeleted: { $ne: true } } }
+  { unique: true, partialFilterExpression: { phone: { $gt: "" }, isDeleted: false } }
 );
 customerSchema.index({ restaurantId: 1, email: 1 }, { sparse: true });
 customerSchema.index({ restaurantId: 1, isDeleted: 1 });

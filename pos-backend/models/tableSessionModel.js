@@ -164,7 +164,8 @@ tableSessionSchema.index(
   { restaurantId: 1, "paymentHistory.idempotencyKey": 1 },
   {
     unique: true,
-    partialFilterExpression: { "paymentHistory.idempotencyKey": { $ne: "" }, "paymentHistory.status": "PAID" },
+    // `$gt: ""`, never `$ne`: a partial index filter cannot use $ne (see orderModel).
+    partialFilterExpression: { "paymentHistory.idempotencyKey": { $gt: "" }, "paymentHistory.status": "PAID" },
   }
 );
 

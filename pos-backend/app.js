@@ -19,6 +19,13 @@ connectDB();
 // a seed failure is logged and the server still boots. See
 // controllers/csdAuthController.js:seedSuperAdmin for the recovery path.
 mongoose.connection.once("connected", () => {
+    // A unique index that Mongo refuses (an unsupported partial filter, or
+    // duplicates already present) is a guard that does not exist. Say so.
+    Object.values(mongoose.models).forEach((model) => {
+        model.on("index", (err) => {
+            if (err) console.error(`[boot] index build FAILED for ${model.modelName}: ${err.message}`);
+        });
+    });
     require("./controllers/csdAuthController")
         .seedSuperAdmin()
         .catch((err) => console.error("[boot] CSD seed failed:", err?.message || err));

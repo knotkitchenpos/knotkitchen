@@ -81,7 +81,10 @@ const tableSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-tableSchema.index({ restaurantId: 1, tableNumber: 1 }, { unique: true, partialFilterExpression: { isDeleted: { $ne: true } } });
+// One live table number per restaurant. `isDeleted` defaults to false on
+// every document, so `isDeleted: false` covers them all; a partial index
+// filter cannot use $ne (see orderModel).
+tableSchema.index({ restaurantId: 1, tableNumber: 1 }, { unique: true, partialFilterExpression: { isDeleted: false } });
 tableSchema.index({ restaurantId: 1, outletId: 1, tableNumber: 1 });
 tableSchema.index({ restaurantId: 1, outletId: 1, tableNumber: 1, status: 1 });
 tableSchema.index({ qrToken: 1 }, { unique: true, sparse: true });

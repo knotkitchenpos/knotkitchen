@@ -55,10 +55,12 @@ const tableQRSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-// Only one ACTIVE QR per table at a time — regeneration revokes the previous one.
+// Only one ACTIVE QR per table at a time — regeneration revokes the previous
+// one. `isDeleted: false` (the default on every document), never `$ne`: a
+// partial index filter cannot use $ne (see orderModel).
 tableQRSchema.index(
   { tableId: 1, status: 1 },
-  { unique: true, partialFilterExpression: { status: "ACTIVE", isDeleted: { $ne: true } } }
+  { unique: true, partialFilterExpression: { status: "ACTIVE", isDeleted: false } }
 );
 
 // Fast tenant + outlet lookups for admin queries

@@ -45,7 +45,8 @@ const paymentTransactionSchema = new mongoose.Schema(
 // Dedupe guarantee: one successful transaction per idempotency key per tenant
 paymentTransactionSchema.index(
   { restaurantId: 1, idempotencyKey: 1, status: 1 },
-  { unique: true, partialFilterExpression: { idempotencyKey: { $ne: "" } } }
+  // `$gt: ""`, never `$ne`: a partial index filter cannot use $ne (see orderModel).
+  { unique: true, partialFilterExpression: { idempotencyKey: { $gt: "" } } }
 );
 paymentTransactionSchema.index({ billId: 1 });
 paymentTransactionSchema.index({ tableSessionId: 1 });
