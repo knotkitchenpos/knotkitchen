@@ -6,7 +6,21 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
 const path = require("path");
-const { refundableAmount, netAmount, validateRefund, refundedTotal } = require("../services/refunds");
+const { refundableAmount, netAmount, validateRefund, refundedTotal, paidViaGateway } = require("../services/refunds");
+
+test("an online payment is refunded through the gateway before anything is recorded", () => {
+  assert.equal(paidViaGateway({ payments: [{ method: "online" }] }), true);
+  assert.equal(paidViaGateway({ paymentMethod: "Payment Gateway" }), true);
+  assert.equal(paidViaGateway({ paymentData: { gatewayOrderId: "kk_123" }, paymentMethod: "Cash" }), true);
+  assert.equal(paidViaGateway({ payments: [{ method: "cash" }] }), false);
+  assert.equal(paidViaGateway({ paymentMethod: "UPI" }), false);
+  const ctrl = fs.readFileSync(path.join(__dirname, "..", "controllers", "orderController.js"), "utf8");
+  const block = ctrl.slice(ctrl.indexOf("const refundOrder"), ctrl.indexOf("const buildReportBuckets"));
+  assert.ok(block.indexOf("refundThroughGateway(") < block.indexOf("order.refunds.push("), "gateway first, record second");
+  const cf = fs.readFileSync(path.join(__dirname, "..", "services", "gateways", "cashfree.js"), "utf8");
+  assert.match(cf, /path: `\/orders\/\$\{encodeURIComponent\(orderId\)\}\/refunds`/);
+  assert.match(cf, /refund_speed: "STANDARD"/);
+});
 
 const paid = (extra = {}) => ({ orderStatus: "Completed", bills: { totalWithTax: 500 }, refunds: [], ...extra });
 
@@ -43,10 +57,10 @@ test("validateRefund: reason required, amount within what is left, blank = all",
   assert.equal(validateRefund(paid({ refunds: [{ amount: 500 }] }), { reason: "x" }).ok, false);
 });
 
-test("cancel and refund routes need a verified user and the protected-action guard", () => {
+test("cancel needs the PIN guard; refund is owner-only", () => {
   const routes = fs.readFileSync(path.join(__dirname, "..", "routes", "orderRoute.js"), "utf8");
   assert.match(routes, /"\/:id\/cancel"\)\.put\(isVerifiedUser, requireProtectedAction, cancelOrder\)/);
-  assert.match(routes, /"\/:id\/refund"\)\.post\(isVerifiedUser, requireProtectedAction, refundOrder\)/);
+  assert.match(routes, /"\/:id\/refund"\)\.post\(isVerifiedUser, requireOwnerOnly, refundOrder\)/);
   const ctrl = fs.readFileSync(path.join(__dirname, "..", "controllers", "orderController.js"), "utf8");
   assert.match(ctrl, /A reason is required to cancel an order/);
   assert.match(ctrl, /const amount = netAmount\(o\)/, "report buckets are net of refunds");

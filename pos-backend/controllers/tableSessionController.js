@@ -995,12 +995,18 @@ const recordSessionPayment = async (req, res, next) => {
       });
     });
 
+    // Keep the gateway handles an online checkout opened: a refund later
+    // needs the merchant order id.
+    const gatewayOrderId = session.payment?.gatewayOrderId || "";
+    const gatewayProvider = session.payment?.gatewayProvider || "";
     session.payment = {
       method: normalizedMethod,
       status: paid ? "PAID" : "FAILED",
       transactionId: transactionId || "",
       paidAt: paid ? new Date() : null,
       recordedBy: req.user?._id,
+      gatewayProvider,
+      gatewayOrderId,
     };
 
     if (paid) {
@@ -1119,6 +1125,7 @@ const recordSessionPayment = async (req, res, next) => {
             "bills.tax": session.bills?.tax || 0,
             "bills.tip": tip,
             tips: tip,
+            ...(gatewayOrderId ? { "paymentData.gatewayOrderId": gatewayOrderId, "paymentData.gatewayPaymentId": transactionId || "" } : {}),
             ...(buyer ? { "customerDetails.company": buyer.company, "customerDetails.gstin": buyer.gstin } : {}),
             paymentMethod:
               parts.length > 1

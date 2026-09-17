@@ -12,6 +12,10 @@ const REASONS = {
 };
 
 const money = (n) => `₹${Number(n || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+const paidOnline = (o) => {
+  const m = String(o?.payments?.[0]?.method || o?.paymentMethod || "").toLowerCase();
+  return Boolean(o?.paymentData?.gatewayOrderId) || ["online", "payment gateway", "paymentlink", "link"].includes(m);
+};
 
 const ReasonModal = ({ kind, order, busy, onClose, onConfirm }) => {
   const refund = kind === "refund";
@@ -41,6 +45,13 @@ const ReasonModal = ({ kind, order, busy, onClose, onConfirm }) => {
           #{order?.orderNumber || String(order?._id || "").slice(-6)}
           {refund ? ` · paid ${money(total)}${refunded ? `, ${money(refunded)} already refunded` : ""}` : ""}
         </p>
+        {refund && (
+          <p className="mt-2 rounded-lg bg-[#F8FAFC] px-3 py-2 text-[12px] text-[#475569]">
+            {paidOnline(order)
+              ? "Paid online: the amount goes back to the customer through Cashfree (5 to 7 working days)."
+              : "Paid at the counter: hand the cash back to the customer; this records it."}
+          </p>
+        )}
 
         {refund && (
           <label className="mt-4 block">

@@ -937,7 +937,7 @@ const reportMethodOf = (o) => {
   return REPORT_METHOD[String(raw).trim().toLowerCase()] || null;
 };
 
-const { netAmount, validateRefund, refundedTotal } = require("../services/refunds");
+const { netAmount, validateRefund, refundedTotal, paidViaGateway, refundThroughGateway } = require("../services/refunds");
 
 /**
  * PUT /api/order/:id/cancel  { reason }
@@ -973,13 +973,22 @@ const refundOrder = async (req, res, next) => {
     const check = validateRefund(order, req.body || {});
     if (!check.ok) return next(createHttpError(400, check.message));
 
+    // Paid online: the money goes back the way it came, through Cashfree,
+    // BEFORE anything is written. A refused refund records nothing.
     order.refunds = order.refunds || [];
+    let gateway = null;
+    if (paidViaGateway(order)) {
+      gateway = await refundThroughGateway(order, { amount: check.amount, reason: check.reason, sequence: order.refunds.length + 1 });
+    }
+
     order.refunds.push({
       amount: check.amount,
       reason: check.reason,
       refundedBy: req.user?._id,
       refundedByName: req.user?.name || "POS",
       refundedAt: new Date(),
+      channel: gateway ? "gateway" : "cash",
+      ...(gateway ? { gateway: { provider: gateway.provider, refundId: gateway.refundId, cfRefundId: gateway.cfRefundId, status: gateway.status } } : {}),
     });
     order.timeline = order.timeline || [];
     if (check.full) {
@@ -1008,7 +1017,12 @@ const refundOrder = async (req, res, next) => {
 
     const obj = order.toObject();
     obj.refundedTotal = refundedTotal(order);
-    res.status(200).json({ success: true, message: check.full ? "Order refunded." : "Partial refund recorded.", data: obj });
+    const how = gateway
+      ? gateway.status === "SUCCESS"
+        ? " Sent back through Cashfree."
+        : " Cashfree has queued the refund; it reaches the customer in 5 to 7 working days."
+      : " Hand the cash back to the customer.";
+    res.status(200).json({ success: true, message: (check.full ? "Order refunded." : "Partial refund recorded.") + how, data: obj });
   } catch (error) {
     next(error);
   }

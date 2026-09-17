@@ -131,6 +131,9 @@ const finalizePaymentLinkFromGateway = async ({
         $set: {
           orderStatus: COMPLETED,
           paymentMethod: normalizePaymentMethod(method),
+          // The merchant order id Cashfree knows this payment by: a refund needs it.
+          "paymentData.gatewayOrderId": gatewayOrderId,
+          "paymentData.gatewayPaymentId": gatewayPaymentId || "",
         },
         $push: {
           payments: {

@@ -859,6 +859,8 @@ const verifyStorefrontCheckout = async (req, res, next) => {
       ...data,
       paymentMethod: "online",
       payments: [{ method: "online", amount: claimed.amount, status: "paid", transactionId }],
+      // The merchant order id Cashfree knows this payment by: a refund needs it.
+      paymentData: { gatewayOrderId: checkout.gatewayOrderId || "", gatewayPaymentId: transactionId || "" },
       channelMeta: { ...(data.channelMeta || {}), placedAt: new Date() },
     });
 

@@ -214,6 +214,38 @@ const isOrderPaid = async ({ appId, secretKey, environment, orderId }) => {
 };
 
 /**
+ * Give money back on a paid order.
+ *
+ * `orderId` is OUR merchant order id (the one createOrder minted), not
+ * Cashfree's numeric cf_order_id. `refundId` must be unique per refund; a
+ * repeat with the same id is answered with the existing refund rather than
+ * a second one, which is what makes a retry safe.
+ *
+ * @returns {{ refundId, cfRefundId, status: "SUCCESS"|"PENDING"|"ONHOLD"|"CANCELLED", amount }}
+ */
+const createRefund = async ({ appId, secretKey, environment, orderId, refundId, amount, note }) => {
+  const payload = await request({
+    path: `/orders/${encodeURIComponent(orderId)}/refunds`,
+    method: "POST",
+    appId,
+    secretKey,
+    environment,
+    body: {
+      refund_amount: Math.round(Number(amount) * 100) / 100,
+      refund_id: String(refundId).slice(0, 40),
+      refund_note: String(note || "").slice(0, 100),
+      refund_speed: "STANDARD",
+    },
+  });
+  return {
+    refundId: payload?.refund_id || String(refundId),
+    cfRefundId: payload?.cf_refund_id ? String(payload.cf_refund_id) : "",
+    status: String(payload?.refund_status || "PENDING").toUpperCase(),
+    amount: Number(payload?.refund_amount) || Number(amount) || 0,
+  };
+};
+
+/**
  * Verify a webhook came from Cashfree.
  *
  * Base64(HMAC-SHA256(timestamp + rawBody, secret)) — the timestamp and the
@@ -265,6 +297,7 @@ module.exports = {
   BASE_URLS,
   CashfreeError,
   createOrder,
+  createRefund,
   fetchOrder,
   isOrderPaid,
   verifyWebhook,

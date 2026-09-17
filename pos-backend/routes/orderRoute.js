@@ -11,7 +11,7 @@ const {
   getOrdersReport,
 } = require("../controllers/orderController");
 const { isVerifiedUser } = require("../middlewares/tokenVerification");
-const { requireProtectedAction } = require("../middlewares/requirePermission");
+const { requireProtectedAction, requireOwnerOnly } = require("../middlewares/requirePermission");
 const router = express.Router();
 
 
@@ -31,10 +31,11 @@ router.route("/:id").put(isVerifiedUser, updateOrder);
 // (:id/ready) so the existing PUT /:id endpoint keeps its generic
 // status-update behaviour for KDS / Cancel flows.
 router.route("/:id/ready").put(isVerifiedUser, markOrderReady);
-// Voids and refunds need a reason and, for staff, the Security PIN. The
-// generic PUT /:id can still cancel (KDS / reject flows) but records no
-// money movement; these two are what the Orders screen uses.
+// A void needs a reason and, for staff, the Security PIN. A refund moves
+// money (through Cashfree when the order was paid online) and is the store
+// owner's alone: no PIN lets a staff member do it. The generic PUT /:id can
+// still cancel (KDS / reject flows) but records no money movement.
 router.route("/:id/cancel").put(isVerifiedUser, requireProtectedAction, cancelOrder);
-router.route("/:id/refund").post(isVerifiedUser, requireProtectedAction, refundOrder);
+router.route("/:id/refund").post(isVerifiedUser, requireOwnerOnly, refundOrder);
 
 module.exports = router;

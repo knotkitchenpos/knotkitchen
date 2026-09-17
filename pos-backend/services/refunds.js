@@ -43,4 +43,72 @@ const validateRefund = (order, { amount, reason } = {}) => {
   return { ok: true, amount: wanted, reason: text.slice(0, 200), full: wanted >= left };
 };
 
-module.exports = { orderTotal, refundedTotal, refundableAmount, netAmount, validateRefund };
+/** Was this order paid through the payment gateway (so a refund must go back through it)? */
+const paidViaGateway = (order) => {
+  const method = String(order?.payments?.[0]?.method || order?.paymentMethod || "").trim().toLowerCase();
+  if (order?.paymentData?.gatewayOrderId) return true;
+  return ["online", "payment gateway", "paymentlink", "payment_link", "link", "gateway"].includes(method);
+};
+
+/**
+ * The merchant order id Cashfree knows the payment by. On the order since
+ * this feature; older orders are looked up through what settled them.
+ */
+const gatewayOrderIdFor = async (order) => {
+  if (order?.paymentData?.gatewayOrderId) return order.paymentData.gatewayOrderId;
+  const mongoose = require("mongoose");
+  if (mongoose.connection?.readyState !== 1) return "";
+  if (order?.tableSessionId) {
+    const TableSession = require("../models/tableSessionModel");
+    const s = await TableSession.findById(order.tableSessionId).select("payment.gatewayOrderId").lean();
+    if (s?.payment?.gatewayOrderId) return s.payment.gatewayOrderId;
+  }
+  const PaymentLink = require("../models/paymentLinkModel");
+  const link = await PaymentLink.findOne({ orderId: order._id, gatewayOrderId: { $ne: "" } }).select("gatewayOrderId").lean();
+  if (link?.gatewayOrderId) return link.gatewayOrderId;
+  const WebsiteCheckout = require("../models/websiteCheckoutModel");
+  const co = await WebsiteCheckout.findOne({ orderId: order._id, gatewayOrderId: { $ne: "" } }).select("gatewayOrderId").lean();
+  if (co?.gatewayOrderId) return co.gatewayOrderId;
+  return "";
+};
+
+/**
+ * Send the refund to the gateway the store is paid through.
+ * @returns {{ provider, refundId, cfRefundId, status }}
+ * Throws a readable error when the store's gateway is missing or the
+ * gateway refuses; the caller records nothing in that case.
+ */
+const refundThroughGateway = async (order, { amount, reason, sequence }) => {
+  const { resolveGateway } = require("./paymentGateway");
+  const gw = await resolveGateway({ restaurantId: order.restaurantId, storeId: order.storeId });
+  if (!gw.enabled || gw.provider !== "cashfree") {
+    const err = new Error("This order was paid online but the store's Cashfree gateway is not configured, so it cannot be refunded from here.");
+    err.status = 409;
+    throw err;
+  }
+  const gatewayOrderId = await gatewayOrderIdFor(order);
+  if (!gatewayOrderId) {
+    const err = new Error("The gateway order for this payment could not be found, so it cannot be refunded automatically.");
+    err.status = 409;
+    throw err;
+  }
+  const cashfree = require("./gateways/cashfree");
+  try {
+    const result = await cashfree.createRefund({
+      appId: gw.keyId,
+      secretKey: gw.secret,
+      environment: gw.environment,
+      orderId: gatewayOrderId,
+      refundId: `rf_${String(order._id).slice(-10)}_${sequence}`,
+      amount,
+      note: reason,
+    });
+    return { provider: "cashfree", ...result };
+  } catch (e) {
+    const err = new Error(`Cashfree did not accept the refund: ${e.message}`);
+    err.status = 502;
+    throw err;
+  }
+};
+
+module.exports = { orderTotal, refundedTotal, refundableAmount, netAmount, validateRefund, paidViaGateway, gatewayOrderIdFor, refundThroughGateway };

@@ -231,6 +231,14 @@ const orderSchema = new mongoose.Schema({
     refundedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     refundedByName: { type: String, default: "" },
     refundedAt: { type: Date, default: Date.now },
+    // "cash" when handed back at the counter; "gateway" when Cashfree returned it.
+    channel: { type: String, default: "cash" },
+    gateway: {
+      provider: { type: String, default: "" },
+      refundId: { type: String, default: "" },
+      cfRefundId: { type: String, default: "" },
+      status: { type: String, default: "" }, // SUCCESS | PENDING | ONHOLD | CANCELLED
+    },
   }],
   // Why the whole order was cancelled (a cancelled line keeps its own reason).
   cancelReason: { type: String, default: "" },
