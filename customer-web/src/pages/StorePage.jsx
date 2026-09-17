@@ -64,7 +64,8 @@ export default function StorePage({ slug, host }) {
   const { isMenu, homePath, menuPath } = route;
 
   // Bootstrap arrives first, so apply meta/theme from whichever is available.
-  useDocumentMeta(store || bootstrap);
+  // A legal page names itself; the store's own title would overwrite it.
+  useDocumentMeta(route.legalKey ? null : store || bootstrap);
   useThemeVars(store || bootstrap);
 
   const effectiveSlug = store?.store?.slug || bootstrap?.slug || slug || "";
