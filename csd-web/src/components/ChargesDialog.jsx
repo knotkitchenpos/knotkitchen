@@ -1,8 +1,8 @@
 import React, { useState } from "react";
 import { FiX, FiAlertTriangle } from "react-icons/fi";
 import { restaurants as api, errorMessage, fieldErrors } from "../api";
+import { inr } from "../lib/format";
 
-const inr = (n) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(n || 0);
 
 /**
  * Module scope, not inside ChargesDialog: a component declared in another

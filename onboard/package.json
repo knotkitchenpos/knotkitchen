@@ -4,7 +4,8 @@
   "description": "KnotKitchen Full-Stack Restaurant Onboarding System",
   "main": "server/server.js",
   "scripts": {
-    "start": "node server/server.js"
+    "start": "node server/server.js",
+    "test": "node --test tests/*.test.mjs"
   },
   "keywords": [],
   "author": "KnotKitchen Team",

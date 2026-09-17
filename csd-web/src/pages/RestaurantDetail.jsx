@@ -12,10 +12,8 @@ import CustomersDialog from "../components/CustomersDialog";
 import WebsiteDesignDialog from "../components/WebsiteDesignDialog";
 import StoreDocuments from "../components/StoreDocuments";
 import { UsersPanel } from "../components/CatalogPanels";
+import { inr, dt, dOnly, num } from "../lib/format";
 
-const inr = (n) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(n || 0);
-const dt = (d) => (d ? new Date(d).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "—");
-const dOnly = (d) => (d ? new Date(d).toLocaleDateString("en-IN", { dateStyle: "medium" }) : "—");
 
 /** 24h "HH:mm" → "10:00 AM", per the spec's examples. */
 const to12h = (hhmm) => {
@@ -410,7 +408,7 @@ const RestaurantDetail = () => {
                   {openingPos ? "Opening POS…" : "Open POS"}
                 </span>
                 <span className="block text-xs text-navy-500">
-                  Opens in a new tab, signed in as the store's Owner. Recorded against your name.
+                  Opens in a new tab, signed in as the store&apos;s Owner. Recorded against your name.
                 </span>
               </span>
             </button>
@@ -450,7 +448,7 @@ const RestaurantDetail = () => {
             <Row label="Restaurant (business)">{contact.restaurantPhone ? `+91 ${contact.restaurantPhone}` : "—"}</Row>
           </dl>
           <p className="mt-3 text-xs text-navy-400">
-            Kept separate — the owner's personal number and the restaurant's line are often different.
+            Kept separate — the owner&apos;s personal number and the restaurant&apos;s line are often different.
           </p>
         </Card>
 
@@ -467,7 +465,7 @@ const RestaurantDetail = () => {
             <FiUsers className="shrink-0 text-navy-300" size={36} aria-hidden="true" />
             <div>
               <p className="text-3xl font-bold text-navy-900">
-                {customerCount === null ? "—" : new Intl.NumberFormat("en-IN").format(customerCount)}
+                {customerCount === null ? "—" : num(customerCount)}
               </p>
               <p className="text-sm text-navy-500">unique customers</p>
             </div>

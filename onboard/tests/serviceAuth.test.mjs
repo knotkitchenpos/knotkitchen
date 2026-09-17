@@ -1,7 +1,7 @@
 import { createRequire } from "node:module";
 const require = createRequire(import.meta.url);
 const { allowServiceToken, isConfigured } =
-  require("./serviceAuth.js");
+  require("../server/middleware/serviceAuth.js");
 
 let pass = 0, fail = 0;
 const check = (n, ok, d = "") => { ok ? pass++ : fail++; console.log(`  ${ok ? "PASS" : "FAIL"}  ${n}${!ok && d ? "  <- " + d : ""}`); };

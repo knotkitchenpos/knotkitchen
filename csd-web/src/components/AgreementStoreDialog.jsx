@@ -172,7 +172,7 @@ const AgreementStoreDialog = ({ agreement, onClose, onCreated }) => {
                     <FiMapPin size={12} aria-hidden="true" /> Restaurant coordinates
                   </h3>
                   <p className="mb-2 text-xs text-navy-600">
-                    The only thing the agreement doesn't carry — used to place the restaurant for
+                    The only thing the agreement doesn&apos;t carry — used to place the restaurant for
                     delivery and search.
                   </p>
                   {/* Open Google Maps: if the operator has already typed lat/lng, jump
@@ -274,7 +274,7 @@ const AgreementStoreDialog = ({ agreement, onClose, onCreated }) => {
                 {result.documents.failed.length} document
                 {result.documents.failed.length === 1 ? "" : "s"} could not be imported
                 ({result.documents.failed.map((f) => `${f.name}: ${f.reason}`).join("; ")}). They can be
-                uploaded manually from the store's documents section.
+                uploaded manually from the store&apos;s documents section.
               </p>
             )}
 

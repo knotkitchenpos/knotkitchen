@@ -1,8 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { FiX, FiChevronLeft, FiChevronRight } from "react-icons/fi";
 import { restaurants as api, errorMessage } from "../api";
+import { dOnly, num } from "../lib/format";
 
-const dOnly = (d) => (d ? new Date(d).toLocaleDateString("en-IN", { dateStyle: "medium" }) : "—");
 
 /** Map the stored `source` values onto the labels the spec uses. */
 const SOURCE_LABEL = { WEBSITE: "Website", POS: "POS", QR: "Table", MARKETPLACE: "Marketplace", PHONE: "Phone" };
@@ -34,7 +34,7 @@ const CustomersDialog = ({ storeId, onClose }) => {
           <div>
             <h2 className="text-lg font-bold text-navy-900">Customers</h2>
             <p className="text-sm text-navy-500">
-              {data ? `${new Intl.NumberFormat("en-IN").format(data.total)} unique` : "Loading…"}
+              {data ? `${num(data.total)} unique` : "Loading…"}
               {" · "}Store <span className="font-mono">{storeId}</span>
             </p>
           </div>

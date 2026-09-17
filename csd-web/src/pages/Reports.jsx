@@ -3,10 +3,8 @@ import { Link } from "react-router-dom";
 import { FiChevronLeft, FiChevronRight } from "react-icons/fi";
 import { reports, errorMessage } from "../api";
 import StatusBadge from "../components/StatusBadge";
+import { inrWhole as inr, num, dt } from "../lib/format";
 
-const inr = (n) => new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 }).format(n || 0);
-const num = (n) => new Intl.NumberFormat("en-IN").format(n || 0);
-const dt = (d) => (d ? new Date(d).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "—");
 
 const Card = ({ title, children, className = "" }) => (
   <section className={`rounded-2xl border border-navy-200 bg-white p-5 ${className}`}>

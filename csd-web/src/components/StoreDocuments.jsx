@@ -3,6 +3,7 @@ import {
   FiFile, FiUploadCloud, FiEye, FiRefreshCw, FiTrash2, FiX, FiDownload, FiAlertTriangle,
 } from "react-icons/fi";
 import { restaurants as api, errorMessage } from "../api";
+import { dt } from "../lib/format";
 
 const kb = (n) => {
   if (!n) return "—";
@@ -11,7 +12,6 @@ const kb = (n) => {
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 };
 
-const dt = (d) => (d ? new Date(d).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "—");
 
 /** Preview modal. Fetches through the authenticated route, never a raw URL. */
 const PreviewModal = ({ storeId, doc, onClose }) => {

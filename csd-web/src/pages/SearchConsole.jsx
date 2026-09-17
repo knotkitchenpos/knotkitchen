@@ -3,6 +3,7 @@ import { FiSearch, FiX, FiChevronLeft, FiChevronRight } from "react-icons/fi";
 import { orders, errorMessage } from "../api";
 import StatusBadge from "../components/StatusBadge";
 import OrderDrawer from "../components/OrderDrawer";
+import { inr, dt } from "../lib/format";
 
 const EMPTY = {
   storeName: "", storeId: "", orderId: "", customerName: "", customerPhone: "",
@@ -10,11 +11,7 @@ const EMPTY = {
   amountMin: "", amountMax: "", status: "",
 };
 
-const inr = (n) =>
-  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(n || 0);
 
-const dt = (d) =>
-  d ? new Date(d).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "—";
 
 const Input = ({ label, ...rest }) => (
   <label className="block">

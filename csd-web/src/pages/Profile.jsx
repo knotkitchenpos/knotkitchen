@@ -1,9 +1,8 @@
 import React from "react";
 import { useAuth } from "../context/AuthContext";
 import StatusBadge from "../components/StatusBadge";
+import { dt as fmt } from "../lib/format";
 
-const fmt = (d) =>
-  d ? new Date(d).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "—";
 
 const Row = ({ label, children }) => (
   <div className="flex flex-col gap-1 border-b border-navy-100 py-3 last:border-b-0 sm:flex-row sm:items-center">

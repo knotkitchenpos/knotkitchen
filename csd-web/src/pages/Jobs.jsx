@@ -6,8 +6,8 @@ import StatusBadge from "../components/StatusBadge";
 import PriorityBadge from "../components/PriorityBadge";
 import JobCreateDialog from "../components/JobCreateDialog";
 import { useAuth } from "../context/AuthContext";
+import { dOnly as dt } from "../lib/format";
 
-const dt = (d) => (d ? new Date(d).toLocaleDateString("en-IN", { dateStyle: "medium" }) : "—");
 
 /** A deadline in the past on an unfinished job needs to be obvious. */
 const isOverdue = (job) =>

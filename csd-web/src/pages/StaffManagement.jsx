@@ -3,9 +3,8 @@ import { FiPlus, FiShield, FiLock, FiInfo } from "react-icons/fi";
 import { staffAdmin, errorMessage, fieldErrors } from "../api";
 import StatusBadge from "../components/StatusBadge";
 import { useAuth } from "../context/AuthContext";
+import { dtOrNever as dt } from "../lib/format";
 
-const dt = (d) =>
-  d ? new Date(d).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "Never";
 
 const EMPTY = {
   fullName: "",

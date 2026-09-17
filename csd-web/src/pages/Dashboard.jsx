@@ -4,15 +4,9 @@ import {
 } from "react-icons/fi";
 import { dashboard, errorMessage } from "../api";
 import StatusBadge from "../components/StatusBadge";
+import { inrWhole as inr, num } from "../lib/format";
 
-const inr = (n) =>
-  new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 0,
-  }).format(n || 0);
 
-const num = (n) => new Intl.NumberFormat("en-IN").format(n || 0);
 
 const KpiCard = ({ icon: Icon, label, value, hint, tone = "navy" }) => {
   const tones = {

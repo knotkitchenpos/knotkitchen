@@ -3,11 +3,8 @@ import { Link } from "react-router-dom";
 import { FiX, FiExternalLink } from "react-icons/fi";
 import { orders, errorMessage } from "../api";
 import StatusBadge from "./StatusBadge";
+import { inr, dt } from "../lib/format";
 
-const inr = (n) =>
-  new Intl.NumberFormat("en-IN", { style: "currency", currency: "INR" }).format(n || 0);
-const dt = (d) =>
-  d ? new Date(d).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "—";
 
 const Row = ({ label, children }) => (
   <div className="flex justify-between gap-4 border-b border-navy-100 py-2 last:border-b-0">

@@ -108,9 +108,9 @@ jobs:
         working-directory: ${{ matrix.path }}
         run: npm run lint:undef
 
-      # pos-frontend is the only SPA with a test suite; it had never run here.
+      # pos-frontend and customer-web have suites; csd-web has none yet.
       - name: Test
-        if: matrix.app == 'pos-frontend'
+        if: matrix.app != 'csd-web'
         working-directory: ${{ matrix.path }}
         run: npm test
 

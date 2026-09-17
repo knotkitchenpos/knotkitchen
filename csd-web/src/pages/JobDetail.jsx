@@ -5,10 +5,8 @@ import { jobs as jobsApi, errorMessage } from "../api";
 import StatusBadge from "../components/StatusBadge";
 import PriorityBadge from "../components/PriorityBadge";
 import { useAuth } from "../context/AuthContext";
+import { dt, dOnly } from "../lib/format";
 
-const dt = (d) =>
-  d ? new Date(d).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "—";
-const dOnly = (d) => (d ? new Date(d).toLocaleDateString("en-IN", { dateStyle: "medium" }) : "—");
 
 /** Which statuses can be reached from the current one (mirrors the server). */
 const NEXT = {
