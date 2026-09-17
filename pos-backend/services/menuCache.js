@@ -20,8 +20,10 @@
  * follows the same rule so what a customer is shown never changes under a
  * half-edited menu.
  *
- * A menu that has never been published to the website serves its draft. The
- * gate applies from the first publish; stores that predate it do not go blank.
+ * A menu that has never been published to the website is NOT on the website:
+ * a new category stays out of sight until Publish System. Stores that
+ * predate the gate were seeded once with their then-live menu as the
+ * published copy (services/publishGateSeed.js), so nothing went blank.
  */
 
 const AUDIENCES = Object.freeze({
@@ -54,12 +56,14 @@ const menuViewFor = (menu, audience) => {
   if (audience === AUDIENCES.WEBSITE) {
     const snap = menu.websiteSnapshot;
     const published = Boolean(menu.hasPublishedToWebsite && snap);
-    if (published) return { name: snap.name || menu.name, items: snap.items || [], isPublished: true };
+    return {
+      name: (published && snap.name) || menu.name,
+      items: published ? snap.items || [] : [],
+      isPublished: published,
+    };
   }
 
-  // Draft, or a website that has never been published: what Manage Menu holds
-  // right now. Category visibility still applies on top (see
-  // WEBSITE_VISIBLE_QUERY), so hiding a category still hides it.
+  // Draft: what Manage Menu holds right now.
   return { name: menu.name, items: menu.items || [], isPublished: true };
 };
 

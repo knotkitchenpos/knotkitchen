@@ -581,6 +581,16 @@ const websiteSettingsSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+// A new store's website is "published" as created, so the first thing the
+// public sees is what onboarding set up. From then on Manage Website edits
+// wait for Publish System (services/websitePublish.js).
+websiteSettingsSchema.pre("save", function seedPublishedSnapshot(next) {
+  if (this.isNew && !this.publishedSnapshot) {
+    this.publishedSnapshot = require("../services/websitePublish").snapshotForPublish(this);
+  }
+  next();
+});
+
 websiteSettingsSchema.index({ customDomain: 1 }, { sparse: true });
 websiteSettingsSchema.index({ subdomain: 1 }, { sparse: true });
 websiteSettingsSchema.index({ restaurantId: 1, isDeleted: 1 });

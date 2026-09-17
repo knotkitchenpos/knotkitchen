@@ -88,16 +88,27 @@ test("REGRESSION: a never-published category does not leak to the POS", () => {
   assert.equal(menuViewFor(menu, AUDIENCES.SYSTEM).items.length, 0);
   // Manage Menu still shows it, so it can be edited and published…
   assert.equal(menuViewFor(menu, AUDIENCES.DRAFT).items.length, 1);
-  // …and a website that has never been published serves the draft, so a store
-  // that predates the gate does not go blank.
-  assert.equal(menuViewFor(menu, AUDIENCES.WEBSITE).items.length, 1);
+  // …and the website does not have it either until Publish System.
+  assert.equal(menuViewFor(menu, AUDIENCES.WEBSITE).items.length, 0);
+  assert.equal(menuViewFor(menu, AUDIENCES.WEBSITE).isPublished, false);
 });
 
-test("projectMenus drops categories with nothing published for the tills", () => {
+test("projectMenus drops categories with nothing published, for the tills and the website", () => {
   const menus = [menuWithPendingEdits(), brandNewMenu()];
   assert.equal(projectMenus(menus, AUDIENCES.SYSTEM).length, 1);
-  assert.equal(projectMenus(menus, AUDIENCES.WEBSITE).length, 2, "never-published category falls back to draft");
+  assert.equal(projectMenus(menus, AUDIENCES.WEBSITE).length, 1, "a never-published category is not on the website");
   assert.equal(projectMenus(menus, AUDIENCES.DRAFT).length, 2, "the editor sees everything");
+});
+
+test("stores that predate the gate are seeded once, then never again", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const seed = fs.readFileSync(path.join(__dirname, "..", "services", "publishGateSeed.js"), "utf8");
+  assert.match(seed, /hasPublishedToWebsite: \{ \$ne: true \}/);
+  assert.match(seed, /flags\.findOne\(\{ key: FLAG \}\)/, "guarded by a flag document");
+  assert.match(seed, /flags\.insertOne\(\{ key: FLAG/);
+  const model = fs.readFileSync(path.join(__dirname, "..", "models", "websiteSettingsModel.js"), "utf8");
+  assert.match(model, /pre\("save", function seedPublishedSnapshot/, "a new store's settings start published as created");
 });
 
 test("the website serves its own snapshot, so both surfaces move together on publish", () => {
@@ -150,10 +161,10 @@ test("hasUnpublishedChanges reports work waiting to be published", () => {
   assert.equal(hasUnpublishedChanges(brandNewMenu(), AUDIENCES.SYSTEM), true);
 });
 
-test("a menu missing snapshot fields entirely is unpublished to the tills, draft on the website", () => {
+test("a menu missing snapshot fields entirely is unpublished to the tills and the website", () => {
   const legacy = { _id: "m3", name: "Legacy", items: [{ _id: "x", name: "Old", price: 10 }] };
   assert.equal(menuViewFor(legacy, AUDIENCES.SYSTEM).items.length, 0);
-  assert.equal(menuViewFor(legacy, AUDIENCES.WEBSITE).items.length, 1);
+  assert.equal(menuViewFor(legacy, AUDIENCES.WEBSITE).items.length, 0);
 });
 
 test("the website reports changes waiting to be published, like the tills", () => {

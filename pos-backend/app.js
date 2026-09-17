@@ -22,6 +22,12 @@ mongoose.connection.once("connected", () => {
     require("./controllers/csdAuthController")
         .seedSuperAdmin()
         .catch((err) => console.error("[boot] CSD seed failed:", err?.message || err));
+    // One-time: make every store's then-live website its published copy, so
+    // the publish gate never blanked a site. No-op after the first run.
+    require("./services/publishGateSeed")
+        .seedPublishGate()
+        .then((r) => console.log("[boot] publish gate seed:", JSON.stringify(r)))
+        .catch((err) => console.error("[boot] publish gate seed failed:", err?.message || err));
 });
 
 // Trust the first proxy hop so req.ip / secure cookies / rate limiting reflect
