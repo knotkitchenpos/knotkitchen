@@ -836,46 +836,6 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
                   className="w-full h-[36px] px-3 bg-white rounded-lg border border-[#E2E8F0] text-[13px] font-medium text-[#0F172A] placeholder-[#94A3B8] focus:border-[#FD5302] focus:ring-1 focus:ring-[#FD5302] outline-none transition-all"
                 />
               </div>
-
-              {/* B2B bill: a company that wants to claim GST credit. */}
-              <div>
-                <input
-                  type="text"
-                  value={customer.customerCompany || ""}
-                  onChange={(e) =>
-                    dispatch(
-                      setCustomer({
-                        name: customer.customerName || "",
-                        phone: customer.customerPhone || "",
-                        guests: customer.guests || 0,
-                        company: e.target.value,
-                      })
-                    )
-                  }
-                  placeholder="Company name (GST bill)"
-                  maxLength={160}
-                  className="w-full h-[36px] px-3 bg-white rounded-lg border border-[#E2E8F0] text-[13px] font-medium text-[#0F172A] placeholder-[#94A3B8] focus:border-[#FD5302] focus:ring-1 focus:ring-[#FD5302] outline-none transition-all"
-                />
-              </div>
-              <div>
-                <input
-                  type="text"
-                  value={customer.customerGstin || ""}
-                  onChange={(e) =>
-                    dispatch(
-                      setCustomer({
-                        name: customer.customerName || "",
-                        phone: customer.customerPhone || "",
-                        guests: customer.guests || 0,
-                        gstin: e.target.value.toUpperCase(),
-                      })
-                    )
-                  }
-                  placeholder="Company GSTIN (15 characters)"
-                  maxLength={15}
-                  className="w-full h-[36px] px-3 bg-white rounded-lg border border-[#E2E8F0] text-[13px] font-medium uppercase text-[#0F172A] placeholder-[#94A3B8] focus:border-[#FD5302] focus:ring-1 focus:ring-[#FD5302] outline-none transition-all"
-                />
-              </div>
             </div>
           </div>
         </div>
