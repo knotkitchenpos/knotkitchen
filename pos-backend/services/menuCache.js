@@ -227,9 +227,9 @@ const allowsOrderType = (menu, orderType) => {
  *     "Collection Only"   "Delivery Only"   "Table Orders Only"
  *     "Collection & Delivery Only"
  *
- * customer-web carries its own copy of this (it cannot import from the
- * backend). If the wording changes here, change it there too -- the checkout
- * refusal and the label the customer read while browsing must agree.
+ * The storefront payload carries this label on every category and product
+ * (`dispatchLabel`), so the site never computes it: the checkout refusal and
+ * the label the customer read while browsing are one rule.
  */
 const DISPATCH_LABELS = { collection: "Collection", delivery: "Delivery", table: "Table Orders" };
 

@@ -98,6 +98,10 @@ const toPublicProduct = (item, menu, timezone) => {
           table: menu.dispatchType.table !== false,
         }
       : { collection: true, delivery: true, table: true },
+    // The words for that restriction ("Collection Only"), or null. Sent from
+    // here so the label the customer reads and the refusal at checkout are
+    // one rule (services/menuCache.dispatchLabel), not a copy in the site.
+    dispatchLabel: dispatchLabel(menu.dispatchType),
     isAvailable: isItemAvailableNow(item, timezone, "website"),
     isFeatured: Boolean(item.isFeatured),
     isCombo: Boolean(item.isCombo),
@@ -203,6 +207,7 @@ const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezon
             delivery: menu.dispatchType.delivery !== false,
             table: menu.dispatchType.table !== false }
         : { collection: true, delivery: true, table: true },
+      dispatchLabel: dispatchLabel(menu.dispatchType),
       icon: menu.icon || "",
       bgColor: menu.bgColor || "",
       isActive: menuActive,

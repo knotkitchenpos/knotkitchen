@@ -1,5 +1,4 @@
 import React, { useMemo, useState } from "react";
-import { dispatchLabel } from "../lib/dispatch";
 import { capLabel, capOf } from "../lib/modifierGroups";
 
 /**
@@ -78,6 +77,7 @@ export default function ProductModal({ product, symbol, onClose, onAdd, allowNot
       // Carried onto the cart line so the basket can warn about a line that
       // does not suit the fulfilment the customer ends up choosing.
       dispatchType: product.dispatchType || null,
+      dispatchLabel: product.dispatchLabel || null,
       quantity,
       unitPrice,
       price: unitPrice,
@@ -119,9 +119,9 @@ export default function ProductModal({ product, symbol, onClose, onAdd, allowNot
             {product.description ? (
               <p className="mt-0.5 line-clamp-2 text-[12px] text-slate-500">{product.description}</p>
             ) : null}
-            {dispatchLabel(product.dispatchType) ? (
+            {product.dispatchLabel ? (
               <span className="mt-1.5 inline-block rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-bold text-amber-700">
-                {dispatchLabel(product.dispatchType)}
+                {product.dispatchLabel}
               </span>
             ) : null}
           </div>

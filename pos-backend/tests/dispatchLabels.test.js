@@ -150,24 +150,17 @@ test("a restricted category is still excluded from pricing", () => {
   );
 });
 
-test("the customer-web copy of the label helper stays in step with this one", () => {
-  // The copy exists because the apps cannot import from each other. If the
-  // wording drifts, the label a customer read while browsing and the refusal
-  // they get at checkout stop agreeing.
-  const roots = [
-    path.join(__dirname, "..", "..", "customer-web", "src", "lib", "dispatch.js"),
-  ];
-  for (const file of roots) {
-    assert.ok(fs.existsSync(file), `${file} must exist`);
+test("the storefront payload carries the label, and the site has no copy of the rule", () => {
+  // customer-web used to re-implement dispatchLabel because the apps cannot
+  // import from each other. The label now travels in the payload, on every
+  // category and product, so the words the customer reads while browsing
+  // and the refusal at checkout come from one function.
+  assert.equal((STOREFRONT_CTRL.match(/dispatchLabel: dispatchLabel\(menu\.dispatchType\)/g) || []).length, 2, "category and product");
+  const siteDir = path.join(__dirname, "..", "..", "customer-web", "src");
+  const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]));
+  for (const file of walk(siteDir)) {
+    if (!/\.(jsx?|mjs)$/.test(file)) continue;
     const src = fs.readFileSync(file, "utf8");
-    assert.match(src, /"Collection"/);
-    assert.match(src, /"Delivery"/);
-    assert.match(src, /"Table Orders"/);
-    assert.match(src, /Only`/, "same 'X Only' shape as the backend");
-    assert.match(
-      src,
-      /allowed\.length === 3 \|\| allowed\.length === 0/,
-      "same 'no restriction worth mentioning' rule",
-    );
+    assert.ok(!/"Table Orders"|Only`/.test(src), `${path.relative(siteDir, file)} re-implements the label`);
   }
 });

@@ -2,7 +2,6 @@ import React, { useRef, useState } from "react";
 import { LegalLinks } from "./landing/parts";
 import { Link } from "react-router-dom";
 import ProductCard from "./ProductCard";
-import { dispatchLabel } from "../lib/dispatch";
 import ProductModal from "./ProductModal";
 import CartDrawer from "./CartDrawer";
 import OrderConfirmation from "./OrderConfirmation";
@@ -89,7 +88,7 @@ export default function StoreShell({
             // A category the restaurant has restricted to one order type says
             // so here, so the customer knows before they add anything rather
             // than being refused at the payment step.
-            const dispatch = dispatchLabel(category.dispatchType);
+            const dispatch = category.dispatchLabel || null;
             return (
             <section key={category.id} className="mt-8">
               <h2 className="text-lg font-semibold text-slate-900 mb-3 flex flex-wrap items-center gap-2">

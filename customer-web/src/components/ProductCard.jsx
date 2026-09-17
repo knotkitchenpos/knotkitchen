@@ -1,5 +1,4 @@
 import React from "react";
-import { dispatchLabel } from "../lib/dispatch";
 
 /**
  * Small self-contained product card. Delegates the add-to-cart flow up to
@@ -8,9 +7,9 @@ import { dispatchLabel } from "../lib/dispatch";
  */
 export default function ProductCard({ product, symbol, onSelect }) {
   const soldOut = product.isAvailable === false;
-  // "Collection Only" and friends. Null when the product can be bought
-  // through every order type, which is the usual case.
-  const dispatch = dispatchLabel(product.dispatchType);
+  // "Collection Only" and friends, from the payload. Null when the product
+  // can be bought through every order type, which is the usual case.
+  const dispatch = product.dispatchLabel || null;
   const hasDiscount = product.originalPrice && product.originalPrice > product.price;
   const base =
     "text-left group bg-white rounded-2xl shadow-sm hover:shadow-md transition overflow-hidden flex flex-col";

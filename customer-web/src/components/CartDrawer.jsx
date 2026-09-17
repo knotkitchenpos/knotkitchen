@@ -19,7 +19,7 @@ function pickupTimes(windowHours, windows) {
 }
 
 const clock = (d) => d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
-import { allowsFulfilment, dispatchLabel } from "../lib/dispatch";
+import { allowsFulfilment } from "../lib/dispatch";
 
 /**
  * Cart / checkout drawer.
@@ -147,7 +147,7 @@ export default function CartDrawer({
                       </div>
                     ) : null}
                     {line.note ? <div className="text-xs italic text-slate-500 mt-0.5">“{line.note}”</div> : null}
-                    {dispatchLabel(line.dispatchType) ? (
+                    {line.dispatchLabel ? (
                       <div
                         className={`text-[11px] mt-0.5 font-medium ${
                           allowsFulfilment(line.dispatchType, orderType)
@@ -155,7 +155,7 @@ export default function CartDrawer({
                             : "text-red-600"
                         }`}
                       >
-                        {dispatchLabel(line.dispatchType)}
+                        {line.dispatchLabel}
                       </div>
                     ) : null}
                     <div className="text-sm mt-1 text-slate-700">
@@ -337,7 +337,7 @@ export default function CartDrawer({
                 <ul className="list-disc pl-4">
                   {conflicting.map((l) => (
                     <li key={cart.lineSignature(l)}>
-                      {l.name} — {dispatchLabel(l.dispatchType)}
+                      {l.name}{l.dispatchLabel ? ` — ${l.dispatchLabel}` : ""}
                     </li>
                   ))}
                 </ul>

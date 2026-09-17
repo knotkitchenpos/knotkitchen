@@ -521,7 +521,7 @@ The customer website is `customer-web` only. The POS used to carry a second copy
 
 ### 11.6 Known debt, deliberately left
 
-- `customer-web/src/lib/dispatch.js` mirrors `services/menuCache.dispatchLabel`; a test keeps them in step because the apps cannot import from each other.
+None recorded. The last item, a copy of `services/menuCache.dispatchLabel` in customer-web, went when the storefront payload started carrying `dispatchLabel` on every category and product; a test refuses a re-implementation of the words in the site.
 
 ### DEVELOPMENT RULE
 
