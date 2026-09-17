@@ -7,9 +7,11 @@ import { getMenus, getOrders } from "../../https";
 const PopularDishes = () => {
   const navigate = useNavigate();
 
+  // The published (System) menu, like the Products page: a dish added in
+  // Manage Menu must not show anywhere on the POS before Publish System.
   const { data: menusRes } = useQuery({
-    queryKey: ["menus"],
-    queryFn: getMenus,
+    queryKey: ["menus", "system"],
+    queryFn: () => getMenus({ source: "system" }),
   });
   const { data: ordersRes } = useQuery({
     queryKey: ["orders"],
