@@ -70,6 +70,12 @@ export const updateOrderStatus = ({ orderId, orderStatus }) =>
  * collect") and so the backend can fire the customer notification without
  * having to sniff the payload of a generic status change.
  */
+/** Void an order with a reason on record. Staff need the Security PIN. */
+export const cancelOrder = ({ orderId, reason }) => axiosWrapper.put(`/api/order/${orderId}/cancel`, { reason });
+/** Give money back on a completed order. Blank amount = everything left. */
+export const refundOrder = ({ orderId, amount, reason }) =>
+  axiosWrapper.post(`/api/order/${orderId}/refund`, { amount, reason });
+
 export const markOrderReady = (orderId) =>
   axiosWrapper.put(`/api/order/${orderId}/ready`);
 

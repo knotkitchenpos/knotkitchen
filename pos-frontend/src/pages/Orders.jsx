@@ -4,18 +4,23 @@ import { useSelector } from "react-redux";
 import { enqueueSnackbar } from "notistack";
 import KnotLogo from "../components/shared/KnotLogo";
 import {
+  cancelOrder,
   getOrders,
   getStoreProperties,
   getTableSessionById,
   markOrderReady,
   recordTableSessionPayment,
+  refundOrder,
   updateOrderStatus,
 } from "../https";
 import TableSettleModal from "../components/tables/TableSettleModal";
+import ReasonModal from "../components/orders/ReasonModal";
+import SecurityPinModal from "../components/common/SecurityPinModal";
+import { checkActionAuthorization } from "../utils/security";
 import { getMyRestaurant } from "../https/newModules";
 import { printKot, printOrderReceipt } from "../utils/printReceipt";
 import { itemDisplayName, itemExtras } from "../utils/orderItems";
-import { isPreparing, isReady, isSettled, isCancelled, statusLabel, COMPLETED, CANCELLED } from "../constants/orderStatus";
+import { isPreparing, isReady, isSettled, isCancelled, statusLabel, COMPLETED } from "../constants/orderStatus";
 import { sourceLabel, tableLabel, orderDisplayId } from "../utils/orderLabels";
 import { sendTableEBill } from "../utils/sendTableEBill";
 
@@ -257,6 +262,30 @@ const Orders = () => {
       enqueueSnackbar(e.response?.data?.message || "Failed to update order", { variant: "error" }),
   });
 
+  /* ---------- Voids and refunds ----------
+   * Both need a reason, and a staff member needs the Security PIN first
+   * (the owner passes straight through). The PIN modal runs before the
+   * reason modal so a declined PIN never shows the form.
+   */
+  const [reasonFor, setReasonFor] = useState(null); // { kind: "cancel" | "refund", order }
+  const [pinFor, setPinFor] = useState(null); // the same, waiting for the PIN
+  const askReason = (kind, order) => {
+    const auth = checkActionAuthorization(user, { isOwnerOnly: false });
+    if (auth.status === "REQUIRE_PIN") setPinFor({ kind, order });
+    else setReasonFor({ kind, order });
+  };
+  const voidMutation = useMutation({
+    mutationFn: ({ kind, orderId, reason, amount }) =>
+      kind === "refund" ? refundOrder({ orderId, reason, amount }) : cancelOrder({ orderId, reason }),
+    onSuccess: (res, vars) => {
+      enqueueSnackbar(res.data?.message || (vars.kind === "refund" ? "Refund recorded" : "Order cancelled"), { variant: "success" });
+      setReasonFor(null);
+      qc.invalidateQueries({ queryKey: ["orders"] });
+    },
+    onError: (e) =>
+      enqueueSnackbar(e.response?.data?.message || "Could not do that", { variant: "error" }),
+  });
+
   /* ---------- Completing a TABLE order ----------
    *
    * A table order is not finished by a status change: the money has not been
@@ -319,7 +348,8 @@ const Orders = () => {
   const stats = useMemo(() => {
     let count = 0, revenue = 0, ongoing = 0, done = 0, cancelled = 0;
     orders.forEach((o) => {
-      const amt = Number(o.bills?.totalWithTax || o.bills?.total || 0);
+      const refunded = (o.refunds || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
+      const amt = Math.max(0, Number(o.bills?.totalWithTax || o.bills?.total || 0) - refunded);
       count += 1;
       // isSettled, not === "Completed": the auto-complete sweep finishes
       // orders as "Served" / "Delivered" and a settled table bill is "paid",
@@ -827,6 +857,26 @@ const Orders = () => {
                 </div>
               </div>
 
+              {(selected.cancelReason || (selected.refunds || []).length > 0) && (
+                <div className="mx-4 mb-3 rounded-xl border border-[#FECACA] bg-[#FEF2F2] p-3 text-[12.5px] text-[#991B1B]">
+                  {selected.cancelReason && (
+                    <p>
+                      <span className="font-bold">Cancelled:</span> {selected.cancelReason}
+                      {selected.cancelledBy ? ` · ${selected.cancelledBy}` : ""}
+                    </p>
+                  )}
+                  {(selected.refunds || []).map((r, i) => (
+                    <p key={i}>
+                      <span className="font-bold">Refunded {money(r.amount)}:</span> {r.reason}
+                      {r.refundedByName ? ` · ${r.refundedByName}` : ""}
+                      {r.refundedAt
+                        ? ` · ${new Date(r.refundedAt).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}`
+                        : ""}
+                    </p>
+                  ))}
+                </div>
+              )}
+
               {/* Summary */}
               <div className="px-4 py-3.5 border-b border-[#E2E8F0]">
                 <p className="text-[13.5px] font-extrabold text-[#0F172A] mb-2.5">Order Summary</p>
@@ -1015,17 +1065,52 @@ const Orders = () => {
                 </button>
               )}
 
-              <button
-                disabled={isFinished(selected.orderStatus) || statusMutation.isPending}
-                onClick={() => statusMutation.mutate({ orderId: selected._id, orderStatus: CANCELLED })}
-                className="h-[46px] rounded-xl border border-[#FCA5A5] text-[#DC2626] text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#FEF2F2] disabled:opacity-40"
-              >
-                <I.x s={16} /> Cancel
-              </button>
+              {isSettled(selected.orderStatus) ? (
+                <button
+                  disabled={voidMutation.isPending}
+                  onClick={() => askReason("refund", selected)}
+                  title="Give money back on this paid order"
+                  className="h-[46px] rounded-xl border border-[#FCA5A5] text-[#DC2626] text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#FEF2F2] disabled:opacity-40"
+                >
+                  Refund
+                </button>
+              ) : (
+                <button
+                  disabled={isFinished(selected.orderStatus) || voidMutation.isPending}
+                  onClick={() => askReason("cancel", selected)}
+                  className="h-[46px] rounded-xl border border-[#FCA5A5] text-[#DC2626] text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#FEF2F2] disabled:opacity-40"
+                >
+                  <I.x s={16} /> Cancel
+                </button>
+              )}
             </div>
           </>
         )}
       </aside>
+
+      {pinFor && (
+        <SecurityPinModal
+          isOpen
+          onClose={() => setPinFor(null)}
+          onSuccess={() => {
+            setReasonFor(pinFor);
+            setPinFor(null);
+          }}
+          title={pinFor.kind === "refund" ? "Refund requires authorization" : "Cancelling requires authorization"}
+          actionLabel="Continue"
+        />
+      )}
+      {reasonFor && (
+        <ReasonModal
+          kind={reasonFor.kind}
+          order={reasonFor.order}
+          busy={voidMutation.isPending}
+          onClose={() => setReasonFor(null)}
+          onConfirm={({ reason, amount }) =>
+            voidMutation.mutate({ kind: reasonFor.kind, orderId: reasonFor.order._id, reason, amount })
+          }
+        />
+      )}
 
       {/* Complete a table order: close the table, then take the payment. */}
       {settleFor?.session && (

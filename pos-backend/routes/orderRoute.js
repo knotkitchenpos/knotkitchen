@@ -5,6 +5,8 @@ const {
   getOrderById,
   updateOrder,
   markOrderReady,
+  cancelOrder,
+  refundOrder,
   getPopularItems,
   getOrdersReport,
 } = require("../controllers/orderController");
@@ -29,5 +31,10 @@ router.route("/:id").put(isVerifiedUser, updateOrder);
 // (:id/ready) so the existing PUT /:id endpoint keeps its generic
 // status-update behaviour for KDS / Cancel flows.
 router.route("/:id/ready").put(isVerifiedUser, markOrderReady);
+// Voids and refunds need a reason and, for staff, the Security PIN. The
+// generic PUT /:id can still cancel (KDS / reject flows) but records no
+// money movement; these two are what the Orders screen uses.
+router.route("/:id/cancel").put(isVerifiedUser, requireProtectedAction, cancelOrder);
+router.route("/:id/refund").post(isVerifiedUser, requireProtectedAction, refundOrder);
 
 module.exports = router;

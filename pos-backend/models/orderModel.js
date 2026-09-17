@@ -218,8 +218,12 @@ const orderSchema = new mongoose.Schema({
     reason: String,
     items: [String],
     refundedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
+    refundedByName: { type: String, default: "" },
     refundedAt: { type: Date, default: Date.now },
   }],
+  // Why the whole order was cancelled (a cancelled line keeps its own reason).
+  cancelReason: { type: String, default: "" },
+  cancelledBy: { type: String, default: "" },
   timeline: [{
     status: String,
     timestamp: { type: Date, default: Date.now },

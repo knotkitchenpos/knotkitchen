@@ -63,6 +63,8 @@ const ALLOWED_ORDER_TYPES = new Set([
 const {
   READY,
   CANCELLED,
+  REFUNDED,
+  isSettled,
   ALLOWED_INITIAL_STATUS,
   ALLOWED_STATUS_TRANSITIONS,
   TERMINAL_STATUSES,
@@ -705,6 +707,10 @@ const updateOrder = async (req, res, next) => {
       timestamp: new Date(),
       user: req.user?.name || "POS",
     });
+    if (nextStatus === CANCELLED && typeof req.body?.reason === "string") {
+      order.cancelReason = req.body.reason.trim().slice(0, 200);
+      order.cancelledBy = req.user?.name || "POS";
+    }
 
     // Module 4 §2 — if the update transitions to Ready, stamp the Ready
     // metadata, emit the socket event and fire the (idempotent) SMS. The
@@ -927,6 +933,83 @@ const reportMethodOf = (o) => {
   return REPORT_METHOD[String(raw).trim().toLowerCase()] || null;
 };
 
+const { netAmount, validateRefund, refundedTotal } = require("../services/refunds");
+
+/**
+ * PUT /api/order/:id/cancel  { reason }
+ *
+ * A void with a reason on record. Same state change as PUT /:id with
+ * Cancelled, but the reason is required and the route is PIN-protected, so
+ * a mis-punched order cannot quietly disappear.
+ */
+const cancelOrder = async (req, res, next) => {
+  const reason = String(req.body?.reason || "").trim();
+  if (reason.length < 3) return next(createHttpError(400, "A reason is required to cancel an order."));
+  req.body = { orderStatus: CANCELLED, reason };
+  return updateOrder(req, res, next);
+};
+
+/**
+ * POST /api/order/:id/refund  { amount?, reason }
+ *
+ * Gives money back on a settled order. Partial refunds leave the order
+ * Completed with the refund on record; refunding everything marks it
+ * Refunded. Reports count takings net of refunds (netAmount).
+ */
+const refundOrder = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) return next(createHttpError(404, "Invalid id!"));
+    const order = await Order.findOne({ _id: id, ...tenantScopeFor(req.user), isDeleted: { $ne: true } });
+    if (!order) return next(createHttpError(404, "Order not found!"));
+    if (!isSettled(order.orderStatus)) {
+      return next(createHttpError(409, "Only a completed (paid) order can be refunded. Cancel it instead."));
+    }
+
+    const check = validateRefund(order, req.body || {});
+    if (!check.ok) return next(createHttpError(400, check.message));
+
+    order.refunds = order.refunds || [];
+    order.refunds.push({
+      amount: check.amount,
+      reason: check.reason,
+      refundedBy: req.user?._id,
+      refundedByName: req.user?.name || "POS",
+      refundedAt: new Date(),
+    });
+    order.timeline = order.timeline || [];
+    if (check.full) {
+      order.orderStatus = REFUNDED;
+      order.timeline.push({ status: REFUNDED, timestamp: new Date(), user: req.user?.name || "POS" });
+    } else {
+      order.timeline.push({ status: `Refund ₹${check.amount.toFixed(2)}`, timestamp: new Date(), user: req.user?.name || "POS" });
+    }
+    await order.save();
+
+    await logActivity({
+      req,
+      action: "Order Refunded",
+      resource: "Order",
+      resourceId: order._id,
+      newValue: `₹${check.amount.toFixed(2)} of ₹${Number(order.bills?.totalWithTax || order.bills?.total || 0).toFixed(2)}`,
+      description: `${check.full ? "Full" : "Partial"} refund on #${order.orderNumber || order._id}: ${check.reason}`,
+    });
+
+    try {
+      const { emitOrderStatusChanged } = require("../services/socket");
+      emitOrderStatusChanged({ restaurantId: order.restaurantId, outletId: order.outletId, storeId: order.storeId, order });
+    } catch (err) {
+      console.warn("[refund] socket emit failed:", err.message);
+    }
+
+    const obj = order.toObject();
+    obj.refundedTotal = refundedTotal(order);
+    res.status(200).json({ success: true, message: check.full ? "Order refunded." : "Partial refund recorded.", data: obj });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const buildReportBuckets = (orders) => {
   const bucket = () => ({ count: 0, amount: 0 });
   const summary = {
@@ -948,9 +1031,8 @@ const buildReportBuckets = (orders) => {
   };
 
   for (const o of orders) {
-    const amount = isCancelled(o.orderStatus)
-      ? 0
-      : Number(o.bills?.totalWithTax || o.bills?.total || 0);
+    // Takings after refunds; a cancelled or fully refunded order counts nothing.
+    const amount = netAmount(o);
 
     inc(summary.total, amount);
 
@@ -1161,6 +1243,8 @@ module.exports = {
   getOrders,
   updateOrder,
   markOrderReady,
+  cancelOrder,
+  refundOrder,
   getPopularItems,
   getOrdersReport,
   validateTableCapacityForOrder,
