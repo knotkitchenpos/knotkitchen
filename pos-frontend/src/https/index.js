@@ -70,6 +70,12 @@ export const updateOrderStatus = ({ orderId, orderStatus }) =>
  * collect") and so the backend can fire the customer notification without
  * having to sniff the payload of a generic status change.
  */
+/* ---------- Shifts & day-end ---------- */
+export const getCurrentShift = () => axiosWrapper.get("/api/shift/current");
+export const getShifts = (limit = 30) => axiosWrapper.get("/api/shift", { params: { limit } });
+export const openShift = ({ openingCash }) => axiosWrapper.post("/api/shift/open", { openingCash });
+export const closeShift = ({ closingCash, note }) => axiosWrapper.post("/api/shift/close", { closingCash, note });
+
 /** Void an order with a reason on record. Staff need the Security PIN. */
 export const cancelOrder = ({ orderId, reason }) => axiosWrapper.put(`/api/order/${orderId}/cancel`, { reason });
 /** Give money back on a completed order. Blank amount = everything left. */

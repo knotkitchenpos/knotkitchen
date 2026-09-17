@@ -189,6 +189,7 @@ app.get("/ready", (req, res) => {
 app.use("/api/auth", require("./routes/userRoute"));
 app.use("/api/user", require("./routes/userRoute"));
 app.use("/api/order", require("./routes/orderRoute"));
+app.use("/api/shift", require("./routes/shiftRoute"));
 app.use("/api/table", require("./routes/tableRoute"));
 app.use("/api/menu", require("./routes/menuRoute"));
 app.use("/api/payment", require("./routes/paymentRoute"));
