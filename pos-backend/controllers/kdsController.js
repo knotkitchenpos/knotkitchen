@@ -167,7 +167,9 @@ const updateKDSStatus = async (req, res, next) => {
 // ===== KDS Analytics =====
 const getKDSAnalytics = async (req, res, next) => {
   try {
-    const { restaurantId, range = "today" } = req.query;
+    const { range = "today" } = req.query;
+    // Always the caller's own restaurant, never one named in the query.
+    const restaurantId = req.user?.restaurantId || null;
 
     const startDate = new Date();
     if (range === "today") startDate.setHours(0, 0, 0, 0);

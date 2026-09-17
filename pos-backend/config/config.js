@@ -74,6 +74,9 @@ const config = Object.freeze({
     cashfreeSecretKey: process.env.CASHFREE_SECRET_KEY,
     cashfreeEnv: process.env.CASHFREE_ENV || "TEST",
     cashfreeWebhookSecret: process.env.CASHFREE_WEBHOOK_SECRET,
+    // Shared secret a Swiggy/Zomato bridge sends in x-marketplace-secret.
+    // Unset = the marketplace webhook is closed.
+    marketplaceWebhookSecret: process.env.MARKETPLACE_WEBHOOK_SECRET || "",
     // Server-to-server payment notification. Cashfree requires HTTPS and
     // rejects anything else, so it is dropped from the order when unset
     // or plain http -- the verify-on-return path still settles the bill.

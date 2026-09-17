@@ -196,18 +196,17 @@ app.use("/api/marketplace", require("./routes/marketplaceRoute"));
 app.use("/api/restaurant", require("./routes/restaurantRoute"));
 app.use("/api/team", require("./routes/teamRoute"));
 app.use("/api/kds", require("./routes/kdsRoute"));
-app.use("/api/inventory", require("./routes/inventoryRoute"));
-app.use("/api/loyalty", require("./routes/loyaltyRoute"));
+// Inventory, loyalty, analytics, notification, offline and plugin routes are
+// NOT mounted. They are inline CRUD that trusts a restaurantId from the URL
+// or body (any signed-in user could read another store's data), and no
+// screen calls them. Each comes back behind a tenant-scoped controller when
+// its feature is built. The files stay in routes/ as the starting point.
 app.use("/api/billing", require("./routes/billingRoute"));
 // The restaurant's KnotKitchen Business Balance. Scoped to the caller's own
 // restaurant throughout -- no route here takes a restaurantId.
 app.use("/api/business-balance", require("./routes/businessBalanceRoute"));
 app.use("/api/subscription", require("./routes/subscriptionRoute"));
 app.use("/api/qr", require("./routes/qrRoute"));
-app.use("/api/analytics", require("./routes/analyticsRoute"));
-app.use("/api/notification", require("./routes/notificationRoute"));
-app.use("/api/offline", require("./routes/offlineRoute"));
-app.use("/api/plugin", require("./routes/pluginRoute"));
 app.use("/api/public", require("./routes/publicStoreRoute"));
 
 // ===== KnotKitchen Business — CSD + Admin panel (csd.${BASE_DOMAIN}) =====

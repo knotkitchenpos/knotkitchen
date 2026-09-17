@@ -11,7 +11,8 @@ const router = express.Router();
 // SSE stream for real-time pop-ups (authenticated dashboard)
 router.route("/stream").get(isVerifiedUser, streamNewOrders);
 
-// Webhook for external Swiggy/Zomato bridge services (no auth — service pushes here)
+// Webhook for external Swiggy/Zomato bridge services. No user session: the
+// bridge proves itself with x-marketplace-secret (MARKETPLACE_WEBHOOK_SECRET).
 router.route("/webhook").post(webhookMarketplaceOrder);
 
 // Manual marketplace order entry (authenticated)
