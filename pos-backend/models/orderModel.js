@@ -225,6 +225,10 @@ const orderSchema = new mongoose.Schema({
     paidBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     paidAt: Date,
   }],
+  // Every refund attempt, in order: the audit trail. `status` is ours
+  // (PENDING while Cashfree processes, SUCCESS only on its word, FAILED with
+  // the reason); `gateway` is what Cashfree said. An entry written before
+  // the lifecycle existed has no status and counts as SUCCESS.
   refunds: [{
     amount: Number,
     reason: String,
@@ -232,6 +236,13 @@ const orderSchema = new mongoose.Schema({
     refundedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     refundedByName: { type: String, default: "" },
     refundedAt: { type: Date, default: Date.now },
+    requestedAt: Date,
+    completedAt: Date,
+    status: { type: String, enum: ["", "PENDING", "SUCCESS", "FAILED"], default: "" },
+    failureReason: { type: String, default: "" },
+    // false when an attempt could not be confirmed with Cashfree: a retry
+    // might pay twice, so the operator checks the status first.
+    retrySafe: { type: Boolean, default: true },
     // "cash" when handed back at the counter; "gateway" when Cashfree returned it.
     channel: { type: String, default: "cash" },
     gateway: {
@@ -241,6 +252,15 @@ const orderSchema = new mongoose.Schema({
       status: { type: String, default: "" }, // SUCCESS | PENDING | ONHOLD | CANCELLED
     },
   }],
+  // Where the refund stands: NOT_APPLICABLE (cash, or UPI/card taken at the
+  // counter), NOT_REFUNDED, REFUND_PENDING, REFUNDED, REFUND_FAILED. Derived
+  // from the payment record and refunds[] on every save (services/refunds);
+  // stored so the one-attempt-at-a-time claim can be a conditional update.
+  refundStatus: {
+    type: String,
+    enum: ["", "NOT_APPLICABLE", "NOT_REFUNDED", "REFUND_PENDING", "REFUNDED", "REFUND_FAILED"],
+    default: "",
+  },
   // Why the whole order was cancelled (a cancelled line keeps its own reason).
   cancelReason: { type: String, default: "" },
   cancelledBy: { type: String, default: "" },
@@ -319,5 +339,12 @@ orderSchema.index(
   { unique: true, partialFilterExpression: { orderNumber: { $gt: "" } } }
 );
 
+
+// The refund lifecycle is a function of the record; keep the stored copy in step.
+orderSchema.pre("save", function syncRefundStatus(next) {
+  const { refundStatusOf } = require("../services/refunds");
+  this.refundStatus = refundStatusOf(this);
+  next();
+});
 
 module.exports = mongoose.model("Order", orderSchema);

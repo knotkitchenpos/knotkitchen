@@ -11,6 +11,7 @@ import {
   markOrderReady,
   recordTableSessionPayment,
   refundOrder,
+  syncRefund,
   updateOrderStatus,
 } from "../https";
 import TableSettleModal from "../components/tables/TableSettleModal";
@@ -20,7 +21,7 @@ import { checkActionAuthorization, isManager } from "../utils/security";
 import { getMyRestaurant } from "../https";
 import { printKot, printOrderReceipt } from "../utils/printReceipt";
 import { itemDisplayName, itemExtras } from "../utils/orderItems";
-import { isPreparing, isReady, isSettled, isCancelled, statusLabel, COMPLETED } from "../constants/orderStatus";
+import { isPreparing, isReady, isSettled, isCancelled, isRefunded, statusLabel, COMPLETED, REFUND_STATUS, REFUND_STATUS_LABELS } from "../constants/orderStatus";
 import { sourceLabel, tableLabel, orderDisplayId } from "../utils/orderLabels";
 import { sendTableEBill } from "../utils/sendTableEBill";
 import { money, time12 as timeOf, time12, dateGB, dateTimeIN } from "../utils";
@@ -114,8 +115,6 @@ const TABS = [
   { key: "Completed", statuses: ["Completed", "Served", "Delivered", "paid"] },
   { key: "Cancelled", statuses: ["Cancelled"] },
 ];
-
-const isFinished = (s) => ["Completed", "Cancelled"].includes(s);
 
 /**
  * Convert a Date → YYYY-MM-DD in the LOCAL timezone.
@@ -272,15 +271,28 @@ const Orders = () => {
     else setReasonFor({ kind, order });
   };
   const voidMutation = useMutation({
-    mutationFn: ({ kind, orderId, reason, amount }) =>
-      kind === "refund" ? refundOrder({ orderId, reason, amount }) : cancelOrder({ orderId, reason }),
+    mutationFn: ({ kind, orderId, reason }) =>
+      kind === "refund" ? refundOrder({ orderId, reason }) : cancelOrder({ orderId, reason }),
     onSuccess: (res, vars) => {
-      enqueueSnackbar(res.data?.message || (vars.kind === "refund" ? "Refund recorded" : "Order cancelled"), { variant: "success" });
+      enqueueSnackbar(res.data?.message || (vars.kind === "refund" ? "Refund sent to Cashfree" : "Order cancelled"), { variant: "success" });
       setReasonFor(null);
       qc.invalidateQueries({ queryKey: ["orders"] });
     },
-    onError: (e) =>
-      enqueueSnackbar(e.response?.data?.message || "Could not do that", { variant: "error" }),
+    onError: (e) => {
+      // A refund Cashfree refused is on record with its reason; show it and refresh.
+      enqueueSnackbar(e.response?.data?.message || "Could not do that", { variant: "error" });
+      setReasonFor(null);
+      qc.invalidateQueries({ queryKey: ["orders"] });
+    },
+  });
+  // "Refund pending": ask Cashfree where it stands.
+  const syncMutation = useMutation({
+    mutationFn: (orderId) => syncRefund(orderId),
+    onSuccess: (res) => {
+      enqueueSnackbar(res.data?.message || "Refund status updated", { variant: "info" });
+      qc.invalidateQueries({ queryKey: ["orders"] });
+    },
+    onError: (e) => enqueueSnackbar(e.response?.data?.message || "Could not reach Cashfree", { variant: "error" }),
   });
 
   /* ---------- Completing a TABLE order ----------
@@ -825,6 +837,22 @@ const Orders = () => {
                 </div>
               </div>
 
+              {/* How it was paid, and where a refund stands. Both come from the
+                  backend: cash and counter UPI/card never show a refund state
+                  because nothing went through the gateway. */}
+              {selected.paid && (
+                <div className="mx-4 mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-[#475569]">
+                  <span>
+                    Payment: <span className="font-bold text-[#0F172A]">{selected.paymentKindLabel}</span> · Paid
+                  </span>
+                  {selected.refundStatus && selected.refundStatus !== REFUND_STATUS.NOT_APPLICABLE && (
+                    <span>
+                      Refund: <span className="font-bold text-[#0F172A]">{REFUND_STATUS_LABELS[selected.refundStatus]}</span>
+                    </span>
+                  )}
+                </div>
+              )}
+
               {(selected.cancelReason || (selected.refunds || []).length > 0) && (
                 <div className="mx-4 mb-3 rounded-xl border border-[#FECACA] bg-[#FEF2F2] p-3 text-[12.5px] text-[#991B1B]">
                   {selected.cancelReason && (
@@ -835,7 +863,12 @@ const Orders = () => {
                   )}
                   {(selected.refunds || []).map((r, i) => (
                     <p key={i}>
-                      <span className="font-bold">Refunded {money(r.amount)}:</span> {r.reason}
+                      <span className="font-bold">
+                        {r.status === "FAILED" ? "Refund failed" : r.status === "PENDING" ? "Refund pending" : "Refunded"} {money(r.amount)}:
+                      </span>{" "}
+                      {r.reason}
+                      {r.failureReason ? ` — ${r.failureReason}` : ""}
+                      {r.gateway?.refundId ? ` · ${r.gateway.refundId}` : ""}
                       {r.refundedByName ? ` · ${r.refundedByName}` : ""}
                       {r.refundedAt
                         ? ` · ${dateTimeIN(r.refundedAt)}`
@@ -1033,19 +1066,54 @@ const Orders = () => {
                 </button>
               )}
 
-              {isSettled(selected.orderStatus) ? (
-                <button
-                  disabled={voidMutation.isPending || !isManager(user)}
-                  onClick={() => askReason("refund", selected)}
-                  title={isManager(user) ? "Give money back on this paid order. Online payments go back through Cashfree." : "Only the store owner or a manager can refund"}
-                  className="h-[46px] rounded-xl border border-[#FCA5A5] text-[#DC2626] text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#FEF2F2] disabled:opacity-40"
-                >
-                  Refund
-                </button>
+              {/* Refund lives only on a CANCELLED order, and only when the
+                  backend says the payment went through the gateway: for cash
+                  and counter UPI/card the status is NOT_APPLICABLE and there
+                  is no button at all. Cancelling and refunding stay separate. */}
+              {isCancelled(selected.orderStatus) ? (
+                selected.refundStatus === REFUND_STATUS.REFUNDED ? (
+                  <button
+                    disabled
+                    className="h-[46px] rounded-xl bg-[#F0FDF4] text-[#15803D] text-[12.5px] font-bold flex items-center justify-center gap-1.5"
+                  >
+                    Refunded
+                  </button>
+                ) : selected.refundStatus === REFUND_STATUS.REFUND_PENDING ? (
+                  <button
+                    disabled={syncMutation.isPending}
+                    onClick={() => syncMutation.mutate(selected._id)}
+                    title="Cashfree is processing the refund. Tap to check where it stands."
+                    className="h-[46px] rounded-xl bg-[#FFFBEB] text-[#B45309] text-[12.5px] font-bold flex items-center justify-center gap-1.5 disabled:opacity-40"
+                  >
+                    Refund Pending
+                  </button>
+                ) : selected.refundStatus === REFUND_STATUS.NOT_REFUNDED ||
+                  selected.refundStatus === REFUND_STATUS.REFUND_FAILED ? (
+                  (selected.refunds || [])[selected.refunds.length - 1]?.retrySafe === false ? (
+                    <button
+                      disabled={syncMutation.isPending}
+                      onClick={() => syncMutation.mutate(selected._id)}
+                      title="The last attempt could not be confirmed with Cashfree. Check before trying again."
+                      className="h-[46px] rounded-xl border border-[#FCA5A5] text-[#DC2626] text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#FEF2F2] disabled:opacity-40"
+                    >
+                      Check refund status
+                    </button>
+                  ) : (
+                    <button
+                      disabled={voidMutation.isPending || !isManager(user)}
+                      onClick={() => askReason("refund", selected)}
+                      title={isManager(user) ? "Send the amount back to the customer through Cashfree." : "Only the store owner or a manager can refund"}
+                      className="h-[46px] rounded-xl border border-[#FCA5A5] text-[#DC2626] text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#FEF2F2] disabled:opacity-40"
+                    >
+                      {selected.refundStatus === REFUND_STATUS.REFUND_FAILED ? "Retry Refund" : "Refund"}
+                    </button>
+                  )
+                ) : null
               ) : (
                 <button
-                  disabled={isFinished(selected.orderStatus) || voidMutation.isPending}
+                  disabled={isRefunded(selected.orderStatus) || voidMutation.isPending}
                   onClick={() => askReason("cancel", selected)}
+                  title={isSettled(selected.orderStatus) ? "Void this paid order. A gateway payment can be refunded afterwards; cash is handed back at the counter." : "Cancel this order"}
                   className="h-[46px] rounded-xl border border-[#FCA5A5] text-[#DC2626] text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#FEF2F2] disabled:opacity-40"
                 >
                   <I.x s={16} /> Cancel

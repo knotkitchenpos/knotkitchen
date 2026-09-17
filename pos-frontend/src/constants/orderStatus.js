@@ -91,3 +91,24 @@ export const statusLabel = (s) => {
   if (lower(raw) === "completed") return COMPLETED;
   return raw;
 };
+
+/**
+ * Where a refund stands, from the backend (services/refunds). NOT_APPLICABLE
+ * for cash and for UPI / card taken at the counter: nothing went through the
+ * gateway, so nothing can come back through it.
+ */
+export const REFUND_STATUS = Object.freeze({
+  NOT_APPLICABLE: "NOT_APPLICABLE",
+  NOT_REFUNDED: "NOT_REFUNDED",
+  REFUND_PENDING: "REFUND_PENDING",
+  REFUNDED: "REFUNDED",
+  REFUND_FAILED: "REFUND_FAILED",
+});
+
+export const REFUND_STATUS_LABELS = Object.freeze({
+  NOT_APPLICABLE: "",
+  NOT_REFUNDED: "Not refunded",
+  REFUND_PENDING: "Refund pending",
+  REFUNDED: "Refunded",
+  REFUND_FAILED: "Refund failed",
+});

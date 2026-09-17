@@ -573,7 +573,7 @@ const getOrderById = async (req, res, next) => {
     });
     if (!order) return next(createHttpError(404, "Order not found!"));
 
-    res.status(200).json({ success: true, data: order });
+    res.status(200).json({ success: true, data: { ...order.toObject(), ...refundView(order) } });
   } catch (error) {
     next(error);
   }
@@ -658,6 +658,8 @@ const getOrders = async (req, res, next) => {
     const projected = orders.map((o) => {
       const obj = o.toObject ? o.toObject() : o;
       obj.orderStatus = canonicalStatus(obj.orderStatus);
+      // How it was paid and where a refund stands, decided here, not by the screen.
+      Object.assign(obj, refundView(obj));
       return obj;
     });
 
@@ -698,7 +700,13 @@ const updateOrder = async (req, res, next) => {
     // isFinished, not TERMINAL_STATUSES.has: the latter holds only the three
     // canonical names, so "Served", "Delivered", "paid" and the legacy
     // lowercase spellings slipped past and a finished order could be reopened.
-    if (isFinished(order.orderStatus) && canonicalStatus(order.orderStatus) !== canonicalStatus(orderStatus)) {
+    //
+    // One exception: a PAID (settled) order may be voided through the reasoned,
+    // PIN-guarded cancel route. Cancelling and refunding are separate: a
+    // gateway payment is refunded afterwards through refundOrder, cash is
+    // handed back at the counter, and the order records which.
+    const voidingPaid = Boolean(req.voidWithReason) && canonicalStatus(orderStatus) === CANCELLED && isSettled(order.orderStatus);
+    if (isFinished(order.orderStatus) && canonicalStatus(order.orderStatus) !== canonicalStatus(orderStatus) && !voidingPaid) {
       return next(
         createHttpError(409, `Order is already ${order.orderStatus.toLowerCase()} and cannot be changed.`)
       );
@@ -939,28 +947,34 @@ const reportMethodOf = (o) => {
   return REPORT_METHOD[String(raw).trim().toLowerCase()] || null;
 };
 
-const { netAmount, validateRefund, refundedTotal, paidViaGateway, refundThroughGateway } = require("../services/refunds");
+const { netAmount, refundCancelledOrder, syncRefund, refundView, REFUND_STATUS } = require("../services/refunds");
 
 /**
  * PUT /api/order/:id/cancel  { reason }
  *
  * A void with a reason on record. Same state change as PUT /:id with
  * Cancelled, but the reason is required and the route is PIN-protected, so
- * a mis-punched order cannot quietly disappear.
+ * a mis-punched order cannot quietly disappear. A PAID order may be voided
+ * this way too: the money is a separate matter (see refundOrder), which is
+ * why only this route, not the plain status update, may do it.
  */
 const cancelOrder = async (req, res, next) => {
   const reason = String(req.body?.reason || "").trim();
   if (reason.length < 3) return next(createHttpError(400, "A reason is required to cancel an order."));
   req.body = { orderStatus: CANCELLED, reason };
+  req.voidWithReason = true;
   return updateOrder(req, res, next);
 };
 
 /**
- * POST /api/order/:id/refund  { amount?, reason }
+ * POST /api/order/:id/refund  { reason? }
  *
- * Gives money back on a settled order. Partial refunds leave the order
- * Completed with the refund on record; refunding everything marks it
- * Refunded. Reports count takings net of refunds (netAmount).
+ * Refund a CANCELLED order that was paid through Cashfree, through Cashfree.
+ * The backend decides everything: whether the order exists and is this
+ * store's, that it is cancelled, that it was paid and by which kind of
+ * payment, what was paid and what has already gone back, and whether an
+ * attempt is already in flight. The browser sends a reason and nothing else.
+ * Cash and counter UPI/card orders are refused: there is nothing to send.
  */
 const refundOrder = async (req, res, next) => {
   try {
@@ -968,46 +982,16 @@ const refundOrder = async (req, res, next) => {
     if (!mongoose.Types.ObjectId.isValid(id)) return next(createHttpError(404, "Invalid id!"));
     const order = await Order.findOne({ _id: id, ...tenantScopeFor(req.user), isDeleted: { $ne: true } });
     if (!order) return next(createHttpError(404, "Order not found!"));
-    if (!isSettled(order.orderStatus)) {
-      return next(createHttpError(409, "Only a completed (paid) order can be refunded. Cancel it instead."));
-    }
 
-    const check = validateRefund(order, req.body || {});
-    if (!check.ok) return next(createHttpError(400, check.message));
-
-    // Paid online: the money goes back the way it came, through Cashfree,
-    // BEFORE anything is written. A refused refund records nothing.
-    order.refunds = order.refunds || [];
-    let gateway = null;
-    if (paidViaGateway(order)) {
-      gateway = await refundThroughGateway(order, { amount: check.amount, reason: check.reason, sequence: order.refunds.length + 1 });
-    }
-
-    order.refunds.push({
-      amount: check.amount,
-      reason: check.reason,
-      refundedBy: req.user?._id,
-      refundedByName: req.user?.name || "POS",
-      refundedAt: new Date(),
-      channel: gateway ? "gateway" : "cash",
-      ...(gateway ? { gateway: { provider: gateway.provider, refundId: gateway.refundId, cfRefundId: gateway.cfRefundId, status: gateway.status } } : {}),
-    });
-    order.timeline = order.timeline || [];
-    if (check.full) {
-      order.orderStatus = REFUNDED;
-      order.timeline.push({ status: REFUNDED, timestamp: new Date(), user: req.user?.name || "POS" });
-    } else {
-      order.timeline.push({ status: `Refund ₹${check.amount.toFixed(2)}`, timestamp: new Date(), user: req.user?.name || "POS" });
-    }
-    await order.save();
+    const { entry, amount } = await refundCancelledOrder(order, { user: req.user, reason: req.body?.reason });
 
     await logActivity({
       req,
-      action: "Order Refunded",
+      action: "Order Refund " + entry.status,
       resource: "Order",
       resourceId: order._id,
-      newValue: `₹${check.amount.toFixed(2)} of ₹${Number(order.bills?.totalWithTax || order.bills?.total || 0).toFixed(2)}`,
-      description: `${check.full ? "Full" : "Partial"} refund on #${order.orderNumber || order._id}: ${check.reason}`,
+      newValue: `₹${amount.toFixed(2)} via Cashfree (${entry.gateway?.refundId || ""}): ${entry.status}${entry.failureReason ? " - " + entry.failureReason : ""}`,
+      description: `Refund on #${order.orderNumber || order._id}: ${entry.reason}`,
     });
 
     try {
@@ -1017,14 +1001,43 @@ const refundOrder = async (req, res, next) => {
       console.warn("[refund] socket emit failed:", err.message);
     }
 
-    const obj = order.toObject();
-    obj.refundedTotal = refundedTotal(order);
-    const how = gateway
-      ? gateway.status === "SUCCESS"
-        ? " Sent back through Cashfree."
-        : " Cashfree has queued the refund; it reaches the customer in 5 to 7 working days."
-      : " Hand the cash back to the customer.";
-    res.status(200).json({ success: true, message: (check.full ? "Order refunded." : "Partial refund recorded.") + how, data: obj });
+    const view = refundView(order);
+    const message =
+      view.refundStatus === REFUND_STATUS.REFUNDED
+        ? `₹${amount.toFixed(2)} refunded through Cashfree.`
+        : view.refundStatus === REFUND_STATUS.REFUND_PENDING
+          ? `Cashfree has accepted the refund of ₹${amount.toFixed(2)}; it reaches the customer in 5 to 7 working days.`
+          : `Cashfree did not complete the refund: ${entry.failureReason}`;
+    res.status(view.refundStatus === REFUND_STATUS.REFUND_FAILED ? 502 : 200).json({
+      success: view.refundStatus !== REFUND_STATUS.REFUND_FAILED,
+      message,
+      data: { ...order.toObject(), ...view },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/order/:id/refund/sync
+ *
+ * Ask Cashfree where the open refund stands and record its answer. For a
+ * refund Cashfree is still processing, or an attempt that timed out before
+ * it could be confirmed.
+ */
+const syncOrderRefund = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) return next(createHttpError(404, "Invalid id!"));
+    const order = await Order.findOne({ _id: id, ...tenantScopeFor(req.user), isDeleted: { $ne: true } });
+    if (!order) return next(createHttpError(404, "Order not found!"));
+    const { entry, changed } = await syncRefund(order);
+    if (!entry) return res.status(200).json({ success: true, message: "No refund is waiting on Cashfree.", data: { ...order.toObject(), ...refundView(order) } });
+    res.status(200).json({
+      success: true,
+      message: changed ? `Cashfree reports the refund as ${entry.status.toLowerCase()}.` : `Still ${entry.status.toLowerCase()} at Cashfree.`,
+      data: { ...order.toObject(), ...refundView(order) },
+    });
   } catch (error) {
     next(error);
   }
@@ -1276,6 +1289,7 @@ module.exports = {
   markOrderReady,
   cancelOrder,
   refundOrder,
+  syncOrderRefund,
   getPopularItems,
   getOrdersReport,
   validateTableCapacityForOrder,

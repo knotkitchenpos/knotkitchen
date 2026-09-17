@@ -12,25 +12,18 @@ const REASONS = {
   refund: ["Wrong item served", "Food quality complaint", "Order was late", "Overcharged", "Customer cancelled after paying"],
 };
 
-const paidOnline = (o) => {
-  const m = String(o?.payments?.[0]?.method || o?.paymentMethod || "").toLowerCase();
-  return Boolean(o?.paymentData?.gatewayOrderId) || ["online", "payment gateway", "paymentlink", "link"].includes(m);
-};
-
 const ReasonModal = ({ kind, order, busy, onClose, onConfirm }) => {
   const refund = kind === "refund";
   const total = Number(order?.bills?.totalWithTax || order?.bills?.total || 0);
-  const refunded = (order?.refunds || []).reduce((s, r) => s + (Number(r.amount) || 0), 0);
-  const left = Math.max(0, Math.round((total - refunded) * 100) / 100);
+  // The backend decides the amount from the payment record; this only shows it.
+  const refunded = Number(order?.refundedTotal) || 0;
+  const left = Number(order?.refundableAmount) || 0;
 
   const [preset, setPreset] = useState("");
   const [other, setOther] = useState("");
-  const [amount, setAmount] = useState(String(left));
 
   const reason = (preset === "Other" ? other : preset).trim();
-  const amt = Number(amount);
-  const amountOk = !refund || (amt > 0 && amt <= left);
-  const ok = reason.length >= 3 && amountOk && !busy;
+  const ok = reason.length >= 3 && !busy && (!refund || left > 0);
 
   return (
     <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4" onClick={onClose}>
@@ -47,35 +40,9 @@ const ReasonModal = ({ kind, order, busy, onClose, onConfirm }) => {
         </p>
         {refund && (
           <p className="mt-2 rounded-lg bg-[#F8FAFC] px-3 py-2 text-[12px] text-[#475569]">
-            {paidOnline(order)
-              ? "Paid online: the amount goes back to the customer through Cashfree (5 to 7 working days)."
-              : "Paid at the counter: hand the cash back to the customer; this records it."}
+            {order?.paymentKindLabel || "Gateway Payment"}: {money(left)} goes back to the customer through Cashfree
+            (5 to 7 working days). This cannot be undone.
           </p>
-        )}
-
-        {refund && (
-          <label className="mt-4 block">
-            <span className="text-[12.5px] font-bold text-[#475569]">Amount to refund</span>
-            <div className="mt-1 flex items-center gap-2">
-              <input
-                type="number"
-                min="0.01"
-                step="0.01"
-                max={left}
-                value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="h-[44px] flex-1 rounded-xl border border-[#E2E8F0] px-3 text-[15px] font-bold text-[#0F172A] outline-none focus:border-[#FD5302]"
-              />
-              <button
-                type="button"
-                onClick={() => setAmount(String(left))}
-                className="h-[44px] rounded-xl border border-[#E2E8F0] px-3 text-[12.5px] font-bold text-[#334155] hover:bg-[#F8FAFC]"
-              >
-                Full {money(left)}
-              </button>
-            </div>
-            {!amountOk && <p className="mt-1 text-[12px] text-[#DC2626]">Between ₹0.01 and {money(left)}.</p>}
-          </label>
         )}
 
         <p className="mt-4 text-[12.5px] font-bold text-[#475569]">Reason</p>
@@ -115,10 +82,10 @@ const ReasonModal = ({ kind, order, busy, onClose, onConfirm }) => {
           <button
             type="button"
             disabled={!ok}
-            onClick={() => onConfirm({ reason, amount: refund ? amt : undefined })}
+            onClick={() => onConfirm({ reason })}
             className="h-[44px] flex-1 rounded-xl bg-[#DC2626] text-[13px] font-bold text-white hover:bg-[#B91C1C] disabled:opacity-40"
           >
-            {busy ? "Working…" : refund ? `Refund ${amountOk ? money(amt) : ""}` : "Cancel order"}
+            {busy ? "Working…" : refund ? `Refund ${money(left)}` : "Cancel order"}
           </button>
         </div>
       </div>

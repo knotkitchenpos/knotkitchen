@@ -51,6 +51,12 @@ const cashfreeWebhook = async (req, res) => {
     const signature = String(req.headers["x-webhook-signature"] || "");
     if (!timestamp || !signature) return ack(res, "missing signature headers");
 
+    // A refund event names a refund we opened, not a payment. It is verified
+    // the same way and then Cashfree is ASKED, never believed.
+    if (String(req.body?.type || "").toUpperCase().startsWith("REFUND")) {
+      return handleRefundEvent(req, res, { rawBody, timestamp, signature });
+    }
+
     const orderId = String(req.body?.data?.order?.order_id || "");
     if (!orderId) return ack(res, "no order_id in payload");
 
@@ -187,6 +193,37 @@ const cashfreeWebhook = async (req, res) => {
     console.error("[cashfree-webhook] handler failed:", error?.message || error);
     return res.status(200).json({ success: true, error: "handler_error" });
   }
+};
+
+/**
+ * REFUND_STATUS_EVENT. Find the attempt by the refund id we minted and the
+ * gateway order it belongs to, verify the signature with that tenant's
+ * secret, then let syncRefund fetch the status from Cashfree and record it.
+ */
+const handleRefundEvent = async (req, res, { rawBody, timestamp, signature }) => {
+  const refund = req.body?.data?.refund || {};
+  const orderId = String(refund.order_id || "");
+  const refundId = String(refund.refund_id || "");
+  if (!orderId || !refundId) return ack(res, "refund event without order_id / refund_id");
+
+  const Order = require("../models/orderModel");
+  const order = await Order.findOne({
+    "paymentData.gatewayOrderId": orderId,
+    "refunds.gateway.refundId": refundId,
+    isDeleted: { $ne: true },
+  });
+  if (!order) return ack(res, `no refund ${refundId} on gateway order ${orderId}`);
+
+  const gw = await resolveGateway({ restaurantId: order.restaurantId, storeId: order.storeId });
+  if (gw.provider !== PROVIDERS.CASHFREE || !gw.webhookSecret) return ack(res, "no Cashfree secret for this tenant");
+  if (!cashfree.verifyWebhook({ rawBody, timestamp, signature, secretKey: gw.webhookSecret })) {
+    console.warn(`[cashfree-webhook] signature rejected for refund ${refundId}`);
+    return res.status(401).json({ success: false, message: "Invalid signature." });
+  }
+
+  const { syncRefund } = require("../services/refunds");
+  const { entry, changed } = await syncRefund(order, { refundId });
+  return ack(res, null, { refund: entry ? entry.status : null, changed: Boolean(changed) });
 };
 
 module.exports = { cashfreeWebhook };

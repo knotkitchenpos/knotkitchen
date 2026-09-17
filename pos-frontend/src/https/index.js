@@ -92,9 +92,14 @@ export const closeShift = ({ closingCash, note }) => axiosWrapper.post("/api/shi
 
 /** Void an order with a reason on record. Staff need the Security PIN. */
 export const cancelOrder = ({ orderId, reason }) => axiosWrapper.put(`/api/order/${orderId}/cancel`, { reason });
-/** Give money back on a completed order. Blank amount = everything left. */
-export const refundOrder = ({ orderId, amount, reason }) =>
-  axiosWrapper.post(`/api/order/${orderId}/refund`, { amount, reason });
+/**
+ * Refund a CANCELLED order that was paid through Cashfree. The backend works
+ * out the amount from the payment record and talks to Cashfree; the till
+ * sends only why.
+ */
+export const refundOrder = ({ orderId, reason }) => axiosWrapper.post(`/api/order/${orderId}/refund`, { reason });
+/** Ask Cashfree where a pending (or unconfirmed) refund stands. */
+export const syncRefund = (orderId) => axiosWrapper.post(`/api/order/${orderId}/refund/sync`);
 
 export const markOrderReady = (orderId) =>
   axiosWrapper.put(`/api/order/${orderId}/ready`);

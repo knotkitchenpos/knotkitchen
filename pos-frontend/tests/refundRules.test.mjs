@@ -1,0 +1,48 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const here = path.dirname(fileURLToPath(import.meta.url));
+const SRC = (p) => fs.readFileSync(path.join(here, "..", p), "utf8");
+
+test("the Refund button exists only on a cancelled order, and only in the states the backend allows", () => {
+  const page = SRC("src/pages/Orders.jsx");
+  const block = page.slice(page.indexOf("{isCancelled(selected.orderStatus) ? ("), page.indexOf("<I.x s={16} /> Cancel"));
+  assert.match(block, /selected\.refundStatus === REFUND_STATUS\.REFUNDED/);
+  assert.match(block, /selected\.refundStatus === REFUND_STATUS\.REFUND_PENDING/);
+  assert.match(block, /askReason\("refund", selected\)/);
+  assert.equal((page.match(/askReason\("refund"/g) || []).length, 1, "one way in, inside the cancelled branch");
+  assert.match(block, /Refund Pending/);
+  assert.match(block, /Retry Refund/);
+  // A cancelled cash or counter-UPI order renders nothing: NOT_APPLICABLE falls through to null.
+  assert.match(block, /\) : null/);
+  assert.ok(!/isSettled\(selected\.orderStatus\) \? \(\s*<button[^]*?Refund/.test(page), "no refund on an active order");
+});
+
+test("a paid order can be cancelled; the money is handled afterwards, not by the cancel", () => {
+  const page = SRC("src/pages/Orders.jsx");
+  assert.match(page, /disabled=\{isRefunded\(selected\.orderStatus\) \|\| voidMutation\.isPending\}/);
+});
+
+test("the till sends a reason and nothing else; the amount is the backend's", () => {
+  const api = SRC("src/https/index.js");
+  assert.match(api, /export const refundOrder = \(\{ orderId, reason \}\) => axiosWrapper\.post\(`\/api\/order\/\$\{orderId\}\/refund`, \{ reason \}\)/);
+  assert.match(api, /export const syncRefund = \(orderId\) => axiosWrapper\.post\(`\/api\/order\/\$\{orderId\}\/refund\/sync`\)/);
+  const modal = SRC("src/components/orders/ReasonModal.jsx");
+  assert.ok(!/type="number"/.test(modal), "no amount field");
+  assert.match(modal, /onConfirm\(\{ reason \}\)/);
+  assert.match(modal, /order\?\.refundableAmount/);
+  assert.match(modal, /through Cashfree/);
+});
+
+test("the payment kind and refund state shown come from the backend", () => {
+  const page = SRC("src/pages/Orders.jsx");
+  assert.match(page, /selected\.paymentKindLabel/);
+  assert.match(page, /REFUND_STATUS_LABELS\[selected\.refundStatus\]/);
+  const consts = SRC("src/constants/orderStatus.js");
+  for (const s of ["NOT_APPLICABLE", "NOT_REFUNDED", "REFUND_PENDING", "REFUNDED", "REFUND_FAILED"]) {
+    assert.match(consts, new RegExp(`${s}: "${s}"`));
+  }
+});

@@ -7,6 +7,7 @@ const {
   markOrderReady,
   cancelOrder,
   refundOrder,
+  syncOrderRefund,
   getPopularItems,
   getOrdersReport,
 } = require("../controllers/orderController");
@@ -37,5 +38,6 @@ router.route("/:id/ready").put(isVerifiedUser, markOrderReady);
 // still cancel (KDS / reject flows) but records no money movement.
 router.route("/:id/cancel").put(isVerifiedUser, requireProtectedAction, cancelOrder);
 router.route("/:id/refund").post(isVerifiedUser, requireManager, refundOrder);
+router.route("/:id/refund/sync").post(isVerifiedUser, requireManager, syncOrderRefund);
 
 module.exports = router;

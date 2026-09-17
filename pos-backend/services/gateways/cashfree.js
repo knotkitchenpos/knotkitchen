@@ -246,6 +246,25 @@ const createRefund = async ({ appId, secretKey, environment, orderId, refundId, 
 };
 
 /**
+ * What became of one refund. Same shape as createRefund's answer; a refund
+ * Cashfree never received is a CashfreeError with status 404.
+ */
+const getRefund = async ({ appId, secretKey, environment, orderId, refundId }) => {
+  const payload = await request({
+    path: `/orders/${encodeURIComponent(orderId)}/refunds/${encodeURIComponent(refundId)}`,
+    appId,
+    secretKey,
+    environment,
+  });
+  return {
+    refundId: payload?.refund_id || String(refundId),
+    cfRefundId: payload?.cf_refund_id ? String(payload.cf_refund_id) : "",
+    status: String(payload?.refund_status || "PENDING").toUpperCase(),
+    amount: Number(payload?.refund_amount) || 0,
+  };
+};
+
+/**
  * Verify a webhook came from Cashfree.
  *
  * Base64(HMAC-SHA256(timestamp + rawBody, secret)) — the timestamp and the
@@ -298,6 +317,7 @@ module.exports = {
   CashfreeError,
   createOrder,
   createRefund,
+  getRefund,
   fetchOrder,
   isOrderPaid,
   verifyWebhook,
