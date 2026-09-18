@@ -349,12 +349,20 @@ export default function OrderOnline() {
     }
   };
 
+  /**
+   * "Pay" goes straight to the gateway: the server opens the Cashfree order
+   * against the table's own bill and the checkout opens on the same tap, with
+   * no summary screen in between. The summary card is only what is left
+   * behind: a store with no gateway (ask for the bill instead), or a diner
+   * who closed the checkout and wants to try again.
+   */
   const preparePayment = async () => {
     setLoadingPayment(true);
     try {
       const { data } = await qrGetPaymentIntent(token, claimRef.current);
       setPaymentInfo(data.data);
-      await refetch();
+      if (data.data?.checkout?.paymentSessionId) await payOnline(data.data.checkout);
+      else await refetch();
     } catch (e) {
       if (e.response?.status === 409) return endSession(e.response?.data?.message);
       setErr(e.response?.data?.message || "Could not prepare payment.");
@@ -427,8 +435,10 @@ export default function OrderOnline() {
    * against the session's own bill, and re-checks with the gateway before it
    * settles anything. This browser only says "checkout finished, please look".
    */
-  const payOnline = async () => {
-    const checkout = paymentInfo?.checkout;
+  const payOnline = async (opened) => {
+    // Called with the checkout the server just opened, or (from the retry
+    // button, which passes a click event) with the one already on screen.
+    const checkout = opened?.paymentSessionId ? opened : paymentInfo?.checkout;
     if (!checkout) {
       setErr("Online payment is not available for this table right now.");
       return;
@@ -652,7 +662,7 @@ export default function OrderOnline() {
                     className="text-sm py-2.5 rounded-xl font-bold text-white disabled:opacity-50"
                     style={{ background: primary }}
                   >
-                    {loadingPayment ? "Preparing…" : "Pay"}
+                    {loadingPayment ? "Opening payment…" : "Pay"}
                   </button>
                 </div>
               ) : (
