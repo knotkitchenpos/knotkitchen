@@ -85,6 +85,15 @@ export const itemExtras = (item = {}) => {
  * extras were called. Printing it AND the rows salvaged from it would list
  * every extra twice on the same bill.
  */
+/**
+ * A line the kitchen or the till struck off. It stays on the order as a
+ * record, but it was not sold: bills, receipts and kitchen tickets skip it.
+ */
+export const isCancelledItem = (item = {}) => String(item?.status || "").toLowerCase() === "cancelled";
+
+/** The lines that were actually sold: what a bill prints. */
+export const billableItems = (items = []) => (Array.isArray(items) ? items : []).filter((i) => !isCancelledItem(i));
+
 export const itemDisplayName = (item = {}) =>
   String(item?.name || "").replace(/\s*\(\+\s*[^)]*\)\s*$/, "").trim();
 

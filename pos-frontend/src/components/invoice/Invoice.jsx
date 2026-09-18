@@ -7,7 +7,7 @@ import { useMutation } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
 import { printOrderReceipt } from "../../utils/printReceipt";
 import { sendEBill } from "../../https";
-import { itemDisplayName, itemExtras, resolveItemAmounts } from "../../utils/orderItems";
+import { billableItems, itemDisplayName, itemExtras, resolveItemAmounts } from "../../utils/orderItems";
 import { money } from "../../utils";
 
 /**
@@ -45,7 +45,8 @@ const Invoice = ({
     const safeOrder = orderInfo || {};
     const safeCustomer = safeOrder.customerDetails || {};
     const safeBills = safeOrder.bills || {};
-    const safeItems = safeOrder.items || [];
+    // Cancelled lines were not sold: they are not on the bill.
+    const safeItems = billableItems(safeOrder.items);
 
     // Prefer explicit props from OrderPanel (react-query cached). Falls back
     // to whatever the server attached to the order document, then to a

@@ -54,7 +54,12 @@ const buildReceipt = ({
   // in twice for POS orders, which store the LINE total in `price` and left
   // `total` at 0. resolveItemAmounts settles which is which -- including for
   // orders written before that was fixed. See services/orderItemAmounts.js.
-  const items = rawItems.map((item) => {
+  //
+  // A cancelled line stays on the order as a record but was not sold, so it
+  // is not on the bill (nor in the e-bill's item count).
+  const items = rawItems
+    .filter((item) => String(item?.status || "").toLowerCase() !== "cancelled")
+    .map((item) => {
     const { quantity, unitPrice, lineTotal } = resolveItemAmounts(item);
     return {
       name: item.name || "Item",

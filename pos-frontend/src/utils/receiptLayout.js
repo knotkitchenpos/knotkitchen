@@ -1,4 +1,4 @@
-import { itemDisplayName, itemExtras, resolveItemAmounts } from "./orderItems.js";
+import { billableItems, itemDisplayName, itemExtras, resolveItemAmounts } from "./orderItems.js";
 import { orderDisplayId, tableLabel } from "./orderLabels.js";
 import { inr } from "./index.js";
 
@@ -180,7 +180,8 @@ export const layoutReceipt = ({ order = {}, store = {}, settings = {}, images = 
   rule(true);
 
   // ---- Items: Item | Rate | Qty | Price ----
-  const rows = (order.items || []).map((item) => {
+  // Cancelled lines were not sold and are not on the bill.
+  const rows = billableItems(order.items).map((item) => {
     const { quantity, unitPrice, lineTotal } = resolveItemAmounts(item);
     return {
       name: itemDisplayName(item) || "Item",
@@ -209,8 +210,7 @@ export const layoutReceipt = ({ order = {}, store = {}, settings = {}, images = 
       const itemW = inner - rateW - qtyW - priceW - P.gap * 3;
       return { qtyLabel, qtyW, itemW };
     };
-    let q = fits("Quantity");
-    if (q.itemW < inner * 0.4) q = fits("Qty");
+    const q = fits("Qty");
     cols = { size, rateW, priceW, ...q };
     if (q.itemW >= inner * 0.34 || size <= P.small - 3) break;
     size -= 1;
@@ -337,7 +337,8 @@ export const layoutKot = ({ order = {}, items, store = {}, paper = 80, round = f
   if (!table) pair("Customer", order.customerDetails?.name);
   rule(true);
 
-  const lines = Array.isArray(items) ? items : order.items || [];
+  // A struck-off dish must not reach the kitchen printer either.
+  const lines = billableItems(Array.isArray(items) ? items : order.items);
   const qtyFont = font(big, true);
   const qtyW = Math.ceil(Math.max(...lines.map((it) => measure(`${resolveItemAmounts(it).quantity} x`, qtyFont)), 0)) + P.gap;
   const xName = P.pad + qtyW;

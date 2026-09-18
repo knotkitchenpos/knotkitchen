@@ -60,10 +60,10 @@ for (const paper of [58, 80]) {
   });
 }
 
-test("the columns are Item | Rate | Quantity | Price, with the extras under the item", () => {
+test("the columns are Item | Rate | Qty | Price, with the extras under the item", () => {
   const ops = textOps(layoutReceipt({ order: ORDER, store: { name: "S" }, paper: 80, measure }));
   const header = ops.filter((o) => ["Item", "Rate", "Quantity", "Qty", "Price"].includes(o.text)).map((o) => o.text);
-  assert.deepEqual(header.slice(0, 4).map((t) => (t === "Qty" ? "Quantity" : t)), ["Item", "Rate", "Quantity", "Price"]);
+  assert.deepEqual(header.slice(0, 4), ["Item", "Rate", "Qty", "Price"], "the column reads Qty on every paper size");
   assert.ok(ops.some((o) => o.text.startsWith("+ Extra")), "extras are printed under the dish");
   assert.ok(ops.some((o) => o.text === "1,280.00"), "rate is the price of one");
   assert.ok(ops.some((o) => o.text === "15,360.00"), "price is rate x quantity");
@@ -248,4 +248,19 @@ test("cat printer job: framed packets, CRC-8, LSB-first rows, 384 wide", async (
   const print = fs.readFileSync(path.join(__dirname, "..", "src/utils/printReceipt.js"), "utf8");
   assert.match(print, /const encode = printer\.protocol === "cat" \? catJob : rasterJob;/);
   assert.match(print, /printer\.protocol === "cat" \|\| printer\.paper === "58" \? "58" : "80"/);
+});
+
+test("a cancelled line is not printed on the bill, nor on the kitchen ticket", () => {
+  const order = {
+    ...ORDER,
+    items: [
+      ...ORDER.items,
+      { name: "Struck Off Dish", quantity: 1, price: 178, total: 178, status: "cancelled", cancelReason: "Not accepted" },
+    ],
+  };
+  const bill = textOps(layoutReceipt({ order, store: { name: "S" }, paper: 80, measure })).map((o) => o.text);
+  assert.ok(!bill.some((t) => /Struck Off Dish/.test(t)), "not on the receipt");
+  assert.ok(!bill.includes("178.00"), "and its price is not listed");
+  const kot = textOps(layoutKot({ order, store: { name: "S" }, paper: 80, measure })).map((o) => o.text);
+  assert.ok(!kot.some((t) => /Struck Off Dish/.test(t)), "not on the KOT");
 });
