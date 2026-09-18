@@ -356,6 +356,7 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
       addItemsToTableSession({ sessionId, items, customerCount }),
     onSuccess: () => {
       enqueueSnackbar("Items added to the table's order.", { variant: "success" });
+      onMobileClose?.();
       qc.invalidateQueries({ queryKey: ["tables"] });
       qc.invalidateQueries({ queryKey: ["table-sessions"] });
       setShowTable(false);
@@ -373,6 +374,7 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
       const s = res.data?.data;
       if (s?._id) dispatch(setSessionId(s._id));
       enqueueSnackbar("Order attached to table!", { variant: "success" });
+      onMobileClose?.();
       qc.invalidateQueries({ queryKey: ["tables"] });
       qc.invalidateQueries({ queryKey: ["table-sessions"] });
       setShowTable(false);
@@ -637,6 +639,7 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
     dispatch(clearDiscount());
     dispatch(setOrderType("Collection"));
     setShowHeldOrders(false);
+    onMobileClose?.();
     enqueueSnackbar("Order held. The cart is ready for the next customer.", { variant: "success" });
   };
 
@@ -1254,7 +1257,12 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
       {invoice && (
         <Invoice
           orderInfo={invoice}
-          setShowInvoice={() => setInvoice(null)}
+          // On a phone the cart is a full-screen sheet: once the invoice is
+          // dismissed the order is done, so go back to the menu.
+          setShowInvoice={() => {
+            setInvoice(null);
+            onMobileClose?.();
+          }}
           // Module 3 §5 — the invoice/receipt header must show the
           // authenticated restaurant's branding, never a hardcoded
           // "KnotKitchen". These come from the same react-query caches
