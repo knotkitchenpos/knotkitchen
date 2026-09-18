@@ -9,7 +9,6 @@ import ActivityLogView from "../components/dashboard/ActivityLogView";
 import DeviceConfiguration from "../components/settings/DeviceConfiguration";
 import ShiftView from "../components/settings/ShiftView";
 import InventoryView from "../components/settings/InventoryView";
-import CustomersView from "../components/settings/CustomersView";
 import { I } from "../components/settings/icons";
 import ManageCacheView from "../components/settings/ManageCacheView";
 import StorePropertiesView from "../components/settings/StorePropertiesView";
@@ -38,7 +37,6 @@ const MENU_ITEMS = [
         { id: "inventory", title: "Inventory", desc: "Ingredients, stock levels, recipes per dish, wastage. Sales deplete stock automatically.", Icon: I.boxes, mode: "view" },
       ]
     : []),
-  { id: "customers", title: "Customers", desc: "Everyone who ordered: visits, spend, notes and tags.", Icon: I.users, mode: "view" },
   // Reachable even when the account is locked -- it is the only screen that
   // can clear a lock, so it must never be gated. See middlewares/accountLock.js.
   { id: "billing", title: "Billing & Subscription", desc: "Business Balance, plan, invoices and transactions.", Icon: I.fileText, path: "/settings/billing" },
@@ -130,8 +128,6 @@ const Settings = () => {
           <ShiftView />
         ) : activeSubView === "inventory" ? (
           <InventoryView />
-        ) : activeSubView === "customers" ? (
-          <CustomersView />
         ) : activeSubView === "activity" ? (
           <ActivityLogView />
         ) : (

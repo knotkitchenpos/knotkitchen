@@ -1,4 +1,5 @@
 import { getStoreProperties } from "../https";
+import { billableItems } from "./orderItems.js";
 import { printHtmlDocument } from "./printDocument";
 import { formatAddress } from "./address";
 import { layoutKot, layoutReceipt, paperOf } from "./receiptLayout.js";
@@ -175,6 +176,14 @@ export const printOrderReceipt = async (order, { auto = false, config, context }
  * @param {boolean} [options.auto]  never open a dialog nobody asked for
  */
 export const printKot = async (order, { items, round = false, auto = false, config, context } = {}) => {
+  // Cancelled dishes are not cooked. With none left there is no ticket: an
+  // automatic print skips quietly, a pressed button says why.
+  const lines = billableItems(Array.isArray(items) ? items : order?.items);
+  if (lines.length === 0) {
+    if (auto) return null;
+    throw new Error("Nothing to print: every item on this order is cancelled.");
+  }
+  items = lines;
   const printer = config || loadPrinterConfig();
   const { store } = context || (await loadReceiptContext());
   const paper = paperFor(printer);

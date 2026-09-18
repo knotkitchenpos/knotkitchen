@@ -12,8 +12,10 @@ test("offline sync goes through the live addOrder and dedupes on the offline key
   assert.ok(!/findByIdAndUpdate\(orderId, clientOrderData/.test(src), "the client-wins conflict endpoint is gone");
 });
 
-test("customer routes: update and order history are permission-gated", () => {
+test("customer routes are closed to the store: every one is CSD-only", () => {
   const src = fs.readFileSync(path.join(__dirname, "..", "routes", "customerRoute.js"), "utf8");
-  assert.match(src, /"\/:id"\)\.put\(isVerifiedUser, requirePermission\("CUSTOMER_CREATE"\), updateCustomer\)/);
-  assert.match(src, /"\/:id\/orders"\)\.get\(isVerifiedUser, requirePermission\("CUSTOMER_VIEW"\), customerOrders\)/);
+  assert.match(src, /const closed = csdOnly\("Customers"\);/);
+  const routes = src.match(/router\.route\([^)]*\)\.(get|post|put)\([^;]*;/g) || [];
+  assert.equal(routes.length, 5);
+  for (const r of routes) assert.match(r, /isVerifiedUser, closed,/, r);
 });

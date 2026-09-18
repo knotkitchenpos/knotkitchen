@@ -69,9 +69,6 @@ export const updateOrderStatus = ({ orderId, orderStatus }) =>
 export const syncOfflineOrders = (orders) => axiosWrapper.post("/api/offline/orders/sync", { orders });
 
 /* ---------- Customers (CRM) ---------- */
-export const getCustomers = (search) => axiosWrapper.get("/api/customer", { params: search ? { search } : {} });
-export const updateCustomer = (id, d) => axiosWrapper.put(`/api/customer/${id}`, d);
-export const getCustomerOrders = (id) => axiosWrapper.get(`/api/customer/${id}/orders`);
 
 /* ---------- Inventory ---------- */
 export const getIngredients = () => axiosWrapper.get("/api/inventory/ingredients");

@@ -20,7 +20,7 @@ import SecurityPinModal from "../components/common/SecurityPinModal";
 import { checkActionAuthorization, isManager } from "../utils/security";
 import { getMyRestaurant } from "../https";
 import { printKot, printOrderReceipt } from "../utils/printReceipt";
-import { itemDisplayName, itemExtras } from "../utils/orderItems";
+import { billableItems, itemDisplayName, itemExtras } from "../utils/orderItems";
 import { isPreparing, isReady, isSettled, isCancelled, isRefunded, statusLabel, COMPLETED, REFUND_STATUS, REFUND_STATUS_LABELS } from "../constants/orderStatus";
 import { sourceLabel, tableLabel, orderDisplayId } from "../utils/orderLabels";
 import { sendTableEBill } from "../utils/sendTableEBill";
@@ -1005,7 +1005,10 @@ const Orders = () => {
             </div>
 
             {/* Footer actions */}
-            <div className="px-4 py-3.5 border-t border-[#E2E8F0] shrink-0 grid grid-cols-4 gap-2">
+            {/* Two rows of two: Print and KOT above, the order's next step and
+                Cancel / Refund below. Four across squeezed "Mark Ready" onto
+                two lines beside single-line neighbours. */}
+            <div className="px-4 py-3.5 border-t border-[#E2E8F0] shrink-0 grid grid-cols-2 gap-2 [&>button]:whitespace-nowrap">
               <button
                 onClick={() =>
                   printOrderReceipt(selected).catch((err) =>
@@ -1017,13 +1020,20 @@ const Orders = () => {
                 <I.print /> Print
               </button>
               <button
+                // A cancelled order, or one whose every dish was struck off,
+                // has nothing for the kitchen: no ticket.
+                disabled={isCancelled(selected.orderStatus) || billableItems(selected.items).length === 0}
                 onClick={() =>
                   printKot(selected).catch((err) =>
                     enqueueSnackbar(err?.message || "Could not print the KOT.", { variant: "error" }),
                   )
                 }
-                title="Kitchen order ticket: quantities and notes, no prices"
-                className="h-[46px] rounded-xl border border-[#E2E8F0] text-[#334155] text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#F8FAFC]"
+                title={
+                  isCancelled(selected.orderStatus) || billableItems(selected.items).length === 0
+                    ? "Nothing to send to the kitchen: this order is cancelled"
+                    : "Kitchen order ticket: quantities and notes, no prices"
+                }
+                className="h-[46px] rounded-xl border border-[#E2E8F0] text-[#334155] text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#F8FAFC] disabled:opacity-40 disabled:hover:bg-transparent"
               >
                 KOT
               </button>
@@ -1057,13 +1067,19 @@ const Orders = () => {
                   Complete
                 </button>
               ) : (
-                <button
-                  disabled
-                  className="h-[46px] rounded-xl bg-[#F1F5F9] text-[#94A3B8] text-[12.5px] font-bold flex items-center justify-center gap-1.5"
+                // Nothing left to do: say where the order ended, as a label, not
+                // as a greyed-out action. It takes the whole row when there is
+                // no Cancel / Refund beside it (a cancelled cash order).
+                <div
+                  className={`h-[46px] rounded-xl bg-[#F1F5F9] text-[#64748B] text-[12.5px] font-bold flex items-center justify-center ${
+                    isCancelled(selected.orderStatus) &&
+                    (!selected.refundStatus || selected.refundStatus === REFUND_STATUS.NOT_APPLICABLE)
+                      ? "col-span-2"
+                      : ""
+                  }`}
                 >
-                  <I.check s={16} />
-                  {selected.orderStatus}
-                </button>
+                  {statusLabel(selected.orderStatus)}
+                </div>
               )}
 
               {/* Refund lives only on a CANCELLED order, and only when the

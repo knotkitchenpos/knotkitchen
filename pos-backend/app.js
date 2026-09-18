@@ -203,6 +203,15 @@ app.get("/ready", (req, res) => {
 // Other Endpoints
 app.use("/api/auth", require("./routes/userRoute"));
 app.use("/api/user", require("./routes/userRoute"));
+// A customer's phone number is shown in full on the day of the order only;
+// after that the POS gets 98******10 (middlewares/customerPrivacy). Mounted
+// ahead of every POS router that can return an order, session, booking,
+// receipt or payment. /api/csd is deliberately not in the list.
+app.use(
+  ["/api/order", "/api/online-orders", "/api/table-session", "/api/table-bookings", "/api/table",
+   "/api/payment-link", "/api/receipts", "/api/kds", "/api/shift", "/api/marketplace", "/api/offline"],
+  require("./middlewares/customerPrivacy").customerPrivacy,
+);
 app.use("/api/order", require("./routes/orderRoute"));
 app.use("/api/shift", require("./routes/shiftRoute"));
 app.use("/api/table", require("./routes/tableRoute"));

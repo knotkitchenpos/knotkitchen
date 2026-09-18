@@ -35,7 +35,7 @@ const {
   getLanding, updateLanding,
 } = require("../controllers/csdCatalogController");
 const {
-  getRestaurant, getCustomers, getOrderSummary, getRestaurantStaff, getActivity,
+  getRestaurant, getCustomers, exportCustomers, getOrderSummary, getRestaurantStaff, getActivity,
   updateGoogleBusiness, updateCharges, createPosSession, listPosSessions,
 } = require("../controllers/csdRestaurantController");
 
@@ -95,6 +95,8 @@ router.get("/orders/:id", getOrder);
 // routes below carry requireCsdAdmin individually).
 router.get("/restaurants/:storeId", getRestaurant);
 router.get("/restaurants/:storeId/customers", getCustomers);
+// Bulk export of customer details: admin only, and audit-logged in the controller.
+router.get("/restaurants/:storeId/customers/export", requireCsdAdmin, exportCustomers);
 router.get("/restaurants/:storeId/order-summary", getOrderSummary);
 router.get("/restaurants/:storeId/staff", getRestaurantStaff);
 // Activity is a full audit trail (support sessions, jobs, admin actions).

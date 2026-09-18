@@ -66,6 +66,9 @@ export const restaurants = {
   get: (storeId) => api.get(`/restaurants/${storeId}`).then((r) => r.data.data),
   customers: (storeId, params) =>
     api.get(`/restaurants/${storeId}/customers`, { params }).then((r) => r.data.data),
+  // The whole list as a CSV file (admin only; audit-logged server side).
+  customersCsv: (storeId) =>
+    api.get(`/restaurants/${storeId}/customers/export`, { responseType: "blob" }).then((r) => r.data),
   orderSummary: (storeId, period) =>
     api.get(`/restaurants/${storeId}/order-summary`, { params: { period } }).then((r) => r.data.data),
   staff: (storeId) => api.get(`/restaurants/${storeId}/staff`).then((r) => r.data.data),

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
-import { FiX, FiChevronLeft, FiChevronRight } from "react-icons/fi";
+import { FiX, FiChevronLeft, FiChevronRight, FiDownload } from "react-icons/fi";
 import { restaurants as api, errorMessage } from "../api";
-import { dOnly, num } from "../lib/format";
+import { dOnly, inr, num } from "../lib/format";
 
 
 /** Map the stored `source` values onto the labels the spec uses. */
@@ -11,6 +11,27 @@ const CustomersDialog = ({ storeId, onClose }) => {
   const [data, setData] = useState(null);
   const [page, setPage] = useState(1);
   const [error, setError] = useState("");
+  const [exporting, setExporting] = useState(false);
+
+  // Customer details leave the system only from here, as a file, and the
+  // server logs who took it.
+  const exportCsv = async () => {
+    setExporting(true);
+    setError("");
+    try {
+      const blob = await api.customersCsv(storeId);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `customers-${storeId}-${new Date().toISOString().slice(0, 10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(errorMessage(err, "Could not export the customer list. Only an admin can."));
+    } finally {
+      setExporting(false);
+    }
+  };
 
   useEffect(() => {
     let alive = true;
@@ -38,9 +59,15 @@ const CustomersDialog = ({ storeId, onClose }) => {
               {" · "}Store <span className="font-mono">{storeId}</span>
             </p>
           </div>
-          <button type="button" onClick={onClose} className="text-navy-400 hover:text-navy-700" aria-label="Close">
-            <FiX size={20} />
-          </button>
+          <div className="flex items-center gap-3">
+            <button type="button" onClick={exportCsv} disabled={exporting || !data || data.total === 0}
+              className="flex items-center gap-1.5 rounded-lg border border-navy-300 px-3 py-1.5 text-sm font-semibold text-navy-700 hover:bg-navy-50 disabled:opacity-40">
+              <FiDownload /> {exporting ? "Exporting…" : "Export CSV"}
+            </button>
+            <button type="button" onClick={onClose} className="text-navy-400 hover:text-navy-700" aria-label="Close">
+              <FiX size={20} />
+            </button>
+          </div>
         </header>
 
         <div className="flex-1 overflow-y-auto p-5">
@@ -62,6 +89,7 @@ const CustomersDialog = ({ storeId, onClose }) => {
                     <th scope="col" className="pb-2">Phone</th>
                     <th scope="col" className="pb-2">Source</th>
                     <th scope="col" className="pb-2 text-right">Orders</th>
+                    <th scope="col" className="pb-2 text-right">Spent</th>
                     <th scope="col" className="pb-2">Last order</th>
                   </tr>
                 </thead>
@@ -80,6 +108,7 @@ const CustomersDialog = ({ storeId, onClose }) => {
                         </span>
                       </td>
                       <td className="py-2.5 text-right font-semibold text-navy-900">{c.totalOrders}</td>
+                      <td className="py-2.5 text-right text-navy-700">{inr(c.totalSpent)}</td>
                       <td className="py-2.5 text-xs text-navy-600">{dOnly(c.lastOrderDate)}</td>
                     </tr>
                   ))}

@@ -221,6 +221,45 @@ const getRestaurant = async (req, res, next) => {
  * and from the website is one customer, and orders carry the phone but not
  * always a customerId.
  */
+/**
+ * One row per phone number that has ordered from this store. Shared by the
+ * paged list and the CSV export so the two can never disagree.
+ */
+const customerGroups = (storeId) => [
+  {
+    $match: {
+      storeId,
+      isDeleted: { $ne: true },
+      orderStatus: { $not: /^cancelled$/i },
+      "customerDetails.phone": { $nin: [null, ""] },
+    },
+  },
+  {
+    $group: {
+      _id: "$customerDetails.phone",
+      name: { $last: "$customerDetails.name" },
+      totalOrders: { $sum: 1 },
+      totalSpent: { $sum: { $ifNull: ["$bills.totalWithTax", 0] } },
+      firstOrderDate: { $min: "$orderDate" },
+      lastOrderDate: { $max: "$orderDate" },
+      // A customer can order through more than one channel; keep the set.
+      sources: { $addToSet: { $ifNull: ["$source", "POS"] } },
+      orderTypes: { $addToSet: { $ifNull: ["$orderType", ""] } },
+    },
+  },
+];
+
+const customerRow = (c) => ({
+  phone: c._id,
+  name: c.name || "",
+  totalOrders: c.totalOrders,
+  totalSpent: Math.round((Number(c.totalSpent) || 0) * 100) / 100,
+  firstOrderDate: c.firstOrderDate,
+  lastOrderDate: c.lastOrderDate,
+  sources: (c.sources || []).filter(Boolean),
+  orderTypes: (c.orderTypes || []).filter(Boolean),
+});
+
 const getCustomers = async (req, res, next) => {
   try {
     const storeId = str(req.params.storeId);
@@ -228,28 +267,7 @@ const getCustomers = async (req, res, next) => {
 
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
-
-    const base = {
-      storeId,
-      isDeleted: { $ne: true },
-      orderStatus: { $not: /^cancelled$/i },
-      "customerDetails.phone": { $nin: [null, ""] },
-    };
-
-    const grouped = [
-      { $match: base },
-      {
-        $group: {
-          _id: "$customerDetails.phone",
-          name: { $last: "$customerDetails.name" },
-          totalOrders: { $sum: 1 },
-          lastOrderDate: { $max: "$orderDate" },
-          // A customer can order through more than one channel; keep the set.
-          sources: { $addToSet: { $ifNull: ["$source", "POS"] } },
-          orderTypes: { $addToSet: { $ifNull: ["$orderType", ""] } },
-        },
-      },
-    ];
+    const grouped = customerGroups(storeId);
 
     const [countRows, rows] = await Promise.all([
       Order.aggregate([...grouped, { $count: "n" }]),
@@ -265,20 +283,66 @@ const getCustomers = async (req, res, next) => {
 
     res.status(200).json({
       success: true,
-      data: {
-        total,
-        page,
-        pages: Math.ceil(total / limit),
-        customers: rows.map((c) => ({
-          phone: c._id,
-          name: c.name || "",
-          totalOrders: c.totalOrders,
-          lastOrderDate: c.lastOrderDate,
-          sources: (c.sources || []).filter(Boolean),
-          orderTypes: (c.orderTypes || []).filter(Boolean),
-        })),
-      },
+      data: { total, page, pages: Math.ceil(total / limit), customers: rows.map(customerRow) },
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// A cell that starts with = + - @ is a formula to a spreadsheet. Names are
+// typed by strangers; neutralise them. Quotes are doubled, every cell quoted.
+const csvCell = (value) => {
+  let text = value === null || value === undefined ? "" : String(value);
+  if (/^[=+\-@\t\r]/.test(text)) text = `'${text}`;
+  return `"${text.replace(/"/g, '""')}"`;
+};
+
+/**
+ * GET /api/csd/restaurants/:storeId/customers/export  (admin)
+ *
+ * The store's whole customer list as CSV. This is the only way customer
+ * details leave the system in bulk, so it is admin-only and every export is
+ * on the audit log with who took it and how many rows.
+ */
+const exportCustomers = async (req, res, next) => {
+  try {
+    const storeId = str(req.params.storeId);
+    await loadStore(storeId);
+
+    const rows = await Order.aggregate([
+      ...customerGroups(storeId),
+      { $sort: { lastOrderDate: -1 } },
+      { $limit: 50000 },
+    ]);
+    const day = (d) => (d ? new Date(d).toISOString().slice(0, 10) : "");
+    const lines = [
+      ["Name", "Phone", "Orders", "Total spent", "First order", "Last order", "Sources", "Order types"].map(csvCell).join(","),
+      ...rows.map(customerRow).map((c) =>
+        [
+          c.name,
+          String(c.phone || "").replace(/[^\d+]/g, ""),
+          c.totalOrders,
+          c.totalSpent.toFixed(2),
+          day(c.firstOrderDate),
+          day(c.lastOrderDate),
+          c.sources.join(" | "),
+          c.orderTypes.join(" | "),
+        ].map(csvCell).join(","),
+      ),
+    ];
+
+    await csdAudit({
+      req, staff: req.csdStaff,
+      action: "CSD_CUSTOMERS_EXPORTED",
+      resource: "Customer", entityType: "Restaurant", storeId,
+      description: `Customer list exported for ${storeId}: ${rows.length} customer(s)`,
+    });
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="customers-${storeId}-${day(new Date())}.csv"`);
+    // BOM so Excel reads the rupee-free UTF-8 names correctly.
+    res.status(200).send(`\uFEFF${lines.join("\r\n")}\r\n`);
   } catch (error) {
     next(error);
   }
@@ -764,7 +828,8 @@ const listPosSessions = async (req, res, next) => {
 };
 
 module.exports = {
-  getRestaurant, getCustomers, getOrderSummary, getRestaurantStaff, getActivity,
+  getRestaurant, getCustomers,
+  exportCustomers, getOrderSummary, getRestaurantStaff, getActivity,
   updateGoogleBusiness, updateCharges, createPosSession, listPosSessions,
   loadStore, periodWindow, PERIODS,
 };
