@@ -170,6 +170,10 @@
   font-size:.82rem;font-weight:700;color:#fff;background:var(--navy);box-shadow:0 0 0 5px var(--bg-2)}
 .stop h3{margin:0 0 .3em}.stop p{margin:0;color:var(--muted);font-size:.95rem}
 
+/* The line joins four dots in a row. Once the steps wrap it would underline
+   only the first row, so it goes and the numbered dots carry the order. */
+@media(max-width:1000px){.track::before,.track::after{display:none}}
+
 /* ---------- platform (dark) ---------- */
 .kk-dark{position:relative;overflow:hidden;color:var(--on-dark);background:linear-gradient(180deg,var(--ink) 0%,var(--ink-2) 100%)}
 .kk-dark .kk-head h2{color:#fff}.kk-dark .kk-head p{color:var(--on-dark-muted)}.kk-dark .kk-head .tag{color:var(--glow-2)}
