@@ -87,7 +87,11 @@ export default function StoreShell({
             <input
               type="search"
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
+              // A search looks across the whole menu, not just the chosen chip.
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setActiveCategory("");
+              }}
               placeholder="Search dishes…"
               aria-label="Search dishes"
               className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none focus:border-brand"
