@@ -102,3 +102,19 @@ select:-webkit-autofill {
   caret-color: inherit;
   transition: background-color 5000s ease-in-out 0s;
 }
+
+/*
+ * Component classes the table and home screens were written against but that
+ * were never defined. Tailwind emits nothing for an unknown class, so on
+ * Manage Tables the table cards had no border or background, the status
+ * badges were bare text and the guest avatar had no fill. Defined once here.
+ */
+@layer components {
+  .card { @apply bg-white border border-[#E2E8F0] rounded-2xl shadow-sm; }
+  .badge { @apply inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-bold uppercase tracking-wide; }
+  .badge-available, .badge-ready { @apply bg-[#DCFCE7] text-[#15803D]; }
+  .badge-booked { @apply bg-[#FEF3C7] text-[#B45309]; }
+  .badge-progress { @apply bg-[#DBEAFE] text-[#1D4ED8]; }
+  .bg-gradient-brand { background-image: linear-gradient(135deg, #FD5302, #C2410C); }
+  .btn-primary { @apply rounded-xl bg-[#FD5302] text-white font-bold px-4 py-2.5 hover:bg-[#D64502] disabled:opacity-50 disabled:cursor-not-allowed; }
+}
