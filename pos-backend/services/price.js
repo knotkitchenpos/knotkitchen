@@ -302,12 +302,15 @@ const calculateUnitPrice = ({
  *
  *   subtotal      the lines as sold
  *   discount      clamped to [0, subtotal]
- *   taxableBase   (subtotal - discount) + serviceCharge + packagingFee
- *                 A service or packaging charge is part of the supply and is
- *                 taxed with it. A delivery fee is not, and sits outside.
+ *   taxableBase   (subtotal - discount) + packagingFee
+ *                 A packaging charge is part of the supply and is taxed with
+ *                 it. A delivery fee is not, and sits outside.
  *   tax           exclusive: taxableBase * rate
  *                 inclusive: the tax already inside taxableBase, extracted
- *   totalWithTax  taxableBase + deliveryFee + (exclusive ? tax : 0)
+ *   serviceCharge goes on top of the taxed bill and is not itself taxed.
+ *                 Given as `serviceChargePercent` of (taxableBase + exclusive
+ *                 tax), or as an amount already struck (`serviceCharge`).
+ *   totalWithTax  taxableBase + (exclusive ? tax : 0) + serviceCharge + deliveryFee
  *
  * `taxRate` is a FRACTION (0.05 for 5%); callers get it, and `taxInclusive`,
  * from services/gst. Every figure is rounded once, with round2, at the end.
@@ -320,6 +323,7 @@ const computeTotals = ({
   subtotal = 0,
   discount = 0,
   serviceCharge = 0,
+  serviceChargePercent = 0,
   packagingFee = 0,
   deliveryFee = 0,
   taxRate = TAX_RATE,
@@ -327,39 +331,50 @@ const computeTotals = ({
 }) => {
   const gross = Math.max(0, Number(subtotal) || 0);
   const off = Math.min(gross, Math.max(0, Number(discount) || 0));
-  const service = Math.max(0, Number(serviceCharge) || 0);
+  const servicePct = Math.max(0, Number(serviceChargePercent) || 0);
   const packaging = Math.max(0, Number(packagingFee) || 0);
   const delivery = Math.max(0, Number(deliveryFee) || 0);
   const rate = Math.max(0, Number(taxRate) || 0);
   const inclusive = Boolean(taxInclusive) && rate > 0;
 
-  const taxableBase = round2(gross - off + service + packaging);
+  const taxableBase = round2(gross - off + packaging);
   const tax =
     rate === 0 ? 0 : inclusive ? round2(taxableBase - taxableBase / (1 + rate)) : round2(taxableBase * rate);
+  const taxed = taxableBase + (inclusive ? 0 : tax);
+  const service = round2(servicePct > 0 ? (taxed * servicePct) / 100 : Math.max(0, Number(serviceCharge) || 0));
 
   return {
     subtotal: round2(gross),
     discount: round2(off),
-    serviceCharge: round2(service),
+    serviceCharge: service,
     packagingFee: round2(packaging),
     deliveryFee: round2(delivery),
     taxableBase,
     taxPercent: Math.round(rate * 10000) / 100,
     taxInclusive: inclusive,
     tax,
-    totalWithTax: Math.max(0, round2(taxableBase + delivery + (inclusive ? 0 : tax))),
+    totalWithTax: Math.max(0, round2(taxed + service + delivery)),
   };
 };
 
 /**
  * Bill totals for a list of (price, quantity) pairs: the till, table and QR
- * shape. `additionalCharges` is the dine-in service charge.
+ * shape. The dine-in service charge comes as `serviceChargePercent`, or as
+ * `additionalCharges` when the amount was already struck.
  */
-const calculateBill = ({ items, taxRate = TAX_RATE, discount = 0, additionalCharges = 0, taxInclusive = false }) => {
+const calculateBill = ({
+  items,
+  taxRate = TAX_RATE,
+  discount = 0,
+  additionalCharges = 0,
+  serviceChargePercent = 0,
+  taxInclusive = false,
+}) => {
   const t = computeTotals({
     subtotal: items.reduce((s, i) => s + i.price * i.quantity, 0),
     discount,
     serviceCharge: additionalCharges,
+    serviceChargePercent,
     taxRate,
     taxInclusive,
   });
@@ -368,6 +383,7 @@ const calculateBill = ({ items, taxRate = TAX_RATE, discount = 0, additionalChar
     tax: t.tax,
     discount: t.discount,
     charges: t.serviceCharge,
+    serviceCharge: t.serviceCharge,
     totalWithTax: t.totalWithTax,
     taxPercent: t.taxPercent,
     taxInclusive: t.taxInclusive,

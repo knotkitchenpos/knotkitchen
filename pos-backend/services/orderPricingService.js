@@ -422,11 +422,9 @@ const calculateOrderTotals = ({
   }
 
   // ---- Module 8 §3: Packaging Fee Applicability ----
-  let packagingFee = 0;
-  const packingApply = ordering.packingApplyTo || "both";
-  if (packingApply === "both" || packingApply === environment) {
-    packagingFee = Number(ordering.packagingFee) || 0;
-  }
+  // Packing is a website charge only: a till or table order is not packed
+  // for the road, and the store sets the amount under Rules & Charges.
+  const packagingFee = environment === "website" ? Number(ordering.packagingFee) || 0 : 0;
 
   // ---- Tax and total ----
   // One resolver, shared with the table/QR path: a rate is not enough on its

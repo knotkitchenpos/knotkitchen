@@ -1,5 +1,8 @@
 import React, { useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import { enqueueSnackbar } from "notistack";
 import { money } from "../../utils";
+import { setTableServiceCharge } from "../../https";
 
 /**
  * Complete Order → how was this table paid?
@@ -57,8 +60,24 @@ const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 const TableSettleModal = ({ table, session, busy, onClose, onConfirm }) => {
   const [method, setMethod] = useState("CASH");
-  const bills = session?.bills || {};
+  // The bill as the server last struck it. Removing the service charge
+  // re-strikes it, so the modal keeps its own copy rather than the prop.
+  const qc = useQueryClient();
+  const [bills, setBills] = useState(session?.bills || {});
+  const [chargeBusy, setChargeBusy] = useState(false);
   const payable = Number(bills.totalWithTax || 0);
+  const toggleServiceCharge = async () => {
+    setChargeBusy(true);
+    try {
+      const { data } = await setTableServiceCharge(session._id, !bills.serviceChargeWaived);
+      setBills(data?.data?.bills || {});
+      ["tables", "table-sessions", "orders"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+    } catch (e) {
+      enqueueSnackbar(e.response?.data?.message || "Could not change the service charge.", { variant: "error" });
+    } finally {
+      setChargeBusy(false);
+    }
+  };
 
   // Split: several counter methods adding up to the bill. Editing one part
   // leaves the last part to absorb the remainder, so the sum always works.
@@ -133,10 +152,22 @@ const TableSettleModal = ({ table, session, busy, onClose, onConfirm }) => {
               <span>Tax</span>
               <span className="font-bold tabular-nums">{money(bills.tax)}</span>
             </div>
-            {Number(bills.charges) > 0 && (
-              <div className="flex justify-between text-[#475569]">
-                <span>{Number(bills.serviceCharge) > 0 ? "Service charge" : "Charges"}</span>
-                <span className="font-bold tabular-nums">{money(bills.charges)}</span>
+            {(Number(bills.charges) > 0 || bills.serviceChargeWaived) && (
+              <div className="flex justify-between items-center text-[#475569]">
+                <span>
+                  Service charge{Number(bills.serviceChargePercent) > 0 ? ` (${bills.serviceChargePercent}%)` : ""}
+                  <button
+                    type="button"
+                    onClick={toggleServiceCharge}
+                    disabled={chargeBusy || busy}
+                    className="ml-2 text-[11.5px] font-bold text-[#C2410C] underline disabled:opacity-50"
+                  >
+                    {bills.serviceChargeWaived ? "Add back" : "Remove"}
+                  </button>
+                </span>
+                <span className="font-bold tabular-nums">
+                  {bills.serviceChargeWaived ? "Removed" : money(bills.charges)}
+                </span>
               </div>
             )}
             <div className="flex justify-between pt-2 mt-1 border-t border-[#E2E8F0] text-[15px] text-[#0F172A]">

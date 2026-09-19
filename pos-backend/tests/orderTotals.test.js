@@ -19,11 +19,24 @@ test("a discount reduces the tax base", () => {
   assert.equal(t.totalWithTax, 177);
 });
 
-test("a service charge is part of the supply and is taxed with it", () => {
-  const t = computeTotals({ subtotal: 200, serviceCharge: 20, taxRate: 0.18 });
-  assert.equal(t.taxableBase, 220);
-  assert.equal(t.tax, 39.6);
+test("a service charge goes on top of the taxed bill and is not taxed", () => {
+  const t = computeTotals({ subtotal: 200, serviceChargePercent: 10, taxRate: 0.18 });
+  assert.equal(t.taxableBase, 200);
+  assert.equal(t.tax, 36, "the charge is outside the tax base");
+  assert.equal(t.serviceCharge, 23.6, "10% of 236, the bill after tax");
   assert.equal(t.totalWithTax, 259.6);
+});
+
+test("with inclusive prices the service charge is on the bill as it stands", () => {
+  const t = computeTotals({ subtotal: 1183, serviceChargePercent: 1, taxRate: 0.05, taxInclusive: true });
+  assert.equal(t.serviceCharge, 11.83);
+  assert.equal(t.totalWithTax, 1194.83);
+});
+
+test("a service charge already struck is added as it is", () => {
+  const t = computeTotals({ subtotal: 200, serviceCharge: 20, taxRate: 0.18 });
+  assert.equal(t.tax, 36);
+  assert.equal(t.totalWithTax, 256);
 });
 
 test("packaging is taxed, delivery is not", () => {
@@ -70,7 +83,8 @@ test("the table bill is the same rule", () => {
   });
   const t = computeTotals({ subtotal: 200, discount: 50, serviceCharge: 15, taxRate: 0.18 });
   assert.equal(bill.tax, t.tax);
-  assert.equal(bill.totalWithTax, 194.7);
+  assert.equal(bill.totalWithTax, 192, "150 + 27 tax + 15 charge");
+  assert.equal(bill.serviceCharge, 15);
   assert.equal(bill.charges, 15);
   assert.equal(bill.taxPercent, 18);
 });

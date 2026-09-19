@@ -10,6 +10,7 @@ const {
   recordSessionPayment,
   closeSessionWithoutPayment,
   cancelSessionItem,
+  setServiceCharge,
   moveSession,
   mergeSessions,
 } = require("../controllers/tableSessionController");
@@ -31,5 +32,6 @@ router.route("/:id/merge").post(isVerifiedUser, mergeSessions);
 // Pull one dish off a live table order (out of stock, sent back). The
 // diner's QR page reads the same session, so it shows there too.
 router.route("/:id/items/:itemId/cancel").post(isVerifiedUser, cancelSessionItem);
+router.route("/:id/service-charge").post(isVerifiedUser, setServiceCharge);
 
 module.exports = router;

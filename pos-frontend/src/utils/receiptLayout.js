@@ -72,7 +72,6 @@ export const billLines = (bills = {}, itemsSubtotal = 0, { gstSplit = false } = 
   add("Discount", bills.discount, "- ");
   add("Packing charge", bills.packagingFee);
   add("Delivery charge", bills.deliveryFee);
-  add("Service charge", bills.serviceCharge);
   // A GST-registered store shows the intra-state split the buyer needs to
   // claim credit; anyone else just "GST".
   const tax = Number(bills.tax) || 0;
@@ -85,6 +84,8 @@ export const billLines = (bills = {}, itemsSubtotal = 0, { gstSplit = false } = 
   } else {
     add(pct ? `GST @ ${pct.toLocaleString("en-IN", { maximumFractionDigits: 2 })}%` : "GST", tax);
   }
+  // After the tax: the service charge is on the taxed bill and is not taxed.
+  add("Service charge", bills.serviceCharge);
   const total = Number(bills.totalWithTax || bills.total || subtotal);
   if (Math.abs(total - subtotal) > 0.004) lines.push({ label: "Total", amount: total, strong: true, big: true });
   if (Number(bills.tip) > 0) {

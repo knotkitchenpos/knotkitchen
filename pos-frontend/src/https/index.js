@@ -169,6 +169,10 @@ export const releaseTable = (tableId) =>
 export const cancelTableSessionItem = (sessionId, itemId, data) =>
   axiosWrapper.post(`/api/table-session/${sessionId}/items/${itemId}/cancel`, data);
 
+// Take the service charge off a table's bill (waived: true) or put it back.
+export const setTableServiceCharge = (sessionId, waived) =>
+  axiosWrapper.post(`/api/table-session/${sessionId}/service-charge`, { waived });
+
 // Menu Endpoints
 export const getMenus = (params) => axiosWrapper.get("/api/menu", params ? { params } : undefined);
 

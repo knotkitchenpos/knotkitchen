@@ -497,7 +497,7 @@ const resolveAddedItems = async (req, res, next) => {
       // The rate the bill was struck at: stored on newer bills, else read back
       // from what was taxed before this edit. Discount and fees stay.
       const previousBase =
-        Math.max(0, Number(b.subtotal || 0) - Number(b.discount || 0)) + serviceCharge + packagingFee;
+        Math.max(0, Number(b.subtotal || 0) - Number(b.discount || 0)) + packagingFee;
       const taxRate =
         Number(b.taxPercent) > 0
           ? Number(b.taxPercent) / 100

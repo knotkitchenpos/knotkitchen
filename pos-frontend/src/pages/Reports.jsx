@@ -320,6 +320,9 @@ const OrderDetailsModal = ({ order, onClose }) => {
             <div className="flex justify-between"><span className="text-[#475569]">Subtotal</span><span className="font-bold">{money(order.bills?.subtotal || order.bills?.total)}</span></div>
             <div className="flex justify-between"><span className="text-[#475569]">Discount</span><span className="font-bold text-[#16A34A]">− {money(order.bills?.discount)}</span></div>
             <div className="flex justify-between"><span className="text-[#475569]">GST</span><span className="font-bold">{money(order.bills?.tax)}</span></div>
+            {Number(order.bills?.serviceCharge) > 0 && (
+              <div className="flex justify-between"><span className="text-[#475569]">Service charge</span><span className="font-bold">{money(order.bills?.serviceCharge)}</span></div>
+            )}
             <div className="flex justify-between"><span className="text-[#475569]">Packing charge</span><span className="font-bold">{money(order.bills?.packagingFee)}</span></div>
             <div className="flex justify-between"><span className="text-[#475569]">Delivery charge</span><span className="font-bold">{money(order.bills?.deliveryFee)}</span></div>
             <div className="flex justify-between pt-2 mt-1 border-t border-[#E2E8F0]">

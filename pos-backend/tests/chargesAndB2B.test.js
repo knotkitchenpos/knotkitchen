@@ -37,10 +37,21 @@ test("tips: counted in the drawer when paid in cash, never as sales", () => {
 test("a table bill carries the service charge, GST rate, tip and buyer onto the settled orders", () => {
   const ctrl = fs.readFileSync(path.join(__dirname, "..", "controllers", "tableSessionController.js"), "utf8");
   assert.match(ctrl, /serviceChargePercent/);
-  assert.match(ctrl, /additionalCharges: serviceCharge/);
+  assert.match(ctrl, /serviceChargePercent: pct/);
+  assert.match(ctrl, /serviceChargeWaived/, "a removed charge stays removed when the bill is re-struck");
   assert.match(ctrl, /const payableAmount = Math\.round\(\(billAmount \+ tip\) \* 100\) \/ 100/);
   assert.match(ctrl, /"bills\.totalWithTax": billAmount/, "the tip is not sales");
   assert.match(ctrl, /"customerDetails\.company": buyer\.company/);
   const orders = fs.readFileSync(path.join(__dirname, "..", "controllers", "orderController.js"), "utf8");
   assert.match(orders, /buyerFrom\(customerDetails \|\| \{\}\)/);
+});
+
+test("the service charge can be taken off a table bill before it is paid, and packing is a website charge", () => {
+  const read = (...p) => fs.readFileSync(path.join(__dirname, "..", ...p), "utf8");
+  assert.match(read("routes", "tableSessionRoute.js"), /"\/:id\/service-charge"\)\.post\(isVerifiedUser, setServiceCharge\)/);
+  const ctrl = read("controllers", "tableSessionController.js");
+  const handler = ctrl.slice(ctrl.indexOf("const setServiceCharge"), ctrl.indexOf("const findActiveSessionByTable"));
+  assert.match(handler, /SETTLED_SESSION_STATUSES\.includes\(session\.status\)/, "a paid bill is not re-struck");
+  assert.match(handler, /recalculateSessionBill\(session\)/);
+  assert.match(read("services", "orderPricingService.js"), /environment === "website" \? Number\(ordering\.packagingFee\)/);
 });

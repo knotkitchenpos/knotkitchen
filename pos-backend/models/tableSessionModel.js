@@ -86,6 +86,9 @@ const tableSessionSchema = new mongoose.Schema(
       discount: { type: Number, default: 0 },
       charges: { type: Number, default: 0 },
       serviceCharge: { type: Number, default: 0 },
+      serviceChargePercent: { type: Number, default: 0 },
+      // The guest asked for it to be taken off; survives the bill being re-struck.
+      serviceChargeWaived: { type: Boolean, default: false },
       tip: { type: Number, default: 0 },
       totalWithTax: { type: Number, default: 0 },
     },

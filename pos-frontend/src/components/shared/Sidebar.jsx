@@ -46,9 +46,8 @@ const IconSettingsGear = ({ active }) => (
 /**
  * Main-area navigation.
  *
- * Each screen has ONE way in. Manage Tables and Help & Support live here and
- * are no longer listed in Settings; Settings itself is the pinned footer
- * button. Do not add "/settings" (or "/home") here -- that re-introduces the
+ * Manage Tables lives here and is not listed in Settings; Help & Support is
+ * in both, by request. Settings itself is the pinned footer button. Do not add "/settings" (or "/home") here -- that re-introduces the
  * duplicate buttons the QA screenshot flagged.
  */
 const NAV = [

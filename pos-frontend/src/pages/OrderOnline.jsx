@@ -71,6 +71,9 @@ export default function OrderOnline() {
 
   const [table, setTable] = useState(null);
   const [restaurant, setRestaurant] = useState(null);
+  // GST and service charge for a table bill, so the cart can say what the
+  // bill will come to. The server strikes the real one.
+  const [charges, setCharges] = useState({});
   const [menu, setMenu] = useState([]);
   const [session, setSession] = useState(null);
   const [cat, setCat] = useState("all");
@@ -131,6 +134,7 @@ export default function OrderOnline() {
         if (d.sessionExpired) return endSession(d.message);
         setTable(d.table);
         setRestaurant(d.restaurant);
+        setCharges(d.charges || {});
         setMenu(d.menu || []);
         setPaused(d.orderingPaused ? d.orderingPausedMessage || "Ordering is paused right now." : "");
         setSession(d.activeSession || null);
@@ -196,7 +200,22 @@ export default function OrderOnline() {
     0,
   );
 
+  // Same rule as services/price.computeTotals: GST on the items, then the
+  // service charge on the bill after tax.
+  const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+  const taxPct = Number(charges.taxPercent) || 0;
+  const cartTax = charges.taxInclusive ? 0 : round2((cartTotal * taxPct) / 100);
+  const servicePct = session?.bills?.serviceChargeWaived ? 0 : Number(charges.serviceChargePercent) || 0;
+  const cartService = round2(((cartTotal + cartTax) * servicePct) / 100);
+  const cartPayable = round2(cartTotal + cartTax + cartService);
+
   const sessionTotal = session?.bills?.totalWithTax || 0;
+  const sessionBillLines = [
+    ["Subtotal", session?.bills?.subtotal],
+    ["Discount", -(Number(session?.bills?.discount) || 0)],
+    [`GST${session?.bills?.taxInclusive ? " (included)" : ""}`, session?.bills?.tax],
+    ["Service charge", session?.bills?.serviceCharge],
+  ].filter(([, v]) => Number(v));
   const sessionItems = session?.items || [];
   const sessionItemCount = sessionItems.reduce((s, i) => s + (i.quantity || 0), 0);
 
@@ -638,6 +657,16 @@ export default function OrderOnline() {
                 </li>
               ))}
             </ul>
+            {sessionBillLines.length > 1 && (
+              <div className="px-4 py-2.5 border-t border-slate-100 space-y-1 text-[13px] text-slate-600">
+                {sessionBillLines.map(([label, v]) => (
+                  <div key={label} className="flex justify-between">
+                    <span>{label}</span>
+                    <span className="font-semibold">{Number(v) < 0 ? "− " : ""}{money(Math.abs(v))}</span>
+                  </div>
+                ))}
+              </div>
+            )}
             {session.status === "BILL_REQUESTED" && (
               <div className="px-4 py-2.5 bg-amber-50 border-t border-amber-100 text-amber-800 text-xs font-semibold flex items-center gap-1.5">
                 🧾 Bill requested — your server will be with you shortly.
@@ -931,6 +960,18 @@ export default function OrderOnline() {
                       className="px-3 py-2.5 rounded-xl bg-slate-100 text-sm outline-none focus:bg-white focus:ring-2 focus:ring-slate-200"
                     />
                   </div>
+                </div>
+              )}
+              {cartPayable !== cartTotal && (
+                <div className="space-y-1 text-[13px] text-slate-600">
+                  <div className="flex justify-between"><span>Items</span><span className="font-semibold">{money(cartTotal)}</span></div>
+                  {cartTax > 0 && (
+                    <div className="flex justify-between"><span>GST ({taxPct}%)</span><span className="font-semibold">{money(cartTax)}</span></div>
+                  )}
+                  {cartService > 0 && (
+                    <div className="flex justify-between"><span>Service charge ({servicePct}%)</span><span className="font-semibold">{money(cartService)}</span></div>
+                  )}
+                  <div className="flex justify-between font-extrabold text-slate-900"><span>To pay</span><span>{money(cartPayable)}</span></div>
                 </div>
               )}
               {err && (

@@ -442,7 +442,6 @@ const orderingSchema = new mongoose.Schema(
 
     // Module 8 §3 — GST & Packing applicability
     gstApplyTo: { type: String, enum: ["system", "website", "both"], default: "both" },
-    packingApplyTo: { type: String, enum: ["system", "website", "both"], default: "both" },
   },
   { _id: false }
 );

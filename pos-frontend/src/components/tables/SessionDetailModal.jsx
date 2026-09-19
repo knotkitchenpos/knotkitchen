@@ -120,6 +120,23 @@ const SessionDetailModal = ({
           </div>
         </div>
 
+        <div className="px-3 mb-2 space-y-1 text-[13px] text-content-muted">
+          {[
+            ["Subtotal", session?.bills?.subtotal],
+            ["Discount", -(session?.bills?.discount || 0)],
+            ["Tax", session?.bills?.tax],
+            ["Service charge", session?.bills?.serviceCharge],
+          ]
+            .filter(([label, v]) => label === "Subtotal" || Number(v))
+            .map(([label, v]) => (
+              <div key={label} className="flex justify-between">
+                <span>{label}</span>
+                <span className="font-semibold tabular-nums">
+                  {Number(v) < 0 ? "− " : ""}₹{Math.abs(Number(v) || 0).toFixed(2)}
+                </span>
+              </div>
+            ))}
+        </div>
         <div className="p-3 rounded-xl bg-accent/5 border border-accent/20 flex items-center justify-between mb-5">
           <p className="text-sm font-semibold text-content">Running Total</p>
           <p className="font-display text-lg font-bold text-accent">₹{(session?.bills?.totalWithTax || 0).toFixed(2)}</p>

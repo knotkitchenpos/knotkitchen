@@ -282,23 +282,22 @@ const recalculateSessionBill = async (session) => {
   // store has a GST number and a rate; otherwise the rate is zero.
   const gst = await resolveGstForRestaurant(session.restaurantId, "system");
 
-  // Dine-in service charge: a percentage of the discounted subtotal, from
-  // Settings > Rules & Charges (read with the GST settings). Zero unless set.
-  const pct = Math.max(0, Math.min(25, Number(gst.serviceChargePercent) || 0));
+  // Dine-in service charge: a percentage of the bill after discount and tax,
+  // from Settings > Rules & Charges (read with the GST settings). Zero unless
+  // set, and zero once the guest has asked for it to be taken off.
+  const serviceChargeWaived = session.bills?.serviceChargeWaived === true;
+  const pct = serviceChargeWaived ? 0 : Math.max(0, Math.min(25, Number(gst.serviceChargePercent) || 0));
   const live = session.items.filter((i) => i.status !== "cancelled").map((i) => ({ price: i.price, quantity: i.quantity }));
-  const discount = session.bills?.discount || 0;
-  const subtotal = live.reduce((s, i) => s + i.price * i.quantity, 0);
-  const serviceCharge = pct > 0 ? Math.round(Math.max(0, subtotal - discount) * pct) / 100 : 0;
 
   const bills = priceService.calculateBill({
     items: live,
-    discount,
-    additionalCharges: serviceCharge,
+    discount: session.bills?.discount || 0,
+    serviceChargePercent: pct,
     taxRate: gst.rate,
     taxInclusive: gst.inclusive,
   });
   const tip = Number(session.bills?.tip) || 0;
-  session.bills = { ...bills, serviceCharge, tip };
+  session.bills = { ...bills, serviceChargePercent: pct, serviceChargeWaived, tip };
   await session.save();
   return session;
 };
@@ -1658,6 +1657,68 @@ const cancelSessionItem = async (req, res, next) => {
   }
 };
 
+/**
+ * Take the service charge off a table's bill, or put it back.
+ *
+ * A service charge is the guest's to refuse, so it has to be removable before
+ * the money is taken. The choice is kept on the session: adding a dish later
+ * re-strikes the bill and must not quietly bring the charge back.
+ */
+const setServiceCharge = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) throw createHttpError(404, "Invalid session id!");
+
+    const session = await TableSession.findOne({ _id: id, ...getScopeQuery(req), isDeleted: { $ne: true } });
+    if (!session) throw createHttpError(404, "Table session not found!");
+    if (SETTLED_SESSION_STATUSES.includes(session.status)) {
+      throw createHttpError(409, "This table has already been settled: its bill can no longer be changed.");
+    }
+
+    const waived = req.body?.waived !== false;
+    session.bills.serviceChargeWaived = waived;
+    addTimeline(
+      session,
+      waived ? "SERVICE_CHARGE_REMOVED" : "SERVICE_CHARGE_RESTORED",
+      waived ? "Service charge removed from the bill" : "Service charge put back on the bill",
+      "POS",
+      req.user?._id,
+    );
+    await recalculateSessionBill(session);
+
+    // Every order of the session carries the running bill (see cancelSessionItem).
+    const sessionOrders = await Order.find({
+      restaurantId: session.restaurantId,
+      tableSessionId: session._id,
+      isDeleted: { $ne: true },
+    });
+    for (const order of sessionOrders) {
+      order.bills = session.bills;
+      await order.save();
+    }
+
+    try {
+      emitTableSessionUpdated({
+        restaurantId: session.restaurantId,
+        outletId: session.outletId,
+        tableId: session.tableId,
+        session,
+        reason: "service_charge",
+      });
+    } catch (err) {
+      console.warn("emitTableSessionUpdated failed:", err.message);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: waived ? "Service charge removed." : "Service charge added back.",
+      data: session,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const findActiveSessionByTable = async ({ tableId, restaurantId }) =>
   TableSession.findOne({
     tableId,
@@ -1679,6 +1740,7 @@ module.exports = {
   recordSessionPayment,
   closeSessionWithoutPayment,
   cancelSessionItem,
+  setServiceCharge,
   findCancelTarget,
   releaseSessionForCancelledOrder,
   settleSessionFromGateway,

@@ -294,6 +294,15 @@ const getTableByToken = async (req, res, next) => {
         // The claim for the session above. The page carries it in its URL so
         // a reload, a locked phone or a bookmark all stay in the same order.
         sessionToken,
+        // What a table bill adds to the items, so the cart can show it
+        // before the order goes in. The bill itself is struck server-side.
+        charges: await require("../services/gst")
+          .resolveGstForRestaurant(restaurantId, "system")
+          .then((g) => ({
+            taxPercent: Math.round((g.rate || 0) * 10000) / 100,
+            taxInclusive: Boolean(g.inclusive),
+            serviceChargePercent: g.serviceChargePercent || 0,
+          })),
         // Locked for non-payment: the menu still shows and a seated party can
         // still call a waiter and pay, but no new orders go in.
         orderingPaused: await accountLock().isOrderingLocked(restaurantId),

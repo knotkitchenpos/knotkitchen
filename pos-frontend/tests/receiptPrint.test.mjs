@@ -137,10 +137,10 @@ test("every receipt print goes through the one renderer", () => {
 test("GST bill: CGST/SGST split for a registered store, buyer and SAC printed", () => {
   const bills = { subtotal: 1000, tax: 50, taxPercent: 5, serviceCharge: 100, totalWithTax: 1150, tip: 20 };
   const plain = billLines(bills, 1000).map((l) => l.label);
-  assert.deepEqual(plain, ["Subtotal", "Service charge", "GST @ 5%", "Total", "Tip", "Paid"]);
+  assert.deepEqual(plain, ["Subtotal", "GST @ 5%", "Service charge", "Total", "Tip", "Paid"]);
   const split = billLines(bills, 1000, { gstSplit: true });
-  assert.deepEqual(split.map((l) => l.label), ["Subtotal", "Service charge", "CGST @ 2.5%", "SGST @ 2.5%", "Total", "Tip", "Paid"]);
-  assert.equal(split[2].amount + split[3].amount, 50);
+  assert.deepEqual(split.map((l) => l.label), ["Subtotal", "CGST @ 2.5%", "SGST @ 2.5%", "Service charge", "Total", "Tip", "Paid"]);
+  assert.equal(split[1].amount + split[2].amount, 50);
   assert.equal(split[split.length - 1].amount, 1170);
 
   const order = { ...ORDER, bills, customerDetails: { name: "Asha", company: "Acme Pvt Ltd", gstin: "19ABCDE1234F1Z5" } };

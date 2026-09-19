@@ -22,7 +22,7 @@ const SHOW_LATER_FEATURES = false;
 const MENU_ITEMS = [
   { id: "cache", title: "1. Manage Cache", desc: "Publish menu changes to Website or System cache.", Icon: I.database, mode: "view" },
   { id: "device", title: "2. Device Configuration", desc: "Printer paper sizes, auto-print & e-bill settings.", Icon: I.printer, mode: "view" },
-  { id: "properties", title: "3. Store Properties", desc: "14 store details & protection PIN.", Icon: I.store, mode: "view" },
+  { id: "properties", title: "3. Store Properties", desc: "Store details & protection PIN.", Icon: I.store, mode: "view" },
   { id: "menu", title: "4. Manage Menu", desc: "Categories, dishes, variants and add-ons.", Icon: I.utensils, path: "/manage-menu" },
   { id: "staff", title: "5. Manage Staff", desc: "Add/delete staff and PIN privileges.", Icon: I.users, mode: "view" },
   { id: "toggles", title: "6. Order Toggles & Auto-Ready", desc: "Channel ON/OFF & auto-ready durations.", Icon: I.toggle, mode: "view" },
@@ -39,14 +39,16 @@ const MENU_ITEMS = [
     : []),
   // Reachable even when the account is locked -- it is the only screen that
   // can clear a lock, so it must never be gated. See middlewares/accountLock.js.
-  { id: "billing", title: "Billing & Subscription", desc: "Business Balance, plan, invoices and transactions.", Icon: I.fileText, path: "/settings/billing" },
+  { id: "billing", title: "10. Billing & Subscription", desc: "Business Balance, plan, invoices and transactions.", Icon: I.fileText, path: "/settings/billing" },
 
-  { id: "website", title: "10. Manage Website", desc: "Landing page, branding, colours, domain and payments.", Icon: I.globe, path: "/website" },
+  { id: "website", title: "11. Manage Website", desc: "Landing page, branding, colours, domain and payments.", Icon: I.globe, path: "/website" },
 
   // Activity Log stays CSD-only: it is the audit trail of who did what,
   // including support's own actions, and is locked server-side in
   // middlewares/csdOnly.js rather than merely hidden here.
-  { id: "logout", title: "11. Logout", desc: "Securely sign out of the POS system.", Icon: I.logout, action: "logout" },
+  // Also in the side panel; listed here so it is one tap away on a phone.
+  { id: "support", title: "12. Help & Support", desc: "Call or message KnotKitchen support.", Icon: I.headset, path: "/support" },
+  { id: "logout", title: "13. Logout", desc: "Securely sign out of the POS system.", Icon: I.logout, action: "logout" },
 ];
 
 const Settings = () => {

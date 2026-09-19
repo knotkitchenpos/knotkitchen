@@ -22,7 +22,7 @@ const RulesChargesView = () => {
   const [serviceCharge, setServiceCharge] = useState(
     ordering.serviceChargePercent ? String(ordering.serviceChargePercent) : "",
   );
-  const [packApply, setPackApply] = useState(ordering.packingApplyTo || "both");
+  const [packingFee, setPackingFee] = useState(ordering.packagingFee ? String(ordering.packagingFee) : "");
   const [maxDist, setMaxDist] = useState(ordering.deliverySlabsConfig?.maxDistanceKm ?? 7);
   const [slabs, setSlabs] = useState(ordering.deliverySlabsConfig?.slabs || []);
   const [sMin, setSMin] = useState(""); const [sMax, setSMax] = useState(""); const [sFee, setSFee] = useState("");
@@ -92,13 +92,20 @@ const RulesChargesView = () => {
               placeholder="0 (none)"
               className="w-full h-[38px] px-3 mt-1 rounded-xl border border-[#E2E8F0] font-bold"
             />
-            <p className="mt-1 text-[11px] text-[#94A3B8]">Dine-in only, on the discounted subtotal. Printed as its own line; a guest may ask for it to be removed.</p>
+            <p className="mt-1 text-[11px] text-[#94A3B8]">Dine-in only, added on the bill after discount and tax. Shown as its own line; it can be removed when the table pays.</p>
           </div>
           <div>
-            <label className="text-[11.5px] font-bold text-[#94A3B8]">Packing applies to</label>
-            <select value={packApply} onChange={(e)=>setPackApply(e.target.value)} className="w-full h-[38px] px-3 mt-1 rounded-xl border border-[#E2E8F0] font-bold">
-              <option value="both">Both</option><option value="website">Website</option><option value="system">System</option>
-            </select>
+            <label className="text-[11.5px] font-bold text-[#94A3B8]">Packing charge on website orders (₹)</label>
+            <input
+              type="number"
+              min={0}
+              step="1"
+              value={packingFee}
+              onChange={(e) => setPackingFee(e.target.value)}
+              placeholder="0 (none)"
+              className="w-full h-[38px] px-3 mt-1 rounded-xl border border-[#E2E8F0] font-bold"
+            />
+            <p className="mt-1 text-[11px] text-[#94A3B8]">Website orders only. Never added to till, table or QR bills.</p>
           </div>
         </div>
         <div className="flex justify-end">
@@ -107,7 +114,7 @@ const RulesChargesView = () => {
               mut.mutate({
                 ordering: {
                   gstApplyTo: gstApply,
-                  packingApplyTo: packApply,
+                  packagingFee: Math.max(0, Number(packingFee) || 0),
                   taxPercent: Math.min(100, Math.max(0, Number(gstPercent) || 0)),
                   taxInclusive,
                   serviceChargePercent: Math.min(25, Math.max(0, Number(serviceCharge) || 0)),

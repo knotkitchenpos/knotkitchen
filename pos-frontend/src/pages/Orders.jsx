@@ -910,6 +910,12 @@ const Orders = () => {
                     <span className="text-[#475569]">Tax</span>
                     <span className="font-bold text-[#0F172A]">{money(selected.bills?.tax)}</span>
                   </div>
+                  {Number(selected.bills?.serviceCharge) > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-[#475569]">Service charge</span>
+                      <span className="font-bold text-[#0F172A]">{money(selected.bills?.serviceCharge)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between pt-2 mt-1 border-t border-[#E2E8F0]">
                     <span className="text-[16px] font-extrabold text-[#0F172A]">Total</span>
                     <span className="text-[19px] font-extrabold text-[#C2410C]">

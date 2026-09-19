@@ -154,7 +154,7 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
    *
    *   1. /api/restaurant/me → restaurant.logo + restaurant.name.
    *   2. /api/website/settings → the *authoritative* source for pricing
-   *      config (taxPercent, taxInclusive, packagingFee, deliveryFee,
+   *      config (taxPercent, taxInclusive, serviceChargePercent, deliveryFee,
    *      freeDeliveryAbove, minOrderValue, currency…). We use the SAME
    *      config that the server-side orderPricingService uses so the POS
    *      preview matches whatever the backend will ultimately charge.
@@ -227,11 +227,12 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
    *
    *   1. subtotal       = Σ line.price  (already qty × unit)
    *   2. discountAmount = clamped percent/fixed against subtotal
-   *   3. taxableBase    = (subtotal − discount) + packagingFee
+   *   3. taxableBase    = subtotal − discount   (packing is a website charge)
    *   4. tax            = taxableBase × taxPercent  (or extracted if inclusive)
    *   5. deliveryFee    = configured fee, waived above freeDeliveryAbove
-   *   6. totalWithTax   = subtotal − discount + packagingFee + deliveryFee
-   *                       + (taxInclusive ? 0 : tax)
+   *   6. serviceCharge  = table orders only: % of the bill after tax
+   *   7. totalWithTax   = subtotal − discount + deliveryFee
+   *                       + (taxInclusive ? 0 : tax) + serviceCharge
    *
    * Backend fallback rate: if the tenant has never configured
    * ordering.taxPercent we apply 0 % (not the legacy 5.25 %). Any store
@@ -242,7 +243,9 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
    */
   const taxPercent = Math.max(0, Math.min(100, Number(ordering.taxPercent) || 0));
   const taxInclusive = !!ordering.taxInclusive;
-  const packagingFee = Math.max(0, Number(ordering.packagingFee) || 0);
+  const serviceChargePercent = isTable
+    ? Math.max(0, Math.min(25, Number(ordering.serviceChargePercent) || 0))
+    : 0;
   const minOrderValue = Math.max(0, Number(ordering.minOrderValue) || 0);
   const currencySymbol = ordering.currencySymbol || "₹";
 
@@ -261,7 +264,7 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
     return fee;
   }, [isDelivery, ordering.deliveryFee, ordering.freeDeliveryAbove, postDiscount]);
 
-  const taxableBase = round2(postDiscount + packagingFee);
+  const taxableBase = postDiscount;
   const tax = useMemo(() => {
     if (taxPercent <= 0) return 0;
     if (taxInclusive) {
@@ -270,8 +273,9 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
     return round2((taxableBase * taxPercent) / 100);
   }, [taxableBase, taxPercent, taxInclusive]);
 
+  const serviceCharge = round2(((postDiscount + (taxInclusive ? 0 : tax)) * serviceChargePercent) / 100);
   const totalWithTax = round2(
-    postDiscount + packagingFee + deliveryFee + (taxInclusive ? 0 : tax),
+    postDiscount + deliveryFee + (taxInclusive ? 0 : tax) + serviceCharge,
   );
 
   const billsForOrder = useMemo(
@@ -283,9 +287,9 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
       totalWithTax,
       discount: round2(discountAmount),
       deliveryFee,
-      packagingFee,
+      serviceCharge,
     }),
-    [subtotal, postDiscount, tax, taxPercent, totalWithTax, discountAmount, deliveryFee, packagingFee],
+    [subtotal, postDiscount, tax, taxPercent, totalWithTax, discountAmount, deliveryFee, serviceCharge],
   );
 
   // Clear stale discount when the cart empties so a fresh customer doesn't
@@ -1099,12 +1103,6 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
           </span>
         </button>
 
-        {packagingFee > 0 && (
-          <div className="flex items-center justify-between text-[13.5px]">
-            <span className="text-[#475569]">Packing charge</span>
-            <span className="font-bold text-[#0F172A]">{money(packagingFee)}</span>
-          </div>
-        )}
         {isDelivery && (
           <div className="flex items-center justify-between text-[13.5px]">
             <span className="text-[#475569]">Delivery charge</span>
@@ -1119,6 +1117,12 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
               GST {taxInclusive ? `(incl. ${taxPercent}%)` : `(${taxPercent}%)`}
             </span>
             <span className="font-bold text-[#0F172A]">{money(tax)}</span>
+          </div>
+        )}
+        {serviceCharge > 0 && (
+          <div className="flex items-center justify-between text-[13.5px]">
+            <span className="text-[#475569]">Service charge ({serviceChargePercent}%)</span>
+            <span className="font-bold text-[#0F172A]">{money(serviceCharge)}</span>
           </div>
         )}
 
