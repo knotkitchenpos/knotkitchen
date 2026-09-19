@@ -16,11 +16,13 @@ const KpiCard = ({ icon: Icon, label, value, hint, tone = "navy" }) => {
     orange: "bg-brand-100 text-brand-700",
   };
   return (
-    <div className="rounded-2xl border border-navy-200 bg-white p-5">
+    <div className="group relative overflow-hidden rounded-2xl border border-navy-200 bg-white p-5 hover:-translate-y-0.5 hover:shadow-pop">
+      {/* a hairline of brand colour along the top, lit on hover */}
+      <span className="absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-brand-500 to-brand-300 opacity-40 group-hover:opacity-100" aria-hidden="true" />
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-wider text-navy-500">{label}</p>
-          <p className="mt-2 text-3xl font-bold text-navy-900">{value}</p>
+          <p className="mt-2 text-3xl font-extrabold tracking-tight text-navy-900">{value}</p>
           {hint && <p className="mt-1 text-xs text-navy-500">{hint}</p>}
         </div>
         <span className={`shrink-0 rounded-xl p-2.5 ${tones[tone]}`}>
@@ -57,7 +59,7 @@ const TrendChart = ({ trend }) => {
           <div key={t.month} className="flex flex-1 flex-col items-center justify-end gap-1.5">
             <span className="text-[11px] font-medium text-navy-600">{inr(t.revenue)}</span>
             <div
-              className="w-full rounded-t-lg bg-brand-500"
+              className="w-full origin-bottom rounded-t-lg bg-gradient-to-t from-brand-600 to-brand-400 animate-grow"
               // Floor of 4px so a non-zero month is never invisible.
               style={{ height: Math.max(Math.round((t.revenue / max) * MAX_BAR_PX), 4) }}
               title={`${t.orders} orders · ${inr(t.revenue)}`}
@@ -102,7 +104,7 @@ const Dashboard = () => {
   return (
     <div className="mx-auto max-w-6xl">
       <header className="mb-6">
-        <h1 className="text-2xl font-bold text-navy-900">Dashboard</h1>
+        <h1 className="text-2xl font-extrabold tracking-tight text-navy-900">Dashboard</h1>
         <p className="mt-1 text-sm text-navy-500">
           Platform overview for {data.period.label} · all figures in {data.period.timezone}
         </p>

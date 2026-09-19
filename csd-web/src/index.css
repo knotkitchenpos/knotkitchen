@@ -1,10 +1,75 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap");
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 html { -webkit-text-size-adjust: 100%; }
-body { font-family: Inter, system-ui, sans-serif; }
+body {
+  font-family: "Plus Jakarta Sans", Inter, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  font-feature-settings: "tnum" 1; /* figures line up in tables and KPIs */
+}
+::selection { background: #fecda6; color: #0e1a3a; }
+
+/*
+ * The CSD look, applied once.
+ *
+ * Every screen is built from the same few pieces: a white bordered card, a
+ * table, a form control, a button. Styling those here gives all fifteen
+ * screens the new look without touching their markup, and a new screen gets
+ * it for free.
+ */
+@layer base {
+  /* Cards: a white bordered rounded box anywhere in the app gets soft depth. */
+  .bg-white.border.rounded-2xl,
+  .bg-white.border.rounded-xl {
+    box-shadow: 0 1px 2px rgba(10, 27, 69, 0.04), 0 8px 24px rgba(10, 27, 69, 0.06);
+  }
+
+  /* Each page eases in as it is opened. */
+  main > * { animation: fade-up 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+
+  /* Tables: quiet header, row you can follow with the eye. */
+  thead th {
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 700;
+    color: #53638c;
+    background: #f4f6fb;
+  }
+  tbody tr { transition: background-color 0.15s; }
+  tbody tr:hover { background-color: #f4f6fb; }
+
+  /* Controls: one focus ring, in the brand colour. */
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea { transition: border-color 0.15s, box-shadow 0.15s; }
+  input:not([type="checkbox"]):not([type="radio"]):focus,
+  select:focus,
+  textarea:focus {
+    outline: none;
+    border-color: #f4620a;
+    box-shadow: 0 0 0 3px rgba(244, 98, 10, 0.16);
+  }
+  input[type="checkbox"], input[type="radio"] { accent-color: #f4620a; }
+
+  button, a { transition: background-color 0.15s, color 0.15s, border-color 0.15s, transform 0.12s, box-shadow 0.15s; }
+  button:not(:disabled):active { transform: scale(0.98); }
+  :focus-visible { outline: 2px solid #f4620a; outline-offset: 2px; }
+
+  /* Slim scrollbars inside panels and the sidebar. */
+  * { scrollbar-width: thin; scrollbar-color: #a6b2cf transparent; }
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; }
+}
 
 /*
  * Chrome (Blink) paints its own pale-yellow background on autofilled inputs
