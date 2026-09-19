@@ -164,7 +164,8 @@
 .track::before,.track::after{content:"";position:absolute;left:0;top:13px;height:3px;border-radius:3px}
 .track::before{right:0;background:var(--line)}
 .track::after{width:calc(var(--p,0) * 100%);background:linear-gradient(90deg,var(--orange),var(--glow-2));transition:width .2s linear}
-.stop{position:relative;padding:22px;border-radius:18px;background:var(--surface);border:1px solid var(--line)}
+/* above the progress line, so the line runs behind the numbered dots */
+.stop{position:relative;z-index:1;padding:22px;border-radius:18px;background:var(--surface);border:1px solid var(--line)}
 .stop::before{content:attr(data-n);position:absolute;top:-35px;left:18px;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;
   font-size:.82rem;font-weight:700;color:#fff;background:var(--navy);box-shadow:0 0 0 5px var(--bg-2)}
 .stop h3{margin:0 0 .3em}.stop p{margin:0;color:var(--muted);font-size:.95rem}
