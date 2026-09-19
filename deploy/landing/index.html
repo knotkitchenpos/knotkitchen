@@ -16,6 +16,7 @@
 <link rel="icon" href="assets/favicon-32.png" sizes="32x32">
 <link rel="apple-touch-icon" href="assets/icon-180.png">
 <link rel="stylesheet" href="style.css">
+<link rel="stylesheet" href="home.css">
 </head>
 <body>
 
@@ -43,140 +44,178 @@
 
 <main>
 
-<section class="hero">
-  <div class="wrap hero-grid">
+<section class="kk-hero">
+  <span class="orb a"></span><span class="orb b"></span><span class="orb c"></span>
+  <div class="wrap kk-hero-grid">
     <div>
-      <span class="eyebrow">Smart POS for Every Kitchen</span>
-      <h1>Run the whole restaurant from one screen.</h1>
-      <p class="lede">KnotKitchen is a point-of-sale and management platform for restaurants, cafes and cloud kitchens — billing, orders, tables, menus and payments in a single system your staff can learn in an afternoon.</p>
-      <div class="cta-row">
+      <span class="kk-pill fade" style="--i:0"><i></i>Smart POS for every kitchen</span>
+      <h1>
+        <span class="line"><span style="--i:0">Run the whole</span></span>
+        <span class="line"><span style="--i:1">restaurant from</span></span>
+        <span class="line"><span style="--i:2" class="grad">one screen.</span></span>
+      </h1>
+      <p class="lede fade" style="--i:1">KnotKitchen is a point-of-sale and management platform for restaurants, cafes and cloud kitchens: billing, orders, tables, menus and payments in a single system your staff can learn in an afternoon.</p>
+      <div class="kk-cta fade" style="--i:2">
         <a class="btn" href="#contact">Book a demo</a>
         <a class="btn ghost" href="#features">See what's inside</a>
       </div>
-      <p class="hero-note">Works on tablets, desktops and POS terminals · Light &amp; dark themes · Support from a real team</p>
+      <p class="kk-note fade" style="--i:3">Works on tablets, desktops and POS terminals · Support from a real team</p>
     </div>
 
-    <div class="mock" aria-hidden="true">
-      <div class="mock-bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span></div>
-      <div class="mock-body">
-        <div class="mock-row"><strong>Table 07 · Dine-in</strong><span class="pill">Preparing</span></div>
-        <div class="mock-row"><span>Paneer Butter Masala × 2</span><span>₹ 520</span></div>
-        <div class="mock-row"><span>Garlic Naan × 4</span><span>₹ 240</span></div>
-        <div class="mock-row"><span>Masala Chai × 3</span><span>₹ 150</span></div>
-        <div class="mock-row"><span>Gulab Jamun × 2</span><span>₹ 130</span></div>
-        <div class="mock-total"><span>Total</span><span>₹ 1,040</span></div>
+    <div class="stage fade" style="--i:2" aria-hidden="true">
+      <div class="chip k">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#f4620a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="7" rx="1"/></svg>
+        <span>KOT sent<small>Kitchen printer</small></span>
+      </div>
+      <div class="till">
+        <div class="till-bar"><b></b><b></b><b></b><span>KnotKitchen POS</span></div>
+        <div class="till-head"><strong>Table 07 · Dine-in</strong><span class="status" id="till-status">Preparing</span></div>
+        <ul class="rows">
+          <li data-amt="520"><span>Paneer Butter Masala × 2</span><span>₹ 520</span></li>
+          <li data-amt="240"><span>Garlic Naan × 4</span><span>₹ 240</span></li>
+          <li data-amt="150"><span>Masala Chai × 3</span><span>₹ 150</span></li>
+          <li data-amt="130"><span>Gulab Jamun × 2</span><span>₹ 130</span></li>
+        </ul>
+        <div class="till-total"><span>Total</span><b id="till-total">₹ 1,040</b></div>
+      </div>
+      <div class="chip p">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.6 2.6L16 9.5"/></svg>
+        <span>Payment received<small>Reconciled to the order</small></span>
       </div>
     </div>
   </div>
 </section>
 
-<section id="features">
+<div class="marquee" aria-hidden="true">
+  <ul>
+    <li>Dine-in</li><li>Takeaway</li><li>Delivery</li><li>Cloud kitchens</li><li>Cafes</li><li>Table QR ordering</li><li>Kitchen display</li><li>Online ordering website</li><li>Receipts &amp; billing</li>
+    <li>Dine-in</li><li>Takeaway</li><li>Delivery</li><li>Cloud kitchens</li><li>Cafes</li><li>Table QR ordering</li><li>Kitchen display</li><li>Online ordering website</li><li>Receipts &amp; billing</li>
+  </ul>
+</div>
+
+<section class="kk-sec" id="features">
   <div class="wrap">
-    <div class="sec-head">
+    <div class="kk-head reveal">
+      <span class="tag">Features</span>
       <h2>Everything the floor and the kitchen need</h2>
       <p>One platform instead of four disconnected tools. Take the order, fire it to the kitchen, take payment, print the bill.</p>
     </div>
-    <div class="grid g3">
-      <div class="card">
-        <div class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div>
+    <div class="bento">
+      <article class="tile w4 reveal" style="--i:0">
+        <div class="art bars-art">
+          <i style="--h:34%;--n:0"></i><i style="--h:52%;--n:1"></i><i style="--h:41%;--n:2"></i><i style="--h:68%;--n:3"></i><i style="--h:58%;--n:4"></i><i style="--h:82%;--n:5"></i><i style="--h:74%;--n:6"></i><i style="--h:96%;--n:7"></i>
+        </div>
         <h3>POS dashboard</h3>
         <p>A live view of sales, active orders and performance so you always know how the day is going.</p>
-      </div>
-      <div class="card">
-        <div class="ico"><svg viewBox="0 0 24 24"><path d="M9 5h6M9 5a2 2 0 1 0-4 0v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V5a2 2 0 0 0-4 0"/><path d="M9 11h6M9 15h4"/></svg></div>
+      </article>
+      <article class="tile reveal" style="--i:1">
+        <div class="art tix"><b style="--n:0">#A12</b><b style="--n:1">#A13</b><b style="--n:2">#A14</b></div>
         <h3>Order management</h3>
         <p>Create, track and update dine-in, takeaway and delivery orders in real time across every station.</p>
-      </div>
-      <div class="card">
-        <div class="ico"><svg viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="10" rx="2"/><path d="M7 17v3M17 17v3M7 4v3M17 4v3"/></svg></div>
+      </article>
+      <article class="tile reveal" style="--i:0">
+        <div class="art floor"><i></i><i class="busy"></i><i></i><i class="busy"></i><i></i><i class="busy"></i><i></i><i></i><i class="busy"></i><i></i></div>
         <h3>Table management</h3>
         <p>Assign, book and turn tables faster, with a floor view that shows what is occupied at a glance.</p>
-      </div>
-      <div class="card">
-        <div class="ico"><svg viewBox="0 0 24 24"><path d="M7 3v8a3 3 0 0 0 6 0V3M10 3v18M18 3c-2 2.5-2 5-2 7s.7 3 2 3v8"/></svg></div>
-        <h3>Menu &amp; cart</h3>
-        <p>Categories, items and quantity controls — update the menu yourself, no support ticket required.</p>
-      </div>
-      <div class="card">
-        <div class="ico"><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20M6 15h4"/></svg></div>
+      </article>
+      <article class="tile reveal" style="--i:1">
+        <div class="art qr">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3zm2 2v4h4V5zm8-2h8v8h-8zm2 2v4h4V5zM3 13h8v8H3zm2 2v4h4v-4zm8-2h3v3h-3zm5 0h3v3h-3zm-5 5h3v3h-3zm5 0h3v3h-3zm-2.5-2.5h2v2h-2z"/></svg>
+        </div>
+        <h3>Menu, cart &amp; table QR</h3>
+        <p>Update the menu yourself, no support ticket required. Guests can scan the table and order from their phone.</p>
+      </article>
+      <article class="tile reveal" style="--i:2">
+        <div class="art pay"><svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="27"/><path d="M21 33l8 8 15-17"/></svg></div>
         <h3>Payments</h3>
         <p>Cash and online payments through integrated providers, reconciled against every order.</p>
-      </div>
-      <div class="card">
-        <div class="ico"><svg viewBox="0 0 24 24"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="7" rx="1"/></svg></div>
+      </article>
+      <article class="tile w3 reveal" style="--i:0">
+        <div class="art rcpt"><b></b></div>
         <h3>Receipts &amp; billing</h3>
         <p>Print or download receipts on demand, with a clean record of every bill you have raised.</p>
-      </div>
+      </article>
+      <article class="tile w3 reveal" style="--i:1">
+        <div class="art tix"><b style="--n:0">Website</b><b style="--n:1">Table</b><b style="--n:2">Counter</b></div>
+        <h3>Every channel, one queue</h3>
+        <p>Counter, table and online orders land in the same list, so the kitchen works one queue instead of three.</p>
+      </article>
     </div>
   </div>
 </section>
 
-<section class="alt" id="how">
+<section class="kk-sec kk-alt" id="how">
   <div class="wrap">
-    <div class="sec-head">
+    <div class="kk-head reveal">
+      <span class="tag">How it works</span>
       <h2>Live in days, not months</h2>
-      <p>We handle setup with you — menu, devices and staff — so the first shift on KnotKitchen is a normal shift.</p>
+      <p>We handle setup with you (menu, devices and staff) so the first shift on KnotKitchen is a normal shift.</p>
     </div>
-    <div class="grid g4 steps">
-      <div class="step"><h3>Talk to us</h3><p>Tell us how your restaurant runs today and which plan fits.</p></div>
-      <div class="step"><h3>We set it up</h3><p>Menu, pricing, tables and users configured for your outlet.</p></div>
-      <div class="step"><h3>Devices ready</h3><p>Tablets, terminals and printers where hardware is part of your plan.</p></div>
-      <div class="step"><h3>Go live</h3><p>Your team starts billing, with support on hand when you need it.</p></div>
+    <div class="track">
+      <div class="stop reveal" data-n="1" style="--i:0"><h3>Talk to us</h3><p>Tell us how your restaurant runs today and which plan fits.</p></div>
+      <div class="stop reveal" data-n="2" style="--i:1"><h3>We set it up</h3><p>Menu, pricing, tables and users configured for your outlet.</p></div>
+      <div class="stop reveal" data-n="3" style="--i:2"><h3>Devices ready</h3><p>Tablets, terminals and printers where hardware is part of your plan.</p></div>
+      <div class="stop reveal" data-n="4" style="--i:3"><h3>Go live</h3><p>Your team starts billing, with support on hand when you need it.</p></div>
     </div>
   </div>
 </section>
 
-<section id="platform">
+<section class="kk-sec kk-dark" id="platform">
   <div class="wrap">
-    <div class="sec-head">
+    <div class="kk-head reveal">
+      <span class="tag">Platform</span>
       <h2>Built to keep running through service</h2>
-      <p>A modern web platform your staff open in a browser — nothing to install on every device, and updates arrive on their own.</p>
+      <p>A modern web platform your staff open in a browser. Nothing to install on every device, and updates arrive on their own.</p>
     </div>
-    <div class="grid g3">
-      <div class="card">
+    <div class="glass">
+      <div class="pane reveal" style="--i:0">
+        <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
         <h3>Roles for every seat</h3>
         <p>Separate access for owners, managers and staff, with secure sign-in for each account.</p>
       </div>
-      <div class="card">
+      <div class="pane reveal" style="--i:1">
+        <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
         <h3>Integrations</h3>
         <p>Connect payment providers and third-party platforms so orders and money land in the right place.</p>
       </div>
-      <div class="card">
+      <div class="pane reveal" style="--i:2">
+        <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
         <h3>Your data stays yours</h3>
         <p>You own the business information you put into KnotKitchen. We process it to run the service for you.</p>
       </div>
     </div>
-    <ul class="tags" style="margin-top:28px">
+    <ul class="kk-tags reveal">
       <li>Dine-in</li><li>Takeaway</li><li>Delivery</li><li>Cloud kitchens</li>
-      <li>Cafes</li><li>Multi-user</li><li>Light &amp; dark mode</li><li>Tablet &amp; desktop</li>
+      <li>Cafes</li><li>Multi-user</li><li>Tablet &amp; desktop</li>
     </ul>
   </div>
 </section>
 
-<section id="pricing">
+<section class="kk-sec kk-alt" id="pricing">
   <div class="wrap">
-    <div class="sec-head">
+    <div class="kk-head reveal">
+      <span class="tag">Pricing</span>
       <h2>Plans &amp; pricing</h2>
       <p>Software as a service for restaurants, cafes and cloud kitchens. All prices are in Indian Rupees (INR) and billed per 30-day subscription period. Features and limits differ by plan and are confirmed in your service agreement.</p>
     </div>
-    <div class="grid g3 pricing">
-      <div class="card plan">
+    <div class="plans">
+      <div class="plan-card reveal" style="--i:0">
         <h3>Essential</h3>
         <p class="price">₹399 <span>/ 30 days</span></p>
         <p>KnotKitchen restaurant POS &amp; management software subscription, per outlet.</p>
       </div>
-      <div class="card plan featured">
+      <div class="plan-card featured reveal" style="--i:1">
         <h3>Growth</h3>
         <p class="price">₹1,299 <span>/ 30 days</span></p>
         <p>KnotKitchen restaurant POS &amp; management software subscription, per outlet.</p>
       </div>
-      <div class="card plan">
+      <div class="plan-card reveal" style="--i:2">
         <h3>Scale</h3>
         <p class="price">₹1,699 <span>/ 30 days</span></p>
         <p>KnotKitchen restaurant POS &amp; management software subscription, per outlet. Not currently open to new subscriptions &mdash; <a href="contact.html">contact us</a>.</p>
       </div>
     </div>
-    <div class="card pricing-notes">
+    <div class="plan-notes reveal">
       <h3>Other charges</h3>
       <ul>
         <li><strong>E-bills</strong> (digital receipts sent to customers by SMS/WhatsApp): ₹0.25 per e-bill.</li>
@@ -188,50 +227,48 @@
   </div>
 </section>
 
-<section class="alt" id="faq">
+<section class="kk-sec" id="faq">
   <div class="wrap">
-    <div class="sec-head"><h2>Common questions</h2></div>
-    <div class="grid g3">
-      <div class="card">
-        <h3>What does it cost?</h3>
+    <div class="kk-head reveal"><span class="tag">FAQ</span><h2>Common questions</h2></div>
+    <div class="faq reveal">
+      <details open>
+        <summary>What does it cost?</summary>
         <p>Plans start at ₹399 per 30 days; Growth is ₹1,299 and Scale ₹1,699. Hardware is quoted separately in INR. <a href="#pricing">See pricing</a></p>
-      </div>
-      <div class="card">
-        <h3>Do you supply hardware?</h3>
+      </details>
+      <details>
+        <summary>Do you supply hardware?</summary>
         <p>Where a plan includes it, we can supply tablets, POS devices and printers, shipped to serviceable locations in India. <a href="shipping.html">Shipping</a></p>
-      </div>
-      <div class="card">
-        <h3>Can I cancel?</h3>
+      </details>
+      <details>
+        <summary>Can I cancel?</summary>
         <p>You can request cancellation at any time to stop future renewals. Refunds are reviewed case by case. <a href="refund.html">Refund policy</a></p>
-      </div>
-      <div class="card">
-        <h3>How is my data handled?</h3>
+      </details>
+      <details>
+        <summary>How is my data handled?</summary>
         <p>We collect only what is needed to run the service and protect it with reasonable safeguards. <a href="privacy.html">Privacy policy</a></p>
-      </div>
-      <div class="card">
-        <h3>Who do I contact for support?</h3>
+      </details>
+      <details>
+        <summary>Who do I contact for support?</summary>
         <p>Call <a href="tel:+918062181049">+91 8062181049</a> or write to <a href="mailto:support@knotkitchen.com">support@knotkitchen.com</a> with your account details and we will take it from there. <a href="contact.html">Contact us</a></p>
-      </div>
-      <div class="card">
-        <h3>Where do you operate?</h3>
+      </details>
+      <details>
+        <summary>Where do you operate?</summary>
         <p>We serve restaurants across India and are based in Kolkata, West Bengal.</p>
-      </div>
+      </details>
     </div>
   </div>
 </section>
 
-<section id="contact">
+<section class="kk-sec" id="contact" style="padding-top:0">
   <div class="wrap">
-    <div class="contact">
-      <div>
-        <h2>See KnotKitchen on your menu</h2>
-        <p>Send us your restaurant name and city, and we will walk you through a live demo built around how you actually work.</p>
-        <div class="cta-row">
-          <a class="btn" href="mailto:support@knotkitchen.com?subject=KnotKitchen%20demo%20request">Email support@knotkitchen.com</a>
-          <a class="btn" href="tel:+918062181049">Call +91 8062181049</a>
-        </div>
-        <p style="margin:14px 0 0;font-size:.9rem">We usually reply within one business day.</p>
+    <div class="kk-close reveal">
+      <h2>See KnotKitchen on your menu</h2>
+      <p>Send us your restaurant name and city, and we will walk you through a live demo built around how you actually work.</p>
+      <div class="kk-cta">
+        <a class="btn" href="mailto:support@knotkitchen.com?subject=KnotKitchen%20demo%20request">Email support@knotkitchen.com</a>
+        <a class="btn ghost" href="tel:+918062181049">Call +91 8062181049</a>
       </div>
+      <p style="margin:0;font-size:.9rem;color:#9fb0d3">We usually reply within one business day.</p>
     </div>
   </div>
 </section>
@@ -278,5 +315,6 @@
   </div>
 </footer>
 
+<script src="home.js" defer></script>
 </body>
 </html>

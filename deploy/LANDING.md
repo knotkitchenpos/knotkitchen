@@ -2,7 +2,7 @@
 
 The public marketing site (landing + legal pages) is plain static HTML/CSS in
 `deploy/landing/`, served directly by Caddy on the apex hostname. No build step,
-no container, no JavaScript.
+no container. `home.js` only adds motion: with JavaScript off, or with reduced motion requested, the page reads the same, just still.
 
 ## Files
 
@@ -15,6 +15,7 @@ no container, no JavaScript.
 | `return.html` | Return Policy |
 | `shipping.html` | Shipping Policy |
 | `style.css` | Shared stylesheet (light-only — see below) |
+| `home.css`, `home.js` | Landing page only: the animated hero, feature grid, pricing cards and scroll reveals |
 | `robots.txt`, `sitemap.xml` | Crawler hints |
 | `assets/` | Brand artwork — see below |
 
