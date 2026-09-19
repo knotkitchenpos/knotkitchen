@@ -23,6 +23,29 @@ const TABS = [
   { key: "media", label: "Website Images" },
 ];
 
+/**
+ * The words on the home page. Empty = the design's own wording, so a store
+ * only fills in what it wants to change. Keys and limits match
+ * landingCopySchema on the server.
+ */
+const HOME_TEXT_FIELDS = [
+  ["kicker", "Small line above the headline", 60],
+  ["headline", "Headline", 80],
+  ["headlineAccent", "Headline, second line (coloured)", 80],
+  ["lead", "Intro sentence under the headline", 300],
+  ["ctaText", "Main button", 40],
+  ["heroBadge", "Badge on the main photo", 30],
+  ["storyTitle", "About section heading", 80],
+  ["storyAccent", "About section heading, second line", 80],
+  ["menuTitle", "Popular items heading", 80],
+  ["menuAccent", "Popular items heading, second line", 80],
+  ["ctaTitle", "Order banner heading", 80],
+  ["ctaLead", "Order banner sentence", 160],
+  ["visitTitle", "Visit us heading", 80],
+  ["hoursText", "Visit us note", 120],
+  ["footerTagline", "Footer line", 80],
+];
+
 /** Manage Website > Legal: the windows the policy pages print, with their defaults. */
 const LEGAL_FIELDS = [
   ["refundWindowHours", "Refund request window (hours after delivery)", 24],
@@ -90,6 +113,8 @@ const WebsiteSettings = () => {
   // comes from the live menu, so a renamed or repriced dish is already right.
   const [dishes, setDishes] = useState([]);
   const [dishQuery, setDishQuery] = useState("");
+  // Which photo slot the image picker is filling ("" = closed).
+  const [pickingImage, setPickingImage] = useState("");
   useEffect(() => {
     let live = true;
     getMenus({ source: "website" })
@@ -434,6 +459,77 @@ const WebsiteSettings = () => {
                 onChange={(e) => patch("landing.aboutText", e.target.value)}
               />
             </Field>
+            <div className="rounded-2xl border border-[#E2E8F0] bg-white p-4 space-y-4">
+              <div>
+                <p className="text-sm font-bold text-[#0F172A]">Photos</p>
+                <p className="text-xs text-[#94A3B8]">Pick from Website Images, or upload a new one there.</p>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {[
+                  ["landing.backgroundImage", settings.landing?.backgroundImage, "Home page main photo"],
+                  ["branding.coverImage", settings.branding?.coverImage, "Menu page banner"],
+                ].map(([path, value, label]) => (
+                  <div key={path}>
+                    <p className="text-xs font-bold text-[#475569] mb-1.5">{label}</p>
+                    <div className="h-32 rounded-xl border border-[#E2E8F0] bg-[#F1F5F9] overflow-hidden flex items-center justify-center text-xs text-[#94A3B8]">
+                      {value?.url ? <img src={value.thumbnailUrl || value.url} alt="" className="h-full w-full object-cover" /> : "No photo chosen"}
+                    </div>
+                    <div className="mt-2 flex gap-2">
+                      <button type="button" onClick={() => setPickingImage(path)} className="px-3 py-1.5 rounded-lg border border-[#E2E8F0] text-xs font-bold text-[#0F172A]">
+                        {value?.url ? "Change" : "Choose photo"}
+                      </button>
+                      {value?.url ? (
+                        <button type="button" onClick={() => patch(path, null)} className="px-3 py-1.5 rounded-lg border border-[#FECACA] text-xs font-bold text-[#DC2626]">
+                          Remove
+                        </button>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <Field label="Menu page line" hint="Under the restaurant name on the menu page banner.">
+                <input
+                  className={inputClass}
+                  maxLength={200}
+                  value={settings.branding?.tagline || ""}
+                  onChange={(e) => patch("branding.tagline", e.target.value)}
+                />
+              </Field>
+            </div>
+
+            <div className="rounded-2xl border border-[#E2E8F0] bg-white p-4 space-y-4">
+              <div>
+                <p className="text-sm font-bold text-[#0F172A]">Home page text</p>
+                <p className="text-xs text-[#94A3B8]">Leave a box empty to keep the design&apos;s own wording.</p>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {HOME_TEXT_FIELDS.map(([key, label, max]) => (
+                  <Field key={key} label={label}>
+                    <input
+                      className={inputClass}
+                      maxLength={max}
+                      value={settings.landing?.copy?.[key] || ""}
+                      onChange={(e) => patch(`landing.copy.${key}`, e.target.value)}
+                    />
+                  </Field>
+                ))}
+                {[0, 1, 2].map((i) => (
+                  <Field key={`feature-${i}`} label={`Highlight ${i + 1}`}>
+                    <input
+                      className={inputClass}
+                      maxLength={60}
+                      value={settings.landing?.features?.[i]?.title || ""}
+                      onChange={(e) => {
+                        const features = [0, 1, 2].map((k) => ({ ...(settings.landing?.features?.[k] || {}) }));
+                        features[i].title = e.target.value;
+                        patch("landing.features", features);
+                      }}
+                    />
+                  </Field>
+                ))}
+              </div>
+            </div>
+
             <div>
               <p className="text-sm font-bold text-[#475569] mb-1.5">Popular items</p>
               <p className="text-xs text-[#94A3B8] mb-2">
@@ -787,6 +883,17 @@ const WebsiteSettings = () => {
 
         {/* ---------- MEDIA ---------- */}
         {tab === "media" ? <MediaLibrary /> : null}
+
+        {pickingImage ? (
+          <MediaLibrary
+            mode="picker"
+            onClose={() => setPickingImage("")}
+            onSelect={(asset) => {
+              patch(pickingImage, { mediaId: asset._id, url: asset.url, thumbnailUrl: asset.thumbnailUrl || asset.url });
+              setPickingImage("");
+            }}
+          />
+        ) : null}
       </div>
       </div>
 

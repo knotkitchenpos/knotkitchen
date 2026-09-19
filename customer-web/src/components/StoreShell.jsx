@@ -31,6 +31,9 @@ export default function StoreShell({
   const [selected, setSelected] = useState(null);
   const [cartOpen, setCartOpen] = useState(false);
   const [added, setAdded] = useState("");
+  // Search and the category chips, as on the table QR menu.
+  const [query, setQuery] = useState("");
+  const [activeCategory, setActiveCategory] = useState("");
   const addedTimer = useRef(0);
 
   const b = bootstrap || {};
@@ -50,6 +53,18 @@ export default function StoreShell({
   const symbol = ordering.currencySymbol || "£";
   const websiteEnabled = b.websiteEnabled !== false && s.store?.acceptingOrders !== false;
 
+  // One chip narrows to a category; typing narrows to matching dishes, across
+  // whatever the chip left. A category with nothing left is not drawn.
+  const q = query.trim().toLowerCase();
+  const visibleCategories = (s.categories || [])
+    .filter((c) => !activeCategory || String(c.id) === activeCategory)
+    .map((c) =>
+      q
+        ? { ...c, products: c.products.filter((p) => `${p.name} ${p.description || ""} ${c.name}`.toLowerCase().includes(q)) }
+        : c,
+    )
+    .filter((c) => c.products.length > 0);
+
   return (
     <div className="min-h-screen bg-slate-50">
       <Header
@@ -65,6 +80,42 @@ export default function StoreShell({
         title={branding.siteTitle || b.name || "Restaurant"}
         tagline={branding.tagline || ""}
       />
+
+      {(s.categories || []).length > 0 ? (
+        <div className="sticky top-[52px] z-30 border-b border-slate-200 bg-slate-50/95 backdrop-blur">
+          <div className="max-w-5xl mx-auto px-4 pt-4 pb-3 space-y-2.5">
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Search dishes…"
+              aria-label="Search dishes"
+              className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-2.5 text-sm outline-none focus:border-brand"
+            />
+            <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-0.5 [scrollbar-width:none]">
+              {[{ id: "", name: "All" }, ...s.categories].map((c) => {
+                const on = activeCategory === String(c.id);
+                return (
+                  <button
+                    key={c.id || "all"}
+                    type="button"
+                    onClick={() => {
+                      setActiveCategory(String(c.id));
+                      window.scrollTo({ top: 0, behavior: "smooth" });
+                    }}
+                    aria-pressed={on}
+                    className={`shrink-0 whitespace-nowrap rounded-full px-4 py-2 text-[13px] font-semibold ${
+                      on ? "bg-brand text-brand-fg" : "border border-slate-200 bg-white text-slate-700"
+                    }`}
+                  >
+                    {c.name}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <main className="max-w-5xl mx-auto px-4 py-6">
         {notice ? <Notice tone="warn">{notice}</Notice> : null}
@@ -83,8 +134,10 @@ export default function StoreShell({
           </div>
         ) : (s.categories || []).length === 0 ? (
           <Notice>This restaurant hasn't published a menu yet. Please check back later.</Notice>
+        ) : visibleCategories.length === 0 ? (
+          <Notice>No dishes match “{query.trim()}”.</Notice>
         ) : (
-          (s.categories || []).map((category) => {
+          visibleCategories.map((category) => {
             // A category the restaurant has restricted to one order type says
             // so here, so the customer knows before they add anything rather
             // than being refused at the payment step.

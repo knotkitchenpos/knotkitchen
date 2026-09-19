@@ -462,7 +462,6 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
       })
     );
 
-    enqueueSnackbar(`Added ${displayName} to order`, { variant: "success" });
     setCustomizingItem(null);
   };
 

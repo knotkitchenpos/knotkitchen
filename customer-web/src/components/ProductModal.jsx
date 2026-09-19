@@ -136,6 +136,14 @@ export default function ProductModal({ product, symbol, onClose, onAdd, allowNot
 
         {/* Choices */}
         <div className="flex-1 space-y-5 overflow-y-auto p-4">
+          {/* The whole photo, not a crop: contain, on a neutral ground. */}
+          {product.image ? (
+            <img
+              src={product.image}
+              alt={product.imageAlt || product.name}
+              className="max-h-72 w-full rounded-2xl bg-slate-100 object-contain"
+            />
+          ) : null}
           {variants.length > 0 ? (
             <Group title="Choose a size" hint="Required" hintTone="required">
               {variants.map((v) => (

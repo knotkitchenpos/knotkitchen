@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
 import { readStoreScoped, writeStoreScoped } from "../../utils/storeSession";
+import { capOf } from "../../utils/modifierGroups";
 import {
   addCategory,
   updateCategory,
@@ -1139,9 +1140,15 @@ const ManageMenu = () => {
                       Selection:{" "}
                       <span className="font-bold text-[#0F172A]">
                         {activeGroup.required ? "Required" : "Optional"}
-                      </span>{" "}
-                      | Max Selections:{" "}
-                      <span className="font-bold text-[#0F172A]">{activeGroup.maxSelections}</span>
+                      </span>
+                      {/* Only when Maximum Selection is on: the stored number
+                          survives the switch being off, and is not a limit. */}
+                      {capOf(activeGroup) !== Infinity && (
+                        <>
+                          {" "}| Max Selections:{" "}
+                          <span className="font-bold text-[#0F172A]">{capOf(activeGroup)}</span>
+                        </>
+                      )}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">

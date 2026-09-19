@@ -1549,9 +1549,7 @@ const publishToTarget = async (req, res, target) => {
 
   return res.status(200).json({
     success: true,
-    message: website
-      ? `Website published. ${updated} menu(s) and the website design are now live.`
-      : `POS published. ${updated} menu(s) are now live on the tills.`,
+    message: "Published.",
     data: {
       target,
       count: updated,
