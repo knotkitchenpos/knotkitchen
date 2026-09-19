@@ -29,19 +29,25 @@
   background-size:56px 56px;opacity:.5;
   -webkit-mask-image:radial-gradient(80% 70% at 50% 35%,#000 0%,transparent 100%);
           mask-image:radial-gradient(80% 70% at 50% 35%,#000 0%,transparent 100%)}
-.orb{position:absolute;z-index:-1;border-radius:50%;filter:blur(70px);opacity:.55;will-change:transform}
-.orb.a{width:440px;height:440px;right:-160px;top:-200px;opacity:.4;background:var(--glow);animation:drift 16s ease-in-out infinite}
-.orb.b{width:420px;height:420px;left:-160px;bottom:-200px;background:var(--sky);opacity:.35;animation:drift 20s ease-in-out infinite reverse}
-.orb.c{width:260px;height:260px;left:42%;top:30%;background:var(--glow-2);opacity:.18;animation:drift 24s ease-in-out infinite}
-@keyframes drift{0%,100%{transform:translate3d(0,0,0) scale(1)}50%{transform:translate3d(-40px,36px,0) scale(1.12)}}
+/* Glows are radial gradients, not blurred discs: a blur filter on a 400px
+   element is re-rasterised on every frame it moves, a gradient is painted
+   once and then only translated by the compositor. */
+.orb{position:absolute;z-index:-1;border-radius:50%;opacity:.55;will-change:transform;
+  background:radial-gradient(closest-side,var(--c) 0%,var(--c) 38%,transparent 100%)}
+.orb.a{--c:var(--glow);width:620px;height:620px;right:-250px;top:-290px;opacity:.4;animation:drift 16s ease-in-out infinite}
+.orb.b{--c:var(--sky);width:600px;height:600px;left:-250px;bottom:-290px;opacity:.35;animation:drift 20s ease-in-out infinite reverse}
+.orb.c{--c:var(--glow-2);width:420px;height:420px;left:calc(42% - 80px);top:calc(30% - 80px);opacity:.18;animation:drift 24s ease-in-out infinite}
+@keyframes drift{0%,100%{transform:translate3d(0,0,0)}50%{transform:translate3d(-46px,40px,0)}}
 
 .kk-hero-grid{display:grid;align-items:center;gap:clamp(36px,5vw,72px);
   grid-template-columns:repeat(auto-fit,minmax(min(100%,27rem),1fr))}
 .kk-pill{display:inline-flex;align-items:center;gap:10px;padding:7px 14px 7px 10px;border-radius:999px;
   font-size:.8rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#ffd9bd;
-  background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.16);backdrop-filter:blur(6px)}
-.kk-pill i{width:8px;height:8px;border-radius:50%;background:#34d399;box-shadow:0 0 0 0 rgba(52,211,153,.6);animation:ping 2s infinite}
-@keyframes ping{70%{box-shadow:0 0 0 10px rgba(52,211,153,0)}100%{box-shadow:0 0 0 0 rgba(52,211,153,0)}}
+  background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.16)}
+/* the ripple is a scaled copy of the dot, not an animated box-shadow (paint every frame) */
+.kk-pill i{position:relative;width:8px;height:8px;border-radius:50%;background:#34d399}
+.kk-pill i::after{content:"";position:absolute;inset:0;border-radius:50%;background:#34d399;animation:ping 2s ease-out infinite}
+@keyframes ping{0%{transform:scale(1);opacity:.6}70%,100%{transform:scale(3.4);opacity:0}}
 
 .kk-hero h1{color:#fff;margin:.55em 0 .4em;font-size:clamp(2.2rem,6vw,4.1rem);font-weight:750;letter-spacing:-.035em;line-height:1.04}
 .kk-hero h1 .line{display:block;overflow:hidden}
@@ -67,7 +73,7 @@
 .stage{position:relative;perspective:1200px;padding:40px 0 66px}
 .till{position:relative;border-radius:20px;overflow:hidden;color:#0a1b45;background:#fff;
   box-shadow:0 40px 90px rgba(0,0,0,.45),0 0 0 1px rgba(255,255,255,.12);
-  transform:rotateX(var(--rx,6deg)) rotateY(var(--ry,-10deg));transform-style:preserve-3d;transition:transform .4s var(--ease)}
+  transform:rotateX(var(--rx,6deg)) rotateY(var(--ry,-10deg));transition:transform .4s var(--ease);will-change:transform}
 .till-bar{display:flex;align-items:center;gap:7px;padding:12px 16px;background:#f3f5fa;border-bottom:1px solid #e6e9f2}
 .till-bar b{width:10px;height:10px;border-radius:50%;background:#d5dae6}
 .till-bar span{margin-left:auto;font-size:.75rem;font-weight:600;color:#7a86a3}
@@ -84,7 +90,7 @@
 .till-total{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;margin-top:6px;background:#0a1b45;color:#fff}
 .till-total b{font-size:1.35rem;font-variant-numeric:tabular-nums}
 .chip{position:absolute;z-index:2;display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:14px;font-size:.84rem;font-weight:600;
-  color:#0a1b45;background:rgba(255,255,255,.96);box-shadow:0 18px 40px rgba(0,0,0,.35);animation:bob 6s ease-in-out infinite}
+  color:#0a1b45;background:rgba(255,255,255,.96);box-shadow:0 18px 40px rgba(0,0,0,.35);animation:bob 6s ease-in-out infinite;will-change:transform}
 .chip svg{width:20px;height:20px;flex:none}
 .chip small{display:block;font-weight:500;color:#6b7896;font-size:.74rem}
 .chip.k{left:-18px;top:0;animation-delay:-2s}
@@ -92,9 +98,12 @@
 @keyframes bob{50%{transform:translateY(-12px)}}
 
 /* ---------- marquee ---------- */
-.marquee{overflow:hidden;background:var(--ink);border-block:1px solid var(--hair);padding:18px 0;
-  -webkit-mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent);mask-image:linear-gradient(90deg,transparent,#000 12%,#000 88%,transparent)}
-.marquee ul{display:flex;gap:44px;width:max-content;margin:0;padding:0;list-style:none;animation:slide 32s linear infinite;
+.marquee{position:relative;overflow:hidden;background:var(--ink);border-block:1px solid var(--hair);padding:18px 0}
+/* faded edges are two overlays: a mask would be re-applied to the moving strip every frame */
+.marquee::before,.marquee::after{content:"";position:absolute;top:0;bottom:0;width:12%;z-index:1;pointer-events:none}
+.marquee::before{left:0;background:linear-gradient(90deg,var(--ink),transparent)}
+.marquee::after{right:0;background:linear-gradient(270deg,var(--ink),transparent)}
+.marquee ul{display:flex;gap:44px;width:max-content;margin:0;padding:0;list-style:none;animation:slide 32s linear infinite;will-change:transform;
   color:var(--on-dark-muted);font-weight:600;letter-spacing:.06em;text-transform:uppercase;font-size:.82rem}
 .marquee li{display:flex;align-items:center;gap:44px;white-space:nowrap}
 .marquee li::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--glow)}
@@ -143,7 +152,7 @@
 .qr{display:grid;place-items:center}
 .qr svg{width:84px;height:84px;color:#0a1b45}
 .qr::after{content:"";position:absolute;left:12%;right:12%;height:2px;background:var(--orange);box-shadow:0 0 14px var(--orange);top:20%;animation:scan 3.2s ease-in-out infinite}
-@keyframes scan{50%{top:78%}}
+@keyframes scan{50%{transform:translateY(70px)}}
 /* art: payment */
 .pay{display:grid;place-items:center}
 .pay svg{width:64px;height:64px}
@@ -163,7 +172,7 @@
 .track{position:relative;display:grid;gap:var(--grid-gap);grid-template-columns:repeat(auto-fit,minmax(min(100%,13.5rem),1fr));padding-top:34px}
 .track::before,.track::after{content:"";position:absolute;left:0;top:13px;height:3px;border-radius:3px}
 .track::before{right:0;background:var(--line)}
-.track::after{width:calc(var(--p,0) * 100%);background:linear-gradient(90deg,var(--orange),var(--glow-2));transition:width .2s linear}
+.track::after{right:0;background:linear-gradient(90deg,var(--orange),var(--glow-2));transform:scaleX(var(--p,0));transform-origin:left;transition:transform .2s linear}
 /* above the progress line, so the line runs behind the numbered dots */
 .stop{position:relative;z-index:1;padding:22px;border-radius:18px;background:var(--surface);border:1px solid var(--line)}
 .stop::before{content:attr(data-n);position:absolute;top:-35px;left:18px;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;
@@ -183,8 +192,9 @@
 /* a lit edge that circles the card on hover */
 .pane::before{content:"";position:absolute;inset:-1px;border-radius:inherit;padding:1px;opacity:0;transition:opacity .4s;
   background:conic-gradient(from var(--a,0deg),transparent 0 70%,var(--glow) 85%,transparent 100%);
-  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;animation:spin 5s linear infinite}
-.pane:hover::before{opacity:1}
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;
+  animation:spin 5s linear infinite paused}
+.pane:hover::before{opacity:1;animation-play-state:running}
 @property --a{syntax:"<angle>";inherits:false;initial-value:0deg}
 @keyframes spin{to{--a:360deg}}
 .pane svg{width:26px;height:26px;stroke:var(--glow-2);fill:none;stroke-width:1.7;margin-bottom:14px}
@@ -226,14 +236,17 @@
 /* ---------- closing call ---------- */
 .kk-close{position:relative;overflow:hidden;border-radius:28px;padding:clamp(32px,5vw,64px);color:#fff;text-align:center;
   background:radial-gradient(90% 140% at 50% 0%,#1b3f86 0%,var(--ink-2) 45%,var(--ink) 100%)}
-.kk-close::before{content:"";position:absolute;width:520px;height:520px;left:50%;top:-340px;margin-left:-260px;border-radius:50%;
-  background:var(--glow);filter:blur(90px);opacity:.45;animation:drift 14s ease-in-out infinite}
+.kk-close::before{content:"";position:absolute;width:760px;height:760px;left:50%;top:-460px;margin-left:-380px;border-radius:50%;
+  background:radial-gradient(closest-side,var(--glow) 0%,var(--glow) 34%,transparent 100%);opacity:.45;animation:drift 14s ease-in-out infinite;will-change:transform}
 .kk-close>*{position:relative}
 .kk-close h2{color:#fff;font-size:clamp(1.7rem,4vw,2.8rem);letter-spacing:-.03em;margin:0 0 .4em}
 .kk-close p{color:#cdd8f0;max-width:38em;margin:0 auto 1em}
 .kk-close .kk-cta{justify-content:center}
 .kk-close .btn{box-shadow:0 10px 30px rgba(244,98,10,.4)}
 .kk-close .btn.ghost{color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.06);box-shadow:none}
+
+/* A section that has scrolled away stops animating (home.js toggles this). */
+.offscreen,.offscreen *,.offscreen::before,.offscreen::after,.offscreen *::before,.offscreen *::after{animation-play-state:paused!important}
 
 /* ---------- small screens ---------- */
 @media(max-width:860px){

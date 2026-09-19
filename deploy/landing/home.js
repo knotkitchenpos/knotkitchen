@@ -58,17 +58,38 @@
 
   if (still) return;
 
+  /* ---- looping animations rest while their section is off screen ---- */
+  const rest = new IntersectionObserver((entries) =>
+    entries.forEach((e) => e.target.classList.toggle("offscreen", !e.isIntersecting)),
+  );
+  $$(".kk-hero, .marquee, .bento, .kk-dark, .kk-close").forEach((el) => rest.observe(el));
+
+  // One write per frame, however many pointer or scroll events arrive.
+  const perFrame = (fn) => {
+    let queued = false;
+    let last;
+    return (e) => {
+      last = e;
+      if (queued) return;
+      queued = true;
+      requestAnimationFrame(() => {
+        queued = false;
+        fn(last);
+      });
+    };
+  };
+
   /* ---- the till leans towards the pointer ---- */
   const stage = $(".stage");
   const till = $(".till");
   if (stage && till && matchMedia("(hover: hover)").matches) {
-    stage.addEventListener("pointermove", (e) => {
+    stage.addEventListener("pointermove", perFrame((e) => {
       const b = stage.getBoundingClientRect();
       const x = (e.clientX - b.left) / b.width - 0.5;
       const y = (e.clientY - b.top) / b.height - 0.5;
       till.style.setProperty("--ry", `${x * 14}deg`);
       till.style.setProperty("--rx", `${-y * 10}deg`);
-    });
+    }));
     stage.addEventListener("pointerleave", () => {
       till.style.removeProperty("--ry");
       till.style.removeProperty("--rx");
@@ -77,11 +98,11 @@
 
   /* ---- a soft light follows the pointer across feature cards ---- */
   $$(".tile").forEach((t) =>
-    t.addEventListener("pointermove", (e) => {
+    t.addEventListener("pointermove", perFrame((e) => {
       const b = t.getBoundingClientRect();
       t.style.setProperty("--mx", `${e.clientX - b.left}px`);
       t.style.setProperty("--my", `${e.clientY - b.top}px`);
-    }),
+    })),
   );
 
   /* ---- "how it works": the line fills as the section scrolls through ---- */
@@ -92,8 +113,8 @@
       const p = (innerHeight * 0.8 - b.top) / (b.height + innerHeight * 0.3);
       track.style.setProperty("--p", Math.max(0, Math.min(1, p)).toFixed(3));
     };
-    addEventListener("scroll", fill, { passive: true });
-    addEventListener("resize", fill);
+    addEventListener("scroll", perFrame(fill), { passive: true });
+    addEventListener("resize", perFrame(fill));
     fill();
   }
 })();

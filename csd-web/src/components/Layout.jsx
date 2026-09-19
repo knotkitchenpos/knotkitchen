@@ -68,7 +68,7 @@ const Layout = () => {
         aria-label="Primary navigation"
       >
         {/* The same warm glow as knotkitchen.com, drifting behind the rail. */}
-        <span className="pointer-events-none absolute -top-24 -left-24 h-64 w-64 rounded-full bg-brand-500/25 blur-3xl animate-drift" aria-hidden="true" />
+        <span className="pointer-events-none absolute -top-40 -left-40 h-96 w-96 rounded-full bg-[radial-gradient(closest-side,rgba(244,98,10,.26),rgba(244,98,10,.12)_45%,transparent)] will-change-transform animate-drift" aria-hidden="true" />
         <div className="relative flex items-center gap-2.5 px-5 py-5 lg:px-4">
           <img src={markUrl} alt="" className="h-9 w-9 shrink-0 object-contain" />
           <div className="leading-tight opacity-100 transition-opacity duration-150 lg:opacity-0 lg:group-hover:opacity-100">
@@ -151,7 +151,7 @@ const Layout = () => {
       {/* Main column — always offset by the COLLAPSED rail so content doesn't
           shift when the sidebar expands on hover. */}
       <div className="lg:pl-16">
-        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-navy-200/70 bg-white/80 px-4 py-3 backdrop-blur-xl sm:px-6">
+        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-navy-200/70 bg-white/95 px-4 py-3 sm:px-6">
           <button
             type="button"
             onClick={() => setOpen(true)}

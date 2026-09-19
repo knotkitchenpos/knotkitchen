@@ -30,7 +30,8 @@ export default {
       keyframes: {
         "fade-up": { from: { opacity: 0, transform: "translateY(10px)" }, to: { opacity: 1, transform: "none" } },
         grow: { from: { transform: "scaleY(0)" }, to: { transform: "scaleY(1)" } },
-        drift: { "0%,100%": { transform: "translate3d(0,0,0) scale(1)" }, "50%": { transform: "translate3d(-30px,26px,0) scale(1.1)" } },
+        // translate only: scaling a large soft glow re-rasterises it every frame
+        drift: { "0%,100%": { transform: "translate3d(0,0,0)" }, "50%": { transform: "translate3d(-34px,30px,0)" } },
       },
       animation: {
         "fade-up": "fade-up .45s cubic-bezier(.2,.7,.2,1) both",

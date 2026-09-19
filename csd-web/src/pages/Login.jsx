@@ -44,8 +44,9 @@ const Login = () => {
     <div className="grid min-h-screen w-full bg-white lg:grid-cols-[1.05fr_1fr]">
       {/* Brand panel */}
       <aside className="relative hidden overflow-hidden bg-gradient-to-br from-navy-800 via-navy-900 to-navy-950 p-12 text-white lg:flex lg:flex-col lg:justify-between">
-        <span className="pointer-events-none absolute -right-32 -top-40 h-[28rem] w-[28rem] rounded-full bg-brand-500/40 blur-3xl animate-drift" aria-hidden="true" />
-        <span className="pointer-events-none absolute -bottom-40 -left-32 h-96 w-96 rounded-full bg-sky-500/20 blur-3xl animate-drift [animation-direction:reverse]" aria-hidden="true" />
+        {/* Radial gradients, not blur filters: a filtered glow is re-rasterised on every frame it moves. */}
+        <span className="pointer-events-none absolute -right-48 -top-56 h-[38rem] w-[38rem] rounded-full bg-[radial-gradient(closest-side,rgba(244,98,10,.42),rgba(244,98,10,.18)_45%,transparent)] will-change-transform animate-drift" aria-hidden="true" />
+        <span className="pointer-events-none absolute -bottom-56 -left-48 h-[34rem] w-[34rem] rounded-full bg-[radial-gradient(closest-side,rgba(14,165,233,.22),rgba(14,165,233,.09)_45%,transparent)] will-change-transform animate-drift [animation-direction:reverse]" aria-hidden="true" />
         <span
           className="pointer-events-none absolute inset-0 opacity-40 [background-image:linear-gradient(rgba(255,255,255,.08)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,.08)_1px,transparent_1px)] [background-size:56px_56px] [mask-image:radial-gradient(70%_60%_at_50%_40%,#000,transparent)]"
           aria-hidden="true"

@@ -38,8 +38,8 @@ h3{font-size:1.1rem;font-weight:650}
 p{margin:0 0 1em}
 
 /* header */
-header{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--bg) 88%,transparent);
-  backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+header{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--bg) 97%,transparent);
+  border-bottom:1px solid var(--line)}
 .nav{display:flex;align-items:center;justify-content:space-between;gap:16px;height:64px}
 .brand{display:flex;align-items:center;flex:none;min-height:44px}
 .brand:hover{text-decoration:none}
