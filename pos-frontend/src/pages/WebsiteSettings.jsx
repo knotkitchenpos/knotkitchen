@@ -4,7 +4,7 @@ import MediaLibrary from "../components/media/MediaLibrary";
 import SecurityPinModal from "../components/common/SecurityPinModal";
 import { isOwner, checkActionAuthorization } from "../utils/security";
 import { getWebsiteSettings, updateWebsiteSettings, validateGatewayCredentials } from "../https/storefrontApi";
-import { getMenus } from "../https";
+import { getMenus, publishWebsiteCache } from "../https";
 
 /**
  * Settings → Website (§3, §19, §26).
@@ -176,12 +176,12 @@ const WebsiteSettings = () => {
   };
 
   /**
-   * Publish is now just Save.
+   * Publish = save what is in this editor, then put the website live: its
+   * menu and this page's draft. The tills have their own button, under
+   * Settings > Manage Cache.
    *
-   * It used to also push the menu snapshot to the website, which meant the
-   * button reported success while quietly dropping anything unsaved in this
-   * editor. The website reads the live menu, so there is nothing left to push
-   * — writing the settings IS publishing them.
+   * For a while this only saved, and the draft waited for Publish System --
+   * so the button said "published" and the website did not change.
    */
   const publish = async () => {
     executeWithSecurity(async () => {
@@ -189,7 +189,8 @@ const WebsiteSettings = () => {
         setSaving(true);
         setMessage(null);
         await persist();
-        setMessage({ type: "success", text: "Website published." });
+        const res = await publishWebsiteCache();
+        setMessage({ type: "success", text: res.data?.message || "Website published." });
       } catch (e) {
         setMessage({
           type: "error",
@@ -405,9 +406,9 @@ const WebsiteSettings = () => {
 
         {["general", "content", "contact", "legal", "media"].includes(tab) ? (
           <p className="mb-4 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] p-3 text-xs text-[#9A3412]">
-            Saved changes to the website&apos;s look and text stay as a draft. They go live when someone presses{" "}
-            <span className="font-bold">Publish System</span> in Settings &rsaquo; Manage Cache. Domain, on/off and
-            payment settings apply as soon as they are saved.
+            Saved changes to the website&apos;s look and text stay as a draft. They go live, with the latest menu,
+            when you press <span className="font-bold">Publish Website</span> above. Domain, on/off and payment
+            settings apply as soon as they are saved.
           </p>
         ) : null}
 

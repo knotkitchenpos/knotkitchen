@@ -45,10 +45,8 @@ test("the response tells the operator the import is still a draft", () => {
 test("publishing to the tills is still reachable, just not automatic", () => {
   const routes = fs.readFileSync(path.join(__dirname, "..", "routes", "menuRoute.js"), "utf8");
   assert.match(routes, /publish\/system/);
-  assert.ok(
-    !/publish\/website/.test(routes),
-    "there is no separate website publish -- Publish System covers both",
-  );
+  // The website has its own button (Manage Website > Publish Website).
+  assert.match(routes, /publish\/website/);
 });
 
 test("REGRESSION: the POS view has no fallback to the draft", () => {

@@ -243,6 +243,10 @@ export const unpublishMenu = (menuId) => axiosWrapper.put(`/api/menu/${menuId}/u
 export const publishSystemCache = () =>
   axiosWrapper.post("/api/menu/publish/system");
 
+/** The same for the customer website: its menu, and the Manage Website draft. */
+export const publishWebsiteCache = () =>
+  axiosWrapper.post("/api/menu/publish/website");
+
 // Module 7 — Store Properties, Protection PIN, POS Settings & Staff
 export const getStoreProperties = () => axiosWrapper.get("/api/restaurant/properties");
 export const updateStoreProperties = (data) => axiosWrapper.put("/api/restaurant/properties", data);

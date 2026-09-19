@@ -38,6 +38,9 @@
 .kkt-garden .eyebrow{margin: 0 0 16px; color: var(--primary); font-size: 0.7rem; letter-spacing: 0.18em; text-transform: uppercase; font-weight: 800;}
 .kkt-garden .hero h1,.kkt-garden .story h2,.kkt-garden .menu h2,.kkt-garden .cta h2,.kkt-garden .visit h2{margin: 0; line-height: 0.93; letter-spacing: -0.06em; font-family: var(--display); font-weight: 400;}
 .kkt-garden .hero h1{font-size: clamp(4rem, 8vw, 8rem);}
+/* Section headings had no size of their own, so they fell to the browser's
+   1.5em under a 0.9 line-height and the two lines collided. */
+.kkt-garden .story h2,.kkt-garden .menu h2,.kkt-garden .visit h2,.kkt-garden .cta h2{font-size: clamp(2.2rem, 4vw, 4.5rem); line-height: 1.02;}
 .kkt-garden .hero h1 em,.kkt-garden .story h2 em,.kkt-garden .menu h2 em{color: var(--secondary); font-style: italic;}
 .kkt-garden .lead{max-width: 520px; margin: 24px 0 32px; color: var(--muted); font-size: 1.1rem;}
 .kkt-garden .hero-actions{display: flex; flex-wrap: wrap; gap: 16px;}

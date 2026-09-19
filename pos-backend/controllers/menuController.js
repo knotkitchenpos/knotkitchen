@@ -1483,7 +1483,7 @@ const publishAllMenusForUser = async (user, target) => {
       menu.systemVersion = (menu.systemVersion || 0) + 1;
       menu.systemSnapshot = snapshot;
     }
-    if (target === "system" || target === "website") {
+    if (target === "website") {
       menu.hasPublishedToWebsite = true;
       menu.lastPublishedToWebsiteAt = now;
       menu.websiteVersion = (menu.websiteVersion || 0) + 1;
@@ -1498,8 +1498,8 @@ const publishAllMenusForUser = async (user, target) => {
     }
   }
 
-  // Manage Website edits wait for the same button.
-  if (user?.restaurantId) {
+  // Manage Website edits go live with the website's menu, not the tills'.
+  if (target === "website" && user?.restaurantId) {
     const WebsiteSettings = require("../models/websiteSettingsModel");
     const settings = await WebsiteSettings.findOne({ restaurantId: user.restaurantId, isDeleted: { $ne: true } });
     if (settings) {
@@ -1518,12 +1518,19 @@ const publishToTarget = async (req, res, target) => {
   // Publishing swaps the price list under everyone mid-service, so it is
   // recorded. This used to fire only for the website target, which no longer
   // exists -- pressing Publish left no trace at all for a while.
+  // Two buttons, two audiences: Settings > Manage Cache publishes the tills,
+  // Manage Website > Publish Website publishes the customer website. One
+  // button for both meant a website edit waited on a till publish nobody
+  // knew to press.
+  const website = target === "website";
   await logActivity({
     req,
     action: "Menu Published",
-    resource: "System Cache",
-    newValue: `${updated} menu(s) published to the tills and the website`,
-    description: "Menu and website changes published to the POS tills and the customer website",
+    resource: website ? "Website Cache" : "System Cache",
+    newValue: `${updated} menu(s) published to the ${website ? "customer website" : "POS tills"}`,
+    description: website
+      ? "Menu and Manage Website changes published to the customer website"
+      : "Menu changes published to the POS tills",
   });
 
   // Tell every other till. Publishing is exactly the case where one device
@@ -1542,7 +1549,9 @@ const publishToTarget = async (req, res, target) => {
 
   return res.status(200).json({
     success: true,
-    message: `Published. ${updated} menu(s) and the website are now up to date.`,
+    message: website
+      ? `Website published. ${updated} menu(s) and the website design are now live.`
+      : `POS published. ${updated} menu(s) are now live on the tills.`,
     data: {
       target,
       count: updated,
@@ -1553,6 +1562,9 @@ const publishToTarget = async (req, res, target) => {
 
 const publishSystemCache = (req, res, next) =>
   publishToTarget(req, res, "system").catch(next);
+
+const publishWebsiteCache = (req, res, next) =>
+  publishToTarget(req, res, "website").catch(next);
 
 module.exports = {
   // Exposed for tests: takeaway isolation lives or dies on this helper.
@@ -1597,6 +1609,7 @@ module.exports = {
   rollbackMenu,
   publishAllMenusForUser,
   publishSystemCache,
+  publishWebsiteCache,
 };
 
 

@@ -33,17 +33,17 @@ const ManageCacheView = () => {
   return (
     <div className="space-y-4">
       <p className="text-[13px] text-[#64748B] leading-relaxed">
-        The POS tills and your customer website keep serving the last published copy of the menu
-        and of Manage Website, so prices cannot change under a cashier or a customer mid-order.
-        Edits in Manage Menu and Manage Website stay as drafts until you publish here.
+        The POS tills keep serving the last published copy of the menu, so prices cannot change
+        under a cashier mid-order. Edits in Manage Menu stay as drafts until you publish here. The
+        customer website has its own button: Manage Website, Publish Website.
       </p>
 
       <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
         <div className="flex items-start justify-between gap-4 pt-1">
           <div>
-            <h4 className="text-[15px] font-extrabold text-[#0F172A]">Update System Cache</h4>
+            <h4 className="text-[15px] font-extrabold text-[#0F172A]">Update POS Cache</h4>
             <p className="text-[12.5px] text-[#64748B] mt-0.5">
-              Publishes Manage Menu and Manage Website changes to the POS tills and the customer website.
+              Publishes Manage Menu changes to the POS tills, table QR and KDS. Not the website.
             </p>
           </div>
           <button
@@ -51,7 +51,7 @@ const ManageCacheView = () => {
             disabled={sysMutation.isPending}
             className="h-[40px] px-4 rounded-xl border border-[#FD5302] text-[#C2410C] text-[13px] font-bold shrink-0 hover:bg-[#FFF1E8] disabled:opacity-50"
           >
-            {sysMutation.isPending ? "Publishing…" : "Publish System"}
+            {sysMutation.isPending ? "Publishing…" : "Publish POS"}
           </button>
         </div>
       </div>

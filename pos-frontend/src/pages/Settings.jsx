@@ -20,7 +20,7 @@ import RulesChargesView from "../components/settings/RulesChargesView";
 const SHOW_LATER_FEATURES = false;
 
 const MENU_ITEMS = [
-  { id: "cache", title: "1. Manage Cache", desc: "Publish menu changes to Website or System cache.", Icon: I.database, mode: "view" },
+  { id: "cache", title: "1. Manage Cache", desc: "Publish menu changes to the POS tills.", Icon: I.database, mode: "view" },
   { id: "device", title: "2. Device Configuration", desc: "Printer paper sizes, auto-print & e-bill settings.", Icon: I.printer, mode: "view" },
   { id: "properties", title: "3. Store Properties", desc: "Store details & protection PIN.", Icon: I.store, mode: "view" },
   { id: "menu", title: "4. Manage Menu", desc: "Categories, dishes, variants and add-ons.", Icon: I.utensils, path: "/manage-menu" },

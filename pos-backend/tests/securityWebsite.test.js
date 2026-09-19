@@ -213,7 +213,7 @@ test("Manage Website Activity Log: publishing to the tills logs a Published even
 
   delete require.cache[require.resolve("../controllers/menuController")];
   delete require.cache[require.resolve("../services/auditService")];
-  // One button publishes the tills and the website, and it is audited.
+  // Publishing the tills is audited (the website has its own button).
   const { publishSystemCache } = require("../controllers/menuController");
 
   const res = {

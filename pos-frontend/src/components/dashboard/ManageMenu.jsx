@@ -928,9 +928,9 @@ const ManageMenu = () => {
                 }
               }}
               className="h-[36px] px-3.5 rounded-xl bg-[#0F172A] text-white text-[12.5px] font-bold hover:bg-[#1E293B]"
-              title="Publish draft menu to the POS counters and the customer website"
+              title="Publish the draft menu to the POS tills. The website is published from Manage Website."
             >
-              Publish
+              Publish POS
             </button>
 
             {/*

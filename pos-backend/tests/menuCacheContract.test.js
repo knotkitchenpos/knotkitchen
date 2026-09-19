@@ -120,14 +120,17 @@ test("the website serves its own snapshot, so both surfaces move together on pub
   assert.equal(menuViewFor(menu, AUDIENCES.WEBSITE).items[0].price, 120);
 });
 
-test("Publish System writes the website snapshot and the Manage Website draft too", () => {
+test("Publish Website writes the website snapshot and the Manage Website draft; Publish System only the tills", () => {
   const fs = require("fs");
   const path = require("path");
   const src = fs.readFileSync(path.join(__dirname, "..", "controllers", "menuController.js"), "utf8");
   const block = src.slice(src.indexOf("const publishAllMenusForUser"), src.indexOf("const publishToTarget"));
   assert.match(block, /menu\.websiteSnapshot = JSON\.parse\(JSON\.stringify\(snapshot\)\)/);
   assert.match(block, /menu\.hasPublishedToWebsite = true/);
-  assert.match(block, /snapshotForPublish\(settings\)/, "Manage Website draft is published by the same button");
+  assert.match(block, /snapshotForPublish\(settings\)/, "Manage Website draft is published with the website");
+  assert.match(block, /if \(target === "website"\) \{\s+menu\.hasPublishedToWebsite = true/, "a till publish leaves the website alone");
+  assert.match(block, /if \(target === "website" && user\?\.restaurantId\)/);
+  assert.match(src, /publishToTarget\(req, res, "website"\)/);
 });
 
 test("projected items are plain objects whichever audience asked", () => {
