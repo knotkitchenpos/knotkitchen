@@ -264,3 +264,15 @@ test("a cancelled line is not printed on the bill, nor on the kitchen ticket", (
   const kot = textOps(layoutKot({ order, store: { name: "S" }, paper: 80, measure })).map((o) => o.text);
   assert.ok(!kot.some((t) => /Struck Off Dish/.test(t)), "not on the KOT");
 });
+
+test("REGRESSION: an offline order with a plain dish does not crash the invoice", async () => {
+  // The till stores `modifierSelections: {}` on a dish with nothing chosen.
+  // Offline the invoice renders that cart line as it is, and itemExtras
+  // spread the object: "(e.modifierSelections || []) is not iterable".
+  const { itemExtras } = await import("../src/utils/orderItems.js");
+  assert.deepEqual(itemExtras({ name: "Mango Lassi", modifierSelections: {}, addons: [] }), []);
+  assert.deepEqual(itemExtras({ name: "Tea", modifierSelections: null, addons: undefined }), []);
+  const picked = itemExtras({ name: "Sandwich", modifierSelections: [{ optionName: "Extra Cheese", price: 30 }] });
+  assert.equal(picked.length, 1);
+  assert.equal(picked[0].name, "Extra Cheese");
+});

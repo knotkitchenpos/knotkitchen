@@ -57,11 +57,15 @@ const namesFromComposedTitle = (name) => {
   return tail[1].split(",").map((t) => t.trim()).filter(Boolean);
 };
 
+// The till sends `modifierSelections: {}` for a dish with nothing chosen: an
+// object, which cannot be spread. Same guard as pos-frontend/src/utils/orderItems.js.
+const list = (v) => (Array.isArray(v) ? v : []);
+
 const orderItemExtras = (item = {}) => {
   const source =
     Array.isArray(item.modifiers) && item.modifiers.length
       ? item.modifiers
-      : [...(item.addons || []), ...(item.modifierSelections || [])];
+      : [...list(item.addons), ...list(item.modifierSelections)];
 
   const variantName = String(item.variant?.name || "").trim().toLowerCase();
   const salvaged = source.some((e) => !String(e?.name || e?.optionName || "").trim())

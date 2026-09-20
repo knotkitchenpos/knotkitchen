@@ -46,11 +46,16 @@ export default toOrderItems;
  * wins where it exists. The variant is dropped: it is part of what the dish
  * is, it is priced into the base, and it is already printed beside the name.
  */
+// A plain dish carries `modifierSelections: {}` (an object, the shape the
+// server takes for "nothing chosen"). Spreading that threw, and only offline:
+// online the invoice shows the server's copy, offline it shows the cart's own.
+const list = (v) => (Array.isArray(v) ? v : []);
+
 export const itemExtras = (item = {}) => {
   const source =
     Array.isArray(item.modifiers) && item.modifiers.length
       ? item.modifiers
-      : [...(item.addons || []), ...(item.modifierSelections || [])];
+      : [...list(item.addons), ...list(item.modifierSelections)];
 
   const variantName = String(item.variant?.name || "").trim().toLowerCase();
 
