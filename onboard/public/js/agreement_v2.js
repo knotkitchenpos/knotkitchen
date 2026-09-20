@@ -1,20 +1,9 @@
-/**
- * KnotKitchen Restaurant Service Agreement, version 2.0 (17 September 2026).
- *
- * The clause text is the reviewed agreement; the app never alters it. Bracket
- * placeholders are filled from onboarding data at generation time
- * (buildAgreementText in index.html). KK_PARTY is KnotKitchen's own side of
- * the title block -- fill it in before production use.
- */
 window.AGREEMENT_VERSION = "v2.0";
 
 window.KK_PARTY = {
-  name: "[KNOTKITCHEN PROPRIETOR NAME]",
-  description: "an individual carrying on business as a sole proprietor under the name KnotKitchen",
-  address: "[KNOTKITCHEN PRINCIPAL PLACE OF BUSINESS]",
-  pan: "[KNOTKITCHEN PAN]",
-  gst: "not registered under GST",
-  supportEmail: "[KNOTKITCHEN SUPPORT EMAIL]",
+  name: "KNOTKITCHEN",
+  address: "J/183 Baishnabghata Patuli Township Kolkata 700094",
+  supportEmail: "support@knotkitchen.com",
 };
 
 window.AGREEMENT_TEMPLATE_V2 = `## KNOTKITCHEN RESTAURANT SERVICE AGREEMENT
@@ -25,9 +14,9 @@ window.AGREEMENT_TEMPLATE_V2 = `## KNOTKITCHEN RESTAURANT SERVICE AGREEMENT
 
 This Agreement is made between:
 
-**(1) [KK_PARTY_NAME]**, [KK_PARTY_DESCRIPTION], having its principal place of business at [KK_PARTY_ADDRESS], PAN [KK_PARTY_PAN], [KK_PARTY_GST], operating the KnotKitchen platform ("**KnotKitchen**"); and
+**(1) [KK_PARTY_NAME]**, having its principal place of business at [KK_PARTY_ADDRESS], operating the KnotKitchen platform ("**KnotKitchen**"); and
 
-**(2)** the restaurant business identified below ("**Restaurant**"):
+**(2)** The restaurant business identified below ("**Restaurant**"):
 
 **Restaurant / Business Name:** [RESTAURANT_NAME]\\
 **Legal Business Name:** [LEGAL_NAME]\\
@@ -173,11 +162,7 @@ KnotKitchen and the Restaurant are each a "**Party**" and together the "**Partie
 
 5.2 **Selectable options.** The Restaurant selects one of the following options in the KnotKitchen Application before its first Subscription Plan, and the selection is recorded in the Commercial Schedule:
 
-| Installation option | Installation Charge (exclusive of Taxes) |
-| --- | ---: |
-| No Printer | ₹2,000 |
-| 2-inch Thermal Printer | ₹2,500 |
-| 3-inch Thermal Printer | ₹3,500 |
+Installation option : Installation Without Thermal Printer / Installation With 2-inch Thermal Printer / Installation With 3-inch Thermal Printer
 
 5.3 **Taxes and display.** Taxes, where applicable, are charged in addition to the amounts in clause 5.2 and are shown separately in the application and on the invoice. The amount and treatment shown in the application and recorded in the Commercial Schedule must be the same as those in this Agreement; if they differ, the Commercial Schedule accepted by the Restaurant applies to that Restaurant and KnotKitchen will correct the discrepancy.
 
@@ -206,7 +191,6 @@ KnotKitchen and the Restaurant are each a "**Party**" and together the "**Partie
 6.1 **Selection.** The Restaurant may select, in the KnotKitchen Application, one of the following Commitment Periods. A selection is optional; without one the subscription is month-to-month at the standard Subscription Fee. The selection and its discount are recorded in the Commercial Schedule and shown on each invoice for the Commitment Period.
 
 | Minimum Commitment | Commitment Discount on the Subscription Fee | Discount period |
-| --- | ---: | --- |
 | **3 Months** | **5%** | the 3 Billing Periods of the Commitment Period |
 | **6 Months (Half-Yearly)** | **10%** | the 6 Billing Periods of the Commitment Period |
 | **12 Months (Annual)** | **20%** | the 12 Billing Periods of the Commitment Period |
@@ -279,7 +263,7 @@ KnotKitchen and the Restaurant are each a "**Party**" and together the "**Partie
 
 9.3 KnotKitchen is not responsible for the acts, omissions, outages, errors, policy decisions or changes of a Third-Party Service provider. Where a provider changes, suspends or discontinues its service or API, KnotKitchen will use reasonable efforts to adapt the integration or offer an alternative, will inform the Restaurant, and may withdraw the affected feature under clause 1A.3 without liability, other than a pro-rata credit of any add-on fee paid specifically for that feature for the period it is unavailable.
 
-## 9A. SWIGGY, ZOMATO AND MARKETPLACE INTEGRATIONS
+## 9A. MARKETPLACE INTEGRATIONS
 
 9A.1 Where the Restaurant enables an integration with Swiggy, Zomato or another marketplace ("**Marketplace**"), KnotKitchen provides only integration functionality: technical connectivity to the Marketplace's interfaces, order-management and display of Marketplace orders in the POS, and synchronisation or transmission of menu, availability and order-status information to the extent the Marketplace supports it.
 
@@ -534,100 +518,45 @@ By accepting this Agreement in the manner described in clause 14, the Restaurant
 
 ---
 
-## 19. NOTICES
+## 19. AMENDMENTS
 
-19.1 Notices under this Agreement must be in writing and sent: to KnotKitchen at [KK_SUPPORT_EMAIL], or by courier or registered post to [KK_PARTY_ADDRESS]; to the Restaurant at the Notice Email and Notice Phone (for SMS or WhatsApp) stated above, or to its Business Address, or through the notification centre of the KnotKitchen Application.
+19.1 **Express acceptance required.** Changes to the Subscription Fee, Installation Charge, Commitment Discount, Order Charge basis, refund rules, liability, or this clause apply to the Restaurant only after the notice in clause 2.4 (or 3.4 for Order Charges) and, where they take effect during a Commitment Period, only with the Restaurant's express acceptance in the application.
 
-19.2 A notice is deemed received: by email or in-application notification, when sent, unless the sender receives a delivery failure; by SMS or WhatsApp, when delivered; by courier, on delivery; by registered post, three working days after posting. A notice sent by email or through the application is effective without a physical signature.
+19.2 **Operational updates.** KnotKitchen may update software features, the application interface, support procedures, the acceptable-use rules, the template privacy notice and its own Privacy Policy by notice in the application, provided the update does not reduce the Restaurant's rights under this Agreement. Changes required by Applicable Law or a regulator take effect when the law requires.
 
-19.3 Notices of breach, termination or dispute must be sent by email (and, to KnotKitchen, also by post) and not only by in-application notification. Routine operational communications may be sent through the application alone.
+19.3 **Rejected amendment.** If the Restaurant does not accept an amendment under clause 20.1, the existing terms continue until the end of the current Commitment Period (or, for a month-to-month subscription, for 30 days), after which the Restaurant may terminate under clause 12.2(c) without commitment repayment, or the amended terms apply.
 
-19.4 Each Party must keep its notice details current.
-
----
-
-## 20. AMENDMENTS
-
-20.1 **Express acceptance required.** Changes to the Subscription Fee, Installation Charge, Commitment Discount, Order Charge basis, refund rules, liability, or this clause apply to the Restaurant only after the notice in clause 2.4 (or 3.4 for Order Charges) and, where they take effect during a Commitment Period, only with the Restaurant's express acceptance in the application.
-
-20.2 **Operational updates.** KnotKitchen may update software features, the application interface, support procedures, the acceptable-use rules, the template privacy notice and its own Privacy Policy by notice in the application, provided the update does not reduce the Restaurant's rights under this Agreement. Changes required by Applicable Law or a regulator take effect when the law requires.
-
-20.3 **Rejected amendment.** If the Restaurant does not accept an amendment under clause 20.1, the existing terms continue until the end of the current Commitment Period (or, for a month-to-month subscription, for 30 days), after which the Restaurant may terminate under clause 12.2(c) without commitment repayment, or the amended terms apply.
-
-20.4 **No retrospective change.** No amendment applies to charges already invoiced or to periods already paid for. Each version of this Agreement is dated and retained, and the version accepted by the Restaurant is recorded in Schedule 3.
+19.4 **No retrospective change.** No amendment applies to charges already invoiced or to periods already paid for. Each version of this Agreement is dated and retained, and the version accepted by the Restaurant is recorded in Schedule 3.
 
 ---
 
-## 21. GENERAL
+## 20. GENERAL
 
-21.1 **Relationship.** The Parties are independent contractors. Nothing creates a partnership, joint venture, agency, franchise or employment relationship, and neither Party may bind the other.
+20.1 **Relationship.** The Parties are independent contractors. Nothing creates a partnership, joint venture, agency, franchise or employment relationship, and neither Party may bind the other.
 
-21.2 **Assignment.** The Restaurant may not assign or transfer this Agreement without KnotKitchen's written consent, not to be unreasonably withheld for a transfer of the Restaurant business as a going concern. KnotKitchen may assign this Agreement to an affiliate, to a company or LLP formed to carry on the KnotKitchen business, or to a successor to its business, on notice, provided the Restaurant's rights are not reduced, and may use sub-contractors while remaining responsible for them.
+20.2 **Assignment.** The Restaurant may not assign or transfer this Agreement without KnotKitchen's written consent, not to be unreasonably withheld for a transfer of the Restaurant business as a going concern. KnotKitchen may assign this Agreement to an affiliate, to a company or LLP formed to carry on the KnotKitchen business, or to a successor to its business, on notice, provided the Restaurant's rights are not reduced, and may use sub-contractors while remaining responsible for them.
 
-21.3 **Severability.** If any provision is held invalid or unenforceable, it is severed to the minimum extent necessary and the remainder continues in force; the Parties will replace it with a valid provision closest to the original intent.
+20.3 **Severability.** If any provision is held invalid or unenforceable, it is severed to the minimum extent necessary and the remainder continues in force; the Parties will replace it with a valid provision closest to the original intent.
 
-21.4 **Waiver.** A failure or delay in exercising a right is not a waiver, and a waiver of one breach is not a waiver of another.
+20.4 **Waiver.** A failure or delay in exercising a right is not a waiver, and a waiver of one breach is not a waiver of another.
 
-21.5 **Entire agreement.** This Agreement, with its Schedules, the Commercial Schedule and the documents it expressly incorporates (KnotKitchen's Privacy Policy and any acceptable-use rules published in the application), is the entire agreement between the Parties on its subject matter and supersedes prior proposals and discussions. Neither Party relies on any statement not set out in it, without prejudice to liability for fraud.
+20.5 **Entire agreement.** This Agreement, with its Schedules, the Commercial Schedule and the documents it expressly incorporates (KnotKitchen's Privacy Policy and any acceptable-use rules published in the application), is the entire agreement between the Parties on its subject matter and supersedes prior proposals and discussions. Neither Party relies on any statement not set out in it, without prejudice to liability for fraud.
 
-21.6 **Order of precedence.** In case of conflict: (1) the Commercial Schedule (for the values it records); (2) the clauses of this Agreement; (3) Schedules 2 and 3; (4) KnotKitchen's Privacy Policy; (5) acceptable-use rules and other documents published in the application.
+20.6 **Order of precedence.** In case of conflict: (1) the Commercial Schedule (for the values it records); (2) the clauses of this Agreement; (3) Schedules 2 and 3; (4) KnotKitchen's Privacy Policy; (5) acceptable-use rules and other documents published in the application.
 
-21.7 **Compliance with law.** Each Party will comply with Applicable Law in performing this Agreement, including anti-bribery, tax and data-protection law.
+20.7 **Compliance with law.** Each Party will comply with Applicable Law in performing this Agreement, including anti-bribery, tax and data-protection law.
 
-21.8 **Security and anti-fraud.** The Restaurant will not attempt to gain unauthorised access to KnotKitchen's systems, interfere with their operation, introduce malicious code, or use the Services to defraud Customers, Marketplaces, KnotKitchen or any person, and will promptly report suspected security incidents affecting its Store.
+20.8 **Security and anti-fraud.** The Restaurant will not attempt to gain unauthorised access to KnotKitchen's systems, interfere with their operation, introduce malicious code, or use the Services to defraud Customers, Marketplaces, KnotKitchen or any person, and will promptly report suspected security incidents affecting its Store.
 
-21.9 **Non-solicitation.** During the term and for six months after, neither Party will, without the other's consent, directly solicit for employment an employee of the other with whom it dealt under this Agreement. This does not restrict general advertising or hiring a person who responds to it, and imposes no restriction on either Party's trade or business.
+20.9 **Non-solicitation.** During the term and for six months after, neither Party will, without the other's consent, directly solicit for employment an employee of the other with whom it dealt under this Agreement. This does not restrict general advertising or hiring a person who responds to it, and imposes no restriction on either Party's trade or business.
 
-21.10 **Third-party rights.** No person other than the Parties has any right to enforce this Agreement.
+20.10 **Third-party rights.** No person other than the Parties has any right to enforce this Agreement.
 
-21.11 **Costs.** Each Party bears its own costs of entering into this Agreement, except stamp duty as provided in clause 14.6.
+20.11 **Costs.** Each Party bears its own costs of entering into this Agreement, except stamp duty as provided in clause 14.6.
 
 ---
-
-## SCHEDULE 1 — COMMERCIAL SCHEDULE
-
-The Commercial Schedule is generated and accepted in the KnotKitchen application (clause 2.3) when the Restaurant chooses its Installation option, Subscription Plan and any Commitment Period, and again on every later change. Each accepted version records: Store ID; Activation Date; Subscription Plan and Billing Period; base Subscription Fee; Commitment Period and Commitment Discount; discounted Subscription Fee; Installation option, Installation Charge and Equipment provided; Domain and Domain charge; Order Charges basis; add-ons; Taxes; total payable; the Restaurant's GSTIN; the date, time and person accepting; and a SHA-256 fingerprint of the values. The application shows the accepted versions to the Restaurant, and KnotKitchen can produce them on request.
-
-The options selectable in the application, and their amounts as at the Agreement Version above, are those stated in clauses 5.2, 6.1 and 11A.
 
 ANNEXURE_A_PLACEHOLDER
-
-## SCHEDULE 2 — DATA PROCESSING TERMS
-
-**1. Subject matter and duration.** Processing of Customer Data by KnotKitchen as Data Processor for the Restaurant, for the term of the Agreement and the export and deletion windows in clause 12.7.
-
-**2. Nature and purpose.** Hosting, storage, transmission, display and analysis of Customer Data to operate the POS, website ordering, e-bills, integrations and reports; sending transactional communications to Customers on the Restaurant's behalf (order confirmation, e-bill, OTP); support.
-
-**3. Categories of data and data principals.** Customers: name, phone number, email, delivery address, order contents, order history, payment status and reference, table or session identifiers, communication preferences, device and log data. Restaurant staff and owners (as KnotKitchen's own fiduciary data): name, phone, email, role, credentials (hashed), activity logs.
-
-**4. Instructions.** The Agreement, the application's settings chosen by the Restaurant, and written instructions from the Restaurant's authorised users. KnotKitchen will inform the Restaurant if an instruction appears to breach Applicable Law.
-
-**5. Security safeguards.** Encryption of data in transit (TLS); access control with role-based permissions and hashed credentials; logging and monitoring; regular backups; vulnerability management and patching; staff confidentiality obligations; incident-response procedure.
-
-**6. Sub-processors.** Cloud hosting: Hostinger (virtual private server); database hosting: MongoDB Atlas; payment gateway: Cashfree (contracted by the Restaurant directly for Customer payments; used by KnotKitchen for Wallet top-ups); SMS, OTP and WhatsApp messaging: Fast2SMS; marketplaces: as enabled by the Restaurant. KnotKitchen will notify the Restaurant in the application of a new sub-processor at least 15 days before it processes Customer Data; the Restaurant may object on reasonable data-protection grounds and, if the objection is not resolved, terminate the affected Service without commitment repayment.
-
-**7. Assistance.** KnotKitchen will, at the Restaurant's request and at no charge for reasonable requests, provide the tools or information needed for the Restaurant to respond to a Customer's request for access, correction or erasure, to give required notices, and to respond to the Data Protection Board of India or another authority.
-
-**8. Breach.** On becoming aware of a Personal Data breach affecting Customer Data, KnotKitchen will notify the Restaurant without undue delay and, in any case, within the period the Digital Personal Data Protection Rules, 2025 require for intimation to affected data principals once those rules are in force, describing the nature of the breach, the data and Customers affected so far as known, the likely consequences, and the steps taken or proposed. KnotKitchen will make any notification the law requires it to make to the Data Protection Board of India in respect of data for which it is Data Fiduciary, and will assist the Restaurant with notifications the Restaurant must make.
-
-**9. Return and deletion.** As set out in clause 12.7.
-
-**10. Audit.** Once in any 12-month period, and after a breach, the Restaurant may request a written description of KnotKitchen's security measures, and KnotKitchen will respond within 30 days. On-site audits are not offered under this Agreement.
-
-**11. Commencement.** Obligations in this Schedule that track provisions of the Digital Personal Data Protection Rules, 2025 apply in full from the date those provisions come into force (the substantive obligations are scheduled to commence on 13 May 2027, with earlier phases for the Data Protection Board and consent managers); until then the Parties will apply them as reasonable security and processing practices.
-
-## SCHEDULE 3 — ACCEPTANCE RECORD
-
-For each acceptance, the KnotKitchen system records and retains under clause 14.3:
-
-- Agreement ID, Agreement Version, and the SHA-256 hash of the exact Agreement text that was displayed and accepted, and of each accepted Commercial Schedule.
-- Date and time (IST and UTC) of: display of the Agreement in the portal; each confirmation tick; download of the generated Agreement; upload of the signed copy; submission; Verification; Activation; and each Commercial Schedule acceptance in the application.
-- IP address and device or browser information of the accepting session, retained for evidential purposes only.
-- Portal account, Store ID (once assigned), the sales agent handling onboarding, and the Restaurant's registered mobile number and email.
-- Signer identity and stated authority: name, designation, entity type, and any authority document uploaded.
-- The signature method used on the uploaded copy (handwritten signature scanned, Aadhaar eSign, or Digital Signature Certificate), with the eSign response or certificate details where applicable.
-- The uploaded signed copy and its SHA-256 hash.
-- A downloadable copy of the accepted Agreement and Commercial Schedule made available to the Restaurant.
 
 ---
 
