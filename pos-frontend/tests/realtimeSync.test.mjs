@@ -79,7 +79,7 @@ test("SOURCE: a reconnect re-joins its room and catches up", () => {
   assert.match(onConnect, /invalidate\(\[/, "and refresh what was missed");
   // The shared socket owns the room join, on every connect.
   const shared = SRC("src/socket.js");
-  assert.match(shared, /socket\.on\("connect", \(\) => socket\.emit\("joinRestaurant"/);
+  assert.match(shared, /socket\.on\("connect", \(\) => \{[\s\S]{0,80}current\.emit\("joinRestaurant"/);
 });
 
 test("SOURCE: the socket is torn down when the shell unmounts", () => {
@@ -89,7 +89,7 @@ test("SOURCE: the socket is torn down when the shell unmounts", () => {
   assert.match(hook, /handlers\.forEach\(\(\[event, handler\]\) => socket\.off\(event, handler\)\)/);
   // ...and the shared socket closes when the last consumer lets go.
   const shared = SRC("src/socket.js");
-  assert.match(shared, /holders === 0 && socket\) \{\n\s*socket\.disconnect\(\);/);
+  assert.match(shared, /holders === 0 && socket\) \{[\s\S]{0,80}socket\.disconnect\(\);/);
 });
 
 test("SOURCE: payloads are not merged into the cache by hand", () => {

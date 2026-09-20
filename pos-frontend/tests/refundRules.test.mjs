@@ -46,3 +46,15 @@ test("the payment kind and refund state shown come from the backend", () => {
     assert.match(consts, new RegExp(`${s}: "${s}"`));
   }
 });
+
+test("REGRESSION: a till whose socket was refused signs back in and reconnects", () => {
+  // socket.io does not retry a handshake the server's auth middleware refused,
+  // and the socket signs in with the 15-minute access cookie. Without this a
+  // till went deaf after any API restart: no new-order card, no waiter call.
+  const src = fs.readFileSync(new URL("../src/socket.js", import.meta.url), "utf8");
+  assert.match(src, /socket\.on\("connect_error"/);
+  assert.match(src, /if \(!current\.active\) reviveAfterRefusal\(current\)/);
+  assert.match(src, /axiosWrapper\.post\("\/api\/user\/refresh"/);
+  assert.match(src, /s\.connect\(\)/);
+  assert.match(src, /visibilitychange/);
+});
