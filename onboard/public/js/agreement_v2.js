@@ -81,7 +81,7 @@ KnotKitchen and the Restaurant are each a "**Party**" and together the "**Partie
 
 1.2 Services available to the Restaurant depend on the selected Subscription Plan and any add-ons, as shown in the KnotKitchen Application and recorded in the Commercial Schedule.
 
-1.3 KnotKitchen is a technology and software provider. KnotKitchen does not prepare, manufacture, package, store, sell or deliver the Restaurant's food, and is not the seller of any food or goods ordered through the Services, unless a separate written service arrangement expressly says otherwise (for example, delivery arranged through KnotKitchen under clause 4.2).
+1.3 KnotKitchen is a technology and software provider. KnotKitchen does not prepare, manufacture, package, store, sell or deliver the Restaurant's food, and is not the seller of any food or goods ordered through the Services, unless a separate written service arrangement expressly says otherwise.
 
 ## 1A. AVAILABILITY, MAINTENANCE AND SERVICE CHANGES
 
@@ -109,7 +109,7 @@ KnotKitchen and the Restaurant are each a "**Party**" and together the "**Partie
 
 ## 3. PAID ORDERS
 
-3.1 KnotKitchen may apply a charge or commission on paid orders received through the Restaurant's KnotKitchen website or other applicable KnotKitchen services ("**Order Charges**").
+3.1 KnotKitchen may apply a charge or commission on paid orders received through the Restaurant's KnotKitchen website or other applicable KnotKitchen services.
 
 3.2 The applicable Order Charge is **not fixed in this Agreement**. It may be determined based on factors including the Restaurant's sales or order volume and other applicable commercial factors.
 
@@ -123,15 +123,13 @@ KnotKitchen and the Restaurant are each a "**Party**" and together the "**Partie
 
 ## 4. FEES, WALLET, INVOICING AND TAXES
 
-4.1 **What the Restaurant pays.** The Restaurant pays, as applicable and as shown in the Commercial Schedule: (a) Subscription Fees; (b) the Installation Charge; (c) Order Charges; (d) Domain charges; (e) add-on and other separately billed KnotKitchen charges, including per-e-bill charges where enabled; (f) delivery charges where delivery is arranged through KnotKitchen; and (g) Taxes on each of the above. Each item is shown as a separate line in the application and on invoices.
+4.1 **What the Restaurant pays.** The Restaurant pays, as applicable and as shown in the Commercial Schedule: (a) Subscription Fees; (b) the Installation Charge; (c) Order Charges; (d) Domain charges; (e) add-on and other separately billed KnotKitchen charges, including per-e-bill charges where enabled; and (f) Taxes on each of the above.
 
-4.2 **Delivery arranged by the Restaurant.** If the Restaurant independently arranges delivery, KnotKitchen will not charge a KnotKitchen delivery fee.
+4.2 **Wallet.** KnotKitchen maintains a prepaid Wallet (the Business Balance) for the Restaurant. The Restaurant tops up the Wallet through the payment methods offered in the application. Amounts due under clause 4.1 are deducted from the Wallet on their due date. The due date for a Subscription Fee is the Renewal Date; for Order Charges, the date shown in the application; for the Installation Charge, the date of selection. The application shows the Wallet balance, each deduction and the next due date at all times.
 
-4.3 **Wallet.** KnotKitchen maintains a prepaid Wallet (the Business Balance) for the Restaurant. The Restaurant tops up the Wallet through the payment methods offered in the application. Amounts due under clause 4.1 are deducted from the Wallet on their due date. The due date for a Subscription Fee is the Renewal Date; for Order Charges, the date shown in the application; for the Installation Charge, the date of selection. The application shows the Wallet balance, each deduction and the next due date at all times.
+4.3 **Insufficient balance.** If the Wallet has insufficient balance on a due date, clause 13 (Suspension and Inactive Accounts) applies. The 24-hour grace period in clause 13.2 is the first step of that process.
 
-4.4 **Insufficient balance.** If the Wallet has insufficient balance on a due date, clause 13 (Suspension and Inactive Accounts) applies. The 24-hour grace period in clause 13.2 is the first step of that process.
-
-4.5 **Taxes and GST.**\\
+4.4 **Taxes and GST.**\\
 (a) All charges are stated **exclusive of Taxes** unless the application expressly marks a price as inclusive. Taxes, where applicable, are charged in addition at the rate applicable on the date of supply and shown separately.\\
 (b) KnotKitchen is not currently registered under GST. No GST is charged and invoices say so. If KnotKitchen becomes registered, GST applies from the effective date of registration and will be shown separately on tax invoices issued under the Central Goods and Services Tax Act, 2017, with KnotKitchen's GSTIN, the Restaurant's GSTIN if supplied, the taxable value, any discount recorded at the time of supply, and CGST/SGST or IGST as applicable, without amendment to this Agreement.\\
 (c) The Restaurant must supply an accurate GSTIN and legal name if it wishes to claim input tax credit once GST applies, and must promptly update any change. KnotKitchen is not liable for any loss of credit, penalty or interest arising from GSTIN or address details that the Restaurant supplied incorrectly or failed to update.\\
@@ -140,9 +138,7 @@ KnotKitchen and the Restaurant are each a "**Party**" and together the "**Partie
 (f) Where an amount on which GST was charged is refunded or reduced under this Agreement, KnotKitchen will issue a credit note under section 34 of the CGST Act (or a refund voucher, as applicable) and adjust the tax accordingly, and the Restaurant will reverse any corresponding input tax credit to the extent required by law.\\
 (g) Any withholding tax the Restaurant is required by law to deduct must be deducted and deposited by the Restaurant, which must provide the certificate within the statutory time; KnotKitchen will treat the gross amount as received once the certificate is provided.
 
-4.6 **Late payment.** Amounts unpaid after the due date remain due and are collected from the Wallet on the next top-up, in addition to KnotKitchen's rights under clause 13.
-
-4.7 **Wallet refund.** Unused Wallet balance is refunded on Termination in accordance with clause 12A, after adjustment of all amounts due.
+4.5 **Late payment.** Amounts unpaid after the due date remain due and are collected from the Wallet on the next top-up, in addition to KnotKitchen's rights under clause 13.
 
 ## 4A. PAYMENT GATEWAY
 
@@ -164,7 +160,7 @@ KnotKitchen and the Restaurant are each a "**Party**" and together the "**Partie
 
 Installation option : Installation Without Thermal Printer / Installation With 2-inch Thermal Printer / Installation With 3-inch Thermal Printer
 
-5.3 **Taxes and display.** Taxes, where applicable, are charged in addition to the amounts in clause 5.2 and are shown separately in the application and on the invoice. The amount and treatment shown in the application and recorded in the Commercial Schedule must be the same as those in this Agreement; if they differ, the Commercial Schedule accepted by the Restaurant applies to that Restaurant and KnotKitchen will correct the discrepancy.
+5.3 **Amount, Taxes and display.** The Installation Charge for the selected option is shown in the KnotKitchen Application before the Restaurant confirms and is recorded in the Commercial Schedule. Taxes, where applicable, are charged in addition and shown separately in the application and on the invoice. If any amount in this Agreement differs from the Commercial Schedule accepted by the Restaurant, the Commercial Schedule applies and KnotKitchen will correct the discrepancy.
 
 5.4 **When payable.** The Installation Charge is payable once, from the Wallet, on selection in the application, and in any event before Activation. Installation is scheduled after payment and Verification.
 
@@ -291,8 +287,6 @@ Installation option : Installation Without Thermal Printer / Installation With 2
 
 10.6 On Termination, KnotKitchen will remove Restaurant Content from public display and delete it in accordance with clause 12.7, except as retained in backups or as required by law.
 
-10.7 Suggestions or feedback from the Restaurant about the Services may be used by KnotKitchen without obligation, provided no Restaurant Confidential Information is disclosed.
-
 ---
 
 ## 11. WEBSITE AND ONLINE ORDERS
@@ -405,19 +399,13 @@ Installation option : Installation Without Thermal Printer / Installation With 2
 
 13.8 **Termination.** If payment is not received by the end of the final notice period, KnotKitchen may terminate this Agreement under clause 12.3(d). Clauses 12.5 to 12.7 then apply: the 30-day export window runs from the Termination Effective Date, and deletion follows under clause 12.7.
 
-13.9 **Commitment Discount.** Where a Billing Period within a Commitment Period is not renewed within the grace period, the Commitment Discount ends and the repayment under clause 6.5 becomes due, in addition to the unpaid amounts.
+13.9 **Prolonged inactivity without dues.** If a Store with no unpaid amounts processes no orders and has no sign-in for 6 consecutive months, KnotKitchen may treat it as inactive, notify the Restaurant, and, if there is no response within 30 days, terminate under clause 12.3(e) with the export and deletion windows in clause 12.7.
 
-13.10 **Prolonged inactivity without dues.** If a Store with no unpaid amounts processes no orders and has no sign-in for 6 consecutive months, KnotKitchen may treat it as inactive, notify the Restaurant, and, if there is no response within 30 days, terminate under clause 12.3(e) with the export and deletion windows in clause 12.7.
+13.10 **Domain.** During Suspension the Domain remains registered but the website is restricted. A Domain falling due for renewal during Suspension or after termination for non-payment is not renewed by KnotKitchen unless the renewal charge is paid; clause 11A.5 then applies. On the Restaurant's request within the export window and payment of all dues, KnotKitchen will cooperate in a transfer under clause 11A.6.
 
-13.11 **Installation Charge.** On termination for non-payment, the Installation Charge refund under clause 5.6 is calculated as at the Termination Effective Date and the unpaid amounts, commitment repayment and any Equipment costs are deducted under clause 5.6(c).
+13.11 **Other grounds for Suspension.** KnotKitchen may also suspend the Store, with as much notice as is reasonable in the circumstances, for: material breach of this Agreement; fraudulent or unlawful activity; misuse of KnotKitchen systems or Equipment; a security threat; or where required by law or a competent authority. Suspension for these reasons continues until the cause is remedied, and may lead to termination under clause 12.3.
 
-13.12 **Domain.** During Suspension the Domain remains registered but the website is restricted. A Domain falling due for renewal during Suspension or after termination for non-payment is not renewed by KnotKitchen unless the renewal charge is paid; clause 11A.5 then applies. On the Restaurant's request within the export window and payment of all dues, KnotKitchen will cooperate in a transfer under clause 11A.6.
-
-13.13 **Integrations and Equipment.** Integrations are disconnected on Suspension and on Termination. Equipment must be returned under clause 5.5(c) after Termination, or earlier on KnotKitchen's written request if the Store has been suspended for more than 30 days.
-
-13.14 **Other grounds for Suspension.** KnotKitchen may also suspend the Store, with as much notice as is reasonable in the circumstances, for: material breach of this Agreement; fraudulent or unlawful activity; misuse of KnotKitchen systems or Equipment; a security threat; or where required by law or a competent authority. Suspension for these reasons continues until the cause is remedied, and may lead to termination under clause 12.3.
-
-13.15 **Immediate action.** Nothing in this clause prevents KnotKitchen from suspending immediately, or terminating under clause 12.3(b), where fraud, security abuse, illegal activity or a legal requirement makes immediate action necessary.
+13.12 **Immediate action.** Nothing in this clause prevents KnotKitchen from suspending immediately, or terminating under clause 12.3(b), where fraud, security abuse, illegal activity or a legal requirement makes immediate action necessary.
 
 ---
 
@@ -553,8 +541,6 @@ By accepting this Agreement in the manner described in clause 14, the Restaurant
 20.10 **Third-party rights.** No person other than the Parties has any right to enforce this Agreement.
 
 20.11 **Costs.** Each Party bears its own costs of entering into this Agreement, except stamp duty as provided in clause 14.6.
-
----
 
 ANNEXURE_A_PLACEHOLDER
 
