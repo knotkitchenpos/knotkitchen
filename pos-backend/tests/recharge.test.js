@@ -153,3 +153,11 @@ test("SOURCE: the route forwards both the reason and the code", () => {
   const route = SRC("routes/businessBalanceRoute.js");
   assert.match(route, /\{ expose: true, code: err\.code \}/);
 });
+
+test("SOURCE: a top-up returns only to our own https front end", () => {
+  // The Android app pays full-page and Cashfree sends the operator back to
+  // returnUrl, which the client names. It must not be able to name anywhere.
+  const route = fs.readFileSync(path.join(__dirname, "..", "routes", "businessBalanceRoute.js"), "utf8");
+  assert.match(route, /url\.protocol === "https:" && config\.frontendUrls\.includes\(url\.origin\) \? url\.href : undefined/);
+  assert.match(route, /returnUrl: ownReturnUrl\(req\.body\?\.returnUrl\)/);
+});

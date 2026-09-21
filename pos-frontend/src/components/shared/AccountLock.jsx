@@ -9,17 +9,18 @@ import { clearActiveStoreId } from "../../utils/storeSession";
 /**
  * Non-payment lock, on the POS side.
  *
- * The server decides (services/accountLock.js): once the Business Balance has
- * run out -- or order charges go unpaid, or the subscription ends -- the
- * restaurant has the grace period (24 hours) to pay, then every staff API
- * except Billing answers 402 ACCOUNT_LOCKED. Without this the POS just showed
- * broken screens. Now:
+ * The server decides (services/accountLock.js): a new store with no plan is
+ * locked from the start; once the Business Balance has run out -- or order
+ * charges go unpaid, or the subscription ends -- the restaurant has the grace
+ * period (24 hours) to pay. Locked, every staff API except Billing answers 402
+ * ACCOUNT_LOCKED. Without this the POS just showed broken screens. Now:
  *
  *   during the grace period  a banner on every screen says when it locks
  *   locked                   every screen sends the user to Billing & Subscription
  */
 
-export const LOCK_OPEN_PATHS = ["/settings/billing", "/auth", "/impersonate"];
+// Help & Support makes no API calls, and a stuck owner should reach it.
+export const LOCK_OPEN_PATHS = ["/settings/billing", "/support", "/auth", "/impersonate"];
 export const LOCKED_EVENT = "kk:account-locked";
 
 export const useAccountLock = (enabled) => {
@@ -65,6 +66,7 @@ const remaining = (at, now) => {
 /** The grace-period warning, or the locked notice with a way to sign out. */
 export const AccountLockBanner = ({ locked, locksAt, lockWarning }) => {
   const navigate = useNavigate();
+  const onSupport = useLocation().pathname.startsWith("/support");
   const dispatch = useDispatch();
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -86,15 +88,24 @@ export const AccountLockBanner = ({ locked, locksAt, lockWarning }) => {
     return (
       <div role="alert" className="shrink-0 flex flex-wrap items-center justify-between gap-2 bg-[#B91C1C] px-4 py-2.5 text-white">
         <p className="text-[13px] font-bold">
-          The POS is locked. Recharge your Business Balance or renew your plan below to unlock it straight away.
+          The POS is locked. Only Billing &amp; Subscription is open until a plan is active and nothing is overdue.
         </p>
-        <button
-          type="button"
-          onClick={() => signOut.mutate()}
-          className="h-[32px] rounded-lg border border-white/40 px-3 text-[12.5px] font-bold hover:bg-white/10"
-        >
-          Sign out
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={() => navigate(onSupport ? "/settings/billing" : "/support")}
+            className="h-[32px] rounded-lg border border-white/40 px-3 text-[12.5px] font-bold hover:bg-white/10"
+          >
+            {onSupport ? "Billing" : "Help"}
+          </button>
+          <button
+            type="button"
+            onClick={() => signOut.mutate()}
+            className="h-[32px] rounded-lg border border-white/40 px-3 text-[12.5px] font-bold hover:bg-white/10"
+          >
+            Sign out
+          </button>
+        </div>
       </div>
     );
   }

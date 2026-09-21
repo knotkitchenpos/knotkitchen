@@ -32,11 +32,20 @@ class InsufficientBalanceError extends Error {
   }
 }
 
-/** Read-only. Creates the row on first look so a new restaurant reads 0, not null. */
+/**
+ * Creates the row on first look so a new restaurant reads 0, not null, and
+ * assesses the lock right then: a new store has no plan, so it starts locked
+ * (services/accountLock). Every path that creates the row comes through here,
+ * so none can leave a new store unlocked. Upsert, because a new till fires
+ * several first requests at once and the row is unique per restaurant.
+ */
 const getBalance = async (restaurantId) => {
   const existing = await BusinessBalance.findOne({ restaurantId });
   if (existing) return existing;
-  return BusinessBalance.create({ restaurantId, balancePaise: 0 });
+  await BusinessBalance.updateOne({ restaurantId }, { $setOnInsert: { balancePaise: 0 } }, { upsert: true });
+  // Required here: accountLock reads this module's model and is required by its callers.
+  await require("./accountLock").evaluateLock(restaurantId);
+  return BusinessBalance.findOne({ restaurantId });
 };
 
 const assertAmount = (amountPaise) => {

@@ -116,8 +116,9 @@ test("REGRESSION: the allow-list is matched on the full path, not the router-rel
 // The decision
 // ---------------------------------------------------------------------------
 
-/** Run `fn` against accountLock with its reads replaced. */
-const withAssess = async ({ lastEntry = null, dues = { count: 0 }, subscription = null, graceHours = 24, override = null }, fn) => {
+/** Run `fn` against accountLock with its reads replaced. Paid up by default. */
+const LIVE_PLAN = { currentPeriodEnd: new Date("2099-01-01T00:00:00Z") };
+const withAssess = async ({ lastEntry = null, dues = { count: 0 }, subscription = LIVE_PLAN, graceHours = 24, override = null }, fn) => {
   const Module = require("module");
   const orig = Module._load;
   Module._load = function (r) {
@@ -202,11 +203,37 @@ test("SOURCE: a lock is only applied after the configured grace period", () => {
   assert.ok(!/\b24\b/.test(src.replace(/\/\*[\s\S]*?\*\//g, "")), "24 must not be a constant here");
 });
 
-test("SOURCE: a restaurant that never subscribed is not overdue", () => {
-  // Nothing to be late with. Locking it would be locking someone out for not
-  // having started yet.
+test("SOURCE: a store that never bought a plan starts locked, with Billing still open", () => {
+  // "When a store is created, everything should be locked except Billing and
+  // Subscription." No grace: it has nothing running that could be cut off.
   const src = SRC("services/accountLock.js");
-  assert.match(src, /if \(subscription\?\.currentPeriodEnd\) \{/);
+  assert.match(src, /if \(!subscription\?\.currentPeriodEnd\) \{\s*reasons\.push\("No plan is active yet\."\)/);
+  // Demo stores are decided before this rule is reached.
+  assert.ok(src.indexOf("override?.billingExempt") < src.indexOf("!subscription?.currentPeriodEnd"));
+  // Whoever creates a new store's balance row assesses it in the same breath,
+  // so no first request (the gate, the balance poll, a top-up) leaves it open.
+  const ledger = SRC("services/ledger.js");
+  const getBalance = ledger.slice(ledger.indexOf("const getBalance"), ledger.indexOf("const assertAmount"));
+  assert.match(getBalance, /upsert: true[\s\S]*evaluateLock\(restaurantId\)/);
+  assert.match(SRC("middlewares/accountLock.js"), /if \(!balance\) balance = await require\("\.\.\/services\/ledger"\)\.getBalance\(restaurantId\)/);
+  // The balance poll keeps the stored lock current instead of only reading it.
+  assert.match(SRC("routes/businessBalanceRoute.js"), /evaluateLock\(restaurantId\), outstandingDues\(restaurantId\)/);
+  // A staff member confirms a plan purchase with the Store PIN.
+  assert.ok(require("../middlewares/accountLock").isOpen("/api/restaurant/verify-pin"));
+  const { isOpen } = require("../middlewares/accountLock");
+  for (const p of ["/api/subscription/plans", "/api/business-balance", "/api/billing/invoices", "/api/user/refresh"]) assert.ok(isOpen(p), p);
+  for (const p of ["/api/order", "/api/menu", "/api/table"]) assert.ok(!isOpen(p), p);
+});
+
+test("a new store with no plan is locked at once; a demo store is not", async () => {
+  await withAssess({ subscription: null }, async (svc) => {
+    const res = await svc.assessAccount("r1", new Date("2026-09-21"));
+    assert.equal(res.shouldLock, true, "no grace: nothing is running yet");
+    assert.match(res.reasons.join(" "), /No plan is active yet/);
+  });
+  await withAssess({ subscription: null, override: { billingExempt: true } }, async (svc) => {
+    assert.equal((await svc.assessAccount("r1", new Date("2026-09-21"))).shouldLock, false);
+  });
 });
 
 test("SOURCE: paying re-evaluates the lock immediately", () => {
@@ -214,7 +241,10 @@ test("SOURCE: paying re-evaluates the lock immediately", () => {
   const recharge = SRC("services/recharge.js");
   assert.match(recharge, /await evaluateLock\(intent\.restaurantId\)/, "awaited, so the caller is told");
 
-  assert.match(SRC("services/subscription.js"), /fireEvaluateLock\(restaurantId\)/);
+  // Awaited in both branches, so Billing's refresh right after sees it unlocked.
+  const sub = SRC("services/subscription.js");
+  const purchase = sub.slice(sub.indexOf("const purchasePlan"), sub.indexOf("const lapseCommitments"));
+  assert.equal((purchase.match(/await settleLock\(restaurantId\)/g) || []).length, 2);
   assert.match(SRC("services/orderCharge.js"), /fireEvaluateLock\(restaurantId\)/);
 });
 

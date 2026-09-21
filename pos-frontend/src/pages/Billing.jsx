@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
+import { Capacitor } from "@capacitor/core";
 import {
   getBusinessBalance,
   getBalanceTransactions,
@@ -289,6 +290,34 @@ const Billing = () => {
     qc.invalidateQueries({ queryKey: ["subscription"] });
   };
 
+  /** Ask our server, which asks Cashfree, whether a top-up was paid. */
+  const settleTopUp = async (gatewayOrderId) => {
+    // Never trusted, always re-checked against Cashfree by the server.
+    const verified = await verifyRecharge({ gatewayOrderId });
+    const { credited, already, reason } = verified.data.data;
+
+    if (credited || already) {
+      enqueueSnackbar("Balance added.", { variant: "success" });
+      setAmount("");
+      refreshMoney();
+    } else {
+      enqueueSnackbar(reason || "That payment has not completed.", { variant: "warning" });
+    }
+  };
+
+  // Back from the full-page checkout in the Android app (see topUp).
+  useEffect(() => {
+    const gatewayOrderId = new URLSearchParams(window.location.search).get("recharge");
+    if (!gatewayOrderId) return;
+    window.history.replaceState(null, "", window.location.pathname);
+    settleTopUp(gatewayOrderId).catch(() =>
+      enqueueSnackbar("The top-up could not be checked. The balance updates by itself once Cashfree confirms.", {
+        variant: "warning",
+      }),
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /**
    * Top up.
    *
@@ -296,6 +325,11 @@ const Billing = () => {
    * asked Cashfree what happened. Whatever the modal resolves with, we ask our
    * own server to check -- which also covers paying and then closing the modal
    * before it reports back.
+   *
+   * In the Android app the checkout takes the whole page instead, as in
+   * Cashfree's own WebView samples: there it lists the phone's UPI apps (via
+   * the app's UpiIntentPlugin) and shows its verify step on the way back.
+   * Cashfree then returns to this page with ?recharge=<order id>.
    */
   const topUp = async (rupees) => {
     const value = Number(rupees);
@@ -306,7 +340,11 @@ const Billing = () => {
 
     setPaying(true);
     try {
-      const opened = await createRecharge({ amount: value });
+      const inApp = Capacitor.isNativePlatform();
+      const opened = await createRecharge({
+        amount: value,
+        ...(inApp ? { returnUrl: `${window.location.origin}/settings/billing?recharge={order_id}` } : {}),
+      });
       const { paymentSessionId, gatewayOrderId, environment } = opened.data.data;
 
       const Cashfree = await loadCashfree();
@@ -318,19 +356,12 @@ const Billing = () => {
       }
 
       const cashfree = Cashfree({ mode: environment === "PROD" ? "production" : "sandbox" });
-      await cashfree.checkout({ paymentSessionId, redirectTarget: "_modal" });
+      const result = await cashfree.checkout({ paymentSessionId, redirectTarget: inApp ? "_self" : "_modal" });
+      // Leaving for Cashfree: the return settles it. On a narrow screen Cashfree
+      // may finish (or be closed) in its own modal instead, so check then too.
+      if (result?.redirect) return;
 
-      // Never trusted, always re-checked against Cashfree by the server.
-      const verified = await verifyRecharge({ gatewayOrderId });
-      const { credited, already, reason } = verified.data.data;
-
-      if (credited || already) {
-        enqueueSnackbar("Balance added.", { variant: "success" });
-        setAmount("");
-        refreshMoney();
-      } else {
-        enqueueSnackbar(reason || "That payment has not completed.", { variant: "warning" });
-      }
+      await settleTopUp(gatewayOrderId);
     } catch (err) {
       enqueueSnackbar(
         err?.response?.data?.message || "The top-up could not be completed.",
@@ -391,7 +422,11 @@ const Billing = () => {
           <p className="mt-1 text-[13px] text-[#7F1D1D]">
             {balance.lockedReason ||
               "There is an outstanding amount on this account."}{" "}
-            Add balance below and it unlocks automatically.
+            {subscription?.installationRequired
+              ? "Add balance, pay the Installation Charge, then choose a plan below. It unlocks as soon as the plan is active."
+              : !subscription?.active
+                ? "Add balance and choose a plan below. It unlocks as soon as the plan is active."
+                : "Add balance below and it unlocks automatically."}
           </p>
         </div>
       )}

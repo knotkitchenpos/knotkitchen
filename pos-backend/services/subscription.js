@@ -20,7 +20,7 @@ const { debit, InsufficientBalanceError } = require("./ledger");
 const { amountInWords, formatINR } = require("./money");
 const { nextPeriod, upgradeCharge, isActiveAt, startOfIstDay } = require("./subscriptionPeriod");
 const { nextInvoiceNumber } = require("./invoiceNumber");
-const { fireEvaluateLock } = require("./accountLock");
+const { fireEvaluateLock, evaluateLock } = require("./accountLock");
 const {
   INSTALLATION_OPTIONS,
   installationOption,
@@ -30,6 +30,11 @@ const {
   installationRefund,
   scheduleHash,
 } = require("./commercialTerms");
+
+// Awaited after a purchase, so the Billing page's refresh right after already
+// sees the lock gone. Never allowed to fail the purchase it follows.
+const settleLock = (restaurantId) =>
+  evaluateLock(restaurantId).catch((err) => console.warn("[Subscription] lock re-evaluation failed:", err.message));
 
 /** Agreement text the app's Commercial Schedule belongs to. */
 const AGREEMENT_VERSION = "v2.0";
@@ -446,6 +451,7 @@ const purchasePlan = async ({ restaurantId, planCode, commitmentMonths = 0, on =
     applyCommitment();
     await subscription.save();
     const schedule = await snapshot(q.isUpgrade ? "UPGRADE" : "SUBSCRIPTION");
+    await settleLock(restaurantId); // a zero-priced first plan unlocks a new store too
     return { subscription, invoice: null, schedule, charged: 0 };
   }
 
@@ -511,8 +517,8 @@ const purchasePlan = async ({ restaurantId, planCode, commitmentMonths = 0, on =
 
   const schedule = await snapshot(q.isUpgrade ? "UPGRADE" : q.commitment?.isNew ? "COMMITMENT" : "SUBSCRIPTION");
 
-  // A renewal may be what lifts a lock.
-  fireEvaluateLock(restaurantId);
+  // A first plan or a renewal may be what lifts a lock.
+  await settleLock(restaurantId);
 
   return { subscription, invoice, schedule, charged: q.totalPaise };
 };

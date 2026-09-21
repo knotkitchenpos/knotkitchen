@@ -65,3 +65,42 @@ test("REGRESSION: printing does not need BLUETOOTH_SCAN", () => {
   const java = JAVA("ThermalPrinterPlugin.java");
   assert.match(java, /try \{\s*adapter\.cancelDiscovery\(\);\s*\} catch \(SecurityException ignored\)/);
 });
+
+test("Cashfree checkout in the app can list and open UPI apps", () => {
+  // Without a JS bridge named "Android" (getAppList/openApp, Cashfree's WebView
+  // contract) the checkout offered only "UPI ID / QR", and operators paid by
+  // screenshotting the QR.
+  const plugin = JAVA("UpiIntentPlugin.java");
+  assert.match(plugin, /addJavascriptInterface\(this, "Android"\)/);
+  assert.match(plugin, /@JavascriptInterface\s+public String getAppList\(String link\)/);
+  assert.match(plugin, /@JavascriptInterface\s+public boolean openApp\(String appPackage, String link\)/);
+  assert.match(plugin, /intent\.setPackage\(appPackage\)/, "opened only in the app picked");
+
+  const main = JAVA("MainActivity.java");
+  assert.ok(main.indexOf("registerPlugin(UpiIntentPlugin.class)") < main.indexOf("super.onCreate"));
+  assert.match(main, /requestCode == UpiIntentPlugin\.UPI_REQUEST/);
+
+  // Android 11+ hides the apps unless the schemes are declared; keep both lists in step.
+  const manifest = SRC("android/app/src/main/AndroidManifest.xml");
+  const schemes = plugin.match(/UPI_SCHEMES = Arrays\.asList\(([^)]*)\)/)[1].match(/"(\w+)"/g).map((s) => s.slice(1, -1));
+  for (const scheme of schemes) assert.match(manifest, new RegExp(`<data android:scheme="${scheme}" />`), scheme);
+});
+
+test("in the app a top-up checks out full page and is settled on the way back", () => {
+  const billing = SRC("src/pages/Billing.jsx");
+  assert.match(billing, /redirectTarget: inApp \? "_self" : "_modal"/);
+  assert.match(billing, /returnUrl: `\$\{window\.location\.origin\}\/settings\/billing\?recharge=\{order_id\}`/);
+  assert.match(billing, /get\("recharge"\)[\s\S]{0,200}settleTopUp\(gatewayOrderId\)/);
+});
+
+test("REGRESSION: a checkout's later pages stay in the app, and Back skips them", () => {
+  // Capacitor sends every off-host page to the system browser; a bank or 3-D
+  // Secure hop after Cashfree's full-page checkout then never came back.
+  const plugin = JAVA("UpiIntentPlugin.java");
+  assert.match(plugin, /if \(host != null && !host\.equals\(appHost\) && !host\.equals\(getBridge\(\)\.getHost\(\)\)\) return false;/);
+  // intent:// only ever opens a UPI app.
+  assert.match(plugin, /Intent intent = upiIntent\(parsed\.getDataString\(\)\);/);
+  assert.match(JAVA("MainActivity.java"), /appHost\.equals\(Uri\.parse\(history\.getItemAtIndex\(i\)\.getUrl\(\)\)\.getHost\(\)\)/);
+  // Cashfree may settle in its own modal on a phone even with "_self".
+  assert.match(SRC("src/pages/Billing.jsx"), /if \(result\?\.redirect\) return;\s*\n\s*await settleTopUp\(gatewayOrderId\);/);
+});

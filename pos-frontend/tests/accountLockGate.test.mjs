@@ -14,7 +14,7 @@ test("a locked restaurant is sent to Billing from every screen, and warned befor
   assert.match(app, /<AccountLockBanner \{\.\.\.lock\} \/>/);
 
   const gate = SRC("src/components/shared/AccountLock.jsx");
-  assert.match(gate, /LOCK_OPEN_PATHS = \["\/settings\/billing", "\/auth", "\/impersonate"\]/);
+  assert.match(gate, /LOCK_OPEN_PATHS = \["\/settings\/billing", "\/support", "\/auth", "\/impersonate"\]/);
   assert.match(gate, /<Navigate to="\/settings\/billing" replace \/>/);
   assert.match(gate, /Sign out/, "a locked user can still leave");
 

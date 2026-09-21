@@ -4,8 +4,9 @@ const { isVerifiedUser } = require("../middlewares/tokenVerification");
 const { getBalance, history } = require("../services/ledger");
 const { createRecharge, finalizeRecharge, RechargeError } = require("../services/recharge");
 const { outstandingDues } = require("../services/orderCharge");
-const { assessAccount } = require("../services/accountLock");
+const { evaluateLock } = require("../services/accountLock");
 const { formatINR, toRupees } = require("../services/money");
+const config = require("../config/config");
 
 const router = express.Router();
 
@@ -20,6 +21,20 @@ const router = express.Router();
  * Nothing here can change a price or a charge. Those live in the admin panel;
  * a restaurant can only see what it was billed and add money.
  */
+
+/**
+ * Where Cashfree sends the operator after a full-page checkout (the Android
+ * app pays that way). Only back to one of our own https front ends, never to
+ * whatever a request names.
+ */
+const ownReturnUrl = (raw) => {
+  try {
+    const url = new URL(String(raw || ""));
+    return url.protocol === "https:" && config.frontendUrls.includes(url.origin) ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
+};
 
 const ownRestaurantId = (req) => {
   const id = req.user?.restaurantId;
@@ -38,11 +53,12 @@ const asAmount = (paise) => ({
 router.get("/", isVerifiedUser, async (req, res, next) => {
   try {
     const restaurantId = ownRestaurantId(req);
-    const [balance, dues, assessment] = await Promise.all([
-      getBalance(restaurantId),
-      outstandingDues(restaurantId),
-      assessAccount(restaurantId),
-    ]);
+    await getBalance(restaurantId); // a new store's row: created and assessed
+    // Evaluated, not just assessed: every till polls this each minute, so the
+    // stored lock follows the facts (a deadline passing, a plan starting or
+    // lapsing, a new reason) without waiting for the 15-minute sweep.
+    const [assessment, dues] = await Promise.all([evaluateLock(restaurantId), outstandingDues(restaurantId)]);
+    const { balance } = assessment;
 
     res.status(200).json({
       success: true,
@@ -105,7 +121,7 @@ router.post("/recharge", isVerifiedUser, async (req, res, next) => {
       restaurantId,
       amountPaise: Math.round(rupees * 100),
       createdBy: req.user?._id,
-      returnUrl: req.body?.returnUrl,
+      returnUrl: ownReturnUrl(req.body?.returnUrl),
     });
 
     res.status(201).json({ success: true, data: result });

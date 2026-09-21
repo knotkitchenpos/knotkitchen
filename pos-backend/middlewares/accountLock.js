@@ -38,6 +38,9 @@ const ALWAYS_OPEN = [
   // The shell the Billing screen needs to render: who am I, what store.
   "/api/restaurant/me",
   "/api/csd",
+  // A non-owner confirms a plan purchase with the Store PIN. It only issues a
+  // PIN token; everything that token unlocks is still gated.
+  "/api/restaurant/verify-pin",
 
   // Gateway callbacks. (Diners never sign in, so customer-facing routes are
   // never reached by this middleware at all -- listing them here only ever
@@ -69,9 +72,14 @@ const enforceAccountLock = async (req, res, next) => {
     // matching req.path alone left Billing itself locked.
     if (isOpen(`${req.baseUrl || ""}${req.path}`)) return next();
 
-    const balance = await BusinessBalance.findOne({ restaurantId })
+    let balance = await BusinessBalance.findOne({ restaurantId })
       .select("lockedAt lockedReason")
       .lean();
+    // A brand-new store has no balance row, so nothing has ever assessed it.
+    // getBalance creates the row and assesses it (a store with no plan starts
+    // locked); from then on the usual events, the balance poll and the sweep
+    // keep it current.
+    if (!balance) balance = await require("../services/ledger").getBalance(restaurantId);
     if (!balance?.lockedAt) return next();
 
     // 402 rather than 403: this is "payment required", it is temporary, and

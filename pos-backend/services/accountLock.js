@@ -116,9 +116,14 @@ const assessAccount = async (restaurantId, on = new Date()) => {
     reasons.push(`Commitment discount of ${formatINR(repayment)} is due (the commitment ended early).`);
   }
 
-  // A subscription that was never bought is not overdue -- a restaurant that
-  // has not subscribed yet has nothing to be late with.
-  if (subscription?.currentPeriodEnd) {
+  // A store that has never bought a plan starts locked: everything but
+  // Billing & Subscription stays shut until it picks one. No grace period,
+  // there is nothing it was using that could be cut off mid-service. Demo
+  // stores (billingExempt, above) never reach this. The Billing page says
+  // what to do next (Installation Charge first, then a plan).
+  if (!subscription?.currentPeriodEnd) {
+    reasons.push("No plan is active yet.");
+  } else {
     const endedAt = new Date(subscription.currentPeriodEnd).getTime();
     if (now > endedAt + graceMs) {
       reasons.push("The subscription expired and the grace period has passed.");
@@ -152,15 +157,16 @@ const assessAccount = async (restaurantId, on = new Date()) => {
 const evaluateLock = async (restaurantId, on = new Date()) => {
   const assessment = await assessAccount(restaurantId, on);
   const balance = await BusinessBalance.findOne({ restaurantId });
-  if (!balance) return { ...assessment, changed: false, locked: false };
+  if (!balance) return { ...assessment, changed: false, locked: false, balance: null };
 
   const wasLocked = Boolean(balance.lockedAt);
+  const reason = assessment.reasons.join(" ");
 
   if (assessment.shouldLock && !wasLocked) {
     balance.lockedAt = new Date(on);
-    balance.lockedReason = assessment.reasons.join(" ");
+    balance.lockedReason = reason;
     await balance.save();
-    return { ...assessment, changed: true, locked: true };
+    return { ...assessment, changed: true, locked: true, balance };
   }
 
   if (!assessment.shouldLock && wasLocked) {
@@ -168,10 +174,17 @@ const evaluateLock = async (restaurantId, on = new Date()) => {
     balance.lockedAt = null;
     balance.lockedReason = "";
     await balance.save();
-    return { ...assessment, changed: true, locked: false };
+    return { ...assessment, changed: true, locked: false, balance };
   }
 
-  return { ...assessment, changed: false, locked: wasLocked };
+  // Still locked, for a different reason now (balance topped up, plan still
+  // missing): the Billing page and the 402 must say what is left to do.
+  if (wasLocked && balance.lockedReason !== reason) {
+    balance.lockedReason = reason;
+    await balance.save();
+  }
+
+  return { ...assessment, changed: false, locked: wasLocked, balance };
 };
 
 /**
