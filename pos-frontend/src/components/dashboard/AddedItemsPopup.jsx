@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useSelector } from "react-redux";
 import { enqueueSnackbar } from "notistack";
 import { resolveAddedItems } from "../../https/storefrontApi";
+import { getOrderById } from "../../https";
 import useAlertBeep from "../../hooks/useAlertBeep";
 import { acquireSocket, releaseSocket } from "../../socket";
 
@@ -28,10 +29,50 @@ const AddedItemsPopup = () => {
 
   useAlertBeep(queue.length > 0);
 
+  // What is on screen, readable from socket handlers without re-subscribing.
+  const queueRef = useRef(queue);
+  queueRef.current = queue;
+
   useEffect(() => {
     if (!restaurantId) return undefined;
 
     const socket = acquireSocket(restaurantId);
+
+    // The card is a copy of the moment the diner added the items. Another till
+    // may since have accepted them, declined one, or cancelled a dish from
+    // Orders; this one kept ringing for lines that were already dealt with.
+    // Ask the order what is STILL pending: nothing left, the card goes;
+    // something left, the card shows only that.
+    const resync = async (orderId) => {
+      try {
+        const { data } = await getOrderById(orderId);
+        const pending = (data?.data?.items || [])
+          .filter((i) => i.status === "pending")
+          .map((i) => ({
+            _id: String(i._id),
+            name: i.name,
+            quantity: i.quantity,
+            total: i.total ?? i.price,
+            modifiers: i.modifiers || [],
+          }));
+        setQueue((prev) =>
+          pending.length
+            ? prev.map((p) => (p.orderId === orderId ? { ...p, pendingItems: pending } : p))
+            : prev.filter((p) => p.orderId !== orderId),
+        );
+        setPicked({});
+      } catch {
+        /* offline or signed out: the next event, or the next look, retries */
+      }
+    };
+    const resyncAll = () => queueRef.current.forEach((p) => resync(p.orderId));
+    const onOrderChanged = (payload) => {
+      const id = String(payload?.orderId || "");
+      if (id && queueRef.current.some((p) => p.orderId === id)) resync(id);
+    };
+    const onVisible = () => {
+      if (document.visibilityState === "visible") resyncAll();
+    };
 
     const onAdded = (payload) => {
       if (!payload?.orderId) return;
@@ -52,9 +93,15 @@ const AddedItemsPopup = () => {
     };
 
     socket.on("tableOrder:itemsAdded", onAdded);
+    socket.on("onlineOrder:status", onOrderChanged);
+    socket.on("connect", resyncAll);
+    document.addEventListener("visibilitychange", onVisible);
 
     return () => {
       socket.off("tableOrder:itemsAdded", onAdded);
+      socket.off("onlineOrder:status", onOrderChanged);
+      socket.off("connect", resyncAll);
+      document.removeEventListener("visibilitychange", onVisible);
       releaseSocket();
     };
   }, [restaurantId]);

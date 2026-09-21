@@ -28,8 +28,8 @@ export const qrPlaceOrder = (token, data, claim) =>
 export const qrRequestBill = (token, claim) =>
   publicApi.post(`/api/qr/request-bill/${token}`, { sessionToken: claim || "" }); // token-scoped; no client sessionId
 export const qrCallWaiter = (token) => publicApi.post(`/api/qr/waiter-call/${token}`);
-export const qrGetPaymentIntent = (token, claim) =>
-  publicApi.post(`/api/qr/payment-intent/${token}`, { sessionToken: claim || "" }); // opens a gateway order for the table's bill
+export const qrGetPaymentIntent = (token, claim, phone) =>
+  publicApi.post(`/api/qr/payment-intent/${token}`, { sessionToken: claim || "", ...(phone ? { phone } : {}) }); // opens a gateway order for the table's bill
 // The browser reports back from the gateway. The server re-computes the
 // signature before it believes any of it, then settles the table.
 export const qrVerifyPayment = (token, data, claim) =>

@@ -116,3 +116,16 @@ test("SOURCE: the limit is per table and is reset by the acknowledge route", () 
   const dismiss = ctrl.slice(ctrl.indexOf("const dismissWaiterCall"), ctrl.indexOf("module.exports"));
   assert.match(dismiss, /resetRateLimit\(`qr-waiter:\$\{table\._id\}`\)/);
 });
+
+test("SOURCE: a table opened at the till can still be paid from the QR: the diner is asked for a phone", () => {
+  // The gateway refuses an order without a 10-digit phone. A POS-opened table
+  // has none, the call failed quietly, and the page said "Ask for the bill".
+  const ctrl = read("controllers", "qrController.js");
+  const intent = ctrl.slice(ctrl.indexOf("const paymentIntent"), ctrl.indexOf("const paymentVerify"));
+  assert.match(intent, /tenDigits\(req\.body\?\.phone\)\.length === 10/);
+  assert.match(intent, /session\.customerPhone = tenDigits\(req\.body\.phone\)/);
+  assert.match(intent, /gw\.enabled && payable > 0 && hasPhone/, "no doomed gateway call without a phone");
+  assert.match(intent, /needsPhone: Boolean\(gw\.enabled && payable > 0 && !hasPhone\)/);
+  // The amount still comes from the session's own bill, never the request.
+  assert.ok(!/req\.body\?\.amount|req\.body\.amount/.test(intent));
+});

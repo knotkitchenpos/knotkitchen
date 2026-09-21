@@ -713,6 +713,19 @@ const paymentIntent = async (req, res, next) => {
 
     const payable = session.bills?.totalWithTax || 0;
 
+    // The gateway will not open an order without a 10-digit phone. A table the
+    // diner opened from the QR gave one with their first order; a table opened
+    // at the till did not, and the gateway call then failed quietly and the
+    // page fell back to "Ask for the bill" as if the store took no online
+    // payments. So the diner is asked for it (needsPhone) and sends it here.
+    const tenDigits = (v) => String(v || "").replace(/\D/g, "").slice(-10);
+    if (tenDigits(session.customerPhone).length !== 10 && tenDigits(req.body?.phone).length === 10) {
+      session.customerPhone = tenDigits(req.body.phone);
+      if (!session.customerName && req.body?.name) session.customerName = String(req.body.name).trim().slice(0, 80);
+      await session.save();
+    }
+    const hasPhone = tenDigits(session.customerPhone).length === 10;
+
     // Open a real gateway order so the diner can be handed straight to
     // checkout. The amount comes from the session's own bill -- never from
     // the request -- so a tampered browser cannot pay less than it owes.
@@ -721,7 +734,7 @@ const paymentIntent = async (req, res, next) => {
     // carries no secret and cannot be used against any other order.
     let checkout = null;
     const gw = await resolveGateway({ restaurantId });
-    if (gw.enabled && payable > 0) {
+    if (gw.enabled && payable > 0 && hasPhone) {
       try {
         const cashfree = require("../services/gateways/cashfree");
         const order = await cashfree.createOrder({
@@ -779,6 +792,8 @@ const paymentIntent = async (req, res, next) => {
         currency: "INR",
         paymentStatus: session.payment?.status || "PENDING",
         onlinePaymentEnabled: Boolean(checkout),
+        // The store CAN take the payment; it only needs the diner's number.
+        needsPhone: Boolean(gw.enabled && payable > 0 && !hasPhone),
         checkout,
       },
     });

@@ -58,3 +58,15 @@ test("REGRESSION: a till whose socket was refused signs back in and reconnects",
   assert.match(src, /s\.connect\(\)/);
   assert.match(src, /visibilitychange/);
 });
+
+test("REGRESSION: the Added Items card follows what another till decided", () => {
+  // Cancelled on the laptop, still ringing on the phone: the card was a frozen
+  // copy of the diner's request and listened for nothing else.
+  const src = fs.readFileSync(new URL("../src/components/dashboard/AddedItemsPopup.jsx", import.meta.url), "utf8");
+  assert.match(src, /socket\.on\("onlineOrder:status", onOrderChanged\)/);
+  assert.match(src, /\.filter\(\(i\) => i\.status === "pending"\)/);
+  assert.match(src, /prev\.filter\(\(p\) => p\.orderId !== orderId\)/, "nothing left pending: the card goes");
+  assert.match(src, /socket\.on\("connect", resyncAll\)/);
+  const page = fs.readFileSync(new URL("../src/pages/OrderOnline.jsx", import.meta.url), "utf8");
+  assert.match(page, /paymentInfo\.needsPhone \?/);
+});

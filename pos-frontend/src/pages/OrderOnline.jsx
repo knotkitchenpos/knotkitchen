@@ -375,10 +375,14 @@ export default function OrderOnline() {
    * behind: a store with no gateway (ask for the bill instead), or a diner
    * who closed the checkout and wants to try again.
    */
-  const preparePayment = async () => {
+  // Asked for only when the table was opened at the till, so the session has
+  // no number for the gateway (paymentInfo.needsPhone).
+  const [payPhone, setPayPhone] = useState("");
+
+  const preparePayment = async (phone) => {
     setLoadingPayment(true);
     try {
-      const { data } = await qrGetPaymentIntent(token, claimRef.current);
+      const { data } = await qrGetPaymentIntent(token, claimRef.current, typeof phone === "string" ? phone : "");
       setPaymentInfo(data.data);
       if (data.data?.checkout?.paymentSessionId) await payOnline(data.data.checkout);
       else await refetch();
@@ -705,7 +709,31 @@ export default function OrderOnline() {
                       counter methods that only a member of staff can confirm,
                       so offering them to the diner as buttons let them mark
                       their own bill settled. They are not choices here. */}
-                  {paymentInfo.onlinePaymentEnabled ? (
+                  {paymentInfo.needsPhone ? (
+                    <>
+                      <input
+                        type="tel"
+                        inputMode="numeric"
+                        autoComplete="tel"
+                        maxLength={10}
+                        placeholder="Your 10-digit mobile number"
+                        value={payPhone}
+                        onChange={(e) => setPayPhone(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                        className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-sm outline-none focus:ring-2 focus:ring-slate-200"
+                      />
+                      <button
+                        onClick={() => preparePayment(payPhone)}
+                        disabled={loadingPayment || payPhone.length !== 10}
+                        className="w-full text-sm py-2.5 rounded-xl font-bold text-white disabled:opacity-50"
+                        style={{ background: primary }}
+                      >
+                        {loadingPayment ? "Opening payment…" : `Pay ${money(paymentInfo.amount)}`}
+                      </button>
+                      <p className="text-[11px] text-slate-400 text-center">
+                        The payment gateway needs a mobile number for your receipt.
+                      </p>
+                    </>
+                  ) : paymentInfo.onlinePaymentEnabled ? (
                     <>
                       <button
                         onClick={payOnline}
