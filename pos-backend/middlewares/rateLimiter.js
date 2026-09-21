@@ -14,6 +14,9 @@ const createHttpError = require("http-errors");
 const buckets = new Map();
 let lastSweep = Date.now();
 
+/** Forget a key's count, e.g. once the thing it was guarding has been dealt with. */
+const resetRateLimit = (key) => buckets.delete(key);
+
 const sweep = (now) => {
   if (now - lastSweep < 60_000) return;
   lastSweep = now;
@@ -83,4 +86,4 @@ const rateLimit = ({ windowMs = 60_000, max = 60, keyGenerator, message } = {}) 
 /** Reset all buckets — used by tests. */
 const resetRateLimits = () => buckets.clear();
 
-module.exports = { rateLimit, resetRateLimits, clientIp };
+module.exports = { rateLimit, resetRateLimit, resetRateLimits, clientIp };

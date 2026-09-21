@@ -39,7 +39,11 @@ const qrWriteLimiter = rateLimit({
 const qrWaiterLimiter = rateLimit({
   windowMs: config.qrWaiterCallRateWindowMs,
   max: config.qrWaiterCallRateMax,
-  keyGenerator: (req) => `qr-waiter:${req.params.token}`,
+  // Keyed by the TABLE (the scope is resolved first), so acknowledging the
+  // call at the till can hand the table its allowance back. Keyed by token it
+  // kept counting all evening: five calls in, the button went dead for the
+  // rest of the window however promptly staff had answered each one.
+  keyGenerator: (req) => `qr-waiter:${req.scope?.table?._id || req.params.token}`,
   message: "Your table has already called for a waiter. Someone is on their way.",
 });
 
@@ -51,7 +55,9 @@ router.route("/request-bill/:token").post(qrWriteLimiter, resolveTableScope, qr.
 router.route("/payment-intent/:token").post(qrWriteLimiter, resolveTableScope, qr.paymentIntent);
 router.route("/payment-verify/:token").post(qrWriteLimiter, resolveTableScope, qr.paymentVerify);
 router.route("/order/:token").post(qrWriteLimiter, resolveTableScope, qr.placeLegacyOrder);
-router.route("/waiter-call/:token").post(qrWaiterLimiter, resolveTableScope, qr.callWaiter);
+// The write limiter guards the lookup; the waiter limiter needs the table the
+// lookup finds, so it comes after.
+router.route("/waiter-call/:token").post(qrWriteLimiter, resolveTableScope, qrWaiterLimiter, qr.callWaiter);
 router.route("/pay-request/:token").post(qrWriteLimiter, resolveTableScope, qr.payRequest);
 router.route("/waiter-call/:tableId/dismiss").post(isVerifiedUser, qr.dismissWaiterCall);
 

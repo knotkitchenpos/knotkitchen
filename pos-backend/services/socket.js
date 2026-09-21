@@ -38,10 +38,25 @@ const authenticateSocket = async (socket, next) => {
     }
     if (!token) return next(new Error("Authentication required"));
 
-    const claims = jwt.verify(token, config.accessTokenSecret);
+    // The signature must be good; the 15-minute expiry is NOT enforced here.
+    // A socket signs in once and then lives for hours, and a quiet till makes
+    // no REST call to renew its token, so by the time a dropped connection
+    // came back (wifi nap, laptop lid, a deploy) the token had lapsed, the
+    // till was refused, and it heard nothing more: no new-order card, no
+    // waiter call. What decides it instead is the login session the token
+    // names: still on the user, not revoked, not past its own expiry. That is
+    // also stricter than before in the way that matters, since signing out or
+    // revoking a session now shuts its socket out too.
+    const claims = jwt.verify(token, config.accessTokenSecret, { ignoreExpiration: true });
     const user = await User.findById(claims._id);
     if (!user || user.isDeleted || !user.isActive) {
       return next(new Error("Authentication required"));
+    }
+    const expired = typeof claims.exp === "number" && claims.exp * 1000 <= Date.now();
+    if (claims.jti || expired) {
+      const session = (user.sessions || []).find((s) => String(s._id) === String(claims.jti || ""));
+      const live = session && !session.isRevoked && new Date(session.expiresAt).getTime() > Date.now();
+      if (!live) return next(new Error("Authentication required"));
     }
 
     // The database is authoritative; never trust tenant claims or query data.

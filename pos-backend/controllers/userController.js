@@ -163,7 +163,10 @@ const signTokensAndSetCookies = async (user, req, res) => {
   // Namespaced by store, so a second takeaway signed in from the same
   // browser gets its own jar entry instead of overwriting this one.
   res.cookie(sessionCookies.accessCookieName(user.storeId), accessToken, {
-    maxAge: 1000 * 60 * 15,
+    // The token inside still expires in 15 minutes and REST still refuses it
+    // then (401 -> refresh). The cookie is kept so a reconnecting socket has
+    // something to show: services/socket checks the session it names.
+    maxAge: SESSION_LIFETIME_MS,
     httpOnly: true,
     sameSite,
     secure: secureCookie,
@@ -635,7 +638,10 @@ const refreshToken = async (req, res, next) => {
     // Re-set under the SAME name the session was issued under, so a
     // refresh never migrates one takeaway's session onto another's cookie.
     res.cookie(sessionCookies.accessCookieName(user.storeId), accessToken, {
-      maxAge: 1000 * 60 * 15,
+      // The token inside still expires in 15 minutes and REST still refuses it
+    // then (401 -> refresh). The cookie is kept so a reconnecting socket has
+    // something to show: services/socket checks the session it names.
+    maxAge: SESSION_LIFETIME_MS,
       httpOnly: true,
       sameSite,
       secure: secureCookie,

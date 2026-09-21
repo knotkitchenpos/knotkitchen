@@ -990,6 +990,10 @@ const dismissWaiterCall = async (req, res, next) => {
     const table = await Table.findOneAndUpdate({ _id: req.params.tableId, restaurantId: req.user.restaurantId }, { waiterCallActive: false }, { new: true });
     if (!table) return res.status(404).json({ success: false, message: "Table not found!" });
 
+    // Answered: the table may call again. The limit is there to stop one
+    // unanswered call being rung over and over, not to ration service.
+    require("../middlewares/rateLimiter").resetRateLimit(`qr-waiter:${table._id}`);
+
     try {
       getSocket().emitToRestaurant(req.user.restaurantId, "waiter:cleared", {
         tableId: String(table._id),
