@@ -2,17 +2,30 @@ name: Build Android APK
 
 on:
   workflow_dispatch:
+  # Native changes only. The app loads the live POS, so web changes reach it
+  # without a build, and each build here asks every till to update.
   push:
     paths:
-      - "pos-frontend/**"
+      - "pos-frontend/android/**"
+      - "pos-frontend/capacitor.config.ts"
+      - "pos-frontend/public/offline.html"
+      - "pos-frontend/package.json"
       - ".github/workflows/build-android-apk.yml"
 
 permissions:
   contents: read
 
+# Runs queue in order. Re-running an old run could republish an older build;
+# installed apps never downgrade, so they just wait for the next one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build-apk:
     runs-on: ubuntu-latest
+    outputs:
+      signed: ${{ env.HAS_KEYSTORE }}
     env:
       KK_VERSION_CODE: ${{ github.run_number }}
       KK_VERSION_NAME: 1.0.${{ github.run_number }}
@@ -95,3 +108,38 @@ jobs:
             pos-frontend/android/app/build/outputs/apk/release/app-release.apk
             pos-frontend/android/app/build/outputs/bundle/release/app-release.aab
           if-no-files-found: error
+
+  # Installed apps update themselves from the android-latest release
+  # (ShellUpdater.java). Only release-signed builds from main: Android installs
+  # an update only if it carries the same signature. Its own job, so the only
+  # write token never runs npm or Gradle. The tag is created once and never
+  # moved: the VPS deploy fetches tags and would refuse a moved one.
+  publish-update:
+    needs: build-apk
+    if: needs.build-apk.outputs.signed == 'true' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: android-latest
+    steps:
+      # Two paths in the artifact, so it is rooted at their common folder:
+      # the APK lands at out/apk/release/app-release.apk.
+      - uses: actions/download-artifact@v4
+        with:
+          name: knotkitchen-pos-release
+          path: out
+
+      - name: Publish to the android-latest release
+        run: |
+          cp out/apk/release/app-release.apk KnotKitchen-POS.apk
+          printf '{"versionCode":%s,"versionName":"1.0.%s","apkUrl":"https://github.com/%s/releases/download/%s/KnotKitchen-POS.apk","sha256":"%s"}\n' \
+            "$GITHUB_RUN_NUMBER" "$GITHUB_RUN_NUMBER" "$GITHUB_REPOSITORY" "$TAG" "$(sha256sum KnotKitchen-POS.apk | cut -d' ' -f1)" > android-update.json
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target "$GITHUB_SHA" --latest=false \
+            --title "KnotKitchen POS for Android" \
+            --notes "Install KnotKitchen-POS.apk below. Installed apps then update themselves. Do not delete this release."
+          # APK first, manifest last: the manifest never names an APK not uploaded yet.
+          gh release upload "$TAG" KnotKitchen-POS.apk --clobber
+          gh release upload "$TAG" android-update.json --clobber

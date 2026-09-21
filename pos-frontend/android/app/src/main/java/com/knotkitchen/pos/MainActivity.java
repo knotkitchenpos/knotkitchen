@@ -51,6 +51,13 @@ public class MainActivity extends BridgeActivity {
     }
 
     @Override
+    public void onResume() {
+        super.onResume();
+        // The app updates itself; the POS pages are live and never need it.
+        ShellUpdater.check(this);
+    }
+
+    @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         super.onActivityResult(requestCode, resultCode, data);
         // Back from the UPI app: Cashfree's checkout moves to its "verifying

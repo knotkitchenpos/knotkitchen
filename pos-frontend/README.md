@@ -48,11 +48,16 @@ it.
 
 ### Download the APK from GitHub
 
-Every push that changes `pos-frontend` starts the **Build Android APK** GitHub
-Actions workflow. To download the result, open the repository on GitHub, select
-the **Actions** tab, open a successful **Build Android APK** run, and download
-the `knotkitchen-pos-debug-apk` artifact. GitHub requires you to be signed in to
-download workflow artifacts.
+Every push that changes the native app (`android/`, `capacitor.config.ts`,
+`package.json`) starts the **Build Android APK** workflow. Release-signed builds
+from `main` are published to the
+[android-latest release](https://github.com/knotkitchenpos/knotkitchen/releases/tag/android-latest):
+install `KnotKitchen-POS.apk` from there once, and the app then updates itself
+(it asks "Install" when a newer build is out). Release signing needs the key
+secrets, created once with `bash android/setup-release-signing.sh`. Each run
+also keeps a `knotkitchen-pos-debug-apk` artifact for testing. Debug builds are
+signed with a different key and never update themselves; a till running one
+must uninstall it once before installing `KnotKitchen-POS.apk`.
 
 The APK still needs the backend to be reachable through `VITE_BACKEND_URL`; it
 cannot use `localhost` for a PC backend. Use HTTPS for both the deployed POS and

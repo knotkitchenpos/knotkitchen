@@ -22,12 +22,13 @@ npm run smoke    # boots, lists printers, exits
 npm run dist     # dist/KnotKitchen-POS-Setup-<version>.exe
 ```
 
-GitHub Actions: **Build Windows App** runs on every push touching this folder and
-uploads the installer as the `knotkitchen-pos-windows` artifact:
-
-```bash
-gh run download <run-id> -n knotkitchen-pos-windows
-```
+GitHub Actions: **Build Windows App** runs on every push touching this folder.
+Builds from `main` are published to the
+[desktop-latest release](https://github.com/knotkitchenpos/knotkitchen/releases/tag/desktop-latest):
+install the newest `KnotKitchen-POS-Setup-*.exe` from there once. After that
+the app updates itself: it checks at launch and every 4 hours, downloads in the
+background, and offers "Restart now" (or installs the next time it is closed).
+Never delete or move that release's tag.
 
 The installer is unsigned, so Windows SmartScreen warns on first run
 ("More info" › "Run anyway"). Adding the `WIN_CSC_LINK` and

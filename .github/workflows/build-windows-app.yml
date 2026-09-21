@@ -10,6 +10,12 @@ on:
 permissions:
   contents: read
 
+# Runs queue in order. Re-running an old run could republish an older build;
+# installed apps never downgrade, so they just wait for the next one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -49,9 +55,45 @@ jobs:
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
         run: npm run dist
 
+      # The installer plus what installed apps update from: latest.yml names
+      # the newest installer and its checksum; the blockmap makes the next
+      # update a small differential download.
       - name: Upload installer
         uses: actions/upload-artifact@v4
         with:
           name: knotkitchen-pos-windows
-          path: pos-desktop/dist/*.exe
+          path: |
+            pos-desktop/dist/*.exe
+            pos-desktop/dist/*.exe.blockmap
+            pos-desktop/dist/latest.yml
           if-no-files-found: error
+
+  # Installed apps update themselves from the desktop-latest release
+  # (pos-desktop/package.json build.publish, main.js startUpdates). Its own
+  # job, so the only write token never runs npm. The tag is created once and
+  # never moved: the VPS deploy fetches tags and would refuse a moved one.
+  publish-update:
+    needs: build-windows
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: desktop-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: knotkitchen-pos-windows
+          path: out
+
+      - name: Publish to the desktop-latest release
+        run: |
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --target "$GITHUB_SHA" --latest=false \
+            --title "KnotKitchen POS for Windows" \
+            --notes "Install the newest KnotKitchen-POS-Setup-*.exe below. Installed apps then update themselves. Do not delete this release."
+          # Installer first, latest.yml last: the feed never names a file that is not there yet.
+          # ponytail: installers accumulate (2 assets per build); prune old ones if the release gets unwieldy.
+          gh release upload "$TAG" out/*.exe out/*.exe.blockmap --clobber
+          gh release upload "$TAG" out/latest.yml --clobber

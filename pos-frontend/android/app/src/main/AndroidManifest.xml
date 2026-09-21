@@ -34,6 +34,11 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- The app installs its own updates (ShellUpdater). The second lets
+         Android 12+ do it without asking again each time. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
+
     <!-- UPI apps the Cashfree checkout lists and opens (UpiIntentPlugin).
          Android 11+ hides them from queryIntentActivities without this.
          Keep in step with UPI_SCHEMES there. -->

@@ -104,3 +104,15 @@ test("REGRESSION: a checkout's later pages stay in the app, and Back skips them"
   // Cashfree may settle in its own modal on a phone even with "_self".
   assert.match(SRC("src/pages/Billing.jsx"), /if \(result\?\.redirect\) return;\s*\n\s*await settleTopUp\(gatewayOrderId\);/);
 });
+
+test("the app updates itself from the release channel CI publishes", () => {
+  const updater = JAVA("ShellUpdater.java");
+  assert.match(updater, /releases\/download\/android-latest\/android-update\.json/);
+  // Checksum before commit; an unverified download is abandoned.
+  assert.ok(updater.indexOf('m.getString("sha256")') < updater.indexOf("session.commit("));
+  assert.match(updater, /installer\.abandonSession\(id\)/);
+  assert.match(JAVA("MainActivity.java"), /public void onResume\(\) \{\s*super\.onResume\(\);[\s\S]{0,120}ShellUpdater\.check\(this\);/);
+  const manifest = SRC("android/app/src/main/AndroidManifest.xml");
+  assert.match(manifest, /android\.permission\.REQUEST_INSTALL_PACKAGES/);
+  assert.match(manifest, /android\.permission\.UPDATE_PACKAGES_WITHOUT_USER_ACTION/);
+});

@@ -229,6 +229,44 @@ ipcMain.handle("printers:print", (event, html, options) => {
   return printHtml(html, options || {});
 });
 
+/* ------------------------------------------------------------------ updates */
+
+/**
+ * The POS pages update on every deploy; this updates the app around them.
+ * Feed: the desktop-latest GitHub release (package.json build.publish), filled
+ * by .github/workflows/build-windows-app.yml. A till stays open all day, so it
+ * checks every few hours and offers a restart; "Later" installs silently the
+ * next time the app is closed.
+ */
+const UPDATE_EVERY_MS = 4 * 60 * 60 * 1000;
+
+const startUpdates = () => {
+  if (!app.isPackaged) return;
+  // Required here: reading autoUpdater builds the updater, which smoke runs never need.
+  const { autoUpdater } = require("electron-updater");
+  // An 'error' with no listener throws. Offline, or nothing published yet, is not worth a dialog.
+  autoUpdater.on("error", (e) => console.error("update:", e?.message || e));
+  let asking = false;
+  autoUpdater.on("update-downloaded", async ({ version }) => {
+    if (asking || !main) return;
+    asking = true;
+    const { response } = await dialog.showMessageBox(main, {
+      type: "info",
+      buttons: ["Restart now", "Later"],
+      defaultId: 0,
+      cancelId: 1,
+      title: "Update ready",
+      message: `KnotKitchen POS ${version} is ready to install.`,
+      detail: "Restart now (about 10 seconds), or it installs the next time the app is closed.",
+    });
+    asking = false;
+    if (response === 0) autoUpdater.quitAndInstall(true, true); // silent, and reopen
+  });
+  const check = () => autoUpdater.checkForUpdates().catch(() => {}); // reported by 'error'
+  check();
+  setInterval(check, UPDATE_EVERY_MS);
+};
+
 /* ------------------------------------------------------------------- window */
 
 let main = null;
@@ -335,6 +373,7 @@ app.whenReady().then(async () => {
   powerSaveBlocker.start("prevent-display-sleep");
   buildMenu();
   createWindow();
+  startUpdates();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

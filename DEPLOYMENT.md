@@ -286,16 +286,17 @@ docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d pos-api
 ### Counter apps (no VPS change)
 
 Both apps are shells around `business.knotkitchen.com`, so a deploy of
-`pos-frontend` updates them with no reinstall. Installers come from GitHub
-Actions artifacts:
+`pos-frontend` updates them with no reinstall. The shells themselves update
+over the air from two public GitHub releases that CI refreshes from `main`:
 
-```bash
-# Android (debug APK; signed release once the keystore secrets exist)
-gh run download <run-id> -n knotkitchen-pos-debug-apk
+- Windows: [desktop-latest](https://github.com/knotkitchenpos/knotkitchen/releases/tag/desktop-latest) (pos-desktop/README.md)
+- Android: [android-latest](https://github.com/knotkitchenpos/knotkitchen/releases/tag/android-latest)
+  (ShellUpdater.java). Published only once the release key exists: run
+  `bash pos-frontend/android/setup-release-signing.sh` once and back up the
+  folder it writes.
 
-# Windows installer (see pos-desktop/README.md)
-gh run download <run-id> -n knotkitchen-pos-windows
-```
+Install from those once; the apps update themselves after that. Never delete
+or move those tags: the VPS deploy fetches tags and refuses a moved one.
 
 ### A note on `down -v`
 
