@@ -713,10 +713,10 @@ function stepFinal(){
 }
 
 /* ============ AUTH & ADMIN HELPERS ============ */
-const DEFAULT_AGENTS = [
-  { username: 'admin', password: 'admin123', name: 'System Admin', role: 'admin', enabled: true },
-  { username: 'nasiruddin.molla', password: 'nasir@123', name: 'Nasir Uddin Molla', role: 'agent', enabled: true }
-];
+// Accounts live on the server only. This page used to ship a list of default
+// usernames WITH passwords, readable by anyone who opened the page source, and
+// fell back to checking a login against it in the browser.
+const DEFAULT_AGENTS = [];
 
 const STORAGE_AGENTS = 'kk_agents_list_v6';
 const STORAGE_AGREEMENTS = 'kk_agreements_db_v6';
@@ -989,14 +989,9 @@ async function handleLoginSubmit(e){
     }
   }
 
-  const agents = await getAgentsList();
-  const user = agents.find(a => a.username.toLowerCase() === uInput.toLowerCase() && a.password === pInput);
-  if(!user){ showToast('Invalid username or password'); return false; }
-  if(!user.enabled){ showToast('Account disabled. Please contact Administrator.'); return false; }
-  currentView = user.role === 'admin' ? 'admin' : 'app';
-  await setSession({ username: user.username, name: user.name, role: user.role, currentView: currentView });
-  showToast(`Welcome back, ${user.name}!`);
-  await renderApp();
+  // No answer from the server: there is nothing to check a password against
+  // in the browser, so say so rather than pretend.
+  showToast('Could not reach the server. Check your connection and try again.');
   return false;
 }
 
@@ -1897,7 +1892,7 @@ async function openAgentModal(idx = null){
       </div>
       <div class="field">
         <label>Password</label>
-        <input type="text" id="ag_password" value="${ag.password}" placeholder="Set password">
+        <input type="text" id="ag_password" value="" autocomplete="new-password" placeholder="${idx !== null ? 'Leave blank to keep the current password' : 'Set password (8+ characters)'}">
       </div>
       <div class="field">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
@@ -1931,8 +1926,11 @@ async function saveAgentModal(){
   const password = document.getElementById('ag_password')?.value.trim();
   const enabled = document.getElementById('ag_enabled')?.checked;
 
-  if(!name || !username || !password){
-    showToast('Please fill in Name, Username, and Password');
+  // The server never sends passwords back, so on an edit this box starts
+  // empty and empty means "keep it". It used to be pre-filled with the text
+  // "undefined", and saving any edit quietly made that the account's password.
+  if(!name || !username || (editingAgentIndex === null && !password)){
+    showToast(editingAgentIndex === null ? 'Please fill in Name, Username, and Password' : 'Please fill in Name and Username');
     return;
   }
 
@@ -1940,7 +1938,7 @@ async function saveAgentModal(){
 
   if(editingAgentIndex !== null){
     const oldUsername = agents[editingAgentIndex].username;
-    const payload = { name, username, password, enabled };
+    const payload = password ? { name, username, password, enabled } : { name, username, enabled };
 
     if(typeof apiClient !== 'undefined'){
       const res = await apiClient.updateAgent(oldUsername, payload);

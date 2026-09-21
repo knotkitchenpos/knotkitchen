@@ -181,6 +181,11 @@ router.put('/agents/:username', requireAdmin, (req, res) => {
   if (password && String(password).trim().length < 8) {
     return res.status(400).json({ success: false, message: 'Password must be at least 8 characters' });
   }
+  // An old copy of the page pre-filled the edit form with the text "undefined"
+  // and sent it back as the new password on every save.
+  if (password && ['undefined', 'null'].includes(String(password).trim())) {
+    return res.status(400).json({ success: false, message: 'Leave the password blank to keep it, or type a new one.' });
+  }
   db.agents[idx] = {
     ...db.agents[idx],
     name: name ? String(name).trim().slice(0, 100) : db.agents[idx].name,
