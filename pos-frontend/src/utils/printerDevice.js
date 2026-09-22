@@ -37,23 +37,44 @@ const KEY = "kk.receiptPrinter.v1";
  */
 export const DEFAULT_CONFIG = { type: "", name: "", paper: "80", autoPrint: false, kotPrint: false, protocol: "escpos" };
 
-/**
- * The config from before it was kept per takeaway was one shared record. It
- * goes to the first takeaway that reads it, so an existing till keeps its
- * printer; every other takeaway starts unset instead of inheriting it.
- */
-export const loadPrinterConfig = () => {
-  const config = { ...DEFAULT_CONFIG, ...readStoreScoped(KEY, {}) };
+/** The printer another takeaway set up on this device, if any. */
+const anyTakeawayConfig = () => {
   try {
-    // Signed out the scoped key IS the bare key: claiming would delete what was just read.
-    if (storeScopedKey(KEY) !== KEY && localStorage.getItem(KEY) !== null) {
-      writeStoreScoped(KEY, config);
-      // Only once the copy is really there (writes can fail in private mode).
-      if (localStorage.getItem(storeScopedKey(KEY)) !== null) localStorage.removeItem(KEY);
+    for (let i = 0; i < localStorage.length; i += 1) {
+      const key = localStorage.key(i);
+      if (!key || !key.startsWith(`${KEY}:`)) continue;
+      const config = JSON.parse(localStorage.getItem(key));
+      if (config?.type) return config; // a takeaway that never set one up has nothing to pass on
     }
   } catch {
     /* private mode */
   }
+  return null;
+};
+
+/**
+ * A takeaway with no settings of its own yet starts from this device's
+ * printer -- the shared record from before settings were per takeaway, or
+ * another takeaway's -- and keeps that copy as its own, so changes in one
+ * takeaway never reach another.
+ *
+ * It used to START BLANK instead: the old shared record went to whichever
+ * takeaway read it first and was deleted, and every other takeaway on the
+ * device silently lost its printer and Auto KOT.
+ */
+export const loadPrinterConfig = () => {
+  try {
+    const own = localStorage.getItem(storeScopedKey(KEY));
+    if (own !== null) return { ...DEFAULT_CONFIG, ...JSON.parse(own) };
+  } catch {
+    /* unreadable: fall through to the device's printer */
+  }
+  const legacy = readStoreScoped(KEY, null);
+  const inherited = legacy?.type ? legacy : anyTakeawayConfig() || legacy;
+  const config = { ...DEFAULT_CONFIG, ...(inherited || {}) };
+  // Kept only once there is a printer to keep (a blank copy would block a
+  // later inherit). Signed out the scoped key IS the bare key: nothing to copy.
+  if (inherited?.type && storeScopedKey(KEY) !== KEY) writeStoreScoped(KEY, config);
   return config;
 };
 

@@ -1,9 +1,16 @@
+import { Capacitor } from "@capacitor/core";
+
 /**
  * Print an HTML document in browsers and Android WebViews.
  * Android WebView/PWA contexts can block window.open, so the iframe fallback
  * keeps receipt printing available from the APK as well.
  */
 export const printHtmlDocument = (html) => {
+  // Inside the Android app window.open hands back the POS page itself, so the
+  // document replaced the whole till, and print() does nothing there anyway.
+  if (Capacitor.isNativePlatform()) {
+    throw new Error("No receipt printer is set up for this takeaway on this device. Set one up in Settings → Device Configuration.");
+  }
   let printWindow = null;
 
   try {

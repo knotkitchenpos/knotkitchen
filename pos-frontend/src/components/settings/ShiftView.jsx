@@ -6,6 +6,15 @@ import { closeShift, getCurrentShift, getShifts, getStoreProperties, openShift }
 import SecurityPinModal from "../common/SecurityPinModal";
 import { checkActionAuthorization } from "../../utils/security";
 import { printHtmlDocument } from "../../utils/printDocument";
+
+/** Never lets a print failure (the Android app cannot print a page) escape. */
+const printReport = (html) => {
+  try {
+    printHtmlDocument(html);
+  } catch (err) {
+    enqueueSnackbar(err?.message || "The report could not be printed.", { variant: "error" });
+  }
+};
 import { inr as money, dateTimeIN as when } from "../../utils";
 
 /**
@@ -130,7 +139,7 @@ const ShiftView = () => {
       setNote("");
       refresh();
       const closed = res.data?.data;
-      if (closed) printHtmlDocument(zReportHtml(closed, store));
+      if (closed) printReport(zReportHtml(closed, store));
     },
     onError: (e) => enqueueSnackbar(e.response?.data?.message || "Could not close the shift", { variant: "error" }),
   });
@@ -183,7 +192,7 @@ const ShiftView = () => {
               </p>
             </div>
             <div className="flex gap-2">
-              <button type="button" className={btnGhost} onClick={() => printHtmlDocument(zReportHtml(shift, store))}>
+              <button type="button" className={btnGhost} onClick={() => printReport(zReportHtml(shift, store))}>
                 Print X report
               </button>
               {!closing && (
@@ -266,7 +275,7 @@ const ShiftView = () => {
                   <p className="mt-1 text-[12px] text-[#94A3B8]">
                     Opened by {h.openedBy || "-"} · closed by {h.closedBy || "-"}
                   </p>
-                  <button type="button" className={`${btnGhost} mt-3`} onClick={() => printHtmlDocument(zReportHtml(h, store))}>
+                  <button type="button" className={`${btnGhost} mt-3`} onClick={() => printReport(zReportHtml(h, store))}>
                     Print Z report
                   </button>
                 </div>

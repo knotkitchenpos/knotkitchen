@@ -99,8 +99,14 @@ export const isCancelledItem = (item = {}) => String(item?.status || "").toLower
 /** The lines that were actually sold: what a bill prints. */
 export const billableItems = (items = []) => (Array.isArray(items) ? items : []).filter((i) => !isCancelledItem(i));
 
-export const itemDisplayName = (item = {}) =>
-  String(item?.name || "").replace(/\s*\(\+\s*[^)]*\)\s*$/, "").trim();
+export const itemDisplayName = (item = {}) => {
+  const base = String(item?.name || "").replace(/\s*\(\+\s*[^)]*\)\s*$/, "").trim();
+  // Till and table lines carry the variant in the name ("Pizza (Large)");
+  // website lines keep it only in `variant`, and itemExtras drops it there,
+  // so the kitchen never saw the size. Mirrors pos-backend/services/orderItemExtras.js.
+  const v = String(item?.variant?.name || "").trim();
+  return v && !base.toLowerCase().includes(`(${v.toLowerCase()})`) ? `${base} (${v})` : base;
+};
 
 /**
  * What a SAVED order line actually cost.

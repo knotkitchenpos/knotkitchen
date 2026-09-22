@@ -2,7 +2,7 @@ import { getStoreProperties } from "../https";
 import { billableItems } from "./orderItems.js";
 import { printHtmlDocument } from "./printDocument";
 import { formatAddress } from "./address";
-import { layoutKot, layoutReceipt, paperOf } from "./receiptLayout.js";
+import { layoutKot, layoutReceipt, layoutReport, paperOf } from "./receiptLayout.js";
 import { ditherInPlace, rasterJob, toMonochrome } from "./escpos.js";
 import { catJob } from "./catprinter.js";
 import { loadPrinterConfig, sendToPrinter } from "./printerDevice.js";
@@ -189,6 +189,18 @@ export const printKot = async (order, { items, round = false, auto = false, conf
   const paper = paperFor(printer);
   const canvas = renderKotCanvas({ order, items, store, paper, round });
   return sendCanvas(canvas, { printer, paper, auto });
+};
+
+/**
+ * Print a report (see layoutReport for its shape) on this device's receipt
+ * printer, the same way receipts go: the app's USB/Bluetooth printer, the
+ * Windows app's printer silently, or the browser's print dialog.
+ */
+export const printReport = async (report, { config } = {}) => {
+  const printer = config || loadPrinterConfig();
+  const paper = paperFor(printer);
+  const canvas = paintLayout((measure) => layoutReport({ ...report, paper, measure }), {});
+  return sendCanvas(canvas, { printer, paper, auto: false });
 };
 
 /** A mini printer is always 57 mm and speaks its own language, not ESC/POS. */

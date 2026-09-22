@@ -91,7 +91,13 @@ const orderItemExtras = (item = {}) => {
  * every extra twice on the same bill, so the tail comes off the name and the
  * rows carry it.
  */
-const itemDisplayName = (item = {}) =>
-  String(item?.name || "").replace(/\s*\(\+\s*[^)]*\)\s*$/, "").trim();
+const itemDisplayName = (item = {}) => {
+  const base = String(item?.name || "").replace(/\s*\(\+\s*[^)]*\)\s*$/, "").trim();
+  // Website lines keep the variant only in `variant` (orderPricingService), and
+  // orderItemExtras drops it as "already in the name": add it back. Mirrors
+  // pos-frontend/src/utils/orderItems.js.
+  const v = String(item?.variant?.name || "").trim();
+  return v && !base.toLowerCase().includes(`(${v.toLowerCase()})`) ? `${base} (${v})` : base;
+};
 
 module.exports = { orderItemExtras, itemDisplayName };

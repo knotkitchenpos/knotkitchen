@@ -293,6 +293,58 @@ export const layoutReceipt = ({ order = {}, store = {}, settings = {}, images = 
  * on a clip. `items` defaults to the whole order; a round added to a table
  * passes just the new lines, and the ticket says so.
  */
+/**
+ * A report on the receipt roll: a title block, then sections of
+ * label ... value rows. `sections` = [{ title, rows: [[label, value], ...] }].
+ */
+export const layoutReport = ({ title = "Report", store = {}, period = "", generated = "", sections = [], paper = 80, measure }) => {
+  const P = paperOf(paper);
+  const W = P.width;
+  const inner = W - P.pad * 2;
+  const ops = [];
+  let y = P.pad * 2;
+  const text = (value, { size = P.body, bold = false, align = "left" } = {}) => {
+    const fnt = font(size, bold);
+    for (const line of wrap(String(value), fnt, inner, measure)) {
+      const tx = align === "center" ? P.pad + inner / 2 : P.pad;
+      ops.push({ type: "text", text: line, x: tx, y, font: fnt, align });
+      y += Math.round(size * 1.3);
+    }
+  };
+  const rule = (dashed = true, space = 8) => {
+    y += space;
+    ops.push({ type: "line", x1: P.pad, x2: W - P.pad, y, dashed, thickness: dashed ? 2 : 3 });
+    y += space + 3;
+  };
+  // The value keeps its width; the label wraps into what is left.
+  const pair = (label, value) => {
+    const fnt = font(P.body, false);
+    const valueW = Math.ceil(measure(String(value), fnt));
+    const labelLines = wrap(String(label), fnt, Math.max(inner - valueW - P.gap, inner / 3), measure);
+    ops.push({ type: "text", text: String(value), x: W - P.pad, y, font: fnt, align: "right" });
+    for (const line of labelLines) {
+      ops.push({ type: "text", text: line, x: P.pad, y, font: fnt, align: "left" });
+      y += Math.round(P.body * 1.3);
+    }
+  };
+
+  text(title, { size: P.title + 2, bold: true, align: "center" });
+  if (store.name) text(store.name, { size: P.body, bold: true, align: "center" });
+  if (store.address) text(store.address, { size: P.small, align: "center" });
+  if (period) text(period, { size: P.small, align: "center" });
+  if (generated) text(generated, { size: P.small, align: "center" });
+  for (const section of sections) {
+    if (!section.rows?.length) continue;
+    rule(false, 6);
+    text(section.title, { bold: true });
+    y += 4;
+    for (const [label, value] of section.rows) pair(label, value);
+  }
+  rule(true);
+  y += P.pad * 3;
+  return { width: W, height: Math.ceil(y), ops };
+};
+
 export const layoutKot = ({ order = {}, items, store = {}, paper = 80, round = false, measure }) => {
   const P = paperOf(paper);
   const W = P.width;

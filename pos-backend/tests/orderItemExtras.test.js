@@ -214,3 +214,12 @@ test("REGRESSION: the order controller keeps the name the till actually sends", 
   assert.match(block, /addons:/);
   assert.match(block, /variant:/);
 });
+
+test("REGRESSION: a website line shows its variant in the name, once", () => {
+  // Website lines keep the variant only in `variant` (orderPricingService);
+  // the e-bill printed "Margherita Pizza" with no size.
+  const { itemDisplayName: name } = require("../services/orderItemExtras");
+  assert.equal(name({ name: "Margherita Pizza", variant: { name: "Large" } }), "Margherita Pizza (Large)");
+  assert.equal(name({ name: "Margherita Pizza (Large)", variant: { name: "Large" } }), "Margherita Pizza (Large)");
+  assert.equal(name({ name: "Tea (+ Sugar)" }), "Tea");
+});

@@ -795,7 +795,6 @@ const Orders = () => {
                             }`}
                           >
                             {itemDisplayName(it)}
-                            {it.variant?.name ? ` (${it.variant.name})` : ""}
                           </p>
                           {isVoided && (
                             <p className="text-[11px] font-bold text-[#DC2626]">

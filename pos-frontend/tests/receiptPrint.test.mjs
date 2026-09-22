@@ -3,7 +3,8 @@ import assert from "node:assert";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { layoutKot, layoutReceipt, billLines, wrap, PAPER } from "../src/utils/receiptLayout.js";
+import { layoutKot, layoutReceipt, layoutReport, billLines, wrap, PAPER } from "../src/utils/receiptLayout.js";
+import { itemDisplayName } from "../src/utils/orderItems.js";
 import { rasterJob, toMonochrome } from "../src/utils/escpos.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -283,26 +284,87 @@ test("REGRESSION: each takeaway keeps its own device configuration", async () =>
   // was one record for the whole browser.
   const mem = () => {
     const m = new Map();
-    return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k) };
+    return {
+      getItem: (k) => (m.has(k) ? m.get(k) : null),
+      setItem: (k, v) => m.set(k, String(v)),
+      removeItem: (k) => m.delete(k),
+      key: (i) => [...m.keys()][i] ?? null,
+      get length() {
+        return m.size;
+      },
+    };
   };
   for (const n of ["localStorage", "sessionStorage"]) Object.defineProperty(globalThis, n, { value: mem(), configurable: true, writable: true });
   const { loadPrinterConfig, savePrinterConfig } = await import("../src/utils/printerDevice.js");
   const { setActiveStoreId } = await import("../src/utils/storeSession.js");
 
-  localStorage.setItem("kk.receiptPrinter.v1", JSON.stringify({ type: "usb", name: "XP-80", autoPrint: true })); // before the fix
+  localStorage.setItem("kk.receiptPrinter.v1", JSON.stringify({ type: "usb", name: "XP-80", autoPrint: true, kotPrint: true })); // before the fix
   setActiveStoreId("111111");
   assert.equal(loadPrinterConfig().name, "XP-80", "an existing till keeps its printer");
+  // REGRESSION (e456bca): the second takeaway on the device started blank --
+  // no printer, no Auto KOT -- and printed nothing without a word.
   setActiveStoreId("222222");
-  assert.equal(loadPrinterConfig().type, "", "another takeaway does not inherit it");
-  assert.equal(loadPrinterConfig().autoPrint, false);
+  assert.equal(loadPrinterConfig().name, "XP-80", "every takeaway starts from the device's printer");
+  assert.equal(loadPrinterConfig().kotPrint, true, "and keeps Auto KOT on");
+  assert.ok(localStorage.getItem("kk.receiptPrinter.v1") !== null, "the shared record is never deleted (an old tab still reads it)");
 
   savePrinterConfig({ ...loadPrinterConfig(), type: "bluetooth", name: "BT-58", paper: "58" });
   setActiveStoreId("111111");
-  savePrinterConfig({ ...loadPrinterConfig(), kotPrint: true });
+  savePrinterConfig({ ...loadPrinterConfig(), kotPrint: false });
   setActiveStoreId("222222");
-  assert.equal(loadPrinterConfig().kotPrint, false, "Takeaway 1's change must not reach Takeaway 2");
+  assert.equal(loadPrinterConfig().kotPrint, true, "Takeaway 1's change must not reach Takeaway 2");
   assert.equal(loadPrinterConfig().name, "BT-58");
   setActiveStoreId("111111");
   const t1 = loadPrinterConfig();
-  assert.deepEqual([t1.name, t1.paper, t1.kotPrint], ["XP-80", "80", true]);
+  assert.deepEqual([t1.name, t1.paper, t1.kotPrint], ["XP-80", "80", false]);
+
+  // A device where the old build already deleted the shared record: a takeaway
+  // left blank by it picks up the printer another takeaway has.
+  localStorage.removeItem("kk.receiptPrinter.v1");
+  setActiveStoreId("333333");
+  assert.ok(["XP-80", "BT-58"].includes(loadPrinterConfig().name));
+  // ...never a takeaway's blank record, which would then stick.
+  localStorage.clear?.();
+  for (const k of ["kk.receiptPrinter.v1:111111", "kk.receiptPrinter.v1:222222", "kk.receiptPrinter.v1:333333"]) localStorage.removeItem(k);
+  localStorage.setItem("kk.receiptPrinter.v1:444444", JSON.stringify({ type: "", kotPrint: true }));
+  localStorage.setItem("kk.receiptPrinter.v1:555555", JSON.stringify({ type: "usb", name: "XP-80" }));
+  setActiveStoreId("666666");
+  assert.equal(loadPrinterConfig().name, "XP-80");
+});
+
+test("REGRESSION: website orders show the dish's variant on the KOT and receipt", () => {
+  // Website lines keep the variant only in `variant`; the name is the bare dish.
+  const web = { name: "Margherita Pizza", quantity: 1, variant: { name: "Large" }, modifiers: [{ name: "Large", price: 0 }, { name: "Extra Cheese", price: 40 }] };
+  assert.equal(itemDisplayName(web), "Margherita Pizza (Large)");
+  // Till and table lines already carry it: never twice.
+  assert.equal(itemDisplayName({ name: "Margherita Pizza (Large)", variant: { name: "Large" } }), "Margherita Pizza (Large)");
+  assert.equal(itemDisplayName({ name: "Tea" }), "Tea");
+  const kot = textOps(layoutKot({ order: { items: [web] }, store: { name: "S" }, paper: 80, measure })).map((o) => o.text).join(" | ");
+  assert.match(kot, /Margherita Pizza \(Large\)/);
+  assert.match(kot, /\+ Extra Cheese/);
+});
+
+test("reports print on the receipt roll, and never as a page inside the Android app", () => {
+  const layout = layoutReport({
+    title: "Sales Report",
+    store: { name: "Demo Store 1", address: "12 MG Road" },
+    period: "Today",
+    sections: [
+      { title: "Summary", rows: [["Total sales", "12 · ₹2,400.00"]] },
+      { title: "Top dishes", rows: [["A very long dish name that has to wrap onto another line", "3 · ₹540.00"]] },
+      { title: "Empty", rows: [] },
+    ],
+    paper: 58,
+    measure,
+  });
+  assert.equal(layout.width, PAPER[58].width);
+  const texts = textOps(layout).map((o) => o.text);
+  for (const t of ["Sales Report", "Demo Store 1", "Summary", "Total sales", "12 · ₹2,400.00", "Top dishes"]) assert.ok(texts.includes(t), t);
+  assert.ok(!texts.includes("Empty"), "a section with no rows is left out");
+  for (const op of textOps(layout)) assert.ok(op.x <= PAPER[58].width, "nothing runs off the roll");
+
+  const reports = SRC("src/pages/Reports.jsx");
+  assert.match(reports, /if \(printer\.type \|\| nativePrinting\) \{\s*try \{\s*await printReport\(buildReceiptReport\(input\), \{ config: printer \}\);/);
+  // In the app window.open returned the POS page itself and the report replaced the till.
+  assert.match(SRC("src/utils/printDocument.js"), /if \(Capacitor\.isNativePlatform\(\)\) \{\s*throw new Error\(/);
 });

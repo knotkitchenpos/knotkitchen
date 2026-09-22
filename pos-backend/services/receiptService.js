@@ -67,6 +67,8 @@ const buildReceipt = ({
       quantity,
       total: lineTotal,
       modifiers: item.modifiers || [],
+      // Website lines name the size only here (see orderItemExtras itemDisplayName).
+      variant: item.variant?.name ? { name: item.variant.name } : undefined,
     };
   });
 

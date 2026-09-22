@@ -3,7 +3,10 @@ import { useQuery } from "@tanstack/react-query";
 import { getOrdersReport } from "../https";
 import { getMyRestaurant } from "../https";
 import { getWebsiteSettings } from "../https/storefrontApi";
+import { enqueueSnackbar } from "notistack";
 import { printHtmlDocument } from "../utils/printDocument";
+import { printReport } from "../utils/printReceipt";
+import { loadPrinterConfig, nativePrinting } from "../utils/printerDevice";
 import { isPreparing, isReady, isCancelled, statusLabel } from "../constants/orderStatus";
 import { sourceLabel, tableLabel, orderDisplayId } from "../utils/orderLabels";
 import { receiptAddress } from "../utils/address";
@@ -368,6 +371,28 @@ const BREAKDOWN_TABLES = [
   { key: "byStaff", title: "By staff", cols: ["Who", "Orders", "Sales"], cells: (r) => [r.name, r.count, money(r.amount)] },
 ];
 
+// Names come from the menu and staff list: printed as text, never as markup.
+const esc = (v) =>
+  String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+/** The same report for the receipt printer (utils/receiptLayout layoutReport). */
+const buildReceiptReport = ({ header, summary, breakdown, windowLabel }) => ({
+  title: "Sales Report",
+  store: { name: header.name || "", address: header.address || "" },
+  period: windowLabel,
+  generated: `Printed ${new Date().toLocaleString("en-GB")}`,
+  sections: [
+    { title: "Summary", rows: REPORT_CARDS.map((c) => [c.label, `${summary[c.key]?.count || 0} · ${money(summary[c.key]?.amount)}`]) },
+    ...BREAKDOWN_TABLES.map((t) => ({
+      title: t.title,
+      rows: (breakdown?.[t.key] || []).map((r) => {
+        const [name, n, amount] = t.cells(r);
+        return [name, `${n} · ${amount}`];
+      }),
+    })),
+  ],
+});
+
 const buildPrintHtml = ({ header, summary, breakdown, windowLabel }) => {
   const row = (label, value) => `
     <tr>
@@ -377,7 +402,7 @@ const buildPrintHtml = ({ header, summary, breakdown, windowLabel }) => {
   const bkt = (b) => `${b?.count || 0} · ${money(b?.amount)}`;
 
   return `<!doctype html>
-<html><head><meta charset="utf-8"><title>Report — ${header.name}</title>
+<html><head><meta charset="utf-8"><title>Report — ${esc(header.name)}</title>
 <style>
   body { font-family: Arial, sans-serif; color:#0F172A; margin:24px; }
   h1 { font-size:20px; margin:0 0 4px; }
@@ -389,8 +414,8 @@ const buildPrintHtml = ({ header, summary, breakdown, windowLabel }) => {
 </style></head>
 <body>
   <div>
-    <h1>${header.name || "Restaurant"}</h1>
-    <div class="muted">${header.address || ""}</div>
+    <h1>${esc(header.name || "Restaurant")}</h1>
+    <div class="muted">${esc(header.address || "")}</div>
     <div class="muted" style="margin-top:6px;"><strong>Period:</strong> ${windowLabel}</div>
     <div class="muted">Generated: ${new Date().toLocaleString("en-GB")}</div>
   </div>
@@ -406,7 +431,7 @@ const buildPrintHtml = ({ header, summary, breakdown, windowLabel }) => {
     if (!rows.length) return "";
     return `<div class="section"><h2>${t.title}</h2><table>
       <tr>${t.cols.map((c, i) => `<th style="text-align:${i ? "right" : "left"};padding:4px 8px;border-bottom:2px solid #0F172A;">${c}</th>`).join("")}</tr>
-      ${rows.map((r) => `<tr>${t.cells(r).map((v, i) => `<td style="padding:4px 8px;border-bottom:1px solid #E2E8F0;text-align:${i ? "right" : "left"};">${v}</td>`).join("")}</tr>`).join("")}
+      ${rows.map((r) => `<tr>${t.cells(r).map((v, i) => `<td style="padding:4px 8px;border-bottom:1px solid #E2E8F0;text-align:${i ? "right" : "left"};">${esc(v)}</td>`).join("")}</tr>`).join("")}
     </table></div>`;
   }).join("")}
 </body></html>`;
@@ -616,15 +641,22 @@ const Reports = () => {
     strip.scrollLeft = chip.offsetLeft - strip.offsetLeft - (strip.clientWidth - chip.offsetWidth) / 2;
   }, [quickDates, stripFocus]);
 
-  const doPrint = () => {
+  const doPrint = async () => {
     if (!summary) return;
-    const html = buildPrintHtml({
-      header: { name: restaurantName, address: restaurantAddress },
-      summary,
-      breakdown,
-      windowLabel,
-    });
-    printHtmlDocument(html);
+    const input = { header: { name: restaurantName, address: restaurantAddress }, summary, breakdown, windowLabel };
+    const printer = loadPrinterConfig();
+    // A receipt printer set up on this device (and always in the Android app,
+    // which cannot print a page): the report comes out of it like a receipt.
+    // Otherwise the A4 page through the print dialog, for an office printer.
+    if (printer.type || nativePrinting) {
+      try {
+        await printReport(buildReceiptReport(input), { config: printer });
+      } catch (err) {
+        enqueueSnackbar(err?.message || "The report could not be printed.", { variant: "error" });
+      }
+      return;
+    }
+    printHtmlDocument(buildPrintHtml(input));
   };
 
   const selectedOrder = useMemo(
