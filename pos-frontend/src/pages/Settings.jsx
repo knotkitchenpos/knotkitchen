@@ -41,7 +41,7 @@ const MENU_ITEMS = [
   // can clear a lock, so it must never be gated. See middlewares/accountLock.js.
   { id: "billing", title: "10. Billing & Subscription", desc: "Business Balance, plan, invoices and transactions.", Icon: I.fileText, path: "/settings/billing" },
 
-  { id: "website", title: "11. Manage Website", desc: "Landing page, branding, colours, domain and payments.", Icon: I.globe, path: "/website", feature: "website" },
+  { id: "website", title: "11. Manage Website", desc: "Landing page, branding, colours, domain and payments.", Icon: I.globe, path: "/website", feature: "website", lockedDesc: "Payment gateway only. The website is included in Growth and Scale.", openWhenLocked: true },
 
   // Activity Log stays CSD-only: it is the audit trail of who did what,
   // including support's own actions, and is locked server-side in
@@ -76,9 +76,11 @@ const Settings = () => {
   const { data: subRes } = useQuery({ queryKey: ["subscription"], queryFn: getSubscriptionStatus });
   const features = subRes?.data?.data?.features;
   const lockedByPlan = (item) => Boolean(item.feature && features && features[item.feature] === false);
+  // Manage Website still opens below Growth: its payment gateway is on every plan.
+  const blockedByPlan = (item) => lockedByPlan(item) && !item.openWhenLocked;
 
   const handleClick = (item) => {
-    if (lockedByPlan(item)) {
+    if (blockedByPlan(item)) {
       navigate("/settings/billing");
       return;
     }
@@ -148,7 +150,7 @@ const Settings = () => {
             {MENU_ITEMS.map((item) => {
               const Icon = item.Icon;
               const isLogout = item.action === "logout";
-              const locked = lockedByPlan(item);
+              const locked = blockedByPlan(item);
               return (
                 <button
                   key={item.id}
@@ -171,7 +173,7 @@ const Settings = () => {
                       {item.title}
                     </p>
                     <p className="text-[12px] text-[#94A3B8] truncate mt-0.5">
-                      {locked ? "Included in Growth and Scale. Tap to upgrade." : item.desc}
+                      {locked ? "Included in Growth and Scale. Tap to upgrade." : lockedByPlan(item) ? item.lockedDesc : item.desc}
                     </p>
                   </div>
                   <span className="text-[#94A3B8] shrink-0">{locked ? <I.lock /> : <I.chevron />}</span>

@@ -12,11 +12,13 @@ test("the website tiles are locked on plans without the website, and point to Bi
   // should remain locked." The server enforces it (services/planFeatures).
   const settings = SRC("src/pages/Settings.jsx");
   assert.match(settings, /id: "timings",[^\n]*feature: "website" \}/);
-  assert.match(settings, /id: "website",[^\n]*feature: "website" \}/);
-  assert.match(settings, /if \(lockedByPlan\(item\)\) \{\s*navigate\("\/settings\/billing"\);/);
+  assert.match(settings, /if \(blockedByPlan\(item\)\) \{\s*navigate\("\/settings\/billing"\);/);
   assert.match(settings, /\{locked \? <I\.lock \/> : <I\.chevron \/>\}/);
-  // A direct visit to Manage Website goes to Billing too.
-  assert.match(SRC("src/pages/WebsiteSettings.jsx"), /if \(websiteLocked\) return <Navigate to="\/settings\/billing" replace \/>;/);
+  // Manage Website still opens, as the payment gateway only: every plan keeps it.
+  assert.match(settings, /id: "website",[^\n]*feature: "website",[^\n]*openWhenLocked: true \}/);
+  const site = SRC("src/pages/WebsiteSettings.jsx");
+  assert.match(site, /const tabs = websiteLocked \? TABS\.filter\(\(t\) => t\.key === "payments"\) : TABS;/);
+  assert.match(site, /updateWebsiteSettings\(websiteLocked \? \{ paymentGateways: settings\.paymentGateways \} : settings\)/);
 });
 
 test("a paid installation can be upgraded from Billing, paying only the difference", () => {

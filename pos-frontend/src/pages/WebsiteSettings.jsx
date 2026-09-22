@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
-import { Navigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import MediaLibrary from "../components/media/MediaLibrary";
 import SecurityPinModal from "../components/common/SecurityPinModal";
@@ -118,8 +118,13 @@ const WebsiteSettings = () => {
   // Which photo slot the image picker is filling ("" = closed).
   const [pickingImage, setPickingImage] = useState("");
   // The website is a Growth and Scale feature (the server enforces it too).
+  // Below that, this page is the payment gateway only: every plan keeps it.
   const { data: subRes } = useQuery({ queryKey: ["subscription"], queryFn: getSubscriptionStatus });
   const websiteLocked = subRes?.data?.data?.features?.website === false;
+  const tabs = websiteLocked ? TABS.filter((t) => t.key === "payments") : TABS;
+  useEffect(() => {
+    if (websiteLocked) setTab("payments");
+  }, [websiteLocked]);
   useEffect(() => {
     let live = true;
     getMenus({ source: "website" })
@@ -183,7 +188,8 @@ const WebsiteSettings = () => {
 
   /** Write the editor's current state to the server. Throws on failure. */
   const persist = async () => {
-    const res = await updateWebsiteSettings(settings);
+    // Gateway only below Growth: the rest of the page is not theirs to save.
+    const res = await updateWebsiteSettings(websiteLocked ? { paymentGateways: settings.paymentGateways } : settings);
     setSettings(res.data.data.settings);
     setStorefrontUrl(res.data.data.storefrontUrl);
     setDirty(false);
@@ -233,8 +239,6 @@ const WebsiteSettings = () => {
     });
   };
 
-  if (websiteLocked) return <Navigate to="/settings/billing" replace />;
-
   if (loading) {
     return (
       <div className="h-full overflow-y-auto bg-[#F8FAFC] p-6">
@@ -254,18 +258,26 @@ const WebsiteSettings = () => {
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3 mb-6">
         <div className="min-w-0">
-          <h1 className="text-2xl font-extrabold text-[#0F172A]">Website</h1>
-          <a
-            href={storefrontUrl}
-            target="_blank"
-            rel="noreferrer"
-            className="text-sm text-[#C2410C] hover:underline break-all"
-          >
-            {storefrontUrl}
-          </a>
+          <h1 className="text-2xl font-extrabold text-[#0F172A]">{websiteLocked ? "Payment Gateway" : "Website"}</h1>
+          {websiteLocked ? (
+            <p className="text-sm text-[#64748B]">
+              The website is included in Growth and Scale.{" "}
+              <Link to="/settings/billing" className="font-semibold text-[#C2410C] hover:underline">Upgrade</Link>
+            </p>
+          ) : (
+            <a
+              href={storefrontUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-sm text-[#C2410C] hover:underline break-all"
+            >
+              {storefrontUrl}
+            </a>
+          )}
         </div>
 
         <div className="ml-auto flex items-center gap-2">
+          {!websiteLocked && (
           <button
             type="button"
             onClick={publish}
@@ -274,11 +286,13 @@ const WebsiteSettings = () => {
           >
             🚀 Publish Website
           </button>
+          )}
           {/* Preview opens the REAL customer website.
               It used to open /website/preview, a second storefront living
               inside the POS that renders one fixed design and knows nothing
               about landing templates -- so every template previewed
               identically, and the landing page never appeared at all. */}
+          {!websiteLocked && (
           <a
             href={storefrontUrl}
             target="_blank"
@@ -287,6 +301,7 @@ const WebsiteSettings = () => {
           >
             👁 Preview
           </a>
+          )}
           <button
             type="button"
             onClick={save}
@@ -323,7 +338,7 @@ const WebsiteSettings = () => {
 
       {/* Tabs */}
       <div className="flex gap-1 overflow-x-auto mb-5 border-b border-[#E2E8F0] pb-px">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.key}
             type="button"

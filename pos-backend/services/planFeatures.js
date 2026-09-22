@@ -55,8 +55,9 @@ const upgradeRequired = (res, feature, what) =>
   });
 
 // Order Toggles and Rules & Charges write these through /api/website/settings;
-// they run the POS, not the website, so every plan keeps them.
-const NOT_WEBSITE = new Set(["ordering", "couponsConfig", "freeItemConfig"]);
+// they run the POS, not the website, so every plan keeps them. So does the
+// payment gateway: payment links and table bills are paid through it.
+const NOT_WEBSITE = new Set(["ordering", "couponsConfig", "freeItemConfig", "paymentGateways"]);
 
 const requireWebsitePlan = async (req, res, next) => {
   const keys = Object.keys(req.body || {});

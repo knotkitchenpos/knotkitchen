@@ -66,7 +66,8 @@ test("Essential cannot change Manage Website or the website's hours, but keeps t
     assert.deepEqual(await call(requireWebsitePlan, body), { status: 403, passed: false }, JSON.stringify(body));
   }
   // Order Toggles and Rules & Charges write these through /api/website/settings.
-  for (const body of [{ ordering: { autoReadyMinutes: {} } }, { couponsConfig: [] }, { freeItemConfig: [] }]) {
+  // The payment gateway stays open on every plan too.
+  for (const body of [{ ordering: { autoReadyMinutes: {} } }, { couponsConfig: [] }, { freeItemConfig: [] }, { paymentGateways: { activeGateway: "cashfree" } }]) {
     assert.deepEqual(await call(requireWebsitePlan, body), { status: null, passed: true }, JSON.stringify(body));
   }
 });
