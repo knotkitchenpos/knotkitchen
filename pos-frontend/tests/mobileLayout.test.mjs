@@ -44,3 +44,15 @@ test("a dialog taller than the screen scrolls instead of hiding its buttons", ()
   assert.match(css, /\.fixed\.inset-0\.flex\.items-center\.justify-center \{\s*overflow-y: auto;\s*align-items: safe center;/);
   assert.match(SRC("src/components/pos/ModalShell.jsx"), /max-h-\[calc\(100dvh-2rem\)\]/);
 });
+
+test("REGRESSION: on WebViews without dvh the shell keeps its height, so View cart stays at the bottom", () => {
+  // A tablet's Android app dropped h-dvh: the whole page scrolled and the
+  // "View cart" bar only appeared at the end of the menu.
+  const css = SRC("src/index.css");
+  assert.match(css, /@supports not \(height: 100dvh\) \{\s*\.h-dvh \{\s*height: 100vh;/);
+  assert.match(SRC("src/App.jsx"), /className="flex h-dvh w-full overflow-hidden/);
+  // The bar is outside the menu's own scroll area.
+  const menu = SRC("src/pages/Menu.jsx");
+  assert.ok(menu.indexOf("<ProductPanel") < menu.indexOf("View cart ("));
+  assert.match(menu, /lg:hidden shrink-0 border-t/);
+});

@@ -4,6 +4,21 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+ * Older WebViews (the Android app on some tablets) have no dvh units, so
+ * h-dvh was dropped: the app shell had no height, the whole page scrolled
+ * instead of the menu, and "View cart" sat at the very end of the menu.
+ * The app has no browser toolbar, so 100vh is the same height there.
+ */
+@supports not (height: 100dvh) {
+  .h-dvh {
+    height: 100vh;
+  }
+  .max-h-\[calc\(100dvh-2rem\)\] {
+    max-height: calc(100vh - 2rem);
+  }
+}
+
 * {
   box-sizing: border-box;
 }
