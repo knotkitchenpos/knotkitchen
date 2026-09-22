@@ -69,7 +69,7 @@ test("no storefront field is refused for being a support-only section", () => {
   // through this same endpoint.
   assert.match(
     SRC("routes", "websiteRoute.js"),
-    /\.put\(isVerifiedUser, requireProtectedAction, updateWebsiteSettings\);/,
+    /\.put\(isVerifiedUser, requireProtectedAction, requireWebsitePlan, updateWebsiteSettings\);/,
   );
   assert.ok(
     !/csdOnly/.test(SRC("routes", "websiteRoute.js")),

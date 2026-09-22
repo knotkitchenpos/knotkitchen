@@ -178,9 +178,12 @@ const Tables = () => {
         queryClient.invalidateQueries({ queryKey: ["tables"] });
       })
       .catch((err) => {
+        const upgrade = err?.response?.data?.code === "PLAN_UPGRADE_REQUIRED";
+        // Not on this plan: no QR at all, rather than an old one diners cannot use.
+        if (upgrade && !cancelled) setQrModalTable(null);
         enqueueSnackbar(
           err?.response?.data?.message || "Failed to load QR for this table.",
-          { variant: "error" },
+          { variant: upgrade ? "warning" : "error" },
         );
       })
       .finally(() => {

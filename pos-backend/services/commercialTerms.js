@@ -21,6 +21,18 @@ const INSTALLATION_OPTIONS = Object.freeze([
 
 const installationOption = (code) => INSTALLATION_OPTIONS.find((o) => o.code === String(code || "")) || null;
 
+/**
+ * Moving up later (No Printer -> a 2- or 3-inch printer, 2-inch -> 3-inch):
+ * only the difference over what was already paid, ex-tax. Worked from the
+ * amount paid, not the old option's list price, so it stays right if prices
+ * change. Never down or sideways (null).
+ */
+const installationUpgrade = (paidPaise, code) => {
+  const option = installationOption(code);
+  const differencePaise = option ? option.amountPaise - Math.round(Number(paidPaise) || 0) : 0;
+  return differencePaise > 0 ? { option, differencePaise } : null;
+};
+
 /** Clause 6.1. The discount covers exactly `months` Billing Periods. */
 const COMMITMENTS = Object.freeze([
   { months: 3, discountPercent: 5 },
@@ -113,6 +125,7 @@ const scheduleHash = (values) =>
 module.exports = {
   INSTALLATION_OPTIONS,
   installationOption,
+  installationUpgrade,
   COMMITMENTS,
   commitmentOption,
   applyDiscount,

@@ -2,8 +2,8 @@ import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { clearActiveStoreId } from "../utils/storeSession";
 import { useDispatch } from "react-redux";
-import { useMutation } from "@tanstack/react-query";
-import { logout } from "../https";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { getSubscriptionStatus, logout } from "../https";
 import { removeUser } from "../redux/slices/userSlice";
 import ActivityLogView from "../components/dashboard/ActivityLogView";
 import DeviceConfiguration from "../components/settings/DeviceConfiguration";
@@ -26,7 +26,7 @@ const MENU_ITEMS = [
   { id: "menu", title: "4. Manage Menu", desc: "Categories, dishes, variants and add-ons.", Icon: I.utensils, path: "/manage-menu" },
   { id: "staff", title: "5. Manage Staff", desc: "Add/delete staff and PIN privileges.", Icon: I.users, mode: "view" },
   { id: "toggles", title: "6. Order Toggles & Auto-Ready", desc: "Channel ON/OFF & auto-ready durations.", Icon: I.toggle, mode: "view" },
-  { id: "timings", title: "7. Website Timing & Holidays", desc: "Collection, delivery and table booking hours, Close for Today and holidays for the website.", Icon: I.calendar, mode: "view" },
+  { id: "timings", title: "7. Website Timing & Holidays", desc: "Collection, delivery and table booking hours, Close for Today and holidays for the website.", Icon: I.calendar, mode: "view", feature: "website" },
   { id: "rules", title: "8. Rules, Charges & Promotions", desc: "Min orders, delivery slabs, GST, coupons, free items.", Icon: I.fileText, mode: "view" },
   { id: "reports", title: "9. Reports", desc: "Sales, revenue and order breakdowns.", Icon: I.chart, path: "/reports" },
   // Shift & Day End and Inventory are built (ShiftView, InventoryView) but
@@ -41,7 +41,7 @@ const MENU_ITEMS = [
   // can clear a lock, so it must never be gated. See middlewares/accountLock.js.
   { id: "billing", title: "10. Billing & Subscription", desc: "Business Balance, plan, invoices and transactions.", Icon: I.fileText, path: "/settings/billing" },
 
-  { id: "website", title: "11. Manage Website", desc: "Landing page, branding, colours, domain and payments.", Icon: I.globe, path: "/website" },
+  { id: "website", title: "11. Manage Website", desc: "Landing page, branding, colours, domain and payments.", Icon: I.globe, path: "/website", feature: "website" },
 
   // Activity Log stays CSD-only: it is the audit trail of who did what,
   // including support's own actions, and is locked server-side in
@@ -71,7 +71,17 @@ const Settings = () => {
     },
   });
 
+  // Plan features (services/planFeatures on the server, which also enforces
+  // them): the website tiles are Growth and Scale only.
+  const { data: subRes } = useQuery({ queryKey: ["subscription"], queryFn: getSubscriptionStatus });
+  const features = subRes?.data?.data?.features;
+  const lockedByPlan = (item) => Boolean(item.feature && features && features[item.feature] === false);
+
   const handleClick = (item) => {
+    if (lockedByPlan(item)) {
+      navigate("/settings/billing");
+      return;
+    }
     if (item.action === "logout") {
       logoutMutation.mutate();
       return;
@@ -138,6 +148,7 @@ const Settings = () => {
             {MENU_ITEMS.map((item) => {
               const Icon = item.Icon;
               const isLogout = item.action === "logout";
+              const locked = lockedByPlan(item);
               return (
                 <button
                   key={item.id}
@@ -159,9 +170,11 @@ const Settings = () => {
                     <p className={`text-[15px] font-extrabold ${isLogout ? "text-[#DC2626]" : "text-[#0F172A]"}`}>
                       {item.title}
                     </p>
-                    <p className="text-[12px] text-[#94A3B8] truncate mt-0.5">{item.desc}</p>
+                    <p className="text-[12px] text-[#94A3B8] truncate mt-0.5">
+                      {locked ? "Included in Growth and Scale. Tap to upgrade." : item.desc}
+                    </p>
                   </div>
-                  <span className="text-[#94A3B8] shrink-0"><I.chevron /></span>
+                  <span className="text-[#94A3B8] shrink-0">{locked ? <I.lock /> : <I.chevron />}</span>
                 </button>
               );
             })}

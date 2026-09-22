@@ -21,9 +21,11 @@ const { amountInWords, formatINR } = require("./money");
 const { nextPeriod, upgradeCharge, isActiveAt, startOfIstDay } = require("./subscriptionPeriod");
 const { nextInvoiceNumber } = require("./invoiceNumber");
 const { fireEvaluateLock, evaluateLock } = require("./accountLock");
+const { featuresFor } = require("./planFeatures");
 const {
   INSTALLATION_OPTIONS,
   installationOption,
+  installationUpgrade,
   commitmentOption,
   applyDiscount,
   commitmentState,
@@ -312,7 +314,8 @@ const purchaseInstallation = async ({ restaurantId, optionCode, on = new Date(),
 
   let entry;
   try {
-    ({ entry } = await debit({
+    let duplicate;
+    ({ entry, duplicate } = await debit({
       restaurantId,
       kind: "SUBSCRIPTION",
       amountPaise: tax.totalPaise,
@@ -320,8 +323,12 @@ const purchaseInstallation = async ({ restaurantId, optionCode, on = new Date(),
       refType: "PlatformSubscription",
       refId: subscription._id,
       meta: { installation: option.code },
+      // Paid once per store: a double click or a second tab cannot pay twice.
+      // ponytail: a crash between this debit and the save below needs a manual fix.
+      idempotencyKey: `installation-${subscription._id}`,
       createdBy,
     }));
+    if (duplicate) throw new SubscriptionError("The Installation Charge has already been paid for this store.", 409);
   } catch (err) {
     if (err instanceof InsufficientBalanceError) {
       throw new SubscriptionError(
@@ -362,6 +369,110 @@ const purchaseInstallation = async ({ restaurantId, optionCode, on = new Date(),
     reason: "INSTALLATION",
     values: {
       installation: { optionCode: option.code, optionName: option.name, amountPaise: option.amountPaise, equipment: option.equipment },
+      gst: { applicable: tax.applicable, percent: tax.percent, mode: tax.mode, interState: tax.interState },
+      totalPaise: tax.totalPaise,
+    },
+    acceptance,
+  });
+
+  return { subscription, invoice, schedule, charged: tax.totalPaise };
+};
+
+/**
+ * Upgrade the installation later: No Printer to a 2- or 3-inch printer, or
+ * 2-inch to 3-inch. Only the difference is charged (plus GST as on any
+ * charge), from the Business Balance, with its own invoice. The refund basis
+ * becomes the total paid; the Activation Date, and so the 12 months of
+ * clause 5.6, does not move.
+ */
+const upgradeInstallation = async ({ restaurantId, optionCode, on = new Date(), createdBy = null, acceptance }) => {
+  const config = await getPlatformConfig();
+  const subscription = await getSubscription(restaurantId);
+  if ((await getOverride(restaurantId))?.billingExempt) {
+    throw new SubscriptionError("This is a demo store. It is never charged.", 409);
+  }
+  const current = subscription.installation;
+  if (!current?.paidAt) throw new SubscriptionError("Pay the Installation Charge first.", 409);
+  const up = installationUpgrade(current.amountPaise, optionCode);
+  if (!up) throw new SubscriptionError("Choose an installation option above your current one. It cannot be downgraded.", 400);
+  requireAcceptance(acceptance);
+
+  const from = { code: current.optionCode, name: current.optionName };
+  const restaurant = await Restaurant.findById(restaurantId).select("address").lean();
+  const tax = computeTax({ amountPaise: up.differencePaise, gst: config.gst, restaurantState: restaurant?.address?.state, on });
+  const parties = await partiesFor(restaurantId, config);
+  const label = `Installation upgrade — ${from.name} to ${up.option.name}`;
+
+  let entry;
+  try {
+    let duplicate;
+    ({ entry, duplicate } = await debit({
+      restaurantId,
+      kind: "SUBSCRIPTION",
+      amountPaise: tax.totalPaise,
+      description: label,
+      refType: "PlatformSubscription",
+      refId: subscription._id,
+      meta: { installation: up.option.code, from: from.code },
+      // Options only go up, so each one is left at most once: a double click
+      // or a second tab cannot pay for the same step twice.
+      // ponytail: a crash between this debit and the save below needs a manual fix.
+      idempotencyKey: `installation-upgrade-${subscription._id}-${from.code}`,
+      createdBy,
+    }));
+    if (duplicate) throw new SubscriptionError("This installation upgrade has already been paid.", 409);
+  } catch (err) {
+    if (err instanceof InsufficientBalanceError) {
+      throw new SubscriptionError(
+        `Not enough Business Balance. ${formatINR(tax.totalPaise)} is due and ${formatINR(err.availablePaise)} is available.`,
+        402,
+        { requiredPaise: tax.totalPaise, availablePaise: err.availablePaise },
+      );
+    }
+    throw err;
+  }
+
+  const invoice = await issueInvoice({
+    restaurantId,
+    storeId: subscription.storeId,
+    kind: "INSTALLATION",
+    description: `${label} (difference only; one-time, refundable per Agreement clause 5.6)`,
+    amountPaise: up.differencePaise,
+    tax,
+    config,
+    parties,
+    period: null,
+    ledgerEntryId: entry._id,
+  });
+
+  subscription.installation.upgrades.push({
+    fromCode: from.code,
+    fromName: from.name,
+    toCode: up.option.code,
+    toName: up.option.name,
+    differencePaise: up.differencePaise,
+    invoiceId: invoice._id,
+    ledgerEntryId: entry._id,
+    upgradedAt: new Date(),
+  });
+  subscription.installation.optionCode = up.option.code;
+  subscription.installation.optionName = up.option.name;
+  subscription.installation.amountPaise = current.amountPaise + up.differencePaise;
+  await subscription.save();
+
+  const schedule = await recordSchedule({
+    restaurantId,
+    storeId: subscription.storeId,
+    reason: "INSTALLATION_UPGRADE",
+    values: {
+      installation: {
+        optionCode: up.option.code,
+        optionName: up.option.name,
+        amountPaise: subscription.installation.amountPaise,
+        equipment: up.option.equipment,
+        previousOptionCode: from.code,
+      },
+      charge: { differencePaise: up.differencePaise },
       gst: { applicable: tax.applicable, percent: tax.percent, mode: tax.mode, interState: tax.interState },
       totalPaise: tax.totalPaise,
     },
@@ -620,6 +731,7 @@ const statusFor = async (restaurantId, on = new Date()) => {
         optionName: subscription.installation.optionName,
         amountPaise: subscription.installation.amountPaise,
         paidAt: subscription.installation.paidAt,
+        upgrades: subscription.installation.upgrades || [],
         // Clause 5.6, as if terminated today: what the restaurant would get back.
         refund: installationRefund({
           installationPaise: subscription.installation.amountPaise,
@@ -636,6 +748,8 @@ const statusFor = async (restaurantId, on = new Date()) => {
     active,
     // Set by CSD: a demo store, never billed and never locked.
     exempt: Boolean(override?.billingExempt),
+    // What this plan unlocks (services/planFeatures). The POS locks its tiles from this.
+    features: featuresFor({ planCode: subscription.planCode, exempt: override?.billingExempt }),
     activatedAt: subscription.activatedAt,
     installation,
     installationRequired: !override?.billingExempt && !subscription.installation?.paidAt,
@@ -663,6 +777,7 @@ module.exports = {
   quote,
   purchasePlan,
   purchaseInstallation,
+  upgradeInstallation,
   lapseCommitments,
   settleCommitmentRepayment,
   listSchedules,

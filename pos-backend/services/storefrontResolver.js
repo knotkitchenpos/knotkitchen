@@ -113,6 +113,15 @@ const resolveStorefront = async ({ identifier, host } = {}) => {
   }
 
   const restaurantId = settings.restaurantId || store.restaurantId;
+
+  // The plan decides too: the website is a Growth and Scale feature, so on
+  // Essential, Connect or no plan it is off whatever the switch says.
+  // Required here, for the same reason as accountLock below.
+  const { hasWebsite } = require("./planFeatures");
+  if (!(await hasWebsite(restaurantId, settings.storeId))) {
+    return { ok: false, status: 403, reason: "WEBSITE_DISABLED", settings, store };
+  }
+
   const restaurant = restaurantId ? await Restaurant.findById(restaurantId) : null;
 
   if (restaurant && (restaurant.isActive === false || restaurant.isDeleted)) {

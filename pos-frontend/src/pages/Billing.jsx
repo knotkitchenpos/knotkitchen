@@ -13,6 +13,7 @@ import {
   getSubscriptionQuote,
   getSubscriptionTerms,
   purchaseInstallation,
+  upgradeInstallation,
   getPlatformInvoices,
 } from "../https";
 import { useSelector } from "react-redux";
@@ -285,6 +286,29 @@ const Billing = () => {
     });
   };
 
+  /** Later, from No Printer (or 2-inch) up to a printer: only the difference is charged. */
+  const payInstallationUpgrade = (option) => {
+    const run = () => installUpgrade.mutate({ optionCode: option.code, accepted: true });
+    setSummary({
+      title: `Upgrade installation to ${option.name}`,
+      lines: [
+        { label: `Difference over ${subscription?.installation?.optionName || "your current option"}`, value: money(option.amount) },
+        {
+          label: option.tax?.applicable ? `GST ${option.tax.percent}%${option.tax.interState ? " (IGST)" : " (CGST + SGST)"}` : "GST",
+          value: option.tax?.applicable ? paise(option.tax.totalTaxPaise) : "Not applicable (KnotKitchen is not GST-registered)",
+          muted: !option.tax?.applicable,
+        },
+      ],
+      total: option.total ? money(option.total) : money(option.amount),
+      terms: [
+        `One-time charge for the difference, and the loan of a ${option.equipment}, which remains KnotKitchen's property.`,
+        "The refund when you leave is worked out on the total Installation Charge paid; the 12 months still run from your activation date (Agreement clause 5.6).",
+      ],
+      agreementVersion: subscription?.agreementVersion || "v2.0",
+      onConfirm: () => authorise(run),
+    });
+  };
+
   const refreshMoney = () => {
     qc.invalidateQueries({ queryKey: ["business-balance"] });
     qc.invalidateQueries({ queryKey: ["subscription"] });
@@ -400,6 +424,22 @@ const Billing = () => {
     },
     onError: (err) => {
       enqueueSnackbar(err?.response?.data?.message || "The Installation Charge could not be paid.", {
+        variant: err?.response?.status === 402 ? "warning" : "error",
+      });
+    },
+  });
+
+  const installUpgrade = useMutation({
+    mutationFn: (body) => upgradeInstallation(body),
+    onSuccess: () => {
+      enqueueSnackbar("Installation upgraded.", { variant: "success" });
+      setSummary(null);
+      refreshMoney();
+      qc.invalidateQueries({ queryKey: ["subscription", "invoices"] });
+      qc.invalidateQueries({ queryKey: ["subscription", "terms"] });
+    },
+    onError: (err) => {
+      enqueueSnackbar(err?.response?.data?.message || "The installation could not be upgraded.", {
         variant: err?.response?.status === 402 ? "warning" : "error",
       });
     },
@@ -680,6 +720,29 @@ const Billing = () => {
               ? ` 100% from ${dateOf(subscription.installation.refund.anniversaryAt)}.`
               : ""}
           </p>
+          {(subscription.installation.upgrades || []).map((u) => (
+            <p key={`${u.fromCode}-${u.toCode}`} className="mt-1 text-[12px] text-[#64748B]">
+              Upgraded from {u.fromName} to {u.toName} on {dateOf(u.upgradedAt)} ({paise(u.differencePaise)} + GST).
+            </p>
+          ))}
+          {(terms?.installationUpgrades || []).length > 0 && (
+            <div className="mt-3 space-y-2">
+              <p className="text-[12px] font-bold text-[#0F172A]">Need a printer? Upgrade and pay only the difference.</p>
+              {terms.installationUpgrades.map((o) => (
+                <div key={o.code} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#E2E8F0] px-3 py-2">
+                  <span className="text-[13px] font-semibold text-[#0F172A]">{o.name}</span>
+                  <button
+                    type="button"
+                    disabled={installUpgrade.isPending}
+                    onClick={() => payInstallationUpgrade(o)}
+                    className="rounded-xl bg-[#0F172A] px-4 py-2 text-[12.5px] font-extrabold text-white hover:bg-[#1E293B] disabled:opacity-40"
+                  >
+                    Upgrade · pay {money(o.total || o.amount)}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </Card>
       )}
 
@@ -768,7 +831,7 @@ const Billing = () => {
 
       <OrderSummary
         summary={summary}
-        busy={buy.isPending || installBuy.isPending}
+        busy={buy.isPending || installBuy.isPending || installUpgrade.isPending}
         onClose={() => setSummary(null)}
         onConfirm={() => summary?.onConfirm?.()}
       />

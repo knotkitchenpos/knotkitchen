@@ -94,3 +94,30 @@ test("SOURCE: the commitment discount is on the invoice, and a lapse leaves its 
   // Collected on the next top-up, like order-charge dues.
   assert.match(SRC("services", "recharge.js"), /settleCommitmentRepayment\(intent\.restaurantId\)/);
 });
+
+test("an installation can be upgraded later, paying only the difference", () => {
+  // "I select No Printer and pay; later I need a 2- or 3-inch printer: I should
+  // only pay the additional amount."
+  const diff = (paid, code) => T.installationUpgrade(paid, code)?.differencePaise ?? null;
+  assert.equal(diff(200000, "PRINTER_2IN"), 50000);
+  assert.equal(diff(200000, "PRINTER_3IN"), 150000);
+  assert.equal(diff(250000, "PRINTER_3IN"), 100000);
+  // Never down, sideways, or to an unknown option.
+  assert.equal(diff(350000, "PRINTER_2IN"), null);
+  assert.equal(diff(250000, "PRINTER_2IN"), null);
+  assert.equal(diff(200000, "NO_PRINTER"), null);
+  assert.equal(diff(200000, "nope"), null);
+  // The refund is on the total paid (3,500 after No Printer -> 3-inch).
+  const r = T.installationRefund({ installationPaise: 350000, activatedAt: ist("2026-01-01T00:00:00"), terminatedAt: ist("2026-06-01T00:00:00") });
+  assert.equal(r.refundPaise, 87500);
+});
+
+test("SOURCE: an installation upgrade or purchase cannot be paid twice", () => {
+  const q = SRC("services", "subscription.js");
+  assert.match(q, /idempotencyKey: `installation-\$\{subscription\._id\}`,/);
+  assert.match(q, /idempotencyKey: `installation-upgrade-\$\{subscription\._id\}-\$\{from\.code\}`,/);
+  assert.equal((q.match(/if \(duplicate\) throw new SubscriptionError\(/g) || []).length, 2);
+  // The total paid becomes the refund basis; the Activation Date is untouched (checked above).
+  assert.match(q, /subscription\.installation\.amountPaise = current\.amountPaise \+ up\.differencePaise;/);
+  assert.match(SRC("routes", "subscriptionRoute.js"), /router\.post\("\/installation\/upgrade", isVerifiedUser, requireProtectedAction,/);
+});

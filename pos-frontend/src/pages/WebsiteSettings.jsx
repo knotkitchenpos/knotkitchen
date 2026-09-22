@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
+import { Navigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import MediaLibrary from "../components/media/MediaLibrary";
 import SecurityPinModal from "../components/common/SecurityPinModal";
 import { isOwner, checkActionAuthorization } from "../utils/security";
 import { getWebsiteSettings, updateWebsiteSettings, validateGatewayCredentials } from "../https/storefrontApi";
-import { getMenus, publishWebsiteCache } from "../https";
+import { getMenus, getSubscriptionStatus, publishWebsiteCache } from "../https";
 
 /**
  * Settings → Website (§3, §19, §26).
@@ -115,6 +117,9 @@ const WebsiteSettings = () => {
   const [dishQuery, setDishQuery] = useState("");
   // Which photo slot the image picker is filling ("" = closed).
   const [pickingImage, setPickingImage] = useState("");
+  // The website is a Growth and Scale feature (the server enforces it too).
+  const { data: subRes } = useQuery({ queryKey: ["subscription"], queryFn: getSubscriptionStatus });
+  const websiteLocked = subRes?.data?.data?.features?.website === false;
   useEffect(() => {
     let live = true;
     getMenus({ source: "website" })
@@ -227,6 +232,8 @@ const WebsiteSettings = () => {
       }
     });
   };
+
+  if (websiteLocked) return <Navigate to="/settings/billing" replace />;
 
   if (loading) {
     return (

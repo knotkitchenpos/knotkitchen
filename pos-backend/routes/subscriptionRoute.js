@@ -6,11 +6,13 @@ const {
   quote,
   purchasePlan,
   purchaseInstallation,
+  upgradeInstallation,
+  getSubscription,
   listSchedules,
   statusFor,
   SubscriptionError,
 } = require("../services/subscription");
-const { INSTALLATION_OPTIONS, COMMITMENTS } = require("../services/commercialTerms");
+const { INSTALLATION_OPTIONS, COMMITMENTS, installationUpgrade } = require("../services/commercialTerms");
 const { getPlatformConfig } = require("../services/pricing");
 const { computeTax } = require("../services/tax");
 const Restaurant = require("../models/restaurantModel");
@@ -155,17 +157,27 @@ router.post("/purchase", isVerifiedUser, requireProtectedAction, async (req, res
 router.get("/terms", isVerifiedUser, async (req, res, next) => {
   try {
     // Clause 5.3: tax shown with the option, before it is chosen.
-    const [config, restaurant] = await Promise.all([
+    const [config, restaurant, subscription] = await Promise.all([
       getPlatformConfig(),
       Restaurant.findById(ownRestaurantId(req)).select("address").lean(),
+      getSubscription(ownRestaurantId(req)),
     ]);
+    const priced = (o, paise) => {
+      const tax = computeTax({ amountPaise: paise, gst: config.gst, restaurantState: restaurant?.address?.state });
+      return { ...o, amount: asAmount(paise), tax, total: asAmount(tax.totalPaise) };
+    };
+    const paid = subscription.installation?.paidAt ? subscription.installation.amountPaise : null;
     res.status(200).json({
       success: true,
       data: {
-        installationOptions: INSTALLATION_OPTIONS.map((o) => {
-          const tax = computeTax({ amountPaise: o.amountPaise, gst: config.gst, restaurantState: restaurant?.address?.state });
-          return { ...o, amount: asAmount(o.amountPaise), tax, total: asAmount(tax.totalPaise) };
-        }),
+        installationOptions: INSTALLATION_OPTIONS.map((o) => priced(o, o.amountPaise)),
+        // Once paid: the options above the current one, priced at the difference only.
+        installationUpgrades:
+          paid === null
+            ? []
+            : INSTALLATION_OPTIONS.map((o) => installationUpgrade(paid, o.code))
+                .filter(Boolean)
+                .map((u) => priced(u.option, u.differencePaise)),
         commitments: COMMITMENTS,
       },
     });
@@ -191,6 +203,29 @@ router.post("/installation", isVerifiedUser, requireProtectedAction, async (req,
         invoice: result.invoice
           ? { id: result.invoice._id, number: result.invoice.invoiceNumber, total: asAmount(result.invoice.totalPaise), url: urlForInvoice(result.invoice._id) }
           : null,
+        schedule: result.schedule ? { version: result.schedule.version, hash: result.schedule.hash } : null,
+      },
+    });
+  } catch (err) {
+    asSubscriptionError(err, next);
+  }
+});
+
+// POST /api/subscription/installation/upgrade — move to a printer option later, paying only the difference.
+router.post("/installation/upgrade", isVerifiedUser, requireProtectedAction, async (req, res, next) => {
+  try {
+    const result = await upgradeInstallation({
+      restaurantId: ownRestaurantId(req),
+      optionCode: String(req.body?.optionCode || ""),
+      createdBy: req.user?._id,
+      acceptance: acceptanceFrom(req),
+    });
+    res.status(201).json({
+      success: true,
+      data: {
+        installation: result.subscription.installation,
+        charged: asAmount(result.charged),
+        invoice: { id: result.invoice._id, number: result.invoice.invoiceNumber, total: asAmount(result.invoice.totalPaise), url: urlForInvoice(result.invoice._id) },
         schedule: result.schedule ? { version: result.schedule.version, hash: result.schedule.hash } : null,
       },
     });

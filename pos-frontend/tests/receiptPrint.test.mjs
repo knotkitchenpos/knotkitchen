@@ -276,3 +276,33 @@ test("REGRESSION: an offline order with a plain dish does not crash the invoice"
   assert.equal(picked.length, 1);
   assert.equal(picked[0].name, "Extra Cheese");
 });
+
+test("REGRESSION: each takeaway keeps its own device configuration", async () => {
+  // One till signed into Takeaway 1 and Takeaway 2: a change in one takeaway's
+  // Device Configuration was applied to the other, because the printer config
+  // was one record for the whole browser.
+  const mem = () => {
+    const m = new Map();
+    return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k) };
+  };
+  for (const n of ["localStorage", "sessionStorage"]) Object.defineProperty(globalThis, n, { value: mem(), configurable: true, writable: true });
+  const { loadPrinterConfig, savePrinterConfig } = await import("../src/utils/printerDevice.js");
+  const { setActiveStoreId } = await import("../src/utils/storeSession.js");
+
+  localStorage.setItem("kk.receiptPrinter.v1", JSON.stringify({ type: "usb", name: "XP-80", autoPrint: true })); // before the fix
+  setActiveStoreId("111111");
+  assert.equal(loadPrinterConfig().name, "XP-80", "an existing till keeps its printer");
+  setActiveStoreId("222222");
+  assert.equal(loadPrinterConfig().type, "", "another takeaway does not inherit it");
+  assert.equal(loadPrinterConfig().autoPrint, false);
+
+  savePrinterConfig({ ...loadPrinterConfig(), type: "bluetooth", name: "BT-58", paper: "58" });
+  setActiveStoreId("111111");
+  savePrinterConfig({ ...loadPrinterConfig(), kotPrint: true });
+  setActiveStoreId("222222");
+  assert.equal(loadPrinterConfig().kotPrint, false, "Takeaway 1's change must not reach Takeaway 2");
+  assert.equal(loadPrinterConfig().name, "BT-58");
+  setActiveStoreId("111111");
+  const t1 = loadPrinterConfig();
+  assert.deepEqual([t1.name, t1.paper, t1.kotPrint], ["XP-80", "80", true]);
+});

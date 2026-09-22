@@ -314,6 +314,7 @@ export const purchasePlan = (data) => axiosWrapper.post("/api/subscription/purch
 // Agreement v2.0: the selectable installation options and commitments, priced for this store.
 export const getSubscriptionTerms = () => axiosWrapper.get("/api/subscription/terms");
 export const purchaseInstallation = (data) => axiosWrapper.post("/api/subscription/installation", data);
+export const upgradeInstallation = (data) => axiosWrapper.post("/api/subscription/installation/upgrade", data);
 export const getPlatformInvoices = () => axiosWrapper.get("/api/subscription/invoices");
 
 /* ---------- Restaurant, KDS, waiter calls ---------- */

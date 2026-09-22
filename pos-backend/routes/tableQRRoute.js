@@ -1,6 +1,7 @@
 const express = require("express");
 const { isVerifiedUser } = require("../middlewares/tokenVerification");
 const { requirePermission } = require("../middlewares/requirePermission");
+const { requireTableQrPlan } = require("../services/planFeatures");
 const {
   getOrCreateQr,
   regenerateQr,
@@ -15,10 +16,11 @@ const router = express.Router();
 router.route("/").get(isVerifiedUser, requirePermission("TABLE_READ"), listQrs);
 
 // Admin: get-or-create QR for a table
-router.route("/table/:tableId").get(isVerifiedUser, requirePermission("TABLE_READ"), getOrCreateQr);
+// Table QR ordering is Growth and Scale only (services/planFeatures).
+router.route("/table/:tableId").get(isVerifiedUser, requirePermission("TABLE_READ"), requireTableQrPlan, getOrCreateQr);
 
 // Admin: regenerate QR (invalidates previous token)
-router.route("/table/:tableId/regenerate").post(isVerifiedUser, requirePermission("TABLE_UPDATE"), regenerateQr);
+router.route("/table/:tableId/regenerate").post(isVerifiedUser, requirePermission("TABLE_UPDATE"), requireTableQrPlan, regenerateQr);
 
 // Admin: revoke a QR
 router.route("/:id/revoke").post(isVerifiedUser, requirePermission("TABLE_UPDATE"), revokeQr);

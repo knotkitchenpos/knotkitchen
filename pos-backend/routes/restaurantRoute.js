@@ -1,4 +1,5 @@
 const express = require("express");
+const { requireWebsitePlan } = require("../services/planFeatures");
 const {
   onboardRestaurant,
   getMyRestaurant,
@@ -38,9 +39,10 @@ router.route("/verify-pin").post(isVerifiedUser, verifyPin);
 router.route("/change-pin").put(isVerifiedUser, requireOwnerOnly, changePin);
 router.route("/pos-settings").put(isVerifiedUser, requireProtectedAction, updatePosSettings);
 router.route("/order-toggles").put(isVerifiedUser, requireProtectedAction, updateOrderToggles);
-router.route("/timings").put(isVerifiedUser, requireProtectedAction, updateChannelTimings);
-router.route("/holidays").put(isVerifiedUser, requireProtectedAction, updateHolidays);
-router.route("/closed-for-today").put(isVerifiedUser, requireProtectedAction, toggleClosedForToday);
+// Website Timing & Holidays: the website's hours, so only plans with the website (services/planFeatures).
+router.route("/timings").put(isVerifiedUser, requireProtectedAction, requireWebsitePlan, updateChannelTimings);
+router.route("/holidays").put(isVerifiedUser, requireProtectedAction, requireWebsitePlan, updateHolidays);
+router.route("/closed-for-today").put(isVerifiedUser, requireProtectedAction, requireWebsitePlan, toggleClosedForToday);
 
 // Staff Management (Owner Only)
 router.route("/staff").post(isVerifiedUser, requireOwnerOnly, addStaffMember);

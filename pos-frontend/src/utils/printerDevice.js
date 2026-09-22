@@ -3,7 +3,9 @@
  *
  * Kept on the device, not the restaurant: the printer is physically plugged
  * into (or paired with) one laptop or tablet, and two tills each with their
- * own printer must not both print every order.
+ * own printer must not both print every order. And per takeaway on that
+ * device: one till signed into Takeaway 1 and Takeaway 2 keeps a separate
+ * printer, paper size and auto-print switches for each.
  *
  * Transports
  *   usb        WebUSB, raw ESC/POS. Chrome/Edge on Android, ChromeOS, macOS,
@@ -21,6 +23,7 @@
  */
 
 import { Capacitor, registerPlugin } from "@capacitor/core";
+import { readStoreScoped, storeScopedKey, writeStoreScoped } from "./storeSession.js";
 
 /** True inside the Android app. */
 export const nativePrinting = Capacitor.isNativePlatform();
@@ -34,21 +37,29 @@ const KEY = "kk.receiptPrinter.v1";
  */
 export const DEFAULT_CONFIG = { type: "", name: "", paper: "80", autoPrint: false, kotPrint: false, protocol: "escpos" };
 
+/**
+ * The config from before it was kept per takeaway was one shared record. It
+ * goes to the first takeaway that reads it, so an existing till keeps its
+ * printer; every other takeaway starts unset instead of inheriting it.
+ */
 export const loadPrinterConfig = () => {
+  const config = { ...DEFAULT_CONFIG, ...readStoreScoped(KEY, {}) };
   try {
-    return { ...DEFAULT_CONFIG, ...JSON.parse(localStorage.getItem(KEY) || "{}") };
+    // Signed out the scoped key IS the bare key: claiming would delete what was just read.
+    if (storeScopedKey(KEY) !== KEY && localStorage.getItem(KEY) !== null) {
+      writeStoreScoped(KEY, config);
+      // Only once the copy is really there (writes can fail in private mode).
+      if (localStorage.getItem(storeScopedKey(KEY)) !== null) localStorage.removeItem(KEY);
+    }
   } catch {
-    return { ...DEFAULT_CONFIG };
+    /* private mode */
   }
+  return config;
 };
 
 export const savePrinterConfig = (config) => {
   const next = { ...DEFAULT_CONFIG, ...config };
-  try {
-    localStorage.setItem(KEY, JSON.stringify(next));
-  } catch {
-    /* private mode: the choice lasts for this page only */
-  }
+  writeStoreScoped(KEY, next); // private mode: the choice lasts for this page only
   return next;
 };
 
@@ -123,15 +134,16 @@ export const chooseUsbPrinter = async () => {
 };
 
 const usbFor = async (config) => {
-  if (usb && usb.device.opened) return usb;
+  // Only if it is this takeaway's printer: after switching takeaway in the same
+  // tab, the open device may be the other one's.
+  const sameUsb = (d) =>
+    d.vendorId === config.usb?.vendorId &&
+    d.productId === config.usb?.productId &&
+    (!config.usb?.serialNumber || d.serialNumber === config.usb.serialNumber);
+  if (usb && usb.device.opened && sameUsb(usb.device)) return usb;
   // A device the user already allowed comes back without asking again.
   const devices = await navigator.usb.getDevices();
-  const match = devices.find(
-    (d) =>
-      d.vendorId === config.usb?.vendorId &&
-      d.productId === config.usb?.productId &&
-      (!config.usb?.serialNumber || d.serialNumber === config.usb.serialNumber),
-  );
+  const match = devices.find(sameUsb);
   if (!match) throw new Error("The USB printer is not connected. Check the cable, then choose it again in Device Configuration.");
   return openUsb(match);
 };

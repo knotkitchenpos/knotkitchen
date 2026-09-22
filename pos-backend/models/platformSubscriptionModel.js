@@ -54,6 +54,9 @@ const subscriptionSchema = new mongoose.Schema(
     activatedAt: { type: Date, default: null },
 
     // Clause 5: the one-time Installation Charge, paid before Activation.
+    // amountPaise is the total paid ex-tax (the clause 5.6 refund basis): the
+    // original purchase plus any upgrades. paidAt/invoiceId/ledgerEntryId are
+    // the original purchase's; each upgrade keeps its own in `upgrades`.
     installation: {
       optionCode: { type: String, default: "" },
       optionName: { type: String, default: "" },
@@ -61,6 +64,24 @@ const subscriptionSchema = new mongoose.Schema(
       paidAt: { type: Date, default: null },
       invoiceId: { type: mongoose.Schema.Types.ObjectId, default: null },
       ledgerEntryId: { type: mongoose.Schema.Types.ObjectId, default: null },
+      upgrades: {
+        type: [
+          new mongoose.Schema(
+            {
+              fromCode: String,
+              fromName: String,
+              toCode: String,
+              toName: String,
+              differencePaise: Number,
+              invoiceId: mongoose.Schema.Types.ObjectId,
+              ledgerEntryId: mongoose.Schema.Types.ObjectId,
+              upgradedAt: Date,
+            },
+            { _id: false },
+          ),
+        ],
+        default: [],
+      },
     },
 
     // Clause 6: a Commitment Period is `periodsTotal` Billing Periods bought
