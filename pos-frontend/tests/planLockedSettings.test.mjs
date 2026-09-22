@@ -15,10 +15,12 @@ test("the website tiles are locked on plans without the website, and point to Bi
   assert.match(settings, /if \(blockedByPlan\(item\)\) \{\s*navigate\("\/settings\/billing"\);/);
   assert.match(settings, /\{locked \? <I\.lock \/> : <I\.chevron \/>\}/);
   // Manage Website still opens, as the payment gateway only: every plan keeps it.
-  assert.match(settings, /id: "website",[^\n]*feature: "website",[^\n]*openWhenLocked: true \}/);
+  assert.match(settings, /id: "website",[^\n]*feature: "website",[^\n]*openWhenLocked: "paymentGateway" \}/);
   const site = SRC("src/pages/WebsiteSettings.jsx");
   assert.match(site, /const tabs = websiteLocked \? TABS\.filter\(\(t\) => t\.key === "payments"\) : TABS;/);
   assert.match(site, /updateWebsiteSettings\(websiteLocked \? \{ paymentGateways: settings\.paymentGateways \} : settings\)/);
+  // Essential has no payment gateway either, so the page goes to Billing.
+  assert.match(site, /if \(websiteLocked && gatewayLocked\) return <Navigate to="\/settings\/billing" replace \/>;/);
 });
 
 test("a paid installation can be upgraded from Billing, paying only the difference", () => {

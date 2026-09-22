@@ -9,6 +9,11 @@
  *            upgrading brings it back).
  *   tableQr  Table QR ordering: diners scanning a table QR to order and pay,
  *            and minting those QRs in Manage Tables.
+ * And Essential (the first plan), or no plan, does not get:
+ *   paymentGateway  the store's own online payments: setting up its
+ *            Cashfree / PhonePe keys, and new payment links. Connect has it.
+ *            Money already in flight (link verify, webhooks, refunds) is
+ *            never gated, so a downgrade cannot strand a payment.
  * Demo stores set in CSD (billingExempt) get everything.
  */
 
@@ -17,11 +22,13 @@ const { PlatformSubscription } = require("../models/platformSubscriptionModel");
 const { getOverride } = require("./pricing");
 
 const FULL_PLANS = new Set(["GROWTH", "SCALE"]);
+const GATEWAY_PLANS = new Set(["CONNECT", "GROWTH", "SCALE"]);
 
 // CSD saves plan codes lowercased; the seeded catalogue is uppercase.
 const featuresFor = ({ planCode, exempt }) => {
-  const full = Boolean(exempt) || FULL_PLANS.has(String(planCode || "").toUpperCase());
-  return { website: full, tableQr: full };
+  const code = String(planCode || "").toUpperCase();
+  const full = Boolean(exempt) || FULL_PLANS.has(code);
+  return { website: full, tableQr: full, paymentGateway: Boolean(exempt) || GATEWAY_PLANS.has(code) };
 };
 
 /**
@@ -45,29 +52,56 @@ const hasFeature = async (restaurantId, feature, storeId) => {
 
 const hasWebsite = (restaurantId, storeId) => hasFeature(restaurantId, "website", storeId);
 
-const upgradeRequired = (res, feature, what) =>
+const upgradeRequired = (res, feature, message) =>
   res.status(403).json({
     success: false,
     code: "PLAN_UPGRADE_REQUIRED",
     feature,
-    message: `${what} is included in the Growth and Scale plans. Upgrade in Settings → Billing & Subscription.`,
+    message: `${message} Upgrade in Settings → Billing & Subscription.`,
     billingPath: "/settings/billing",
   });
 
-// Order Toggles and Rules & Charges write these through /api/website/settings;
-// they run the POS, not the website, so every plan keeps them. So does the
-// payment gateway: payment links and table bills are paid through it.
-const NOT_WEBSITE = new Set(["ordering", "couponsConfig", "freeItemConfig", "paymentGateways"]);
+const WEBSITE_MSG = "The website is included in the Growth and Scale plans.";
+const GATEWAY_MSG = "Online payments (payment gateway) are not included in the Essential plan.";
 
+// Order Toggles and Rules & Charges write these through /api/website/settings;
+// they run the POS, not the website, so every plan keeps them.
+const POS_KEYS = new Set(["ordering", "couponsConfig", "freeItemConfig"]);
+
+/**
+ * PUT /api/website/settings serves several screens. POS keys pass on any
+ * plan; a gateway-only save needs the paymentGateway feature; anything else
+ * is Manage Website and needs the website.
+ */
 const requireWebsitePlan = async (req, res, next) => {
   const keys = Object.keys(req.body || {});
-  if (keys.length && keys.every((k) => NOT_WEBSITE.has(k))) return next();
+  const rest = keys.filter((k) => !POS_KEYS.has(k));
+  if (keys.length && !rest.length) return next();
+  const gatewayOnly = rest.length > 0 && rest.every((k) => k === "paymentGateways");
+  if (gatewayOnly) {
+    return (await hasFeature(req.user?.restaurantId, "paymentGateway")) ? next() : upgradeRequired(res, "paymentGateway", GATEWAY_MSG);
+  }
   if (await hasWebsite(req.user?.restaurantId)) return next();
-  return upgradeRequired(res, "website", "The website");
+  return upgradeRequired(res, "website", WEBSITE_MSG);
 };
+
+/** Saving gateway keys, and opening new payment links. */
+const requirePaymentGatewayPlan = async (req, res, next) =>
+  (await hasFeature(req.user?.restaurantId, "paymentGateway")) ? next() : upgradeRequired(res, "paymentGateway", GATEWAY_MSG);
 
 /** Minting and reprinting table QRs in Manage Tables. */
 const requireTableQrPlan = async (req, res, next) =>
-  (await hasFeature(req.user?.restaurantId, "tableQr")) ? next() : upgradeRequired(res, "tableQr", "Table QR ordering");
+  (await hasFeature(req.user?.restaurantId, "tableQr"))
+    ? next()
+    : upgradeRequired(res, "tableQr", "Table QR ordering is included in the Growth and Scale plans.");
 
-module.exports = { FULL_PLANS, featuresFor, hasFeature, hasWebsite, requireWebsitePlan, requireTableQrPlan };
+module.exports = {
+  FULL_PLANS,
+  GATEWAY_PLANS,
+  featuresFor,
+  hasFeature,
+  hasWebsite,
+  requireWebsitePlan,
+  requireTableQrPlan,
+  requirePaymentGatewayPlan,
+};

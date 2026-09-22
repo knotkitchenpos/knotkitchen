@@ -3,6 +3,7 @@ const router = express.Router();
 const { isVerifiedUser } = require("../middlewares/tokenVerification");
 const { requirePermission } = require("../middlewares/requirePermission");
 const { rateLimit, clientIp } = require("../middlewares/rateLimiter");
+const { requirePaymentGatewayPlan } = require("../services/planFeatures");
 const {
   createPaymentLink,
   getPaymentLink,
@@ -13,7 +14,8 @@ const {
 
 // POS endpoints
 router.route("/").get(isVerifiedUser, requirePermission("PAYMENT_VIEW"), listPaymentLinks);
-router.route("/").post(isVerifiedUser, requirePermission("PAYMENT_CREATE"), createPaymentLink);
+// New links need a plan with online payments; paying or verifying one already sent never does.
+router.route("/").post(isVerifiedUser, requirePermission("PAYMENT_CREATE"), requirePaymentGatewayPlan, createPaymentLink);
 router.route("/transactions").get(isVerifiedUser, requirePermission("PAYMENT_VIEW"), listPaymentTransactions);
 
 /**

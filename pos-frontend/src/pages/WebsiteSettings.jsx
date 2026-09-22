@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
-import { Link } from "react-router-dom";
+import { Link, Navigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import MediaLibrary from "../components/media/MediaLibrary";
 import SecurityPinModal from "../components/common/SecurityPinModal";
@@ -118,9 +118,10 @@ const WebsiteSettings = () => {
   // Which photo slot the image picker is filling ("" = closed).
   const [pickingImage, setPickingImage] = useState("");
   // The website is a Growth and Scale feature (the server enforces it too).
-  // Below that, this page is the payment gateway only: every plan keeps it.
+  // On Connect this page is the payment gateway only; Essential has neither.
   const { data: subRes } = useQuery({ queryKey: ["subscription"], queryFn: getSubscriptionStatus });
   const websiteLocked = subRes?.data?.data?.features?.website === false;
+  const gatewayLocked = subRes?.data?.data?.features?.paymentGateway === false;
   const tabs = websiteLocked ? TABS.filter((t) => t.key === "payments") : TABS;
   useEffect(() => {
     if (websiteLocked) setTab("payments");
@@ -238,6 +239,8 @@ const WebsiteSettings = () => {
       }
     });
   };
+
+  if (websiteLocked && gatewayLocked) return <Navigate to="/settings/billing" replace />;
 
   if (loading) {
     return (

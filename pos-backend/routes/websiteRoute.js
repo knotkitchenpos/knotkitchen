@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const { isVerifiedUser } = require("../middlewares/tokenVerification");
 const { requirePermission, requireOwnerOnly, requireProtectedAction } = require("../middlewares/requirePermission");
-const { requireWebsitePlan } = require("../services/planFeatures");
+const { requireWebsitePlan, requirePaymentGatewayPlan } = require("../services/planFeatures");
 const {
   getWebsiteSettings,
   updateWebsiteSettings,
@@ -26,6 +26,6 @@ router.route("/settings")
 
 router
   .route("/validate-gateway")
-  .post(isVerifiedUser, requireOwnerOnly, validateGatewayCredentials);
+  .post(isVerifiedUser, requireOwnerOnly, requirePaymentGatewayPlan, validateGatewayCredentials);
 
 module.exports = router;

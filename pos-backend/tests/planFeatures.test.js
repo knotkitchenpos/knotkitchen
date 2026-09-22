@@ -40,11 +40,13 @@ const call = async (mw, body) => {
 
 test("only Growth and Scale (and demo stores) get the website and table QR ordering", () => {
   const { featuresFor } = load();
-  for (const planCode of ["ESSENTIAL", "CONNECT", "", undefined]) {
-    assert.deepEqual(featuresFor({ planCode }), { website: false, tableQr: false }, String(planCode));
-  }
-  for (const planCode of ["GROWTH", "SCALE", "growth"]) assert.deepEqual(featuresFor({ planCode }), { website: true, tableQr: true }, planCode);
-  assert.deepEqual(featuresFor({ planCode: "ESSENTIAL", exempt: true }), { website: true, tableQr: true }, "a CSD demo store gets everything");
+  const none = { website: false, tableQr: false, paymentGateway: false };
+  const all = { website: true, tableQr: true, paymentGateway: true };
+  for (const planCode of ["ESSENTIAL", "", undefined]) assert.deepEqual(featuresFor({ planCode }), none, String(planCode));
+  // Connect: no website, but its own payment gateway.
+  assert.deepEqual(featuresFor({ planCode: "CONNECT" }), { ...none, paymentGateway: true });
+  for (const planCode of ["GROWTH", "SCALE", "growth"]) assert.deepEqual(featuresFor({ planCode }), all, planCode);
+  assert.deepEqual(featuresFor({ planCode: "ESSENTIAL", exempt: true }), all, "a CSD demo store gets everything");
 });
 
 test("table QR ordering: diners and QR printing are refused below Growth", async () => {
@@ -66,8 +68,7 @@ test("Essential cannot change Manage Website or the website's hours, but keeps t
     assert.deepEqual(await call(requireWebsitePlan, body), { status: 403, passed: false }, JSON.stringify(body));
   }
   // Order Toggles and Rules & Charges write these through /api/website/settings.
-  // The payment gateway stays open on every plan too.
-  for (const body of [{ ordering: { autoReadyMinutes: {} } }, { couponsConfig: [] }, { freeItemConfig: [] }, { paymentGateways: { activeGateway: "cashfree" } }]) {
+  for (const body of [{ ordering: { autoReadyMinutes: {} } }, { couponsConfig: [] }, { freeItemConfig: [] }]) {
     assert.deepEqual(await call(requireWebsitePlan, body), { status: null, passed: true }, JSON.stringify(body));
   }
 });
@@ -88,4 +89,21 @@ test("SOURCE: the gate is on every website write, the storefront, and the POS st
   assert.match(SRC("routes", "websiteRoute.js"), /requireProtectedAction, requireWebsitePlan, updateWebsiteSettings/);
   assert.match(SRC("services", "storefrontResolver.js"), /if \(!\(await hasWebsite\(restaurantId, settings\.storeId\)\)\) \{\s*return \{ ok: false, status: 403, reason: "WEBSITE_DISABLED"/);
   assert.match(SRC("services", "subscription.js"), /features: featuresFor\(\{ planCode: subscription\.planCode, exempt: override\?\.billingExempt \}\),/);
+});
+
+test("the payment gateway: not on Essential, yes on Connect and above", async () => {
+  // "Payment gateway will not be available in the first plan."
+  const gatewayBody = { paymentGateways: { activeGateway: "cashfree" } };
+  const essential = load({ planCode: "ESSENTIAL" });
+  assert.deepEqual(await call(essential.requireWebsitePlan, gatewayBody), { status: 403, passed: false });
+  assert.deepEqual(await call(essential.requirePaymentGatewayPlan, {}), { status: 403, passed: false });
+  const connect = load({ planCode: "CONNECT" });
+  assert.deepEqual(await call(connect.requireWebsitePlan, gatewayBody), { status: null, passed: true }, "gateway-only save");
+  assert.deepEqual(await call(connect.requireWebsitePlan, { ...gatewayBody, enabled: true }), { status: 403, passed: false }, "not the website");
+  assert.deepEqual(await call(connect.requirePaymentGatewayPlan, {}), { status: null, passed: true });
+
+  assert.match(SRC("routes", "websiteRoute.js"), /requireOwnerOnly, requirePaymentGatewayPlan, validateGatewayCredentials/);
+  assert.match(SRC("routes", "paymentLinkRoute.js"), /requirePermission\("PAYMENT_CREATE"\), requirePaymentGatewayPlan, createPaymentLink/);
+  // Money already in flight is never gated.
+  assert.ok(!/requirePaymentGatewayPlan, verifyAndCaptureLinkPayment/.test(SRC("routes", "paymentLinkRoute.js")));
 });

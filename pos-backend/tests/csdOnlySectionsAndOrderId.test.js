@@ -85,7 +85,8 @@ test("the payment gateway is still Owner-only inside the restaurant", () => {
     SRC("controllers", "websiteSettingsController.js"),
     /Only the Store Owner can configure payment gateways\./,
   );
-  assert.match(SRC("routes", "websiteRoute.js"), /requireOwnerOnly, validateGatewayCredentials/);
+  // (and, since then, only on plans with online payments: services/planFeatures)
+  assert.match(SRC("routes", "websiteRoute.js"), /requireOwnerOnly, requirePaymentGatewayPlan, validateGatewayCredentials/);
 });
 
 test("the storefront read stays open to the till", () => {
