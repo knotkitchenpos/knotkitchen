@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
 
 /** The restaurant's alert ringtone, looped while anything needs attention. */
-export const ALERT_TONE_URL = "/sounds/alert-ringtone.mp3";
+// ?v=: the file is replaced in place, so tills must not keep playing a cached old tone.
+export const ALERT_TONE_URL = "/sounds/alert-ringtone.mp3?v=2";
 
 /*
  * One audio element for the whole till. A new order, added items and a waiter
