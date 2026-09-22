@@ -56,3 +56,16 @@ test("REGRESSION: on WebViews without dvh the shell keeps its height, so View ca
   assert.ok(menu.indexOf("<ProductPanel") < menu.indexOf("View cart ("));
   assert.match(menu, /lg:hidden shrink-0 border-t/);
 });
+
+test("REGRESSION: nothing newer than the tablets' WebView (Chrome 94) is used", () => {
+  // The Android app on a Slate tablet runs Chrome 94: no dvh (guarded in
+  // index.css), no structuredClone (Chrome 98), no toSorted/findLast.
+  const walk = (dir) =>
+    fs.readdirSync(dir, { withFileTypes: true }).flatMap((e) =>
+      e.isDirectory() ? walk(path.join(dir, e.name)) : /\.(jsx?|mjs)$/.test(e.name) ? [path.join(dir, e.name)] : [],
+    );
+  for (const file of walk(path.join(__dirname, "..", "src"))) {
+    const src = fs.readFileSync(file, "utf8").replace(/\/\/.*$/gm, "");
+    assert.ok(!/structuredClone\(|\.toSorted\(|\.toReversed\(|\.findLast(Index)?\(|Object\.groupBy\(/.test(src), file);
+  }
+});

@@ -160,7 +160,8 @@ const WebsiteSettings = () => {
 
   const patch = (path, value) => {
     setSettings((prev) => {
-      const next = structuredClone(prev);
+      // Not structuredClone: the Android app's WebView on older tablets (Chrome 94) lacks it.
+      const next = JSON.parse(JSON.stringify(prev));
       const keys = path.split(".");
       let cursor = next;
       for (let i = 0; i < keys.length - 1; i += 1) {
