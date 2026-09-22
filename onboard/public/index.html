@@ -265,6 +265,27 @@ function fileToDataUrl(file){
   });
 }
 
+/**
+ * PNG uploads are stored as WebP (smaller), transparency kept. Quality 0.92
+ * keeps small print on PAN / FSSAI / bank scans sharp (1.0 came out LARGER
+ * than the PNG in Chrome). A browser that cannot encode WebP (Safari) hands
+ * back a PNG, and then the original PNG is kept as it was.
+ */
+async function pngToWebp(file){
+  if(!file || file.type !== 'image/png' || typeof createImageBitmap !== 'function') return file;
+  try{
+    const bmp = await createImageBitmap(file);
+    const c = document.createElement('canvas');
+    c.width = bmp.width; c.height = bmp.height;
+    c.getContext('2d').drawImage(bmp, 0, 0);
+    if(bmp.close) bmp.close();
+    const blob = await new Promise(res => c.toBlob(res, 'image/webp', 0.92));
+    if(!blob || blob.type !== 'image/webp') return file; // cannot encode WebP here, or the canvas was too large
+    // Renamed too: the server takes the saved file's extension from the name.
+    return new File([blob], file.name.replace(/\.png$/i, '') + '.webp', { type: 'image/webp' });
+  }catch(e){ return file; }
+}
+
 function fmtBytes(b){
   if(b<1024) return b+' B';
   if(b<1024*1024) return (b/1024).toFixed(0)+' KB';
@@ -416,8 +437,11 @@ function bind(id){
 function setData(key,val){ state.data[key]=val; scheduleSave(); }
 
 async function handleFile(inputEl, key, accept){
-  const file = inputEl && inputEl.files && inputEl.files[0];
+  let file = inputEl && inputEl.files && inputEl.files[0];
   if(!file) return;
+  // Before the size check, so a PNG that fits once converted is accepted. Never
+  // the eSigned copy: it is kept byte for byte as evidence.
+  if(key !== 'esigned') file = await pngToWebp(file);
   if(file.size > MAX_FILE_MB*1024*1024){
     showToast(`File too large — please keep it under ${MAX_FILE_MB}MB`);
     if(inputEl && inputEl.value !== undefined) inputEl.value='';
@@ -487,7 +511,7 @@ function stepRestaurant(){
       <input type="file" id="r_logo" accept="image/*" onchange="handleFile(this,'r_logo')">
       <div class="upload-row">
         <div class="upload-icon">🖼️</div>
-        <div class="upload-text"><b>${state.files.r_logo?state.files.r_logo.name:'Click or drop your logo here'}</b><span>PNG or JPG, up to ${MAX_FILE_MB}MB</span></div>
+        <div class="upload-text"><b>${state.files.r_logo?state.files.r_logo.name:'Click or drop your logo here'}</b><span>PNG, JPG or WebP, up to ${MAX_FILE_MB}MB</span></div>
       </div>
     </div>
     ${state.files.r_logo?`<div class="file-meta">✓ Uploaded · ${fmtBytes(state.files.r_logo.size)}</div>`:''}
