@@ -1,6 +1,6 @@
 const express = require("express");
 const { isVerifiedUser } = require("../middlewares/tokenVerification");
-const { requirePermission } = require("../middlewares/requirePermission");
+const { requirePermission, requireProtectedAction } = require("../middlewares/requirePermission");
 const { requireTableQrPlan } = require("../services/planFeatures");
 const {
   getOrCreateQr,
@@ -20,10 +20,13 @@ router.route("/").get(isVerifiedUser, requirePermission("TABLE_READ"), listQrs);
 router.route("/table/:tableId").get(isVerifiedUser, requirePermission("TABLE_READ"), requireTableQrPlan, getOrCreateQr);
 
 // Admin: regenerate QR (invalidates previous token)
-router.route("/table/:tableId/regenerate").post(isVerifiedUser, requirePermission("TABLE_UPDATE"), requireTableQrPlan, regenerateQr);
+// Replacing or revoking a QR kills the printed card on the table: staff need
+// the Security PIN, like PUT /api/table/:id/qr/regenerate. Showing and
+// printing it (TABLE_READ) stays open to every staff account.
+router.route("/table/:tableId/regenerate").post(isVerifiedUser, requireProtectedAction, requirePermission("TABLE_UPDATE"), requireTableQrPlan, regenerateQr);
 
 // Admin: revoke a QR
-router.route("/:id/revoke").post(isVerifiedUser, requirePermission("TABLE_UPDATE"), revokeQr);
+router.route("/:id/revoke").post(isVerifiedUser, requireProtectedAction, requirePermission("TABLE_UPDATE"), revokeQr);
 
 // Admin: mark download / print
 router.route("/:id/usage").post(isVerifiedUser, requirePermission("TABLE_READ"), markUsage);

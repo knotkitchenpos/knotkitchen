@@ -21,10 +21,10 @@ const uploadLimiter = rateLimit({
 
 router.route("/")
   .get(isVerifiedUser, listMedia)
-  .post(isVerifiedUser, requirePermission("MENU_MANAGE"), uploadLimiter, singleImageUpload, uploadMedia);
+  .post(isVerifiedUser, requirePermission("MENU_MANAGE", { pin: true }), uploadLimiter, singleImageUpload, uploadMedia);
 
 router.route("/:id")
-  .patch(isVerifiedUser, requirePermission("MENU_MANAGE"), updateMedia)
-  .delete(isVerifiedUser, requirePermission("MENU_MANAGE"), deleteMedia);
+  .patch(isVerifiedUser, requirePermission("MENU_MANAGE", { pin: true }), updateMedia)
+  .delete(isVerifiedUser, requirePermission("MENU_MANAGE", { pin: true }), deleteMedia);
 
 module.exports = router;

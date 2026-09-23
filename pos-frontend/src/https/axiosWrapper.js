@@ -2,6 +2,7 @@ import axios from "axios";
 import { BACKEND_URL } from "../config";
 import { isPublicPath } from "../utils/publicRoutes";
 import { getActiveStoreId } from "../utils/storeSession";
+import { requestPin } from "../utils/pinPrompt";
 
 const defaultHeader = {
   "Content-Type": "application/json",
@@ -84,6 +85,18 @@ axiosWrapper.interceptors.response.use(
       window.dispatchEvent(new Event("kk:account-locked"));
     }
 
+    // A protected action without a fresh Security PIN: ask for it once, then
+    // retry (the request interceptor attaches the new PIN token). Closing the
+    // popup hands the original error back to the screen.
+    if (error.response?.status === 403 && error.response?.data?.code === "PIN_REQUIRED" && originalRequest && !originalRequest._pinRetry) {
+      originalRequest._pinRetry = true;
+      try {
+        await requestPin();
+      } catch {
+        return Promise.reject(error);
+      }
+      return axiosWrapper(originalRequest);
+    }
     if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isAuthEndpoint) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {

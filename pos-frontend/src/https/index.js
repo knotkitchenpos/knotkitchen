@@ -240,6 +240,7 @@ export const toggleClosedForToday = (data) => axiosWrapper.put("/api/restaurant/
 export const addStaffMember = (data) => axiosWrapper.post("/api/restaurant/staff", data);
 export const getStaffMembers = () => axiosWrapper.get("/api/restaurant/staff");
 export const deleteStaffMember = (staffId) => axiosWrapper.delete(`/api/restaurant/staff/${staffId}`);
+export const updateStaffRole = (staffId, role) => axiosWrapper.put(`/api/restaurant/staff/${staffId}`, { role });
 
 // CSV Import / Export (Module 5)
 export const exportMenuCsv = () => axiosWrapper.get("/api/menu/csv/export", { responseType: "blob" });

@@ -79,6 +79,9 @@ const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 30000,
+      // A PIN refusal is not retried: each retry would open the PIN popup
+      // again after the staff member closed it (https/axiosWrapper.js).
+      retry: (count, err) => err?.response?.data?.code !== "PIN_REQUIRED" && count < 3,
 
       /**
        * Belt and braces behind the socket.

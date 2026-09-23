@@ -39,7 +39,7 @@ const SecurityPinModal = ({ isOpen, onClose, onSuccess, title = "Security Author
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 animate-fade-in">
+    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 p-4 animate-fade-in">
       <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl space-y-4">
         <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
           <h3 className="text-base font-extrabold text-[#0F172A]">{title}</h3>

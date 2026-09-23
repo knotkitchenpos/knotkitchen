@@ -10,17 +10,52 @@ const isOwnerUser = (user) => {
 };
 
 /**
- * RBAC guard — checks the authenticated user (attached by isVerifiedUser)
- * against the required permission.
+ * What every signed-in staff account may do without being granted it: run the
+ * floor. See and free tables, show and print a table's QR. Staff accounts are
+ * created with only order permissions, so without this a cashier could not
+ * release a stranded table and the Security PIN did not help either.
  */
-const requirePermission = (permission) => async (req, res, next) => {
+const STAFF_DEFAULT_PERMISSIONS = ["TABLE_READ", "TABLE_UPDATE"];
+
+/** The Security PIN, as a short-lived token or typed in with the request. */
+const hasPinAuthorization = async (req) => {
+  const pinToken = req.headers["x-staff-pin-token"] || req.cookies?.staffPinToken;
+  if (pinToken) {
+    try {
+      const decoded = jwt.verify(pinToken, config.accessTokenSecret, { algorithms: ["HS256"] });
+      if (decoded && decoded.elevated && String(decoded.userId) === String(req.user._id)) return true;
+    } catch {
+      // Expired or invalid token: fall back to a typed PIN.
+    }
+  }
+  const rawPin = req.headers["x-staff-pin"] || req.body?.pin;
+  if (!rawPin) return false;
+  const { verifyPinHelper } = require("../controllers/restaurantController");
+  const restaurant = await Restaurant.findOne({
+    ...(req.user.restaurantId ? { _id: req.user.restaurantId } : { ownerId: req.user._id }),
+    isDeleted: false,
+  });
+  return Boolean(restaurant && (await verifyPinHelper(restaurant, rawPin)));
+};
+
+/** The POS asks for the PIN and retries when it sees this code (https/axiosWrapper.js). */
+const pinRequired = () => createHttpError(403, "PIN authorization required for this action.", { code: "PIN_REQUIRED" });
+
+/**
+ * RBAC guard — checks the authenticated user (attached by isVerifiedUser)
+ * against the required permission. With `{ pin: true }` the Security PIN
+ * also lets a staff member through, as it does for requireProtectedAction.
+ */
+const requirePermission = (permission, { pin = false } = {}) => async (req, res, next) => {
   try {
     if (!req.user) return next(createHttpError(401, "Authentication required."));
 
     if (isOwnerUser(req.user)) return next();
 
-    const own = req.user.permissions || [];
+    const own = [...(req.user.permissions || []), ...STAFF_DEFAULT_PERMISSIONS];
     if (own.includes("*") || own.includes(permission)) return next();
+
+    if (pin) return next((await hasPinAuthorization(req)) ? undefined : pinRequired());
 
     return next(createHttpError(403, `Forbidden: requires '${permission}' permission.`));
   } catch (error) {
@@ -52,34 +87,8 @@ const requireProtectedAction = async (req, res, next) => {
   try {
     if (!req.user) return next(createHttpError(401, "Authentication required."));
     if (isOwnerUser(req.user)) return next();
-
-    // Staff member access check: verify PIN token
-    const pinToken = req.headers["x-staff-pin-token"] || req.cookies?.staffPinToken;
-    if (pinToken) {
-      try {
-        const decoded = jwt.verify(pinToken, config.accessTokenSecret, { algorithms: ["HS256"] });
-        if (decoded && decoded.elevated && String(decoded.userId) === String(req.user._id)) {
-          return next();
-        }
-      } catch (err) {
-        // Expired or invalid token, fallback to PIN check
-      }
-    }
-
-    // Direct PIN header / body fallback
-    const rawPin = req.headers["x-staff-pin"] || req.body?.pin;
-    if (rawPin) {
-      const { verifyPinHelper } = require("../controllers/restaurantController");
-      const restaurant = await Restaurant.findOne({
-        ...(req.user.restaurantId ? { _id: req.user.restaurantId } : { ownerId: req.user._id }),
-        isDeleted: false,
-      });
-      if (restaurant && (await verifyPinHelper(restaurant, rawPin))) {
-        return next();
-      }
-    }
-
-    return next(createHttpError(403, "PIN authorization required for this action."));
+    if (await hasPinAuthorization(req)) return next();
+    return next(pinRequired());
   } catch (error) {
     next(error);
   }
@@ -105,4 +114,12 @@ const requireManager = async (req, res, next) => {
   }
 };
 
-module.exports = { requirePermission, requireOwnerOnly, requireProtectedAction, requireManager, isOwnerUser, isManagerUser };
+module.exports = {
+  requirePermission,
+  requireOwnerOnly,
+  requireProtectedAction,
+  requireManager,
+  isOwnerUser,
+  isManagerUser,
+  STAFF_DEFAULT_PERMISSIONS,
+};

@@ -50,3 +50,23 @@ test("review fixes: per-store key, old copy freed first, no stale write-back", (
   assert.ok(save.indexOf("OLD_KEY, null") < save.indexOf("writeStoreScoped(KEY, next)"), "free the old copy before writing");
   assert.match(src, /const current = readSavedMenu\(\);\s*if \(current\?\.version === saved\.version\) save\(\{ \.\.\.current, checkedAt/);
 });
+
+// ---- Owner and staff workflow fixes ----
+test("one PIN popup answers every PIN_REQUIRED refusal, then retries once", () => {
+  const ax = SRC("src/https/axiosWrapper.js");
+  assert.match(ax, /error\.response\?\.data\?\.code === "PIN_REQUIRED" && originalRequest && !originalRequest\._pinRetry/);
+  assert.match(ax, /await requestPin\(\);/);
+  assert.match(SRC("src/App.jsx"), /\{isAuth && <GlobalPinPrompt \/>\}/);
+  assert.match(SRC("src/components/common/SecurityPinModal.jsx"), /fixed inset-0 z-\[200\]/, "above every other popup");
+});
+
+test("Manage Staff: pick a role when adding, change it later", () => {
+  const view = SRC("src/components/settings/ManageStaffView.jsx");
+  assert.match(view, /addMutation\.mutate\(\{ name, phone, role \}\)/);
+  assert.match(view, /roleMutation\.mutate\(\{ id: s\._id, role: e\.target\.value \}\)/);
+  for (const r of ["Staff", "Cashier", "Manager"]) assert.match(view, new RegExp(`value: "${r}"`));
+});
+
+test("a closed PIN popup is not reopened by query retries", () => {
+  assert.match(SRC("src/main.jsx"), /retry: \(count, err\) => err\?\.response\?\.data\?\.code !== "PIN_REQUIRED" && count < 3,/);
+});

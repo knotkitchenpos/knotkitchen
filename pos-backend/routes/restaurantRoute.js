@@ -14,6 +14,7 @@ const {
   addStaffMember,
   getStaffMembers,
   deleteStaffMember,
+  updateStaffRole,
 } = require("../controllers/restaurantController");
 const { isVerifiedUser } = require("../middlewares/tokenVerification");
 const { requireOwnerOnly, requireProtectedAction } = require("../middlewares/requirePermission");
@@ -38,5 +39,6 @@ router.route("/closed-for-today").put(isVerifiedUser, requireProtectedAction, re
 router.route("/staff").post(isVerifiedUser, requireOwnerOnly, addStaffMember);
 router.route("/staff").get(isVerifiedUser, requireProtectedAction, getStaffMembers);
 router.route("/staff/:staffId").delete(isVerifiedUser, requireOwnerOnly, deleteStaffMember);
+router.route("/staff/:staffId").put(isVerifiedUser, requireOwnerOnly, updateStaffRole);
 
 module.exports = router;

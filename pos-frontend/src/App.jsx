@@ -15,6 +15,7 @@ import {
 
 import Sidebar, { MobileNav } from "./components/shared/Sidebar";
 import { AccountLockBanner, LockRedirect, useAccountLock } from "./components/shared/AccountLock";
+import GlobalPinPrompt from "./components/common/GlobalPinPrompt";
 import useLoadData from "./hooks/useLoadData";
 import useRealtimeSync from "./hooks/useRealtimeSync";
 import { isPublicPath } from "./utils/publicRoutes";
@@ -97,6 +98,7 @@ function Layout() {
         {!lock.locked && <MobileNav onMore={() => setMobileOpen(true)} />}
         {isAuth && <OfflineBanner online={offline.online} queued={offline.queued} onSync={offline.flush} />}
         {isAuth && <AccountLockBanner {...lock} />}
+        {isAuth && <GlobalPinPrompt />}
         {lock.locked ? <LockRedirect /> : null}
         {routes}
       </main>

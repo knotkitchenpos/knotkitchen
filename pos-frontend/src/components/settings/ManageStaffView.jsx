@@ -2,7 +2,16 @@ import React, { useState } from "react";
 import { useSelector } from "react-redux";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
-import { addStaffMember, deleteStaffMember, getStaffMembers } from "../../https";
+import { addStaffMember, deleteStaffMember, getStaffMembers, updateStaffRole } from "../../https";
+
+// What each role may do. Everyone but the owner needs the Security PIN for
+// protected actions (menu, settings, cancelling orders, reports).
+const ROLES = [
+  { value: "Staff", hint: "Orders, billing and tables." },
+  { value: "Cashier", hint: "Same as Staff." },
+  { value: "Manager", hint: "Same as Staff, and can also refund orders." },
+];
+const roleHint = (role) => ROLES.find((r) => r.value === role)?.hint || "";
 
 /* ---------- Module 7 §8 & §9: Manage Staff ---------- */
 const ManageStaffView = () => {
@@ -12,6 +21,7 @@ const ManageStaffView = () => {
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [role, setRole] = useState("Staff");
 
   const { data: staffRes, isLoading } = useQuery({ queryKey: ["staff-members"], queryFn: getStaffMembers, enabled: isOwner });
   const staffList = staffRes?.data?.data || [];
@@ -22,9 +32,19 @@ const ManageStaffView = () => {
       enqueueSnackbar("Staff member added successfully!", { variant: "success" });
       setName("");
       setPhone("");
+      setRole("Staff");
       qc.invalidateQueries({ queryKey: ["staff-members"] });
     },
     onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to add staff", { variant: "error" }),
+  });
+
+  const roleMutation = useMutation({
+    mutationFn: ({ id, role: next }) => updateStaffRole(id, next),
+    onSuccess: () => {
+      enqueueSnackbar("Role updated.", { variant: "success" });
+      qc.invalidateQueries({ queryKey: ["staff-members"] });
+    },
+    onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to change the role", { variant: "error" }),
   });
 
   const deleteMutation = useMutation({
@@ -53,7 +73,7 @@ const ManageStaffView = () => {
           <p className="text-[12px] text-[#94A3B8]">Staff members sign in with the Store ID and their registered phone number.</p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[13px]">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[13px]">
           <div>
             <label className="text-[11.5px] font-bold text-[#94A3B8]">Staff Name</label>
             <input
@@ -72,11 +92,24 @@ const ManageStaffView = () => {
               className="w-full h-[38px] px-3 mt-1 rounded-xl border border-[#E2E8F0] font-bold text-[#0F172A]"
             />
           </div>
+          <div>
+            <label className="text-[11.5px] font-bold text-[#94A3B8]">Role</label>
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              className="w-full h-[38px] px-3 mt-1 rounded-xl border border-[#E2E8F0] font-bold text-[#0F172A] bg-white"
+            >
+              {ROLES.map((r) => (
+                <option key={r.value} value={r.value}>{r.value}</option>
+              ))}
+            </select>
+            <p className="text-[11px] text-[#94A3B8] mt-1">{roleHint(role)}</p>
+          </div>
         </div>
 
         <div className="flex justify-end">
           <button
-            onClick={() => addMutation.mutate({ name, phone })}
+            onClick={() => addMutation.mutate({ name, phone, role })}
             disabled={addMutation.isPending}
             className="h-[40px] px-5 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold hover:bg-[#D64502] disabled:opacity-50"
           >
@@ -96,17 +129,31 @@ const ManageStaffView = () => {
           <div className="space-y-2">
             {staffList.map((s) => (
               <div key={s._id} className="flex items-center justify-between p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] text-[13px]">
-                <div>
+                <div className="min-w-0">
                   <p className="font-extrabold text-[#0F172A]">{s.name}</p>
-                  <p className="text-[11.5px] text-[#64748B]">Phone: {s.phone} · Role: {s.role}</p>
+                  <p className="text-[11.5px] text-[#64748B]">Phone: {s.phone} · {roleHint(s.role) || s.role}</p>
                 </div>
-                <button
-                  onClick={() => deleteMutation.mutate(s._id)}
-                  disabled={deleteMutation.isPending}
-                  className="h-8 px-3 rounded-lg border border-[#FECACA] text-[#DC2626] font-bold text-[12px] hover:bg-[#FEF2F2]"
-                >
-                  Delete
-                </button>
+                <div className="flex items-center gap-2 shrink-0">
+                  <select
+                    aria-label={`Role for ${s.name}`}
+                    value={ROLES.some((r) => r.value === s.role) ? s.role : ""}
+                    onChange={(e) => roleMutation.mutate({ id: s._id, role: e.target.value })}
+                    disabled={roleMutation.isPending}
+                    className="h-8 px-2 rounded-lg border border-[#E2E8F0] bg-white font-bold text-[12px] text-[#0F172A]"
+                  >
+                    {!ROLES.some((r) => r.value === s.role) && <option value="">{s.role}</option>}
+                    {ROLES.map((r) => (
+                      <option key={r.value} value={r.value}>{r.value}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={() => deleteMutation.mutate(s._id)}
+                    disabled={deleteMutation.isPending}
+                    className="h-8 px-3 rounded-lg border border-[#FECACA] text-[#DC2626] font-bold text-[12px] hover:bg-[#FEF2F2]"
+                  >
+                    Delete
+                  </button>
+                </div>
               </div>
             ))}
           </div>

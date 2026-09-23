@@ -1,6 +1,6 @@
 const express = require("express");
 const { isVerifiedUser, resolveTableScope } = require("../middlewares/tokenVerification");
-const { requirePermission } = require("../middlewares/requirePermission");
+const { requirePermission, requireProtectedAction } = require("../middlewares/requirePermission");
 const { rateLimit, clientIp } = require("../middlewares/rateLimiter");
 const config = require("../config/config");
 const qr = require("../controllers/qrController");
@@ -47,7 +47,7 @@ const qrWaiterLimiter = rateLimit({
   message: "Your table has already called for a waiter. Someone is on their way.",
 });
 
-router.route("/tables/:tableId/generate").post(isVerifiedUser, requirePermission("TABLE_UPDATE"), qr.generateTableQr);
+router.route("/tables/:tableId/generate").post(isVerifiedUser, requireProtectedAction, requirePermission("TABLE_UPDATE"), qr.generateTableQr);
 router.route("/table/:token").get(qrReadLimiter, resolveTableScope, qr.getTableByToken);
 router.route("/session/:token").get(qrReadLimiter, resolveTableScope, qr.getSessionByToken);
 router.route("/session/items/:token").post(qrWriteLimiter, resolveTableScope, qr.addSessionItems);

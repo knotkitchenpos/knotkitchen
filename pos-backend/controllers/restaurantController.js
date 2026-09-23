@@ -430,6 +430,23 @@ const toggleClosedForToday = async (req, res, next) => {
   }
 };
 
+// Roles the owner can give from Manage Staff. A Manager can also refund
+// (middlewares/requirePermission.js requireManager); Staff and Cashier differ
+// only in name. Everyone but the owner needs the Security PIN for protected
+// actions.
+const STAFF_ROLES = ["Staff", "Cashier", "Manager"];
+// Every account on the store the owner manages: anyone who is not the owner.
+// Refuses without a store: `restaurantId: undefined` is dropped from a
+// Mongoose filter, which would match users of every store.
+const managedStaff = (restaurantId) => {
+  if (!restaurantId) throw createHttpError(403, "This account is not linked to a store.");
+  return {
+    restaurantId,
+    role: { $nin: ["Owner", "owner", "superadmin"] },
+    isDeleted: { $ne: true },
+  };
+};
+
 // Module 7 §8 / §9 — Manage Staff (Owner only)
 const addStaffMember = async (req, res, next) => {
   try {
@@ -439,6 +456,10 @@ const addStaffMember = async (req, res, next) => {
 
     const name = String(req.body.name || "").trim();
     const phone = String(req.body.phone || "").replace(/\D/g, "");
+    const role = req.body.role === undefined ? "Staff" : req.body.role;
+    if (!STAFF_ROLES.includes(role)) {
+      return next(createHttpError(400, `Role must be one of: ${STAFF_ROLES.join(", ")}.`));
+    }
 
     if (!name || phone.length !== 10) {
       return next(createHttpError(400, "Staff name and a 10-digit phone number are required."));
@@ -464,7 +485,7 @@ const addStaffMember = async (req, res, next) => {
       phone,
       address: "Staff Address",
       password: randomPassword,
-      role: "Staff",
+      role,
       restaurantId,
       storeId: req.user.storeId,
       isActive: true,
@@ -494,7 +515,7 @@ const addStaffMember = async (req, res, next) => {
 const getStaffMembers = async (req, res, next) => {
   try {
     const restaurantId = req.user.restaurantId || req.user._id;
-    const staff = await User.find({ restaurantId, role: "Staff", isDeleted: { $ne: true } });
+    const staff = await User.find(managedStaff(restaurantId));
     res.status(200).json({ success: true, data: staff.map((s) => s.toSafeJSON()) });
   } catch (error) {
     next(error);
@@ -509,7 +530,7 @@ const deleteStaffMember = async (req, res, next) => {
 
     const { staffId } = req.params;
     const staff = await User.findOneAndUpdate(
-      { _id: staffId, restaurantId: req.user.restaurantId, role: "Staff" },
+      { _id: staffId, ...managedStaff(req.user.restaurantId) },
       { isDeleted: true, isActive: false },
       { new: true }
     );
@@ -531,7 +552,39 @@ const deleteStaffMember = async (req, res, next) => {
   }
 };
 
+/** PUT /api/restaurant/staff/:staffId  { role } -- Owner only. */
+const updateStaffRole = async (req, res, next) => {
+  try {
+    const { role } = req.body || {};
+    if (!STAFF_ROLES.includes(role)) {
+      return next(createHttpError(400, `Role must be one of: ${STAFF_ROLES.join(", ")}.`));
+    }
+    const staff = await User.findOne({ _id: req.params.staffId, ...managedStaff(req.user.restaurantId) });
+    if (!staff) return next(createHttpError(404, "Staff member not found."));
+    const previousRole = staff.role;
+    staff.role = role;
+    await staff.save();
+
+    await logActivity({
+      req,
+      action: "Staff Role Changed",
+      resource: "Staff",
+      entityType: "User",
+      entityId: staff._id,
+      previousValue: { role: previousRole },
+      newValue: { role },
+      description: `Staff role changed: ${staff.name} (${staff.phone}) ${previousRole} -> ${role}`,
+    });
+
+    res.status(200).json({ success: true, message: "Role updated.", data: staff.toSafeJSON() });
+  } catch (error) {
+    next(error);
+  }
+};
+
 module.exports = {
+  STAFF_ROLES,
+  updateStaffRole,
   getMyRestaurant,
   getStoreProperties,
   updateStoreProperties,
