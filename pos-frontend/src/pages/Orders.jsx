@@ -828,20 +828,22 @@ const Orders = () => {
                   backend: cash and counter UPI/card never show a refund state
                   because nothing went through the gateway. */}
               {selected.paid && (
-                <div className="mx-4 mb-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[12px] text-[#475569]">
-                  <span>
-                    Payment: <span className="font-bold text-[#0F172A]">{selected.paymentKindLabel}</span> · Paid
-                  </span>
+                <div className="px-4 py-3 border-b border-[#E2E8F0] space-y-1.5 text-[13px]">
+                  <div className="flex justify-between gap-3">
+                    <span className="text-[#475569]">Payment</span>
+                    <span className="font-bold text-[#0F172A] text-right">{selected.paymentKindLabel} · Paid</span>
+                  </div>
                   {selected.refundStatus && selected.refundStatus !== REFUND_STATUS.NOT_APPLICABLE && (
-                    <span>
-                      Refund: <span className="font-bold text-[#0F172A]">{REFUND_STATUS_LABELS[selected.refundStatus]}</span>
-                    </span>
+                    <div className="flex justify-between gap-3">
+                      <span className="text-[#475569]">Refund</span>
+                      <span className="font-bold text-[#0F172A] text-right">{REFUND_STATUS_LABELS[selected.refundStatus]}</span>
+                    </div>
                   )}
                 </div>
               )}
 
               {(selected.cancelReason || (selected.refunds || []).length > 0) && (
-                <div className="mx-4 mb-3 rounded-xl border border-[#FECACA] bg-[#FEF2F2] p-3 text-[12.5px] text-[#991B1B]">
+                <div className="mx-4 my-3 rounded-xl border border-[#FECACA] bg-[#FEF2F2] p-3 text-[12.5px] text-[#991B1B]">
                   {selected.cancelReason && (
                     <p>
                       <span className="font-bold">Cancelled:</span> {selected.cancelReason}
