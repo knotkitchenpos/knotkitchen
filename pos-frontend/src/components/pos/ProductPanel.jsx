@@ -843,13 +843,14 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
                       key={v._id || v.id || v.name}
                       type="button"
                       onClick={() => setSelectedVariantId(v._id || v.id || v.name)}
-                      className={`p-2.5 rounded-xl border text-[12.5px] font-bold text-left transition-all ${
+                      title={v.name}
+                      className={`min-w-0 overflow-hidden p-2.5 rounded-xl border text-[12.5px] font-bold text-left transition-all ${
                         selectedVariantId === (v._id || v.id || v.name)
                           ? "border-[#FD5302] bg-[#FFF1E8] text-[#C2410C]"
                           : "border-[#E2E8F0] hover:bg-[#F8FAFC]"
                       }`}
                     >
-                      <div>{v.name}</div>
+                      <div className="truncate">{v.name}</div>
                       <div className="text-[13px] font-extrabold">₹{v.price}</div>
                     </button>
                   ))}
@@ -903,7 +904,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-[13px] font-extrabold text-[#0F172A] truncate">{group?.name || "Group"}</span>
                       <span className="text-[10.5px] font-extrabold px-2 py-0.5 rounded-full bg-[#FFF1E8] text-[#C2410C] shrink-0">
-                        {groupTotalQty} / {groupMax}
+                        {groupMax === Infinity ? `${groupTotalQty} selected` : `${groupTotalQty} / ${groupMax}`}
                       </span>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
@@ -941,7 +942,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
                           onClick={() => toggleOption(opt, optId, chosen)}
                           disabled={atCap}
                           aria-pressed={chosen}
-                          className={`h-[52px] px-2.5 rounded-xl border text-left transition-all flex flex-col justify-center min-w-0 ${
+                          className={`h-[52px] px-2.5 rounded-xl border text-left transition-all flex flex-col justify-center min-w-0 overflow-hidden ${
                             chosen
                               ? "border-[#FD5302] bg-[#FFF1E8] shadow-sm"
                               : "border-[#E2E8F0] bg-white hover:border-[#FD5302] hover:bg-[#F8FAFC]"
@@ -949,7 +950,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
                           title={opt?.name || ""}
                         >
                           <span
-                            className={`text-[12.5px] font-extrabold leading-tight truncate ${
+                            className={`block w-full text-[12.5px] font-extrabold leading-tight truncate ${
                               chosen ? "text-[#C2410C]" : "text-[#0F172A]"
                             }`}
                           >

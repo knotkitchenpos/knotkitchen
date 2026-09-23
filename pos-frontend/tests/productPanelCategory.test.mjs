@@ -120,3 +120,11 @@ test("REGRESSION: no blur on product cards, it blanked the grid while scrolling 
   assert.ok(!/blur-|FitImage/.test(SRC), "a blurred backdrop per card is too heavy for the tablet's WebView");
   assert.match(SRC, /className="w-full h-full object-contain"/, "whole photo, never cropped");
 });
+
+test("REGRESSION: long add-on and variant names end in ... inside their box", () => {
+  // On the tablet's WebView the name ran past the chip's border.
+  assert.match(SRC, /flex flex-col justify-center min-w-0 overflow-hidden/);
+  assert.match(SRC, /block w-full text-\[12\.5px\] font-extrabold leading-tight truncate/);
+  assert.match(SRC, /<div className="truncate">\{v\.name\}<\/div>/);
+  assert.ok(!/\{groupTotalQty\} \/ \{groupMax\}/.test(SRC), "no '0 / Infinity' badge");
+});
