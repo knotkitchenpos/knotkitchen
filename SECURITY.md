@@ -15,7 +15,6 @@ operator actions required for a hardened deployment.
 | `SUPERADMIN_EMAIL` / `SUPERADMIN_PASSWORD` | seeds the CSD super-admin on first boot; also honoured by `RESET_SUPERADMIN_PASSWORD=true` for one-time password reset |
 | `MONGODB_URI` | Atlas SRV URI |
 | `FRONTEND_URLS` | comma-separated allow-list of client origins |
-| `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` / `RAZORPAY_WEBHOOK_SECRET` | only if payments are used |
 
 Generate a secret:
 

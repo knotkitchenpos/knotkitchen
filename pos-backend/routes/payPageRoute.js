@@ -1,5 +1,6 @@
 const express = require("express");
 const WebsiteCheckout = require("../models/websiteCheckoutModel");
+const { esc: escapeHtml } = require("../services/invoiceDocument");
 
 /**
  * The one page every website payment opens on: pay.<base>/c/<checkoutId>.
@@ -16,9 +17,6 @@ const WebsiteCheckout = require("../models/websiteCheckoutModel");
  * browser between the store and the gateway.
  */
 const router = express.Router();
-
-const escapeHtml = (value) =>
-  String(value ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
 const findCheckout = async (id) =>
   /^[a-f0-9]{24}$/i.test(String(id || "")) ? WebsiteCheckout.findById(id).lean() : null;

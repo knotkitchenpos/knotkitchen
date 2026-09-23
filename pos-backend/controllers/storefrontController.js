@@ -355,39 +355,6 @@ const getStorefront = async (req, res, next) => {
   }
 };
 
-/** GET /api/storefront/:slug/menu — menu only (lighter payload). */
-const getStorefrontMenu = async (req, res, next) => {
-  try {
-    const ctx = await requireStorefront(req, next);
-    if (!ctx) return;
-
-    const payload = await buildStorefrontPayload(ctx);
-    res.set("Cache-Control", "public, max-age=30, stale-while-revalidate=120");
-    res.status(200).json({ success: true, data: { categories: payload.categories, store: payload.store } });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/** GET /api/storefront/:slug/products/:id — single product detail. */
-const getStorefrontProduct = async (req, res, next) => {
-  try {
-    const ctx = await requireStorefront(req, next);
-    if (!ctx) return;
-
-    const payload = await buildStorefrontPayload(ctx);
-    const product = payload.categories
-      .flatMap((c) => c.products)
-      .find((p) => String(p.id) === String(req.params.id));
-
-    if (!product) return next(createHttpError(404, "Item not found."));
-
-    res.status(200).json({ success: true, data: product });
-  } catch (error) {
-    next(error);
-  }
-};
-
 /**
  * POST /api/storefront/:slug/orders — create an online order (§9, §11, §15).
  *
@@ -956,37 +923,11 @@ const upsertCustomer = async ({ restaurantId, outletId, name, phone, email, tota
   return customer;
 };
 
-/** GET /api/storefront/:slug/orders/:orderId — customer order tracking. */
-const trackStorefrontOrder = async (req, res, next) => {
-  try {
-    const ctx = await requireStorefront(req, next);
-    if (!ctx) return;
-
-    const phone = String(req.query.phone || "").replace(/\D/g, "");
-    if (!phone) return next(createHttpError(400, "Phone number is required to track an order."));
-
-    // Scoped by store AND phone: an order id alone is not enough to view it.
-    const order = await Order.findOne({
-      _id: req.params.orderId,
-      storeId: ctx.storeId,
-      "customerDetails.phone": phone,
-    });
-    if (!order) return next(createHttpError(404, "Order not found."));
-
-    res.status(200).json({ success: true, data: publicOrderView(order) });
-  } catch (error) {
-    next(error);
-  }
-};
-
 module.exports = {
   getStorefront,
-  getStorefrontMenu,
-  getStorefrontProduct,
   createStorefrontOrder,
   startStorefrontCheckout,
   verifyStorefrontCheckout,
-  trackStorefrontOrder,
   buildStorefrontPayload,
   toPublicProduct,
   publicOrderView,

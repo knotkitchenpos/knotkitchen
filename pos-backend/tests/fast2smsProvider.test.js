@@ -2,10 +2,14 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
-  sendOtp,
+  sendDlt,
   Fast2SmsError,
   toIndianTenDigit,
 } = require("../services/fast2smsProvider");
+
+// Every send goes through the same HTTP call and retry policy; the DLT
+// template send is the one the e-bill uses.
+const send = (args) => sendDlt({ senderId: "KNOTKT", templateId: "187654", ...args });
 
 /**
  * Fast2SMS provider — unit tests.
@@ -34,7 +38,7 @@ test("toIndianTenDigit strips non-digits and takes trailing 10 chars", () => {
 });
 
 test("rejects when no API key is configured", async () => {
-  await assert.rejects(sendOtp({ phone: "9876543210", otp: "123456" }), (err) => {
+  await assert.rejects(send({ phone: "9876543210" }), (err) => {
     assert.ok(err instanceof Fast2SmsError);
     assert.match(err.message, /API key/i);
     return true;
@@ -43,7 +47,7 @@ test("rejects when no API key is configured", async () => {
 
 test("rejects when the phone number is not 10 digits", async () => {
   await assert.rejects(
-    sendOtp({ phone: "12345", otp: "123456", apiKey: "test" }),
+    send({ phone: "12345", apiKey: "test" }),
     (err) => err instanceof Fast2SmsError && /10-digit/.test(err.message)
   );
 });
@@ -55,9 +59,8 @@ test("success: parses return:true + request_id", async () => {
     json: async () => ({ return: true, request_id: "req-abc-123" }),
   }));
   try {
-    const res = await sendOtp({
+    const res = await send({
       phone: "+91 98765 43210",
-      otp: "654321",
       apiKey: "test",
     });
     assert.equal(res.ok, true);
@@ -79,7 +82,7 @@ test("hard failure (401 invalid API key) throws non-retryable Fast2SmsError", as
   });
   try {
     await assert.rejects(
-      sendOtp({ phone: "9876543210", otp: "111111", apiKey: "bad" }),
+      send({ phone: "9876543210", apiKey: "bad" }),
       (err) => {
         assert.ok(err instanceof Fast2SmsError);
         assert.equal(err.retryable, false);
@@ -105,7 +108,7 @@ test("transient failure (5xx) retries exactly once, then throws", async () => {
   });
   try {
     await assert.rejects(
-      sendOtp({ phone: "9876543210", otp: "111111", apiKey: "test" }),
+      send({ phone: "9876543210", apiKey: "test" }),
       (err) => err instanceof Fast2SmsError && err.status === 502
     );
     assert.equal(calls, 2, "should retry exactly once on 5xx");
@@ -123,15 +126,14 @@ test("SECURITY: API key is never logged in the thrown error message", async () =
   try {
     let caught;
     try {
-      await sendOtp({
+      await send({
         phone: "9876543210",
-        otp: "222222",
         apiKey: "supersecret-should-never-appear",
       });
     } catch (err) {
       caught = err;
     }
-    assert.ok(caught, "expected sendOtp to throw");
+    assert.ok(caught, "expected send to throw");
     assert.ok(
       !String(caught.message).includes("supersecret"),
       "API key must not appear in the error message"

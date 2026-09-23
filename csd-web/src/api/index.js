@@ -73,7 +73,6 @@ export const restaurants = {
     api.get(`/restaurants/${storeId}/order-summary`, { params: { period } }).then((r) => r.data.data),
   staff: (storeId) => api.get(`/restaurants/${storeId}/staff`).then((r) => r.data.data),
   activity: (storeId) => api.get(`/restaurants/${storeId}/activity`).then((r) => r.data.data),
-  posSessions: (storeId) => api.get(`/restaurants/${storeId}/pos-sessions`).then((r) => r.data.data),
   openPos: (storeId, reason) =>
     api.post(`/restaurants/${storeId}/pos-session`, { reason }).then((r) => r.data.data),
   updateCharges: (storeId, payload) =>
@@ -83,18 +82,10 @@ export const restaurants = {
 
   documents: (storeId) => api.get(`/restaurants/${storeId}/documents`).then((r) => r.data.data),
 
-  // Menus / Tables / Users — ported from the retired Admin Portal. Every
-  // response carries `canEdit`, so the UI shows read-only state from the
-  // server's answer rather than guessing from the signed-in role.
+  // Menus / Users — ported from the retired Admin Portal. Every response
+  // carries `canEdit`, so the UI shows read-only state from the server's
+  // answer rather than guessing from the signed-in role.
   menus: (storeId) => api.get(`/restaurants/${storeId}/menus`).then((r) => r.data.data),
-  toggleMenuPublish: (storeId, menuId) =>
-    api.patch(`/restaurants/${storeId}/menus/${menuId}/publish`).then((r) => r.data.data),
-  updateDish: (storeId, menuId, itemId, payload) =>
-    api.patch(`/restaurants/${storeId}/menus/${menuId}/items/${itemId}`, payload).then((r) => r.data.data),
-
-  tables: (storeId) => api.get(`/restaurants/${storeId}/tables`).then((r) => r.data.data),
-  updateTable: (storeId, tableId, payload) =>
-    api.patch(`/restaurants/${storeId}/tables/${tableId}`, payload).then((r) => r.data.data),
 
   // The customer website's design, landing page, ordering options and hours
   // (moved out of the POS's Manage Website).
@@ -187,8 +178,6 @@ export const settings = {
 export const billingConfig = {
   get: () => api.get("/billing/config").then((r) => r.data.data),
   save: (payload) => api.patch("/billing/config", payload).then((r) => r.data.data),
-  standing: (restaurantId) =>
-    api.get(`/billing/accounts/${restaurantId}`).then((r) => r.data.data),
 };
 
 export const jobs = {
@@ -200,5 +189,3 @@ export const jobs = {
   comment: (id, body) => api.post(`/jobs/${id}/comments`, { body }).then((r) => r.data.data),
   assignees: () => api.get("/jobs/meta/assignees").then((r) => r.data.data),
 };
-
-export default api;

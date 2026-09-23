@@ -175,5 +175,4 @@ module.exports = {
    */
   resolvePlatformGateway: platformGateway,
   isOnlinePaymentEnabled,
-  DEFAULT_GATEWAY: PROVIDERS.CASHFREE,
 };

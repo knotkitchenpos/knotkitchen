@@ -621,49 +621,6 @@ const addItemsToExistingSession = async (req, res, next) => {
   res.status(200).json({ success: true, message: "Items added!", data: result.session });
 };
 
-// ============================================================
-// Get all sessions (with activeSessions for table grid)
-// ============================================================
-const getSessions = async (req, res, next) => {
-  try {
-    const scopeQuery = getScopeQuery(req);
-    const { status } = req.query;
-    const query = { ...scopeQuery, isDeleted: { $ne: true } };
-    if (status) query.status = status;
-
-    const sessions = await TableSession.find(query)
-      .populate("tableId", "tableNumber capacity zone")
-      .sort({ createdAt: -1 });
-
-    const activeSessions = await TableSession.find({
-      ...scopeQuery,
-      status: { $in: ["OPEN", "OCCUPIED", "PROCESSING", "BILL_REQUESTED", "PAYMENT_PENDING"] },
-      isDeleted: { $ne: true },
-    }).populate("tableId", "tableNumber capacity zone");
-
-    const decorate = (s) => {
-      const plain = s.toObject ? s.toObject() : s;
-      plain.sessionDurationMs = plain.openedAt
-        ? Math.max(0, new Date() - new Date(plain.openedAt))
-        : null;
-      plain.sessionDuration = plain.openedAt
-        ? formatDuration(plain.sessionDurationMs)
-        : null;
-      return plain;
-    };
-
-    res.status(200).json({
-      success: true,
-      data: {
-        sessions: sessions.map(decorate),
-        activeSessions: activeSessions.map(decorate),
-      },
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
 const formatDuration = (ms) => {
   const totalSeconds = Math.floor(ms / 1000);
   const h = Math.floor(totalSeconds / 3600);
@@ -1732,7 +1689,6 @@ module.exports = {
   addItemsToExistingSession,
   moveSession,
   mergeSessions,
-  getSessions,
   getSessionById,
   requestBill,
   markPaymentPending,

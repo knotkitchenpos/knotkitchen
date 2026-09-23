@@ -5,7 +5,7 @@ import { useDocumentMeta, useThemeVars } from "../hooks/useThemeVars";
 import { useCart } from "../hooks/useCart";
 import StoreShell from "../components/StoreShell";
 import LoadingSkeleton from "../components/LoadingSkeleton";
-import ErrorPage from "../components/ErrorPage";
+import Message from "../components/Message";
 import LandingTemplate from "../components/LandingTemplates";
 import LegalPage from "./LegalPage";
 import { landingRoute } from "../lib/landingRoute";
@@ -167,10 +167,9 @@ export default function StorePage({ slug, host }) {
   if (loading && !bootstrap && !store) return <LoadingSkeleton />;
   if (error && !store) {
     return (
-      <ErrorPage
-        title={error.status === 404 ? "Restaurant not found" : "Something went wrong"}
-        message={error.message}
-      />
+      <Message icon="🕒" iconSize="text-5xl" title={error.status === 404 ? "Restaurant not found" : "Something went wrong"}>
+        {error.message || "Please try again in a moment."}
+      </Message>
     );
   }
 

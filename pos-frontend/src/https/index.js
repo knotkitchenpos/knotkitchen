@@ -1,10 +1,6 @@
 import { axiosWrapper } from "./axiosWrapper";
 
-// API Endpoints
-
 // Auth Endpoints
-export const login = (data) => axiosWrapper.post("/api/user/login", data);
-export const register = (data) => axiosWrapper.post("/api/user/register", data);
 export const getUserData = () => axiosWrapper.get("/api/user");
 export const logout = () => axiosWrapper.post("/api/user/logout");
 
@@ -40,8 +36,6 @@ export const updateTable = ({ tableId, ...tableData }) =>
 export const deleteTable = (tableId) =>
   axiosWrapper.delete(`/api/table/${tableId}`);
 
-// Payment Endpoints
-
 // Order Endpoints
 export const addOrder = (data) => axiosWrapper.post("/api/order/", data);
 export const getOrderById = (id) => axiosWrapper.get(`/api/order/${id}`);
@@ -57,18 +51,8 @@ export const getOrders = (params) =>
   axiosWrapper.get("/api/order", params ? { params } : undefined);
 export const updateOrderStatus = ({ orderId, orderStatus }) =>
   axiosWrapper.put(`/api/order/${orderId}`, { orderStatus });
-/**
- * Module 4 §2 — dedicated "Mark Ready" action.
- *
- * Kept separate from updateOrderStatus so the intent is explicit at the
- * call-site (the button semantically means "customer's order is ready to
- * collect") and so the backend can fire the customer notification without
- * having to sniff the payload of a generic status change.
- */
 /* ---------- Offline ---------- */
 export const syncOfflineOrders = (orders) => axiosWrapper.post("/api/offline/orders/sync", { orders });
-
-/* ---------- Customers (CRM) ---------- */
 
 /* ---------- Inventory ---------- */
 export const getIngredients = () => axiosWrapper.get("/api/inventory/ingredients");
@@ -98,6 +82,14 @@ export const refundOrder = ({ orderId, reason }) => axiosWrapper.post(`/api/orde
 /** Ask Cashfree where a pending (or unconfirmed) refund stands. */
 export const syncRefund = (orderId) => axiosWrapper.post(`/api/order/${orderId}/refund/sync`);
 
+/**
+ * Module 4 §2 — dedicated "Mark Ready" action.
+ *
+ * Kept separate from updateOrderStatus so the intent is explicit at the
+ * call-site (the button semantically means "customer's order is ready to
+ * collect") and so the backend can fire the customer notification without
+ * having to sniff the payload of a generic status change.
+ */
 export const markOrderReady = (orderId) =>
   axiosWrapper.put(`/api/order/${orderId}/ready`);
 
@@ -196,16 +188,11 @@ export const deleteDish = ({ menuId, itemId }) =>
   axiosWrapper.delete(`/api/menu/${menuId}/dish/${itemId}`);
 export const updateDishStatus = ({ menuId, itemId }) =>
   axiosWrapper.put(`/api/menu/${menuId}/dish/${itemId}/availability`);
-// Assign / clear a subcategory on a dish (POS redesign - optional grouping)
 export const reorderDishes = ({ menuId, itemIds }) =>
   axiosWrapper.put(`/api/menu/${menuId}/reorder`, { itemIds });
 // Drag-and-drop reorder for the top-level category rows in Manage Menu.
 export const reorderMenus = ({ menuIds }) =>
   axiosWrapper.put(`/api/menu/reorder-categories`, { menuIds });
-
-// Variant Endpoints
-
-// Add-on Endpoints
 
 // Modifier Group Endpoints
 export const saveGroupToDishes = (data) =>
@@ -220,14 +207,6 @@ export const bulkAddGroup = (data) =>
   axiosWrapper.post("/api/menu/group/bulk-add", data);
 export const bulkRemoveGroup = (data) =>
   axiosWrapper.post("/api/menu/group/bulk-remove", data);
-
-// Combo Meal Endpoints
-
-// Pricing Rule Endpoints
-
-// Availability Scheduling Endpoints (item level)
-
-// Time-based Menu Endpoints (category level)
 
 // Menu Versioning & Publishing Endpoints
 export const publishMenu = (menuId) => axiosWrapper.put(`/api/menu/${menuId}/publish`);
@@ -261,12 +240,8 @@ export const toggleClosedForToday = (data) => axiosWrapper.put("/api/restaurant/
 export const addStaffMember = (data) => axiosWrapper.post("/api/restaurant/staff", data);
 export const getStaffMembers = () => axiosWrapper.get("/api/restaurant/staff");
 export const deleteStaffMember = (staffId) => axiosWrapper.delete(`/api/restaurant/staff/${staffId}`);
-export const getActivityLogs = (params) => axiosWrapper.get("/api/restaurant/activity-logs", params ? { params } : undefined);
-
-// Structured Text (Notepad) Menu Import Endpoints
 
 // CSV Import / Export (Module 5)
-export const downloadMenuCsvTemplate = () => axiosWrapper.get("/api/menu/csv/template", { responseType: "blob" });
 export const exportMenuCsv = () => axiosWrapper.get("/api/menu/csv/export", { responseType: "blob" });
 export const previewMenuCsv = (csvText) => axiosWrapper.post("/api/menu/csv/preview", { csvText });
 export const importMenuCsv = (csvText) => axiosWrapper.post("/api/menu/csv/import", { csvText });

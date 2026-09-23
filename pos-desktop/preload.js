@@ -8,8 +8,6 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 contextBridge.exposeInMainWorld("knotDesktop", {
-  platform: process.platform,
-  versions: { electron: process.versions.electron, chrome: process.versions.chrome },
   /** Printers installed on this computer: [{ name, isDefault }]. */
   listPrinters: () => ipcRenderer.invoke("printers:list"),
   /**

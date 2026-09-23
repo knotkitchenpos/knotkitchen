@@ -118,25 +118,6 @@ const listOnlineOrders = async (req, res, next) => {
   }
 };
 
-/** GET /api/online-orders/:id */
-const getOnlineOrder = async (req, res, next) => {
-  try {
-    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-      return next(createHttpError(404, "Order not found."));
-    }
-    const scoped = await tenantScope(req);
-    if (!scoped) return next(createHttpError(404, "Order not found."));
-
-    const order = await Order.findOne({ _id: req.params.id, ...scoped.scope });
-    // Cross-tenant reads return the same 404 as a genuinely missing order.
-    if (!order) return next(createHttpError(404, "Order not found."));
-
-    res.status(200).json({ success: true, data: toPosOrderView(order) });
-  } catch (error) {
-    next(error);
-  }
-};
-
 /** PUT /api/online-orders/:id/status — accept / reject / progress an order. */
 const updateOnlineOrderStatus = async (req, res, next) => {
   try {
@@ -310,41 +291,6 @@ const startPreparingOrder = async (req, res, next) => {
     }
 
     res.status(200).json({ success: true, message: "Preparation started.", data: toPosOrderView(order) });
-  } catch (error) {
-    next(error);
-  }
-};
-
-/** GET /api/online-orders/stats/summary — lightweight analytics (§28). */
-const getOnlineOrderStats = async (req, res, next) => {
-  try {
-    const scoped = await tenantScope(req);
-    if (!scoped) return res.status(200).json({ success: true, data: {} });
-
-    const since = new Date();
-    since.setHours(0, 0, 0, 0);
-
-    const [summary] = await Order.aggregate([
-      { $match: { ...scoped.scope, source: "WEBSITE", createdAt: { $gte: since } } },
-      {
-        $group: {
-          _id: null,
-          orders: { $sum: 1 },
-          revenue: { $sum: "$bills.totalWithTax" },
-          pending: { $sum: { $cond: [{ $eq: ["$orderStatus", AWAITING_ACCEPTANCE] }, 1, 0] } },
-        },
-      },
-    ]);
-
-    res.status(200).json({
-      success: true,
-      data: {
-        ordersToday: summary?.orders || 0,
-        revenueToday: Math.round((summary?.revenue || 0) * 100) / 100,
-        pendingOrders: summary?.pending || 0,
-        averageOrderValue: summary?.orders ? Math.round((summary.revenue / summary.orders) * 100) / 100 : 0,
-      },
-    });
   } catch (error) {
     next(error);
   }
@@ -584,12 +530,10 @@ const resolveAddedItems = async (req, res, next) => {
 module.exports = {
   resolveAddedItems,
   listOnlineOrders,
-  getOnlineOrder,
   updateOnlineOrderStatus,
   listPrepDueOrders,
   listAwaitingOrders,
   startPreparingOrder,
-  getOnlineOrderStats,
   toPosOrderView,
   ACTION_STATUS,
 };

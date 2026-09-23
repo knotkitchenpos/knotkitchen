@@ -1,7 +1,7 @@
 const createHttpError = require("http-errors");
 const mongoose = require("mongoose");
 const MediaAsset = require("../models/mediaAssetModel");
-const storage = require("../services/storage");
+const storage = require("../services/storage/localProvider");
 const { validateImage } = require("../services/imageValidator");
 const { resolveTenantFromUser, tenantFilter } = require("../services/tenantContext");
 

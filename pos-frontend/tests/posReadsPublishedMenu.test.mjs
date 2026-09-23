@@ -40,6 +40,4 @@ test("the till shows only the published menu", () => {
   assert.deepEqual(offenders, [], `draft menu read outside an editor: ${offenders.join(", ")}`);
   const pp = fs.readFileSync(path.join(SRC, "components/pos/ProductPanel.jsx"), "utf8");
   assert.match(pp, /getMenus\(\{ source: "system" \}\)/);
-  const pd = fs.readFileSync(path.join(SRC, "components/home/PopularDishes.jsx"), "utf8");
-  assert.match(pd, /getMenus\(\{ source: "system" \}\)/);
 });

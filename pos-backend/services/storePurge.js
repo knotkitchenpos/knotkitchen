@@ -44,6 +44,8 @@ const KEEP = new Set([
   "ProductId",
 ]);
 
+const LEGACY_COLLECTIONS = ["outlets", "teams", "subscriptions", "invoices", "subscriptionpayments"];
+
 /** The Store and Restaurant rows themselves are removed by the caller, last. */
 const HANDLED_BY_CALLER = new Set(["Store", "Restaurant"]);
 
@@ -88,6 +90,21 @@ const purgeStoreData = async ({ restaurantId, storeId }) => {
       // One collection failing must not strand the rest half-deleted with no
       // record of which. Collected and surfaced to the audit entry.
       deleted[`${name}:ERROR`] = err.message;
+    }
+  }
+
+  // Collections whose models were removed with the old onboard/team/billing
+  // prototype. Nothing writes them any more and the walk above cannot see
+  // them, but a purged store must not leave rows behind there either.
+  if (restaurantId && mongoose.isValidObjectId(restaurantId) && mongoose.connection.readyState === 1) {
+    const rid = new mongoose.Types.ObjectId(String(restaurantId));
+    for (const name of LEGACY_COLLECTIONS) {
+      try {
+        const res = await mongoose.connection.collection(name).deleteMany({ restaurantId: rid });
+        if (res?.deletedCount) deleted[name] = res.deletedCount;
+      } catch (err) {
+        deleted[`${name}:ERROR`] = err.message;
+      }
     }
   }
 

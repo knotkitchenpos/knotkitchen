@@ -98,4 +98,4 @@ const computeTax = ({ amountPaise, gst, restaurantState, on = new Date() } = {})
   };
 };
 
-module.exports = { computeTax, gstApplicableAt, EMPTY_TAX: EMPTY };
+module.exports = { computeTax, gstApplicableAt };

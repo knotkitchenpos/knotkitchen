@@ -336,13 +336,6 @@ const startAutoReadyScheduler = ({ onOrderReady } = {}) => {
   console.log(`[autoReady] scheduler started (tick=${AUTO_READY_TICK_MS}ms)`);
 };
 
-const stopAutoReadyScheduler = () => {
-  if (intervalHandle) {
-    clearInterval(intervalHandle);
-    intervalHandle = null;
-  }
-};
-
 /** Single tick of the auto-complete loop. */
 const runAutoCompleteTick = async (now = new Date()) => {
   try {
@@ -414,7 +407,6 @@ const runAutoCompleteTick = async (now = new Date()) => {
 
 module.exports = {
   startAutoReadyScheduler,
-  stopAutoReadyScheduler,
   runAutoReadyTick,
   runAutoCompleteTick,
   computeReadyDueAt,

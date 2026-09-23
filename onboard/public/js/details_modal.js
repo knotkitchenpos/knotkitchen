@@ -93,18 +93,7 @@ function getRestaurantDetailsModalHtml(ag, rDisplay, fullAddress, rPhone, rMaps,
 function closeRestaurantDetailsModal(){ const c = document.getElementById('restaurantDetailsModalContainer'); if(c) c.innerHTML = ''; }
 
 function copyDetailsToClipboard(encodedText){
-  const text = decodeURIComponent(encodedText);
-  if(navigator.clipboard && navigator.clipboard.writeText){
-    navigator.clipboard.writeText(text).then(() => showToast('All details copied to clipboard!')).catch(() => copyTextFallback(text));
-  }else{ copyTextFallback(text); }
-}
-
-function copyTextFallback(text){
-  const ta = document.createElement('textarea');
-  ta.value = text;
-  document.body.appendChild(ta);
-  ta.select();
-  document.execCommand('copy');
-  document.body.removeChild(ta);
-  showToast('All details copied to clipboard!');
+  navigator.clipboard.writeText(decodeURIComponent(encodedText))
+    .then(() => showToast('All details copied to clipboard!'))
+    .catch(() => showToast('Could not copy to clipboard'));
 }

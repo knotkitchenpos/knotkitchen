@@ -182,40 +182,48 @@ test("every template the database allows exists in the customer website bundle",
 });
 
 // --- The CSD editor ---------------------------------------------------------
+// CSD edits the landing page through GET/PATCH /restaurants/:storeId/website
+// (csdWebsiteController), which hands the chosen store to the same
+// whitelisted writer the POS uses.
 
 const loadCsd = ({ settings, audits = [] }) => {
   const Module = require("module");
   const orig = Module._load;
   Module._load = function (request, ...rest) {
     if (request === "../models/websiteSettingsModel") {
-      return Object.assign(
-        { findOne: async () => settings },
-        { LANDING_TEMPLATES }
-      );
+      return Object.assign({ findOne: async () => settings }, WebsiteSettings, { LANDING_TEMPLATES });
     }
-    if (request === "../services/websiteProvisioningService") {
-      return { buildStorefrontUrl: () => "https://spice-route.knotkitchen.com" };
-    }
+    if (request === "../models/storeModel") return {};
+    if (request === "../models/mediaAssetModel") return {};
+    if (request === "../services/auditService") return { logActivity: async () => {} };
     if (request === "../services/csdAuditService") {
       return { csdAudit: async (entry) => audits.push(entry) };
     }
     return orig.call(this, request, ...rest);
   };
+  const ids = ["../controllers/csdWebsiteController", "../controllers/websiteSettingsController"]
+    .map((p) => require.resolve(p));
   try {
-    delete require.cache[require.resolve("../controllers/csdCatalogController")];
-    return require("../controllers/csdCatalogController");
+    ids.forEach((id) => delete require.cache[id]);
+    return require("../controllers/csdWebsiteController");
   } finally {
     Module._load = orig;
-    delete require.cache[require.resolve("../controllers/csdCatalogController")];
+    ids.forEach((id) => delete require.cache[id]);
   }
 };
 
 const makeSettings = (over = {}) => ({
   _id: "w1",
   storeId: "123456",
+  restaurantId: "507f1f77bcf86cd799439011",
+  slug: "spice-route",
+  version: 1,
   landing: {},
   branding: { siteTitle: "Spice Route Kitchen", tagline: "Slow-cooked" },
   saved: 0,
+  toObject() {
+    return { ...this };
+  },
   async save() {
     this.saved += 1;
     return this;
@@ -224,11 +232,18 @@ const makeSettings = (over = {}) => ({
 });
 
 const run = async (handler, { storeId = "123456", body = {}, role = "admin" } = {}) => {
+  const { EventEmitter } = require("node:events");
   let sent = null;
   let failed = null;
+  // updateCsdWebsite audits on the response's "finish", so it must be real.
+  const res = Object.assign(new EventEmitter(), {
+    statusCode: 200,
+    status(code) { this.statusCode = code; return this; },
+    json(payload) { sent = payload; this.emit("finish"); return this; },
+  });
   await handler(
     { params: { storeId }, body, csdStaff: { role, _id: "staff1" }, headers: {} },
-    { status: () => ({ json: (payload) => { sent = payload; } }) },
+    res,
     (err) => { failed = err; }
   );
   return { sent, failed };
@@ -237,78 +252,70 @@ const run = async (handler, { storeId = "123456", body = {}, role = "admin" } = 
 test("CSD saves a template, and the audit trail records it", async () => {
   const audits = [];
   const settings = makeSettings();
-  const { updateLanding } = loadCsd({ settings, audits });
+  const { updateCsdWebsite } = loadCsd({ settings, audits });
 
-  const { sent, failed } = await run(updateLanding, {
-    body: { template: "citrus", headline: "Come hungry", overlayOpacity: 0 },
+  const { sent, failed } = await run(updateCsdWebsite, {
+    body: { landing: { template: "citrus", headline: "Come hungry", overlayOpacity: 0 } },
   });
 
   assert.equal(failed, null);
   assert.equal(settings.saved, 1);
-  assert.equal(sent.data.landing.template, "citrus");
-  assert.equal(sent.data.landing.headline, "Come hungry");
-  assert.equal(sent.data.landing.overlayOpacity, 0);
+  assert.equal(sent.data.settings.landing.template, "citrus");
+  assert.equal(sent.data.settings.landing.headline, "Come hungry");
+  assert.equal(sent.data.settings.landing.overlayOpacity, 0);
   assert.equal(audits.length, 1);
-  assert.equal(audits[0].action, "CSD_WEBSITE_LANDING_UPDATED");
+  assert.equal(audits[0].action, "CSD_WEBSITE_SETTINGS_UPDATED");
 });
 
 test("a template outside the list is refused before it reaches the database", async () => {
   const settings = makeSettings();
-  const { updateLanding } = loadCsd({ settings });
+  const { updateCsdWebsite } = loadCsd({ settings });
 
-  const { failed } = await run(updateLanding, { body: { template: "hero-classic-v2" } });
+  const { failed } = await run(updateCsdWebsite, { body: { landing: { template: "hero-classic-v2" } } });
 
   assert.equal(failed?.status, 400);
   assert.equal(settings.saved, 0);
 });
 
-test("a background image that is not an http URL is refused", async () => {
-  const settings = makeSettings();
-  const { updateLanding } = loadCsd({ settings });
-
+test("a pasted background image URL is never stored", async () => {
   // The value ends up inside a CSS url() and an <img src>, so a javascript:
   // or data: URL here would be script execution on every customer's phone.
-  for (const url of ["javascript:alert(1)", "data:text/html,<script>", "/etc/passwd"]) {
+  // Only an image from this store's own media library is accepted.
+  for (const url of ["javascript:alert(1)", "data:text/html,<script>", "https://cdn.example/hero.jpg"]) {
+    const settings = makeSettings();
+    const { updateCsdWebsite } = loadCsd({ settings });
     // eslint-disable-next-line no-await-in-loop
-    const { failed } = await run(updateLanding, { body: { backgroundImageUrl: url } });
-    assert.equal(failed?.status, 400, `expected ${url} to be refused`);
+    await run(updateCsdWebsite, { body: { landing: { backgroundImage: url, backgroundImageUrl: url } } });
+    assert.equal(settings.landing.backgroundImage, undefined, `expected ${url} to be dropped`);
+    assert.ok(!JSON.stringify(settings.landing).includes(url), `expected ${url} not to be stored`);
   }
-  assert.equal(settings.saved, 0);
-
-  const { failed } = await run(updateLanding, {
-    body: { backgroundImageUrl: "https://cdn.example/hero.jpg" },
-  });
-  assert.equal(failed, null);
-  assert.equal(settings.landing.backgroundImage.url, "https://cdn.example/hero.jpg");
 });
 
 test("an overlay outside 0-100 is refused", async () => {
   const settings = makeSettings();
-  const { updateLanding } = loadCsd({ settings });
+  const { updateCsdWebsite } = loadCsd({ settings });
 
   for (const pct of [-1, 101, "quite dark"]) {
     // eslint-disable-next-line no-await-in-loop
-    const { failed } = await run(updateLanding, { body: { overlayOpacity: pct } });
+    const { failed } = await run(updateCsdWebsite, { body: { landing: { overlayOpacity: pct } } });
     assert.equal(failed?.status, 400, `expected ${pct} to be refused`);
   }
+  assert.equal(settings.saved, 0);
 });
 
-test("reading the landing page shows what a blank field would fall back to", async () => {
+test("reading the website lists the landing templates; staff read, only admins write", async () => {
   const settings = makeSettings();
-  const { getLanding } = loadCsd({ settings });
+  const { getCsdWebsite } = loadCsd({ settings });
 
-  const { sent } = await run(getLanding, { role: "staff" });
+  const { sent } = await run(getCsdWebsite, { role: "staff" });
 
-  assert.equal(sent.data.fallbacks.headline, "Spice Route Kitchen");
-  assert.equal(sent.data.fallbacks.subheadline, "Slow-cooked");
-  assert.deepEqual(sent.data.templates, LANDING_TEMPLATES);
-  // Staff read; only admins write.
+  assert.deepEqual(sent.data.options.landingTemplates, LANDING_TEMPLATES);
   assert.equal(sent.data.canEdit, false);
 });
 
 test("a store with no website yet says so rather than throwing", async () => {
-  const { getLanding } = loadCsd({ settings: null });
-  const { failed } = await run(getLanding);
+  const { getCsdWebsite } = loadCsd({ settings: null });
+  const { failed } = await run(getCsdWebsite);
   assert.equal(failed?.status, 404);
 });
 

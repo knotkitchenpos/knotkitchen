@@ -3,8 +3,6 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 
-const { csdOnly } = require("../middlewares/csdOnly");
-
 const SRC = (...p) => fs.readFileSync(path.join(__dirname, "..", ...p), "utf8");
 const FE = (...p) => fs.readFileSync(path.join(__dirname, "..", "..", "pos-frontend", ...p), "utf8");
 
@@ -23,31 +21,16 @@ const FE = (...p) => fs.readFileSync(path.join(__dirname, "..", "..", "pos-front
 // CSD-only sections
 // ---------------------------------------------------------------------------
 
-const call = (mw, req) => {
-  let err = null;
-  mw(req, {}, (e) => {
-    err = e || null;
-  });
-  return err;
-};
-
-test("a POS caller is refused, CSD passes", () => {
-  const mw = csdOnly("Activity Log");
-  const owner = call(mw, { user: { role: "Owner" } });
-  assert.equal(owner?.status, 403, "Owner is refused too -- this is a tenant boundary");
-  assert.match(owner.message, /Activity Log/);
-
-  assert.equal(call(mw, { user: { role: "Staff" } })?.status, 403);
-  assert.equal(call(mw, { csdStaff: { _id: "c1" } }), null, "CSD passes");
-});
-
-test("REGRESSION: the audit endpoint is locked, not merely hidden", () => {
-  // Removing the tile from Settings is presentation. The endpoint stayed open,
-  // so anyone replaying the request still read the whole audit trail.
-  assert.match(
-    SRC("routes", "teamRoute.js"),
-    /router\.route\("\/audit\/:restaurantId"\)\.get\(isVerifiedUser, csdOnly\("Activity Log"\), getAuditLogs\);/,
-  );
+test("REGRESSION: the store has no route to the customer list or the audit trail", () => {
+  // Both used to sit on POS routes locked by a csdOnly middleware. Those routes
+  // are gone; CSD reads them through its own /api/csd routes. Mounting either
+  // again re-opens a tenant boundary.
+  const app = SRC("app.js");
+  assert.doesNotMatch(app, /"\/api\/customer"/);
+  assert.doesNotMatch(app, /"\/api\/team"/);
+  const csd = SRC("routes", "csdRoute.js");
+  assert.match(csd, /router\.get\("\/restaurants\/:storeId\/customers", getCustomers\);/);
+  assert.match(csd, /router\.get\("\/reports\/audit", requireCsdAdmin, getAuditLog\);/);
 });
 
 test("no storefront field is refused for being a support-only section", () => {
@@ -117,7 +100,7 @@ test("REGRESSION: no screen derives an order id by hand any more", () => {
   // The Orders header cut the last SIX characters of the id while the "Order
   // ID" field on the same panel cut the last EIGHT, so one order read #7CA1AC
   // and 657CA1AC at once.
-  for (const f of ["Orders.jsx", "Reports.jsx", "KDS.jsx", "OnlineOrders.jsx"]) {
+  for (const f of ["Orders.jsx", "Reports.jsx", "KDS.jsx"]) {
     const src = FE("src", "pages", f);
     assert.ok(
       !/orderNumber \|\| \w+\._id\.slice\(/.test(src),

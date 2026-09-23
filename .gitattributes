@@ -1,12 +1,3 @@
-# Force LF line endings for shell scripts and Docker/Compose files so they
-# stay runnable on the Linux VPS regardless of who committed them from
-# which OS. Everything else uses git's auto handling.
+# LF line endings for every text file, so shell scripts and Docker/Compose
+# files stay runnable on the Linux VPS whichever OS committed them.
 * text=auto eol=lf
-
-*.sh          text eol=lf
-Dockerfile    text eol=lf
-*.Dockerfile  text eol=lf
-Caddyfile     text eol=lf
-docker-compose.yml text eol=lf
-*.yml         text eol=lf
-*.yaml        text eol=lf

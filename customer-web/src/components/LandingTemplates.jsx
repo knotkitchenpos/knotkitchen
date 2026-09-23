@@ -28,8 +28,6 @@ const THEMES = {
   sunset: Sunset,
 };
 
-export const TEMPLATE_KEYS = Object.keys(THEMES);
-
 export default function LandingTemplate({ landing, store, menuPath, slug }) {
   const [booking, setBooking] = useState(null); // slots payload once known
   const [open, setOpen] = useState(false);

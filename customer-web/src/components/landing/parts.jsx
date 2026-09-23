@@ -50,12 +50,6 @@ export function Nav({ className, ctaClass, menuPath, onBookTable, labels = ["Sto
   );
 }
 
-/** Mobile toggle for the Classic design, which hides its nav on phones. */
-export function useMenuToggle() {
-  const [open, setOpen] = useState(false);
-  return { open, toggle: () => setOpen((v) => !v), close: () => setOpen(false) };
-}
-
 /** Name, address (with a map link), phone and email -- the restaurant's own details, from the POS. */
 export function VisitDetails({ c }) {
   return (

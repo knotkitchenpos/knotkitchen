@@ -8,8 +8,8 @@ import {
 import { useState } from "react";
 import { useSelector } from "react-redux";
 import {
-  Home, Auth, Orders, Tables, Menu, KDS, OrderOnline, PaymentLink,
-  OnlineOrders, Reports, Settings, ManageMenuPage, Support,
+  Auth, Orders, Tables, Menu, KDS, OrderOnline, PaymentLink,
+  Reports, Settings, ManageMenuPage, Support,
   Impersonate, Billing, WebsiteSettings,
 } from "./pages";
 
@@ -66,10 +66,8 @@ function Layout() {
       <Route path="/menu" element={<ProtectedRoutes><Menu /></ProtectedRoutes>} />
       <Route path="/orders" element={<ProtectedRoutes><Orders /></ProtectedRoutes>} />
       <Route path="/reports" element={<ProtectedRoutes><Reports /></ProtectedRoutes>} />
-      <Route path="/home" element={<ProtectedRoutes><Home /></ProtectedRoutes>} />
       <Route path="/tables" element={<ProtectedRoutes><Tables /></ProtectedRoutes>} />
       <Route path="/kds" element={<ProtectedRoutes><KDS /></ProtectedRoutes>} />
-      <Route path="/online-orders" element={<ProtectedRoutes><OnlineOrders /></ProtectedRoutes>} />
       <Route path="/settings" element={<ProtectedRoutes><Settings /></ProtectedRoutes>} />
       {/* Reachable even when the account is locked -- see middlewares/accountLock.js */}
       <Route path="/settings/billing" element={<ProtectedRoutes><Billing /></ProtectedRoutes>} />

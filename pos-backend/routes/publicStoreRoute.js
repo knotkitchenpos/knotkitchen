@@ -4,7 +4,6 @@ const {
   getPublicStoreInfo,
   getPublicStoreMenu,
   getPublicStoreByDomain,
-  tlsAsk,
 } = require("../controllers/publicStoreController");
 const { rateLimit, clientIp } = require("../middlewares/rateLimiter");
 const config = require("../config/config");
@@ -42,19 +41,5 @@ router.get("/store/:storeId/menu", bootstrapLimiter, getPublicStoreMenu);
  * the difference between "does not exist" and "not published" (§9).
  */
 router.get("/store/by-domain/:slug", bootstrapLimiter, getPublicStoreByDomain);
-
-/**
- * GET /api/public/tls-ask?domain=<hostname>
- *
- * Caddy on_demand_tls gate — see tlsAsk() for details. Rate-limited per
- * calling IP (Caddy itself) rather than per-domain, since a burst of distinct
- * new subdomains being provisioned at once is the expected/legitimate case.
- */
-const tlsAskLimiter = rateLimit({
-  windowMs: config.storefrontReadRateWindowMs,
-  max: config.storefrontReadRateMax,
-  keyGenerator: (req) => `tls-ask:${clientIp(req)}`,
-});
-router.get("/tls-ask", tlsAskLimiter, tlsAsk);
 
 module.exports = router;

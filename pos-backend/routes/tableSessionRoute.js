@@ -2,7 +2,6 @@ const express = require("express");
 const {
   addItemsToSession,
   addItemsToExistingSession,
-  getSessions,
   getSessionById,
   requestBill,
   markPaymentPending,
@@ -17,7 +16,6 @@ const {
 const { isVerifiedUser } = require("../middlewares/tokenVerification");
 const router = express.Router();
 
-router.route("/").get(isVerifiedUser, getSessions);
 router.route("/:id").get(isVerifiedUser, getSessionById);
 router.route("/").post(isVerifiedUser, addItemsToSession);
 router.route("/:id/items").post(isVerifiedUser, addItemsToExistingSession);

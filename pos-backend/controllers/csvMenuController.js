@@ -68,28 +68,6 @@ const parseCsvLines = (text) => {
 };
 
 /**
- * GET /api/menu/csv/template — Download Menu CSV Template
- */
-const downloadCsvTemplate = async (req, res, next) => {
-  try {
-    const rows = [
-      STANDARD_HEADERS.join(","),
-      "Burgers,Chicken Burgers,Classic Chicken Burger,Crispy chicken burger,Non-Veg,120",
-      "Burgers,Chicken Burgers,Spicy Chicken Burger,Spicy chicken burger,Non-Veg,140",
-      "Burgers,Veg Burgers,Veg Supreme Burger,Fresh vegetable burger,Veg,110",
-      "Drinks,,Coke,Coke bottle,Non-Veg,40",
-      "Desserts,,Chocolate Brownie,Chocolate brownie,Veg,90",
-    ];
-
-    res.set("Content-Type", "text/csv");
-    res.set("Content-Disposition", 'attachment; filename="knotkitchen_menu_template.csv"');
-    res.status(200).send(rows.join("\n"));
-  } catch (error) {
-    next(error);
-  }
-};
-
-/**
  * GET /api/menu/csv/export — Export menu to CSV
  */
 const exportCsv = async (req, res, next) => {
@@ -375,7 +353,6 @@ const confirmCsvImport = async (req, res, next) => {
 module.exports = {
   // Exposed for tests: takeaway isolation lives or dies on this helper.
   __menuScopeForTest: menuScopeFor,
-  downloadCsvTemplate,
   exportCsv,
   previewCsvImport,
   confirmCsvImport,

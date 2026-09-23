@@ -87,11 +87,6 @@ const startTableCooldownSweeper = () => {
   console.log(`[tableCooldown] sweeper started (tick=${AUTO_FREE_TICK_MS}ms)`);
 };
 
-const stopTableCooldownSweeper = () => {
-  if (timer) clearInterval(timer);
-  timer = null;
-};
-
 module.exports = {
   AUTO_FREE_TICK_MS,
   DEFAULT_COOLDOWN_MINUTES,
@@ -99,5 +94,4 @@ module.exports = {
   buildCooldownUpdate,
   runTableCooldownTick,
   startTableCooldownSweeper,
-  stopTableCooldownSweeper,
 };

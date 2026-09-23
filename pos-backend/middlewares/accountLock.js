@@ -27,13 +27,11 @@ const { BusinessBalance } = require("../models/businessBalanceModel");
 const ALWAYS_OPEN = [
   // Signing in and staying signed in. Locking someone out of auth would mean
   // they could not reach Billing at all.
-  "/api/auth",
   "/api/user",
 
   // Paying. The entire point of the lock.
   "/api/business-balance",
   "/api/subscription",
-  "/api/billing",
 
   // The shell the Billing screen needs to render: who am I, what store.
   "/api/restaurant/me",

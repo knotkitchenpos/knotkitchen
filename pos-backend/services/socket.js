@@ -140,14 +140,6 @@ const emitToRestaurant = (restaurantId, event, payload) => {
   emitEvent(event, payload, [`restaurant:${restaurantId}`]);
 };
 
-const emitToOutlet = (outletId, event, payload) => {
-  emitEvent(event, payload, [`outlet:${outletId}`]);
-};
-
-const emitToTable = (tableId, event, payload) => {
-  emitEvent(event, payload, [`table:${tableId}`]);
-};
-
 /**
  * What the POS "New order" card renders. One builder for the live event and
  * for the catch-up list (GET /api/online-orders/awaiting), so a card that
@@ -323,8 +315,6 @@ module.exports = {
   authenticateSocket,
   emitEvent,
   emitToRestaurant,
-  emitToOutlet,
-  emitToTable,
   orderCreatedPayload,
   emitOrderCreated,
   emitOrderStatusChanged,

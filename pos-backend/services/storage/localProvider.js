@@ -10,8 +10,8 @@ const config = require("../../config/config");
  * per-store directory prefix mirrors the logical tenant isolation enforced in
  * the database, so a misconfigured static server still cannot mix stores.
  *
- * This driver exists so the media library is fully functional out of the box.
- * Production deployments should set MEDIA_STORAGE_PROVIDER=cloudinary|s3|r2.
+ * The only storage driver: media lives on the backend's own disk and is
+ * served from /uploads (app.js).
  */
 
 const UPLOADS_DIR = config.uploadsDir;

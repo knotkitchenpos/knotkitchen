@@ -22,17 +22,6 @@ const requirePermission = (permission) => async (req, res, next) => {
     const own = req.user.permissions || [];
     if (own.includes("*") || own.includes(permission)) return next();
 
-    const Team = require("../models/teamModel");
-    const team = await Team.findOne({
-      restaurantId: req.user.restaurantId,
-      outletId: req.user.outletId,
-      userId: req.user._id,
-      isActive: true,
-    });
-    if (team?.permissions?.includes("*") || team?.permissions?.includes(permission)) {
-      return next();
-    }
-
     return next(createHttpError(403, `Forbidden: requires '${permission}' permission.`));
   } catch (error) {
     next(error);

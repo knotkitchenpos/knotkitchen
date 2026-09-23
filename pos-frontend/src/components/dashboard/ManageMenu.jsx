@@ -935,12 +935,9 @@ const ManageMenu = () => {
             </button>
 
             {/*
-              §UI: the CSV "Download Template" affordance has been removed
-              from the header. The template is still available server-side
-              (GET /api/menu/csv/template) and is exercised by tests, but
-              the operator no longer needs it in the day-to-day Manage Menu
-              toolbar — it was noisy and the Export CSV flow is enough to
-              seed a starting point for anyone who really needs one.
+              §UI: there is no CSV "Download Template" button. The Export
+              CSV flow is enough to seed a starting point for anyone who
+              needs one.
             */}
 
             <button

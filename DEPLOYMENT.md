@@ -490,5 +490,5 @@ shows the `HEALTHCHECK` state of every service.
   resolver refuses to serve it and Socket.IO drops any lingering POS
   session for it.
 * **Delete** — soft-delete via `isDeleted=true`. Records stay in Mongo for
-  audit; run `pos-backend/scripts/mergeStoreDatabases.js` in a maintenance
-  window for a hard delete.
+  audit; a permanent delete from the CSD console removes the store's data
+  (`pos-backend/services/storePurge.js`).

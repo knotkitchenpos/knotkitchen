@@ -705,9 +705,6 @@ const settleCommitmentRepayment = async (restaurantId, on = new Date()) => {
   return { settled: true, duePaise: tax.totalPaise };
 };
 
-/** Schedule 1 history, newest first. */
-const listSchedules = (restaurantId) => CommercialSchedule.find({ restaurantId }).sort({ version: -1 }).lean();
-
 /** Status as of now, without changing anything. */
 const statusFor = async (restaurantId, on = new Date()) => {
   const config = await getPlatformConfig();
@@ -780,7 +777,6 @@ module.exports = {
   upgradeInstallation,
   lapseCommitments,
   settleCommitmentRepayment,
-  listSchedules,
   statusFor,
   issueInvoice,
   AGREEMENT_VERSION,

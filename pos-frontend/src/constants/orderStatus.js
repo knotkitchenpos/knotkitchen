@@ -36,7 +36,6 @@ export const REFUNDED = "Refunded";
  * the two distinct or the accept step disappears.
  */
 export const AWAITING_ACCEPTANCE = "Pending";
-export const IN_PROGRESS = "In Progress";
 
 /** Written by the auto-complete sweep, to suit the order type. */
 export const SERVED = "Served";

@@ -1,15 +1,16 @@
-import React from "react";
+import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import "./styles/peddler.css";
 import { useGoogleFont } from "./data";
 import { landingContent } from "./content";
-import { Wordmark, Lines, VisitDetails, PoweredBy, useMenuToggle, Photo, LegalLinks } from "./parts";
+import { Wordmark, Lines, VisitDetails, PoweredBy, Photo, LegalLinks } from "./parts";
 
 /** Templates/Food-Peddler-Preview — dark hero, sun disc, rotated photo. */
 export default function ClassicPeddler({ landing, store, menuPath, onBookTable }) {
   useGoogleFont("family=DM+Serif+Display:ital@0;1&family=Manrope:wght@400;500;600;700;800");
   const c = landingContent("peddler", landing, store);
-  const menu = useMenuToggle();
+  const [navOpen, setNavOpen] = useState(false);
+  const closeNav = () => setNavOpen(false);
   const [lead, ...rest] = c.dishes;
 
   return (
@@ -18,15 +19,15 @@ export default function ClassicPeddler({ landing, store, menuPath, onBookTable }
         <a className="wordmark" href="#top" aria-label={`${c.name} home`}>
           <Wordmark c={c} />
         </a>
-        <button className="menu-toggle" type="button" aria-expanded={menu.open} aria-controls="site-nav" onClick={menu.toggle}>
-          Menu <span aria-hidden="true">{menu.open ? "−" : "+"}</span>
+        <button className="menu-toggle" type="button" aria-expanded={navOpen} aria-controls="site-nav" onClick={() => setNavOpen((v) => !v)}>
+          Menu <span aria-hidden="true">{navOpen ? "−" : "+"}</span>
         </button>
-        <nav id="site-nav" className={`site-nav ${menu.open ? "is-open" : ""}`} aria-label="Main navigation">
-          <a href="#story" onClick={menu.close}>Our story</a>
-          <a href="#menu" onClick={menu.close}>Menu</a>
-          <a href="#visit" onClick={menu.close}>Find us</a>
+        <nav id="site-nav" className={`site-nav ${navOpen ? "is-open" : ""}`} aria-label="Main navigation">
+          <a href="#story" onClick={closeNav}>Our story</a>
+          <a href="#menu" onClick={closeNav}>Menu</a>
+          <a href="#visit" onClick={closeNav}>Find us</a>
           {onBookTable ? (
-            <button type="button" className="kkt-book" onClick={() => { menu.close(); onBookTable(); }}>
+            <button type="button" className="kkt-book" onClick={() => { closeNav(); onBookTable(); }}>
               Book a Table
             </button>
           ) : null}

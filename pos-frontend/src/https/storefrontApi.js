@@ -32,7 +32,6 @@ export const uploadMedia = (file, { folder = "general", altText = "" } = {}) => 
 };
 
 // ---------- Authenticated: POS online orders ----------
-export const listOnlineOrders = (params) => axiosWrapper.get("/api/online-orders", { params });
 export const updateOnlineOrderStatus = (id, action, reason) =>
   axiosWrapper.put(`/api/online-orders/${id}/status`, { action, reason });
 // Scheduled pickups whose kitchen start time has come.

@@ -36,12 +36,6 @@ export const bootstrapStore = ({ slug, host }) => {
 export const getStorefront = (slug) =>
   client.get(`/api/storefront/${encodeURIComponent(slug)}`);
 
-export const getStorefrontMenu = (slug) =>
-  client.get(`/api/storefront/${encodeURIComponent(slug)}/menu`);
-
-export const getStorefrontProduct = (slug, id) =>
-  client.get(`/api/storefront/${encodeURIComponent(slug)}/products/${id}`);
-
 // -----------------------------------------------------------------------------
 // Orders
 // -----------------------------------------------------------------------------
@@ -63,10 +57,3 @@ export const startCheckout = (slug, payload) =>
 
 export const verifyCheckout = (slug, checkoutId) =>
   client.post(`/api/storefront/${encodeURIComponent(slug)}/checkout/${checkoutId}/verify`);
-
-export const trackOrder = (slug, orderId, phone) =>
-  client.get(`/api/storefront/${encodeURIComponent(slug)}/orders/${orderId}`, {
-    params: { phone },
-  });
-
-export default client;

@@ -1,4 +1,4 @@
-import { createSlice, createSelector } from "@reduxjs/toolkit";
+import { createSlice } from "@reduxjs/toolkit";
 
 /**
  * POS cart-level discount (Module 2 §1, §2).
@@ -87,17 +87,6 @@ export const computeDiscountAmount = ({ mode, value }, applicable) => {
     }
     return 0;
 };
-
-/**
- * Selector factory so callers can memoise per-subtotal. Usage:
- *   const discountAmount = useSelector((s) => selectDiscountAmount(s, subtotal));
- */
-export const selectDiscount = (state) => state.discount;
-
-export const selectDiscountAmount = createSelector(
-    [selectDiscount, (_state, applicable) => applicable],
-    (discount, applicable) => computeDiscountAmount(discount, applicable),
-);
 
 /**
  * Human-readable label like "10%" or "₹50 off" for the cart summary row.

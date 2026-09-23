@@ -24,7 +24,7 @@ import { billableItems, itemDisplayName, itemExtras } from "../utils/orderItems"
 import { isPreparing, isReady, isSettled, isCancelled, isRefunded, statusLabel, COMPLETED, REFUND_STATUS, REFUND_STATUS_LABELS } from "../constants/orderStatus";
 import { sourceLabel, tableLabel, orderDisplayId } from "../utils/orderLabels";
 import { sendTableEBill } from "../utils/sendTableEBill";
-import { money, time12 as timeOf, time12, dateGB, dateTimeIN } from "../utils";
+import { money, time12 as timeOf, time12, dateGB, dateTimeIN, localDay } from "../utils";
 
 /* ---------- Icons ---------- */
 const I = {
@@ -116,18 +116,6 @@ const TABS = [
   { key: "Cancelled", statuses: ["Cancelled"] },
 ];
 
-/**
- * Convert a Date → YYYY-MM-DD in the LOCAL timezone.
- * `.toISOString()` is UTC and would silently shift the picker for anyone
- * east/west of Greenwich, so we build the string manually.
- */
-const localDateInput = (d = new Date()) => {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-};
-
 /* ---------- Module 4 §6 — Date filter modes ---------- */
 const DATE_MODES = [
   { key: "today", label: "Today" },
@@ -198,9 +186,9 @@ const Orders = () => {
    * on last week's data after coming back from Menu / POS.
    */
   const [dateMode, setDateMode] = useState("today");
-  const [singleDate, setSingleDate] = useState(localDateInput());
-  const [fromDate, setFromDate] = useState(localDateInput());
-  const [toDate, setToDate] = useState(localDateInput());
+  const [singleDate, setSingleDate] = useState(localDay());
+  const [fromDate, setFromDate] = useState(localDay());
+  const [toDate, setToDate] = useState(localDay());
 
   useEffect(() => {
     const t = setInterval(() => setClock(new Date()), 30_000);
@@ -465,7 +453,7 @@ const Orders = () => {
             <input
               type="date"
               value={singleDate}
-              max={localDateInput()}
+              max={localDay()}
               onChange={(e) => setSingleDate(e.target.value)}
               className="h-[32px] px-2 rounded-lg border border-[#E2E8F0] text-[12.5px] font-semibold text-[#334155] focus:border-[#FD5302]"
             />
@@ -475,7 +463,7 @@ const Orders = () => {
               <input
                 type="date"
                 value={fromDate}
-                max={toDate || localDateInput()}
+                max={toDate || localDay()}
                 onChange={(e) => setFromDate(e.target.value)}
                 className="h-[32px] px-2 rounded-lg border border-[#E2E8F0] text-[12.5px] font-semibold text-[#334155] focus:border-[#FD5302]"
               />
@@ -484,7 +472,7 @@ const Orders = () => {
                 type="date"
                 value={toDate}
                 min={fromDate}
-                max={localDateInput()}
+                max={localDay()}
                 onChange={(e) => setToDate(e.target.value)}
                 className="h-[32px] px-2 rounded-lg border border-[#E2E8F0] text-[12.5px] font-semibold text-[#334155] focus:border-[#FD5302]"
               />

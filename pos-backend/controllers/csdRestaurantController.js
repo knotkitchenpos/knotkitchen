@@ -796,40 +796,9 @@ const createPosSession = async (req, res, next) => {
   }
 };
 
-/** GET /api/csd/restaurants/:storeId/pos-sessions — who has accessed this POS. */
-const listPosSessions = async (req, res, next) => {
-  try {
-    const storeId = str(req.params.storeId);
-    await loadStore(storeId);
-
-    const sessions = await CsdPosSession.find({ storeId })
-      .sort({ createdAt: -1 })
-      .limit(50)
-      .lean();
-
-    res.status(200).json({
-      success: true,
-      data: sessions.map((s) => ({
-        id: String(s._id),
-        staffCode: s.staffCode,
-        staffName: s.staffName,
-        staffRole: s.staffRole,
-        reason: s.reason,
-        issuedAt: s.createdAt,
-        usedAt: s.usedAt,
-        expiresAt: s.expiresAt,
-        // An unused, expired token means nobody actually entered the POS.
-        outcome: s.usedAt ? "used" : s.expiresAt < new Date() ? "expired unused" : "pending",
-      })),
-    });
-  } catch (error) {
-    next(error);
-  }
-};
-
 module.exports = {
   getRestaurant, getCustomers,
   exportCustomers, getOrderSummary, getRestaurantStaff, getActivity,
-  updateGoogleBusiness, updateCharges, createPosSession, listPosSessions,
+  updateGoogleBusiness, updateCharges, createPosSession,
   loadStore, periodWindow, PERIODS,
 };

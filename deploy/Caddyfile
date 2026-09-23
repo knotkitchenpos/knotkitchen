@@ -1,25 +1,21 @@
 # =============================================================================
 # Knot Kitchen — Caddy reverse proxy (Cloudflare DNS-only, no proxying)
 # =============================================================================
-# Every named hostname still gets its cert the standard way (HTTP-01). Only
-# the *.knotkitchen.com wildcard vhost below uses DNS-01 (via the
-# caddy-dns/cloudflare plugin baked into this image) — a wildcard cert can
-# never be issued over HTTP-01. DNS is hosted on Cloudflare in "DNS only"
-# (grey cloud) mode, so traffic never actually passes through Cloudflare's
-# edge — Caddy on this VPS still terminates TLS directly, same as before.
+# Every certificate is issued over DNS-01 (the caddy-dns/cloudflare plugin
+# baked into this image; see the global options below). Caddy on this VPS
+# terminates TLS directly.
 #
 # Every internal upstream is addressed by its Docker service name on the
 # `knot` network — Docker's embedded DNS resolves the correct container.
 #
 # Public hostname map (BASE_DOMAIN = knotkitchen.com):
-#   knotkitchen.com            → customer-web  (landing / storefront)
-#   csd.knotkitchen.com        → customer-web  (customer-facing storefront)
+#   knotkitchen.com            → static landing, else customer-web
+#   csd.knotkitchen.com        → csd-web       (Customer Support Desk)
 #   business.knotkitchen.com   → pos-web       (POS SPA)
-#   onboard.knotkitchen.com    → admin-web     (super-admin / onboarding SPA)
 #   api.knotkitchen.com        → pos-api       (POS backend API)
-#   admin-api.knotkitchen.com  → admin-api     (super-admin backend API)
 #   agreement.knotkitchen.com  → onboard-portal (partner onboarding)
 #   bill.knotkitchen.com       → pos-api       (customer bill link, /r/<token>)
+#   pay.knotkitchen.com        → pos-api       (website checkout, /c/*)
 #   order.knotkitchen.com      → pos-web       (table QR link, /t/<token>)
 #   demostore.knotkitchen.com  → static        (Food Peddler sales demo)
 #   <store_id>.knotkitchen.com → customer-web  (per-store storefront)
@@ -71,27 +67,6 @@ api.{$BASE_DOMAIN} {
 			read_timeout  60s
 			write_timeout 60s
 		}
-	}
-}
-
-# =============================================================================
-# admin-api.knotkitchen.com — Super-admin backend
-# =============================================================================
-admin-api.{$BASE_DOMAIN} {
-	import security_headers
-
-	request_body {
-		max_size 2MB
-	}
-
-	reverse_proxy admin-api:4000 {
-		header_up X-Real-IP           {remote_host}
-		header_up X-Forwarded-For     {remote_host}
-		header_up X-Forwarded-Proto   {scheme}
-		header_up X-Forwarded-Host    {host}
-
-		health_uri     /health
-		health_interval 15s
 	}
 }
 

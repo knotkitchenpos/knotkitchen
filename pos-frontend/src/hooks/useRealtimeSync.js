@@ -28,16 +28,16 @@ import { acquireSocket, releaseSocket } from "../socket";
  * of this file is that they should never have to wonder.
  */
 const INVALIDATE_ON = {
-  newOrder: ["orders", "tables", "kds-orders", "dashboard", "popular-items"],
-  "onlineOrder:created": ["orders", "online-orders", "kds-orders", "dashboard"],
-  "onlineOrder:status": ["orders", "online-orders", "kds-orders", "tables", "dashboard"],
+  newOrder: ["orders", "tables", "kds-orders", "popular-items"],
+  "onlineOrder:created": ["orders", "kds-orders"],
+  "onlineOrder:status": ["orders", "kds-orders", "tables"],
   "menu:updated": ["menus", "popular-items", "store-properties"],
   tableSessionUpdated: ["tables", "orders"],
   waiterCall: ["tables"],
   "tableBooking:created": ["table-bookings"],
   "tableBooking:updated": ["tables", "table-bookings"],
-  "order:prepDue": ["orders", "online-orders", "kds-orders"],
-  "order:prepStarted": ["orders", "online-orders", "kds-orders"],
+  "order:prepDue": ["orders", "kds-orders"],
+  "order:prepStarted": ["orders", "kds-orders"],
 };
 
 const useRealtimeSync = () => {
@@ -62,7 +62,7 @@ const useRealtimeSync = () => {
     // Catch up on whatever was missed while disconnected (the shared socket
     // re-joins its room on every connect).
     const onConnect = () => {
-      invalidate(["orders", "tables", "kds-orders", "menus", "dashboard"]);
+      invalidate(["orders", "tables", "kds-orders", "menus"]);
     };
     socket.on("connect", onConnect);
     if (socket.connected) onConnect();

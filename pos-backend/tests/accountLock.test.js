@@ -19,7 +19,7 @@ const SRC = (rel) => fs.readFileSync(path.join(__dirname, "..", rel), "utf8");
 test("CRITICAL: a locked restaurant can still reach everything it needs to pay", () => {
   // Every one of these must stay open, or the lock becomes permanent.
   const mustStayOpen = [
-    "/api/auth/login",
+    "/api/user/store/login",
     "/api/user/refresh",
     "/api/business-balance",
     "/api/business-balance/recharge",
@@ -29,7 +29,6 @@ test("CRITICAL: a locked restaurant can still reach everything it needs to pay",
     "/api/subscription/plans",
     "/api/subscription/purchase",
     "/api/subscription/invoices",
-    "/api/billing/12345",
     "/api/restaurant/me",
   ];
   for (const p of mustStayOpen) {
@@ -221,7 +220,7 @@ test("SOURCE: a store that never bought a plan starts locked, with Billing still
   // A staff member confirms a plan purchase with the Store PIN.
   assert.ok(require("../middlewares/accountLock").isOpen("/api/restaurant/verify-pin"));
   const { isOpen } = require("../middlewares/accountLock");
-  for (const p of ["/api/subscription/plans", "/api/business-balance", "/api/billing/invoices", "/api/user/refresh"]) assert.ok(isOpen(p), p);
+  for (const p of ["/api/subscription/plans", "/api/business-balance", "/api/user/refresh"]) assert.ok(isOpen(p), p);
   for (const p of ["/api/order", "/api/menu", "/api/table"]) assert.ok(!isOpen(p), p);
 });
 

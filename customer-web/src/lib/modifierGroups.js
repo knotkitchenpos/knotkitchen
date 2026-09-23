@@ -21,5 +21,3 @@ export const capLabel = (group) => {
   if (cap === Infinity) return "Choose any";
   return cap === 1 ? "Choose 1" : `Choose up to ${cap}`;
 };
-
-export default capOf;

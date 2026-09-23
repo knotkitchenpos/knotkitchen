@@ -3,14 +3,10 @@
   "version": "1.0.0",
   "main": "app.js",
   "scripts": {
-    "dev": "nodemon app.js",
+    "dev": "node --watch app.js",
     "start": "node app.js",
     "test": "node --test tests/*.test.js",
     "migrate": "node migrations/001-add-current-occupancy.js",
-    "merge-stores": "node scripts/mergeStoreDatabases.js",
-    "verify-stores": "node scripts/verifyStoreLookup.js",
-    "test:all": "node scripts/runAllTests.js",
-    "test:menu-import": "node scripts/liveMenuImportTest.js",
     "backfill-websites": "node scripts/backfillWebsiteSettings.js",
     "backfill-websites:dry": "node scripts/backfillWebsiteSettings.js --dry-run",
     "lint": "eslint ."
@@ -26,7 +22,6 @@
     "bcrypt": "^6.0.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
-    "crypto": "^1.0.1",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "http-errors": "^2.0.0",
@@ -35,8 +30,7 @@
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
-    "eslint": "^9.39.5",
-    "nodemon": "^3.1.9"
+    "eslint": "^9.39.5"
   },
   "overrides": {
     "jws": "^3.2.3",

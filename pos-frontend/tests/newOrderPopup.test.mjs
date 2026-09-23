@@ -117,9 +117,11 @@ test("the catch-up list is the same shape as the live event", () => {
   // Undecided per channel: website orders start Pending, QR orders Preparing.
   assert.match(ctrl, /\{ source: "WEBSITE", orderStatus: AWAITING_ACCEPTANCE \}/);
   assert.match(ctrl, /\{ source: "QR", orderStatus: PREPARING \}/);
-  // Declared before "/:id", or "awaiting" is parsed as an order id.
+  // Any GET "/:id" must be declared after it, or "awaiting" is parsed as an order id.
   const routes = BE("routes/onlineOrderRoute.js");
-  assert.ok(routes.indexOf('router.get("/awaiting"') < routes.indexOf('router.get("/:id"'));
+  const awaiting = routes.indexOf('router.get("/awaiting"');
+  const byId = routes.indexOf('router.get("/:id"');
+  assert.ok(awaiting >= 0 && (byId < 0 || awaiting < byId));
 });
 
 test("a decision on one till drops the card on the others", () => {

@@ -45,8 +45,6 @@ const localClock = (date, timeZone = DEFAULT_TZ) => {
   };
 };
 
-const shiftYmd = (ymd, days) => new Date(Date.parse(`${ymd}T00:00:00Z`) + days * 86400000).toISOString().slice(0, 10);
-
 /** Holidays are saved from a date picker, i.e. UTC midnight of the chosen day. */
 const isoDay = (value) => {
   const d = new Date(value);
@@ -147,5 +145,4 @@ module.exports = {
   holidayOn,
   closedForTodayOn,
   localClock,
-  shiftYmd,
 };

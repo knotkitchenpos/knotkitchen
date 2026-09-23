@@ -274,11 +274,6 @@ const startLockSweeper = ({ intervalMs = 15 * 60 * 1000 } = {}) => {
   return sweepHandle;
 };
 
-const stopLockSweeper = () => {
-  if (sweepHandle) clearInterval(sweepHandle);
-  sweepHandle = null;
-};
-
 module.exports = {
   CUSTOMER_PAUSED_MESSAGE,
   isOrderingLocked,
@@ -288,5 +283,4 @@ module.exports = {
   fireEvaluateLock,
   sweepLocks,
   startLockSweeper,
-  stopLockSweeper,
 };

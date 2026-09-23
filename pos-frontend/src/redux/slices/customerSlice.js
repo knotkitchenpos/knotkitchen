@@ -1,7 +1,6 @@
 import { createSlice } from "@reduxjs/toolkit";
 
 const initialState = {
-    orderId: "",
     customerName: "",
     customerPhone: "",
     // B2B bill (optional): the buyer's business name and GSTIN.
@@ -19,7 +18,6 @@ const customerSlice = createSlice({
     reducers : {
         setCustomer: (state, action) => {
             const { name, phone, guests, company, gstin } = action.payload;
-            state.orderId = `${Date.now()}`;
             state.customerName = name;
             state.customerPhone = phone;
             state.guests = guests;
@@ -49,13 +47,6 @@ const customerSlice = createSlice({
             };
         },
 
-        updateGuests: (state, action) => {
-            // Capacity is validated by the backend — this is a display/state
-            // update only. The biller enters the customer count per the EPOS
-            // flow before attaching items to the table session.
-            state.guests = Number(action.payload) || 0;
-        },
-
         setSessionId: (state, action) => {
             state.sessionId = action.payload || "";
         },
@@ -64,5 +55,5 @@ const customerSlice = createSlice({
 })
 
 
-export const { setCustomer, removeCustomer, updateTable, updateGuests, setSessionId } = customerSlice.actions;
+export const { setCustomer, removeCustomer, updateTable, setSessionId } = customerSlice.actions;
 export default customerSlice.reducer;

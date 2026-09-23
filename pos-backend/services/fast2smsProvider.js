@@ -1,18 +1,14 @@
 /**
- * Fast2SMS OTP provider
+ * Fast2SMS provider
  * ---------------------------------------------------------------------------
- * Single production SMS transport for Knot Kitchen (§4 of the production spec).
+ * Single production SMS/WhatsApp transport for Knot Kitchen (§4 of the
+ * production spec): DLT templates, free text, and WhatsApp templates. Every
+ * send resolves on a Fast2SMS success and rejects with a Fast2SmsError on any
+ * other outcome, so the caller can report it instead of claiming it was sent.
  *
- * Contract:
- *   sendOtp({ phone, otp }) -> Promise<{ ok: true, requestId }>
- *     - Resolves on a Fast2SMS 200 with return:true.
- *     - Rejects (with a Fast2SMS-specific error) on any other outcome, so the
- *       route handler can turn that into a 502 to the caller instead of
- *       claiming the OTP was sent.
- *
- * The API key is read from process.env.FAST2SMS_API_KEY every call rather than
- * cached at module-load time — that way key rotation just needs a container
- * restart, not a code redeploy.
+ * The API key is passed in on every call rather than cached at module-load
+ * time -- that way key rotation just needs a container restart, not a code
+ * redeploy.
  *
  * References:
  *   Fast2SMS Bulk V2 API: https://docs.fast2sms.com/#bulk-sms-api
@@ -20,7 +16,6 @@
  *   422 route disabled, 5xx transient.
  */
 
-const DEFAULT_ROUTE = "otp";
 const ENDPOINT = "https://www.fast2sms.com/dev/bulkV2";
 const TIMEOUT_MS = 10_000;
 
@@ -118,46 +113,6 @@ const withRetry = async (fn) => {
       // One short retry -- Fast2SMS is generally back within a few hundred ms.
       await new Promise((r) => setTimeout(r, 400));
       return fn();
-    }
-    throw err;
-  }
-};
-
-/** The OTP route, which takes the code as its only template variable. */
-const callFast2Sms = async ({ apiKey, phone, otp, route, otpId }) => {
-  const reqBody = {
-    route: route || DEFAULT_ROUTE,
-    variables_values: String(otp),
-    numbers: String(phone),
-  };
-
-  // If a DLT OTP template ID is configured, pass it in the payload for
-  // Fast2SMS DLT-route accounts.
-  if (otpId || process.env.FAST2SMS_OTP_ID) {
-    reqBody.message = otpId || process.env.FAST2SMS_OTP_ID;
-  }
-
-  return postToFast2Sms({ apiKey, body: reqBody });
-};
-
-/**
- * Public entry point. One automatic retry on retryable errors (network hiccup
- * / 5xx). Non-retryable errors bubble immediately.
- */
-const sendOtp = async ({ phone, otp, apiKey, route, otpId }) => {
-  if (!apiKey) throw new Fast2SmsError("Fast2SMS API key is not configured.");
-  const number = toIndianTenDigit(phone);
-  if (number.length !== 10) {
-    throw new Fast2SmsError("Fast2SMS requires a 10-digit Indian phone number.");
-  }
-
-  try {
-    return await callFast2Sms({ apiKey, phone: number, otp, route, otpId });
-  } catch (err) {
-    if (err instanceof Fast2SmsError && err.retryable) {
-      // One short retry — Fast2SMS is generally back within a few hundred ms.
-      await new Promise((r) => setTimeout(r, 400));
-      return callFast2Sms({ apiKey, phone: number, otp, route, otpId });
     }
     throw err;
   }
@@ -367,7 +322,6 @@ const sendWhatsAppTemplate = async ({
 };
 
 module.exports = {
-  sendOtp,
   sendDlt,
   sendText,
   sendWhatsAppTemplate,

@@ -3,11 +3,9 @@ const mongoose = require("mongoose");
 /**
  * A restaurant's KnotKitchen subscription, and the invoices it produced.
  *
- * Named `Platform*` because `Subscription` and `Invoice` are already taken by
- * models/billingModel.js -- the unfinished prototype that no screen calls.
- * Registering the same model name twice throws, and quietly repurposing those
- * collections would mix real money with records written by code that stored
- * dollars.
+ * Named `Platform*` because the `subscriptions` and `invoices` collections
+ * belonged to an unfinished prototype (since removed) that stored dollars.
+ * Repurposing them would mix real money with its leftover records.
  *
  * The invoice is a SNAPSHOT, not a view. Every number, rate, name and address
  * it needs is copied onto it at the moment it is issued, so an admin changing

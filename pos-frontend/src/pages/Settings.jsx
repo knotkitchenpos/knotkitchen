@@ -5,7 +5,6 @@ import { useDispatch } from "react-redux";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { getSubscriptionStatus, logout } from "../https";
 import { removeUser } from "../redux/slices/userSlice";
-import ActivityLogView from "../components/dashboard/ActivityLogView";
 import DeviceConfiguration from "../components/settings/DeviceConfiguration";
 import ShiftView from "../components/settings/ShiftView";
 import InventoryView from "../components/settings/InventoryView";
@@ -44,8 +43,8 @@ const MENU_ITEMS = [
   { id: "website", title: "11. Manage Website", desc: "Landing page, branding, colours, domain and payments.", Icon: I.globe, path: "/website", feature: "website", lockedDesc: "Payment gateway only. The website is included in Growth and Scale.", openWhenLocked: "paymentGateway" },
 
   // Activity Log stays CSD-only: it is the audit trail of who did what,
-  // including support's own actions, and is locked server-side in
-  // middlewares/csdOnly.js rather than merely hidden here.
+  // including support's own actions, and has no POS route at all (CSD reads
+  // it through /api/csd).
   // Also in the side panel; listed here so it is one tap away on a phone.
   { id: "support", title: "12. Help & Support", desc: "Call or message KnotKitchen support.", Icon: I.headset, path: "/support" },
   { id: "logout", title: "13. Logout", desc: "Securely sign out of the POS system.", Icon: I.logout, action: "logout" },
@@ -144,8 +143,6 @@ const Settings = () => {
           <ShiftView />
         ) : activeSubView === "inventory" ? (
           <InventoryView />
-        ) : activeSubView === "activity" ? (
-          <ActivityLogView />
         ) : (
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">

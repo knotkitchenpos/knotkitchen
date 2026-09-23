@@ -1,11 +1,6 @@
 const express = require("express");
 const {
-  register, login, refreshToken, getUserData, logout,
-  requestEmailVerification, verifyEmail,
-  requestPasswordReset, resetPassword,
-  setupMFA, verifyMFA, disableMFA,
-  getSessions, revokeSession,
-  validateStoreId, validateStoreOwner,
+  refreshToken, getUserData, logout,
   checkStoreStatus, checkStoreAccountStatus, setStoreAccountPassword,
   setupStorePassword, storeLoginWithPassword, changePassword,
   impersonateWithSupportToken,
@@ -37,14 +32,6 @@ const router = express.Router();
  *     Per-storeId AND per-IP. The User model's own loginAttempts + lockout
  *     is the second layer.
  */
-const loginLimiter = rateLimit({
-  windowMs: config.authLoginRateWindowMs,
-  max: config.authLoginRateMax,
-  keyGenerator: (req) =>
-    `login:${clientIp(req)}:${(req.body?.productId || "").toString().slice(0, 32)}`,
-  message: "Too many login attempts. Please wait a few minutes and try again.",
-});
-
 const storeLoginLimiter = rateLimit({
   windowMs: config.authLoginRateWindowMs,
   max: config.authLoginRateMax,
@@ -61,13 +48,6 @@ const storeSetupLimiter = rateLimit({
   keyGenerator: (req) =>
     `store-setup:${clientIp(req)}:${(req.body?.storeId || "").toString().slice(0, 12)}`,
   message: "Too many attempts. Please wait an hour before trying again.",
-});
-
-const passwordResetLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 5,
-  keyGenerator: (req) => `pwreset:${clientIp(req)}`,
-  message: "Too many password reset requests. Please wait a few minutes.",
 });
 
 const storeLookupLimiter = rateLimit({
@@ -100,36 +80,10 @@ router.route("/store/login").post(storeLoginLimiter, storeLoginWithPassword);
 // middleware — the token itself is the credential and is single-use.
 router.route("/impersonate").post(impersonateWithSupportToken);
 
-// Legacy lookup endpoints (still used by the current login screen before
-// this migration, and by future admin tools).
-router.route("/store/validate-id").post(storeLookupLimiter, validateStoreId);
-router.route("/store/validate-owner").post(storeLookupLimiter, validateStoreOwner);
-router.route("/validate-store").post(storeLookupLimiter, validateStoreId);
-
 // Auth
-router.route("/register").post(loginLimiter, register);
-router.route("/login").post(loginLimiter, login);
 router.route("/refresh").post(refreshToken);
 router.route("/logout").post(isVerifiedUser, logout);
 router.route("/").get(isVerifiedUser, getUserData);
 router.route("/change-password").post(isVerifiedUser, changePassword);
-
-// Email verification
-router.route("/verify-email/request").post(isVerifiedUser, requestEmailVerification);
-router.route("/verify-email/:token").get(verifyEmail);
-
-// Password reset (email-based; separate from the storeId-based reset above,
-// which is what POS operators actually use)
-router.route("/forgot-password").post(passwordResetLimiter, requestPasswordReset);
-router.route("/reset-password").post(passwordResetLimiter, resetPassword);
-
-// MFA
-router.route("/mfa/setup").post(isVerifiedUser, setupMFA);
-router.route("/mfa/verify").post(isVerifiedUser, verifyMFA);
-router.route("/mfa/disable").post(isVerifiedUser, disableMFA);
-
-// Sessions
-router.route("/sessions").get(isVerifiedUser, getSessions);
-router.route("/sessions/:sessionId/revoke").post(isVerifiedUser, revokeSession);
 
 module.exports = router;

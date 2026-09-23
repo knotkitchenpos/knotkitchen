@@ -8,7 +8,6 @@ const {
   purchaseInstallation,
   upgradeInstallation,
   getSubscription,
-  listSchedules,
   statusFor,
   SubscriptionError,
 } = require("../services/subscription");
@@ -231,15 +230,6 @@ router.post("/installation/upgrade", isVerifiedUser, requireProtectedAction, asy
     });
   } catch (err) {
     asSubscriptionError(err, next);
-  }
-});
-
-// GET /api/subscription/schedule — every Commercial Schedule this restaurant accepted, newest first.
-router.get("/schedule", isVerifiedUser, async (req, res, next) => {
-  try {
-    res.status(200).json({ success: true, data: await listSchedules(ownRestaurantId(req)) });
-  } catch (err) {
-    next(err);
   }
 });
 

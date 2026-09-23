@@ -184,6 +184,5 @@ test("SOURCE: every place that builds a session receipt loads the session's orde
     /Order\.findOne\(\{ tableSessionId: sessionId, isDeleted: \{ \$ne: true \} \}, null, \{ sort: \{ createdAt: 1 \} \}\)/,
   );
   assert.match(read("services/eBillService.js"), /if \(!order\) order = await orderForSession\(tableSession\._id\);/);
-  assert.match(read("controllers/receiptController.js"), /order: await orderForSession\(session\._id\),/);
   assert.match(read("controllers/publicReceiptController.js"), /order = await orderForSession\(tableSession\._id\);/);
 });

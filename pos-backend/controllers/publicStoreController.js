@@ -3,7 +3,7 @@ const { AUDIENCES, projectMenus } = require("../services/menuCache");
 const Store = require("../models/storeModel");
 const Restaurant = require("../models/restaurantModel");
 const Menu = require("../models/menuModel");
-const { resolveStorefront, REASON_MESSAGES, findSettingsByHost } = require("../services/storefrontResolver");
+const { resolveStorefront, REASON_MESSAGES } = require("../services/storefrontResolver");
 const { buildLandingPayload } = require("../services/landingPayload");
 
 const getPublicStoreInfo = async (req, res, next) => {
@@ -179,27 +179,8 @@ const getPublicStoreByDomain = async (req, res, next) => {
   }
 };
 
-/**
- * GET /api/public/tls-ask?domain=<hostname>
- *
- * Consumed by Caddy's `on_demand_tls { ask ... }` directive so a wildcard
- * cert never has to be issued: Caddy asks this endpoint before requesting a
- * cert for an arbitrary subdomain, and we only say yes for a hostname that
- * resolves to a real, non-deleted store. Intentionally returns bare 200/404
- * with no body — this is a yes/no gate, not a data endpoint, and it must not
- * leak *why* a hostname was rejected (suspended vs. never existed).
- */
-const tlsAsk = async (req, res) => {
-  const domain = String(req.query.domain || "").trim();
-  if (!domain) return res.sendStatus(400);
-
-  const settings = await findSettingsByHost(domain);
-  return res.sendStatus(settings ? 200 : 404);
-};
-
 module.exports = {
   getPublicStoreInfo,
   getPublicStoreMenu,
   getPublicStoreByDomain,
-  tlsAsk,
 };

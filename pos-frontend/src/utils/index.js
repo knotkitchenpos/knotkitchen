@@ -5,15 +5,6 @@ export const getAvatarName = (name) => {
 
 }
 
-/** "September 17, 2026" (the Home greeting). */
-export const formatDate = (date) => {
-  const months = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-  ];
-  return `${months[date.getMonth()]} ${String(date.getDate()).padStart(2, '0')}, ${date.getFullYear()}`;
-};
-
 /*
  * Money and dates, one definition each. Two money shapes exist on purpose:
  * the till screens print "₹1234.50" (no grouping), receipts and cash

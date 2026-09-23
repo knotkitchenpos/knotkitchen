@@ -140,23 +140,20 @@ app.use(
 app.use(cookieParser());
 
 /**
- * Serve media-library files when using the "local" storage provider.
- * Cloud providers (Cloudinary/S3/R2) serve their own URLs, so this is a no-op
- * for them. `X-Content-Type-Options: nosniff` prevents a browser from
- * re-interpreting an uploaded file as HTML/JS (stored-XSS defence).
+ * Serve media-library files (services/storage/localProvider.js).
+ * `X-Content-Type-Options: nosniff` prevents a browser from re-interpreting an
+ * uploaded file as HTML/JS (stored-XSS defence).
  */
-if (config.mediaProvider === "local") {
-    app.use(
-        "/uploads",
-        (req, res, next) => {
-            res.setHeader("X-Content-Type-Options", "nosniff");
-            res.setHeader("Content-Security-Policy", "default-src 'none'; img-src 'self' data:;");
-            res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
-            next();
-        },
-        express.static(config.uploadsDir, { index: false, dotfiles: "deny" })
-    );
-}
+app.use(
+    "/uploads",
+    (req, res, next) => {
+        res.setHeader("X-Content-Type-Options", "nosniff");
+        res.setHeader("Content-Security-Policy", "default-src 'none'; img-src 'self' data:;");
+        res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+        next();
+    },
+    express.static(config.uploadsDir, { index: false, dotfiles: "deny" })
+);
 
 
 
@@ -201,7 +198,6 @@ app.get("/ready", (req, res) => {
 });
 
 // Other Endpoints
-app.use("/api/auth", require("./routes/userRoute"));
 app.use("/api/user", require("./routes/userRoute"));
 // A customer's phone number is shown in full on the day of the order only;
 // after that the POS gets 98******10 (middlewares/customerPrivacy). Mounted
@@ -219,13 +215,11 @@ app.use("/api/menu", require("./routes/menuRoute"));
 app.use("/api/payment", require("./routes/paymentRoute"));
 app.use("/api/marketplace", require("./routes/marketplaceRoute"));
 app.use("/api/restaurant", require("./routes/restaurantRoute"));
-app.use("/api/team", require("./routes/teamRoute"));
 app.use("/api/kds", require("./routes/kdsRoute"));
 // Inventory is back behind a tenant-scoped controller (controllers/inventoryController.js).
 app.use("/api/inventory", require("./routes/inventoryRoute"));
 // Offline sync runs every queued order through the live addOrder (routes/offlineRoute.js).
 app.use("/api/offline", require("./routes/offlineRoute"));
-app.use("/api/billing", require("./routes/billingRoute"));
 // The restaurant's KnotKitchen Business Balance. Scoped to the caller's own
 // restaurant throughout -- no route here takes a restaurantId.
 app.use("/api/business-balance", require("./routes/businessBalanceRoute"));
@@ -253,7 +247,6 @@ app.use("/api/online-orders", require("./routes/onlineOrderRoute"));
 app.use("/api/table-session", require("./routes/tableSessionRoute"));
 app.use("/api/table-bookings", require("./routes/tableBookingRoute"));
 app.use("/api/table-qr", require("./routes/tableQRRoute"));
-app.use("/api/customer", require("./routes/customerRoute"));
 app.use("/api/payment-link", require("./routes/paymentLinkRoute"));
 app.use("/api/receipts", require("./routes/receiptRoute"));
 

@@ -87,10 +87,6 @@ const config = Object.freeze({
     // take payments offline.
     credentialsSecret: process.env.CREDENTIALS_SECRET || "",
 
-    // Rate limiting
-    rateLimitWindowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-    rateLimitMax: parseInt(process.env.RATE_LIMIT_MAX) || 100,
-
     // Lockout
     maxLoginAttempts: parseInt(process.env.MAX_LOGIN_ATTEMPTS) || 5,
     lockoutDurationMs: parseInt(process.env.LOCKOUT_DURATION_MS) || 15 * 60 * 1000,
@@ -136,28 +132,12 @@ const config = Object.freeze({
     storefrontRootDomain: process.env.STOREFRONT_ROOT_DOMAIN || "",
     frontendUrl: (process.env.FRONTEND_URL || process.env.STOREFRONT_BASE_URL || "http://localhost:5173").replace(/\/$/, ""),
 
-    // Media storage: local | cloudinary | s3 | r2
-    mediaProvider: (process.env.MEDIA_STORAGE_PROVIDER || "local").toLowerCase(),
+    // Media storage (services/storage/localProvider.js)
     uploadsDir: process.env.UPLOADS_DIR || path.join(__dirname, "..", "uploads"),
     mediaPublicBaseUrl: (
         process.env.MEDIA_PUBLIC_BASE_URL ||
         `${process.env.BACKEND_PUBLIC_URL || "http://localhost:" + (process.env.PORT || 3000)}/uploads`
     ).replace(/\/$/, ""),
-
-    cloudinary: {
-        cloudName: process.env.CLOUDINARY_CLOUD_NAME || "",
-        apiKey: process.env.CLOUDINARY_API_KEY || "",
-        apiSecret: process.env.CLOUDINARY_API_SECRET || "",
-    },
-
-    s3: {
-        bucket: process.env.S3_BUCKET || "",
-        region: process.env.S3_REGION || "auto",
-        endpoint: process.env.S3_ENDPOINT || "",
-        accessKeyId: process.env.S3_ACCESS_KEY_ID || "",
-        secretAccessKey: process.env.S3_SECRET_ACCESS_KEY || "",
-        publicBaseUrl: (process.env.S3_PUBLIC_BASE_URL || "").replace(/\/$/, ""),
-    },
 
     // Public storefront ordering rate limits (§24)
     storefrontOrderRateMax: parseInt(process.env.STOREFRONT_ORDER_RATE_MAX) || 10,
@@ -183,20 +163,6 @@ const config = Object.freeze({
     // Auth-specific rate limits (§13)
     authLoginRateMax: parseInt(process.env.AUTH_LOGIN_RATE_MAX) || 10,
     authLoginRateWindowMs: parseInt(process.env.AUTH_LOGIN_RATE_WINDOW_MS) || 15 * 60 * 1000,
-    authOtpSendRateMax: parseInt(process.env.AUTH_OTP_SEND_RATE_MAX) || 5,
-    authOtpSendRateWindowMs: parseInt(process.env.AUTH_OTP_SEND_RATE_WINDOW_MS) || 15 * 60 * 1000,
-    authOtpVerifyRateMax: parseInt(process.env.AUTH_OTP_VERIFY_RATE_MAX) || 10,
-    authOtpVerifyRateWindowMs: parseInt(process.env.AUTH_OTP_VERIFY_RATE_WINDOW_MS) || 15 * 60 * 1000,
-
-    // Dev-only OTP bypass (§2 §4). NEVER active in production.
-    // In development mode (!isProd), demo OTP is allowed by default (OTP_DEV_CODE=123456)
-    // unless explicitly disabled with ALLOW_DEV_OTP=false.
-    allowDevOtp: !isProd && process.env.ALLOW_DEV_OTP !== "false",
-    devOtpCode: process.env.OTP_DEV_CODE || "123456",
-
-    // Dev-only Product ID auto-creation (§30). NEVER active in production.
-    allowDemoProductId: !isProd && process.env.ALLOW_DEMO_PRODUCT_ID !== "false",
-
     // ===== CSD panel bootstrap =====
     //
     // Seeds the first CSD super-administrator on server start. Historically

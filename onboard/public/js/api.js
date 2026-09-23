@@ -151,15 +151,6 @@ const apiClient = {
     }
   },
 
-  getAgreementById: async (id) => {
-    try {
-      const res = await fetch(`${API_BASE}/agreements/${encodeURIComponent(id)}`);
-      return await handleAuthedResponse(res);
-    } catch (e) {
-      return { success: false, message: 'Agreement not found' };
-    }
-  },
-
   saveAgreement: async (agreementData) => {
     try {
       const res = await fetch(`${API_BASE}/agreements`, {

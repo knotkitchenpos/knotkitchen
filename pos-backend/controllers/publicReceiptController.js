@@ -19,14 +19,7 @@ const { buildReceipt } = require("../services/receiptService");
 const { readToken } = require("../services/receiptLink");
 const { orderForSession } = require("../services/eBillService");
 const { orderItemExtras, itemDisplayName } = require("../services/orderItemExtras");
-
-const esc = (value) =>
-  String(value === null || value === undefined ? "" : value)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+const { esc } = require("../services/invoiceDocument");
 
 const money = (n) =>
   `₹${Number(n || 0).toLocaleString("en-IN", {

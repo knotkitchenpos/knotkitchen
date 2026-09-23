@@ -156,11 +156,8 @@ const wireDevicePickers = (win) => {
     if (["usb", "serial", "hid", "bluetooth"].includes(permission)) return origin === POS_ORIGIN;
     return true;
   });
-  wc.session.setPermissionRequestHandler((_wc, permission, callback, details) => {
+  wc.session.setPermissionRequestHandler((_wc, _permission, callback, details) => {
     const origin = details?.requestingUrl ? new URL(details.requestingUrl).origin : "";
-    if (["notifications", "media", "fullscreen", "clipboard-read", "clipboard-sanitized-write"].includes(permission)) {
-      return callback(origin === POS_ORIGIN);
-    }
     callback(origin === POS_ORIGIN);
   });
 };
@@ -374,9 +371,6 @@ app.whenReady().then(async () => {
   buildMenu();
   createWindow();
   startUpdates();
-  app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow();
-  });
 });
 
 app.on("window-all-closed", () => app.quit());

@@ -28,15 +28,10 @@ const {
 const {
   listDocuments, downloadDocument, uploadDocument, deleteDocument,
 } = require("../controllers/csdDocumentController");
-const {
-  listMenus, toggleMenuPublish, updateDish,
-  listTables, updateTable,
-  listUsers, updateUser,
-  getLanding, updateLanding,
-} = require("../controllers/csdCatalogController");
+const { listMenus, listUsers, updateUser } = require("../controllers/csdCatalogController");
 const {
   getRestaurant, getCustomers, exportCustomers, getOrderSummary, getRestaurantStaff, getActivity,
-  updateGoogleBusiness, updateCharges, createPosSession, listPosSessions,
+  updateGoogleBusiness, updateCharges, createPosSession,
 } = require("../controllers/csdRestaurantController");
 
 /**
@@ -104,7 +99,6 @@ router.get("/restaurants/:storeId/staff", getRestaurantStaff);
 // so this is admin-only. The client hides the card too but the server is
 // the real guard.
 router.get("/restaurants/:storeId/activity", requireCsdAdmin, getActivity);
-router.get("/restaurants/:storeId/pos-sessions", listPosSessions);
 
 // Stored documents (§30/§31). View, upload and update are available to staff
 // and admin; DELETE is admin-only and guarded separately below.
@@ -141,12 +135,6 @@ router.post("/chat/conversations/:id/messages", postMessage);
 // ---------------------------------------------------------------------------
 // 4. Admin only
 // ---------------------------------------------------------------------------
-// Probe used by the SPA (and by tests) to prove the server-side admin gate is
-// live, independently of whether any admin feature is built yet.
-router.get("/admin/ping", requireCsdAdmin, (req, res) =>
-  res.status(200).json({ success: true, data: { role: req.csdStaff.role } })
-);
-
 router.get("/dashboard", requireCsdAdmin, getDashboard);
 
 router.get("/onboarding/options", requireCsdAdmin, getOptions);
@@ -178,17 +166,11 @@ router.get("/agreements/:id", requireCsdAdmin, getAgreement);
 router.post("/agreements/:id/create-store", requireCsdAdmin, createStoreFromAgreement);
 router.post("/agreements/:id/retry-notify", requireCsdAdmin, retryPortalNotify);
 
-// Menus, Tables and the restaurant's own POS users. These three were the only
-// capabilities the Admin Portal had that CSD lacked, and the reason it had to
-// keep running. Any signed-in staff member may look; only an admin may change
-// anything, which matches the Admin Portal's own superAdmin gate on exactly
-// these writes.
+// Menus (read-only, for the website editor's dish picker) and the
+// restaurant's own POS users, ported from the Admin Portal. Any signed-in
+// staff member may look; only an admin may change a user, which matches the
+// Admin Portal's own superAdmin gate on exactly these writes.
 router.get("/restaurants/:storeId/menus", requireCsdAuth, listMenus);
-router.patch("/restaurants/:storeId/menus/:menuId/publish", requireCsdAdmin, toggleMenuPublish);
-router.patch("/restaurants/:storeId/menus/:menuId/items/:itemId", requireCsdAdmin, updateDish);
-
-router.get("/restaurants/:storeId/tables", requireCsdAuth, listTables);
-router.patch("/restaurants/:storeId/tables/:tableId", requireCsdAdmin, updateTable);
 
 // The restaurant's own employees, NOT CSD staff (see /staff above).
 // Website design & ordering settings (moved out of the POS's Manage Website).
@@ -196,9 +178,6 @@ const { getCsdWebsite, updateCsdWebsite, listCsdWebsiteMedia } = require("../con
 router.get("/restaurants/:storeId/website", requireCsdAuth, getCsdWebsite);
 router.patch("/restaurants/:storeId/website", requireCsdAdmin, updateCsdWebsite);
 router.get("/restaurants/:storeId/website/media", requireCsdAuth, listCsdWebsiteMedia);
-
-router.get("/restaurants/:storeId/landing", requireCsdAuth, getLanding);
-router.patch("/restaurants/:storeId/landing", requireCsdAdmin, updateLanding);
 
 router.get("/restaurants/:storeId/users", requireCsdAuth, listUsers);
 router.patch("/restaurants/:storeId/users/:userId", requireCsdAdmin, updateUser);
