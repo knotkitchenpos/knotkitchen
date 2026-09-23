@@ -23,7 +23,7 @@
 .kkt-night .section-shell{width: min(1160px, calc(100% - 40px)); margin: 0 auto;}
 .kkt-night .topbar{position: sticky; top: 0; z-index: 15;
   display: flex; align-items: center; justify-content: space-between;
-  background: rgba(18,13,23,0.82); backdrop-filter: blur(12px);
+  background: rgb(18,13,23);
   border-bottom: 1px solid var(--line);
   padding: 18px 0;}
 .kkt-night .brand{font-family: var(--display); font-size: clamp(2rem, 3vw, 2.5rem); line-height: 1; letter-spacing: -0.04em;}

@@ -29,8 +29,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: rgba(247, 240, 231, 0.92);
-  backdrop-filter: blur(8px);
+  background: rgb(247, 240, 231);
   border-bottom: 1px solid var(--line);
   padding: 20px 0;}
 .kkt-citrus .brand{font-family: var(--display);

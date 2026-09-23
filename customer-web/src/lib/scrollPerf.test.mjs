@@ -9,6 +9,9 @@ const read = (rel) => fs.readFileSync(new URL(`../${rel}`, import.meta.url), "ut
 test("REGRESSION: no blur on menu cards or the sticky bars", () => {
   assert.ok(!/\bblur-/.test(read("components/ProductCard.jsx")), "menu cards stay blur-free");
   assert.ok(!/backdrop-blur/.test(read("components/StoreShell.jsx")), "sticky header and category bar are solid");
+  for (const t of ["citrus", "garden", "night", "sunset"]) {
+    assert.ok(!/backdrop-filter/.test(read(`components/landing/styles/${t}.css`)), `${t} top bar is solid`);
+  }
 });
 
 test("REGRESSION: the page behind an open cart or popup does not scroll", () => {
