@@ -86,12 +86,12 @@ const Invoice = ({
 
     const [emailedTo, setEmailedTo] = useState("");
 
-    // Back to the order page on its own after 2 seconds, or at once on a tap
+    // Back to the order page on its own after 6 seconds, or at once on a tap
     // outside the card. A touch on the card (Print, E-Bill) keeps it open.
     const close = () => setShowInvoice(false);
     const autoClose = useRef(null);
     useEffect(() => {
-        autoClose.current = setTimeout(close, 2000);
+        autoClose.current = setTimeout(close, 6000);
         return () => clearTimeout(autoClose.current);
         // Once, on open: the parent re-renders often and must not restart it.
         // eslint-disable-next-line react-hooks/exhaustive-deps
