@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { getBookingSlots, requestTableBooking } from "../lib/api";
+import useScrollLock from "../lib/useScrollLock";
 
 const dayLabel = (ymd, i) => {
   if (i === 0) return "Today";
@@ -20,6 +21,7 @@ const timeLabel = (hhmm) => {
  * timezone and settings; this form only offers what the server will accept.
  */
 export default function TableBookingModal({ slug, initial, onClose }) {
+  useScrollLock();
   const [info, setInfo] = useState(initial || null);
   const [date, setDate] = useState(initial?.date || "");
   const [time, setTime] = useState("");

@@ -20,6 +20,7 @@ function pickupTimes(windowHours, windows) {
 
 const clock = (d) => d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
 import { allowsFulfilment } from "../lib/dispatch";
+import useScrollLock from "../lib/useScrollLock";
 
 /**
  * Cart / checkout drawer.
@@ -38,6 +39,7 @@ export default function CartDrawer({
   placing,
   error,
 }) {
+  useScrollLock(open);
   const [orderType, setOrderType] = useState(
     ordering?.pickupEnabled !== false ? "pickup" : "delivery"
   );

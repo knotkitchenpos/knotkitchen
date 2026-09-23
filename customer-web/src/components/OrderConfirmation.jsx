@@ -1,4 +1,5 @@
 import React from "react";
+import useScrollLock from "../lib/useScrollLock";
 
 /**
  * Shown after a successful order. The `order` payload comes directly from the
@@ -6,6 +7,7 @@ import React from "react";
  * totals — never re-computed on the client.
  */
 export default function OrderConfirmation({ order, symbol, prepTime, onClose }) {
+  useScrollLock();
   return (
     <div
       className="fixed inset-0 z-[110] bg-black/50 flex items-center justify-center p-4"

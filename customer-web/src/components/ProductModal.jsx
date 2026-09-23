@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { capLabel, capOf } from "../lib/modifierGroups";
+import useScrollLock from "../lib/useScrollLock";
 
 /**
  * Product detail sheet.
@@ -18,6 +19,7 @@ import { capLabel, capOf } from "../lib/modifierGroups";
  * editing the DOM.
  */
 export default function ProductModal({ product, symbol, onClose, onAdd, allowNotes }) {
+  useScrollLock();
   const variants = product.variants || [];
   const groups = product.modifierGroups || [];
   const addons = product.addons || [];
