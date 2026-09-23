@@ -368,3 +368,11 @@ test("reports print on the receipt roll, and never as a page inside the Android 
   // In the app window.open returned the POS page itself and the report replaced the till.
   assert.match(SRC("src/utils/printDocument.js"), /if \(Capacitor\.isNativePlatform\(\)\) \{\s*throw new Error\(/);
 });
+
+test("the order receipt closes itself after 2 seconds, or on a tap outside it", () => {
+  const src = SRC("src/components/invoice/Invoice.jsx");
+  assert.match(src, /autoClose\.current = setTimeout\(close, 2000\);/);
+  assert.match(src, /<div onClick=\{close\} className="fixed inset-0/, "tap outside closes");
+  assert.match(src, /onClick=\{\(e\) => e\.stopPropagation\(\)\}/, "a tap on the card does not");
+  assert.match(src, /onPointerDown=\{\(\) => clearTimeout\(autoClose\.current\)\}/, "using the card keeps it open");
+});

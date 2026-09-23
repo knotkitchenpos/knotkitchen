@@ -1,6 +1,6 @@
 /* API receipt data is intentionally flexible; this component accepts the server payload. */
  
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { FaCheck } from "react-icons/fa6";
 import { useMutation } from "@tanstack/react-query";
@@ -86,6 +86,17 @@ const Invoice = ({
 
     const [emailedTo, setEmailedTo] = useState("");
 
+    // Back to the order page on its own after 2 seconds, or at once on a tap
+    // outside the card. A touch on the card (Print, E-Bill) keeps it open.
+    const close = () => setShowInvoice(false);
+    const autoClose = useRef(null);
+    useEffect(() => {
+        autoClose.current = setTimeout(close, 2000);
+        return () => clearTimeout(autoClose.current);
+        // Once, on open: the parent re-renders often and must not restart it.
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     const eBillMutation = useMutation({
         mutationFn: () =>
             sendEBill({ orderId: safeOrder._id, phone: customerPhone }),
@@ -123,8 +134,12 @@ const Invoice = ({
         // Module 3 §6 — darker, more opaque overlay + card so the receipt
         // reads clearly on any wallpaper. Kept as its own <div> so the
         // print stylesheet above is unaffected.
-        <div className="fixed inset-0 bg-[#0F172A]/85 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
-            <div className="bg-[#0B1120] text-white rounded-2xl shadow-2xl w-full max-w-md border border-white/10 overflow-hidden">
+        <div onClick={close} className="fixed inset-0 bg-[#0F172A]/85 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
+            <div
+                onClick={(e) => e.stopPropagation()}
+                onPointerDown={() => clearTimeout(autoClose.current)}
+                className="bg-[#0B1120] text-white rounded-2xl shadow-2xl w-full max-w-md border border-white/10 overflow-hidden"
+            >
                 <div className="p-6">
                     {/* Success tick */}
                     <div className="flex justify-center mb-4">
@@ -339,7 +354,7 @@ const Invoice = ({
                         </button>
                     )}
                     <button
-                        onClick={() => setShowInvoice(false)}
+                        onClick={close}
                         className="h-11 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold hover:bg-[#D64502] transition-colors"
                     >
                         Close
