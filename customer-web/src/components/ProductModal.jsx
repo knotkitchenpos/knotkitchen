@@ -136,13 +136,23 @@ export default function ProductModal({ product, symbol, onClose, onAdd, allowNot
 
         {/* Choices */}
         <div className="flex-1 space-y-5 overflow-y-auto p-4">
-          {/* The whole photo, not a crop: contain, on a neutral ground. */}
+          {/* The whole photo, never cropped, filling the frame: a blurred copy
+              of the same photo fills what the photo itself does not, instead
+              of grey bars beside a tall or narrow photo. */}
           {product.image ? (
-            <img
-              src={product.image}
-              alt={product.imageAlt || product.name}
-              className="max-h-72 w-full rounded-2xl bg-slate-100 object-contain"
-            />
+            <div className="relative h-72 w-full overflow-hidden rounded-2xl bg-slate-100">
+              <img
+                src={product.image}
+                alt=""
+                aria-hidden="true"
+                className="absolute inset-0 h-full w-full scale-110 object-cover opacity-70 blur-2xl"
+              />
+              <img
+                src={product.image}
+                alt={product.imageAlt || product.name}
+                className="relative h-full w-full object-contain"
+              />
+            </div>
           ) : null}
           {variants.length > 0 ? (
             <Group title="Choose a size" hint="Required" hintTone="required">
