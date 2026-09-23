@@ -709,9 +709,9 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
       </div>
 
       {/* ===== Store header ===== */}
-      <div className="hidden lg:flex px-4 py-3.5 items-center gap-3 border-b border-[#E2E8F0] shrink-0">
+      <div className="hidden lg:flex px-4 py-3.5 short:py-2 items-center gap-3 border-b border-[#E2E8F0] shrink-0">
         <div
-          className={`w-[42px] h-[42px] rounded-full flex items-center justify-center shrink-0 overflow-hidden ${
+          className={`w-[42px] h-[42px] short:w-9 short:h-9 rounded-full flex items-center justify-center shrink-0 overflow-hidden ${
             restaurantLogo ? "bg-white border border-[#E2E8F0]" : "bg-[#0B1120]"
           }`}
           title={displayName}
@@ -768,7 +768,7 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
       </div>
 
       {/* ===== Order type tabs (Module 7 §4: Filtered by Order Type Toggles) ===== */}
-      <div className="px-4 py-3 shrink-0 flex flex-wrap gap-2">
+      <div className="px-4 py-3 short:py-2 shrink-0 flex flex-wrap gap-2">
         {ORDER_TYPES.filter(({ key }) => {
           const k = key === "Table Service" ? "table" : key.toLowerCase();
           return orderTypeToggles[k] !== false;
@@ -778,7 +778,7 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
             <button
               key={key}
               onClick={() => dispatch(setOrderType(key))}
-              className={`flex-1 min-w-[90px] h-[46px] rounded-xl flex items-center justify-center gap-2 text-[13.5px] font-bold border transition-all ${
+              className={`flex-1 min-w-[90px] h-[46px] short:h-10 rounded-xl flex items-center justify-center gap-2 text-[13.5px] font-bold border transition-all ${
                 on
                   ? "bg-[#FD5302] text-white border-[#FD5302] shadow-[0_6px_16px_-6px_rgba(253,83,2,0.6)]"
                   : "bg-white text-[#334155] border-[#E2E8F0] hover:border-[#CBD5E1]"
@@ -793,9 +793,10 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
 
       {/* ===== Collection Customer Info (directly on page for faster ordering) ===== */}
       {!isTable && !isDelivery && (
-        <div className="px-4 pb-3 shrink-0">
-          <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3 space-y-2">
-            <div className="flex items-center justify-between">
+        <div className="px-4 pb-3 short:pb-2 shrink-0">
+          <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3 short:p-2 space-y-2">
+            {/* The placeholders say what each box is, so a short screen drops this row. */}
+            <div className="flex items-center justify-between short:hidden">
               <span className="text-[11.5px] font-extrabold text-[#0F172A] uppercase tracking-wider flex items-center gap-1.5">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
@@ -884,7 +885,7 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
             <p className="text-[12px] text-[#94A3B8] mt-0.5">Tap a product to add it.</p>
           </div>
         ) : (
-          <div className="space-y-5">
+          <div className="space-y-5 short:space-y-3">
             {cart.map((item) => {
               // Split display name into the true product name and any modifier tokens
               // (added via " (+ Modifier1, Modifier2)" by ProductPanel's add flow).
@@ -1056,7 +1057,7 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
 
       {/* ===== Add item note ===== */}
       {cart.length > 0 && (
-        <div className="px-4 pb-3 shrink-0">
+        <div className="px-4 pb-3 short:pb-1.5 shrink-0">
           <button
             onClick={() => {
               const last = cart[cart.length - 1];
@@ -1071,7 +1072,7 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
       )}
 
       {/* ===== Summary ===== */}
-      <div className="px-4 py-3 border-t border-[#E2E8F0] shrink-0 space-y-2">
+      <div className="px-4 py-3 short:py-2 border-t border-[#E2E8F0] shrink-0 space-y-2 short:space-y-1">
         <div className="flex items-center justify-between text-[13.5px]">
           <span className="text-[#475569]">Subtotal</span>
           <span className="font-bold text-[#0F172A]">{money(subtotal)}</span>
@@ -1138,17 +1139,17 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
       </div>
 
       {/* ===== Actions ===== */}
-      <div className="px-4 pb-4 shrink-0 grid grid-cols-[1fr_1.35fr] gap-2.5">
+      <div className="px-4 pb-4 short:pb-3 shrink-0 grid grid-cols-[1fr_1.35fr] gap-2.5">
         <button
           onClick={hold}
-          className="h-[50px] rounded-xl border border-[#FD5302] bg-white text-[#C2410C] text-[14px] font-bold flex items-center justify-center gap-2 hover:bg-[#FFF1E8] transition-colors"
+          className="h-[50px] short:h-11 rounded-xl border border-[#FD5302] bg-white text-[#C2410C] text-[14px] font-bold flex items-center justify-center gap-2 hover:bg-[#FFF1E8] transition-colors"
         >
           <IconClock /> Hold Order
         </button>
         <button
           onClick={finish}
           disabled={busy || cart.length === 0}
-          className="h-[50px] rounded-xl bg-[#FD5302] text-white text-[14.5px] font-bold flex items-center justify-center gap-2 shadow-[0_8px_20px_-8px_rgba(253,83,2,0.7)] hover:bg-[#D64502] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="h-[50px] short:h-11 rounded-xl bg-[#FD5302] text-white text-[14.5px] font-bold flex items-center justify-center gap-2 shadow-[0_8px_20px_-8px_rgba(253,83,2,0.7)] hover:bg-[#D64502] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {busy
             ? "Processing…"

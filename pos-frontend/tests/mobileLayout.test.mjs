@@ -69,3 +69,14 @@ test("REGRESSION: nothing newer than the tablets' WebView (Chrome 94) is used", 
     assert.ok(!/structuredClone\(|\.toSorted\(|\.toReversed\(|\.findLast(Index)?\(|Object\.groupBy\(/.test(src), file);
   }
 });
+
+test("REGRESSION: on a landscape tablet the cart list keeps room", () => {
+  // Inside the app the tablet is about 1280x730. The fixed rows above and
+  // below the cart took ~510px and left the item list ~220px.
+  const cfg = fs.readFileSync(path.join(__dirname, "..", "tailwind.config.js"), "utf8");
+  assert.match(cfg, /short: \{ raw: "\(max-height: 820px\)" \}/);
+  const panel = fs.readFileSync(path.join(__dirname, "..", "src", "components", "pos", "OrderPanel.jsx"), "utf8");
+  for (const cls of ["short:py-2", "short:h-10", "short:hidden", "short:h-11", "short:space-y-3"]) {
+    assert.ok(panel.includes(cls), `${cls} missing from OrderPanel`);
+  }
+});

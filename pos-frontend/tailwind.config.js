@@ -3,6 +3,9 @@ export default {
   content: ["./index.html", "./src/**/*.{js,ts,jsx,tsx}"],
   theme: {
     extend: {
+      // Landscape tablets (about 1280x730 inside the app): the cart panel's
+      // fixed header and footer are compacted so the item list keeps room.
+      screens: { short: { raw: "(max-height: 820px)" } },
       colors: {
         // Exact reference design tokens
         sidebar: "#0B1120",
