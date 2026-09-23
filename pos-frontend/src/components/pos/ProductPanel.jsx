@@ -799,7 +799,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
                   }`}
                 >
                   <div className="relative w-11 h-11 rounded-lg overflow-hidden bg-[#F1F5F9] shrink-0 flex items-center justify-center">
-                    {img ? <img src={img} alt={item.name} className="w-full h-full object-cover" /> : "🍽️"}
+                    {img ? <FitImage src={img} alt={item.name} loading="lazy" className="w-full h-full" /> : "🍽️"}
                     <DietMark veg={item.isVegetarian !== false} />
                   </div>
                   <div className="min-w-0 flex-1">
