@@ -23,12 +23,23 @@ export default function ProductCard({ product, symbol, onSelect }) {
       className={base + disabled}
     >
       {product.image ? (
-        <img
-          src={product.thumbnail || product.image}
-          alt={product.imageAlt || product.name}
-          loading="lazy"
-          className="w-full h-40 object-cover"
-        />
+        // The whole photo, never cropped, on a blurred copy of itself (as in
+        // ProductModal), instead of cutting it to the card's shape.
+        <div className="relative w-full h-40 overflow-hidden bg-slate-100">
+          <img
+            src={product.thumbnail || product.image}
+            alt=""
+            aria-hidden="true"
+            loading="lazy"
+            className="absolute inset-0 w-full h-full scale-110 object-cover opacity-70 blur-xl"
+          />
+          <img
+            src={product.thumbnail || product.image}
+            alt={product.imageAlt || product.name}
+            loading="lazy"
+            className="relative w-full h-full object-contain"
+          />
+        </div>
       ) : (
         <div className="w-full h-40 bg-slate-100 flex items-center justify-center text-4xl">
           <span aria-hidden="true">&#127869;</span>
