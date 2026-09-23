@@ -38,6 +38,10 @@ test("the till shows only the published menu", () => {
     if (/queryFn:\s*getMenus\b(?!\()|getMenus\(\)/.test(src) && !DRAFT_READERS_ALLOWED.has(rel)) offenders.push(rel);
   }
   assert.deepEqual(offenders, [], `draft menu read outside an editor: ${offenders.join(", ")}`);
+  // The till's read lives in utils/systemMenu.js (the copy kept on the device).
   const pp = fs.readFileSync(path.join(SRC, "components/pos/ProductPanel.jsx"), "utf8");
-  assert.match(pp, /getMenus\(\{ source: "system" \}\)/);
+  assert.match(pp, /queryFn: loadSystemMenu,/);
+  const store = fs.readFileSync(path.join(SRC, "utils/systemMenu.js"), "utf8");
+  assert.match(store, /getMenus\(\{ source: "system" \}\)/);
+  assert.match(store, /getMenus\(\{ source: "system", versionOnly: 1 \}\)/);
 });

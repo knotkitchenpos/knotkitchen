@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const Menu = require("../models/menuModel");
 const createHttpError = require("http-errors");
 const mongoose = require("mongoose");
@@ -30,6 +31,19 @@ const { normalizeCap } = require("../services/modifierGroups");
 const { userScope: menuScopeFor } = require("../services/tenantContext");
 
 const { AUDIENCES, projectMenu, isVisibleOnPos, snapshotOf } = require("../services/menuCache");
+
+/**
+ * A fingerprint of what the tills show, so a device holding a saved copy can
+ * ask "has the menu changed?" without downloading it:
+ * GET /api/menu?source=system&versionOnly=1. Timestamps are left out, since
+ * saving a draft touches them without changing anything the till shows.
+ */
+const menuVersion = (payload) =>
+  crypto
+    .createHash("sha1")
+    .update(JSON.stringify(payload, (k, v) => (k === "updatedAt" || k === "__v" ? undefined : v)))
+    .digest("hex")
+    .slice(0, 16);
 
 const getMenus = async (req, res, next) => {
   try {
@@ -78,7 +92,9 @@ const getMenus = async (req, res, next) => {
       ? projected.filter((m) => isVisibleOnPos(m)).filter((m) => Array.isArray(m.items) && m.items.length > 0)
       : projected;
 
-    res.status(200).json({ success: true, data: payload });
+    const version = menuVersion(payload);
+    if (req.query.versionOnly === "1") return res.status(200).json({ success: true, version });
+    res.status(200).json({ success: true, data: payload, version });
   } catch (error) {
     next(error);
   }
@@ -1132,6 +1148,7 @@ const publishWebsiteCache = (req, res, next) =>
 module.exports = {
   // Exposed for tests: takeaway isolation lives or dies on this helper.
   __menuScopeForTest: menuScopeFor,
+  menuVersion,
   getMenus,
   addCategory,
   updateCategory,

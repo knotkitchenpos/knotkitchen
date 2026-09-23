@@ -4,9 +4,9 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
 import { enqueueSnackbar } from "notistack";
 import { capOf } from "../../utils/modifierGroups";
-import { getMenus, getPopularItems } from "../../https";
-import { readStoreScoped, writeStoreScoped } from "../../utils/storeSession";
+import { getPopularItems } from "../../https";
 import { thumbUrl } from "../../utils";
+import { loadSystemMenu, readSavedMenu, systemMenuKey } from "../../utils/systemMenu";
 import { addItems } from "../../redux/slices/cartSlice";
 import { ModalShell } from "./ModalShell";
 
@@ -154,22 +154,22 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
   const [selectedVariantId, setSelectedVariantId] = useState(null);
   const [selectedModifiers, setSelectedModifiers] = useState({});
 
-  // The last menu the server sent is kept on the device, so the till can
-  // still take orders (offline queue) when the internet is down.
+  // The menu is kept on this device (utils/systemMenu.js): the till opens
+  // from the saved copy at once, then checks the server's menu version in
+  // the background and downloads only when it changed. It checks again
+  // every 5 minutes, on reconnect and when the menu is published
+  // ("menu:updated"), and keeps working from the copy when offline.
   const { data: menusRes, isLoading } = useQuery({
-    queryKey: ["menus", "system"],
-    queryFn: async () => {
-      try {
-        const res = await getMenus({ source: "system" });
-        writeStoreScoped("kk.menu.system.v1", res?.data);
-        return res;
-      } catch (err) {
-        const cached = readStoreScoped("kk.menu.system.v1", null);
-        if (cached && !err?.response) return { data: cached };
-        throw err;
-      }
+    queryKey: systemMenuKey(),
+    queryFn: loadSystemMenu,
+    initialData: () => {
+      const saved = readSavedMenu();
+      return saved?.body ? { data: saved.body } : undefined;
     },
-    staleTime: Infinity,
+    // Shown straight away but treated as old, so the check runs on open.
+    initialDataUpdatedAt: 0,
+    staleTime: 5 * 60 * 1000,
+    refetchInterval: 5 * 60 * 1000,
     refetchOnWindowFocus: false,
   });
 
@@ -642,13 +642,15 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
         </div>
       )}
 
-      {/* Section heading (the ONLY heading on this screen). */}
-      <div className="px-3 sm:px-5 pb-2 shrink-0 flex items-center justify-between gap-2">
+      {/* Section heading (the ONLY heading on this screen). Its buttons are
+          full-size pills with a gap under them: as small underlined text right
+          above the first row, a tap on "View All" kept landing on a product. */}
+      <div className="px-3 sm:px-5 pb-4 shrink-0 flex items-center justify-between gap-2">
         <h2 className="text-[16px] font-extrabold text-[#0F172A]">{heading}</h2>
         {showPopular && menus.length > 0 && (
           <button
             onClick={() => setViewAll(true)}
-            className="text-[12.5px] font-bold text-[#C2410C] underline underline-offset-2"
+            className="h-9 px-3.5 rounded-lg border border-[#FDBA8C] bg-[#FFF1E8] text-[12.5px] font-bold text-[#C2410C] shrink-0 hover:bg-[#FFE4D1]"
           >
             View All
           </button>
@@ -656,7 +658,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
         {viewAll && (
           <button
             onClick={() => setViewAll(false)}
-            className="text-[12.5px] font-bold text-[#C2410C] underline underline-offset-2"
+            className="h-9 px-3.5 rounded-lg border border-[#FDBA8C] bg-[#FFF1E8] text-[12.5px] font-bold text-[#C2410C] shrink-0 hover:bg-[#FFE4D1]"
           >
             Back to Popular Items
           </button>
@@ -664,7 +666,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
         {subcat && (
           <button
             onClick={() => setSubcat(null)}
-            className="text-[12.5px] font-bold text-[#C2410C] underline underline-offset-2"
+            className="h-9 px-3.5 rounded-lg border border-[#FDBA8C] bg-[#FFF1E8] text-[12.5px] font-bold text-[#C2410C] shrink-0 hover:bg-[#FFE4D1]"
           >
             Back to {category?.name}
           </button>
