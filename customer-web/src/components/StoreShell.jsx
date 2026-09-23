@@ -82,7 +82,9 @@ export default function StoreShell({
       />
 
       {(s.categories || []).length > 0 ? (
-        <div className="sticky top-[52px] z-30 border-b border-slate-200 bg-slate-50/95 backdrop-blur">
+        // Solid, not frosted: a backdrop blur on a sticky bar ghosted the menu
+        // while scrolling on older Android tablets.
+        <div className="sticky top-[52px] z-30 border-b border-slate-200 bg-slate-50">
           <div className="max-w-5xl mx-auto px-4 pt-4 pb-3 space-y-2.5">
             <input
               type="search"
@@ -237,7 +239,7 @@ export default function StoreShell({
 
 function Header({ homePath, title, logo, cartCount, onOpenCart }) {
   return (
-    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur border-b border-slate-200">
+    <header className="sticky top-0 z-40 bg-white border-b border-slate-200">
       <div className="max-w-5xl mx-auto flex items-center justify-between px-4 py-3">
         {/* The masthead is the way back to the landing page — the convention
             everywhere else on the web, and the only route back now that the
