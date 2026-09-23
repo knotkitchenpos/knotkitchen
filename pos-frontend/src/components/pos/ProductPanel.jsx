@@ -8,6 +8,7 @@ import { getMenus, getPopularItems } from "../../https";
 import { readStoreScoped, writeStoreScoped } from "../../utils/storeSession";
 import { addItems } from "../../redux/slices/cartSlice";
 import { ModalShell } from "./ModalShell";
+import FitImage from "../shared/FitImage";
 
 /* ---------- Reference tile palette ---------- */
 const TILE_COLORS = [
@@ -749,7 +750,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
                   {/* Image with veg mark overlay (top-left) */}
                   <div className="relative w-full aspect-[4/3] bg-[#F1F5F9]">
                     {img ? (
-                      <img src={img} alt={item.name} loading="lazy" className="w-full h-full object-cover" />
+                      <FitImage src={img} alt={item.name} loading="lazy" className="w-full h-full" />
                     ) : (
                       <span className="w-full h-full flex items-center justify-center text-2xl">🍽️</span>
                     )}

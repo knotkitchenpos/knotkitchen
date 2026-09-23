@@ -1,5 +1,6 @@
 import React from "react";
 import { IconX } from "./icons";
+import FitImage from "../../shared/FitImage";
 
 /** Read-only product card; "Edit Product" hands the item back to the page's form. */
 const ViewProductModal = ({ product, onClose, onEdit }) => (
@@ -25,7 +26,7 @@ const ViewProductModal = ({ product, onClose, onEdit }) => (
         </div>
   
         {product?.imageUrl || product?.image ? (
-          <img src={product?.imageUrl || product?.image} alt={product?.name || "Product"} className="w-full h-44 object-cover rounded-xl border" />
+          <FitImage src={product?.imageUrl || product?.image} alt={product?.name || "Product"} className="w-full h-44 rounded-xl border" />
         ) : null}
   
         <div className="space-y-3 text-[13px]">
