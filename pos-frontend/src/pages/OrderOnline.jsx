@@ -10,7 +10,7 @@ import {
   qrVerifyPayment,
 } from "../https/publicApi";
 import { loadCashfree } from "../utils/cashfree";
-import { money as formatMoney } from "../utils";
+import { money as formatMoney, thumbUrl } from "../utils";
 
 /**
  * Customer-facing table-QR menu (mobile-first).
@@ -803,7 +803,7 @@ export default function OrderOnline() {
               >
                 {item.imageUrl ? (
                   <img
-                    src={item.imageUrl}
+                    src={thumbUrl(item.imageUrl, 160)}
                     alt=""
                     className="w-20 h-20 rounded-xl object-cover shrink-0 bg-slate-100"
                     loading="lazy"

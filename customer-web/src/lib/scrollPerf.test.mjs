@@ -22,3 +22,11 @@ test("REGRESSION: the page behind an open cart or popup does not scroll", () => 
     assert.match(read(`components/${f}.jsx`), /useScrollLock\(\);/, `${f} locks the page`);
   }
 });
+
+test("menu cards load the small copy of an uploaded photo", async () => {
+  const { thumbUrl } = await import("./thumbUrl.js");
+  assert.equal(thumbUrl("https://api.knotkitchen.com/uploads/1/products/a.webp", 640), "https://api.knotkitchen.com/uploads/1/products/a.webp?w=640");
+  assert.equal(thumbUrl("https://cdn.example.com/a.webp", 640), "https://cdn.example.com/a.webp", "not ours: unchanged");
+  assert.equal(thumbUrl("", 640), "");
+  assert.match(read("components/ProductCard.jsx"), /thumbUrl\(product\.thumbnail \|\| product\.image, 640\)/);
+});

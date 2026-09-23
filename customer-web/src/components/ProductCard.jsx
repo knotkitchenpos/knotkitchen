@@ -1,4 +1,5 @@
 import React from "react";
+import { thumbUrl } from "../lib/thumbUrl";
 
 /**
  * Small self-contained product card. Delegates the add-to-cart flow up to
@@ -28,7 +29,7 @@ export default function ProductCard({ product, symbol, onSelect }) {
         // scrolling on slow devices.
         <div className="w-full h-40 overflow-hidden bg-slate-100">
           <img
-            src={product.thumbnail || product.image}
+            src={thumbUrl(product.thumbnail || product.image, 640)}
             alt={product.imageAlt || product.name}
             loading="lazy"
             className="w-full h-full object-contain"

@@ -42,3 +42,12 @@ export const localDay = (d = new Date()) => {
   const day = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${day}`;
 };
+
+/**
+ * A small copy of an uploaded photo for grids and thumbnails: the backend
+ * makes `?w=160|320|640` versions (pos-backend/middlewares/imageThumbnail.js).
+ * Full-size 1254px photos in the product grid ran a low-end tablet out of
+ * image memory. Other URLs are returned unchanged.
+ */
+export const thumbUrl = (url, w) =>
+  typeof url === "string" && /\/uploads\/[^?#]+\.(webp|png|jpe?g)$/i.test(url) ? `${url}?w=${w}` : url;

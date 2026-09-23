@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
 import { readStoreScoped, writeStoreScoped } from "../../utils/storeSession";
 import { capOf } from "../../utils/modifierGroups";
+import { thumbUrl } from "../../utils";
 import {
   addCategory,
   updateCategory,
@@ -1580,7 +1581,7 @@ const ManageMenu = () => {
                       </button>
 
                       {item.imageUrl || item.image ? (
-                        <img src={item.imageUrl || item.image} alt={item.name} className="w-8 h-8 rounded-lg object-cover shrink-0 border" />
+                        <img src={thumbUrl(item.imageUrl || item.image, 160)} alt={item.name} loading="lazy" className="w-8 h-8 rounded-lg object-cover shrink-0 border" />
                       ) : (
                         <IconDoc />
                       )}

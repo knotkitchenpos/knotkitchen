@@ -128,3 +128,13 @@ test("REGRESSION: long add-on and variant names end in ... inside their box", ()
   assert.match(SRC, /<div className="truncate">\{v\.name\}<\/div>/);
   assert.ok(!/\{groupTotalQty\} \/ \{groupMax\}/.test(SRC), "no '0 / Infinity' badge");
 });
+
+test("REGRESSION: the product grid loads small copies of the photos", async () => {
+  // 72 photos at 1254px needed ~450 MB of image memory; the tablet blanked
+  // the grid while scrolling.
+  const { thumbUrl } = await import("../src/utils/index.js");
+  assert.equal(thumbUrl("https://api.knotkitchen.com/uploads/1/products/a.webp", 320), "https://api.knotkitchen.com/uploads/1/products/a.webp?w=320");
+  assert.equal(thumbUrl("https://img.example.com/a.jpg", 320), "https://img.example.com/a.jpg", "not ours: unchanged");
+  assert.match(SRC, /src=\{thumbUrl\(img, 320\)\}/, "grid");
+  assert.match(SRC, /src=\{thumbUrl\(img, 160\)\}/, "list");
+});

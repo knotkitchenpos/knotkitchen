@@ -152,6 +152,8 @@ app.use(
         res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
         next();
     },
+    // `?w=320` etc.: a small copy for grids and thumbnails (middlewares/imageThumbnail.js).
+    require("./middlewares/imageThumbnail").imageThumbnail(config.uploadsDir),
     express.static(config.uploadsDir, { index: false, dotfiles: "deny" })
 );
 

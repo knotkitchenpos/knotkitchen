@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { listMedia, uploadMedia, deleteMedia } from "../../https/storefrontApi";
+import { thumbUrl } from "../../utils";
 
 /**
  * Media Library (§6, §7).
@@ -136,7 +137,7 @@ const MediaLibrary = ({ mode = "manage", folder, onSelect, onClose }) => {
               className="group relative aspect-square rounded-xl overflow-hidden border border-[#26344B] bg-[#111B2E]"
             >
               <img
-                src={asset.thumbnailUrl || asset.url}
+                src={thumbUrl(asset.thumbnailUrl || asset.url, 320)}
                 alt={asset.altText || asset.fileName}
                 loading="lazy"
                 className="w-full h-full object-cover"
