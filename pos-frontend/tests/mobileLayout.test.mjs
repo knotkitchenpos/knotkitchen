@@ -76,7 +76,15 @@ test("REGRESSION: on a landscape tablet the cart list keeps room", () => {
   const cfg = fs.readFileSync(path.join(__dirname, "..", "tailwind.config.js"), "utf8");
   assert.match(cfg, /short: \{ raw: "\(max-height: 820px\)" \}/);
   const panel = fs.readFileSync(path.join(__dirname, "..", "src", "components", "pos", "OrderPanel.jsx"), "utf8");
-  for (const cls of ["short:py-2", "short:h-10", "short:hidden", "short:h-11", "short:space-y-3"]) {
+  for (const cls of ["short:py-2", "short:h-10", "short:h-11", "short:space-y-3"]) {
     assert.ok(panel.includes(cls), `${cls} missing from OrderPanel`);
   }
+});
+
+test("the collection customer boxes sit just above the bill, not above the cart", () => {
+  const panel = fs.readFileSync(path.join(__dirname, "..", "src", "components", "pos", "OrderPanel.jsx"), "utf8");
+  const summary = panel.indexOf("===== Summary =====");
+  assert.ok(panel.indexOf("Customer name (optional)") > summary, "inputs live in the summary block");
+  assert.ok(panel.indexOf("Customer name (optional)") < panel.indexOf("<span className=\"text-[#475569]\">Subtotal</span>"), "above Subtotal");
+  assert.ok(!/Optional for Walk-in/.test(panel), "no separate Customer Info box");
 });

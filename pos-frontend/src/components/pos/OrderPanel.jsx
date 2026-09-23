@@ -791,66 +791,6 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
         })}
       </div>
 
-      {/* ===== Collection Customer Info (directly on page for faster ordering) ===== */}
-      {!isTable && !isDelivery && (
-        <div className="px-4 pb-3 short:pb-2 shrink-0">
-          <div className="bg-[#F8FAFC] border border-[#E2E8F0] rounded-xl p-3 short:p-2 space-y-2">
-            {/* The placeholders say what each box is, so a short screen drops this row. */}
-            <div className="flex items-center justify-between short:hidden">
-              <span className="text-[11.5px] font-extrabold text-[#0F172A] uppercase tracking-wider flex items-center gap-1.5">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" />
-                  <circle cx="12" cy="7" r="4" />
-                </svg>
-                Customer Info
-              </span>
-              <span className="text-[10.5px] font-semibold text-[#94A3B8]">Optional for Walk-in</span>
-            </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              <div>
-                <input
-                  type="text"
-                  value={customer.customerName || ""}
-                  onChange={(e) =>
-                    dispatch(
-                      setCustomer({
-                        name: e.target.value,
-                        phone: customer.customerPhone || "",
-                        guests: customer.guests || 0,
-                      })
-                    )
-                  }
-                  placeholder="Customer Name"
-                  maxLength={120}
-                  className="w-full h-[36px] px-3 bg-white rounded-lg border border-[#E2E8F0] text-[13px] font-medium text-[#0F172A] placeholder-[#94A3B8] focus:border-[#FD5302] focus:ring-1 focus:ring-[#FD5302] outline-none transition-all"
-                />
-              </div>
-
-              <div>
-                <input
-                  type="tel"
-                  value={customer.customerPhone || ""}
-                  onChange={(e) =>
-                    dispatch(
-                      setCustomer({
-                        name: customer.customerName || "",
-                        phone: e.target.value,
-                        guests: customer.guests || 0,
-                      })
-                    )
-                  }
-                  placeholder="Phone Number (+91…)"
-                  maxLength={20}
-                  className="w-full h-[36px] px-3 bg-white rounded-lg border border-[#E2E8F0] text-[13px] font-medium text-[#0F172A] placeholder-[#94A3B8] focus:border-[#FD5302] focus:ring-1 focus:ring-[#FD5302] outline-none transition-all"
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-
       {/* ===== Cart header ===== */}
       <div className="px-4 pb-2 shrink-0 flex items-center justify-between border-b border-[#E2E8F0] pt-1">
         <h3 className="text-[16px] font-extrabold text-[#0F172A] pb-2">Order Cart ({count})</h3>
@@ -1073,6 +1013,49 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
 
       {/* ===== Summary ===== */}
       <div className="px-4 py-3 short:py-2 border-t border-[#E2E8F0] shrink-0 space-y-2 short:space-y-1">
+        {/* Collection customer, optional: just above the bill so the cart
+            list gets the space under the order-type tabs. */}
+        {!isTable && !isDelivery && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pb-1">
+            <div>
+              <input
+                type="text"
+                value={customer.customerName || ""}
+                onChange={(e) =>
+                  dispatch(
+                    setCustomer({
+                      name: e.target.value,
+                      phone: customer.customerPhone || "",
+                      guests: customer.guests || 0,
+                    })
+                  )
+                }
+                placeholder="Customer name (optional)"
+                maxLength={120}
+                className="w-full h-[36px] px-3 bg-white rounded-lg border border-[#E2E8F0] text-[13px] font-medium text-[#0F172A] placeholder-[#94A3B8] focus:border-[#FD5302] focus:ring-1 focus:ring-[#FD5302] outline-none transition-all"
+              />
+            </div>
+
+            <div>
+              <input
+                type="tel"
+                value={customer.customerPhone || ""}
+                onChange={(e) =>
+                  dispatch(
+                    setCustomer({
+                      name: customer.customerName || "",
+                      phone: e.target.value,
+                      guests: customer.guests || 0,
+                    })
+                  )
+                }
+                placeholder="Phone (+91…, optional)"
+                maxLength={20}
+                className="w-full h-[36px] px-3 bg-white rounded-lg border border-[#E2E8F0] text-[13px] font-medium text-[#0F172A] placeholder-[#94A3B8] focus:border-[#FD5302] focus:ring-1 focus:ring-[#FD5302] outline-none transition-all"
+              />
+            </div>
+          </div>
+        )}
         <div className="flex items-center justify-between text-[13.5px]">
           <span className="text-[#475569]">Subtotal</span>
           <span className="font-bold text-[#0F172A]">{money(subtotal)}</span>
