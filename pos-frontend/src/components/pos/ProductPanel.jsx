@@ -8,7 +8,6 @@ import { getMenus, getPopularItems } from "../../https";
 import { readStoreScoped, writeStoreScoped } from "../../utils/storeSession";
 import { addItems } from "../../redux/slices/cartSlice";
 import { ModalShell } from "./ModalShell";
-import FitImage from "../shared/FitImage";
 
 /* ---------- Reference tile palette ---------- */
 const TILE_COLORS = [
@@ -750,7 +749,9 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
                   {/* Image with veg mark overlay (top-left) */}
                   <div className="relative w-full aspect-[4/3] bg-[#F1F5F9]">
                     {img ? (
-                      <FitImage src={img} alt={item.name} loading="lazy" className="w-full h-full" />
+                      // Whole photo, never cropped. No blurred backdrop here: a blur on
+                      // every card blanked the grid while scrolling on the tablet.
+                      <img src={img} alt={item.name} loading="lazy" className="w-full h-full object-contain" />
                     ) : (
                       <span className="w-full h-full flex items-center justify-center text-2xl">🍽️</span>
                     )}
@@ -799,7 +800,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
                   }`}
                 >
                   <div className="relative w-11 h-11 rounded-lg overflow-hidden bg-[#F1F5F9] shrink-0 flex items-center justify-center">
-                    {img ? <FitImage src={img} alt={item.name} loading="lazy" className="w-full h-full" /> : "🍽️"}
+                    {img ? <img src={img} alt={item.name} loading="lazy" className="w-full h-full object-contain" /> : "🍽️"}
                     <DietMark veg={item.isVegetarian !== false} />
                   </div>
                   <div className="min-w-0 flex-1">

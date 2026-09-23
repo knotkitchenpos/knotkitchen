@@ -115,3 +115,8 @@ test("SOURCE: nothing renders the raw subcat state directly", () => {
   const body = SRC.slice(SRC.indexOf("return ("));
   assert.ok(!body.includes("selectedSubcat"), "render from `subcat`, not `selectedSubcat`");
 });
+
+test("REGRESSION: no blur on product cards, it blanked the grid while scrolling on the tablet", () => {
+  assert.ok(!/blur-|FitImage/.test(SRC), "a blurred backdrop per card is too heavy for the tablet's WebView");
+  assert.match(SRC, /className="w-full h-full object-contain"/, "whole photo, never cropped");
+});

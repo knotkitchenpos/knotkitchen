@@ -7,6 +7,9 @@ import React from "react";
  * the website's product popup (customer-web ProductModal).
  *
  * `className` sizes and shapes the frame (e.g. "w-full h-44 rounded-xl").
+ *
+ * For a single photo only (a popup). Not in scrolling lists: a blur on every
+ * card blanked the product grid while scrolling on a low-end tablet.
  */
 const FitImage = ({ src, alt = "", className = "", loading }) => (
   <div className={`relative overflow-hidden bg-[#F1F5F9] ${className}`}>

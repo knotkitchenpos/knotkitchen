@@ -23,21 +23,15 @@ export default function ProductCard({ product, symbol, onSelect }) {
       className={base + disabled}
     >
       {product.image ? (
-        // The whole photo, never cropped, on a blurred copy of itself (as in
-        // ProductModal), instead of cutting it to the card's shape.
-        <div className="relative w-full h-40 overflow-hidden bg-slate-100">
-          <img
-            src={product.thumbnail || product.image}
-            alt=""
-            aria-hidden="true"
-            loading="lazy"
-            className="absolute inset-0 w-full h-full scale-110 object-cover opacity-70 blur-xl"
-          />
+        // The whole photo, never cropped. No blurred backdrop on cards (only
+        // in ProductModal): a blur on every card blanks the list while
+        // scrolling on slow devices.
+        <div className="w-full h-40 overflow-hidden bg-slate-100">
           <img
             src={product.thumbnail || product.image}
             alt={product.imageAlt || product.name}
             loading="lazy"
-            className="relative w-full h-full object-contain"
+            className="w-full h-full object-contain"
           />
         </div>
       ) : (
