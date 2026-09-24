@@ -328,7 +328,7 @@ test("an add-on is prorated for the rest of the period, taxed, and charged once 
 
   // What the add-ons unlock.
   const status = await billing.statusFor(RID, on);
-  assert.deepEqual(status.features, { website: true, tableQr: true, paymentGateway: true });
+  assert.deepEqual(status.features, { website: true, tableQr: true, paymentGateway: true, onlineOrdering: true });
   assert.deepEqual(status.addons.map((a) => [a.code, a.owned, a.active]), [["TABLE_QR", true, true], ["WEBSITE", true, true], ["GMB", false, false]]);
   assert.equal(status.addons[0].price.label, "₹200.00");
 });
@@ -580,7 +580,7 @@ test("a demo store gets every feature and is never charged", async () => {
   const status = await billing.statusFor(RID);
   assert.equal(status.exempt, true);
   assert.equal(status.needsActivation, false);
-  assert.deepEqual(status.features, { website: true, tableQr: true, paymentGateway: true });
+  assert.deepEqual(status.features, { website: true, tableQr: true, paymentGateway: true, onlineOrdering: true });
   assert.equal(status.nextRenewal, null);
 
   await topUp(100);

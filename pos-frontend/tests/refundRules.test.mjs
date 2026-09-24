@@ -23,7 +23,8 @@ test("the Refund button exists only on a cancelled order, and only in the states
 
 test("a paid order can be cancelled; the money is handled afterwards, not by the cancel", () => {
   const page = SRC("src/pages/Orders.jsx");
-  assert.match(page, /disabled=\{isRefunded\(selected\.orderStatus\) \|\| voidMutation\.isPending\}/);
+  // ... by the owner only once it is completed (the server refuses anyone else).
+  assert.match(page, /disabled=\{isRefunded\(selected\.orderStatus\) \|\| voidMutation\.isPending \|\| \(isSettled\(selected\.orderStatus\) && !isOwner\(user\)\)\}/);
 });
 
 test("the owner sends an amount (all or part of what is left); no reason on a refund", () => {

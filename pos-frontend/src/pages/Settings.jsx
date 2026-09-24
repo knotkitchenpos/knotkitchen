@@ -25,11 +25,11 @@ export const MENU_ITEMS = [
   { id: "properties", title: "3. Store Properties", desc: "Store details & protection PIN.", Icon: I.store, mode: "view" },
   { id: "menu", title: "4. Manage Menu", desc: "Categories, dishes, variants and add-ons.", Icon: I.utensils, path: "/manage-menu" },
   // Moved here from the side panel; pin it back with a long-press (Quick Shortcuts).
-  { id: "tables", title: "5. Manage Tables", desc: "Tables, areas and table QR codes.", Icon: I.tables, path: "/tables" },
+  { id: "tables", title: "5. Manage Tables", desc: "Tables, areas and table QR codes.", Icon: I.tables, path: "/tables", feature: "tableQr" },
   { id: "staff", title: "6. Manage Staff", desc: "Add/delete staff and PIN privileges.", Icon: I.users, mode: "view" },
-  { id: "toggles", title: "7. Order Toggles & Auto-Ready", desc: "Channel ON/OFF & auto-ready durations.", Icon: I.toggle, mode: "view" },
+  { id: "toggles", title: "7. Order Toggles & Auto-Ready", desc: "Channel ON/OFF & auto-ready durations.", Icon: I.toggle, mode: "view", feature: "onlineOrdering" },
   { id: "timings", title: "8. Website Timing & Holidays", desc: "Collection, delivery and table booking hours, Close for Today and holidays for the website.", Icon: I.calendar, mode: "view", feature: "website" },
-  { id: "rules", title: "9. Rules, Charges & Promotions", desc: "Min orders, delivery slabs, GST, coupons, free items.", Icon: I.fileText, mode: "view" },
+  { id: "rules", title: "9. Rules, Charges & Promotions", desc: "Min orders, delivery slabs, GST, coupons, free items.", Icon: I.fileText, mode: "view", feature: "onlineOrdering" },
   { id: "reports", title: "10. Reports", desc: "Sales, revenue and order breakdowns.", Icon: I.chart, path: "/reports" },
   // Shift & Day End and Inventory are built (ShiftView, InventoryView) but
   // hidden until the user wants them on. Flip SHOW_LATER_FEATURES to list them.
@@ -52,6 +52,9 @@ export const MENU_ITEMS = [
   { id: "support", title: "13. Help & Support", desc: "Call or message KnotKitchen support.", Icon: I.headset, path: "/support" },
   { id: "logout", title: "14. Logout", desc: "Securely sign out of the POS system.", Icon: I.logout, action: "logout" },
 ];
+
+/** Which add-on unlocks a locked option (services/planFeatures on the server). */
+const ADDON_FOR = { website: "Website", tableQr: "QR Table Ordering", onlineOrdering: "Website or QR Table Ordering" };
 
 /** "5. Manage Tables" -> "Manage Tables". */
 export const shortLabel = (item) => String(item?.title || "").replace(/^\d+\.\s*/, "");
@@ -82,7 +85,7 @@ const Settings = () => {
   const startPress = (item) => {
     longPressed.current = false;
     clearTimeout(pressTimer.current);
-    if (!canPin(item)) return;
+    if (!canPin(item) || blockedByPlan(item)) return;
     pressTimer.current = setTimeout(() => {
       longPressed.current = true;
       setPinFor(item);
@@ -103,7 +106,9 @@ const Settings = () => {
   });
 
   // Add-on features (services/planFeatures on the server, which also enforces
-  // them): the website tiles need the Website add-on.
+  // them): the website tiles need the Website add-on, Manage Tables the QR
+  // Table Ordering add-on, and Order Toggles / Rules & Charges either one.
+  // On the POS plan alone they are locked.
   const { data: subRes } = useQuery({ queryKey: ["subscription"], queryFn: getSubscriptionStatus });
   const features = subRes?.data?.data?.features;
   const lockedByPlan = (item) => Boolean(item.feature && features && features[item.feature] === false);
@@ -111,6 +116,8 @@ const Settings = () => {
   // online payments without the website; today both come with the Website add-on.
   const blockedByPlan = (item) =>
     lockedByPlan(item) && !(item.openWhenLocked && features?.[item.openWhenLocked] !== false);
+  const lockedNote = (item) =>
+    `Needs the ${ADDON_FOR[item.feature] || "Website"} add-on. Tap to add it in Billing.`;
 
   const handleClick = (item) => {
     // The click that ends a long-press only opens the pin sheet.
@@ -165,7 +172,16 @@ const Settings = () => {
         </div>
 
         {/* Active sub-view or item list */}
-        {activeSubView === "cache" ? (
+        {activeMeta && blockedByPlan(activeMeta) ? (
+          <button
+            type="button"
+            onClick={() => navigate("/settings/billing")}
+            className="w-full text-left bg-white border border-[#E2E8F0] rounded-2xl p-5 flex items-center gap-3 hover:border-[#FD5302]"
+          >
+            <span className="text-[#94A3B8]"><I.lock /></span>
+            <span className="text-[13.5px] font-bold text-[#334155]">{lockedNote(activeMeta)}</span>
+          </button>
+        ) : activeSubView === "cache" ? (
           <ManageCacheView />
         ) : activeSubView === "device" ? (
           <DeviceConfiguration />
@@ -199,7 +215,7 @@ const Settings = () => {
                   onPointerLeave={cancelPress}
                   onPointerCancel={cancelPress}
                   onContextMenu={(e) => {
-                    if (!canPin(item)) return;
+                    if (!canPin(item) || blockedByPlan(item)) return;
                     e.preventDefault();
                     cancelPress();
                     longPressed.current = true;
@@ -227,7 +243,7 @@ const Settings = () => {
                       )}
                     </p>
                     <p className="text-[12px] text-[#94A3B8] truncate mt-0.5">
-                      {locked ? "Needs the Website add-on. Tap to add it in Billing." : lockedByPlan(item) ? item.lockedDesc : item.desc}
+                      {locked ? lockedNote(item) : lockedByPlan(item) ? item.lockedDesc : item.desc}
                     </p>
                   </div>
                   <span className="text-[#94A3B8] shrink-0">{locked ? <I.lock /> : <I.chevron />}</span>

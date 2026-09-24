@@ -75,3 +75,8 @@ test("cancel needs the PIN guard; refund is for the owner only", () => {
   assert.match(ctrl, /A reason is required to cancel an order/);
   assert.match(ctrl, /const amount = netAmount\(o\)/, "report buckets are net of refunds");
 });
+
+test("REGRESSION: a completed order is cancelled by the owner only", () => {
+  const ctrl = fs.readFileSync(path.join(__dirname, "..", "controllers", "orderController.js"), "utf8");
+  assert.match(ctrl, /if \(voidingPaid && !require\("\.\.\/middlewares\/requirePermission"\)\.isOwnerUser\(req\.user\)\) \{\s*return next\(createHttpError\(403, "Only the store owner can cancel a completed order\."\)\);/);
+});

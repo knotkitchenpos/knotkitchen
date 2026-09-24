@@ -101,7 +101,7 @@ test("Manage Tables is in Settings, not the side panel; long-press pins any opti
   const sidebar = fs.readFileSync(path.join(__dirname, "..", "src", "components", "shared", "Sidebar.jsx"), "utf8");
   const settings = fs.readFileSync(path.join(__dirname, "..", "src", "pages", "Settings.jsx"), "utf8");
   assert.ok(!/path: "\/tables"/.test(sidebar), "no fixed Tables entry in the side panel or the bottom bar");
-  assert.match(settings, /\{ id: "tables", title: "\d+\. Manage Tables".*path: "\/tables" \}/);
+  assert.match(settings, /\{ id: "tables", title: "\d+\. Manage Tables".*path: "\/tables", feature: "tableQr" \}/);
   // Long-press (or right-click) opens the pin sheet; the click that ends it does not navigate.
   assert.match(settings, /onPointerDown=\{\(\) => startPress\(item\)\}/);
   assert.match(settings, /onContextMenu=/);

@@ -61,15 +61,15 @@ const outcome = async (mw, body) => {
 
 test("features come from the add-ons, not from a plan name", () => {
   const { featuresFor } = load();
-  const none = { website: false, tableQr: false, paymentGateway: false };
+  const none = { website: false, tableQr: false, paymentGateway: false, onlineOrdering: false };
   assert.deepEqual(featuresFor({ subscription: null }), none, "no add-ons, nothing");
   assert.deepEqual(featuresFor({ subscription: { planCode: "POS", addons: [GMB] } }), none, "GMB is a service, not a switch");
-  assert.deepEqual(featuresFor({ subscription: { addons: [TABLE_QR] } }), { ...none, tableQr: true });
+  assert.deepEqual(featuresFor({ subscription: { addons: [TABLE_QR] } }), { ...none, tableQr: true, onlineOrdering: true });
   // Online payments come with the website.
-  assert.deepEqual(featuresFor({ subscription: { addons: [WEBSITE] } }), { website: true, tableQr: false, paymentGateway: true });
+  assert.deepEqual(featuresFor({ subscription: { addons: [WEBSITE] } }), { website: true, tableQr: false, paymentGateway: true, onlineOrdering: true });
   assert.deepEqual(
     featuresFor({ subscription: { addons: [] }, exempt: true }),
-    { website: true, tableQr: true, paymentGateway: true },
+    { website: true, tableQr: true, paymentGateway: true, onlineOrdering: true },
     "a CSD demo store gets everything",
   );
 });
@@ -116,6 +116,26 @@ test("without the Website add-on: no Manage Website or website hours, but the PO
   for (const body of [{ ordering: { autoReadyMinutes: {} } }, { couponsConfig: [] }, { freeItemConfig: [] }]) {
     assert.deepEqual(await outcome(requireWebsitePlan, body), { status: null, passed: true }, JSON.stringify(body));
   }
+});
+
+test("POS plan alone: Order Toggles, Rules & Charges and managing tables are locked", async () => {
+  const pos = load({ addons: [GMB] });
+  for (const body of [{ ordering: { autoReadyMinutes: {} } }, { couponsConfig: [] }, { freeItemConfig: [] }]) {
+    assert.deepEqual(await outcome(pos.requireWebsitePlan, body), { status: 403, passed: false }, JSON.stringify(body));
+  }
+  assert.deepEqual(await outcome(pos.requireOnlineOrderingPlan, {}), { status: 403, passed: false });
+  const refused = await call(pos.requireOnlineOrderingPlan, {});
+  assert.equal(refused.json.code, "PLAN_UPGRADE_REQUIRED");
+  assert.match(refused.json.message, /Website or QR Table Ordering add-on/);
+  for (const opts of [{ addons: [WEBSITE] }, { addons: [TABLE_QR] }, { addons: [], exempt: true }]) {
+    assert.deepEqual(await outcome(load(opts).requireOnlineOrderingPlan, {}), { status: null, passed: true }, JSON.stringify(opts));
+  }
+  assert.match(SRC("routes", "restaurantRoute.js"), /"\/order-toggles"\)\.put\(isVerifiedUser, requireProtectedAction, requireOnlineOrderingPlan, updateOrderToggles\)/);
+  const tables = SRC("routes", "tableRoute.js");
+  for (const h of ["addTable", "updateTableSettings", "updateTable", "deleteTable"]) {
+    assert.match(tables, new RegExp(`requireProtectedAction, requireTableQrPlan, ${h}\\)`), h);
+  }
+  assert.match(tables, /\.get\(isVerifiedUser, getTables\)/, "reading tables stays open");
 });
 
 test("the Website add-on and demo stores pass", async () => {

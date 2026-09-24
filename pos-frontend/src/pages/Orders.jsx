@@ -1115,9 +1115,15 @@ const Orders = () => {
                 ) : null
               ) : (
                 <button
-                  disabled={isRefunded(selected.orderStatus) || voidMutation.isPending}
+                  disabled={isRefunded(selected.orderStatus) || voidMutation.isPending || (isSettled(selected.orderStatus) && !isOwner(user))}
                   onClick={() => askReason("cancel", selected)}
-                  title={isSettled(selected.orderStatus) ? "Void this paid order. A gateway payment can be refunded afterwards; cash is handed back at the counter." : "Cancel this order"}
+                  title={
+                    isSettled(selected.orderStatus)
+                      ? isOwner(user)
+                        ? "Void this paid order. A gateway payment can be refunded afterwards; cash is handed back at the counter."
+                        : "Only the store owner can cancel a completed order"
+                      : "Cancel this order"
+                  }
                   className="h-[46px] rounded-xl border border-[#FCA5A5] text-[#DC2626] text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#FEF2F2] disabled:opacity-40"
                 >
                   <I.x s={16} /> Cancel

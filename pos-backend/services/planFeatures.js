@@ -29,10 +29,14 @@ const addonLive = (subscription, feature, on) =>
     (a) => a.feature === feature && (!a.endsAt || new Date(a.endsAt) > new Date(on)),
   );
 
+// onlineOrdering: Order Toggles & Auto-Ready and Rules, Charges & Promotions
+// are settings for online orders, so they come with either ordering add-on
+// (Website or QR Table Ordering) and are locked on the POS plan alone.
 const featuresFor = ({ subscription, exempt, on = new Date() } = {}) => {
-  if (exempt) return { website: true, tableQr: true, paymentGateway: true };
+  if (exempt) return { website: true, tableQr: true, paymentGateway: true, onlineOrdering: true };
   const website = addonLive(subscription, "website", on);
-  return { website, tableQr: addonLive(subscription, "tableQr", on), paymentGateway: website };
+  const tableQr = addonLive(subscription, "tableQr", on);
+  return { website, tableQr, paymentGateway: website, onlineOrdering: website || tableQr };
 };
 
 /**
@@ -80,6 +84,7 @@ const addonRequired = async (res, feature, what) => {
 };
 
 const WEBSITE_MSG = "The website is an add-on";
+const ONLINE_MSG = "Order toggles, rules, charges and promotions come with the Website or QR Table Ordering add-on";
 const GATEWAY_MSG = "Online payments come with the Website add-on";
 
 // Order Toggles and Rules & Charges write these through /api/website/settings;
@@ -94,7 +99,9 @@ const POS_KEYS = new Set(["ordering", "couponsConfig", "freeItemConfig"]);
 const requireWebsitePlan = async (req, res, next) => {
   const keys = Object.keys(req.body || {});
   const rest = keys.filter((k) => !POS_KEYS.has(k));
-  if (keys.length && !rest.length) return next();
+  if (keys.length && !rest.length) {
+    return (await hasFeature(req.user?.restaurantId, "onlineOrdering")) ? next() : addonRequired(res, "onlineOrdering", ONLINE_MSG);
+  }
   const gatewayOnly = rest.length > 0 && rest.every((k) => k === "paymentGateways");
   if (gatewayOnly) {
     return (await hasFeature(req.user?.restaurantId, "paymentGateway")) ? next() : addonRequired(res, "paymentGateway", GATEWAY_MSG);
@@ -108,6 +115,9 @@ const requirePaymentGatewayPlan = async (req, res, next) =>
   (await hasFeature(req.user?.restaurantId, "paymentGateway")) ? next() : addonRequired(res, "paymentGateway", GATEWAY_MSG);
 
 /** Minting and reprinting table QRs in Manage Tables. */
+const requireOnlineOrderingPlan = async (req, res, next) =>
+  (await hasFeature(req.user?.restaurantId, "onlineOrdering")) ? next() : addonRequired(res, "onlineOrdering", ONLINE_MSG);
+
 const requireTableQrPlan = async (req, res, next) =>
   (await hasFeature(req.user?.restaurantId, "tableQr"))
     ? next()
@@ -119,5 +129,6 @@ module.exports = {
   hasWebsite,
   requireWebsitePlan,
   requireTableQrPlan,
+  requireOnlineOrderingPlan,
   requirePaymentGatewayPlan,
 };

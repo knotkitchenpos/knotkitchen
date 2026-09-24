@@ -1,5 +1,5 @@
 const express = require("express");
-const { requireWebsitePlan } = require("../services/planFeatures");
+const { requireWebsitePlan, requireOnlineOrderingPlan } = require("../services/planFeatures");
 const {
   getMyRestaurant,
   getStoreProperties,
@@ -29,7 +29,8 @@ router.route("/properties").put(isVerifiedUser, requireProtectedAction, updateSt
 router.route("/verify-pin").post(isVerifiedUser, verifyPin);
 router.route("/change-pin").put(isVerifiedUser, requireOwnerOnly, changePin);
 router.route("/pos-settings").put(isVerifiedUser, requireProtectedAction, updatePosSettings);
-router.route("/order-toggles").put(isVerifiedUser, requireProtectedAction, updateOrderToggles);
+// Locked on the POS plan alone (services/planFeatures onlineOrdering).
+router.route("/order-toggles").put(isVerifiedUser, requireProtectedAction, requireOnlineOrderingPlan, updateOrderToggles);
 // Website Timing & Holidays: the website's hours, so only with the Website add-on (services/planFeatures).
 router.route("/timings").put(isVerifiedUser, requireProtectedAction, requireWebsitePlan, updateChannelTimings);
 router.route("/holidays").put(isVerifiedUser, requireProtectedAction, requireWebsitePlan, updateHolidays);

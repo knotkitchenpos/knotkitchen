@@ -706,6 +706,11 @@ const updateOrder = async (req, res, next) => {
     // gateway payment is refunded afterwards through refundOrder, cash is
     // handed back at the counter, and the order records which.
     const voidingPaid = Boolean(req.voidWithReason) && canonicalStatus(orderStatus) === CANCELLED && isSettled(order.orderStatus);
+    // A completed (paid) order is voided by the owner only; the Security PIN
+    // is not enough for undoing a sale.
+    if (voidingPaid && !require("../middlewares/requirePermission").isOwnerUser(req.user)) {
+      return next(createHttpError(403, "Only the store owner can cancel a completed order."));
+    }
     if (isFinished(order.orderStatus) && canonicalStatus(order.orderStatus) !== canonicalStatus(orderStatus) && !voidingPaid) {
       return next(
         createHttpError(409, `Order is already ${order.orderStatus.toLowerCase()} and cannot be changed.`)
