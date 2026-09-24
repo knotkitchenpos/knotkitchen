@@ -157,7 +157,11 @@ test("SOURCE: the route forwards both the reason and the code", () => {
 test("SOURCE: a top-up returns only to our own https front end", () => {
   // The Android app pays full-page and Cashfree sends the operator back to
   // returnUrl, which the client names. It must not be able to name anywhere.
+  // One check, shared by the top-up and the printer payment (services/recharge.js).
+  const svc = fs.readFileSync(path.join(__dirname, "..", "services", "recharge.js"), "utf8");
+  assert.match(svc, /url\.protocol === "https:" && require\("\.\.\/config\/config"\)\.frontendUrls\.includes\(url\.origin\) \? url\.href : undefined/);
   const route = fs.readFileSync(path.join(__dirname, "..", "routes", "businessBalanceRoute.js"), "utf8");
-  assert.match(route, /url\.protocol === "https:" && config\.frontendUrls\.includes\(url\.origin\) \? url\.href : undefined/);
   assert.match(route, /returnUrl: ownReturnUrl\(req\.body\?\.returnUrl\)/);
+  const printers = fs.readFileSync(path.join(__dirname, "..", "routes", "subscriptionRoute.js"), "utf8");
+  assert.match(printers, /returnUrl: ownReturnUrl\(req\.body\?\.returnUrl\)/);
 });

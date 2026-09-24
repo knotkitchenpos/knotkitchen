@@ -141,11 +141,22 @@ const fakes = {
         for (const [k, c] of Object.entries(update.$pull || {})) {
           s[k] = s[k].filter((e) => !(e.code === c.code && e.endsAt && e.endsAt <= c.endsAt.$lte));
         }
+        for (const [k, v] of Object.entries(update.$set || {})) {
+          const [arr, , field] = k.split(".");
+          const match = filter[`${arr}.key`];
+          const e = (s[arr] || []).find((x) => x.key === match);
+          if (e) e[field] = v;
+        }
         return { matchedCount: 1, modifiedCount: 1 };
       },
     },
     PlatformInvoice: {
+      exists: async ({ _id }) => (state.invoices.some((i) => String(i._id) === String(_id)) ? { _id } : null),
       create: async (d) => {
+        if (state.failNextInvoice) {
+          state.failNextInvoice = false;
+          throw new Error("database blip");
+        }
         const invoice = { _id: `inv${state.invoices.length + 1}`, ...d };
         state.invoices.push(invoice);
         return invoice;
@@ -398,20 +409,74 @@ test("each tablet needs its own ₹4,000 top-up, never the activation one; first
   assert.equal(state.balance, 1000000 - 47082 + 399900 + 400000 - 35400 + 400000 - 29500);
 });
 
-test("a printer is one purchase at full price + GST, recorded as hardware, never renewed", async () => {
+test("a printer is paid through the gateway, never the wallet: recorded once with its invoice, never renewed", async () => {
   reset();
   await topUp(10000);
-  await rejects(billing.buyPrinter({ restaurantId: RID, code: "PRINTER_2IN", acceptance: null }), 409, "ACCEPTANCE_REQUIRED");
-  await rejects(billing.buyPrinter({ restaurantId: RID, code: "PRINTER_9IN", acceptance: YES }), 404);
+  await rejects(recharge.createPrinterPayment({ restaurantId: RID, code: "PRINTER_2IN", acceptance: null }), 409, "ACCEPTANCE_REQUIRED");
+  await rejects(recharge.createPrinterPayment({ restaurantId: RID, code: "PRINTER_9IN", acceptance: YES }), 404);
 
-  const r = await billing.buyPrinter({ restaurantId: RID, code: "PRINTER_2IN", acceptance: YES });
-  assert.equal(r.charged, 224200, "₹1,900 + 18% GST");
-  assert.equal(debits("HARDWARE").length, 1);
+  const walletBefore = state.balance;
+  const debitsBefore = debits().length;
+  const opened = await recharge.createPrinterPayment({ restaurantId: RID, code: "PRINTER_2IN", acceptance: YES });
+  assert.equal(opened.amountPaise, 224200, "₹1,900 + 18% GST, charged by Cashfree");
+  assert.equal(opened.purpose, "PRINTER");
+  assert.equal(state.sub.hardware.length, 0, "nothing is recorded before Cashfree says paid");
+
+  state.paid[opened.gatewayOrderId] = 2242;
+  const done = await recharge.finalizeRecharge({ gatewayOrderId: opened.gatewayOrderId });
+  assert.equal(done.purchased, true);
+  assert.equal(done.credited, false, "not a top-up");
+  assert.equal(state.balance, walletBefore, "the wallet is untouched");
+  assert.equal(debits().length, debitsBefore, "no wallet debit");
   assert.equal(state.invoices[state.invoices.length - 1].kind, "HARDWARE");
   assert.deepEqual(state.sub.hardware.map((h) => [h.code, h.pricePaise, h.totalPaise]), [["PRINTER_2IN", 190000, 224200]]);
+  assert.equal(state.sub.hardware[0].invoiceId, state.invoices[state.invoices.length - 1]._id);
+
+  // The webhook arriving after the return records nothing twice.
+  const invoices = state.invoices.length;
+  state.intents[state.intents.length - 1].status = "CREATED";
+  const again = await recharge.finalizeRecharge({ gatewayOrderId: opened.gatewayOrderId });
+  assert.equal(again.already, true);
+  assert.equal(again.purchased, true, "the till checking after the webhook is told it was bought");
+  state.intents[state.intents.length - 1].status = "PAID";
+  const settled = await recharge.finalizeRecharge({ gatewayOrderId: opened.gatewayOrderId });
+  assert.deepEqual([settled.already, settled.purchased], [true, true]);
+  assert.equal(state.sub.hardware.length, 1);
+  assert.equal(state.invoices.length, invoices);
   const status = await billing.statusFor(RID);
   assert.equal(status.printers.find((p) => p.code === "PRINTER_2IN").owned, 1);
   assert.ok(!status.nextRenewal.lines.some((l) => /printer/i.test(l.description)));
+});
+
+test("REGRESSION: a paid printer whose invoice failed gets it on the next confirmation, once", async () => {
+  reset();
+  await topUp(10000);
+  const opened = await recharge.createPrinterPayment({ restaurantId: RID, code: "PRINTER_3IN", acceptance: YES });
+  state.paid[opened.gatewayOrderId] = opened.amountPaise / 100;
+  const invoices = state.invoices.length;
+  state.failNextInvoice = true;
+  await assert.rejects(recharge.finalizeRecharge({ gatewayOrderId: opened.gatewayOrderId }), /database blip/);
+  assert.equal(state.sub.hardware.length, 1, "the printer was recorded");
+  assert.equal(state.invoices.length, invoices, "but its invoice was not");
+
+  const retry = await recharge.finalizeRecharge({ gatewayOrderId: opened.gatewayOrderId });
+  assert.equal(retry.purchased, true);
+  assert.equal(state.invoices.length, invoices + 1, "the webhook or the till's retry issues it");
+  assert.equal(String(state.invoices[state.invoices.length - 1]._id), String(state.sub.hardware[0].invoiceId));
+  assert.equal(state.invoices[state.invoices.length - 1].totalPaise, opened.amountPaise, "exactly what Cashfree charged");
+  state.intents[state.intents.length - 1].status = "CREATED";
+  await recharge.finalizeRecharge({ gatewayOrderId: opened.gatewayOrderId });
+  assert.equal(state.invoices.length, invoices + 1, "never a second one");
+});
+
+test("a Rs 0 printer is refused before anything is recorded", async () => {
+  reset();
+  state.override = { billingExempt: false, planPrices: [{ code: "PRINTER_2IN", price: 0 }] };
+  await topUp(10000);
+  const schedules = state.schedules.length;
+  await rejects(recharge.createPrinterPayment({ restaurantId: RID, code: "PRINTER_2IN", acceptance: YES }), 409);
+  assert.equal(state.schedules.length, schedules, "no acceptance left behind");
+  assert.equal(state.intents.filter((i) => i.purpose === "PRINTER").length, 0);
 });
 
 // ---------------------------------------------------------------------------
@@ -587,7 +652,7 @@ test("a demo store gets every feature and is never charged", async () => {
   for (const attempt of [
     () => billing.addAddon({ restaurantId: RID, code: "WEBSITE", acceptance: YES }),
     () => billing.rentTablet({ restaurantId: RID, acceptance: YES }),
-    () => billing.buyPrinter({ restaurantId: RID, code: "PRINTER_2IN", acceptance: YES }),
+    () => billing.preparePrinterPayment({ restaurantId: RID, code: "PRINTER_2IN", acceptance: YES }),
     () => billing.quote({ restaurantId: RID, item: "TABLET" }),
   ]) {
     await assert.rejects(attempt(), /demo store/);
@@ -605,6 +670,12 @@ test("a demo store gets every feature and is never charged", async () => {
 // The contract
 // ---------------------------------------------------------------------------
 
+test("SOURCE: a period that ends renews within a minute, and on the reads the till makes", () => {
+  assert.match(SRC("services/accountLock.js"), /renewEveryMs = 60 \* 1000/);
+  assert.match(SRC("routes/businessBalanceRoute.js"), /renewDue\(new Date\(\), \{ restaurantId \}\);/);
+  assert.match(SRC("routes/subscriptionRoute.js"), /await renewDue\(new Date\(\), \{ restaurantId \}\);\s*res\.status\(200\)\.json\(\{ success: true, data: await statusFor\(restaurantId\) \}\);/);
+});
+
 test("SOURCE: every charge carries its idempotency key", () => {
   const src = SRC("services/subscription.js");
   for (const key of [
@@ -612,7 +683,7 @@ test("SOURCE: every charge carries its idempotency key", () => {
     "idempotencyKey: `renewal-${subscription._id}-${iso(subscription.currentPeriodEnd)}`",
     "idempotencyKey: `addon-${subscription._id}-${p.addon.code}-${iso(subscription.currentPeriodEnd)}`",
     "idempotencyKey: `tablet-${subscription._id}-${p.serial}`",
-    "const key = `printer-${subscription._id}-${p.printer.code}-${n}`",
+    "const key = `printer-pay-${intent.gatewayOrderId}`",
   ]) {
     assert.ok(src.includes(key), key);
   }

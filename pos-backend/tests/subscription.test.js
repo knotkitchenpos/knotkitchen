@@ -165,7 +165,17 @@ test("SOURCE: the balance is debited before the invoice is issued", () => {
   assert.ok(debitAt !== -1 && invoiceAt !== -1, "anchors moved; retarget this guard");
   assert.ok(debitAt < dupAt && dupAt < invoiceAt, "money first, document second, and a repeat issues nothing");
   assert.equal((src.match(/await debit\(/g) || []).length, 1, "no charge bypasses charge()");
-  assert.equal((src.match(/issueInvoice\(\{/g) || []).length, 1);
+  // The one other invoice is a printer paid through Cashfree: issued only
+  // after Cashfree confirmed the payment (finalizeRecharge) and after the
+  // printer was recorded, so a repeat issues nothing.
+  assert.equal((src.match(/issueInvoice\(\{/g) || []).length, 2);
+  const printer = src.slice(src.indexOf("const recordPrinterPayment"), src.indexOf("\n};", src.indexOf("const recordPrinterPayment")));
+  assert.ok(printer.indexOf("if (!granted) return") < printer.indexOf("await issueInvoice({"), "recorded once, then invoiced");
+  const recharge = SRC("services/recharge.js");
+  assert.ok(
+    recharge.indexOf("if (!status.paid)") < recharge.indexOf("recordPrinterPayment({ intent, paidPaise })"),
+    "only once Cashfree says paid",
+  );
 });
 
 test("SOURCE: an unaffordable subscription is refused, not part-applied", () => {

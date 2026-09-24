@@ -35,7 +35,11 @@ test("every purchase is priced by /quote, shown as an order summary, and sent on
   assert.match(billing, /await getSubscriptionQuote\(item\)/);
   assert.match(billing, /addSubscriptionAddon\(\{ code: a\.code, accepted: true \}\)/);
   assert.match(billing, /rentSubscriptionTablet\(\{ accepted: true \}\)/);
-  assert.match(billing, /buySubscriptionPrinter\(\{ code: p\.code, accepted: true \}\)/);
+  // A printer is paid through Cashfree, never from the wallet, and only a
+  // payment Cashfree confirmed counts.
+  assert.match(billing, /buySubscriptionPrinter\(\{\s*code: p\.code,\s*accepted: true,/);
+  assert.match(billing, /payWith: "gateway"/);
+  assert.match(billing, /if \(!verified\.purchased\) throw new Error/);
   // The terms box gates the button, and starts unticked for every summary.
   assert.match(billing, /disabled=\{!accepted \|\| busy\}/);
   assert.match(billing, /\{summary && \(\s*<OrderSummary/);

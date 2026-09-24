@@ -25,6 +25,7 @@
  */
 
 const crypto = require("node:crypto");
+const mongoose = require("mongoose");
 const { PlatformSubscription, PlatformInvoice, CommercialSchedule } = require("../models/platformSubscriptionModel");
 const { BusinessBalance } = require("../models/businessBalanceModel");
 const Restaurant = require("../models/restaurantModel");
@@ -138,12 +139,13 @@ const billView = (bill) => ({
  * later move, which is what makes "old invoices never change" true rather than
  * merely intended.
  */
-const issueInvoice = async ({ restaurantId, storeId, kind, lines, config, parties, period, ledgerEntryId }) => {
+const issueInvoice = async ({ _id, restaurantId, storeId, kind, lines, config, parties, period, ledgerEntryId }) => {
   const invoiceNumber = await nextInvoiceNumber(storeId);
   const sum = (k) => lines.reduce((t, l) => t + l.tax[k], 0);
   const totalPaise = sum("totalPaise");
 
   return PlatformInvoice.create({
+    ...(_id ? { _id } : {}),
     invoiceNumber,
     invoiceDate: new Date(),
     restaurantId,
@@ -583,27 +585,42 @@ const endTablet = async ({ restaurantId, serial, on = new Date() }) => {
   return { subscription, tablet };
 };
 
-/** Buy a printer outright: full price + GST, once, no monthly fee. */
-const buyPrinter = async ({ restaurantId, code, acceptance, createdBy = null, on = new Date() }) => {
+/**
+ * A printer is paid through the payment gateway, never from the wallet:
+ * this prices it and records what was accepted; services/recharge opens the
+ * Cashfree order, and recordPrinterPayment records the printer once Cashfree
+ * says it is paid.
+ */
+const preparePrinterPayment = async ({ restaurantId, code, acceptance, on = new Date() }) => {
   const ctx = await load(restaurantId);
-  const { config, subscription } = ctx;
   if (ctx.exempt) throw new SubscriptionError(DEMO_STORE, 409);
   const p = await printerPurchase(ctx, code, on);
+  // A gateway cannot take Rs 0; a free printer is handed over by KnotKitchen.
+  if (!(p.bill.totalPaise > 0)) throw new SubscriptionError("This printer has no price here. Contact KnotKitchen to have it sent.", 409);
   requireAcceptance(acceptance);
-
-  const n = (subscription.hardware || []).filter((h) => h.code === p.printer.code).length + 1;
-  const key = `printer-${subscription._id}-${p.printer.code}-${n}`;
-  const { invoice, duplicate, charged } = await charge({
-    subscription,
-    bill: p.bill,
-    kind: "HARDWARE",
-    ledgerKind: "HARDWARE",
-    description: p.printer.name,
-    idempotencyKey: key,
-    config,
-    createdBy,
-    meta: { printer: p.printer.code },
+  await recordSchedule({
+    restaurantId,
+    storeId: ctx.subscription.storeId,
+    reason: "HARDWARE",
+    values: acceptedValues({ bill: p.bill, item: { printer: p.printer.code, name: p.printer.name, paidVia: "gateway" } }),
+    acceptance,
   });
+  // The priced lines go with the payment, so the invoice is exactly what was charged.
+  return { printer: p.printer, pricePaise: p.pricePaise, totalPaise: p.bill.totalPaise, lines: p.bill.lines };
+};
+
+/**
+ * Cashfree has confirmed a printer payment: add the printer and its invoice.
+ * The payment's own gateway order id is the key, so the return from checkout
+ * and the webhook arriving together record it once.
+ */
+const recordPrinterPayment = async ({ intent, paidPaise, on = new Date() }) => {
+  const restaurantId = intent.restaurantId;
+  const subscription = await getSubscription(restaurantId);
+  const key = `printer-pay-${intent.gatewayOrderId}`;
+  // The invoice id is fixed with the printer row, so a retry after a failure
+  // between the two issues the missing invoice, and never a second one.
+  const newInvoiceId = new mongoose.Types.ObjectId();
   const granted = await grant(
     subscription,
     { "hardware.key": { $ne: key } },
@@ -611,27 +628,49 @@ const buyPrinter = async ({ restaurantId, code, acceptance, createdBy = null, on
       $push: {
         hardware: {
           key,
-          code: p.printer.code,
-          name: p.printer.name,
-          pricePaise: p.pricePaise,
-          totalPaise: duplicate ? p.bill.totalPaise : charged,
-          invoiceId: invoice?._id || null,
+          code: intent.item?.code || "",
+          name: intent.item?.name || "Printer",
+          pricePaise: Number(intent.item?.pricePaise) || 0,
+          totalPaise: paidPaise,
+          invoiceId: newInvoiceId,
           purchasedAt: new Date(on),
         },
       },
     },
   );
-  if (!duplicate) {
-    await recordSchedule({
+  const invoiceId = granted
+    ? newInvoiceId
+    : ((await getSubscription(restaurantId)).hardware || []).find((h) => h.key === key)?.invoiceId;
+  if (!invoiceId || (await PlatformInvoice.exists({ _id: invoiceId }))) return { recorded: granted, already: !granted };
+
+  const config = await getPlatformConfig();
+  // What Cashfree charged, as priced when the payment was opened.
+  let lines = intent.item?.lines;
+  if (!Array.isArray(lines) || !lines.length) {
+    const restaurant = await Restaurant.findById(restaurantId).select("address").lean();
+    lines = priceLines(
+      [{ description: `${intent.item?.name || "Printer"} (one-time purchase)`, amountPaise: Number(intent.item?.pricePaise) || 0 }],
+      { config, restaurant, on },
+    ).lines;
+  }
+  try {
+    const invoice = await issueInvoice({
+      _id: invoiceId,
       restaurantId,
       storeId: subscription.storeId,
-      reason: "HARDWARE",
-      values: acceptedValues({ bill: p.bill, item: { printer: p.printer.code, name: p.printer.name } }),
-      acceptance,
+      kind: "HARDWARE",
+      lines,
+      config,
+      parties: await partiesFor(restaurantId, config),
+      period: null,
+      ledgerEntryId: null,
     });
+    return { recorded: true, invoice };
+  } catch (err) {
+    // The webhook and the till's return issuing it at the same moment.
+    if (err?.code === 11000) return { recorded: false, already: true };
+    throw err;
   }
-  if (granted) await settleLock(restaurantId);
-  return { subscription: await getSubscription(restaurantId), invoice, charged, already: !granted };
 };
 
 // ---------------------------------------------------------------------------
@@ -873,7 +912,8 @@ module.exports = {
   removeAddon,
   rentTablet,
   endTablet,
-  buyPrinter,
+  preparePrinterPayment,
+  recordPrinterPayment,
   renewDue,
   statusFor,
   issueInvoice,

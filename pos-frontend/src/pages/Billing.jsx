@@ -72,12 +72,15 @@ const Bill = ({ bill, totalLabel }) => (
  */
 const OrderSummary = ({ summary, onClose, onConfirm, busy }) => {
   const [accepted, setAccepted] = useState(false);
-  const { title, quote, terms } = summary;
+  const { title, quote, terms, payWith } = summary;
+  const online = payWith === "gateway";
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-label={title}>
       <div className="w-full max-w-[440px] rounded-2xl bg-white p-5 shadow-2xl">
         <h3 className="text-[16px] font-extrabold text-[#0F172A]">{title}</h3>
-        <p className="mt-0.5 mb-4 text-[12px] text-[#64748B]">Order summary · paid from your wallet</p>
+        <p className="mt-0.5 mb-4 text-[12px] text-[#64748B]">
+          Order summary · {online ? "paid now by UPI, card or netbanking" : "paid from your wallet"}
+        </p>
         <Bill bill={quote} totalLabel="Total payable now" />
         {terms?.length > 0 && (
           <ul className="mt-3 list-disc space-y-1 pl-5 text-[12px] text-[#64748B]">
@@ -90,7 +93,7 @@ const OrderSummary = ({ summary, onClose, onConfirm, busy }) => {
           <input type="checkbox" className="mt-0.5" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
           <span>
             I have read the order summary above and accept it and the KnotKitchen Restaurant Service Agreement on
-            behalf of this restaurant. It will be paid from the wallet.
+            behalf of this restaurant. {online ? "I will pay it now online." : "It will be paid from the wallet."}
           </span>
         </label>
         <div className="mt-4 grid grid-cols-2 gap-2">
@@ -193,9 +196,12 @@ const Billing = () => {
   const settleTopUp = async (gatewayOrderId) => {
     // Never trusted, always re-checked against Cashfree by the server.
     const verified = await verifyRecharge({ gatewayOrderId });
-    const { credited, already, reason } = verified.data.data;
+    const { credited, purchased, already, reason } = verified.data.data;
 
-    if (credited || already) {
+    if (purchased) {
+      enqueueSnackbar("Printer paid. KnotKitchen will arrange delivery. The invoice is below.", { variant: "success" });
+      refreshMoney();
+    } else if (credited || already) {
       enqueueSnackbar("Balance added.", { variant: "success" });
       setAmount("");
       refreshMoney();
@@ -210,7 +216,7 @@ const Billing = () => {
     if (!gatewayOrderId) return;
     window.history.replaceState(null, "", window.location.pathname);
     settleTopUp(gatewayOrderId).catch(() =>
-      enqueueSnackbar("The top-up could not be checked. The balance updates by itself once Cashfree confirms.", {
+      enqueueSnackbar("The payment could not be checked yet. It is recorded by itself once Cashfree confirms.", {
         variant: "warning",
       }),
     );
@@ -230,6 +236,21 @@ const Billing = () => {
    * the app's UpiIntentPlugin) and shows its verify step on the way back.
    * Cashfree then returns to this page with ?recharge=<order id>.
    */
+  /**
+   * Cashfree's checkout for a payment our server opened (a top-up or a
+   * printer). true when the page is leaving for Cashfree (the Android app,
+   * or a narrow screen): the ?recharge= return settles it. Otherwise the
+   * modal has closed, paid or not, and the caller asks our server.
+   */
+  const checkout = async ({ paymentSessionId, environment }) => {
+    const Cashfree = await loadCashfree();
+    if (!Cashfree) throw new Error("The payment page could not be loaded. Check your connection.");
+    const cashfree = Cashfree({ mode: environment === "PROD" ? "production" : "sandbox" });
+    const inApp = Capacitor.isNativePlatform();
+    const result = await cashfree.checkout({ paymentSessionId, redirectTarget: inApp ? "_self" : "_modal" });
+    return Boolean(result?.redirect);
+  };
+
   const topUp = async (rupees) => {
     const value = Number(rupees);
     if (!Number.isFinite(value) || value <= 0) {
@@ -244,26 +265,13 @@ const Billing = () => {
         amount: value,
         ...(inApp ? { returnUrl: `${window.location.origin}/settings/billing?recharge={order_id}` } : {}),
       });
-      const { paymentSessionId, gatewayOrderId, environment } = opened.data.data;
-
-      const Cashfree = await loadCashfree();
-      if (!Cashfree) {
-        enqueueSnackbar("The payment page could not be loaded. Check your connection.", {
-          variant: "error",
-        });
-        return;
-      }
-
-      const cashfree = Cashfree({ mode: environment === "PROD" ? "production" : "sandbox" });
-      const result = await cashfree.checkout({ paymentSessionId, redirectTarget: inApp ? "_self" : "_modal" });
-      // Leaving for Cashfree: the return settles it. On a narrow screen Cashfree
-      // may finish (or be closed) in its own modal instead, so check then too.
-      if (result?.redirect) return;
-
+      const { gatewayOrderId } = opened.data.data;
+      // Leaving for Cashfree: the return settles it.
+      if (await checkout(opened.data.data)) return;
       await settleTopUp(gatewayOrderId);
     } catch (err) {
       enqueueSnackbar(
-        err?.response?.data?.message || "The top-up could not be completed.",
+        err?.response?.data?.message || err?.message || "The top-up could not be completed.",
         { variant: "error" },
       );
     } finally {
@@ -279,6 +287,8 @@ const Billing = () => {
   const act = useMutation({
     mutationFn: ({ run }) => run(),
     onSuccess: (res, { done }) => {
+      // Gone to Cashfree's page: the return reports how it went.
+      if (res?.redirected) return;
       // A repeated tap on something already bought: nothing was charged again.
       enqueueSnackbar(res?.data?.data?.already ? "Already done. Nothing was charged again." : done, { variant: "success" });
       setSummary(null);
@@ -330,9 +340,21 @@ const Billing = () => {
     review({
       item: `PRINTER:${p.code}`,
       title: `Buy a ${p.name}`,
-      terms: ["One-time purchase from your wallet. No monthly fee."],
-      run: () => buySubscriptionPrinter({ code: p.code, accepted: true }),
-      done: `${p.name} bought. The invoice is below.`,
+      payWith: "gateway",
+      terms: ["One-time purchase, paid now by UPI, card or netbanking. Not from your wallet. No monthly fee."],
+      run: async () => {
+        const inApp = Capacitor.isNativePlatform();
+        const opened = await buySubscriptionPrinter({
+          code: p.code,
+          accepted: true,
+          ...(inApp ? { returnUrl: `${window.location.origin}/settings/billing?recharge={order_id}` } : {}),
+        });
+        if (await checkout(opened.data.data)) return { redirected: true };
+        const verified = (await verifyRecharge({ gatewayOrderId: opened.data.data.gatewayOrderId })).data.data;
+        if (!verified.purchased) throw new Error(verified.reason || "The payment was not completed. Nothing was charged.");
+        return verified;
+      },
+      done: `${p.name} paid. KnotKitchen will arrange delivery. The invoice is below.`,
     });
 
   // After a CSD credit, say: a top-up renews by itself.
@@ -388,7 +410,7 @@ const Billing = () => {
 
       <div className="grid gap-5 lg:grid-cols-2">
         {/* ---------------------------------------------------------- */}
-        <Card title="Wallet" subtitle="Your Business Balance. It pays the POS plan, add-ons, tablets, printers and per-order charges.">
+        <Card title="Wallet" subtitle="Your Business Balance. It pays the POS plan, add-ons, tablets and per-order charges.">
           <p className="text-[32px] font-extrabold leading-none text-[#0F172A]">{money(balance?.balance)}</p>
 
           {balance?.dues?.count > 0 && (
@@ -604,7 +626,7 @@ const Billing = () => {
           </Card>
 
           {/* ---------------------------------------------------------- */}
-          <Card title="Printers" subtitle="Buy once from your wallet. No monthly fee.">
+          <Card title="Printers" subtitle="Buy once, paid online by UPI, card or netbanking (not from your wallet). No monthly fee.">
             {(sub.printers || []).length === 0 ? (
               <p className="text-[13px] text-[#94A3B8]">No printers are on sale at the moment.</p>
             ) : (

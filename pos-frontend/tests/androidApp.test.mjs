@@ -102,7 +102,9 @@ test("REGRESSION: a checkout's later pages stay in the app, and Back skips them"
   assert.match(plugin, /Intent intent = upiIntent\(parsed\.getDataString\(\)\);/);
   assert.match(JAVA("MainActivity.java"), /appHost\.equals\(Uri\.parse\(history\.getItemAtIndex\(i\)\.getUrl\(\)\)\.getHost\(\)\)/);
   // Cashfree may settle in its own modal on a phone even with "_self".
-  assert.match(SRC("src/pages/Billing.jsx"), /if \(result\?\.redirect\) return;\s*\n\s*await settleTopUp\(gatewayOrderId\);/);
+  const billing = SRC("src/pages/Billing.jsx");
+  assert.match(billing, /return Boolean\(result\?\.redirect\);/);
+  assert.match(billing, /if \(await checkout\(opened\.data\.data\)\) return;\s*\n\s*await settleTopUp\(gatewayOrderId\);/);
 });
 
 test("the app updates itself from the release channel CI publishes", () => {

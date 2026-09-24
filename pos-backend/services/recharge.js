@@ -66,6 +66,16 @@ const platformOrThrow = () => {
  * moves here -- only `finalizeRecharge` credits, and only after asking
  * Cashfree what actually happened.
  */
+/** Only our own https origins may be a checkout's return page. */
+const ownReturnUrl = (raw) => {
+  try {
+    const url = new URL(String(raw || ""));
+    return url.protocol === "https:" && require("../config/config").frontendUrls.includes(url.origin) ? url.href : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
 const createRecharge = async ({ restaurantId, amountPaise, createdBy = null, returnUrl } = {}) => {
   const amount = Math.round(Number(amountPaise) || 0);
   if (!Number.isFinite(amount) || amount <= 0) {
@@ -86,6 +96,27 @@ const createRecharge = async ({ restaurantId, amountPaise, createdBy = null, ret
     );
   }
 
+  return openPayment({ restaurantId, amountPaise: amount, createdBy, returnUrl });
+};
+
+/**
+ * Buy a printer through the gateway: the price + GST is charged by Cashfree,
+ * not taken from the wallet. finalizeRecharge records the printer when paid.
+ */
+const createPrinterPayment = async ({ restaurantId, code, acceptance, createdBy = null, returnUrl } = {}) => {
+  const { printer, pricePaise, totalPaise, lines } = await require("./subscription").preparePrinterPayment({ restaurantId, code, acceptance });
+  return openPayment({
+    restaurantId,
+    amountPaise: totalPaise,
+    createdBy,
+    returnUrl,
+    purpose: "PRINTER",
+    item: { code: printer.code, name: printer.name, pricePaise, lines },
+  });
+};
+
+/** Open a Cashfree order for a top-up or a printer. Nothing is credited or bought here. */
+const openPayment = async ({ restaurantId, amountPaise: amount, createdBy = null, returnUrl, purpose = "RECHARGE", item } = {}) => {
   const gw = platformOrThrow();
 
   const restaurant = await Restaurant.findById(restaurantId)
@@ -100,6 +131,8 @@ const createRecharge = async ({ restaurantId, amountPaise, createdBy = null, ret
   const intent = await RechargeOrder.create({
     restaurantId,
     amountPaise: amount,
+    purpose,
+    ...(item ? { item } : {}),
     gatewayOrderId,
     gatewayProvider: "cashfree",
     environment: gw.environment,
@@ -123,7 +156,7 @@ const createRecharge = async ({ restaurantId, amountPaise, createdBy = null, ret
       // So a top-up is credited even if the operator closes the payment window
       // before the POS can verify it (the webhook credits through the same key).
       notifyUrl: require("../config/config").cashfreeNotifyUrl,
-      tags: { purpose: "business_balance_recharge", restaurantId: String(restaurantId) },
+      tags: { purpose: purpose === "PRINTER" ? "printer_purchase" : "business_balance_recharge", restaurantId: String(restaurantId) },
     });
 
     intent.paymentSessionId = order.paymentSessionId || "";
@@ -136,6 +169,7 @@ const createRecharge = async ({ restaurantId, amountPaise, createdBy = null, ret
       environment: gw.environment,
       amountPaise: amount,
       amountLabel: formatINR(amount),
+      purpose,
     };
   } catch (err) {
     intent.status = "FAILED";
@@ -163,7 +197,8 @@ const createRecharge = async ({ restaurantId, amountPaise, createdBy = null, ret
 const finalizeRecharge = async ({ gatewayOrderId }) => {
   const intent = await RechargeOrder.findOne({ gatewayOrderId });
   if (!intent) return { credited: false, reason: "No such top-up." };
-  if (intent.status === "PAID") return { credited: false, already: true, intent };
+  // Already settled (the webhook got there first): a printer is still reported as bought.
+  if (intent.status === "PAID") return { credited: false, already: true, purchased: intent.purpose === "PRINTER", intent };
 
   const gw = platformOrThrow();
 
@@ -195,6 +230,16 @@ const finalizeRecharge = async ({ gatewayOrderId }) => {
     console.warn(
       `[recharge] ${gatewayOrderId}: opened for ${intent.amountPaise}p, paid ${paidPaise}p`,
     );
+  }
+
+  // A printer paid through the gateway: record it; the wallet is not touched.
+  if (intent.purpose === "PRINTER") {
+    const { recorded, invoice } = await require("./subscription").recordPrinterPayment({ intent, paidPaise });
+    intent.status = "PAID";
+    intent.paidAt = intent.paidAt || new Date();
+    intent.gatewayPaymentId = status.cfOrderId || "";
+    await intent.save();
+    return { credited: false, purchased: true, already: !recorded, intent, invoice };
   }
 
   const { entry, duplicate } = await credit({
@@ -250,6 +295,8 @@ const finalizeRecharge = async ({ gatewayOrderId }) => {
 };
 
 module.exports = {
+  createPrinterPayment,
+  ownReturnUrl,
   createRecharge,
   finalizeRecharge,
   idempotencyKeyFor,

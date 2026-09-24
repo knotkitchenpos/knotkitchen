@@ -20,6 +20,16 @@ const rechargeOrderSchema = new mongoose.Schema(
       index: true,
     },
     amountPaise: { type: Number, required: true, min: 1 },
+    // RECHARGE credits the wallet; PRINTER buys a printer outright through the
+    // gateway (the wallet is never touched) -- services/recharge finalizeRecharge.
+    purpose: { type: String, enum: ["RECHARGE", "PRINTER"], default: "RECHARGE" },
+    item: {
+      code: { type: String, default: "" },
+      name: { type: String, default: "" },
+      pricePaise: { type: Number, default: 0 },
+      // The invoice lines (with tax) exactly as charged.
+      lines: { type: [mongoose.Schema.Types.Mixed], default: [] },
+    },
 
     status: {
       type: String,

@@ -195,7 +195,7 @@ test("SOURCE: a demo store is never charged", () => {
     "neither the per-order nor the per-e-bill charge");
   const sub = SRC("services/subscription.js");
   // Nothing can be bought or quoted...
-  for (const fn of ["const quote = async", "const addAddon = async", "const rentTablet = async", "const buyPrinter = async"]) {
+  for (const fn of ["const quote = async", "const addAddon = async", "const rentTablet = async", "const preparePrinterPayment = async"]) {
     const body = sub.slice(sub.indexOf(fn), sub.indexOf("\n};", sub.indexOf(fn)));
     assert.match(body, /if \(ctx\.exempt\) throw new SubscriptionError\(DEMO_STORE, 409\);/, fn);
   }
@@ -253,11 +253,17 @@ test("SOURCE: paying re-evaluates the lock immediately", () => {
   // After every money movement, awaited, so Billing's refresh right after
   // sees it unlocked: activation, each purchase, and both renewal outcomes.
   const sub = SRC("services/subscription.js");
-  for (const [fn, n] of [["const activate", 1], ["const addAddon", 1], ["const rentTablet", 1], ["const buyPrinter", 1], ["const renewOne", 2]]) {
+  // (Printers are paid through the gateway and never move the wallet, so they
+  // have no lock to re-check: see the assertion after this loop.)
+  for (const [fn, n] of [["const activate", 1], ["const addAddon", 1], ["const rentTablet", 1], ["const renewOne", 2]]) {
     const body = sub.slice(sub.indexOf(fn), sub.indexOf("\n};", sub.indexOf(fn)));
     assert.equal((body.match(/await settleLock\(restaurantId\)/g) || []).length, n, fn);
   }
   assert.match(SRC("services/orderCharge.js"), /fireEvaluateLock\(restaurantId\)/);
+  for (const fn of ["const preparePrinterPayment", "const recordPrinterPayment"]) {
+    const body = sub.slice(sub.indexOf(fn), sub.indexOf("\n};", sub.indexOf(fn)));
+    assert.ok(!/debit\(|charge\(/.test(body), `${fn} never touches the wallet`);
+  }
 });
 
 test("SOURCE: a failure to read lock state fails OPEN", () => {

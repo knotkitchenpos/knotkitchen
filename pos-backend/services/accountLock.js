@@ -261,13 +261,23 @@ const sweepLocks = async (on = new Date()) => {
 };
 
 let sweepHandle = null;
+let renewHandle = null;
 
-const startLockSweeper = ({ intervalMs = 15 * 60 * 1000 } = {}) => {
+const startLockSweeper = ({ intervalMs = 15 * 60 * 1000, renewEveryMs = 60 * 1000 } = {}) => {
   if (sweepHandle) return sweepHandle;
   sweepHandle = setInterval(() => {
     sweepLocks().catch((err) => console.warn("[AccountLock] sweep failed:", err.message));
   }, intervalMs);
   if (sweepHandle.unref) sweepHandle.unref();
+  // Renewals every minute: a store with the money in its wallet renews the
+  // minute its period ends, not up to 15 minutes later behind a grace banner.
+  // One indexed query when nothing is due.
+  renewHandle = setInterval(() => {
+    require("./subscription")
+      .renewDue()
+      .catch((err) => console.warn("[AccountLock] renewal tick failed:", err.message));
+  }, renewEveryMs);
+  if (renewHandle.unref) renewHandle.unref();
   return sweepHandle;
 };
 

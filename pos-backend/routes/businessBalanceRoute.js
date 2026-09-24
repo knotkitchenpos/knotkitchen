@@ -27,14 +27,7 @@ const router = express.Router();
  * app pays that way). Only back to one of our own https front ends, never to
  * whatever a request names.
  */
-const ownReturnUrl = (raw) => {
-  try {
-    const url = new URL(String(raw || ""));
-    return url.protocol === "https:" && config.frontendUrls.includes(url.origin) ? url.href : undefined;
-  } catch {
-    return undefined;
-  }
-};
+const { ownReturnUrl } = require("../services/recharge");
 
 const ownRestaurantId = (req) => {
   const id = req.user?.restaurantId;
@@ -47,6 +40,9 @@ router.get("/", isVerifiedUser, async (req, res, next) => {
   try {
     const restaurantId = ownRestaurantId(req);
     await getBalance(restaurantId); // a new store's row: created and assessed
+    // A period that just ended renews here and now if the wallet covers it,
+    // so the till never shows a grace banner for money it already has.
+    await require("../services/subscription").renewDue(new Date(), { restaurantId });
     // Evaluated, not just assessed: every till polls this each minute, so the
     // stored lock follows the facts (a deadline passing, a plan starting or
     // lapsing, a new reason) without waiting for the 15-minute sweep.
@@ -154,6 +150,8 @@ router.post("/recharge/verify", isVerifiedUser, async (req, res, next) => {
       success: true,
       data: {
         credited: Boolean(result.credited),
+        // A printer bought through the gateway (never the wallet).
+        purchased: Boolean(result.purchased),
         already: Boolean(result.already),
         reason: result.reason || "",
         balance: asAmount(balance.balancePaise),

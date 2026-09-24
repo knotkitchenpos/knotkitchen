@@ -8,7 +8,6 @@ const {
   addAddon,
   removeAddon,
   rentTablet,
-  buyPrinter,
   renewDue,
   SubscriptionError,
 } = require("../services/subscription");
@@ -68,7 +67,10 @@ const purchased = (result) => ({
 // GET /api/subscription — the plan, add-ons, tablets, printers, next renewal.
 router.get("/", isVerifiedUser, async (req, res, next) => {
   try {
-    res.status(200).json({ success: true, data: await statusFor(ownRestaurantId(req)) });
+    const restaurantId = ownRestaurantId(req);
+    // Renew first if the period has ended and the wallet covers it.
+    await renewDue(new Date(), { restaurantId });
+    res.status(200).json({ success: true, data: await statusFor(restaurantId) });
   } catch (err) {
     next(err);
   }
@@ -124,15 +126,24 @@ router.post("/tablets", isVerifiedUser, requireProtectedAction, async (req, res,
 });
 
 // POST /api/subscription/printers { code, accepted } — buy a printer outright.
+// A printer is paid through Cashfree, never from the wallet: this opens the
+// payment; /api/business-balance/recharge/verify (or the webhook) records it.
 router.post("/printers", isVerifiedUser, requireProtectedAction, async (req, res, next) => {
   try {
-    const result = await buyPrinter({
-      restaurantId: ownRestaurantId(req),
-      code: String(req.body?.code || ""),
-      createdBy: req.user?._id,
-      acceptance: acceptanceFrom(req),
-    });
-    res.status(201).json({ success: true, data: purchased(result) });
+    const { createPrinterPayment, ownReturnUrl, RechargeError } = require("../services/recharge");
+    try {
+      const opened = await createPrinterPayment({
+        restaurantId: ownRestaurantId(req),
+        code: String(req.body?.code || ""),
+        acceptance: acceptanceFrom(req),
+        createdBy: req.user?._id,
+        returnUrl: ownReturnUrl(req.body?.returnUrl),
+      });
+      res.status(201).json({ success: true, data: opened });
+    } catch (err) {
+      if (err instanceof RechargeError) return next(createHttpError(err.status, err.message, { expose: true, code: err.code }));
+      throw err;
+    }
   } catch (err) {
     asSubscriptionError(err, next);
   }
