@@ -29,6 +29,7 @@ import AddedItemsPopup from "./components/dashboard/AddedItemsPopup";
 import useAutoReceiptPrint from "./hooks/useAutoReceiptPrint";
 import useOfflineQueue from "./hooks/useOfflineQueue";
 import OfflineBanner from "./components/shared/OfflineBanner";
+import OldWebViewBanner from "./components/shared/OldWebViewBanner";
 
 function ProtectedRoutes({ children }) {
   const { isAuth } = useSelector((state) => state.user);
@@ -97,6 +98,7 @@ function Layout() {
       <main className={`flex min-h-0 flex-1 min-w-0 flex-col overflow-hidden ${lock.locked ? "" : "pb-[calc(60px+env(safe-area-inset-bottom))] lg:pb-0"}`}>
         {!lock.locked && <MobileNav onMore={() => setMobileOpen(true)} />}
         {isAuth && <OfflineBanner online={offline.online} queued={offline.queued} onSync={offline.flush} />}
+        {isAuth && <OldWebViewBanner />}
         {isAuth && <AccountLockBanner {...lock} />}
         {isAuth && <GlobalPinPrompt />}
         {lock.locked ? <LockRedirect /> : null}
