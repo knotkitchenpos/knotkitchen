@@ -113,3 +113,11 @@ test("Manage Tables is in Settings, not the side panel; long-press pins any opti
   // A pinned sub-view opens directly: Settings reads ?view=.
   assert.match(settings, /const activeSubView = params\.get\("view"\);/);
 });
+
+test("Orders: no View button (a tap on the row opens it), no 'Showing … orders' footer, narrower detail panel", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "src", "pages", "Orders.jsx"), "utf8");
+  assert.ok(!/>\s*View\s*</.test(src), "no View button");
+  assert.ok(!/Showing \{list\.length\} of \{orders\.length\} orders/.test(src), "no footer count");
+  assert.match(src, /onClick=\{\(\) => openOrder\(o\._id\)\}/, "the whole row still opens the order");
+  assert.match(src, /lg:w-\[340px\] 2xl:w-\[400px\]/);
+});

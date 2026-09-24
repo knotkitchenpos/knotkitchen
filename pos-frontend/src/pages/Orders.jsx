@@ -564,7 +564,7 @@ const Orders = () => {
                     </div>
 
                     {/* ID + time */}
-                    <div className="hidden sm:block shrink-0 w-[110px]">
+                    <div className="hidden sm:block shrink-0 w-[96px]">
                       <p className="text-[13px] font-extrabold text-[#0F172A]">
                         #{orderDisplayId(o)}
                       </p>
@@ -615,17 +615,6 @@ const Orders = () => {
                       {money(o.bills?.totalWithTax || o.bills?.total)}
                     </span>
                     </div>
-
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        openOrder(o._id);
-                      }}
-                      className="hidden sm:flex h-[32px] px-3.5 rounded-lg border border-[#FD5302] text-[#C2410C] text-[12.5px] font-bold flex items-center shrink-0 hover:bg-[#FFF1E8]"
-                    >
-                      View
-                    </button>
                   </div>
                 );
               })}
@@ -633,11 +622,6 @@ const Orders = () => {
           )}
         </div>
 
-        <div className="px-4 sm:px-7 py-3 border-t border-[#E2E8F0] shrink-0">
-          <p className="text-[12.5px] text-[#94A3B8]">
-            Showing {list.length} of {orders.length} orders {windowLabel && `— ${windowLabel}`}
-          </p>
-        </div>
       </div>
 
       {/* ===== Right: Order detail ===== */}
@@ -646,7 +630,7 @@ const Orders = () => {
         id="order-detail-pane"
         className={`${
           detailOpen ? "fixed inset-0 z-[60] flex pb-[env(safe-area-inset-bottom)]" : "hidden"
-        } lg:static lg:z-auto lg:flex lg:pb-0 w-full lg:w-[400px] shrink-0 h-full bg-white border-l border-[#E2E8F0] flex-col`}
+        } lg:static lg:z-auto lg:flex lg:pb-0 w-full lg:w-[340px] 2xl:w-[400px] shrink-0 h-full bg-white border-l border-[#E2E8F0] flex-col`}
       >
         <div className="lg:hidden h-[56px] px-2 flex items-center border-b border-[#E2E8F0] shrink-0">
           <button
