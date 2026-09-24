@@ -96,3 +96,20 @@ test("Orders: the status tabs stay on one row", () => {
   assert.match(tabs, /flex flex-nowrap overflow-x-auto no-scrollbar/);
   assert.ok(!/flex-wrap/.test(tabs.replace("flex-nowrap", "")), "never wraps to a second line");
 });
+
+test("Manage Tables is in Settings, not the side panel; long-press pins any option as a Quick Shortcut", () => {
+  const sidebar = fs.readFileSync(path.join(__dirname, "..", "src", "components", "shared", "Sidebar.jsx"), "utf8");
+  const settings = fs.readFileSync(path.join(__dirname, "..", "src", "pages", "Settings.jsx"), "utf8");
+  assert.ok(!/path: "\/tables"/.test(sidebar), "no fixed Tables entry in the side panel or the bottom bar");
+  assert.match(settings, /\{ id: "tables", title: "\d+\. Manage Tables".*path: "\/tables" \}/);
+  // Long-press (or right-click) opens the pin sheet; the click that ends it does not navigate.
+  assert.match(settings, /onPointerDown=\{\(\) => startPress\(item\)\}/);
+  assert.match(settings, /onContextMenu=/);
+  assert.match(settings, /if \(longPressed\.current\) \{\s*longPressed\.current = false;\s*return;/);
+  assert.match(settings, /"Add as Quick Shortcut"/);
+  // Pinned options show in the side panel (desktop and drawer) and, up to two, in the bottom bar.
+  assert.match(sidebar, /\[\.\.\.NAV, \.\.\.shortcuts\]/);
+  assert.match(sidebar, /useShortcutNav\(\)\.slice\(0, BAR_SHORTCUTS\)/);
+  // A pinned sub-view opens directly: Settings reads ?view=.
+  assert.match(settings, /const activeSubView = params\.get\("view"\);/);
+});

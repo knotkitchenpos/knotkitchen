@@ -1,6 +1,8 @@
 import React, { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import KnotLogo from "./KnotLogo";
+import { MENU_ITEMS, shortcutPath, shortLabel } from "../../pages/Settings";
+import { useShortcuts } from "../../utils/shortcuts";
 
 /* Reference icons — drawn inline to match design exactly */
 const IconBag = ({ active }) => (
@@ -23,14 +25,6 @@ const IconChart = ({ active }) => (
     <path d="M7 15v3M12 10v8M17 6v12" />
   </svg>
 );
-const IconTables = ({ active }) => (
-  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.9} strokeLinecap="round" strokeLinejoin="round">
-    <rect x="3" y="3" width="7" height="7" rx="1.5" />
-    <rect x="14" y="3" width="7" height="7" rx="1.5" />
-    <rect x="3" y="14" width="7" height="7" rx="1.5" />
-    <rect x="14" y="14" width="7" height="7" rx="1.5" />
-  </svg>
-);
 const IconHeadset = ({ active }) => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.9} strokeLinecap="round" strokeLinejoin="round">
     <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
@@ -46,17 +40,34 @@ const IconSettingsGear = ({ active }) => (
 /**
  * Main-area navigation.
  *
- * Manage Tables lives here and is not listed in Settings; Help & Support is
- * in both, by request. Settings itself is the pinned footer button. Do not add "/settings" (or "/home") here -- that re-introduces the
+ * Manage Tables is in Settings; pin it (or any other Settings option) back
+ * here with a long-press there (Quick Shortcuts). Help & Support is in both,
+ * by request. Settings itself is the pinned footer button. Do not add "/settings" (or "/home") here -- that re-introduces the
  * duplicate buttons the QA screenshot flagged.
  */
 const NAV = [
   { path: "/menu", label: "Product", Icon: IconBag },
   { path: "/orders", label: "Orders", Icon: IconClipboard },
-  { path: "/tables", label: "Manage Tables", Icon: IconTables },
   { path: "/reports", label: "Reports", Icon: IconChart },
   { path: "/support", label: "Help & Support", Icon: IconHeadset },
 ];
+
+/** The pinned Settings options, in the order they were pinned, as nav entries. */
+const useShortcutNav = () => {
+  const ids = useShortcuts();
+  return ids
+    .map((id) => MENU_ITEMS.find((m) => m.id === id))
+    .filter(Boolean)
+    .map((item) => ({ path: shortcutPath(item), label: shortLabel(item), Icon: item.Icon, key: `shortcut-${item.id}` }));
+};
+
+/** A shortcut to a Settings sub-view is active only on that sub-view. */
+const matches = (location, path) => {
+  const [p, q] = path.split("?");
+  if (q) return location.pathname === p && location.search === `?${q}`;
+  if (p === "/menu") return location.pathname === "/menu" || location.pathname === "/";
+  return location.pathname.startsWith(p) && !(p === "/settings" && location.search.includes("view="));
+};
 
 const Sidebar = ({ mobileOpen = false, onMobileClose }) => {
   // Desktop: collapsed to icons, expanded while the pointer is over it.
@@ -64,10 +75,8 @@ const Sidebar = ({ mobileOpen = false, onMobileClose }) => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const isActive = (path) =>
-    path === "/menu"
-      ? location.pathname === "/menu" || location.pathname === "/"
-      : location.pathname.startsWith(path);
+  const shortcuts = useShortcutNav();
+  const isActive = (path) => matches(location, path);
 
   const go = (path) => {
     navigate(path);
@@ -95,11 +104,16 @@ const Sidebar = ({ mobileOpen = false, onMobileClose }) => {
 
       {/* Nav */}
       <nav className={`flex-1 overflow-y-auto no-scrollbar space-y-1.5 ${isCollapsed ? "px-2" : "px-4"}`}>
-        {NAV.map(({ path, label, Icon }) => {
+        {[...NAV, ...shortcuts].map(({ path, label, Icon, key }, i) => {
           const active = isActive(path);
           return (
+            <React.Fragment key={key || path}>
+            {i === NAV.length && (
+              <div className={`pt-3 pb-1 ${isCollapsed ? "border-t border-white/10 mx-2" : "px-4"}`}>
+                {!isCollapsed && <span className="text-[10.5px] font-extrabold uppercase tracking-wider text-[#5B6478]">Shortcuts</span>}
+              </div>
+            )}
             <button
-              key={path}
               onClick={() => go(path)}
               title={isCollapsed ? label : undefined}
               className={`w-full flex items-center rounded-xl transition-colors duration-150 ${
@@ -113,6 +127,7 @@ const Sidebar = ({ mobileOpen = false, onMobileClose }) => {
               <Icon active={active} />
               {!isCollapsed && <span className="text-[15px] whitespace-nowrap">{label}</span>}
             </button>
+            </React.Fragment>
           );
         })}
       </nav>
@@ -175,9 +190,10 @@ const Sidebar = ({ mobileOpen = false, onMobileClose }) => {
 const TABS = [
   { path: "/menu", label: "Product", Icon: IconBag },
   { path: "/orders", label: "Orders", Icon: IconClipboard },
-  { path: "/tables", label: "Tables", Icon: IconTables },
   { path: "/reports", label: "Reports", Icon: IconChart },
 ];
+// Pinned shortcuts beyond this many are in the "More" drawer.
+const BAR_SHORTCUTS = 2;
 
 const IconMore = () => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -187,9 +203,10 @@ const IconMore = () => (
 
 export const MobileNav = ({ onMore }) => {
   const navigate = useNavigate();
-  const { pathname } = useLocation();
-  const isOn = (path) => (path === "/menu" ? pathname === "/menu" || pathname === "/" : pathname.startsWith(path));
-  const moreOn = !TABS.some((t) => isOn(t.path));
+  const location = useLocation();
+  const tabs = [...TABS, ...useShortcutNav().slice(0, BAR_SHORTCUTS)];
+  const isOn = (path) => matches(location, path);
+  const moreOn = !tabs.some((t) => isOn(t.path));
 
   const tab = (key, label, Icon, on, onClick) => (
     <button
@@ -211,7 +228,7 @@ export const MobileNav = ({ onMore }) => {
       aria-label="Main"
     >
       <div className="flex h-[60px]">
-        {TABS.map(({ path, label, Icon }) => tab(path, label, Icon, isOn(path), () => navigate(path)))}
+        {tabs.map(({ path, label, Icon, key }) => tab(key || path, label, Icon, isOn(path), () => navigate(path)))}
         {tab("more", "More", IconMore, moreOn, onMore)}
       </div>
     </nav>
