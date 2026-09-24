@@ -94,10 +94,19 @@ const uploadMedia = async (req, res, next) => {
 
     const folder = ALLOWED_FOLDERS.includes(req.body?.folder) ? req.body.folder : "general";
 
+    // Item and category photos: WebP of about 200 KB at most, whatever was
+    // uploaded (services/imageCompress.js). Other folders keep the original.
+    let image = { buffer: req.uploadedFile.buffer, mimeType: validation.mimeType, width: validation.width, height: validation.height };
+    let fileName = validation.fileName;
+    if (folder === "products" || folder === "categories") {
+      image = await require("../services/imageCompress").toWebp(req.uploadedFile.buffer);
+      fileName = fileName.replace(/\.[a-z0-9]+$/i, "") + ".webp";
+    }
+
     const stored = await storage.upload({
-      buffer: req.uploadedFile.buffer,
-      fileName: validation.fileName,
-      mimeType: validation.mimeType,
+      buffer: image.buffer,
+      fileName,
+      mimeType: image.mimeType,
       storeId: tenant.storeId,
       folder,
     });
@@ -107,13 +116,13 @@ const uploadMedia = async (req, res, next) => {
         storeId: tenant.storeId,
         restaurantId: tenant.restaurantId,
         outletId: tenant.outletId,
-        fileName: validation.fileName,
+        fileName,
         storageKey: stored.storageKey,
         provider: stored.provider,
-        mimeType: validation.mimeType,
-        size: req.uploadedFile.buffer.length,
-        width: stored.width || validation.width,
-        height: stored.height || validation.height,
+        mimeType: image.mimeType,
+        size: image.buffer.length,
+        width: stored.width || image.width,
+        height: stored.height || image.height,
         url: stored.url,
         thumbnailUrl: stored.thumbnailUrl || stored.url,
         altText: String(req.body?.altText || "").slice(0, 200),

@@ -3,6 +3,46 @@ import { enqueueSnackbar } from "notistack";
 import { IconX } from "./icons";
 import { uploadMediaAsset } from "../../../https";
 
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+const TARGET_BYTES = 200 * 1024;
+
+/**
+ * Shrinks a photo to WebP of about 200 KB (longest side 1600px at most) in the
+ * browser, so a 12 MB phone photo or a BMP still uploads, and fast. The server
+ * re-encodes item photos to WebP of that size anyway
+ * (pos-backend/services/imageCompress.js), so when this browser cannot decode
+ * the file or write WebP, the original goes up as it is.
+ */
+const shrinkToWebp = async (file) => {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    let side = 1600;
+    let blob = null;
+    for (let round = 0; round < 5; round += 1) {
+      const scale = Math.min(1, side / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(img.naturalWidth * scale));
+      canvas.height = Math.max(1, Math.round(img.naturalHeight * scale));
+      canvas.getContext("2d").drawImage(img, 0, 0, canvas.width, canvas.height);
+      for (const quality of [0.82, 0.72, 0.62, 0.52]) {
+        blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/webp", quality));
+        if (!blob || blob.type !== "image/webp") return file;
+        if (blob.size <= TARGET_BYTES) break;
+      }
+      if (blob.size <= TARGET_BYTES) break;
+      side = Math.round(side * 0.75);
+    }
+    return new File([blob], `${file.name.replace(/\.[^.]+$/, "") || "photo"}.webp`, { type: "image/webp" });
+  } catch {
+    return file;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+};
+
 /**
  * The product slide-over: name, prices per channel, groups, schedule, image.
  * Owns its form; the page says what to load (`editing`, or null for a new
@@ -42,6 +82,7 @@ const ProductDrawer = ({
   const [prodOffOnWebsite, setProdOffOnWebsite] = useState(false);
   const [prodImageUrl, setProdImageUrl] = useState("");
   const [uploadingImg, setUploadingImg] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
   const [prodAssignedGroupNames, setProdAssignedGroupNames] = useState([]);
   const [dispatchAll, setDispatchAll] = useState(true);
   const [dispatchCol, setDispatchCol] = useState(true);
@@ -50,6 +91,53 @@ const ProductDrawer = ({
 
   const showCreateProduct = open;
   const editingProduct = editing;
+
+  // One path for a picked, pasted or dropped photo.
+  const uploadImage = async (picked) => {
+    if (!picked || uploadingImg) return;
+    if (!picked.type.startsWith("image/")) {
+      enqueueSnackbar("That is not an image.", { variant: "error" });
+      return;
+    }
+    setUploadingImg(true);
+    try {
+      const file = await shrinkToWebp(picked);
+      if (file.size > MAX_UPLOAD_BYTES) {
+        enqueueSnackbar("This image is too big to convert here. Use one under 5 MB.", { variant: "error" });
+        return;
+      }
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("folder", "products");
+      const res = await uploadMediaAsset(formData);
+      const uploadedUrl = res.data?.data?.url;
+      if (uploadedUrl) {
+        setProdImageUrl(uploadedUrl);
+        enqueueSnackbar("Product image uploaded successfully!", { variant: "success" });
+      }
+    } catch (err) {
+      const url = prompt("Upload failed. Enter image URL instead:", prodImageUrl);
+      if (url) setProdImageUrl(url.trim());
+    } finally {
+      setUploadingImg(false);
+    }
+  };
+
+  // Ctrl+V anywhere in the open drawer attaches a copied image. A text paste
+  // into a field is left alone.
+  useEffect(() => {
+    if (!open) return undefined;
+    const onPaste = (e) => {
+      const item = [...(e.clipboardData?.items || [])].find((i) => i.kind === "file" && i.type.startsWith("image/"));
+      if (!item) return;
+      // Text copied with a picture (Word, a web page) into a field stays text.
+      if (e.target.closest?.("input, textarea") && [...e.clipboardData.types].includes("text/plain")) return;
+      e.preventDefault();
+      uploadImage(item.getAsFile());
+    };
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+  });
 
   // Load the form when the drawer opens, keyed on the product's id so a
   // background refetch of the menu does not wipe what is being typed.
@@ -304,44 +392,29 @@ const ProductDrawer = ({
                   </button>
                 )}
               </div>
-              <label className="mt-1 w-full h-[110px] rounded-xl border-2 border-dashed border-[#CBD5E1] bg-[#F8FAFC] flex flex-col items-center justify-center cursor-pointer hover:border-[#FD5302] hover:bg-[#FFF1E8]/30 transition-all text-center p-2 relative overflow-hidden">
+              <label
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setDragOver(true);
+                }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOver(false);
+                  uploadImage(e.dataTransfer.files?.[0]);
+                }}
+                className={`mt-1 w-full h-[110px] rounded-xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer hover:border-[#FD5302] hover:bg-[#FFF1E8]/30 transition-all text-center p-2 relative overflow-hidden ${
+                  dragOver ? "border-[#FD5302] bg-[#FFF1E8]" : "border-[#CBD5E1] bg-[#F8FAFC]"
+                }`}
+              >
                 <input
                   type="file"
-                  accept="image/png,image/jpeg,image/webp,image/jpg"
+                  accept="image/*"
                   className="hidden"
                   disabled={uploadingImg}
-                  onChange={async (e) => {
-                    const file = e.target.files?.[0];
-                    if (!file) return;
-  
-                    if (!file.type.startsWith("image/")) {
-                      enqueueSnackbar("Please select a valid image file (PNG, JPG, WEBP).", { variant: "error" });
-                      return;
-                    }
-                    if (file.size > 5 * 1024 * 1024) {
-                      enqueueSnackbar("Image file size must be less than 5MB.", { variant: "error" });
-                      return;
-                    }
-  
-                    const formData = new FormData();
-                    formData.append("file", file);
-                    formData.append("folder", "products");
-  
-                    setUploadingImg(true);
-                    try {
-                      const res = await uploadMediaAsset(formData);
-                      const uploadedUrl = res.data?.data?.url;
-                      if (uploadedUrl) {
-                        setProdImageUrl(uploadedUrl);
-                        enqueueSnackbar("Product image uploaded successfully!", { variant: "success" });
-                      }
-                    } catch (err) {
-                      const url = prompt("Upload failed. Enter image URL instead:", prodImageUrl);
-                      if (url) setProdImageUrl(url.trim());
-                    } finally {
-                      setUploadingImg(false);
-                      e.target.value = "";
-                    }
+                  onChange={(e) => {
+                    uploadImage(e.target.files?.[0]);
+                    e.target.value = "";
                   }}
                 />
                 {uploadingImg ? (
@@ -350,14 +423,14 @@ const ProductDrawer = ({
                   <div className="relative h-full w-full flex items-center justify-center">
                     <img src={prodImageUrl} alt="Product" className="h-full object-contain rounded-lg" />
                     <span className="absolute bottom-1 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">
-                      Click to Replace
+                      Click, paste or drop to replace
                     </span>
                   </div>
                 ) : (
                   <>
                     <span className="text-2xl">📸</span>
-                    <span className="text-[11.5px] font-bold text-[#C2410C] mt-1">Click to upload or replace product image</span>
-                    <span className="text-[10px] text-[#94A3B8] font-semibold">PNG, JPG, WEBP up to 5MB</span>
+                    <span className="text-[11.5px] font-bold text-[#C2410C] mt-1">Click, paste (Ctrl+V) or drop an image</span>
+                    <span className="text-[10px] text-[#94A3B8] font-semibold">Any format. Saved as WebP, about 200 KB</span>
                   </>
                 )}
               </label>

@@ -255,6 +255,30 @@ const confirmCsvImport = async (req, res, next) => {
     const vegIdx = headerRow.findIndex((h) => h.includes("veg"));
     const priceIdx = headerRow.findIndex((h) => h.includes("price"));
 
+    // Photos stay with their items. The CSV has no image column and the
+    // import rebuilds the menu, so without this every photo was lost on an
+    // import. An item whose name is unchanged keeps its photo: matched by
+    // category + name first, then by name alone (it moved category).
+    const nameKey = (s) => String(s || "").trim().toLowerCase();
+    const photoOf = new Map();
+    const current = await Menu.find({ ...menuScopeFor(req.user) })
+      .select("name items.name items.image items.imageId items.imageUrl items.imageThumbnailUrl items.imageAlt")
+      .lean();
+    for (const m of current) {
+      for (const it of m.items || []) {
+        if (!it.imageUrl && !it.image) continue;
+        const photo = {
+          image: it.image || "",
+          imageId: it.imageId || null,
+          imageUrl: it.imageUrl || "",
+          imageThumbnailUrl: it.imageThumbnailUrl || "",
+          imageAlt: it.imageAlt || "",
+        };
+        photoOf.set(`${nameKey(m.name)}|${nameKey(it.name)}`, photo);
+        if (!photoOf.has(nameKey(it.name))) photoOf.set(nameKey(it.name), photo);
+      }
+    }
+
     // Parse all menu categories and items into memory structure first (Transactional safety)
     const menusMap = new Map(); // CategoryName -> { subcategoriesSet: Set(), itemsMap: Map() }
 
@@ -295,6 +319,7 @@ const confirmCsvImport = async (req, res, next) => {
         isVegetarian: isVeg,
         dispatchType: { collection: true, delivery: true, table: true },
         isAvailable: true,
+        ...(photoOf.get(`${nameKey(categoryName)}|${nameKey(itemName)}`) || photoOf.get(nameKey(itemName)) || {}),
       });
     }
 
