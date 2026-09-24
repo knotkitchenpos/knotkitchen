@@ -39,11 +39,6 @@ const DeviceMenuCard = () => {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h4 className="text-[15px] font-extrabold text-[#0F172A]">Menu on this device</h4>
-          <p className="text-[12.5px] text-[#64748B] mt-0.5">
-            This device keeps the published menu and its photos, so the POS opens at once and keeps
-            selling without internet. It checks for a newer menu by itself every 5 minutes and
-            whenever the menu is published.
-          </p>
         </div>
         <button
           onClick={check}
@@ -100,12 +95,6 @@ const ManageCacheView = () => {
 
   return (
     <div className="space-y-4">
-      <p className="text-[13px] text-[#64748B] leading-relaxed">
-        The POS tills keep serving the last published copy of the menu, so prices cannot change
-        under a cashier mid-order. Edits in Manage Menu stay as drafts until you publish here. The
-        customer website has its own button: Manage Website, Publish Website.
-      </p>
-
       <DeviceMenuCard />
 
       <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
@@ -113,7 +102,7 @@ const ManageCacheView = () => {
           <div>
             <h4 className="text-[15px] font-extrabold text-[#0F172A]">Update POS Cache</h4>
             <p className="text-[12.5px] text-[#64748B] mt-0.5">
-              Publishes Manage Menu changes to the POS tills, table QR and KDS. Not the website.
+              Publish Menu changes to the POS
             </p>
           </div>
           <button
