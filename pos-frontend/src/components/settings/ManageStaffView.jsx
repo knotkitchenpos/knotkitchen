@@ -9,7 +9,7 @@ import { addStaffMember, deleteStaffMember, getStaffMembers, updateStaffRole } f
 const ROLES = [
   { value: "Staff", hint: "Orders, billing and tables." },
   { value: "Cashier", hint: "Same as Staff." },
-  { value: "Manager", hint: "Same as Staff, and can also refund orders." },
+  { value: "Manager", hint: "Same as Staff. Only the owner can refund." },
 ];
 const roleHint = (role) => ROLES.find((r) => r.value === role)?.hint || "";
 

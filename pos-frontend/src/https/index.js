@@ -78,7 +78,8 @@ export const cancelOrder = ({ orderId, reason }) => axiosWrapper.put(`/api/order
  * out the amount from the payment record and talks to Cashfree; the till
  * sends only why.
  */
-export const refundOrder = ({ orderId, reason }) => axiosWrapper.post(`/api/order/${orderId}/refund`, { reason });
+// The amount is optional: left out, everything left is refunded. The backend caps it.
+export const refundOrder = ({ orderId, amount }) => axiosWrapper.post(`/api/order/${orderId}/refund`, { amount });
 /** Ask Cashfree where a pending (or unconfirmed) refund stands. */
 export const syncRefund = (orderId) => axiosWrapper.post(`/api/order/${orderId}/refund/sync`);
 

@@ -12,7 +12,7 @@ const {
   getOrdersReport,
 } = require("../controllers/orderController");
 const { isVerifiedUser } = require("../middlewares/tokenVerification");
-const { requireProtectedAction, requireManager } = require("../middlewares/requirePermission");
+const { requireProtectedAction, requireManager, requireOwnerOnly } = require("../middlewares/requirePermission");
 const router = express.Router();
 
 
@@ -37,7 +37,7 @@ router.route("/:id/ready").put(isVerifiedUser, markOrderReady);
 // store owner or a manager only: no PIN lets other staff do it. The generic PUT /:id can
 // still cancel (KDS / reject flows) but records no money movement.
 router.route("/:id/cancel").put(isVerifiedUser, requireProtectedAction, cancelOrder);
-router.route("/:id/refund").post(isVerifiedUser, requireManager, refundOrder);
+router.route("/:id/refund").post(isVerifiedUser, requireOwnerOnly, refundOrder);
 router.route("/:id/refund/sync").post(isVerifiedUser, requireManager, syncOrderRefund);
 
 module.exports = router;

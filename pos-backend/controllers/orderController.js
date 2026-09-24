@@ -983,7 +983,7 @@ const refundOrder = async (req, res, next) => {
     const order = await Order.findOne({ _id: id, ...tenantScopeFor(req.user), isDeleted: { $ne: true } });
     if (!order) return next(createHttpError(404, "Order not found!"));
 
-    const { entry, amount } = await refundCancelledOrder(order, { user: req.user, reason: req.body?.reason });
+    const { entry, amount } = await refundCancelledOrder(order, { user: req.user, reason: req.body?.reason, amount: req.body?.amount });
 
     await logActivity({
       req,

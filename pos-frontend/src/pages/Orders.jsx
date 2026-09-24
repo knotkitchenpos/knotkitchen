@@ -17,7 +17,7 @@ import {
 import TableSettleModal from "../components/tables/TableSettleModal";
 import ReasonModal from "../components/orders/ReasonModal";
 import SecurityPinModal from "../components/common/SecurityPinModal";
-import { checkActionAuthorization, isManager } from "../utils/security";
+import { checkActionAuthorization, isOwner } from "../utils/security";
 import { getMyRestaurant } from "../https";
 import { printKot, printOrderReceipt } from "../utils/printReceipt";
 import { billableItems, itemDisplayName, itemExtras } from "../utils/orderItems";
@@ -259,8 +259,8 @@ const Orders = () => {
     else setReasonFor({ kind, order });
   };
   const voidMutation = useMutation({
-    mutationFn: ({ kind, orderId, reason }) =>
-      kind === "refund" ? refundOrder({ orderId, reason }) : cancelOrder({ orderId, reason }),
+    mutationFn: ({ kind, orderId, reason, amount }) =>
+      kind === "refund" ? refundOrder({ orderId, amount }) : cancelOrder({ orderId, reason }),
     onSuccess: (res, vars) => {
       enqueueSnackbar(res.data?.message || (vars.kind === "refund" ? "Refund sent to Cashfree" : "Order cancelled"), { variant: "success" });
       setReasonFor(null);
@@ -821,7 +821,11 @@ const Orders = () => {
                   {selected.refundStatus && selected.refundStatus !== REFUND_STATUS.NOT_APPLICABLE && (
                     <div className="flex justify-between gap-3">
                       <span className="text-[#475569]">Refund</span>
-                      <span className="font-bold text-[#0F172A] text-right">{REFUND_STATUS_LABELS[selected.refundStatus]}</span>
+                      <span className="font-bold text-[#0F172A] text-right">
+                        {selected.refundStatus === REFUND_STATUS.NOT_REFUNDED && Number(selected.refundedTotal) > 0
+                          ? `Partly refunded (${money(selected.refundedTotal)})`
+                          : REFUND_STATUS_LABELS[selected.refundStatus]}
+                      </span>
                     </div>
                   )}
                 </div>
@@ -1096,12 +1100,16 @@ const Orders = () => {
                     </button>
                   ) : (
                     <button
-                      disabled={voidMutation.isPending || !isManager(user)}
+                      disabled={voidMutation.isPending || !isOwner(user)}
                       onClick={() => askReason("refund", selected)}
-                      title={isManager(user) ? "Send the amount back to the customer through Cashfree." : "Only the store owner or a manager can refund"}
+                      title={isOwner(user) ? "Send all or part of the amount back to the customer through Cashfree." : "Only the store owner can refund"}
                       className="h-[46px] rounded-xl border border-[#FCA5A5] text-[#DC2626] text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#FEF2F2] disabled:opacity-40"
                     >
-                      {selected.refundStatus === REFUND_STATUS.REFUND_FAILED ? "Retry Refund" : "Refund"}
+                      {selected.refundStatus === REFUND_STATUS.REFUND_FAILED
+                        ? "Retry Refund"
+                        : Number(selected.refundedTotal) > 0
+                          ? "Refund more"
+                          : "Refund"}
                     </button>
                   )
                 ) : null

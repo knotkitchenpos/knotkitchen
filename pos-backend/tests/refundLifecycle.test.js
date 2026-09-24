@@ -175,6 +175,26 @@ test("the amount is what was paid, less what already went back; never more than 
   assert.equal(svc.refundableAmount(pending), 0);
 });
 
+test("a partial refund sends only that amount; the rest can follow; never more than was paid", async () => {
+  const { svc, calls, order } = load();
+  const o = order({ ...gatewayPaid, cancelReason: "Customer changed mind" });
+  const part = await svc.refundCancelledOrder(o, { user, amount: 300 });
+  assert.equal(part.amount, 300);
+  assert.equal(calls.createRefund[0].amount, 300);
+  assert.equal(part.entry.reason, "Customer changed mind", "no reason asked: the cancel reason is the note");
+  assert.equal(svc.refundableAmount(o), 550);
+  assert.notEqual(o.refundStatus, "REFUNDED");
+
+  for (const bad of [0, -5, 551, "abc", Infinity]) {
+    await assert.rejects(svc.refundCancelledOrder(o, { user, amount: bad }), (e) => e.status === 400 && e.code === "REFUND_AMOUNT_INVALID", String(bad));
+  }
+  const rest = await svc.refundCancelledOrder(o, { user });
+  assert.equal(rest.amount, 550, "left out: everything that is left");
+  assert.equal(svc.refundedTotal(o), 850);
+  assert.equal(o.refundStatus, "REFUNDED");
+  await assert.rejects(svc.refundCancelledOrder(o, { user, amount: 1 }), (e) => e.code === "ALREADY_REFUNDED");
+});
+
 test("Test 4 - double click: the second request loses the claim and Cashfree is called once", async () => {
   let release;
   const gate = new Promise((r) => (release = r));
@@ -311,14 +331,19 @@ test("the view a screen gets says how it was paid and where the refund stands", 
 // Wiring
 // ---------------------------------------------------------------------------
 
-test("SOURCE: the controller trusts nothing from the browser but the reason", () => {
+test("SOURCE: the controller takes only a reason and an amount from the browser, and the service caps the amount", () => {
+  // Partial refunds (owner only): the owner may ask for less than what is
+  // left. The service checks it against what was paid less what already went
+  // back (the partial-refund test above sends 551 of 550 and is refused).
   const ctrl = read("controllers", "orderController.js");
   const block = ctrl.slice(ctrl.indexOf("const refundOrder"), ctrl.indexOf("const syncOrderRefund"));
-  assert.match(block, /refundCancelledOrder\(order, \{ user: req\.user, reason: req\.body\?\.reason \}\)/);
-  assert.ok(!/req\.body\?\.amount|req\.body\.amount|paymentId|gatewayOrderId/.test(block), "no amount, no ids from the request");
+  assert.match(block, /refundCancelledOrder\(order, \{ user: req\.user, reason: req\.body\?\.reason, amount: req\.body\?\.amount \}\)/);
+  assert.ok(!/paymentId|gatewayOrderId/.test(block), "no ids from the request");
+  const svc = read("services", "refunds.js");
+  assert.match(svc, /n > check\.amount \+ 0\.005/, "never more than what is left");
   assert.match(ctrl, /const voidingPaid = Boolean\(req\.voidWithReason\)/, "a paid order is voided only through the reasoned route");
   const routes = read("routes", "orderRoute.js");
-  assert.match(routes, /"\/:id\/refund"\)\.post\(isVerifiedUser, requireManager, refundOrder\)/);
+  assert.match(routes, /"\/:id\/refund"\)\.post\(isVerifiedUser, requireOwnerOnly, refundOrder\)/);
   assert.match(routes, /"\/:id\/refund\/sync"\)\.post\(isVerifiedUser, requireManager, syncOrderRefund\)/);
   assert.match(routes, /"\/:id\/cancel"\)\.put\(isVerifiedUser, requireProtectedAction, cancelOrder\)/);
 });

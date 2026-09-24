@@ -26,14 +26,17 @@ test("a paid order can be cancelled; the money is handled afterwards, not by the
   assert.match(page, /disabled=\{isRefunded\(selected\.orderStatus\) \|\| voidMutation\.isPending\}/);
 });
 
-test("the till sends a reason and nothing else; the amount is the backend's", () => {
+test("the owner sends an amount (all or part of what is left); no reason on a refund", () => {
   const api = SRC("src/https/index.js");
-  assert.match(api, /export const refundOrder = \(\{ orderId, reason \}\) => axiosWrapper\.post\(`\/api\/order\/\$\{orderId\}\/refund`, \{ reason \}\)/);
+  assert.match(api, /export const refundOrder = \(\{ orderId, amount \}\) => axiosWrapper\.post\(`\/api\/order\/\$\{orderId\}\/refund`, \{ amount \}\)/);
   assert.match(api, /export const syncRefund = \(orderId\) => axiosWrapper\.post\(`\/api\/order\/\$\{orderId\}\/refund\/sync`\)/);
   const modal = SRC("src/components/orders/ReasonModal.jsx");
-  assert.ok(!/type="number"/.test(modal), "no amount field");
-  assert.match(modal, /onConfirm\(\{ reason \}\)/);
+  assert.match(modal, /type="number"/, "an amount field");
+  assert.match(modal, /amount <= left \+ 0\.005/, "never more than what is left");
+  assert.match(modal, /onConfirm\(refund \? \{ amount \} : \{ reason \}\)/);
   assert.match(modal, /order\?\.refundableAmount/);
+  const page = SRC("src/pages/Orders.jsx");
+  assert.match(page, /disabled=\{voidMutation\.isPending \|\| !isOwner\(user\)\}/, "owner only");
   assert.match(modal, /through Cashfree/);
 });
 

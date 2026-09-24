@@ -274,9 +274,20 @@ const reconcileFailedAttempt = async (order, refundId, err) => {
  * record BEFORE Cashfree is called, so a crash mid-flight leaves a pending
  * entry that `syncRefund` can reconcile, never a refund nobody knows about.
  */
-const refundCancelledOrder = async (order, { user, reason } = {}) => {
+const refundCancelledOrder = async (order, { user, reason, amount: asked } = {}) => {
   const check = refundEligibility(order);
   if (!check.ok) throw httpError(check.status, check.message, check.code);
+
+  // The owner may refund part of it: any amount up to what is left. Left out,
+  // it is everything that is left. Never more, whatever the till sends.
+  let amount = check.amount;
+  if (asked !== undefined && asked !== null && asked !== "") {
+    const n = round2(Number(asked));
+    if (!Number.isFinite(n) || n <= 0 || n > check.amount + 0.005) {
+      throw httpError(400, `Enter an amount between ₹0.01 and ₹${check.amount.toFixed(2)}.`, "REFUND_AMOUNT_INVALID");
+    }
+    amount = Math.min(n, check.amount);
+  }
 
   const Order = require("../models/orderModel");
   const claimed = await Order.findOneAndUpdate(
@@ -291,10 +302,11 @@ const refundCancelledOrder = async (order, { user, reason } = {}) => {
   order.refunds = order.refunds || [];
   const sequence = order.refunds.length + 1;
   const refundId = `rf_${String(order._id).slice(-10)}_${sequence}`;
-  const note = String(reason || "Order cancelled").trim().slice(0, 100);
+  // No reason needed: the order was cancelled with one, and that is the note.
+  const note = String(reason || order.cancelReason || "Order cancelled").trim().slice(0, 100);
   const now = new Date();
   order.refunds.push({
-    amount: check.amount,
+    amount,
     reason: note,
     refundedBy: user?._id,
     refundedByName: user?.name || "POS",
@@ -310,7 +322,7 @@ const refundCancelledOrder = async (order, { user, reason } = {}) => {
 
   let result;
   try {
-    result = await refundThroughGateway(order, { amount: check.amount, note, refundId });
+    result = await refundThroughGateway(order, { amount, note, refundId });
   } catch (err) {
     result = await reconcileFailedAttempt(order, refundId, err);
   }
@@ -318,12 +330,12 @@ const refundCancelledOrder = async (order, { user, reason } = {}) => {
   order.refundStatus = refundStatusOf(order);
   order.timeline = order.timeline || [];
   order.timeline.push({
-    status: `Refund ₹${check.amount.toFixed(2)} ${entry.status.toLowerCase()}`,
+    status: `Refund ₹${amount.toFixed(2)} ${entry.status.toLowerCase()}`,
     timestamp: new Date(),
     user: user?.name || "POS",
   });
   await order.save();
-  return { order, entry, amount: check.amount };
+  return { order, entry, amount };
 };
 
 /**

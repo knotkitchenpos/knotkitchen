@@ -2,14 +2,15 @@ import React, { useState } from "react";
 import { inr as money } from "../../utils";
 
 /**
- * Why an order is being cancelled or refunded, and for a refund, how much.
+ * Cancel: why (a preset is one tap; "Other" opens a text box). Nothing is
+ * cancelled without a reason, because a void with no reason is how a till leaks.
  *
- * A preset is one tap; "Other" opens a text box. Nothing goes through
- * without a reason, because a void with no reason is how a till leaks.
+ * Refund (owner only, on a cancelled order): no reason asked, the cancel
+ * reason is the note. How much: everything left by default, or any part of
+ * it. The backend caps it at what is left whatever is sent.
  */
 const REASONS = {
   cancel: ["Customer changed mind", "Wrong order punched", "Item not available", "Duplicate order", "Customer did not turn up"],
-  refund: ["Wrong item served", "Food quality complaint", "Order was late", "Overcharged", "Customer cancelled after paying"],
 };
 
 const ReasonModal = ({ kind, order, busy, onClose, onConfirm }) => {
@@ -21,9 +22,12 @@ const ReasonModal = ({ kind, order, busy, onClose, onConfirm }) => {
 
   const [preset, setPreset] = useState("");
   const [other, setOther] = useState("");
+  const [amountText, setAmountText] = useState(left ? left.toFixed(2) : "");
 
   const reason = (preset === "Other" ? other : preset).trim();
-  const ok = reason.length >= 3 && !busy && (!refund || left > 0);
+  const amount = Math.round(Number(amountText) * 100) / 100;
+  const amountOk = Number.isFinite(amount) && amount > 0 && amount <= left + 0.005;
+  const ok = !busy && (refund ? left > 0 && amountOk : reason.length >= 3);
 
   return (
     <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4" onClick={onClose}>
@@ -38,16 +42,34 @@ const ReasonModal = ({ kind, order, busy, onClose, onConfirm }) => {
           #{order?.orderNumber || String(order?._id || "").slice(-6)}
           {refund ? ` · paid ${money(total)}${refunded ? `, ${money(refunded)} already refunded` : ""}` : ""}
         </p>
-        {refund && (
-          <p className="mt-2 rounded-lg bg-[#F8FAFC] px-3 py-2 text-[12px] text-[#475569]">
-            {order?.paymentKindLabel || "Gateway Payment"}: {money(left)} goes back to the customer through Cashfree
-            (5 to 7 working days). This cannot be undone.
-          </p>
-        )}
-
+        {refund ? (
+          <>
+            <p className="mt-2 rounded-lg bg-[#F8FAFC] px-3 py-2 text-[12px] text-[#475569]">
+              {order?.paymentKindLabel || "Gateway Payment"}: the amount goes back to the customer through Cashfree
+              (5 to 7 working days). This cannot be undone.
+            </p>
+            <label className="mt-4 block text-[12.5px] font-bold text-[#475569]">
+              Amount to refund (up to {money(left)})
+              <input
+                type="number"
+                inputMode="decimal"
+                min="0.01"
+                step="0.01"
+                max={left}
+                value={amountText}
+                onChange={(e) => setAmountText(e.target.value)}
+                className="mt-1.5 h-[44px] w-full rounded-xl border border-[#E2E8F0] px-3 text-[15px] font-bold text-[#0F172A] outline-none focus:border-[#FD5302]"
+              />
+            </label>
+            {amountText !== "" && !amountOk && (
+              <p className="mt-1 text-[12px] font-bold text-[#DC2626]">Enter an amount between ₹0.01 and {money(left)}.</p>
+            )}
+          </>
+        ) : (
+          <>
         <p className="mt-4 text-[12.5px] font-bold text-[#475569]">Reason</p>
         <div className="mt-1.5 flex flex-wrap gap-2">
-          {[...REASONS[refund ? "refund" : "cancel"], "Other"].map((r) => (
+          {[...REASONS.cancel, "Other"].map((r) => (
             <button
               key={r}
               type="button"
@@ -70,6 +92,8 @@ const ReasonModal = ({ kind, order, busy, onClose, onConfirm }) => {
             className="mt-2 min-h-[72px] w-full rounded-xl border border-[#E2E8F0] p-3 text-[13.5px] outline-none focus:border-[#FD5302]"
           />
         )}
+          </>
+        )}
 
         <div className="mt-5 flex gap-2">
           <button
@@ -82,10 +106,10 @@ const ReasonModal = ({ kind, order, busy, onClose, onConfirm }) => {
           <button
             type="button"
             disabled={!ok}
-            onClick={() => onConfirm({ reason })}
+            onClick={() => onConfirm(refund ? { amount } : { reason })}
             className="h-[44px] flex-1 rounded-xl bg-[#DC2626] text-[13px] font-bold text-white hover:bg-[#B91C1C] disabled:opacity-40"
           >
-            {busy ? "Working…" : refund ? `Refund ${money(left)}` : "Cancel order"}
+            {busy ? "Working…" : refund ? `Refund ${amountOk ? money(amount) : ""}` : "Cancel order"}
           </button>
         </div>
       </div>
