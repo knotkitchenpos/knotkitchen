@@ -41,7 +41,7 @@ export const MENU_ITEMS = [
     : []),
   // Reachable even when the account is locked -- it is the only screen that
   // can clear a lock, so it must never be gated. See middlewares/accountLock.js.
-  { id: "billing", title: "11. Billing & Subscription", desc: "Wallet, POS plan, add-ons, tablets, printers and invoices.", Icon: I.fileText, path: "/settings/billing" },
+  { id: "billing", title: "11. Billing & Subscription", desc: "Wallet, POS plan, add-ons, tablets, printers, their delivery and invoices.", Icon: I.fileText, path: "/settings/billing" },
 
   { id: "website", title: "12. Manage Website", desc: "Landing page, branding, colours, domain and payments.", Icon: I.globe, path: "/website", feature: "website", lockedDesc: "Payment gateway only. The website is an add-on.", openWhenLocked: "paymentGateway" },
 

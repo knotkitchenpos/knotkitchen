@@ -34,7 +34,7 @@ test("every purchase is priced by /quote, shown as an order summary, and sent on
   assert.match(billing, /item: `PRINTER:\$\{p\.code\}`/);
   assert.match(billing, /await getSubscriptionQuote\(item\)/);
   assert.match(billing, /addSubscriptionAddon\(\{ code: a\.code, accepted: true \}\)/);
-  assert.match(billing, /rentSubscriptionTablet\(\{ accepted: true \}\)/);
+  assert.match(billing, /rentSubscriptionTablet\(\{ accepted: true, shipTo \}\)/);
   // A printer is paid through Cashfree, never from the wallet, and only a
   // payment Cashfree confirmed counts.
   assert.match(billing, /buySubscriptionPrinter\(\{\s*code: p\.code,\s*accepted: true,/);
@@ -68,7 +68,7 @@ test("add-ons stop at renewal and can be kept; tablets wait for a qualifying top
   assert.match(billing, /Stop at renewal/);
   assert.match(billing, /addSubscriptionAddon\(\{ code: a\.code \}\)[\s\S]{0,300}Keep/);
   assert.match(billing, /disabled=\{busy \|\| credits < 1 \|\| !sub\.active\}/);
-  assert.match(billing, /credits < 1 \? `Top up \$\{money\(tablet\?\.rechargeRequired\)\} to rent a tablet` : "Rent a tablet"/);
+  assert.match(billing, /credits < 1 \? `Top up \$\{money\(tablet\?\.rechargeRequired\)\} to rent a tablet` : "Request a tablet"/);
 });
 
 test("no plan picker, installation or commitment is left in the POS", () => {
@@ -88,4 +88,23 @@ test("no plan picker, installation or commitment is left in the POS", () => {
   // Staff are asked for the PIN by the global popup; Billing has no modal of its own.
   assert.ok(!SRC("src/pages/Billing.jsx").includes("SecurityPinModal"));
   assert.match(SRC("src/components/shared/AccountLock.jsx"), /recharge the wallet there and it unlocks by itself/);
+});
+
+test("a printer or tablet is requested to a delivery address, then priced and paid; the store follows and can cancel it", () => {
+  const billing = SRC("src/pages/Billing.jsx");
+  // Address first (prefilled from the store), then the usual order summary.
+  assert.match(billing, /const rentTablet = \(\) =>\s*setDeliverFor\(/);
+  assert.match(billing, /const buyPrinter = \(p\) =>\s*setDeliverFor\(/);
+  assert.match(billing, /initial=\{sub\?\.shipTo\}/);
+  assert.match(billing, /buySubscriptionPrinter\(\{\s*code: p\.code,\s*accepted: true,\s*shipTo,/);
+  assert.match(billing, /deliverTo: shipTo/);
+  // Where each request is, refreshed with every purchase (same "subscription" prefix).
+  assert.match(billing, /queryKey: \["subscription", "hardware-requests"\]/);
+  assert.match(billing, /\{r\.canCancel && \(/);
+  assert.match(billing, /cancelHardwareRequest\(r\.id\)/);
+  const api = SRC("src/https/index.js");
+  assert.match(api, /axiosWrapper\.get\("\/api\/subscription\/hardware-requests"\)/);
+  assert.match(api, /\/api\/subscription\/hardware-requests\/\$\{encodeURIComponent\(id\)\}\/cancel/);
+  // CSD moving it along refreshes the till live.
+  assert.match(SRC("src/hooks/useRealtimeSync.js"), /"hardwareRequest:updated": \["subscription", "business-balance"\]/);
 });

@@ -31,6 +31,10 @@ const {
 } = require("../controllers/csdDocumentController");
 const { listMenus, listUsers, updateUser } = require("../controllers/csdCatalogController");
 const {
+  listHardwareRequests, hardwareRequestCounts, getHardwareRequest, moveHardwareRequest,
+  noteHardwareRequest, cancelHardwareRequest,
+} = require("../controllers/csdHardwareRequestController");
+const {
   getRestaurant, getCustomers, exportCustomers, getOrderSummary, getRestaurantStaff, getActivity,
   updateGoogleBusiness, updateCharges, createPosSession,
 } = require("../controllers/csdRestaurantController");
@@ -198,5 +202,19 @@ router.get("/billing/config", getBillingConfig);
 router.patch("/billing/config", requireCsdAdmin, updateBillingConfig);
 router.get("/billing/accounts/:restaurantId", getAccountStanding);
 router.post("/billing/accounts/:restaurantId/tablets/:serial/end", requireCsdAdmin, endTabletRental);
+
+/**
+ * Printer and tablet requests from POS Billing (paid by the store). Any CSD
+ * staff works the queue; cancelling refunds the store's wallet, so it is
+ * admin-only.
+ */
+router.get("/hardware-requests/counts", hardwareRequestCounts);
+router.get("/hardware-requests", listHardwareRequests);
+router.get("/hardware-requests/:id", getHardwareRequest);
+router.post("/hardware-requests/:id/accept", moveHardwareRequest("accept"));
+router.post("/hardware-requests/:id/dispatch", moveHardwareRequest("dispatch"));
+router.post("/hardware-requests/:id/deliver", moveHardwareRequest("deliver"));
+router.post("/hardware-requests/:id/notes", noteHardwareRequest);
+router.post("/hardware-requests/:id/cancel", requireCsdAdmin, cancelHardwareRequest);
 
 module.exports = router;

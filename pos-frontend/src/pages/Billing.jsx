@@ -15,6 +15,8 @@ import {
   buySubscriptionPrinter,
   renewSubscription,
   getPlatformInvoices,
+  getHardwareRequests,
+  cancelHardwareRequest,
 } from "../https";
 import { loadCashfree } from "../utils/cashfree";
 
@@ -72,16 +74,21 @@ const Bill = ({ bill, totalLabel }) => (
  */
 const OrderSummary = ({ summary, onClose, onConfirm, busy }) => {
   const [accepted, setAccepted] = useState(false);
-  const { title, quote, terms, payWith } = summary;
+  const { title, quote, terms, payWith, deliverTo } = summary;
   const online = payWith === "gateway";
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-label={title}>
-      <div className="w-full max-w-[440px] rounded-2xl bg-white p-5 shadow-2xl">
+      <div className="w-full max-w-[440px] max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
         <h3 className="text-[16px] font-extrabold text-[#0F172A]">{title}</h3>
         <p className="mt-0.5 mb-4 text-[12px] text-[#64748B]">
           Order summary · {online ? "paid now by UPI, card or netbanking" : "paid from your wallet"}
         </p>
         <Bill bill={quote} totalLabel="Total payable now" />
+        {deliverTo && (
+          <div className="mt-3 rounded-xl bg-[#F8FAFC] px-3 py-2 text-[12.5px] text-[#334155]">
+            <span className="font-bold text-[#0F172A]">Deliver to:</span> {shipToLine(deliverTo)}
+          </div>
+        )}
         {terms?.length > 0 && (
           <ul className="mt-3 list-disc space-y-1 pl-5 text-[12px] text-[#64748B]">
             {terms.map((t) => (
@@ -147,6 +154,170 @@ const PRIMARY =
   "shrink-0 rounded-xl bg-[#0F172A] px-4 py-2 text-[12.5px] font-extrabold text-white hover:bg-[#1E293B] disabled:opacity-40";
 const SECONDARY =
   "shrink-0 rounded-xl border border-[#E2E8F0] px-4 py-2 text-[12.5px] font-bold text-[#334155] hover:border-[#CBD5E1] disabled:opacity-40";
+const FIELD =
+  "h-[42px] w-full min-w-0 rounded-xl border border-[#E2E8F0] px-3 text-[14px] text-[#0F172A] focus:border-[#FD5302] focus:outline-none";
+
+const shipToLine = (s) =>
+  [s.name, s.phone, s.line1, s.line2, s.city, s.state && s.postalCode ? `${s.state} ${s.postalCode}` : s.state || s.postalCode]
+    .filter(Boolean)
+    .join(", ");
+
+const STATES = [
+  "Andaman and Nicobar Islands", "Andhra Pradesh", "Arunachal Pradesh", "Assam", "Bihar", "Chandigarh", "Chhattisgarh",
+  "Dadra and Nagar Haveli and Daman and Diu", "Delhi", "Goa", "Gujarat", "Haryana", "Himachal Pradesh", "Jammu and Kashmir",
+  "Jharkhand", "Karnataka", "Kerala", "Ladakh", "Lakshadweep", "Madhya Pradesh", "Maharashtra", "Manipur", "Meghalaya",
+  "Mizoram", "Nagaland", "Odisha", "Puducherry", "Punjab", "Rajasthan", "Sikkim", "Tamil Nadu", "Telangana", "Tripura",
+  "Uttar Pradesh", "Uttarakhand", "West Bengal",
+];
+
+/**
+ * Where KnotKitchen delivers the printer or tablet, before it is priced and
+ * paid. Starts from the store's own details; checked again by the server.
+ */
+const DeliverTo = ({ title, initial, onClose, onNext }) => {
+  const [form, setForm] = useState(() => ({
+    name: initial?.name || "",
+    phone: initial?.phone || "",
+    line1: initial?.line1 || "",
+    line2: initial?.line2 || "",
+    city: initial?.city || "",
+    state: initial?.state || "",
+    postalCode: initial?.postalCode || "",
+    note: "",
+  }));
+  const [error, setError] = useState("");
+  const set = (k) => (e) => setForm((f) => ({ ...f, [k]: e.target.value }));
+  const submit = (e) => {
+    e.preventDefault();
+    const phone = form.phone.replace(/\D/g, "").replace(/^(91|0)(?=\d{10}$)/, "");
+    const missing = [];
+    if (form.name.trim().length < 2) missing.push("a contact name");
+    if (!/^[6-9]\d{9}$/.test(phone)) missing.push("a 10-digit mobile number");
+    if (form.line1.trim().length < 3) missing.push("the address");
+    if (!form.city.trim()) missing.push("the city");
+    if (!form.state.trim()) missing.push("the state");
+    if (!/^[1-9]\d{5}$/.test(form.postalCode.replace(/\s/g, ""))) missing.push("a 6-digit PIN code");
+    if (missing.length) return setError(`Add ${missing.join(", ")}.`);
+    onNext({ ...form, phone, postalCode: form.postalCode.replace(/\s/g, "") });
+  };
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-label={title}>
+      <form onSubmit={submit} className="w-full max-w-[440px] max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
+        <h3 className="text-[16px] font-extrabold text-[#0F172A]">{title}</h3>
+        <p className="mt-0.5 mb-4 text-[12px] text-[#64748B]">Where should KnotKitchen deliver it? We call this number before we come.</p>
+        <div className="grid grid-cols-2 gap-2">
+          <input className={`${FIELD} col-span-2`} placeholder="Contact name" value={form.name} onChange={set("name")} autoComplete="name" />
+          <input className={`${FIELD} col-span-2`} placeholder="Mobile number" value={form.phone} onChange={set("phone")} inputMode="tel" autoComplete="tel" />
+          <input className={`${FIELD} col-span-2`} placeholder="Shop / building, street" value={form.line1} onChange={set("line1")} />
+          <input className={`${FIELD} col-span-2`} placeholder="Area, landmark (optional)" value={form.line2} onChange={set("line2")} />
+          <input className={FIELD} placeholder="City" value={form.city} onChange={set("city")} />
+          <input className={FIELD} placeholder="PIN code" value={form.postalCode} onChange={set("postalCode")} inputMode="numeric" maxLength={7} />
+          <input className={`${FIELD} col-span-2`} placeholder="State" value={form.state} onChange={set("state")} list="kk-states" />
+          <input className={`${FIELD} col-span-2`} placeholder="Note for the delivery (optional)" value={form.note} onChange={set("note")} maxLength={300} />
+          <datalist id="kk-states">
+            {STATES.map((s) => (
+              <option key={s} value={s} />
+            ))}
+          </datalist>
+        </div>
+        {error && <p className="mt-3 text-[12.5px] font-semibold text-[#B91C1C]">{error}</p>}
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <button type="button" onClick={onClose} className="h-[42px] rounded-xl border border-[#E2E8F0] text-[13px] font-bold text-[#334155]">
+            Back
+          </button>
+          <button type="submit" className="h-[42px] rounded-xl bg-[#FD5302] text-[13px] font-extrabold text-white">
+            Continue
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+};
+
+const REQUEST_STEPS = [
+  ["REQUESTED", "Requested"],
+  ["ACCEPTED", "Accepted"],
+  ["DISPATCHED", "On the way"],
+  ["DELIVERED", "Delivered"],
+];
+const REQUEST_TAG = {
+  REQUESTED: ["REQUESTED", "slate"],
+  ACCEPTED: ["ACCEPTED", "amber"],
+  DISPATCHED: ["ON THE WAY", "amber"],
+  DELIVERED: ["DELIVERED", "green"],
+  CANCELLED: ["CANCELLED", "red"],
+};
+
+/** One printer/tablet request: where it is, how it is travelling, and a cancel while KnotKitchen has not started. */
+const RequestRow = ({ r, busy, onCancel }) => {
+  const reached = REQUEST_STEPS.findIndex(([s]) => s === r.status);
+  const [label, tone] = REQUEST_TAG[r.status] || [r.status, "slate"];
+  return (
+    <div className="rounded-xl border border-[#E2E8F0] p-3">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-[14px] font-extrabold text-[#0F172A]">
+            {r.item.name}
+            <Tag tone={tone}>{label}</Tag>
+          </p>
+          <p className="text-[12px] text-[#64748B]">
+            {r.requestNo} · {dateOf(r.createdAt)} · paid {money(r.paid)}
+            {r.paidVia === "GATEWAY" ? " online" : r.paidVia === "WALLET" ? " from the wallet" : ""}
+          </p>
+        </div>
+        {r.canCancel && (
+          <button type="button" disabled={busy} onClick={() => onCancel(r)} className={SECONDARY}>
+            Cancel
+          </button>
+        )}
+      </div>
+
+      {r.status !== "CANCELLED" && (
+        <ol className="mt-3 grid grid-cols-4 gap-1" aria-label="Progress">
+          {REQUEST_STEPS.map(([s, name], i) => (
+            <li key={s} className="min-w-0">
+              <div className={`h-1.5 rounded-full ${i <= reached ? "bg-[#FD5302]" : "bg-[#E2E8F0]"}`} />
+              <p className={`mt-1 truncate text-[11px] font-bold ${i <= reached ? "text-[#C2410C]" : "text-[#94A3B8]"}`}>{name}</p>
+            </li>
+          ))}
+        </ol>
+      )}
+
+      <div className="mt-2 space-y-0.5 text-[12.5px] text-[#334155]">
+        {r.dispatch && r.status !== "CANCELLED" && (
+          <p>
+            Sent {dateOf(r.dispatch.at)} with <span className="font-bold">{r.dispatch.courier}</span>
+            {r.dispatch.trackingNo ? ` · tracking ${r.dispatch.trackingNo}` : ""}
+            {r.dispatch.trackingUrl && (
+              <>
+                {" · "}
+                <a href={r.dispatch.trackingUrl} target="_blank" rel="noreferrer" className="font-bold text-[#C2410C] underline underline-offset-2">
+                  Track
+                </a>
+              </>
+            )}
+            {r.dispatch.expectedBy && r.status === "DISPATCHED" ? ` · expected by ${dateOf(r.dispatch.expectedBy)}` : ""}
+          </p>
+        )}
+        {r.deliveredAt && <p>Delivered {dateOf(r.deliveredAt)}.</p>}
+        {r.cancel && (
+          <p>
+            Cancelled {dateOf(r.cancel.at)}
+            {r.cancel.byStore ? " by you" : " by KnotKitchen"}
+            {r.cancel.reason ? ` (${r.cancel.reason})` : ""}.{" "}
+            {Number(r.cancel.refund?.paise) > 0 ? `${money(r.cancel.refund)} is back in your wallet.` : "No refund."}
+          </p>
+        )}
+        {r.status !== "DELIVERED" && r.status !== "CANCELLED" && <p className="text-[#64748B]">To: {shipToLine(r.shipTo)}</p>}
+        {r.status === "REQUESTED" && (
+          <p className="text-[#64748B]">
+            KnotKitchen confirms it shortly. You can cancel until then{Number(r.refundable?.paise) > 0 ? " and get it all back" : ""}.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+};
 
 const Billing = () => {
   const qc = useQueryClient();
@@ -154,6 +325,8 @@ const Billing = () => {
   const [paying, setPaying] = useState(false);
   // The order summary awaiting acceptance: { title, quote, terms, run, done }.
   const [summary, setSummary] = useState(null);
+  // A printer/tablet waiting for its delivery address: { title, next(shipTo) }.
+  const [deliverFor, setDeliverFor] = useState(null);
 
   useEffect(() => {
     document.title = "KnotKitchen | Billing";
@@ -175,11 +348,17 @@ const Billing = () => {
     queryKey: ["subscription", "invoices"],
     queryFn: getPlatformInvoices,
   });
+  // Under "subscription", so every purchase above refreshes it too.
+  const { data: hwRes } = useQuery({
+    queryKey: ["subscription", "hardware-requests"],
+    queryFn: getHardwareRequests,
+  });
 
   const balance = balanceRes?.data?.data;
   const transactions = txRes?.data?.data || [];
   const sub = subRes?.data?.data;
   const invoices = invRes?.data?.data || [];
+  const requests = hwRes?.data?.data || [];
   const periodDays = sub?.periodDays || 30;
   // Until the POS plan has started, one top-up must reach the minimum: that one starts it.
   const minRupees = sub?.needsActivation ? Number(sub.firstRechargeMin?.rupees) || 0 : 0;
@@ -199,7 +378,7 @@ const Billing = () => {
     const { credited, purchased, already, reason } = verified.data.data;
 
     if (purchased) {
-      enqueueSnackbar("Printer paid. KnotKitchen will arrange delivery. The invoice is below.", { variant: "success" });
+      enqueueSnackbar("Printer paid. KnotKitchen will confirm and deliver it: follow it under Printer & tablet requests.", { variant: "success" });
       refreshMoney();
     } else if (credited || already) {
       enqueueSnackbar("Balance added.", { variant: "success" });
@@ -298,6 +477,8 @@ const Billing = () => {
       enqueueSnackbar(err?.response?.data?.message || err?.message || "That did not go through.", {
         variant: err?.response?.status === 402 ? "warning" : "error",
       });
+      // Changed on the server meanwhile (KnotKitchen accepted a request, say): show it as it is now.
+      if (err?.response?.status === 409) refreshMoney();
     },
   });
   const busy = act.isPending;
@@ -324,38 +505,65 @@ const Billing = () => {
       done: `${a.name} is on.`,
     });
 
+  // A printer or tablet: where to deliver it first, then the order summary.
   const rentTablet = () =>
-    review({
-      item: "TABLET",
-      title: "Rent a tablet",
-      terms: [
-        `Charged now for the days left in this period, then ${money(tablet?.nextPrice)} + GST every ${periodDays} days with the POS plan.`,
-        "Uses one of your qualifying top-ups. The tablet stays KnotKitchen's property; to end the rental, return it through KnotKitchen support.",
-      ],
-      run: () => rentSubscriptionTablet({ accepted: true }),
-      done: "Tablet rented.",
+    setDeliverFor({
+      title: "Request a tablet",
+      next: (shipTo) =>
+        review({
+          item: "TABLET",
+          title: "Request a tablet",
+          deliverTo: shipTo,
+          terms: [
+            `Charged now for the days left in this period, then ${money(tablet?.nextPrice)} + GST every ${periodDays} days with the POS plan.`,
+            "KnotKitchen delivers it to the address above and sets it up. You can cancel for a full refund to the wallet until KnotKitchen accepts the request.",
+            "Uses one of your qualifying top-ups. The tablet stays KnotKitchen's property; to end the rental, return it through KnotKitchen support.",
+          ],
+          run: () => rentSubscriptionTablet({ accepted: true, shipTo }),
+          done: "Tablet requested. KnotKitchen will confirm and deliver it.",
+        }),
     });
 
   const buyPrinter = (p) =>
-    review({
-      item: `PRINTER:${p.code}`,
-      title: `Buy a ${p.name}`,
-      payWith: "gateway",
-      terms: ["One-time purchase, paid now by UPI, card or netbanking. Not from your wallet. No monthly fee."],
-      run: async () => {
-        const inApp = Capacitor.isNativePlatform();
-        const opened = await buySubscriptionPrinter({
-          code: p.code,
-          accepted: true,
-          ...(inApp ? { returnUrl: `${window.location.origin}/settings/billing?recharge={order_id}` } : {}),
-        });
-        if (await checkout(opened.data.data)) return { redirected: true };
-        const verified = (await verifyRecharge({ gatewayOrderId: opened.data.data.gatewayOrderId })).data.data;
-        if (!verified.purchased) throw new Error(verified.reason || "The payment was not completed. Nothing was charged.");
-        return verified;
-      },
-      done: `${p.name} paid. KnotKitchen will arrange delivery. The invoice is below.`,
+    setDeliverFor({
+      title: `Request a ${p.name}`,
+      next: (shipTo) =>
+        review({
+          item: `PRINTER:${p.code}`,
+          title: `Request a ${p.name}`,
+          payWith: "gateway",
+          deliverTo: shipTo,
+          terms: [
+            "One-time purchase, paid now by UPI, card or netbanking. Not from your wallet. No monthly fee.",
+            "KnotKitchen delivers it to the address above. You can cancel until KnotKitchen accepts the request; the refund goes to your KnotKitchen wallet.",
+          ],
+          run: async () => {
+            const inApp = Capacitor.isNativePlatform();
+            const opened = await buySubscriptionPrinter({
+              code: p.code,
+              accepted: true,
+              shipTo,
+              ...(inApp ? { returnUrl: `${window.location.origin}/settings/billing?recharge={order_id}` } : {}),
+            });
+            if (await checkout(opened.data.data)) return { redirected: true };
+            const verified = (await verifyRecharge({ gatewayOrderId: opened.data.data.gatewayOrderId })).data.data;
+            if (!verified.purchased) throw new Error(verified.reason || "The payment was not completed. Nothing was charged.");
+            return verified;
+          },
+          done: `${p.name} paid. KnotKitchen will confirm and deliver it.`,
+        }),
     });
+
+  const cancelRequest = (r) => {
+    // A renewal that already billed a tablet still on its way is refunded too (r.refundable).
+    const back = Number(r.refundable?.paise) > 0;
+    const ask = back ? `${money(r.refundable)} goes back to your KnotKitchen wallet.` : "Nothing was charged for it.";
+    if (!window.confirm(`Cancel ${r.item.name} (${r.requestNo})? ${ask}`)) return;
+    act.mutate({
+      run: () => cancelHardwareRequest(r.id),
+      done: back ? "Request cancelled. The money is back in your wallet." : "Request cancelled.",
+    });
+  };
 
   // After a CSD credit, say: a top-up renews by itself.
   const renewNow = () =>
@@ -396,7 +604,7 @@ const Billing = () => {
     <div className="h-full overflow-y-auto bg-[#F8FAFC] p-4 sm:p-5 space-y-5">
       <header>
         <h1 className="text-[20px] font-extrabold text-[#0F172A]">Billing &amp; Subscription</h1>
-        <p className="text-[13px] text-[#64748B]">Your wallet, POS plan, add-ons, tablets, printers and invoices.</p>
+        <p className="text-[13px] text-[#64748B]">Your wallet, POS plan, add-ons, tablets, printers, their delivery and invoices.</p>
       </header>
 
       {balance?.locked && (
@@ -621,12 +829,12 @@ const Billing = () => {
               the POS plan started. The money stays in your wallet and pays your bills.
             </p>
             <button type="button" disabled={busy || credits < 1 || !sub.active} onClick={rentTablet} className={`${PRIMARY} mt-3`}>
-              {credits < 1 ? `Top up ${money(tablet?.rechargeRequired)} to rent a tablet` : "Rent a tablet"}
+              {credits < 1 ? `Top up ${money(tablet?.rechargeRequired)} to rent a tablet` : "Request a tablet"}
             </button>
           </Card>
 
           {/* ---------------------------------------------------------- */}
-          <Card title="Printers" subtitle="Buy once, paid online by UPI, card or netbanking (not from your wallet). No monthly fee.">
+          <Card title="Printers" subtitle="Buy once, paid online by UPI, card or netbanking (not from your wallet). No monthly fee. Delivered by KnotKitchen.">
             {(sub.printers || []).length === 0 ? (
               <p className="text-[13px] text-[#94A3B8]">No printers are on sale at the moment.</p>
             ) : (
@@ -640,7 +848,7 @@ const Billing = () => {
                       </p>
                     </div>
                     <button type="button" disabled={busy} onClick={() => buyPrinter(p)} className={PRIMARY}>
-                      Buy
+                      Request
                     </button>
                   </div>
                 ))}
@@ -648,6 +856,16 @@ const Billing = () => {
             )}
           </Card>
         </div>
+      )}
+
+      {requests.length > 0 && (
+        <Card title="Printer & tablet requests" subtitle="What you asked KnotKitchen for, and where it is.">
+          <div className="space-y-2">
+            {requests.map((r) => (
+              <RequestRow key={r.id} r={r} busy={busy} onCancel={cancelRequest} />
+            ))}
+          </div>
+        </Card>
       )}
 
       {/* ------------------------------------------------------------ */}
@@ -668,7 +886,10 @@ const Billing = () => {
               <tbody>
                 {invoices.map((inv) => (
                   <tr key={inv.id} className="border-t border-[#F1F5F9]">
-                    <td className="py-2.5 font-semibold text-[#0F172A]">{inv.number}</td>
+                    <td className="py-2.5 font-semibold text-[#0F172A]">
+                      {inv.number}
+                      {inv.status === "VOID" && <Tag tone="red">CANCELLED</Tag>}
+                    </td>
                     <td className="py-2.5 text-[#64748B]">
                       {new Date(inv.date).toLocaleDateString("en-IN", { dateStyle: "medium" })}
                     </td>
@@ -732,6 +953,19 @@ const Billing = () => {
           </div>
         )}
       </Card>
+
+      {deliverFor && (
+        <DeliverTo
+          title={deliverFor.title}
+          initial={sub?.shipTo}
+          onClose={() => setDeliverFor(null)}
+          onNext={(shipTo) => {
+            const { next } = deliverFor;
+            setDeliverFor(null);
+            next(shipTo);
+          }}
+        />
+      )}
 
       {/* Mounted only while open, so the terms box starts unticked every time. */}
       {summary && (

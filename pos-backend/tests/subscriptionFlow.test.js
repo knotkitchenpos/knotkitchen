@@ -39,6 +39,10 @@ const reset = ({ exempt = false } = {}) => {
     intents: [],
     paid: {},
     balance: 0,
+    requests: [],
+    failNextRequest: false,
+    requestStatus: "REQUESTED",
+    settled: [],
   });
   state.balanceDoc = {
     restaurantId: RID,
@@ -196,6 +200,19 @@ const fakes = {
     isOrderPaid: async ({ orderId }) => ({ paid: true, orderStatus: "PAID", amount: state.paid[orderId], cfOrderId: `cf-${orderId}` }),
   },
   "../config/config": { cashfreeNotifyUrl: "" },
+  // The delivery side has its own tests (hardwareRequests.test.js); here, what is opened.
+  "./hardwareRequests": {
+    openRequest: async (a) => {
+      if (state.failNextRequest) {
+        state.failNextRequest = false;
+        throw new Error("database blip");
+      }
+      state.requests.push(a);
+      return { ...a, status: state.requestStatus };
+    },
+    settleCancellation: async (r) => (state.settled.push(r.key), r),
+    defaultShipTo: (r) => ({ name: r?.name || "", phone: "", line1: "", line2: "", city: "", state: r?.address?.state || "", postalCode: "", note: "" }),
+  },
 };
 
 // Installed for the whole file (each test file runs in its own process), so
@@ -432,6 +449,8 @@ test("a printer is paid through the gateway, never the wallet: recorded once wit
   assert.deepEqual(state.sub.hardware.map((h) => [h.code, h.pricePaise, h.totalPaise]), [["PRINTER_2IN", 190000, 224200]]);
   assert.equal(state.sub.hardware[0].invoiceId, state.invoices[state.invoices.length - 1]._id);
 
+  assert.equal(state.settled.length, 0, "an open request is left alone");
+
   // The webhook arriving after the return records nothing twice.
   const invoices = state.invoices.length;
   state.intents[state.intents.length - 1].status = "CREATED";
@@ -446,6 +465,48 @@ test("a printer is paid through the gateway, never the wallet: recorded once wit
   const status = await billing.statusFor(RID);
   assert.equal(status.printers.find((p) => p.code === "PRINTER_2IN").owned, 1);
   assert.ok(!status.nextRenewal.lines.some((l) => /printer/i.test(l.description)));
+});
+
+test("a paid tablet or printer opens one delivery request, to the address given, and never before it is paid", async () => {
+  reset();
+  await topUp(10000);
+  await topUp(4000);
+  const on = addDays(state.sub.currentPeriodStart, 15);
+  const shipTo = { name: "Asha", phone: "9830012345", line1: "12 Park St", city: "Kolkata", state: "West Bengal", postalCode: "700016" };
+
+  const rented = await billing.rentTablet({ restaurantId: RID, acceptance: YES, shipTo, on });
+  assert.equal(rented.serial, 1);
+  assert.equal(state.requests.length, 1);
+  const tablet = state.requests[0];
+  assert.deepEqual([tablet.type, tablet.key, tablet.item.tabletSerial, tablet.item.name], ["TABLET", "tablet-sub1-1", 1, "Tablet #1"]);
+  assert.equal(tablet.key, debits("SUBSCRIPTION").at(-1).idempotencyKey, "the request is keyed by the rental's own payment");
+  assert.equal(tablet.shipTo, shipTo);
+
+  const opened = await recharge.createPrinterPayment({ restaurantId: RID, code: "PRINTER_3IN", acceptance: YES, shipTo });
+  assert.equal(state.intents.at(-1).item.shipTo, shipTo, "the address rides on the payment");
+  assert.equal(state.requests.length, 1, "nothing is requested before Cashfree says paid");
+  state.paid[opened.gatewayOrderId] = opened.amountPaise / 100;
+  await recharge.finalizeRecharge({ gatewayOrderId: opened.gatewayOrderId });
+  const printer = state.requests[1];
+  assert.deepEqual(
+    [printer.type, printer.key, printer.payment.amountPaise, printer.item.code],
+    ["PRINTER", `printer-pay-${opened.gatewayOrderId}`, opened.amountPaise, "PRINTER_3IN"],
+  );
+  assert.equal(printer.shipTo, shipTo);
+
+  // A request that fails to open never fails what was paid for; Billing opens it later.
+  await topUp(4000);
+  state.failNextRequest = true;
+  const second = await billing.rentTablet({ restaurantId: RID, acceptance: YES, on });
+  assert.equal(second.serial, 2);
+  assert.equal(state.sub.tablets.length, 2);
+
+  // A cancelled printer is no longer owned.
+  state.sub.hardware[0].cancelledAt = new Date();
+  const status = await billing.statusFor(RID, on);
+  assert.equal(status.printers.find((p) => p.code === "PRINTER_3IN").owned, 0);
+  assert.equal(status.hardware[0].cancelled, true);
+  assert.ok(status.shipTo, "Billing gets the store's own address to start from");
 });
 
 test("REGRESSION: a paid printer whose invoice failed gets it on the next confirmation, once", async () => {
@@ -467,6 +528,20 @@ test("REGRESSION: a paid printer whose invoice failed gets it on the next confir
   state.intents[state.intents.length - 1].status = "CREATED";
   await recharge.finalizeRecharge({ gatewayOrderId: opened.gatewayOrderId });
   assert.equal(state.invoices.length, invoices + 1, "never a second one");
+});
+
+test("REGRESSION: a printer cancelled and refunded before its invoice existed has the late invoice settled too", async () => {
+  reset();
+  await topUp(10000);
+  const opened = await recharge.createPrinterPayment({ restaurantId: RID, code: "PRINTER_2IN", acceptance: YES });
+  state.paid[opened.gatewayOrderId] = opened.amountPaise / 100;
+  state.failNextInvoice = true;
+  await assert.rejects(recharge.finalizeRecharge({ gatewayOrderId: opened.gatewayOrderId }), /database blip/);
+  // Billing opened the request from the printer row and the store cancelled it.
+  state.requestStatus = "CANCELLED";
+  await recharge.finalizeRecharge({ gatewayOrderId: opened.gatewayOrderId });
+  assert.equal(state.invoices.at(-1).kind, "HARDWARE", "the missing invoice is issued now");
+  assert.deepEqual(state.settled, [`printer-pay-${opened.gatewayOrderId}`], "and the cancellation is applied to it");
 });
 
 test("a Rs 0 printer is refused before anything is recorded", async () => {

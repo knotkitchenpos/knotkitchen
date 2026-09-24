@@ -29,6 +29,8 @@ const rechargeOrderSchema = new mongoose.Schema(
       pricePaise: { type: Number, default: 0 },
       // The invoice lines (with tax) exactly as charged.
       lines: { type: [mongoose.Schema.Types.Mixed], default: [] },
+      // Where to deliver the printer (services/hardwareRequests resolveShipTo).
+      shipTo: { type: mongoose.Schema.Types.Mixed, default: null },
     },
 
     status: {

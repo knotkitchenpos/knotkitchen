@@ -1,11 +1,12 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   FiGrid, FiUserPlus, FiUsers, FiShoppingBag, FiSearch, FiMessageSquare,
   FiCheckSquare, FiBarChart2, FiSettings, FiLogOut, FiMenu, FiX, FiBell, FiFileText,
-  FiDollarSign,
+  FiDollarSign, FiPackage,
 } from "react-icons/fi";
 import { useAuth } from "../context/AuthContext";
+import { hardwareRequests } from "../api";
 import GlobalSearch from "./GlobalSearch";
 import markUrl from "../assets/knotkitchen-mark.png";
 
@@ -23,6 +24,7 @@ const NAV = [
   { to: "/search", label: "Search Console", icon: FiSearch, adminOnly: false, group: "Support" },
   { to: "/chat", label: "Chat", icon: FiMessageSquare, adminOnly: false, group: "Support" },
   { to: "/jobs", label: "Jobs", icon: FiCheckSquare, adminOnly: false, group: "Support" },
+  { to: "/hardware", label: "Hardware requests", icon: FiPackage, adminOnly: false, group: "Support", badge: "hardware" },
   { to: "/billing", label: "Billing", icon: FiDollarSign, adminOnly: true, group: "Admin" },
   { to: "/staff", label: "Staff Management", icon: FiUsers, adminOnly: true, group: "Admin" },
   { to: "/settings", label: "Settings", icon: FiSettings, adminOnly: true, group: "Admin" },
@@ -37,6 +39,21 @@ const Layout = () => {
   const navigate = useNavigate();
 
   const { pathname } = useLocation();
+  // New (paid, not yet accepted) printer/tablet requests, on the nav. CSD is
+  // not on the socket, so this polls; a minute is fresh enough for a delivery.
+  const [newRequests, setNewRequests] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    const poll = () =>
+      hardwareRequests.counts().then((c) => alive && setNewRequests(c.REQUESTED || 0)).catch(() => {});
+    poll();
+    const t = setInterval(poll, 60 * 1000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [pathname]);
+  const badges = { hardware: newRequests };
   const items = NAV.filter((n) => !n.adminOnly || isAdmin);
   const groups = [...new Set(items.map((n) => n.group))];
   // The header names the screen you are on.
@@ -112,9 +129,17 @@ const Layout = () => {
               <p className={`px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-navy-500 ${LABEL}`}>{group}</p>
               {items
                 .filter((n) => n.group === group)
-                .map(({ to, label, icon: Icon }) => (
+                .map(({ to, label, icon: Icon, badge }) => (
                   <NavLink key={to} to={to} onClick={() => setOpen(false)} title={label} className={linkClass}>
-                    <Icon className="shrink-0" size={17} aria-hidden="true" />
+                    <span className="relative shrink-0">
+                      <Icon size={17} aria-hidden="true" />
+                      {badges[badge] > 0 && (
+                        <span className="absolute -right-2.5 -top-2 min-w-[16px] rounded-full bg-brand-600 px-1 text-center text-[10px] font-bold leading-4 text-white">
+                          {badges[badge] > 99 ? "99+" : badges[badge]}
+                          <span className="sr-only"> new</span>
+                        </span>
+                      )}
+                    </span>
                     <span className={LABEL}>{label}</span>
                   </NavLink>
                 ))}

@@ -37,6 +37,7 @@ const { nextPeriod, isActiveAt, prorate } = require("./subscriptionPeriod");
 const { nextInvoiceNumber } = require("./invoiceNumber");
 const { evaluateLock } = require("./accountLock");
 const { featuresFor } = require("./planFeatures");
+const { openRequest, defaultShipTo } = require("./hardwareRequests");
 
 // Awaited after every money movement, so the Billing page's refresh right
 // after already sees the lock gone. Never allowed to fail what it follows.
@@ -71,7 +72,7 @@ const load = async (restaurantId) => {
     getPlatformConfig(),
     getSubscription(restaurantId),
     getOverride(restaurantId),
-    Restaurant.findById(restaurantId).select("address").lean(),
+    Restaurant.findById(restaurantId).select("address name ownerName ownerPhone contactPersonPhone restaurantPhone").lean(),
   ]);
   return { config, subscription, override, restaurant, exempt: Boolean(override?.billingExempt) };
 };
@@ -523,8 +524,11 @@ const removeAddon = async ({ restaurantId, code, on = new Date() }) => {
   return { subscription, endsAt: addon.endsAt };
 };
 
-/** Rent one more tablet. Each needs its own qualifying top-up (a credit). */
-const rentTablet = async ({ restaurantId, acceptance, createdBy = null, on = new Date() }) => {
+/**
+ * Rent one more tablet. Each needs its own qualifying top-up (a credit).
+ * Paid now; KnotKitchen then delivers it to `shipTo` (a hardware request).
+ */
+const rentTablet = async ({ restaurantId, acceptance, shipTo = null, createdBy = null, on = new Date() }) => {
   const ctx = await load(restaurantId);
   const { config, subscription } = ctx;
   if (ctx.exempt) throw new SubscriptionError(DEMO_STORE, 409);
@@ -556,7 +560,7 @@ const rentTablet = async ({ restaurantId, acceptance, createdBy = null, on = new
     subscription,
     { "tablets.serial": { $ne: p.serial }, tabletRechargeCredits: { $gte: 1 } },
     {
-      $push: { tablets: { serial: p.serial, pricePaise: p.pricePaise, rentedAt: new Date(on), endsAt: null } },
+      $push: { tablets: { serial: p.serial, pricePaise: p.pricePaise, rentedAt: new Date(on), endsAt: null, shipTo } },
       $inc: { tabletRechargeCredits: -1 },
     },
   );
@@ -569,8 +573,25 @@ const rentTablet = async ({ restaurantId, acceptance, createdBy = null, on = new
       acceptance,
     });
   }
-  if (granted) await settleLock(restaurantId);
-  return { subscription: await getSubscription(restaurantId), invoice, charged, already: !granted };
+  if (granted) {
+    // Paid: KnotKitchen now delivers it. Never fails the rental -- a request
+    // that did not open is opened when the store next opens Billing.
+    try {
+      await openRequest({
+        type: "TABLET",
+        key: `tablet-${subscription._id}-${p.serial}`,
+        restaurantId,
+        item: { code: p.code, name: `Tablet #${p.serial}`, tabletSerial: p.serial },
+        payment: { invoiceId: invoice?._id || null },
+        shipTo,
+        on,
+      });
+    } catch (err) {
+      console.warn("[Subscription] opening the tablet request failed:", err.message);
+    }
+    await settleLock(restaurantId);
+  }
+  return { subscription: await getSubscription(restaurantId), invoice, charged, serial: p.serial, already: !granted };
 };
 
 /** CSD only: a tablet came back. It stops renewing at the current period end. */
@@ -850,7 +871,7 @@ const statusFor = async (restaurantId, on = new Date()) => {
       code: p.code,
       name: p.name,
       price: asAmount(await price(p.code)),
-      owned: (subscription.hardware || []).filter((h) => h.code === p.code).length,
+      owned: (subscription.hardware || []).filter((h) => h.code === p.code && !h.cancelledAt).length,
     });
   }
 
@@ -893,7 +914,10 @@ const statusFor = async (restaurantId, on = new Date()) => {
       total: asAmount(h.totalPaise),
       invoiceId: h.invoiceId || null,
       purchasedAt: h.purchasedAt,
+      cancelled: Boolean(h.cancelledAt),
     })),
+    // Where a printer or tablet is delivered unless the store says otherwise.
+    shipTo: defaultShipTo(restaurant),
     nextRenewal,
     // What the add-ons unlock (services/planFeatures). The POS locks its tiles from this.
     features: featuresFor({ subscription, exempt, on }),

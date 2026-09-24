@@ -208,6 +208,7 @@ const None = () => <p className="text-sm text-navy-400">None</p>;
  * { paise, rupees, label }; only the label is shown.
  */
 const PosPlanCard = ({ sub, canEnd, onEndTablet }) => {
+  const { storeId } = useParams();
   if (!sub) {
     return (
       <Card title="POS plan">
@@ -284,12 +285,15 @@ const PosPlanCard = ({ sub, canEnd, onEndTablet }) => {
         <ul className="text-sm">
           {sub.hardware.map((h, i) => (
             <li key={i} className="flex justify-between gap-3 border-b border-navy-100 py-1.5 last:border-b-0">
-              <span className="text-navy-800">{h.name}</span>
+              <span className="text-navy-800">{h.name}{h.cancelled && <span className="ml-1.5 text-xs text-red-600">cancelled</span>}</span>
               <span className="text-right text-navy-900">{h.total.label} incl. GST · {dOnly(h.purchasedAt)}</span>
             </li>
           ))}
         </ul>
       )}
+      <Link to={`/hardware?status=&storeId=${storeId}`} className="mt-2 inline-block text-sm font-medium text-brand-600 hover:text-brand-700">
+        Printer & tablet requests for this store →
+      </Link>
 
       <SubHead>Next renewal</SubHead>
       {!sub.nextRenewal ? <None /> : (

@@ -1,4 +1,5 @@
 const express = require("express");
+const mongoose = require("mongoose");
 const createHttpError = require("http-errors");
 const { isVerifiedUser } = require("../middlewares/tokenVerification");
 const {
@@ -15,6 +16,13 @@ const { PlatformInvoice } = require("../models/platformSubscriptionModel");
 const { urlForInvoice } = require("../services/receiptLink");
 const { asAmount } = require("../services/money");
 const { requireProtectedAction } = require("../middlewares/requirePermission");
+const {
+  HardwareRequestError,
+  resolveShipTo,
+  listForStore,
+  cancelRequest,
+  storeView,
+} = require("../services/hardwareRequests");
 
 const router = express.Router();
 
@@ -46,7 +54,7 @@ const acceptanceFrom = (req) => ({
 });
 
 const asSubscriptionError = (err, next) =>
-  err instanceof SubscriptionError
+  err instanceof SubscriptionError || err instanceof HardwareRequestError
     ? next(createHttpError(err.status, err.message, { code: err.code }))
     : next(err);
 
@@ -111,13 +119,16 @@ router.delete("/addons/:code", isVerifiedUser, requireProtectedAction, async (re
   }
 });
 
-// POST /api/subscription/tablets { accepted } — rent one more tablet.
+// POST /api/subscription/tablets { accepted, shipTo } — rent one more tablet,
+// delivered by KnotKitchen to shipTo (the store's own address when left out).
 router.post("/tablets", isVerifiedUser, requireProtectedAction, async (req, res, next) => {
   try {
+    const restaurantId = ownRestaurantId(req);
     const result = await rentTablet({
-      restaurantId: ownRestaurantId(req),
+      restaurantId,
       createdBy: req.user?._id,
       acceptance: acceptanceFrom(req),
+      shipTo: await resolveShipTo(restaurantId, req.body?.shipTo),
     });
     res.status(201).json({ success: true, data: purchased(result) });
   } catch (err) {
@@ -132,10 +143,12 @@ router.post("/printers", isVerifiedUser, requireProtectedAction, async (req, res
   try {
     const { createPrinterPayment, ownReturnUrl, RechargeError } = require("../services/recharge");
     try {
+      const restaurantId = ownRestaurantId(req);
       const opened = await createPrinterPayment({
-        restaurantId: ownRestaurantId(req),
+        restaurantId,
         code: String(req.body?.code || ""),
         acceptance: acceptanceFrom(req),
+        shipTo: await resolveShipTo(restaurantId, req.body?.shipTo),
         createdBy: req.user?._id,
         returnUrl: ownReturnUrl(req.body?.returnUrl),
       });
@@ -144,6 +157,33 @@ router.post("/printers", isVerifiedUser, requireProtectedAction, async (req, res
       if (err instanceof RechargeError) return next(createHttpError(err.status, err.message, { expose: true, code: err.code }));
       throw err;
     }
+  } catch (err) {
+    asSubscriptionError(err, next);
+  }
+});
+
+// GET /api/subscription/hardware-requests — this store's printer and tablet
+// requests and where each one is, newest first.
+router.get("/hardware-requests", isVerifiedUser, async (req, res, next) => {
+  try {
+    res.status(200).json({ success: true, data: await listForStore(ownRestaurantId(req)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/subscription/hardware-requests/:id/cancel — only while KnotKitchen
+// has not started on it; everything paid goes back to the wallet.
+router.post("/hardware-requests/:id/cancel", isVerifiedUser, requireProtectedAction, async (req, res, next) => {
+  try {
+    if (!mongoose.isValidObjectId(req.params.id)) throw new HardwareRequestError("No such request.", 404);
+    const request = await cancelRequest({
+      id: req.params.id,
+      restaurantId: ownRestaurantId(req),
+      by: { type: "STORE", id: req.user?._id, name: req.user?.name },
+      reason: String(req.body?.reason || ""),
+    });
+    res.status(200).json({ success: true, data: storeView(request) });
   } catch (err) {
     asSubscriptionError(err, next);
   }

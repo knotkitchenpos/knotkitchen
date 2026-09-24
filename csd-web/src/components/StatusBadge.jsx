@@ -22,12 +22,20 @@ const STYLES = {
   in_progress: "bg-indigo-50 text-indigo-700 ring-indigo-600/20",
   completed: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
   closed: "bg-navy-100 text-navy-600 ring-navy-500/20",
+  // Hardware requests
+  requested: "bg-amber-50 text-amber-700 ring-amber-600/20",
+  accepted: "bg-sky-50 text-sky-700 ring-sky-600/20",
+  dispatched: "bg-indigo-50 text-indigo-700 ring-indigo-600/20",
+  delivered: "bg-emerald-50 text-emerald-700 ring-emerald-600/20",
+  cancelled: "bg-red-50 text-red-700 ring-red-600/20",
 };
 
 const LABELS = {
   closed_temporarily: "Closed temporarily",
   closed_until: "Closed until date",
   in_progress: "In progress",
+  requested: "New",
+  dispatched: "On the way",
 };
 
 const humanise = (s) =>

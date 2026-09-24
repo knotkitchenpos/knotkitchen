@@ -79,6 +79,8 @@ const subscriptionSchema = new mongoose.Schema(
             pricePaise: { type: Number, default: 0 },
             rentedAt: { type: Date, default: null },
             endsAt: { type: Date, default: null },
+            // Where it was asked to be delivered (services/hardwareRequests).
+            shipTo: { type: mongoose.Schema.Types.Mixed, default: null },
           },
           { _id: false },
         ),
@@ -101,6 +103,8 @@ const subscriptionSchema = new mongoose.Schema(
             totalPaise: { type: Number, default: 0 },
             invoiceId: { type: mongoose.Schema.Types.ObjectId, default: null },
             purchasedAt: { type: Date, default: null },
+            // Its request was cancelled and refunded (services/hardwareRequests).
+            cancelledAt: { type: Date, default: null },
           },
           { _id: false },
         ),

@@ -38,6 +38,8 @@ const INVALIDATE_ON = {
   "tableBooking:updated": ["tables", "table-bookings"],
   "order:prepDue": ["orders", "kds-orders"],
   "order:prepStarted": ["orders", "kds-orders"],
+  // KnotKitchen accepted, shipped, delivered or cancelled a printer/tablet (a refund moves the wallet).
+  "hardwareRequest:updated": ["subscription", "business-balance"],
 };
 
 const useRealtimeSync = () => {
@@ -62,7 +64,7 @@ const useRealtimeSync = () => {
     // Catch up on whatever was missed while disconnected (the shared socket
     // re-joins its room on every connect).
     const onConnect = () => {
-      invalidate(["orders", "tables", "kds-orders", "menus"]);
+      invalidate(["orders", "tables", "kds-orders", "menus", "subscription", "business-balance"]);
     };
     socket.on("connect", onConnect);
     if (socket.connected) onConnect();

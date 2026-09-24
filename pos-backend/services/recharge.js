@@ -103,7 +103,7 @@ const createRecharge = async ({ restaurantId, amountPaise, createdBy = null, ret
  * Buy a printer through the gateway: the price + GST is charged by Cashfree,
  * not taken from the wallet. finalizeRecharge records the printer when paid.
  */
-const createPrinterPayment = async ({ restaurantId, code, acceptance, createdBy = null, returnUrl } = {}) => {
+const createPrinterPayment = async ({ restaurantId, code, acceptance, shipTo = null, createdBy = null, returnUrl } = {}) => {
   const { printer, pricePaise, totalPaise, lines } = await require("./subscription").preparePrinterPayment({ restaurantId, code, acceptance });
   return openPayment({
     restaurantId,
@@ -111,7 +111,7 @@ const createPrinterPayment = async ({ restaurantId, code, acceptance, createdBy 
     createdBy,
     returnUrl,
     purpose: "PRINTER",
-    item: { code: printer.code, name: printer.name, pricePaise, lines },
+    item: { code: printer.code, name: printer.name, pricePaise, lines, shipTo },
   });
 };
 
@@ -149,7 +149,9 @@ const openPayment = async ({ restaurantId, amountPaise: amount, createdBy = null
       customer: {
         id: String(restaurantId),
         name: restaurant.storeName || restaurant.name || "Restaurant",
-        phone: restaurant.ownerPhone || restaurant.phone || "",
+        // Cashfree needs a 10-digit phone; the delivery contact's will do
+        // for a store whose owner phone was never captured.
+        phone: restaurant.ownerPhone || restaurant.phone || item?.shipTo?.phone || "",
         email: restaurant.ownerEmail || restaurant.email || "",
       },
       returnUrl,
@@ -235,6 +237,24 @@ const finalizeRecharge = async ({ gatewayOrderId }) => {
   // A printer paid through the gateway: record it; the wallet is not touched.
   if (intent.purpose === "PRINTER") {
     const { recorded, invoice } = await require("./subscription").recordPrinterPayment({ intent, paidPaise });
+    // KnotKitchen now delivers it. Never fails the payment -- a request that
+    // did not open is opened when the store next opens Billing.
+    try {
+      const requests = require("./hardwareRequests");
+      const request = await requests.openRequest({
+        type: "PRINTER",
+        key: `printer-pay-${intent.gatewayOrderId}`,
+        restaurantId: intent.restaurantId,
+        item: { code: intent.item?.code, name: intent.item?.name },
+        payment: { amountPaise: paidPaise, gatewayOrderId: intent.gatewayOrderId },
+        shipTo: intent.item?.shipTo || null,
+      });
+      // Cancelled and refunded while its invoice was still missing: the one
+      // just issued is voided (or noted) now. Every step runs once.
+      if (request?.status === "CANCELLED") await requests.settleCancellation(request);
+    } catch (err) {
+      console.warn("[recharge] opening the printer request failed:", err.message);
+    }
     intent.status = "PAID";
     intent.paidAt = intent.paidAt || new Date();
     intent.gatewayPaymentId = status.cfOrderId || "";

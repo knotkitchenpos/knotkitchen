@@ -303,7 +303,7 @@ const updateBillingConfig = async (req, res, next) => {
         description: "Platform billing configuration updated",
         previousValue: before,
         newValue: present(config),
-        severity: "WARN",
+        severity: "WARNING",
       });
     } catch (auditErr) {
       console.warn("[csd-billing] audit failed:", auditErr.message);
@@ -360,7 +360,7 @@ const endTabletRental = async (req, res, next) => {
       storeId: subscription.storeId || "",
       description: `Tablet #${tablet.serial} rental ends ${new Date(tablet.endsAt).toISOString()}`,
       newValue: { serial: tablet.serial, endsAt: tablet.endsAt },
-      severity: "WARN",
+      severity: "WARNING",
     });
     res.status(200).json({ success: true, data: { serial: tablet.serial, endsAt: tablet.endsAt } });
   } catch (err) {

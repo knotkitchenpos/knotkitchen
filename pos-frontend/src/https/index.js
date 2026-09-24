@@ -295,6 +295,10 @@ export const stopSubscriptionAddon = (code) =>
   axiosWrapper.delete(`/api/subscription/addons/${encodeURIComponent(code)}`);
 export const rentSubscriptionTablet = (data) => axiosWrapper.post("/api/subscription/tablets", data);
 export const buySubscriptionPrinter = (data) => axiosWrapper.post("/api/subscription/printers", data);
+// Printers and tablets on their way: KnotKitchen delivers what was paid for.
+export const getHardwareRequests = () => axiosWrapper.get("/api/subscription/hardware-requests");
+// Only while KnotKitchen has not started on it; the money goes back to the wallet.
+export const cancelHardwareRequest = (id) => axiosWrapper.post(`/api/subscription/hardware-requests/${encodeURIComponent(id)}/cancel`);
 export const renewSubscription = () => axiosWrapper.post("/api/subscription/renew");
 export const getPlatformInvoices = () => axiosWrapper.get("/api/subscription/invoices");
 

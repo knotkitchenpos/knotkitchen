@@ -183,6 +183,22 @@ export const billingConfig = {
     api.post(`/billing/accounts/${restaurantId}/tablets/${serial}/end`).then((r) => r.data.data),
 };
 
+/**
+ * Printers and tablets stores requested (and paid for) from POS Billing.
+ * cancel is admin-only on the server; its refund is in RUPEES, left empty
+ * for everything the store paid.
+ */
+export const hardwareRequests = {
+  list: (params) => api.get("/hardware-requests", { params }).then((r) => r.data.data),
+  counts: () => api.get("/hardware-requests/counts").then((r) => r.data.data),
+  get: (id) => api.get(`/hardware-requests/${id}`).then((r) => r.data.data),
+  accept: (id) => api.post(`/hardware-requests/${id}/accept`).then((r) => r.data.data),
+  dispatch: (id, payload) => api.post(`/hardware-requests/${id}/dispatch`, payload).then((r) => r.data.data),
+  deliver: (id, payload) => api.post(`/hardware-requests/${id}/deliver`, payload).then((r) => r.data.data),
+  note: (id, body) => api.post(`/hardware-requests/${id}/notes`, { body }).then((r) => r.data.data),
+  cancel: (id, payload) => api.post(`/hardware-requests/${id}/cancel`, payload).then((r) => r.data.data),
+};
+
 export const jobs = {
   list: (params) => api.get("/jobs", { params }).then((r) => r.data.data),
   get: (id) => api.get(`/jobs/${id}`).then((r) => r.data.data),
