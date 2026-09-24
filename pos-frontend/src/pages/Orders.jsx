@@ -409,8 +409,9 @@ const Orders = () => {
             and the Reports page carries the revenue breakdown, so the
             duplicate row was noise. */}
 
-        {/* Tabs */}
-        <div className="px-4 sm:px-7 pb-3 shrink-0 flex flex-nowrap sm:flex-wrap overflow-x-auto no-scrollbar items-center gap-1.5">
+        {/* Tabs: always one row (a wrapped row wasted a whole line on the
+            tablet); on a screen too narrow for all five it scrolls sideways. */}
+        <div className="px-4 sm:px-7 pb-3 shrink-0 flex flex-nowrap overflow-x-auto no-scrollbar items-center gap-1.5">
           {TABS.map((t) => {
             const on = tab === t.key;
             const n = counts[t.key] ?? 0;
@@ -418,7 +419,7 @@ const Orders = () => {
               <button
                 key={t.key}
                 onClick={() => setTab(t.key)}
-                className={`h-[38px] px-4 rounded-lg text-[13.5px] font-bold flex items-center gap-2 shrink-0 whitespace-nowrap transition-colors ${
+                className={`h-[38px] px-3 rounded-lg text-[13.5px] font-bold flex items-center gap-1.5 shrink-0 whitespace-nowrap transition-colors ${
                   on ? "bg-[#FD5302] text-white" : "bg-white text-[#475569] border border-[#E2E8F0] hover:border-[#CBD5E1]"
                 }`}
               >

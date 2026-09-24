@@ -88,3 +88,10 @@ test("the collection customer boxes sit just above the bill, not above the cart"
   assert.ok(panel.indexOf("Customer name (optional)") < panel.indexOf("<span className=\"text-[#475569]\">Subtotal</span>"), "above Subtotal");
   assert.ok(!/Optional for Walk-in/.test(panel), "no separate Customer Info box");
 });
+
+test("Orders: the status tabs stay on one row", () => {
+  const src = fs.readFileSync(path.join(__dirname, "..", "src", "pages", "Orders.jsx"), "utf8");
+  const tabs = src.slice(src.indexOf("{/* Tabs"), src.indexOf("{TABS.map"));
+  assert.match(tabs, /flex flex-nowrap overflow-x-auto no-scrollbar/);
+  assert.ok(!/flex-wrap/.test(tabs.replace("flex-nowrap", "")), "never wraps to a second line");
+});
