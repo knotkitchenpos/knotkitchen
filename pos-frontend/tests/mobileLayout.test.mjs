@@ -81,12 +81,13 @@ test("REGRESSION: on a landscape tablet the cart list keeps room", () => {
   }
 });
 
-test("the collection customer boxes sit just above the bill, not above the cart", () => {
+test("the collection customer boxes are asked in the Finish Order popup, not in the cart", () => {
   const panel = fs.readFileSync(path.join(__dirname, "..", "src", "components", "pos", "OrderPanel.jsx"), "utf8");
-  const summary = panel.indexOf("===== Summary =====");
-  assert.ok(panel.indexOf("Customer name (optional)") > summary, "inputs live in the summary block");
-  assert.ok(panel.indexOf("Customer name (optional)") < panel.indexOf("<span className=\"text-[#475569]\">Subtotal</span>"), "above Subtotal");
-  assert.ok(!/Optional for Walk-in/.test(panel), "no separate Customer Info box");
+  const modal = fs.readFileSync(path.join(__dirname, "..", "src", "components", "pos", "PaymentMethodModal.jsx"), "utf8");
+  assert.ok(!/Customer name \(optional\)/.test(panel), "not in the cart any more");
+  assert.match(panel, /customer=\{isDelivery \? null : \{ name: customer\.customerName/);
+  const body = modal.slice(modal.indexOf('title="Finish Order"'));
+  assert.ok(body.indexOf("Customer name (optional)") < body.indexOf("Bill breakdown"), "right under the title");
 });
 
 test("Orders: the status tabs stay on one row", () => {

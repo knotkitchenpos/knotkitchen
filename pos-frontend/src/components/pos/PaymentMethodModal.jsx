@@ -85,8 +85,14 @@ const MethodTile = ({ Icon, title, subtitle, tint, onClick, disabled }) => (
     </button>
 );
 
+const INPUT =
+    "w-full h-[40px] px-3 bg-white rounded-lg border border-[#E2E8F0] text-[13.5px] font-medium text-[#0F172A] placeholder-[#94A3B8] focus:border-[#FD5302] focus:ring-1 focus:ring-[#FD5302] outline-none";
+
 const PaymentMethodModal = ({
     orderType = "Collection",
+    // { name, phone } for a Collection order: asked here, optional. null hides it.
+    customer = null,
+    onCustomerChange,
     bills = {},
     busy = false,
     onClose,
@@ -104,10 +110,32 @@ const PaymentMethodModal = ({
     return (
         <ModalShell
             title="Finish Order"
-            subtitle={`Choose how the customer will pay for this ${orderType.toLowerCase()} order.`}
+            subtitle={customer ? undefined : `Choose how the customer will pay for this ${orderType.toLowerCase()} order.`}
             onClose={onClose}
             width={460}
         >
+            {/* ===== Customer (optional, Collection) ===== */}
+            {customer && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
+                    <input
+                        type="text"
+                        value={customer.name}
+                        onChange={(e) => onCustomerChange?.({ name: e.target.value, phone: customer.phone })}
+                        placeholder="Customer name (optional)"
+                        maxLength={120}
+                        className={INPUT}
+                    />
+                    <input
+                        type="tel"
+                        value={customer.phone}
+                        onChange={(e) => onCustomerChange?.({ name: customer.name, phone: e.target.value })}
+                        placeholder="Phone (+91…, optional)"
+                        maxLength={20}
+                        className={INPUT}
+                    />
+                </div>
+            )}
+
             {/* ===== Bill breakdown ===== */}
             <div className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3.5 space-y-1.5">
                 <Row label="Subtotal" value={money(subtotal)} />

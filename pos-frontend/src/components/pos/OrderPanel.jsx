@@ -1013,49 +1013,6 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
 
       {/* ===== Summary ===== */}
       <div className="px-4 py-3 short:py-2 border-t border-[#E2E8F0] shrink-0 space-y-2 short:space-y-1">
-        {/* Collection customer, optional: just above the bill so the cart
-            list gets the space under the order-type tabs. */}
-        {!isTable && !isDelivery && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pb-1">
-            <div>
-              <input
-                type="text"
-                value={customer.customerName || ""}
-                onChange={(e) =>
-                  dispatch(
-                    setCustomer({
-                      name: e.target.value,
-                      phone: customer.customerPhone || "",
-                      guests: customer.guests || 0,
-                    })
-                  )
-                }
-                placeholder="Customer name (optional)"
-                maxLength={120}
-                className="w-full h-[36px] px-3 bg-white rounded-lg border border-[#E2E8F0] text-[13px] font-medium text-[#0F172A] placeholder-[#94A3B8] focus:border-[#FD5302] focus:ring-1 focus:ring-[#FD5302] outline-none transition-all"
-              />
-            </div>
-
-            <div>
-              <input
-                type="tel"
-                value={customer.customerPhone || ""}
-                onChange={(e) =>
-                  dispatch(
-                    setCustomer({
-                      name: customer.customerName || "",
-                      phone: e.target.value,
-                      guests: customer.guests || 0,
-                    })
-                  )
-                }
-                placeholder="Phone (+91…, optional)"
-                maxLength={20}
-                className="w-full h-[36px] px-3 bg-white rounded-lg border border-[#E2E8F0] text-[13px] font-medium text-[#0F172A] placeholder-[#94A3B8] focus:border-[#FD5302] focus:ring-1 focus:ring-[#FD5302] outline-none transition-all"
-              />
-            </div>
-          </div>
-        )}
         <div className="flex items-center justify-between text-[13.5px]">
           <span className="text-[#475569]">Subtotal</span>
           <span className="font-bold text-[#0F172A]">{money(subtotal)}</span>
@@ -1205,6 +1162,9 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
       {showPaymentMethod && (
         <PaymentMethodModal
           orderType={orderType}
+          // Collection asks for the (optional) customer here, not in the cart.
+          customer={isDelivery ? null : { name: customer.customerName || "", phone: customer.customerPhone || "" }}
+          onCustomerChange={({ name, phone }) => dispatch(setCustomer({ name, phone, guests: customer.guests || 0 }))}
           bills={billsForOrder}
           busy={busy}
           onClose={() => setShowPaymentMethod(false)}
