@@ -1064,7 +1064,10 @@ const buildReportBuckets = (orders) => {
   };
 
   for (const o of orders) {
-    // Takings after refunds; a cancelled or fully refunded order counts nothing.
+    // A cancelled order was never a sale: it is in no card, count or value
+    // (as in the dish, category, hour and staff breakdowns).
+    if (canonicalStatus(o.orderStatus) === CANCELLED) continue;
+    // Takings after refunds; a fully refunded order counts but adds nothing.
     const amount = netAmount(o);
 
     inc(summary.total, amount);

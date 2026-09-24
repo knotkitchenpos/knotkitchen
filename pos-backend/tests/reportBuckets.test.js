@@ -40,13 +40,17 @@ test("source buckets follow where the order started, not how it was paid", () =>
   assert.deepEqual(s.collection, { count: 1, amount: 100 });
 });
 
-test("a cancelled order counts but adds no value; an unpaid one has no method", () => {
+test("REGRESSION: a cancelled order is in no card; an unpaid one has no method", () => {
+  // A cancelled website order read as "Website Orders 1 · Rs 0" and
+  // "Gateway Orders 1 · Rs 0", and made Total Orders one too high.
   const s = buildReportBuckets([
     order({ source: "POS", orderStatus: "Cancelled", paymentMethod: "Cash" }),
+    order({ source: "WEBSITE", orderStatus: "Cancelled", paymentMethod: "online" }),
     order({ source: "POS", orderStatus: "Preparing" }),
   ]);
-  assert.deepEqual(s.total, { count: 2, amount: 100 });
-  assert.deepEqual(s.cash, { count: 1, amount: 0 });
+  assert.deepEqual(s.total, { count: 1, amount: 100 });
+  assert.deepEqual(s.website, { count: 0, amount: 0 });
+  assert.deepEqual(s.cash, { count: 0, amount: 0 });
   assert.deepEqual(s.upi, { count: 0, amount: 0 });
   assert.deepEqual(s.gateway, { count: 0, amount: 0 });
 });

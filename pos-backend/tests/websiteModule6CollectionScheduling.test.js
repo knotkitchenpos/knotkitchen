@@ -81,7 +81,11 @@ test("Website Module 6: Scheduled collection order within current business day &
   };
 
   // Schedule 15 minutes ahead from now (guaranteed current business day)
-  const scheduledTime = new Date(Date.now() + 15 * 60 * 1000);
+  // 15 minutes ahead, but never past midnight in India: run late at night,
+  // "+15 minutes" was tomorrow and the order was (rightly) refused.
+  const IST = 5.5 * 60 * 60 * 1000;
+  const istMidnight = (Math.floor((Date.now() + IST) / 86400000) + 1) * 86400000 - IST;
+  const scheduledTime = new Date(Math.min(Date.now() + 15 * 60 * 1000, istMidnight - 60 * 1000));
 
   const req = {
     params: { slug: "royal-palace" },
