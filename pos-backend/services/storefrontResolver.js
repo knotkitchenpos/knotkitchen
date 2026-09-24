@@ -114,8 +114,8 @@ const resolveStorefront = async ({ identifier, host } = {}) => {
 
   const restaurantId = settings.restaurantId || store.restaurantId;
 
-  // The plan decides too: the website is a Growth and Scale feature, so on
-  // Essential, Connect or no plan it is off whatever the switch says.
+  // The add-ons decide too: the website is the Website add-on, so without it
+  // the site is off whatever the switch says.
   // Required here, for the same reason as accountLock below.
   const { hasWebsite } = require("./planFeatures");
   if (!(await hasWebsite(restaurantId, settings.storeId))) {

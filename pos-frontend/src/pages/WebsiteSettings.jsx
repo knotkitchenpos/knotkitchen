@@ -117,8 +117,8 @@ const WebsiteSettings = () => {
   const [dishQuery, setDishQuery] = useState("");
   // Which photo slot the image picker is filling ("" = closed).
   const [pickingImage, setPickingImage] = useState("");
-  // The website is a Growth and Scale feature (the server enforces it too).
-  // On Connect this page is the payment gateway only; Essential has neither.
+  // The website is an add-on (the server enforces it too). Without it this
+  // page is the payment gateway only, if the store has that; else Billing.
   const { data: subRes } = useQuery({ queryKey: ["subscription"], queryFn: getSubscriptionStatus });
   const websiteLocked = subRes?.data?.data?.features?.website === false;
   const gatewayLocked = subRes?.data?.data?.features?.paymentGateway === false;
@@ -190,7 +190,7 @@ const WebsiteSettings = () => {
 
   /** Write the editor's current state to the server. Throws on failure. */
   const persist = async () => {
-    // Gateway only below Growth: the rest of the page is not theirs to save.
+    // Gateway only without the Website add-on: the rest of the page is not theirs to save.
     const res = await updateWebsiteSettings(websiteLocked ? { paymentGateways: settings.paymentGateways } : settings);
     setSettings(res.data.data.settings);
     setStorefrontUrl(res.data.data.storefrontUrl);
@@ -265,8 +265,8 @@ const WebsiteSettings = () => {
           <h1 className="text-2xl font-extrabold text-[#0F172A]">{websiteLocked ? "Payment Gateway" : "Website"}</h1>
           {websiteLocked ? (
             <p className="text-sm text-[#64748B]">
-              The website is included in Growth and Scale.{" "}
-              <Link to="/settings/billing" className="font-semibold text-[#C2410C] hover:underline">Upgrade</Link>
+              The website is an add-on.{" "}
+              <Link to="/settings/billing" className="font-semibold text-[#C2410C] hover:underline">Add it in Billing</Link>
             </p>
           ) : (
             <a

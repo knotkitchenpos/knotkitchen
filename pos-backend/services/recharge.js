@@ -23,6 +23,7 @@ const cashfree = require("./gateways/cashfree");
 const { credit } = require("./ledger");
 const { settlePendingCharges } = require("./orderCharge");
 const { evaluateLock } = require("./accountLock");
+const { afterRecharge, minimumTopUpPaise } = require("./subscription");
 const { toPaise, toRupees, formatINR } = require("./money");
 
 class RechargeError extends Error {
@@ -73,6 +74,17 @@ const createRecharge = async ({ restaurantId, amountPaise, createdBy = null, ret
   // Cashfree bills in rupees; a fraction of a paise cannot be collected, and
   // crediting more than was charged is the wrong way to round.
   if (amount % 1 !== 0) throw new RechargeError("Amount must be a whole number of paise.");
+
+  // Until the POS plan has started, one top-up has to cover the minimum: that
+  // top-up is what starts it (services/subscription afterRecharge).
+  const minimum = await minimumTopUpPaise(restaurantId);
+  if (amount < minimum) {
+    throw new RechargeError(
+      `The first top-up must be at least ${formatINR(minimum)}. Your POS plan starts automatically when it arrives, and the rest stays in your wallet.`,
+      400,
+      "FIRST_TOPUP_MINIMUM",
+    );
+  }
 
   const gw = platformOrThrow();
 
@@ -185,7 +197,7 @@ const finalizeRecharge = async ({ gatewayOrderId }) => {
     );
   }
 
-  const { entry } = await credit({
+  const { entry, duplicate } = await credit({
     restaurantId: intent.restaurantId,
     kind: "RECHARGE",
     amountPaise: paidPaise,
@@ -202,13 +214,24 @@ const finalizeRecharge = async ({ gatewayOrderId }) => {
   intent.ledgerEntryId = entry._id;
   await intent.save();
 
-  // Money just arrived, so anything owed can now be collected. Never allowed
-  // to fail the top-up -- the credit already happened and is not in doubt.
+  // Money just arrived: start the POS plan (a first top-up at the minimum),
+  // earn a tablet credit, renew an expired plan. Only the call that actually
+  // credited does this, so a callback racing the browser cannot count twice.
+  // Never allowed to fail the top-up -- the credit already happened and is
+  // not in doubt.
+  let plan = null;
+  if (!duplicate) {
+    try {
+      plan = await afterRecharge({ restaurantId: intent.restaurantId, amountPaise: paidPaise });
+    } catch (err) {
+      console.warn("[recharge] plan update after top-up failed:", err.message);
+    }
+  }
+
+  // Anything owed can now be collected, the same way.
   let settled = null;
   try {
     settled = await settlePendingCharges(intent.restaurantId);
-    // A lapsed commitment's discount repayment is collected the same way.
-    await require("./subscription").settleCommitmentRepayment(intent.restaurantId);
   } catch (err) {
     console.warn("[recharge] settling dues after top-up failed:", err.message);
   }
@@ -223,7 +246,7 @@ const finalizeRecharge = async ({ gatewayOrderId }) => {
     console.warn("[recharge] lock re-evaluation failed:", err.message);
   }
 
-  return { credited: true, intent, entry, settled, lock };
+  return { credited: true, intent, entry, plan, settled, lock };
 };
 
 module.exports = {

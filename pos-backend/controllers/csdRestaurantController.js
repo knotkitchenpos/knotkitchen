@@ -73,24 +73,14 @@ const getRestaurant = async (req, res, next) => {
       };
     });
 
-    // Agreement v2.0 terms as the POS sees them: installation, commitment,
-    // the refund the restaurant would get today, and the accepted Schedule 1.
-    let agreementTerms = null;
+    // The POS plan as the POS sees it (GET /api/subscription): add-ons,
+    // tablets and credits, hardware, the next renewal.
+    let subscription = null;
     if (restaurant?._id) {
       try {
-        const st = await statusFor(restaurant._id);
-        agreementTerms = {
-          agreementVersion: st.agreementVersion,
-          activatedAt: st.activatedAt,
-          installation: st.installation,
-          installationRequired: st.installationRequired,
-          commitment: st.commitment,
-          schedule: st.schedule,
-          planName: st.planName,
-          currentPeriodEnd: st.currentPeriodEnd,
-        };
+        subscription = await statusFor(restaurant._id);
       } catch (err) {
-        console.warn("[csd] agreement terms unavailable:", err.message);
+        console.warn("[csd] subscription unavailable:", err.message);
       }
     }
 
@@ -197,11 +187,15 @@ const getRestaurant = async (req, res, next) => {
           gstPercent: charges.gstPercent,
           monthlySubscription: charges.monthlySubscription,
           billingExempt: Boolean(charges.billingExempt),
+          // Negotiated prices, rupees: [{ code, price }] (services/pricing priceFor).
+          planPrices: charges.planPrices || [],
           plan: restaurant?.subscription?.plan || "free",
           subscriptionStatus: restaurant?.subscription?.status || "",
           usingDefaults: !!charges.isDefault,
           notes: charges.notes || "",
-          agreementTerms,
+          // For the billing endpoints, which are keyed by restaurant.
+          restaurantId: restaurant?._id || null,
+          subscription,
           // Drives whether the UI renders Edit controls at all (§29). The
           // server enforces it regardless — see requireCsdAdmin on the route.
           canEdit: req.csdStaff.role === "admin",
@@ -610,8 +604,9 @@ const updateCharges = async (req, res, next) => {
     }
 
     /**
-     * A negotiated price for a specific plan -- "ABC pays 999 for Growth"
-     * while the standard price stays 1299.
+     * A negotiated price for one thing in the catalogue -- "ABC pays 299 for
+     * the POS plan" while the standard price stays 399. Codes: POS, an add-on,
+     * TABLET_FIRST, TABLET_EXTRA, a printer (services/pricing priceFor).
      *
      * Sent as a whole list, not a patch, so removing an entry is possible:
      * with a merge there would be no way to put a restaurant back on the
@@ -619,14 +614,14 @@ const updateCharges = async (req, res, next) => {
      */
     if (b.planPrices !== undefined) {
       if (!Array.isArray(b.planPrices)) {
-        fieldErrors.planPrices = "Plan prices must be a list.";
+        fieldErrors.planPrices = "Prices must be a list.";
       } else {
         const seen = new Set();
         patch.planPrices = b.planPrices.map((row, i) => {
-          const code = str(row?.code).trim().toLowerCase();
+          const code = str(row?.code).trim().toUpperCase();
           const price = Number(row?.price);
-          if (!code) fieldErrors[`planPrices.${i}.code`] = "Pick a plan.";
-          if (seen.has(code)) fieldErrors[`planPrices.${i}.code`] = "That plan is listed twice.";
+          if (!/^[A-Z0-9_]{2,30}$/.test(code)) fieldErrors[`planPrices.${i}.code`] = "Pick what the price is for.";
+          if (seen.has(code)) fieldErrors[`planPrices.${i}.code`] = "That item is listed twice.";
           seen.add(code);
           if (Number.isNaN(price) || price < 0) {
             fieldErrors[`planPrices.${i}.price`] = "Price must be zero or more.";

@@ -21,6 +21,7 @@ const {
   getBillingConfig,
   updateBillingConfig,
   getAccountStanding,
+  endTabletRental,
 } = require("../controllers/csdBillingConfigController");
 const {
   listAgreements, getAgreement, createStoreFromAgreement, retryPortalNotify,
@@ -188,12 +189,14 @@ router.get("/settings", requireCsdAdmin, getSettings);
 
 
 /**
- * KnotKitchen's own pricing. The ONLY place plans, offers, GST and the
- * per-order charge can be set -- no restaurant-facing route writes any of it.
- * Reading is open to any CSD staff; changing a price is admin-only.
+ * KnotKitchen's own pricing. The ONLY place the POS plan, add-ons, tablets,
+ * printers, GST and the per-order charge can be set -- no restaurant-facing
+ * route writes any of it. Reading is open to any CSD staff; changing a price,
+ * or ending a tablet rental (the physical return), is admin-only.
  */
 router.get("/billing/config", getBillingConfig);
 router.patch("/billing/config", requireCsdAdmin, updateBillingConfig);
 router.get("/billing/accounts/:restaurantId", getAccountStanding);
+router.post("/billing/accounts/:restaurantId/tablets/:serial/end", requireCsdAdmin, endTabletRental);
 
 module.exports = router;

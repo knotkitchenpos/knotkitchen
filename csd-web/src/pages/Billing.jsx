@@ -5,9 +5,10 @@ import { billingConfig, errorMessage } from "../api";
 /**
  * KnotKitchen's own pricing — the only place it can be set.
  *
- * Everything a restaurant is ever charged originates on this screen: plan
- * prices, promotional windows, GST, the per-order website charge, and the
- * renewal and lock policies. No restaurant-facing screen can change any of it.
+ * Everything a restaurant is ever charged originates on this screen: the POS
+ * plan, add-ons, tablet rental, printers, the first top-up, GST, the per-order
+ * website charge, and the renewal and lock policies. No restaurant-facing
+ * screen can change any of it.
  *
  * Money is typed and shown in RUPEES. The server converts to paise and is the
  * only converter; doing arithmetic on money here would be a second place for
@@ -66,6 +67,38 @@ const asInputDate = (v) => {
   return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
 };
 
+/** A price in rupees, kept as typed. The server converts and validates it. */
+const Money = ({ value, onChange }) => (
+  <input
+    className={input}
+    type="number"
+    min="0"
+    step="1"
+    value={value}
+    onChange={(e) => onChange(e.target.value)}
+  />
+);
+
+const AddButton = ({ label, onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="inline-flex items-center gap-1.5 rounded-lg border border-navy-300 px-3 py-2 text-xs font-semibold text-navy-700 hover:bg-navy-50"
+  >
+    <FiPlus size={14} aria-hidden="true" /> {label}
+  </button>
+);
+
+const RemoveButton = ({ onClick }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50"
+  >
+    <FiTrash2 size={13} aria-hidden="true" /> Remove
+  </button>
+);
+
 const ORDER_SOURCES = ["WEBSITE", "QR", "MARKETPLACE", "PHONE", "POS"];
 
 const Billing = () => {
@@ -98,30 +131,20 @@ const Billing = () => {
   );
 
   const set = (patch) => setConfig((c) => ({ ...c, ...patch }));
-  const setPlan = (i, patch) =>
-    setConfig((c) => ({
-      ...c,
-      plans: c.plans.map((p, j) => (j === i ? { ...p, ...patch } : p)),
-    }));
-  const setOffer = (i, patch) =>
-    setPlan(i, { offer: { ...config.plans[i].offer, ...patch } });
+  // One row of the add-on or printer list.
+  const setItem = (list, i, patch) =>
+    setConfig((c) => ({ ...c, [list]: c[list].map((x, j) => (j === i ? { ...x, ...patch } : x)) }));
+  const addItem = (list, row) => setConfig((c) => ({ ...c, [list]: [...c[list], row] }));
+  const removeItem = (list, i) =>
+    setConfig((c) => ({ ...c, [list]: c[list].filter((_, j) => j !== i) }));
 
-  const addPlan = () =>
-    set({
-      plans: [
-        ...config.plans,
-        {
-          code: "",
-          name: "",
-          price: 0,
-          isActive: true,
-          isAvailable: true,
-          sortOrder: config.plans.length,
-          features: [],
-          offer: { price: null, startsAt: null, endsAt: null, label: "" },
-        },
-      ],
-    });
+  // Stores' add-ons, hardware and negotiated prices point at a saved row's
+  // code, so a saved row keeps its code and can only be taken off sale, never
+  // deleted. New rows are appended, so the saved ones are always the first N.
+  const savedCount = useMemo(() => {
+    const s = saved ? JSON.parse(saved) : {};
+    return { addons: (s.addons || []).length, printers: (s.printers || []).length };
+  }, [saved]);
 
   const save = async () => {
     setSaving(true);
@@ -156,118 +179,216 @@ const Billing = () => {
 
       {/* ---------------------------------------------------------------- */}
       <Card
-        title="Plans"
-        subtitle="Prices in rupees, before GST. A plan that is retired keeps its existing subscribers."
+        title="POS plan"
+        subtitle="The base subscription every store pays for each billing period, in rupees before GST."
       >
-        {config.plans.length === 0 && (
-          <p className="rounded-lg bg-navy-50 px-3 py-2 text-xs text-navy-600">
-            No plans yet. Until at least one exists, nothing can be subscribed to.
-          </p>
-        )}
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Field label="Name" error={fieldErrors["basePlan.name"]}>
+            <input
+              className={input}
+              value={config.basePlan.name}
+              onChange={(e) => set({ basePlan: { ...config.basePlan, name: e.target.value } })}
+            />
+          </Field>
+          <Field
+            label="Price (₹)"
+            hint={`Every ${config.subscriptionDays} days, from the store's wallet.`}
+            error={fieldErrors["basePlan.price"]}
+          >
+            <Money
+              value={config.basePlan.price}
+              onChange={(v) => set({ basePlan: { ...config.basePlan, price: v } })}
+            />
+          </Field>
+          <Field
+            label="First top-up minimum (₹)"
+            hint="A new store's first top-up must be at least this. It starts the POS plan automatically; the rest stays in the wallet."
+            error={fieldErrors.firstRechargeMin}
+          >
+            <Money value={config.firstRechargeMin} onChange={(v) => set({ firstRechargeMin: v })} />
+          </Field>
+        </div>
+      </Card>
 
-        {config.plans.map((plan, i) => (
-          <div key={i} className="rounded-xl border border-navy-200 p-4">
-            <div className="grid gap-3 sm:grid-cols-4">
-              <Field label="Code" hint="Used internally; cannot repeat." error={fieldErrors[`plans.${i}.code`]}>
-                <input
-                  className={input}
-                  value={plan.code}
-                  onChange={(e) => setPlan(i, { code: e.target.value })}
-                  placeholder="growth"
-                />
-              </Field>
-              <Field label="Name" error={fieldErrors[`plans.${i}.name`]}>
-                <input
-                  className={input}
-                  value={plan.name}
-                  onChange={(e) => setPlan(i, { name: e.target.value })}
-                  placeholder="Growth"
-                />
-              </Field>
-              <Field label="Price (₹)" error={fieldErrors[`plans.${i}.price`]}>
-                <input
-                  className={input}
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={plan.price}
-                  onChange={(e) => setPlan(i, { price: e.target.value })}
-                />
-              </Field>
-              <Field label="Order" hint="Display order">
-                <input
-                  className={input}
-                  type="number"
-                  value={plan.sortOrder}
-                  onChange={(e) => setPlan(i, { sortOrder: e.target.value })}
-                />
-              </Field>
-            </div>
-
-            <div className="mt-3 grid gap-3 sm:grid-cols-4">
-              <Field label="Offer price (₹)" hint="Blank = no offer" error={fieldErrors[`plans.${i}.offer.price`]}>
-                <input
-                  className={input}
-                  type="number"
-                  min="0"
-                  value={plan.offer?.price ?? ""}
-                  onChange={(e) =>
-                    setOffer(i, { price: e.target.value === "" ? null : e.target.value })
-                  }
-                />
-              </Field>
-              <Field label="Offer starts" error={fieldErrors[`plans.${i}.offer.startsAt`]}>
-                <input
-                  className={input}
-                  type="date"
-                  value={asInputDate(plan.offer?.startsAt)}
-                  onChange={(e) => setOffer(i, { startsAt: e.target.value || null })}
-                />
-              </Field>
-              <Field label="Offer ends" error={fieldErrors[`plans.${i}.offer.endsAt`]}>
-                <input
-                  className={input}
-                  type="date"
-                  value={asInputDate(plan.offer?.endsAt)}
-                  onChange={(e) => setOffer(i, { endsAt: e.target.value || null })}
-                />
-              </Field>
-              <div className="flex flex-col justify-center gap-2 pt-4">
+      {/* ---------------------------------------------------------------- */}
+      <Card
+        title="Add-ons"
+        subtitle="Monthly, from the store's wallet, + GST. Added mid-period, the first charge covers only the days left."
+      >
+        {config.addons.map((a, i) => {
+          const isSaved = i < savedCount.addons;
+          return (
+            <div key={i} className="rounded-xl border border-navy-200 p-4">
+              <div className="grid gap-3 sm:grid-cols-4">
+                <Field
+                  label="Code"
+                  hint={isSaved ? "Fixed once saved." : "Capitals, digits or _. Cannot repeat."}
+                  error={fieldErrors[`addons.${i}.code`]}
+                >
+                  <input
+                    className={input}
+                    value={a.code}
+                    disabled={isSaved}
+                    onChange={(e) => setItem("addons", i, { code: e.target.value.toUpperCase() })}
+                    placeholder="LOYALTY"
+                  />
+                </Field>
+                <Field label="Name" error={fieldErrors[`addons.${i}.name`]}>
+                  <input
+                    className={input}
+                    value={a.name}
+                    onChange={(e) => setItem("addons", i, { name: e.target.value })}
+                    placeholder="Loyalty programme"
+                  />
+                </Field>
+                <Field label="Price (₹ / month)" error={fieldErrors[`addons.${i}.price`]}>
+                  <Money value={a.price} onChange={(v) => setItem("addons", i, { price: v })} />
+                </Field>
+                <Field
+                  label="Unlocks"
+                  hint="What the POS switches on while it is active."
+                  error={fieldErrors[`addons.${i}.feature`]}
+                >
+                  <select
+                    className={input}
+                    value={a.feature}
+                    onChange={(e) => setItem("addons", i, { feature: e.target.value })}
+                  >
+                    <option value="">Nothing (a service)</option>
+                    <option value="website">Website and online payments</option>
+                    <option value="tableQr">QR table ordering</option>
+                  </select>
+                </Field>
+              </div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-4">
+                <Field label="Description" className="sm:col-span-3">
+                  <input
+                    className={input}
+                    value={a.description}
+                    onChange={(e) => setItem("addons", i, { description: e.target.value })}
+                    placeholder="Shown to the restaurant next to the price."
+                  />
+                </Field>
+                <Field label="Order" hint="Display order">
+                  <input
+                    className={input}
+                    type="number"
+                    value={a.sortOrder}
+                    onChange={(e) => setItem("addons", i, { sortOrder: e.target.value })}
+                  />
+                </Field>
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3">
                 <Toggle
-                  checked={plan.isActive}
-                  onChange={(v) => setPlan(i, { isActive: v })}
-                  label="Active"
+                  checked={a.isActive}
+                  onChange={(v) => setItem("addons", i, { isActive: v })}
+                  label="On sale"
+                  hint="Off: no store can add it any more. Stores that have it keep it until they stop it."
                 />
-                <Toggle
-                  checked={plan.isAvailable}
-                  onChange={(v) => setPlan(i, { isAvailable: v })}
-                  label="Open to new sign-ups"
-                />
+                {!isSaved && <RemoveButton onClick={() => removeItem("addons", i)} />}
               </div>
             </div>
+          );
+        })}
 
-            <div className="mt-3 flex items-center justify-between">
-              <p className="text-xs text-navy-500">
-                A negotiated price for one restaurant is set on that restaurant&rsquo;s page, not here.
-              </p>
-              <button
-                type="button"
-                onClick={() => set({ plans: config.plans.filter((_, j) => j !== i) })}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-red-200 px-2.5 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50"
-              >
-                <FiTrash2 size={13} aria-hidden="true" /> Remove
-              </button>
+        <AddButton
+          label="Add add-on"
+          onClick={() =>
+            addItem("addons", {
+              code: "",
+              name: "",
+              description: "",
+              price: 0,
+              feature: "",
+              isActive: true,
+              sortOrder: config.addons.length + 1,
+            })
+          }
+        />
+      </Card>
+
+      {/* ---------------------------------------------------------------- */}
+      <Card
+        title="Tablets"
+        subtitle="A monthly rental, + GST. Before each tablet the store makes one top-up of at least the amount below; that money stays in its wallet and pays its charges."
+      >
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Field label="First tablet (₹ / month)" error={fieldErrors["tablet.firstPrice"]}>
+            <Money
+              value={config.tablet.firstPrice}
+              onChange={(v) => set({ tablet: { ...config.tablet, firstPrice: v } })}
+            />
+          </Field>
+          <Field label="Each extra tablet (₹ / month)" error={fieldErrors["tablet.extraPrice"]}>
+            <Money
+              value={config.tablet.extraPrice}
+              onChange={(v) => set({ tablet: { ...config.tablet, extraPrice: v } })}
+            />
+          </Field>
+          <Field
+            label="Top-up per tablet (₹)"
+            hint="The first top-up, which starts the POS plan, never counts."
+            error={fieldErrors["tablet.rechargeRequired"]}
+          >
+            <Money
+              value={config.tablet.rechargeRequired}
+              onChange={(v) => set({ tablet: { ...config.tablet, rechargeRequired: v } })}
+            />
+          </Field>
+        </div>
+      </Card>
+
+      {/* ---------------------------------------------------------------- */}
+      <Card title="Printers" subtitle="Bought once from the store's wallet, + GST. No monthly fee.">
+        {config.printers.map((p, i) => {
+          const isSaved = i < savedCount.printers;
+          return (
+            <div key={i} className="rounded-xl border border-navy-200 p-4">
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Field
+                  label="Code"
+                  hint={isSaved ? "Fixed once saved." : "Capitals, digits or _. Cannot repeat."}
+                  error={fieldErrors[`printers.${i}.code`]}
+                >
+                  <input
+                    className={input}
+                    value={p.code}
+                    disabled={isSaved}
+                    onChange={(e) => setItem("printers", i, { code: e.target.value.toUpperCase() })}
+                    placeholder="PRINTER_4IN"
+                  />
+                </Field>
+                <Field label="Name" error={fieldErrors[`printers.${i}.name`]}>
+                  <input
+                    className={input}
+                    value={p.name}
+                    onChange={(e) => setItem("printers", i, { name: e.target.value })}
+                    placeholder="4-inch receipt printer"
+                  />
+                </Field>
+                <Field label="Price (₹)" error={fieldErrors[`printers.${i}.price`]}>
+                  <Money value={p.price} onChange={(v) => setItem("printers", i, { price: v })} />
+                </Field>
+              </div>
+              <div className="mt-3 flex items-center justify-between gap-3">
+                <Toggle
+                  checked={p.isActive}
+                  onChange={(v) => setItem("printers", i, { isActive: v })}
+                  label="On sale"
+                />
+                {!isSaved && <RemoveButton onClick={() => removeItem("printers", i)} />}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
-        <button
-          type="button"
-          onClick={addPlan}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-navy-300 px-3 py-2 text-xs font-semibold text-navy-700 hover:bg-navy-50"
-        >
-          <FiPlus size={14} aria-hidden="true" /> Add plan
-        </button>
+        <AddButton
+          label="Add printer"
+          onClick={() => addItem("printers", { code: "", name: "", price: 0, isActive: true })}
+        />
+        <p className="text-xs text-navy-500">
+          A negotiated price for one restaurant is set on that restaurant&rsquo;s page, not here.
+        </p>
       </Card>
 
       {/* ---------------------------------------------------------------- */}
@@ -504,7 +625,10 @@ const Billing = () => {
       </Card>
 
       {/* ---------------------------------------------------------------- */}
-      <Card title="Billing rules" subtitle="How periods, late payment and upgrades behave.">
+      <Card
+        title="Billing rules"
+        subtitle="How periods, late payment and locks behave. The wallet renews the plan, add-ons and tablets automatically at the end of each period."
+      >
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Subscription length (days)" error={fieldErrors.subscriptionDays}>
             <input
@@ -529,8 +653,11 @@ const Billing = () => {
             />
           </Field>
         </div>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Field label="Late renewal" hint="Missed days are never free under either option.">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field
+            label="Late renewal"
+            hint="When a short wallet renews late, after a top-up. Missed days are never free under either option."
+          >
             <select
               className={input}
               value={config.renewalPolicy}
@@ -538,17 +665,6 @@ const Billing = () => {
             >
               <option value="FROM_PAYMENT">New period starts on the payment date</option>
               <option value="FROM_EXPIRY">New period starts at the old expiry</option>
-            </select>
-          </Field>
-          <Field label="Mid-period upgrade">
-            <select
-              className={input}
-              value={config.upgradePolicy}
-              onChange={(e) => set({ upgradePolicy: e.target.value })}
-            >
-              <option value="PRORATE">Difference, for the days remaining</option>
-              <option value="FULL_DIFFERENCE">Full difference</option>
-              <option value="FULL_PRICE">Full price of the new plan</option>
             </select>
           </Field>
           <Field

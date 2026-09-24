@@ -36,7 +36,7 @@ const ALWAYS_OPEN = [
   // The shell the Billing screen needs to render: who am I, what store.
   "/api/restaurant/me",
   "/api/csd",
-  // A non-owner confirms a plan purchase with the Store PIN. It only issues a
+  // A non-owner confirms a purchase (add-on, tablet, printer) with the Store PIN. It only issues a
   // PIN token; everything that token unlocks is still gated.
   "/api/restaurant/verify-pin",
 

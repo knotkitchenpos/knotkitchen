@@ -1,45 +1,52 @@
 /**
- * Buying, renewing and upgrading a KnotKitchen plan.
+ * The POS plan, its add-ons, tablets and printers: activating, buying and
+ * renewing them.
  *
- * Paid from the Business Balance, never from a card at this step -- the
- * gateway's only job is topping the balance up. That keeps one money path:
- * everything KnotKitchen charges is a ledger debit, and the ledger is the only
- * thing that can move a balance.
+ * Paid from the Business Balance (the wallet), never from a card at this
+ * step -- the gateway's only job is topping the wallet up. That keeps one
+ * money path: everything KnotKitchen charges is a ledger debit, and the
+ * ledger is the only thing that can move a balance.
+ *
+ * The life of a store:
+ *   1. created: status NONE, and locked ("No plan is active yet").
+ *   2. one top-up of at least firstRechargeMinPaise starts the POS plan by
+ *      itself (afterRecharge): the plan price + GST is debited, the period
+ *      starts today, the rest stays in the wallet.
+ *   3. add-ons and tablets bought mid-period pay for the days left; a
+ *      printer is paid once.
+ *   4. at the period end the plan, add-ons and tablets renew in one invoice,
+ *      all or nothing (renewDue). Short -> EXPIRED; the next top-up renews.
  *
  * Order of operations is deliberate. The balance is debited FIRST, and the
  * invoice is issued only once the money has actually moved. Issuing first
  * would leave an invoice for a payment that failed for want of funds -- a
- * document that says PAID against nothing.
+ * document that says PAID against nothing. Every debit carries an
+ * idempotency key, so a repeated request never charges twice.
  */
 
+const crypto = require("node:crypto");
 const { PlatformSubscription, PlatformInvoice, CommercialSchedule } = require("../models/platformSubscriptionModel");
+const { BusinessBalance } = require("../models/businessBalanceModel");
 const Restaurant = require("../models/restaurantModel");
-const { getPlatformConfig, resolvePlanPrice, getOverride } = require("./pricing");
+const { getPlatformConfig, getOverride, priceFor } = require("./pricing");
 const { computeTax } = require("./tax");
 const { debit, InsufficientBalanceError } = require("./ledger");
-const { amountInWords, formatINR } = require("./money");
-const { nextPeriod, upgradeCharge, isActiveAt, startOfIstDay } = require("./subscriptionPeriod");
+const { amountInWords, formatINR, asAmount } = require("./money");
+const { nextPeriod, isActiveAt, prorate } = require("./subscriptionPeriod");
 const { nextInvoiceNumber } = require("./invoiceNumber");
-const { fireEvaluateLock, evaluateLock } = require("./accountLock");
+const { evaluateLock } = require("./accountLock");
 const { featuresFor } = require("./planFeatures");
-const {
-  INSTALLATION_OPTIONS,
-  installationOption,
-  installationUpgrade,
-  commitmentOption,
-  applyDiscount,
-  commitmentState,
-  installationRefund,
-  scheduleHash,
-} = require("./commercialTerms");
 
-// Awaited after a purchase, so the Billing page's refresh right after already
-// sees the lock gone. Never allowed to fail the purchase it follows.
+// Awaited after every money movement, so the Billing page's refresh right
+// after already sees the lock gone. Never allowed to fail what it follows.
 const settleLock = (restaurantId) =>
   evaluateLock(restaurantId).catch((err) => console.warn("[Subscription] lock re-evaluation failed:", err.message));
 
-/** Agreement text the app's Commercial Schedule belongs to. */
+/** Agreement text the accepted purchase records belong to. */
 const AGREEMENT_VERSION = "v2.0";
+
+const DEMO_STORE = "This is a demo store. It has every add-on and is never charged.";
+const RENEW_FIRST = "Renew the POS plan first (top up the wallet).";
 
 class SubscriptionError extends Error {
   constructor(message, status = 400, extra = {}) {
@@ -55,6 +62,17 @@ const getSubscription = async (restaurantId) => {
   if (existing) return existing;
   const restaurant = await Restaurant.findById(restaurantId).select("storeId").lean();
   return PlatformSubscription.create({ restaurantId, storeId: restaurant?.storeId || "" });
+};
+
+/** Everything a charge needs, read once. */
+const load = async (restaurantId) => {
+  const [config, subscription, override, restaurant] = await Promise.all([
+    getPlatformConfig(),
+    getSubscription(restaurantId),
+    getOverride(restaurantId),
+    Restaurant.findById(restaurantId).select("address").lean(),
+  ]);
+  return { config, subscription, override, restaurant, exempt: Boolean(override?.billingExempt) };
 };
 
 /** Both parties, frozen as they are today. */
@@ -84,41 +102,46 @@ const partiesFor = async (restaurantId, config) => {
   };
 };
 
+const iso = (d) => new Date(d).toISOString();
+const istDate = (d) =>
+  new Date(d).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric" });
+const span = (config) => `${config.subscriptionDays} day${Number(config.subscriptionDays) === 1 ? "" : "s"}`;
+const liveAt = (item, on) => !item.endsAt || new Date(item.endsAt) > new Date(on);
+
+/** GST on each line by itself (as configured), and the totals. */
+const priceLines = (lines, { config, restaurant, on }) => {
+  const taxed = lines.map((l) => ({
+    ...l,
+    tax: computeTax({ amountPaise: l.amountPaise, gst: config.gst, restaurantState: restaurant?.address?.state, on }),
+  }));
+  const sum = (k) => taxed.reduce((t, l) => t + l.tax[k], 0);
+  return { lines: taxed, subtotalPaise: sum("taxablePaise"), taxPaise: sum("totalTaxPaise"), totalPaise: sum("totalPaise") };
+};
+
+/** A bill as the API sends it. */
+const billView = (bill) => ({
+  lines: bill.lines.map((l) => ({
+    description: l.description,
+    amount: asAmount(l.amountPaise),
+    tax: asAmount(l.tax.totalTaxPaise),
+    total: asAmount(l.tax.totalPaise),
+  })),
+  subtotal: asAmount(bill.subtotalPaise),
+  tax: asAmount(bill.taxPaise),
+  total: asAmount(bill.totalPaise),
+});
+
 /**
- * Write the invoice.
+ * Write the invoice, one line per item.
  *
  * Everything is copied in. Nothing on it is a reference to a price that can
  * later move, which is what makes "old invoices never change" true rather than
  * merely intended.
  */
-const issueInvoice = async ({
-  restaurantId,
-  storeId,
-  kind,
-  description,
-  amountPaise,
-  tax,
-  config,
-  parties,
-  period,
-  ledgerEntryId,
-}) => {
+const issueInvoice = async ({ restaurantId, storeId, kind, lines, config, parties, period, ledgerEntryId }) => {
   const invoiceNumber = await nextInvoiceNumber(storeId);
-  const half = tax.percent / 2;
-
-  const line = {
-    serial: 1,
-    description,
-    amountPaise,
-    taxableValuePaise: tax.taxablePaise,
-    cgstRate: tax.interState ? 0 : half,
-    cgstPaise: tax.cgstPaise,
-    sgstRate: tax.interState ? 0 : half,
-    sgstPaise: tax.sgstPaise,
-    igstRate: tax.interState ? tax.percent : 0,
-    igstPaise: tax.igstPaise,
-    totalPaise: tax.totalPaise,
-  };
+  const sum = (k) => lines.reduce((t, l) => t + l.tax[k], 0);
+  const totalPaise = sum("totalPaise");
 
   return PlatformInvoice.create({
     invoiceNumber,
@@ -128,16 +151,31 @@ const issueInvoice = async ({
     kind,
     seller: parties.seller,
     buyer: parties.buyer,
-    lines: [line],
-    subtotalPaise: tax.taxablePaise,
-    cgstPaise: tax.cgstPaise,
-    sgstPaise: tax.sgstPaise,
-    igstPaise: tax.igstPaise,
-    totalTaxPaise: tax.totalTaxPaise,
-    totalPaise: tax.totalPaise,
-    totalInWords: amountInWords(tax.totalPaise),
+    lines: lines.map(({ description, amountPaise, tax }, i) => {
+      const half = tax.percent / 2;
+      return {
+        serial: i + 1,
+        description,
+        amountPaise,
+        taxableValuePaise: tax.taxablePaise,
+        cgstRate: tax.interState ? 0 : half,
+        cgstPaise: tax.cgstPaise,
+        sgstRate: tax.interState ? 0 : half,
+        sgstPaise: tax.sgstPaise,
+        igstRate: tax.interState ? tax.percent : 0,
+        igstPaise: tax.igstPaise,
+        totalPaise: tax.totalPaise,
+      };
+    }),
+    subtotalPaise: sum("taxablePaise"),
+    cgstPaise: sum("cgstPaise"),
+    sgstPaise: sum("sgstPaise"),
+    igstPaise: sum("igstPaise"),
+    totalTaxPaise: sum("totalTaxPaise"),
+    totalPaise,
+    totalInWords: amountInWords(totalPaise),
     placeOfSupply: parties.buyer.state || config.gst?.placeOfSupplyState || "",
-    interState: tax.interState,
+    interState: lines.some((l) => l.tax.interState),
     status: "PAID",
     paidAt: new Date(),
     ledgerEntryId,
@@ -146,126 +184,76 @@ const issueInvoice = async ({
   });
 };
 
-/** What buying `planCode` would cost right now, without buying it. */
-const quote = async ({ restaurantId, planCode, commitmentMonths = 0, on = new Date() }) => {
-  const config = await getPlatformConfig();
-  const subscription = await getSubscription(restaurantId);
-
-  // purchasePlan goes through here, so a demo store can never be charged.
-  if ((await getOverride(restaurantId))?.billingExempt) {
-    throw new SubscriptionError("This is a demo store. It does not need a subscription and is never charged for one.", 409);
-  }
-
-  // Clause 5.4: the Installation Charge is paid before Activation.
-  const installationRequired = !subscription.installation?.paidAt;
-
-  const priced = await resolvePlanPrice({ restaurantId, planCode, on, config });
-  if (!priced) throw new SubscriptionError("That plan is not available.", 404);
-  if (!priced.plan.isAvailable && subscription.planCode !== planCode) {
-    throw new SubscriptionError("That plan is not open for new subscriptions.", 400);
-  }
-
-  const active = isActiveAt(subscription, on);
-  const isUpgrade = active && subscription.planCode && subscription.planCode !== planCode;
-
-  // Never a downgrade. Once a restaurant has had a plan, that plan is its
-  // floor: renew it or move up, whether it is still running or has ended.
-  // (Mid-period, a cheaper plan also used to cost nothing and keep the paid-up
-  // period -- a free refund of the difference.)
-  if (subscription.planCode && subscription.planCode !== planCode) {
-    const current = await resolvePlanPrice({ restaurantId, planCode: subscription.planCode, on, config });
-    const currentPricePaise = current ? current.pricePaise : Number(subscription.lastPaidPricePaise) || 0;
-    if (priced.pricePaise < currentPricePaise) {
+/**
+ * Debit the wallet for `bill`, then issue its invoice. `duplicate` means the
+ * idempotency key was already spent -- a repeated request -- and nothing was
+ * charged or issued this time. Short of money: 402 with the shortfall.
+ */
+const charge = async ({ subscription, bill, kind, ledgerKind = "SUBSCRIPTION", description, idempotencyKey, config, period = null, createdBy = null, meta = {} }) => {
+  if (bill.totalPaise <= 0) return { invoice: null, duplicate: false, charged: 0 };
+  let entry;
+  let duplicate;
+  try {
+    ({ entry, duplicate } = await debit({
+      restaurantId: subscription.restaurantId,
+      kind: ledgerKind,
+      amountPaise: bill.totalPaise,
+      description,
+      refType: "PlatformSubscription",
+      refId: subscription._id,
+      meta,
+      idempotencyKey,
+      createdBy,
+    }));
+  } catch (err) {
+    if (err instanceof InsufficientBalanceError) {
       throw new SubscriptionError(
-        `${priced.plan.name} is a lower plan than ${subscription.planName || "your plan"}. You can renew ${subscription.planName || "your plan"} or upgrade.`,
-        409,
+        `Top up the wallet: you need ${formatINR(bill.totalPaise - err.availablePaise)} more.`,
+        402,
+        { code: "INSUFFICIENT_BALANCE", requiredPaise: bill.totalPaise, availablePaise: err.availablePaise },
       );
     }
+    throw err;
   }
+  if (duplicate) return { invoice: null, duplicate: true, charged: 0 };
 
-  // An upgrade mid-period is charged on the difference for the days that
-  // remain; anything else is the full price of a fresh period.
-  const charge = isUpgrade
-    ? upgradeCharge({
-        currentPricePaise: subscription.lastPaidPricePaise,
-        newPricePaise: priced.pricePaise,
-        subscription,
-        days: config.subscriptionDays,
-        policy: config.upgradePolicy,
-        on,
-      })
-    : { amountPaise: priced.pricePaise, remainingDays: null, basis: "FULL" };
-
-  // Clause 6. A running commitment discounts every period (and upgrade) it
-  // covers. A new one may be chosen only when none is running, and only on a
-  // fresh period -- mid-period the discount would have nothing to attach to.
-  const running = commitmentState(subscription.commitment);
-  let commitment = null;
-  if (running.running) {
-    commitment = { ...running, isNew: false };
-  } else if (Number(commitmentMonths) > 0) {
-    const option = commitmentOption(commitmentMonths);
-    if (!option) throw new SubscriptionError("Choose a 3, 6 or 12 month commitment.", 400);
-    if (isUpgrade) {
-      throw new SubscriptionError("A commitment starts with a new subscription period. Upgrade now and choose it at your next renewal, or renew with it.", 400);
-    }
-    commitment = {
-      months: option.months,
-      discountPercent: option.discountPercent,
-      periodsTotal: option.months,
-      periodsUsed: 0,
-      periodsRemaining: option.months,
-      running: true,
-      isNew: true,
-    };
-  }
-  const discount = applyDiscount(charge.amountPaise, commitment ? commitment.discountPercent : 0);
-
-  const restaurant = await Restaurant.findById(restaurantId).select("address").lean();
-  const tax = computeTax({
-    amountPaise: discount.netPaise,
-    gst: config.gst,
-    restaurantState: restaurant?.address?.state,
-    on,
-  });
-
-  const period = isUpgrade
-    ? { start: subscription.currentPeriodStart, end: subscription.currentPeriodEnd, lapsedDays: 0 }
-    : nextPeriod({
-        subscription,
-        days: config.subscriptionDays,
-        policy: config.renewalPolicy,
-        on,
-      });
-
-  return {
-    planCode,
-    planName: priced.plan.name,
-    isUpgrade,
-    priceSource: priced.source,
-    listPricePaise: priced.pricePaise,
-    // Before the commitment discount; `netChargePaise` is what tax is on.
-    chargePaise: charge.amountPaise,
-    chargeBasis: charge.basis,
-    remainingDays: charge.remainingDays,
-    commitment,
-    discountPaise: discount.discountPaise,
-    netChargePaise: discount.netPaise,
-    installationRequired,
-    // A new Schedule 1 is accepted for a first plan, a plan change or a new
-    // commitment -- not for a plain renewal on the same terms.
-    acceptanceRequired: installationRequired || !subscription.planCode || subscription.planCode !== planCode || Boolean(commitment?.isNew),
-    agreementVersion: AGREEMENT_VERSION,
-    tax,
+  // ponytail: a crash between the debit above and this invoice leaves a paid charge with no invoice; fix by hand.
+  const invoice = await issueInvoice({
+    restaurantId: subscription.restaurantId,
+    storeId: subscription.storeId,
+    kind,
+    lines: bill.lines,
+    config,
+    parties: await partiesFor(subscription.restaurantId, config),
     period,
-    totalPaise: tax.totalPaise,
-    totalLabel: formatINR(tax.totalPaise),
-  };
+    ledgerEntryId: entry._id,
+  });
+  return { invoice, duplicate: false, charged: bill.totalPaise };
 };
 
 /**
- * Record Schedule 1 as accepted. `acceptance` is what the route knows about
- * the person accepting; the values are what the app showed them.
+ * The fingerprint of what was accepted. Keys are sorted so the same values
+ * always hash the same, whatever order they were assembled in.
+ */
+const canonical = (value) => {
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value && typeof value === "object" && !(value instanceof Date)) {
+    return Object.keys(value)
+      .sort()
+      .reduce((acc, k) => {
+        if (value[k] !== undefined) acc[k] = canonical(value[k]);
+        return acc;
+      }, {});
+  }
+  return value instanceof Date ? value.toISOString() : value;
+};
+
+const scheduleHash = (values) =>
+  crypto.createHash("sha256").update(JSON.stringify(canonical(values))).digest("hex");
+
+/**
+ * Record what was accepted for a purchase. `acceptance` is what the route
+ * knows about the person accepting; the values are what the app showed them.
  */
 const recordSchedule = async ({ restaurantId, storeId, reason, values, acceptance }) => {
   const last = await CommercialSchedule.findOne({ restaurantId }).sort({ version: -1 }).select("version").lean();
@@ -290,495 +278,606 @@ const recordSchedule = async ({ restaurantId, storeId, reason, values, acceptanc
 
 const requireAcceptance = (acceptance) => {
   if (!acceptance?.accepted) {
-    throw new SubscriptionError("Review the order summary and accept the terms to continue.", 409);
+    throw new SubscriptionError("Review the order summary and accept the terms to continue.", 409, { code: "ACCEPTANCE_REQUIRED" });
   }
 };
 
-/** Clause 5: pay the Installation Charge for the option chosen in the app. */
-const purchaseInstallation = async ({ restaurantId, optionCode, on = new Date(), createdBy = null, acceptance }) => {
-  const config = await getPlatformConfig();
-  const subscription = await getSubscription(restaurantId);
-  if ((await getOverride(restaurantId))?.billingExempt) {
-    throw new SubscriptionError("This is a demo store. It is never charged.", 409);
+/** Add-ons and tablets are prorated against a running POS period, so they need one. */
+const requireActivePeriod = (subscription, on) => {
+  if (subscription.status !== "ACTIVE" || !isActiveAt(subscription, on)) {
+    throw new SubscriptionError(RENEW_FIRST, 409, { code: "PLAN_NOT_ACTIVE" });
   }
-  if (subscription.installation?.paidAt) {
-    throw new SubscriptionError("The Installation Charge has already been paid for this store.", 409);
-  }
-  const option = installationOption(optionCode);
-  if (!option) throw new SubscriptionError("Choose an installation option.", 400);
-  requireAcceptance(acceptance);
-
-  const restaurant = await Restaurant.findById(restaurantId).select("address").lean();
-  const tax = computeTax({ amountPaise: option.amountPaise, gst: config.gst, restaurantState: restaurant?.address?.state, on });
-  const parties = await partiesFor(restaurantId, config);
-
-  let entry;
-  try {
-    let duplicate;
-    ({ entry, duplicate } = await debit({
-      restaurantId,
-      kind: "SUBSCRIPTION",
-      amountPaise: tax.totalPaise,
-      description: `Installation Charge — ${option.name}`,
-      refType: "PlatformSubscription",
-      refId: subscription._id,
-      meta: { installation: option.code },
-      // Paid once per store: a double click or a second tab cannot pay twice.
-      // ponytail: a crash between this debit and the save below needs a manual fix.
-      idempotencyKey: `installation-${subscription._id}`,
-      createdBy,
-    }));
-    if (duplicate) throw new SubscriptionError("The Installation Charge has already been paid for this store.", 409);
-  } catch (err) {
-    if (err instanceof InsufficientBalanceError) {
-      throw new SubscriptionError(
-        `Not enough Business Balance. ${formatINR(tax.totalPaise)} is due and ${formatINR(err.availablePaise)} is available.`,
-        402,
-        { requiredPaise: tax.totalPaise, availablePaise: err.availablePaise },
-      );
-    }
-    throw err;
-  }
-
-  const invoice = await issueInvoice({
-    restaurantId,
-    storeId: subscription.storeId,
-    kind: "INSTALLATION",
-    description: `Installation Charge — ${option.name} (one-time, refundable per Agreement clause 5.6)`,
-    amountPaise: option.amountPaise,
-    tax,
-    config,
-    parties,
-    period: null,
-    ledgerEntryId: entry._id,
-  });
-
-  subscription.installation = {
-    optionCode: option.code,
-    optionName: option.name,
-    amountPaise: option.amountPaise,
-    paidAt: new Date(),
-    invoiceId: invoice._id,
-    ledgerEntryId: entry._id,
-  };
-  await subscription.save();
-
-  const schedule = await recordSchedule({
-    restaurantId,
-    storeId: subscription.storeId,
-    reason: "INSTALLATION",
-    values: {
-      installation: { optionCode: option.code, optionName: option.name, amountPaise: option.amountPaise, equipment: option.equipment },
-      gst: { applicable: tax.applicable, percent: tax.percent, mode: tax.mode, interState: tax.interState },
-      totalPaise: tax.totalPaise,
-    },
-    acceptance,
-  });
-
-  return { subscription, invoice, schedule, charged: tax.totalPaise };
 };
+
+const acceptedValues = ({ bill, item }) => ({
+  item,
+  lines: bill.lines.map((l) => ({ description: l.description, amountPaise: l.amountPaise })),
+  gst: bill.lines[0]
+    ? { applicable: bill.lines[0].tax.applicable, percent: bill.lines[0].tax.percent, mode: bill.lines[0].tax.mode }
+    : null,
+  totalPaise: bill.totalPaise,
+});
 
 /**
- * Upgrade the installation later: No Printer to a 2- or 3-inch printer, or
- * 2-inch to 3-inch. Only the difference is charged (plus GST as on any
- * charge), from the Business Balance, with its own invoice. The refund basis
- * becomes the total paid; the Activation Date, and so the 12 months of
- * clause 5.6, does not move.
+ * Give the store what it paid for, as one atomic update that is safe to
+ * repeat. It runs after the debit on the first request AND on a retry whose
+ * debit was already taken (`duplicate`), so a purchase whose save failed
+ * after the money moved (a crash, or another purchase changing the record at
+ * the same moment) is completed by the next try instead of being lost.
+ * false means it was already granted.
  */
-const upgradeInstallation = async ({ restaurantId, optionCode, on = new Date(), createdBy = null, acceptance }) => {
-  const config = await getPlatformConfig();
-  const subscription = await getSubscription(restaurantId);
-  if ((await getOverride(restaurantId))?.billingExempt) {
-    throw new SubscriptionError("This is a demo store. It is never charged.", 409);
-  }
-  const current = subscription.installation;
-  if (!current?.paidAt) throw new SubscriptionError("Pay the Installation Charge first.", 409);
-  const up = installationUpgrade(current.amountPaise, optionCode);
-  if (!up) throw new SubscriptionError("Choose an installation option above your current one. It cannot be downgraded.", 400);
-  requireAcceptance(acceptance);
-
-  const from = { code: current.optionCode, name: current.optionName };
-  const restaurant = await Restaurant.findById(restaurantId).select("address").lean();
-  const tax = computeTax({ amountPaise: up.differencePaise, gst: config.gst, restaurantState: restaurant?.address?.state, on });
-  const parties = await partiesFor(restaurantId, config);
-  const label = `Installation upgrade — ${from.name} to ${up.option.name}`;
-
-  let entry;
-  try {
-    let duplicate;
-    ({ entry, duplicate } = await debit({
-      restaurantId,
-      kind: "SUBSCRIPTION",
-      amountPaise: tax.totalPaise,
-      description: label,
-      refType: "PlatformSubscription",
-      refId: subscription._id,
-      meta: { installation: up.option.code, from: from.code },
-      // Options only go up, so each one is left at most once: a double click
-      // or a second tab cannot pay for the same step twice.
-      // ponytail: a crash between this debit and the save below needs a manual fix.
-      idempotencyKey: `installation-upgrade-${subscription._id}-${from.code}`,
-      createdBy,
-    }));
-    if (duplicate) throw new SubscriptionError("This installation upgrade has already been paid.", 409);
-  } catch (err) {
-    if (err instanceof InsufficientBalanceError) {
-      throw new SubscriptionError(
-        `Not enough Business Balance. ${formatINR(tax.totalPaise)} is due and ${formatINR(err.availablePaise)} is available.`,
-        402,
-        { requiredPaise: tax.totalPaise, availablePaise: err.availablePaise },
-      );
-    }
-    throw err;
-  }
-
-  const invoice = await issueInvoice({
-    restaurantId,
-    storeId: subscription.storeId,
-    kind: "INSTALLATION",
-    description: `${label} (difference only; one-time, refundable per Agreement clause 5.6)`,
-    amountPaise: up.differencePaise,
-    tax,
-    config,
-    parties,
-    period: null,
-    ledgerEntryId: entry._id,
-  });
-
-  subscription.installation.upgrades.push({
-    fromCode: from.code,
-    fromName: from.name,
-    toCode: up.option.code,
-    toName: up.option.name,
-    differencePaise: up.differencePaise,
-    invoiceId: invoice._id,
-    ledgerEntryId: entry._id,
-    upgradedAt: new Date(),
-  });
-  subscription.installation.optionCode = up.option.code;
-  subscription.installation.optionName = up.option.name;
-  subscription.installation.amountPaise = current.amountPaise + up.differencePaise;
-  await subscription.save();
-
-  const schedule = await recordSchedule({
-    restaurantId,
-    storeId: subscription.storeId,
-    reason: "INSTALLATION_UPGRADE",
-    values: {
-      installation: {
-        optionCode: up.option.code,
-        optionName: up.option.name,
-        amountPaise: subscription.installation.amountPaise,
-        equipment: up.option.equipment,
-        previousOptionCode: from.code,
-      },
-      charge: { differencePaise: up.differencePaise },
-      gst: { applicable: tax.applicable, percent: tax.percent, mode: tax.mode, interState: tax.interState },
-      totalPaise: tax.totalPaise,
-    },
-    acceptance,
-  });
-
-  return { subscription, invoice, schedule, charged: tax.totalPaise };
+const grant = async (subscription, filter, update) => {
+  const res = await PlatformSubscription.updateOne({ _id: subscription._id, ...filter }, update);
+  return Number(res?.modifiedCount) > 0;
 };
 
-/**
- * Buy, renew or upgrade. One entry point, because they are the same
- * transaction with different period arithmetic, and splitting them into three
- * functions is how two of them drift.
- */
-const purchasePlan = async ({ restaurantId, planCode, commitmentMonths = 0, on = new Date(), createdBy = null, acceptance = null }) => {
-  const config = await getPlatformConfig();
-  const subscription = await getSubscription(restaurantId);
-  const q = await quote({ restaurantId, planCode, commitmentMonths, on });
+// ---------------------------------------------------------------------------
+// What a purchase would charge. The quote and the purchase both come from
+// these, so the price shown is the price taken.
+// ---------------------------------------------------------------------------
 
-  if (q.installationRequired) {
-    throw new SubscriptionError("Choose and pay the Installation Charge before starting a subscription.", 409, { installationRequired: true });
-  }
-  if (q.acceptanceRequired) requireAcceptance(acceptance);
+const addonPurchase = async ({ config, subscription, override, restaurant }, rawCode, on) => {
+  const code = String(rawCode || "").trim().toUpperCase();
+  const owned = (subscription.addons || []).find((a) => a.code === code && liveAt(a, on));
+  // One CSD has retired can still be taken back by a store that has it this period.
+  const addon = (config.addons || []).find((a) => a.code === code && (a.isActive !== false || owned));
+  if (!addon) throw new SubscriptionError("That add-on is not available.", 404);
+  requireActivePeriod(subscription, on);
+  const pricePaise = await priceFor({ code, config, override });
+  // Taking back one stopped this period is free: the period is already paid.
+  const amountPaise = owned
+    ? 0
+    : prorate({ pricePaise, periodEnd: subscription.currentPeriodEnd, days: config.subscriptionDays, on });
+  const lines = owned ? [] : [{ description: `${addon.name} add-on, until ${istDate(subscription.currentPeriodEnd)}`, amountPaise }];
+  return { addon, owned, pricePaise, bill: priceLines(lines, { config, restaurant, on }) };
+};
 
-  // Clause 6: bookkeeping for the commitment this purchase is part of.
-  const applyCommitment = () => {
-    if (!q.commitment) return;
-    if (q.commitment.isNew) {
-      subscription.commitment = {
-        months: q.commitment.months,
-        discountPercent: q.commitment.discountPercent,
-        periodsTotal: q.commitment.periodsTotal,
-        periodsUsed: 0,
-        startedAt: q.period.start,
-        endsAt: null,
-        completedAt: null,
-        discountGrantedPaise: 0,
-        lapsedAt: null,
-        repaymentDuePaise: 0,
-        repaidAt: null,
-      };
-    }
-    subscription.commitment.discountGrantedPaise = (Number(subscription.commitment.discountGrantedPaise) || 0) + q.discountPaise;
-    if (!q.isUpgrade) {
-      subscription.commitment.periodsUsed = (Number(subscription.commitment.periodsUsed) || 0) + 1;
-      subscription.commitment.endsAt = q.period.end;
-      if (subscription.commitment.periodsUsed >= subscription.commitment.periodsTotal) {
-        subscription.commitment.completedAt = new Date();
-      }
-    }
-  };
+const tabletPurchase = async ({ config, subscription, override, restaurant }, on) => {
+  requireActivePeriod(subscription, on);
+  const tablets = subscription.tablets || [];
+  const code = tablets.some((t) => liveAt(t, on)) ? "TABLET_EXTRA" : "TABLET_FIRST";
+  const pricePaise = await priceFor({ code, config, override });
+  const serial = tablets.reduce((max, t) => Math.max(max, Number(t.serial) || 0), 0) + 1;
+  const amountPaise = prorate({ pricePaise, periodEnd: subscription.currentPeriodEnd, days: config.subscriptionDays, on });
+  const lines = [{ description: `Tablet #${serial} rental, until ${istDate(subscription.currentPeriodEnd)}`, amountPaise }];
+  return { code, serial, pricePaise, bill: priceLines(lines, { config, restaurant, on }) };
+};
 
-  const snapshot = async (reason) => {
-    if (!q.acceptanceRequired) return null;
-    return recordSchedule({
-      restaurantId,
-      storeId: subscription.storeId,
-      reason,
-      values: {
-        plan: { code: planCode, name: q.planName, listPricePaise: q.listPricePaise, priceSource: q.priceSource, billingDays: config.subscriptionDays },
-        commitment: q.commitment
-          ? { months: q.commitment.months, discountPercent: q.commitment.discountPercent, periodsTotal: q.commitment.periodsTotal }
-          : null,
-        installation: subscription.installation?.paidAt
-          ? { optionCode: subscription.installation.optionCode, optionName: subscription.installation.optionName, amountPaise: subscription.installation.amountPaise }
-          : null,
-        charge: { grossPaise: q.chargePaise, discountPaise: q.discountPaise, netPaise: q.netChargePaise, basis: q.chargeBasis },
-        gst: { applicable: q.tax.applicable, percent: q.tax.percent, mode: q.tax.mode, interState: q.tax.interState },
-        totalPaise: q.totalPaise,
-        period: { start: q.period.start, end: q.period.end },
-      },
-      acceptance,
-    });
-  };
+const printerPurchase = async ({ config, override, restaurant }, rawCode, on) => {
+  const code = String(rawCode || "").trim().toUpperCase();
+  const printer = (config.printers || []).find((p) => p.code === code && p.isActive !== false);
+  if (!printer) throw new SubscriptionError("That printer is not available.", 404);
+  const pricePaise = await priceFor({ code, config, override });
+  const lines = [{ description: `${printer.name} (one-time purchase)`, amountPaise: pricePaise }];
+  return { printer, pricePaise, bill: priceLines(lines, { config, restaurant, on }) };
+};
 
-  if (q.totalPaise <= 0) {
-    // A same-price "upgrade", or a zero-priced plan. Move the plan across
-    // without inventing a zero-value invoice for it.
-    subscription.planCode = planCode;
-    subscription.planName = q.planName;
-    if (!q.isUpgrade) {
-      subscription.currentPeriodStart = q.period.start;
-      subscription.currentPeriodEnd = q.period.end;
-    }
-    subscription.status = "ACTIVE";
-    if (!subscription.activatedAt) subscription.activatedAt = q.period.start;
-    applyCommitment();
-    await subscription.save();
-    const schedule = await snapshot(q.isUpgrade ? "UPGRADE" : "SUBSCRIPTION");
-    await settleLock(restaurantId); // a zero-priced first plan unlocks a new store too
-    return { subscription, invoice: null, schedule, charged: 0 };
-  }
+/** What buying `item` would charge right now: "ADDON:<code>", "TABLET" or "PRINTER:<code>". */
+const quote = async ({ restaurantId, item, on = new Date() }) => {
+  const ctx = await load(restaurantId);
+  if (ctx.exempt) throw new SubscriptionError(DEMO_STORE, 409);
+  const [type, code] = String(item || "").split(":");
+  if (type === "ADDON") return (await addonPurchase(ctx, code, on)).bill;
+  if (type === "TABLET") return (await tabletPurchase(ctx, on)).bill;
+  if (type === "PRINTER") return (await printerPurchase(ctx, code, on)).bill;
+  throw new SubscriptionError("Say what to price: ADDON:<code>, TABLET or PRINTER:<code>.", 400);
+};
 
-  const parties = await partiesFor(restaurantId, config);
+// ---------------------------------------------------------------------------
+// Activation, from the first qualifying top-up
+// ---------------------------------------------------------------------------
 
-  // Money first. An invoice issued before the debit would document a payment
-  // that may never happen.
-  let entry;
-  try {
-    ({ entry } = await debit({
-      restaurantId,
-      kind: "SUBSCRIPTION",
-      amountPaise: q.totalPaise,
-      description: q.isUpgrade
-        ? `Upgrade to ${q.planName}`
-        : `${q.planName} subscription`,
-      refType: "PlatformSubscription",
-      refId: subscription._id,
-      meta: { planCode, basis: q.chargeBasis, commitmentMonths: q.commitment?.months || 0, discountPaise: q.discountPaise },
-      createdBy,
-    }));
-  } catch (err) {
-    if (err instanceof InsufficientBalanceError) {
-      throw new SubscriptionError(
-        `Not enough Business Balance. ${formatINR(q.totalPaise)} is due and ${formatINR(err.availablePaise)} is available.`,
-        402,
-        { requiredPaise: q.totalPaise, availablePaise: err.availablePaise },
-      );
-    }
-    throw err;
-  }
+/** Start the POS plan now: the plan price + GST from the wallet, period from today. */
+const activate = async ({ restaurantId, on = new Date() }) => {
+  const { config, subscription, override, restaurant, exempt } = await load(restaurantId);
+  if (exempt || subscription.activatedAt) return null;
 
-  // Clause 6.3: the discount is on the invoice, at the time of supply.
-  const discountNote = q.commitment && q.discountPaise > 0
-    ? ` — ${q.commitment.months}-month commitment discount ${q.commitment.discountPercent}% (${formatINR(q.discountPaise)}) applied`
-    : "";
-  const invoice = await issueInvoice({
-    restaurantId,
-    storeId: subscription.storeId,
-    kind: q.isUpgrade ? "UPGRADE" : "SUBSCRIPTION",
-    description: (q.isUpgrade
-      ? `Upgrade to ${q.planName} (${q.remainingDays} days remaining)`
-      : `${q.planName} plan — ${config.subscriptionDays} day${Number(config.subscriptionDays) === 1 ? "" : "s"}`) + discountNote,
-    amountPaise: q.chargePaise,
-    tax: q.tax,
+  const base = config.basePlan || {};
+  const code = base.code || "POS";
+  const name = base.name || code;
+  const period = nextPeriod({ subscription: null, days: config.subscriptionDays, on });
+  const bill = priceLines(
+    [{ description: `${name} plan — ${span(config)}`, amountPaise: await priceFor({ code, config, override }) }],
+    { config, restaurant, on },
+  );
+
+  // Once per store, ever. A spent key (the debit went through but the save
+  // below did not) still activates: the plan was paid for.
+  const { invoice } = await charge({
+    subscription,
+    bill,
+    kind: "SUBSCRIPTION",
+    description: `${name} plan`,
+    idempotencyKey: `activation-${restaurantId}`,
     config,
-    parties,
-    period: q.period,
-    ledgerEntryId: entry._id,
+    period,
+    meta: { planCode: code, activation: true },
   });
 
-  subscription.planCode = planCode;
-  subscription.planName = q.planName;
+  subscription.planCode = code;
+  subscription.planName = name;
   subscription.status = "ACTIVE";
-  subscription.currentPeriodStart = q.period.start;
-  subscription.currentPeriodEnd = q.period.end;
-  subscription.lastPaidPricePaise = q.listPricePaise;
-  subscription.lastInvoiceId = invoice._id;
-  subscription.lastPaidAt = new Date();
-  if (!subscription.activatedAt) subscription.activatedAt = q.period.start;
-  applyCommitment();
+  subscription.currentPeriodStart = period.start;
+  subscription.currentPeriodEnd = period.end;
+  subscription.activatedAt = new Date(on);
+  subscription.lastPaidAt = new Date(on);
+  subscription.lastPaidPricePaise = bill.subtotalPaise;
+  subscription.lastInvoiceId = invoice?._id || null;
+  subscription.lastRenewalError = "";
   await subscription.save();
 
-  const schedule = await snapshot(q.isUpgrade ? "UPGRADE" : q.commitment?.isNew ? "COMMITMENT" : "SUBSCRIPTION");
-
-  // A first plan or a renewal may be what lifts a lock.
+  // Starting the plan is what lifts a new store's lock.
   await settleLock(restaurantId);
-
-  return { subscription, invoice, schedule, charged: q.totalPaise };
+  return { subscription, invoice, charged: bill.totalPaise };
 };
 
 /**
- * Clause 6.5 (discount-repayment model). A commitment lapses when a period it
- * covers ends and is not renewed within the grace period: the discount
- * received so far becomes due, and no further discount applies.
- * Idempotent; run by the lock sweep.
+ * A top-up (RECHARGE) was just credited. Only services/recharge calls this,
+ * so a CSD credit never activates anything or earns a tablet.
+ *   not activated yet, and this one top-up is at least the minimum:
+ *     the POS plan starts now
+ *   activated before this top-up, and it is at least the tablet amount:
+ *     one tablet credit (so the activation top-up never counts)
+ * Then anything due renews at once -- which is what unlocks an expired store.
  */
-const lapseCommitments = async (on = new Date()) => {
-  const config = await getPlatformConfig();
-  const graceMs = Math.max(0, Number(config.graceHours || 0)) * 3600 * 1000;
-  const cutoff = new Date(new Date(on).getTime() - graceMs);
-  const rows = await PlatformSubscription.find({
-    "commitment.periodsTotal": { $gt: 0 },
-    "commitment.lapsedAt": null,
-    "commitment.completedAt": null,
-    currentPeriodEnd: { $ne: null, $lt: cutoff },
-  });
-  let lapsed = 0;
-  for (const s of rows) {
-    if (!commitmentState(s.commitment).running) continue;
-    s.commitment.lapsedAt = new Date();
-    s.commitment.repaymentDuePaise = Number(s.commitment.discountGrantedPaise) || 0;
-    await s.save();
-    lapsed += 1;
-    fireEvaluateLock(s.restaurantId);
-  }
-  return { lapsed };
-};
-
-/** Collect a lapsed commitment's discount repayment once the balance allows. */
-const settleCommitmentRepayment = async (restaurantId, on = new Date()) => {
-  const subscription = await PlatformSubscription.findOne({ restaurantId });
-  const due = Number(subscription?.commitment?.repaymentDuePaise) || 0;
-  if (!subscription || due <= 0) return { settled: false, duePaise: 0 };
-  const config = await getPlatformConfig();
-  const restaurant = await Restaurant.findById(restaurantId).select("address").lean();
-  // The discount was taken off the taxable value, so its repayment is taxed the same way.
-  const tax = computeTax({ amountPaise: due, gst: config.gst, restaurantState: restaurant?.address?.state, on });
-  let entry;
-  try {
-    ({ entry } = await debit({
-      restaurantId,
-      kind: "SUBSCRIPTION",
-      amountPaise: tax.totalPaise,
-      description: `Commitment discount repayment (${subscription.commitment.months}-month commitment ended early)`,
-      refType: "PlatformSubscription",
-      refId: subscription._id,
-      idempotencyKey: `commitment-repayment-${subscription._id}-${subscription.commitment.lapsedAt?.getTime() || 0}`,
-    }));
-  } catch (err) {
-    if (err instanceof InsufficientBalanceError) return { settled: false, duePaise: tax.totalPaise };
-    throw err;
-  }
-  const parties = await partiesFor(restaurantId, config);
-  await issueInvoice({
-    restaurantId,
-    storeId: subscription.storeId,
-    kind: "COMMITMENT_REPAYMENT",
-    description: `Repayment of commitment discount received (${subscription.commitment.months}-month commitment ended early, Agreement clause 6.5)`,
-    amountPaise: due,
-    tax,
-    config,
-    parties,
-    period: null,
-    ledgerEntryId: entry._id,
-  });
-  subscription.commitment.repaymentDuePaise = 0;
-  subscription.commitment.repaidAt = new Date();
-  await subscription.save();
-  return { settled: true, duePaise: tax.totalPaise };
-};
-
-/** Status as of now, without changing anything. */
-const statusFor = async (restaurantId, on = new Date()) => {
-  const config = await getPlatformConfig();
-  const [subscription, override] = await Promise.all([
+const afterRecharge = async ({ restaurantId, amountPaise, on = new Date() }) => {
+  const [config, subscription, override] = await Promise.all([
+    getPlatformConfig(),
     getSubscription(restaurantId),
     getOverride(restaurantId),
   ]);
-  const active = isActiveAt(subscription, on);
+  if (override?.billingExempt) return { activated: false, tabletCredit: false };
 
-  const graceEnds = subscription.currentPeriodEnd
-    ? new Date(
-        new Date(subscription.currentPeriodEnd).getTime() +
-          Math.max(0, Number(config.graceHours || 0)) * 3600 * 1000,
-      )
-    : null;
+  const paid = Math.round(Number(amountPaise) || 0);
+  let activated = false;
+  let tabletCredit = false;
+  if (!subscription.activatedAt) {
+    if (paid >= (Number(config.firstRechargeMinPaise) || 0)) activated = Boolean(await activate({ restaurantId, on }));
+  } else if (paid >= (Number(config.tablet?.rechargeRequiredPaise) || 0)) {
+    // Atomic, so two top-ups landing together both count.
+    await PlatformSubscription.updateOne({ _id: subscription._id }, { $inc: { tabletRechargeCredits: 1 } });
+    tabletCredit = true;
+  }
 
-  const commitment = commitmentState(subscription.commitment);
-  const installation = subscription.installation?.paidAt
-    ? {
-        optionCode: subscription.installation.optionCode,
-        optionName: subscription.installation.optionName,
-        amountPaise: subscription.installation.amountPaise,
-        paidAt: subscription.installation.paidAt,
-        upgrades: subscription.installation.upgrades || [],
-        // Clause 5.6, as if terminated today: what the restaurant would get back.
-        refund: installationRefund({
-          installationPaise: subscription.installation.amountPaise,
-          activatedAt: subscription.activatedAt,
-          terminatedAt: startOfIstDay(on),
-        }),
+  await renewDue(on, { restaurantId });
+  return { activated, tabletCredit };
+};
+
+/** The smallest top-up this store may open now, in paise: the activation minimum until it has activated. */
+const minimumTopUpPaise = async (restaurantId) => {
+  const [config, subscription, override] = await Promise.all([
+    getPlatformConfig(),
+    PlatformSubscription.findOne({ restaurantId }).select("activatedAt").lean(),
+    getOverride(restaurantId),
+  ]);
+  if (override?.billingExempt || subscription?.activatedAt) return 0;
+  return Number(config.firstRechargeMinPaise) || 0;
+};
+
+// ---------------------------------------------------------------------------
+// Buying
+// ---------------------------------------------------------------------------
+
+/** Add an add-on for the rest of this period (prorated), renewing with the plan after. */
+const addAddon = async ({ restaurantId, code, acceptance, createdBy = null, on = new Date() }) => {
+  const ctx = await load(restaurantId);
+  const { config, subscription } = ctx;
+  if (ctx.exempt) throw new SubscriptionError(DEMO_STORE, 409);
+  const p = await addonPurchase(ctx, code, on);
+
+  if (p.owned && !p.owned.endsAt) return { subscription, invoice: null, charged: 0, already: true };
+  if (p.owned) {
+    // Stopped earlier this period and taken back: keeps renewing, no charge.
+    p.owned.endsAt = null;
+    await subscription.save();
+    return { subscription, invoice: null, charged: 0, already: false };
+  }
+  requireAcceptance(acceptance);
+
+  const { invoice, duplicate, charged } = await charge({
+    subscription,
+    bill: p.bill,
+    kind: "ADDON",
+    description: `${p.addon.name} add-on`,
+    idempotencyKey: `addon-${subscription._id}-${p.addon.code}-${iso(subscription.currentPeriodEnd)}`,
+    config,
+    period: { start: new Date(on), end: subscription.currentPeriodEnd },
+    createdBy,
+    meta: { addon: p.addon.code },
+  });
+  // A lapsed entry for the same add-on makes way for the new one.
+  await PlatformSubscription.updateOne(
+    { _id: subscription._id },
+    { $pull: { addons: { code: p.addon.code, endsAt: { $ne: null, $lte: new Date(on) } } } },
+  );
+  const granted = await grant(
+    subscription,
+    { "addons.code": { $ne: p.addon.code } },
+    { $push: { addons: { code: p.addon.code, name: p.addon.name, feature: p.addon.feature || "", pricePaise: p.pricePaise, activatedAt: new Date(on), endsAt: null } } },
+  );
+  if (!duplicate) {
+    await recordSchedule({
+      restaurantId,
+      storeId: subscription.storeId,
+      reason: "ADDON",
+      values: acceptedValues({ bill: p.bill, item: { addon: p.addon.code, name: p.addon.name, monthlyPricePaise: p.pricePaise } }),
+      acceptance,
+    });
+  }
+  if (granted) await settleLock(restaurantId);
+  return { subscription: await getSubscription(restaurantId), invoice, charged, already: !granted };
+};
+
+/** Stop an add-on at renewal. No refund: it keeps working until the period it was paid for ends. */
+const removeAddon = async ({ restaurantId, code, on = new Date() }) => {
+  const subscription = await getSubscription(restaurantId);
+  const key = String(code || "").trim().toUpperCase();
+  const addon = (subscription.addons || []).find((a) => a.code === key && liveAt(a, on));
+  if (!addon) throw new SubscriptionError("That add-on is not on your plan.", 404);
+  if (!addon.endsAt) {
+    addon.endsAt = subscription.currentPeriodEnd || new Date(on);
+    await subscription.save();
+  }
+  return { subscription, endsAt: addon.endsAt };
+};
+
+/** Rent one more tablet. Each needs its own qualifying top-up (a credit). */
+const rentTablet = async ({ restaurantId, acceptance, createdBy = null, on = new Date() }) => {
+  const ctx = await load(restaurantId);
+  const { config, subscription } = ctx;
+  if (ctx.exempt) throw new SubscriptionError(DEMO_STORE, 409);
+  const p = await tabletPurchase(ctx, on);
+  if ((Number(subscription.tabletRechargeCredits) || 0) < 1) {
+    throw new SubscriptionError(
+      `Top up at least ${formatINR(config.tablet?.rechargeRequiredPaise || 0)} in one go to rent a tablet. The money stays in your wallet and pays your bills.`,
+      409,
+      { code: "TABLET_TOPUP_REQUIRED" },
+    );
+  }
+  requireAcceptance(acceptance);
+
+  const { invoice, duplicate, charged } = await charge({
+    subscription,
+    bill: p.bill,
+    kind: "TABLET",
+    description: `Tablet #${p.serial} rental`,
+    // Two requests racing for the same tablet number pay once.
+    idempotencyKey: `tablet-${subscription._id}-${p.serial}`,
+    config,
+    period: { start: new Date(on), end: subscription.currentPeriodEnd },
+    createdBy,
+    meta: { tablet: p.serial, priceCode: p.code },
+  });
+  // The tablet and the credit it uses, in one step: two requests at once (a
+  // free first tablet has no debit to de-duplicate them) get one tablet.
+  const granted = await grant(
+    subscription,
+    { "tablets.serial": { $ne: p.serial }, tabletRechargeCredits: { $gte: 1 } },
+    {
+      $push: { tablets: { serial: p.serial, pricePaise: p.pricePaise, rentedAt: new Date(on), endsAt: null } },
+      $inc: { tabletRechargeCredits: -1 },
+    },
+  );
+  if (granted && !duplicate) {
+    await recordSchedule({
+      restaurantId,
+      storeId: subscription.storeId,
+      reason: "TABLET",
+      values: acceptedValues({ bill: p.bill, item: { tablet: p.serial, priceCode: p.code, monthlyPricePaise: p.pricePaise } }),
+      acceptance,
+    });
+  }
+  if (granted) await settleLock(restaurantId);
+  return { subscription: await getSubscription(restaurantId), invoice, charged, already: !granted };
+};
+
+/** CSD only: a tablet came back. It stops renewing at the current period end. */
+const endTablet = async ({ restaurantId, serial, on = new Date() }) => {
+  const subscription = await getSubscription(restaurantId);
+  const tablet = (subscription.tablets || []).find((t) => t.serial === Number(serial));
+  if (!tablet) throw new SubscriptionError("This store has no tablet with that number.", 404);
+  if (!tablet.endsAt) {
+    tablet.endsAt = subscription.currentPeriodEnd || new Date(on);
+    await subscription.save();
+  }
+  return { subscription, tablet };
+};
+
+/** Buy a printer outright: full price + GST, once, no monthly fee. */
+const buyPrinter = async ({ restaurantId, code, acceptance, createdBy = null, on = new Date() }) => {
+  const ctx = await load(restaurantId);
+  const { config, subscription } = ctx;
+  if (ctx.exempt) throw new SubscriptionError(DEMO_STORE, 409);
+  const p = await printerPurchase(ctx, code, on);
+  requireAcceptance(acceptance);
+
+  const n = (subscription.hardware || []).filter((h) => h.code === p.printer.code).length + 1;
+  const key = `printer-${subscription._id}-${p.printer.code}-${n}`;
+  const { invoice, duplicate, charged } = await charge({
+    subscription,
+    bill: p.bill,
+    kind: "HARDWARE",
+    ledgerKind: "HARDWARE",
+    description: p.printer.name,
+    idempotencyKey: key,
+    config,
+    createdBy,
+    meta: { printer: p.printer.code },
+  });
+  const granted = await grant(
+    subscription,
+    { "hardware.key": { $ne: key } },
+    {
+      $push: {
+        hardware: {
+          key,
+          code: p.printer.code,
+          name: p.printer.name,
+          pricePaise: p.pricePaise,
+          totalPaise: duplicate ? p.bill.totalPaise : charged,
+          invoiceId: invoice?._id || null,
+          purchasedAt: new Date(on),
+        },
+      },
+    },
+  );
+  if (!duplicate) {
+    await recordSchedule({
+      restaurantId,
+      storeId: subscription.storeId,
+      reason: "HARDWARE",
+      values: acceptedValues({ bill: p.bill, item: { printer: p.printer.code, name: p.printer.name } }),
+      acceptance,
+    });
+  }
+  if (granted) await settleLock(restaurantId);
+  return { subscription: await getSubscription(restaurantId), invoice, charged, already: !granted };
+};
+
+// ---------------------------------------------------------------------------
+// Renewal
+// ---------------------------------------------------------------------------
+
+/**
+ * What the next renewal charges: the POS plan, and every add-on and tablet
+ * still renewing, at this store's prices today. Stopped ones (endsAt at or
+ * before the period end) lapse and are left out. The first tablet is priced
+ * as the first, the rest as extras. `target` is the entry a line renews.
+ */
+const renewalLines = async ({ config, subscription, override }) => {
+  const periodEnd = subscription.currentPeriodEnd;
+  const keep = (x) => !x.endsAt || new Date(x.endsAt) > new Date(periodEnd);
+  const addons = (subscription.addons || []).filter(keep);
+  const tablets = (subscription.tablets || []).filter(keep).sort((a, b) => a.serial - b.serial);
+  const base = config.basePlan || {};
+  const lines = [
+    { description: `${base.name || "POS"} plan — ${span(config)}`, amountPaise: await priceFor({ code: base.code || "POS", config, override }), target: null },
+  ];
+  for (const a of addons) {
+    const price = await priceFor({ code: a.code, config, override });
+    // An add-on CSD has since removed from the catalogue renews at what it was bought for.
+    lines.push({ description: `${a.name} add-on — ${span(config)}`, amountPaise: price === null ? Number(a.pricePaise) || 0 : price, target: a });
+  }
+  for (const [i, t] of tablets.entries()) {
+    const amountPaise = await priceFor({ code: i === 0 ? "TABLET_FIRST" : "TABLET_EXTRA", config, override });
+    lines.push({ description: `Tablet #${t.serial} rental — ${span(config)}`, amountPaise, target: t });
+  }
+  return { lines, addons, tablets };
+};
+
+/**
+ * Renew one subscription whose period has ended: plan, add-ons and tablets in
+ * one invoice, all or nothing. Short of money -> EXPIRED with the reason, and
+ * the lock rules (grace, then lock) take over until a top-up renews it.
+ */
+const renewOne = async (subscription, { config, on }) => {
+  const restaurantId = subscription.restaurantId;
+  if (!["ACTIVE", "EXPIRED"].includes(subscription.status)) return { renewed: false };
+  if (!subscription.currentPeriodEnd || new Date(subscription.currentPeriodEnd) > new Date(on)) return { renewed: false };
+  const override = await getOverride(restaurantId);
+  if (override?.billingExempt) return { renewed: false };
+  const restaurant = await Restaurant.findById(restaurantId).select("address").lean();
+
+  const { lines, addons, tablets } = await renewalLines({ config, subscription, override });
+  const bill = priceLines(lines, { config, restaurant, on });
+  // On time, the new period continues from the old end; late, renewalPolicy decides.
+  const period = nextPeriod({ subscription, days: config.subscriptionDays, policy: config.renewalPolicy, on });
+  subscription.lastRenewalAttemptAt = new Date(on);
+
+  let result;
+  try {
+    result = await charge({
+      subscription,
+      bill,
+      kind: "SUBSCRIPTION",
+      description: `${subscription.planName || "POS"} plan renewal`,
+      // One renewal per period, however many sweeps and top-ups try it.
+      idempotencyKey: `renewal-${subscription._id}-${iso(subscription.currentPeriodEnd)}`,
+      config,
+      period,
+      meta: { renewal: true, lines: lines.length },
+    });
+  } catch (err) {
+    if (!(err instanceof SubscriptionError)) throw err;
+    subscription.status = "EXPIRED";
+    subscription.lastRenewalError = err.message;
+    await subscription.save();
+    await settleLock(restaurantId);
+    return { renewed: false, error: err.message };
+  }
+
+  for (const l of lines) if (l.target) l.target.pricePaise = l.amountPaise;
+  // Stopped add-ons lapse here. Returned tablets stay listed (ended) so tablet
+  // numbers, and the payment keys built from them, never repeat.
+  subscription.addons = addons;
+  subscription.status = "ACTIVE";
+  subscription.currentPeriodStart = period.start;
+  subscription.currentPeriodEnd = period.end;
+  subscription.lastRenewalError = "";
+  if (result.invoice) {
+    subscription.lastInvoiceId = result.invoice._id;
+    subscription.lastPaidAt = new Date(on);
+    subscription.lastPaidPricePaise = bill.subtotalPaise;
+  }
+  await subscription.save();
+  await settleLock(restaurantId);
+  return { renewed: true, invoice: result.invoice, charged: result.charged };
+};
+
+/**
+ * Renew every subscription whose period has ended (or just this restaurant's).
+ * Run by the lock sweep, after every top-up, and by POST /api/subscription/renew.
+ */
+// ponytail: an EXPIRED store is retried every sweep (a few reads each); skip ones whose balance has not moved if that grows.
+const renewDue = async (on = new Date(), { restaurantId } = {}) => {
+  const config = await getPlatformConfig();
+  const due = await PlatformSubscription.find({
+    ...(restaurantId ? { restaurantId } : {}),
+    status: { $in: ["ACTIVE", "EXPIRED"] },
+    currentPeriodEnd: { $ne: null, $lte: new Date(on) },
+  });
+  let renewed = 0;
+  let failed = 0;
+  for (const s of due) {
+    try {
+      const r = await renewOne(s, { config, on });
+      if (r.renewed) renewed += 1;
+      else if (r.error) failed += 1;
+    } catch (err) {
+      // A top-up and the sweep renewing at once: the loser's save hits a
+      // VersionError after the (shared, idempotent) debit. Reload and finish
+      // it now; the spent renewal key makes this retry free.
+      let failure = err;
+      if (err?.name === "VersionError") {
+        try {
+          const r = await renewOne(await getSubscription(s.restaurantId), { config, on });
+          if (r.renewed) renewed += 1;
+          continue;
+        } catch (retryErr) {
+          failure = retryErr;
+        }
       }
-    : null;
-  const latestSchedule = await CommercialSchedule.findOne({ restaurantId }).sort({ version: -1 }).select("version hash acceptedAt agreementVersion").lean();
+      console.warn(`[Subscription] renewal ${s.restaurantId}:`, failure.message);
+    }
+  }
+  return { considered: due.length, renewed, failed };
+};
 
+// ---------------------------------------------------------------------------
+// Status
+// ---------------------------------------------------------------------------
+
+/** Status as of now, without changing anything (bar creating the empty record). */
+const statusFor = async (restaurantId, on = new Date()) => {
+  const { config, subscription, override, restaurant, exempt } = await load(restaurantId);
+  const price = (code) => priceFor({ code, config, override });
+  const active = subscription.status === "ACTIVE" && isActiveAt(subscription, on);
+  const graceEnds = subscription.currentPeriodEnd
+    ? new Date(new Date(subscription.currentPeriodEnd).getTime() + Math.max(0, Number(config.graceHours || 0)) * 3600 * 1000)
+    : null;
+  const balance = await BusinessBalance.findOne({ restaurantId }).select("balancePaise").lean();
+
+  // The whole catalogue on sale, marked with what this store has. One it
+  // owns that has since been retired still shows, so it can be stopped.
+  const addons = [];
+  for (const a of [...(config.addons || [])].sort((x, y) => (x.sortOrder || 0) - (y.sortOrder || 0))) {
+    const owned = (subscription.addons || []).find((o) => o.code === a.code && liveAt(o, on));
+    if (a.isActive === false && !owned) continue;
+    addons.push({
+      code: a.code,
+      name: a.name,
+      description: a.description || "",
+      feature: a.feature || "",
+      price: asAmount(await price(a.code)),
+      // On the plan (a stopped one stays until its endsAt)...
+      owned: Boolean(owned),
+      // ...and paid up: the POS period it rides on is running.
+      active: Boolean(owned) && active,
+      endsAt: owned?.endsAt || null,
+    });
+  }
+
+  const tablets = (subscription.tablets || []).map((t) => ({
+    serial: t.serial,
+    price: asAmount(t.pricePaise),
+    rentedAt: t.rentedAt,
+    endsAt: t.endsAt || null,
+    active: liveAt(t, on),
+  }));
+  const [firstPrice, extraPrice] = await Promise.all([price("TABLET_FIRST"), price("TABLET_EXTRA")]);
+  const printers = [];
+  for (const p of (config.printers || []).filter((x) => x.isActive !== false)) {
+    printers.push({
+      code: p.code,
+      name: p.name,
+      price: asAmount(await price(p.code)),
+      owned: (subscription.hardware || []).filter((h) => h.code === p.code).length,
+    });
+  }
+
+  let nextRenewal = null;
+  if (!exempt && subscription.activatedAt && subscription.currentPeriodEnd) {
+    const { lines } = await renewalLines({ config, subscription, override });
+    nextRenewal = { at: subscription.currentPeriodEnd, ...billView(priceLines(lines, { config, restaurant, on })) };
+  }
+
+  const base = config.basePlan || {};
   return {
-    planCode: subscription.planCode,
-    planName: subscription.planName,
+    status: subscription.status,
     active,
     // Set by CSD: a demo store, never billed and never locked.
-    exempt: Boolean(override?.billingExempt),
-    // What this plan unlocks (services/planFeatures). The POS locks its tiles from this.
-    features: featuresFor({ planCode: subscription.planCode, exempt: override?.billingExempt }),
-    activatedAt: subscription.activatedAt,
-    installation,
-    installationRequired: !override?.billingExempt && !subscription.installation?.paidAt,
-    installationOptions: INSTALLATION_OPTIONS,
-    commitment: {
-      ...commitment,
-      startedAt: subscription.commitment?.startedAt || null,
-      endsAt: subscription.commitment?.endsAt || null,
-      discountGrantedPaise: Number(subscription.commitment?.discountGrantedPaise) || 0,
-    },
-    schedule: latestSchedule,
-    agreementVersion: AGREEMENT_VERSION,
+    exempt,
+    needsActivation: !exempt && !subscription.activatedAt,
+    firstRechargeMin: asAmount(Number(config.firstRechargeMinPaise) || 0),
+    basePlan: { code: base.code || "POS", name: base.name || "POS", price: asAmount(await price(base.code || "POS")) },
     periodDays: config.subscriptionDays,
-    inGrace: !active && Boolean(graceEnds) && new Date(on) < graceEnds,
+    activatedAt: subscription.activatedAt,
     currentPeriodStart: subscription.currentPeriodStart,
     currentPeriodEnd: subscription.currentPeriodEnd,
+    inGrace: !active && Boolean(subscription.activatedAt) && Boolean(graceEnds) && new Date(on) < graceEnds,
     graceEndsAt: graceEnds,
-    lastPaidPricePaise: subscription.lastPaidPricePaise,
-    today: startOfIstDay(on),
+    lastRenewalError: subscription.lastRenewalError || "",
+    addons,
+    tablets,
+    tablet: {
+      firstPrice: asAmount(firstPrice),
+      extraPrice: asAmount(extraPrice),
+      rechargeRequired: asAmount(Number(config.tablet?.rechargeRequiredPaise) || 0),
+      nextPrice: asAmount(tablets.some((t) => t.active) ? extraPrice : firstPrice),
+      credits: Number(subscription.tabletRechargeCredits) || 0,
+    },
+    printers,
+    hardware: (subscription.hardware || []).map((h) => ({
+      code: h.code,
+      name: h.name,
+      price: asAmount(h.pricePaise),
+      total: asAmount(h.totalPaise),
+      invoiceId: h.invoiceId || null,
+      purchasedAt: h.purchasedAt,
+    })),
+    nextRenewal,
+    // What the add-ons unlock (services/planFeatures). The POS locks its tiles from this.
+    features: featuresFor({ subscription, exempt, on }),
+    balance: asAmount(balance?.balancePaise || 0),
   };
 };
 
 module.exports = {
   getSubscription,
   quote,
-  purchasePlan,
-  purchaseInstallation,
-  upgradeInstallation,
-  lapseCommitments,
-  settleCommitmentRepayment,
+  billView,
+  activate,
+  afterRecharge,
+  minimumTopUpPaise,
+  addAddon,
+  removeAddon,
+  rentTablet,
+  endTablet,
+  buyPrinter,
+  renewDue,
   statusFor,
   issueInvoice,
+  scheduleHash,
   AGREEMENT_VERSION,
   SubscriptionError,
 };

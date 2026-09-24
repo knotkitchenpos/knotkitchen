@@ -4,65 +4,80 @@ const mongoose = require("mongoose");
  * Everything KnotKitchen charges for, and what it charges.
  *
  * ONE singleton document holds the platform defaults; a small per-restaurant
- * document overrides them. Nothing here has a default price baked into code --
- * a hard-coded 1299 or 18% is a price nobody can change without a deploy, and
- * the whole point of this is that the admin panel is the only place prices
- * live.
+ * document overrides them. The catalogue ships with seeded defaults, but the
+ * admin panel is the only place prices change -- nothing reads a price from
+ * code.
  *
  * Effective dating is deliberately shallow. Only the two dates the business
- * actually needs are stored (GST start, order-charge start) plus an offer
- * window, because invoices SNAPSHOT what they charged at the moment they were
- * issued. Immutable invoices are what make old bills correct forever; a full
+ * actually needs are stored (GST start, order-charge start), because invoices
+ * SNAPSHOT what they charged at the moment they were issued. Immutable invoices are what make old bills correct forever; a full
  * temporal history of config would be a second, redundant source of truth.
  */
 
-const offerSchema = new mongoose.Schema(
+const addonSchema = new mongoose.Schema(
   {
-    // Null price means "no offer", regardless of the dates.
-    pricePaise: { type: Number, default: null, min: 0 },
-    startsAt: { type: Date, default: null },
-    endsAt: { type: Date, default: null },
-    label: { type: String, default: "" },
-  },
-  { _id: false },
-);
-
-const planSchema = new mongoose.Schema(
-  {
+    // Also the per-store override code (CsdStoreCharges.planPrices).
     code: { type: String, required: true, trim: true },
     name: { type: String, required: true, trim: true },
-    // Paise. Integers only -- see services/money.js for why.
-    standardPricePaise: { type: Number, required: true, min: 0 },
-    // `isActive` false retires a plan for everyone; `isAvailable` false keeps
-    // existing subscribers but hides it from new sign-ups. The spec asks for
-    // both and they are not the same switch.
+    description: { type: String, default: "", trim: true },
+    // Paise, per billing period, before GST. Integers only -- see services/money.js.
+    pricePaise: { type: Number, required: true, min: 0 },
+    // What it unlocks (services/planFeatures). "" is a service with no switch
+    // in the product, such as GMB Management.
+    feature: { type: String, enum: ["", "website", "tableQr"], default: "" },
+    // false retires it: no new sign-ups; stores that have it keep it.
     isActive: { type: Boolean, default: true },
-    isAvailable: { type: Boolean, default: true },
-    offer: { type: offerSchema, default: () => ({}) },
-    features: { type: [String], default: [] },
     sortOrder: { type: Number, default: 0 },
   },
   { _id: false },
 );
 
+const printerSchema = new mongoose.Schema(
+  {
+    code: { type: String, required: true, trim: true },
+    name: { type: String, required: true, trim: true },
+    // One-time, before GST.
+    pricePaise: { type: Number, required: true, min: 0 },
+    isActive: { type: Boolean, default: true },
+  },
+  { _id: false },
+);
+
 /**
- * The four plans KnotKitchen sells, as shipped.
- *
- * Seeded rather than hard-coded: the CSD owns pricing, offers and per-store
- * rates, and every one of these is editable there. They exist here only so a
- * fresh install has something to sell -- an empty catalogue is why the POS
- * showed "No plans are available at the moment".
- *
- * Essential and Connect ship with `isAvailable: false`: listed so a restaurant
- * can see what exists, but closed to new subscriptions until they open. That
- * is exactly the distinction `isAvailable` was added for -- `isActive` false
- * would hide them completely.
+ * The catalogue as shipped. Seeded rather than hard-coded: the CSD owns every
+ * price here, and services/pricing.getPlatformConfig backfills a config row
+ * that predates them.
  */
-const DEFAULT_PLANS = [
-  { code: "ESSENTIAL", name: "Essential", standardPricePaise: 39900, sortOrder: 1, isAvailable: false },
-  { code: "CONNECT", name: "Connect", standardPricePaise: 59900, sortOrder: 2, isAvailable: false },
-  { code: "GROWTH", name: "Growth", standardPricePaise: 129900, sortOrder: 3, isAvailable: true },
-  { code: "SCALE", name: "Scale", standardPricePaise: 169900, sortOrder: 4, isAvailable: true },
+const DEFAULT_ADDONS = [
+  {
+    code: "TABLE_QR",
+    name: "QR Table Ordering",
+    description: "Diners scan the table QR to order and pay.",
+    pricePaise: 20000,
+    feature: "tableQr",
+    sortOrder: 1,
+  },
+  {
+    code: "WEBSITE",
+    name: "Website",
+    description: "Your own ordering website, online payments and table booking.",
+    pricePaise: 30000,
+    feature: "website",
+    sortOrder: 2,
+  },
+  {
+    code: "GMB",
+    name: "GMB Management",
+    description: "KnotKitchen keeps your Google Business Profile up to date.",
+    pricePaise: 10000,
+    feature: "",
+    sortOrder: 3,
+  },
+];
+
+const DEFAULT_PRINTERS = [
+  { code: "PRINTER_2IN", name: "2-inch receipt printer", pricePaise: 190000 },
+  { code: "PRINTER_3IN", name: "3-inch receipt printer", pricePaise: 425000 },
 ];
 
 const gstSchema = new mongoose.Schema(
@@ -121,7 +136,25 @@ const platformBillingConfigSchema = new mongoose.Schema(
   {
     // Enforces the singleton: only one document can hold this value.
     singleton: { type: String, default: "platform", unique: true, immutable: true },
-    plans: { type: [planSchema], default: () => DEFAULT_PLANS.map((p) => ({ ...p })) },
+    // The POS plan every store pays for once activated. The code is fixed: it
+    // is what activation, renewal and per-store overrides look up.
+    basePlan: {
+      code: { type: String, default: "POS" },
+      name: { type: String, default: "POS", trim: true },
+      pricePaise: { type: Number, default: 39900, min: 0 },
+    },
+    addons: { type: [addonSchema], default: () => DEFAULT_ADDONS.map((a) => ({ ...a })) },
+    // Monthly tablet rental. Each tablet needs its own qualifying top-up of
+    // at least rechargeRequiredPaise first (services/subscription).
+    tablet: {
+      firstPricePaise: { type: Number, default: 60000, min: 0 },
+      extraPricePaise: { type: Number, default: 50000, min: 0 },
+      rechargeRequiredPaise: { type: Number, default: 400000, min: 0 },
+    },
+    printers: { type: [printerSchema], default: () => DEFAULT_PRINTERS.map((p) => ({ ...p })) },
+    // A store that has not activated yet must top up at least this much in
+    // one go; that top-up starts the POS plan.
+    firstRechargeMinPaise: { type: Number, default: 250000, min: 0 },
     gst: { type: gstSchema, default: () => ({}) },
     websiteOrderCharge: { type: orderChargeSchema, default: () => ({}) },
     // Charged per e-bill actually delivered -- never per attempt.
@@ -148,16 +181,8 @@ const platformBillingConfigSchema = new mongoose.Schema(
       default: "FROM_PAYMENT",
     },
 
-    /**
-     * What an upgrade costs mid-period. PRORATE is the default and matches
-     * "calculated based on the remaining subscription period".
-     */
-    upgradePolicy: {
-      type: String,
-      enum: ["PRORATE", "FULL_DIFFERENCE", "FULL_PRICE"],
-      default: "PRORATE",
-    },
-    // Hours a restaurant gets to settle a due invoice before the account locks.
+    // Hours a restaurant gets to top up after its plan expires (or the balance
+    // runs out) before the account locks.
     graceHours: { type: Number, default: 24, min: 0 },
     currency: { type: String, default: "INR" },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
@@ -171,11 +196,12 @@ const platformBillingConfigSchema = new mongoose.Schema(
  * That collection already existed with an audited PATCH endpoint and a CSD
  * dialog behind it. A second override model next to it would have been a
  * fourth copy of "what does this restaurant pay", which is the exact failure
- * this codebase keeps repeating -- so the plan-price overrides were added
- * there instead and this file holds only the platform-wide defaults.
+ * this codebase keeps repeating -- so the price overrides were added there
+ * instead and this file holds only the platform-wide defaults.
  */
 
 module.exports = {
-  DEFAULT_PLANS,
+  DEFAULT_ADDONS,
+  DEFAULT_PRINTERS,
   PlatformBillingConfig: mongoose.model("PlatformBillingConfig", platformBillingConfigSchema),
 };

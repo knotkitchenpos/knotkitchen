@@ -137,7 +137,7 @@ const resolveTableScope = async (req, res, next) => {
       table,
     };
 
-    // Table QR ordering is a Growth and Scale feature (services/planFeatures).
+    // Table QR ordering is an add-on (services/planFeatures).
     if (!(await require("../services/planFeatures").hasFeature(req.scope.restaurantId, "tableQr"))) {
       return next(createHttpError(403, "Table ordering is not available at this restaurant. Please order with the staff."));
     }

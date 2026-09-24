@@ -4,7 +4,9 @@ import {
   FiArrowLeft, FiExternalLink, FiMapPin, FiGlobe, FiMonitor, FiEdit2,
   FiUsers, FiClock, FiAlertTriangle, FiCheck, FiX,
 } from "react-icons/fi";
-import { restaurants as api, stores as storesApi, errorMessage, fieldErrors } from "../api";
+import {
+  restaurants as api, stores as storesApi, billingConfig as billingApi, errorMessage, fieldErrors,
+} from "../api";
 import StatusBadge from "../components/StatusBadge";
 import { useAuth } from "../context/AuthContext";
 import ChargesDialog from "../components/ChargesDialog";
@@ -193,6 +195,123 @@ const StoreStatusCard = ({ storeId, current, onChanged }) => {
   );
 };
 
+const SubHead = ({ children }) => (
+  <h3 className="mb-1 mt-3 text-xs font-semibold uppercase tracking-wider text-navy-500">{children}</h3>
+);
+
+const None = () => <p className="text-sm text-navy-400">None</p>;
+
+/**
+ * The store's POS plan (GET /api/subscription, via the restaurant payload):
+ * status, add-ons, rented tablets and top-up credits, hardware bought, and
+ * what the next renewal will take from the wallet. Amounts arrive as
+ * { paise, rupees, label }; only the label is shown.
+ */
+const PosPlanCard = ({ sub, canEnd, onEndTablet }) => {
+  if (!sub) {
+    return (
+      <Card title="POS plan">
+        <p className="text-sm text-navy-400">No POS billing record for this store yet.</p>
+      </Card>
+    );
+  }
+  const status = sub.exempt
+    ? "Demo store — every add-on, never billed"
+    : sub.needsActivation
+      ? `Not started — waits for a first top-up of ${sub.firstRechargeMin.label}`
+      : sub.active
+        ? "Active"
+        : sub.inGrace
+          ? `Expired — locks ${dt(sub.graceEndsAt)}`
+          : sub.status === "EXPIRED" ? "Expired" : sub.status;
+  const addons = sub.addons.filter((a) => a.owned);
+
+  return (
+    <Card title="POS plan">
+      <dl>
+        <Row label="Status">{status}</Row>
+        <Row label="Plan">{`${sub.basePlan.name} · ${sub.basePlan.price.label} + GST`}</Row>
+        {sub.currentPeriodEnd && (
+          <Row label="Period">{`${dOnly(sub.currentPeriodStart)} → ${dOnly(sub.currentPeriodEnd)}`}</Row>
+        )}
+        <Row label="Wallet">{sub.balance.label}</Row>
+        <Row label="Tablet credits">
+          {`${sub.tablet.credits} · one per top-up of ${sub.tablet.rechargeRequired.label}`}
+        </Row>
+        {sub.lastRenewalError && <Row label="Last renewal">{sub.lastRenewalError}</Row>}
+      </dl>
+
+      <SubHead>Add-ons</SubHead>
+      {addons.length === 0 ? <None /> : (
+        <ul className="text-sm">
+          {addons.map((a) => (
+            <li key={a.code} className="flex justify-between gap-3 border-b border-navy-100 py-1.5 last:border-b-0">
+              <span className="text-navy-800">{a.name}</span>
+              <span className="text-right text-navy-900">
+                {a.price.label} / month{a.endsAt ? ` · stops ${dOnly(a.endsAt)}` : ""}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <SubHead>Tablets</SubHead>
+      {sub.tablets.length === 0 ? <None /> : (
+        <ul className="text-sm">
+          {sub.tablets.map((t) => (
+            <li key={t.serial} className="flex items-center justify-between gap-3 border-b border-navy-100 py-1.5 last:border-b-0">
+              <span className="text-navy-800">
+                Tablet #{t.serial}
+                <span className="ml-1.5 text-xs text-navy-400">since {dOnly(t.rentedAt)}</span>
+              </span>
+              <span className="flex items-center gap-3 text-right text-navy-900">
+                {t.price.label} / month{t.endsAt ? ` · ends ${dOnly(t.endsAt)}` : ""}
+                {/* The physical return: admin only, and the server checks. */}
+                {canEnd && !t.endsAt && (
+                  <button type="button" onClick={() => onEndTablet(t.serial)}
+                    className="text-xs font-semibold text-red-600 hover:text-red-700">
+                    End rental
+                  </button>
+                )}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <SubHead>Hardware</SubHead>
+      {sub.hardware.length === 0 ? <None /> : (
+        <ul className="text-sm">
+          {sub.hardware.map((h, i) => (
+            <li key={i} className="flex justify-between gap-3 border-b border-navy-100 py-1.5 last:border-b-0">
+              <span className="text-navy-800">{h.name}</span>
+              <span className="text-right text-navy-900">{h.total.label} incl. GST · {dOnly(h.purchasedAt)}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      <SubHead>Next renewal</SubHead>
+      {!sub.nextRenewal ? <None /> : (
+        <ul className="text-sm">
+          {[
+            ...sub.nextRenewal.lines.map((l) => [l.description, l.amount.label]),
+            ["GST", sub.nextRenewal.tax.label],
+            [`Total on ${dOnly(sub.nextRenewal.at)}`, sub.nextRenewal.total.label],
+          ].map(([label, amount], i, all) => (
+            <li key={i} className={`flex justify-between gap-3 border-b border-navy-100 py-1.5 last:border-b-0 ${
+              i === all.length - 1 ? "font-semibold" : ""
+            }`}>
+              <span className="text-navy-800">{label}</span>
+              <span className="shrink-0 text-right text-navy-900">{amount}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
+  );
+};
+
 const PERIODS = [
   { key: "month", label: "Last month" },
   { key: "week", label: "Last week" },
@@ -258,6 +377,18 @@ const RestaurantDetail = () => {
       setGbpErr(fieldErrors(err).googleBusinessUrl || errorMessage(err));
     } finally {
       setSavingGbp(false);
+    }
+  };
+
+  const endTablet = async (serial) => {
+    if (!window.confirm(
+      `End the rental of tablet #${serial}? Only do this once the tablet is back. It stops renewing at the end of the current period. This is audited.`
+    )) return;
+    try {
+      await billingApi.endTablet(data.charges.restaurantId, serial);
+      await load();
+    } catch (err) {
+      window.alert(errorMessage(err, "Could not end the rental."));
     }
   };
 
@@ -578,11 +709,10 @@ const RestaurantDetail = () => {
               {inr(charges.onlinePaidOrderCharge)} + GST / order
             </Row>
             <Row label="GST">{charges.gstPercent}%</Row>
-            <Row label="Current plan"><span className="capitalize">{charges.plan}</span></Row>
             {charges.billingExempt && <Row label="Billing">Demo store — never billed</Row>}
-            {String(charges.plan).toLowerCase() !== "free" && (
-              <Row label="Monthly subscription">{inr(charges.monthlySubscription)} + GST</Row>
-            )}
+            {(charges.planPrices || []).map((p) => (
+              <Row key={p.code} label={`Price: ${p.code}`}>{inr(p.price)} + GST</Row>
+            ))}
           </dl>
           {charges.usingDefaults && (
             <p className="mt-3 text-xs text-navy-400">
@@ -596,50 +726,8 @@ const RestaurantDetail = () => {
           )}
         </Card>
 
-        {/* Agreement v2.0: what the restaurant chose and accepted in the POS. */}
-        <Card title="Agreement terms">
-          {!charges.agreementTerms ? (
-            <p className="text-sm text-navy-400">No POS billing record for this store yet.</p>
-          ) : (
-            <dl>
-              <Row label="Agreement">{charges.agreementTerms.agreementVersion}</Row>
-              <Row label="Activated">
-                {charges.agreementTerms.activatedAt
-                  ? new Date(charges.agreementTerms.activatedAt).toLocaleDateString("en-IN", { dateStyle: "medium" })
-                  : "Not yet"}
-              </Row>
-              <Row label="Installation">
-                {charges.agreementTerms.installation
-                  ? `${charges.agreementTerms.installation.optionName} · ₹${(charges.agreementTerms.installation.amountPaise / 100).toLocaleString("en-IN")} paid ${new Date(charges.agreementTerms.installation.paidAt).toLocaleDateString("en-IN", { dateStyle: "medium" })}`
-                  : charges.agreementTerms.installationRequired
-                    ? "Not paid yet"
-                    : "Not required"}
-              </Row>
-              {charges.agreementTerms.installation?.refund && (
-                <Row label="Refund if terminated today">
-                  ₹{(charges.agreementTerms.installation.refund.refundPaise / 100).toLocaleString("en-IN")} ({charges.agreementTerms.installation.refund.percent}%)
-                  {charges.agreementTerms.installation.refund.anniversaryAt && !charges.agreementTerms.installation.refund.completed12Months
-                    ? ` · 100% from ${new Date(charges.agreementTerms.installation.refund.anniversaryAt).toLocaleDateString("en-IN", { dateStyle: "medium" })}`
-                    : ""}
-                </Row>
-              )}
-              <Row label="Commitment">
-                {charges.agreementTerms.commitment?.running
-                  ? `${charges.agreementTerms.commitment.months} months · ${charges.agreementTerms.commitment.discountPercent}% · ${charges.agreementTerms.commitment.periodsUsed}/${charges.agreementTerms.commitment.periodsTotal} periods used`
-                  : charges.agreementTerms.commitment?.repaymentDuePaise > 0
-                    ? `Ended early · ₹${(charges.agreementTerms.commitment.repaymentDuePaise / 100).toLocaleString("en-IN")} discount repayment due`
-                    : charges.agreementTerms.commitment?.completed
-                      ? `${charges.agreementTerms.commitment.months} months · completed`
-                      : "None (month to month)"}
-              </Row>
-              <Row label="Schedule 1">
-                {charges.agreementTerms.schedule
-                  ? `v${charges.agreementTerms.schedule.version} accepted ${new Date(charges.agreementTerms.schedule.acceptedAt).toLocaleDateString("en-IN", { dateStyle: "medium" })} · ${String(charges.agreementTerms.schedule.hash).slice(0, 12)}…`
-                  : "Not accepted yet"}
-              </Row>
-            </dl>
-          )}
-        </Card>
+        {/* The POS plan as the restaurant's Billing page sees it. */}
+        <PosPlanCard sub={charges.subscription} canEnd={isAdmin} onEndTablet={endTablet} />
 
         <Card title="Restaurant staff">
           {staff.length === 0 ? (

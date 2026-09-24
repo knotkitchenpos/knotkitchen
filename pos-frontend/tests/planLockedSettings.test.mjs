@@ -7,25 +7,24 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SRC = (rel) => fs.readFileSync(path.join(__dirname, "..", rel), "utf8");
 
-test("the website tiles are locked on plans without the website, and point to Billing", () => {
-  // "For the Essential Plan ... Manage Website, Website Timing and Holidays
-  // should remain locked." The server enforces it (services/planFeatures).
+test("the website tiles are locked without the Website add-on, and point to Billing", () => {
+  // Manage Website and Website Timing & Holidays need the Website add-on.
+  // The server enforces it (services/planFeatures).
   const settings = SRC("src/pages/Settings.jsx");
   assert.match(settings, /id: "timings",[^\n]*feature: "website" \}/);
   assert.match(settings, /if \(blockedByPlan\(item\)\) \{\s*navigate\("\/settings\/billing"\);/);
   assert.match(settings, /\{locked \? <I\.lock \/> : <I\.chevron \/>\}/);
-  // Manage Website still opens, as the payment gateway only: every plan keeps it.
+  // Manage Website still opens as the payment gateway only, when a store has that without the website.
   assert.match(settings, /id: "website",[^\n]*feature: "website",[^\n]*openWhenLocked: "paymentGateway" \}/);
   const site = SRC("src/pages/WebsiteSettings.jsx");
   assert.match(site, /const tabs = websiteLocked \? TABS\.filter\(\(t\) => t\.key === "payments"\) : TABS;/);
   assert.match(site, /updateWebsiteSettings\(websiteLocked \? \{ paymentGateways: settings\.paymentGateways \} : settings\)/);
-  // Essential has no payment gateway either, so the page goes to Billing.
+  // No payment gateway either (today it comes with the Website add-on): the page goes to Billing.
   assert.match(site, /if \(websiteLocked && gatewayLocked\) return <Navigate to="\/settings\/billing" replace \/>;/);
 });
 
-test("a paid installation can be upgraded from Billing, paying only the difference", () => {
-  const billing = SRC("src/pages/Billing.jsx");
-  assert.match(billing, /terms\?\.installationUpgrades/);
-  assert.match(billing, /installUpgrade\.mutate\(\{ optionCode: option\.code, accepted: true \}\)/);
-  assert.match(SRC("src/https/index.js"), /"\/api\/subscription\/installation\/upgrade"/);
+test("locked tiles and the website page speak of add-ons, not the old plans", () => {
+  const settings = SRC("src/pages/Settings.jsx");
+  assert.match(settings, /\{locked \? "Needs the Website add-on\. Tap to add it in Billing\." :/);
+  assert.match(SRC("src/pages/WebsiteSettings.jsx"), /The website is an add-on\./);
 });

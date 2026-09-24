@@ -38,9 +38,9 @@ const MENU_ITEMS = [
     : []),
   // Reachable even when the account is locked -- it is the only screen that
   // can clear a lock, so it must never be gated. See middlewares/accountLock.js.
-  { id: "billing", title: "10. Billing & Subscription", desc: "Business Balance, plan, invoices and transactions.", Icon: I.fileText, path: "/settings/billing" },
+  { id: "billing", title: "10. Billing & Subscription", desc: "Wallet, POS plan, add-ons, tablets, printers and invoices.", Icon: I.fileText, path: "/settings/billing" },
 
-  { id: "website", title: "11. Manage Website", desc: "Landing page, branding, colours, domain and payments.", Icon: I.globe, path: "/website", feature: "website", lockedDesc: "Payment gateway only. The website is included in Growth and Scale.", openWhenLocked: "paymentGateway" },
+  { id: "website", title: "11. Manage Website", desc: "Landing page, branding, colours, domain and payments.", Icon: I.globe, path: "/website", feature: "website", lockedDesc: "Payment gateway only. The website is an add-on.", openWhenLocked: "paymentGateway" },
 
   // Activity Log stays CSD-only: it is the audit trail of who did what,
   // including support's own actions, and has no POS route at all (CSD reads
@@ -70,13 +70,13 @@ const Settings = () => {
     },
   });
 
-  // Plan features (services/planFeatures on the server, which also enforces
-  // them): the website tiles are Growth and Scale only.
+  // Add-on features (services/planFeatures on the server, which also enforces
+  // them): the website tiles need the Website add-on.
   const { data: subRes } = useQuery({ queryKey: ["subscription"], queryFn: getSubscriptionStatus });
   const features = subRes?.data?.data?.features;
   const lockedByPlan = (item) => Boolean(item.feature && features && features[item.feature] === false);
-  // Manage Website still opens on Connect, as its payment gateway only; on
-  // Essential that is locked too.
+  // Manage Website still opens as the payment gateway only when a store has
+  // online payments without the website; today both come with the Website add-on.
   const blockedByPlan = (item) =>
     lockedByPlan(item) && !(item.openWhenLocked && features?.[item.openWhenLocked] !== false);
 
@@ -172,7 +172,7 @@ const Settings = () => {
                       {item.title}
                     </p>
                     <p className="text-[12px] text-[#94A3B8] truncate mt-0.5">
-                      {locked ? "Included in Growth and Scale. Tap to upgrade." : lockedByPlan(item) ? item.lockedDesc : item.desc}
+                      {locked ? "Needs the Website add-on. Tap to add it in Billing." : lockedByPlan(item) ? item.lockedDesc : item.desc}
                     </p>
                   </div>
                   <span className="text-[#94A3B8] shrink-0">{locked ? <I.lock /> : <I.chevron />}</span>

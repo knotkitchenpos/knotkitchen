@@ -7,7 +7,8 @@
  *   an empty Business Balance  it ran out and was not recharged
  *   unpaid per-order fees      a website order was charged while the balance
  *                              was empty, so the fee sits PENDING
- *   an expired subscription    the period ended and was not renewed
+ *   an expired subscription    the period ended and the wallet could not
+ *                              renew it
  *
  * What "locked" means is deliberately narrow. The spec is explicit that a
  * locked restaurant can still sign in, open Billing, see what it owes and pay
@@ -110,19 +111,15 @@ const assessAccount = async (restaurantId, on = new Date()) => {
     }
   }
 
-  // Clause 6.5: a commitment ended early leaves its discount to be repaid.
-  const repayment = Number(subscription?.commitment?.repaymentDuePaise) || 0;
-  if (repayment > 0) {
-    reasons.push(`Commitment discount of ${formatINR(repayment)} is due (the commitment ended early).`);
-  }
-
-  // A store that has never bought a plan starts locked: everything but
-  // Billing & Subscription stays shut until it picks one. No grace period,
-  // there is nothing it was using that could be cut off mid-service. Demo
-  // stores (billingExempt, above) never reach this. The Billing page says
-  // what to do next (Installation Charge first, then a plan).
+  // A store whose POS plan has never started is locked: everything but
+  // Billing & Subscription stays shut until its first top-up of at least the
+  // minimum starts the plan (services/subscription afterRecharge). No grace
+  // period, there is nothing it was using that could be cut off mid-service.
+  // Demo stores (billingExempt, above) never reach this.
   if (!subscription?.currentPeriodEnd) {
-    reasons.push("No plan is active yet.");
+    reasons.push(
+      `No plan is active yet. Recharge at least ${formatINR(Number(config.firstRechargeMinPaise) || 0)} to start. The POS plan starts automatically.`,
+    );
   } else {
     const endedAt = new Date(subscription.currentPeriodEnd).getTime();
     if (now > endedAt + graceMs) {
@@ -227,13 +224,13 @@ const fireEvaluateLock = (restaurantId) => {
 const sweepLocks = async (on = new Date()) => {
   const Order = require("../models/orderModel");
 
-  // Commitments whose period ended unrenewed lapse first, so the sweep below
-  // sees the repayment they leave behind. Required here for the same cycle
-  // reason as orderCharge above.
+  // Plans whose period has ended renew first (from the wallet), so the sweep
+  // below only locks the ones that could not pay. Required here for the same
+  // cycle reason as orderCharge above.
   try {
-    await require("./subscription").lapseCommitments(on);
+    await require("./subscription").renewDue(on);
   } catch (err) {
-    console.warn("[AccountLock] commitment lapse failed:", err.message);
+    console.warn("[AccountLock] renewal failed:", err.message);
   }
 
   const [withDues, expired, alreadyLocked, empty] = await Promise.all([

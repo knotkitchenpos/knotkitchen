@@ -120,6 +120,9 @@ const amountInWords = (paise) => {
   return parts.filter(Boolean).join(" ");
 };
 
+/** An amount as the API sends it: paise inside, rupees and a label for the UI. */
+const asAmount = (paise) => ({ paise, rupees: toRupees(paise), label: formatINR(paise) });
+
 /** Rupees to the paisa, as a number: 12.345 -> 12.35. The one rounding for order money. */
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -130,6 +133,7 @@ module.exports = {
   toRupees,
   formatAmount,
   formatINR,
+  asAmount,
   percentOf,
   splitEvenly,
   amountInWords,

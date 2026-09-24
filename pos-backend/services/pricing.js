@@ -6,47 +6,44 @@
  *
  * Two layers, and only two:
  *
- *   PlatformBillingConfig   the platform-wide defaults (plans, GST, the
- *                           per-order charge). A singleton.
+ *   PlatformBillingConfig   the platform-wide catalogue (the POS plan,
+ *                           add-ons, tablets, printers, GST, the per-order
+ *                           charge). A singleton.
  *   CsdStoreCharges         what THIS restaurant was negotiated. Already
  *                           existed, already audited, already has a CSD
- *                           dialog behind it -- so the plan-price overrides
- *                           were added there rather than in a second
- *                           collection beside it.
+ *                           dialog behind it -- so the price overrides were
+ *                           added there rather than in a second collection
+ *                           beside it.
  *
- * Precedence, highest first:
- *   1. a per-restaurant price set by the admin  ("ABC pays 999 for Growth")
- *   2. an offer, if today falls inside its window
- *   3. the standard price
- *
- * A per-restaurant price beats an offer deliberately: it is a negotiated rate,
- * and a promotion should not silently override a deal someone agreed to. When
- * an offer happens to be cheaper the resolver says so in the returned
- * alternatives, so the admin panel can show that rather than hide it.
+ * A per-restaurant price beats the catalogue: it is a negotiated rate.
  *
  * CsdStoreCharges stores RUPEES because that is what the admin dialog edits.
  * This file is the single place they become paise; nothing downstream ever
  * sees a rupee amount again.
  */
 
-const { PlatformBillingConfig, DEFAULT_PLANS } = require("../models/platformBillingModel");
+const { PlatformBillingConfig, DEFAULT_ADDONS, DEFAULT_PRINTERS } = require("../models/platformBillingModel");
 const CsdStoreCharges = require("../models/csdStoreChargesModel");
 const Restaurant = require("../models/restaurantModel");
 const { toPaise } = require("./money");
 
-/** The singleton, created empty on first read so the admin panel has something to edit. */
+/** The singleton, created on first read so the admin panel has something to edit. */
 const getPlatformConfig = async () => {
   const existing = await PlatformBillingConfig.findOne({ singleton: "platform" });
   if (existing) {
-    // An install that predates the seeded catalogue has a config row with no
-    // plans in it, and the POS showed "No plans are available at the moment"
-    // with no way for the restaurant to subscribe. Backfill once; an admin
-    // who has since edited the catalogue is never overwritten, because this
-    // only fires when it is EMPTY.
-    if (!existing.plans || existing.plans.length === 0) {
-      existing.plans = DEFAULT_PLANS.map((p) => ({ ...p }));
-      await existing.save();
+    // A config row that predates the catalogue has nothing to sell. Backfill
+    // once; an admin who has since edited the catalogue is never
+    // overwritten, because this only fires when a list is EMPTY.
+    let seeded = false;
+    if (!existing.addons || existing.addons.length === 0) {
+      existing.addons = DEFAULT_ADDONS.map((a) => ({ ...a }));
+      seeded = true;
     }
+    if (!existing.printers || existing.printers.length === 0) {
+      existing.printers = DEFAULT_PRINTERS.map((a) => ({ ...a }));
+      seeded = true;
+    }
+    if (seeded) await existing.save();
     return existing;
   }
   return PlatformBillingConfig.create({ singleton: "platform" });
@@ -72,78 +69,32 @@ const getOverride = async (restaurantId, { storeId } = {}) => {
   return CsdStoreCharges.findOne({ storeId: id }).lean();
 };
 
-const offerActiveAt = (offer, on) => {
-  if (!offer || offer.pricePaise === null || offer.pricePaise === undefined) return false;
-  const at = new Date(on);
-  if (offer.startsAt && at < new Date(offer.startsAt)) return false;
-  if (offer.endsAt && at > new Date(offer.endsAt)) return false;
-  return true;
-};
-
-/** A negotiated price for one plan, in paise, or null if none is set. */
-const customPricePaiseFor = (override, planCode) => {
-  if (!override) return null;
-  const row = (override.planPrices || []).find((p) => p.code === planCode);
-  return row ? toPaise(row.price) : null;
+/**
+ * The catalogue price of one code, in paise, or null when no such thing is
+ * sold. Codes: the POS plan ("POS"), an add-on, TABLET_FIRST, TABLET_EXTRA,
+ * a printer.
+ */
+const catalogPricePaise = (config, code) => {
+  if (code === (config.basePlan?.code || "POS")) return Number(config.basePlan?.pricePaise) || 0;
+  if (code === "TABLET_FIRST") return Number(config.tablet?.firstPricePaise) || 0;
+  if (code === "TABLET_EXTRA") return Number(config.tablet?.extraPricePaise) || 0;
+  const item = [...(config.addons || []), ...(config.printers || [])].find((i) => i.code === code);
+  return item ? Number(item.pricePaise) || 0 : null;
 };
 
 /**
- * Resolve the price of one plan for one restaurant.
- *
- * Returns null when the plan does not exist or is retired, so a caller cannot
- * accidentally charge for something that is no longer sold.
+ * What this restaurant pays for `code`, in paise: its negotiated price, else
+ * the catalogue's. Null when the code is not sold. Pass `config`/`override`
+ * when already loaded, to save the reads.
  */
-const resolvePlanPrice = async ({ restaurantId, planCode, on = new Date(), config, override } = {}) => {
-  const cfg = config || (await getPlatformConfig());
-  const plan = (cfg.plans || []).find((p) => p.code === planCode);
-  if (!plan || !plan.isActive) return null;
-
+const priceFor = async ({ restaurantId, code, config, override } = {}) => {
+  const key = String(code || "").toUpperCase();
   const ovr = override !== undefined ? override : await getOverride(restaurantId);
-  const customPricePaise = customPricePaiseFor(ovr, planCode);
-  const offerPricePaise = offerActiveAt(plan.offer, on) ? plan.offer.pricePaise : null;
-
-  const alternatives = {
-    standardPricePaise: plan.standardPricePaise,
-    offerPricePaise,
-    customPricePaise,
-  };
-
-  if (customPricePaise !== null) {
-    return { ...alternatives, pricePaise: customPricePaise, source: "restaurant", plan };
-  }
-  if (offerPricePaise !== null) {
-    return { ...alternatives, pricePaise: offerPricePaise, source: "offer", plan };
-  }
-  return { ...alternatives, pricePaise: plan.standardPricePaise, source: "standard", plan };
-};
-
-/** Every plan a restaurant may buy today, priced for them. */
-const listPlansFor = async ({ restaurantId, on = new Date(), includeUnavailable = false } = {}) => {
-  const config = await getPlatformConfig();
-  const override = await getOverride(restaurantId);
-
-  return Promise.all(
-    (config.plans || [])
-      .filter((p) => p.isActive && (includeUnavailable || p.isAvailable))
-      .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
-      .map(async (p) => {
-        const resolved = await resolvePlanPrice({
-          restaurantId,
-          planCode: p.code,
-          on,
-          config,
-          override,
-        });
-        return {
-          code: p.code,
-          name: p.name,
-          features: p.features,
-          isAvailable: p.isAvailable,
-          ...resolved,
-          plan: undefined,
-        };
-      }),
-  );
+  // CSD saved these lowercased before the codes were settled; match either.
+  const row = (ovr?.planPrices || []).find((p) => String(p.code).toUpperCase() === key);
+  const catalog = catalogPricePaise(config || (await getPlatformConfig()), key);
+  if (catalog === null) return null;
+  return row ? toPaise(row.price) : catalog;
 };
 
 /**
@@ -209,9 +160,7 @@ module.exports = {
   getPlatformConfig,
   resolveEBillCharge,
   getOverride,
-  offerActiveAt,
-  customPricePaiseFor,
-  resolvePlanPrice,
-  listPlansFor,
+  catalogPricePaise,
+  priceFor,
   resolveOrderCharge,
 };

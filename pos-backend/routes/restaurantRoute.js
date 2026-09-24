@@ -30,7 +30,7 @@ router.route("/verify-pin").post(isVerifiedUser, verifyPin);
 router.route("/change-pin").put(isVerifiedUser, requireOwnerOnly, changePin);
 router.route("/pos-settings").put(isVerifiedUser, requireProtectedAction, updatePosSettings);
 router.route("/order-toggles").put(isVerifiedUser, requireProtectedAction, updateOrderToggles);
-// Website Timing & Holidays: the website's hours, so only plans with the website (services/planFeatures).
+// Website Timing & Holidays: the website's hours, so only with the Website add-on (services/planFeatures).
 router.route("/timings").put(isVerifiedUser, requireProtectedAction, requireWebsitePlan, updateChannelTimings);
 router.route("/holidays").put(isVerifiedUser, requireProtectedAction, requireWebsitePlan, updateHolidays);
 router.route("/closed-for-today").put(isVerifiedUser, requireProtectedAction, requireWebsitePlan, toggleClosedForToday);

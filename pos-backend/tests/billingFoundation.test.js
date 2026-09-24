@@ -5,7 +5,7 @@ const path = require("node:path");
 
 const money = require("../services/money");
 const { computeTax, gstApplicableAt } = require("../services/tax");
-const { offerActiveAt } = require("../services/pricing");
+const { catalogPricePaise, priceFor } = require("../services/pricing");
 
 /**
  * The billing foundation: money arithmetic, GST, and price resolution.
@@ -188,24 +188,34 @@ test("the tax total always equals the sum of its own components", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Offer windows
+// One price per code
 // ---------------------------------------------------------------------------
 
-test("an offer applies only inside its window", () => {
-  const offer = {
-    pricePaise: money.toPaise(999),
-    startsAt: new Date("2026-03-01"),
-    endsAt: new Date("2026-03-31"),
-  };
-  assert.equal(offerActiveAt(offer, new Date("2026-02-28")), false, "before");
-  assert.equal(offerActiveAt(offer, new Date("2026-03-15")), true, "during");
-  assert.equal(offerActiveAt(offer, new Date("2026-04-01")), false, "after");
+const CATALOG = {
+  basePlan: { code: "POS", name: "POS", pricePaise: 39900 },
+  addons: [{ code: "WEBSITE", pricePaise: 30000 }, { code: "GMB", pricePaise: 10000 }],
+  tablet: { firstPricePaise: 60000, extraPricePaise: 50000, rechargeRequiredPaise: 400000 },
+  printers: [{ code: "PRINTER_2IN", pricePaise: 190000 }],
+};
 
-  // An open-ended offer runs until it is given an end date.
-  assert.equal(offerActiveAt({ ...offer, endsAt: null }, new Date("2030-01-01")), true);
-  // A window with no price is not an offer.
-  assert.equal(offerActiveAt({ ...offer, pricePaise: null }, new Date("2026-03-15")), false);
-  assert.equal(offerActiveAt(null, new Date()), false);
+test("every code resolves to its catalogue price, and an unknown one to nothing", () => {
+  assert.equal(catalogPricePaise(CATALOG, "POS"), 39900);
+  assert.equal(catalogPricePaise(CATALOG, "WEBSITE"), 30000);
+  assert.equal(catalogPricePaise(CATALOG, "TABLET_FIRST"), 60000);
+  assert.equal(catalogPricePaise(CATALOG, "TABLET_EXTRA"), 50000);
+  assert.equal(catalogPricePaise(CATALOG, "PRINTER_2IN"), 190000);
+  // Null, so a caller cannot charge for something that is not sold.
+  assert.equal(catalogPricePaise(CATALOG, "GROWTH"), null);
+});
+
+test("a negotiated price beats the catalogue, per code, in rupees converted once", async () => {
+  const override = { planPrices: [{ code: "POS", price: 299 }, { code: "website", price: 0 }] };
+  assert.equal(await priceFor({ code: "POS", config: CATALOG, override }), money.toPaise(299));
+  // A 0 is a real negotiated price, not "no override". Old lowercase codes still match.
+  assert.equal(await priceFor({ code: "WEBSITE", config: CATALOG, override }), 0);
+  assert.equal(await priceFor({ code: "GMB", config: CATALOG, override }), 10000, "the rest stay on the catalogue");
+  assert.equal(await priceFor({ code: "tablet_first", config: CATALOG, override: null }), 60000);
+  assert.equal(await priceFor({ code: "NOPE", config: CATALOG, override }), null);
 });
 
 // ---------------------------------------------------------------------------
@@ -220,11 +230,13 @@ test("REGRESSION: no price, rate or charge is written into the code", () => {
     "services/tax.js",
     "services/pricing.js",
     "services/ledger.js",
+    "services/subscription.js",
+    "services/planFeatures.js",
     "models/platformBillingModel.js",
   ];
   const forbidden = [
     [/\b18\b/, "the GST rate"],
-    [/\b1299\b|\b399\b|\b599\b|\b1699\b/, "a plan price"],
+    [/\b1299\b|\b399\b|\b599\b|\b1699\b|\b2500\b|\b4000\b/, "a price"],
     [/\b0\.18\b/, "a tax multiplier"],
   ];
 
@@ -264,7 +276,7 @@ test("REGRESSION: there is exactly one per-restaurant override model", () => {
   );
 
   const CsdStoreCharges = require("../models/csdStoreChargesModel");
-  assert.ok(CsdStoreCharges.schema.path("planPrices"), "negotiated plan prices live here");
+  assert.ok(CsdStoreCharges.schema.path("planPrices"), "negotiated prices live here");
   assert.ok(CsdStoreCharges.schema.path("onlinePaidOrderCharge"), "as does the per-order charge");
 
   // And pricing reads that one, not another.
@@ -287,15 +299,4 @@ test("rupees become paise in exactly one place", () => {
       `${file} should receive paise already`,
     );
   }
-});
-
-test("a negotiated price outranks a promotion, and says what the promotion was", () => {
-  // A restaurant on an agreed rate should not be silently moved onto a
-  // campaign price, but the admin panel still needs to see both.
-  const pricing = SRC("services/pricing.js");
-  const custom = pricing.indexOf("customPricePaise !== null");
-  const offer = pricing.indexOf("offerPricePaise !== null");
-  assert.ok(custom !== -1 && offer !== -1, "anchors moved; retarget this guard");
-  assert.ok(custom < offer, "the negotiated price is checked first");
-  assert.match(pricing, /offerPricePaise,/, "and the offer is still reported");
 });

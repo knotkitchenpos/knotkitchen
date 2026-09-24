@@ -282,15 +282,19 @@ export const createRecharge = (data) => axiosWrapper.post("/api/business-balance
 export const verifyRecharge = (data) =>
   axiosWrapper.post("/api/business-balance/recharge/verify", data);
 
+// The POS plan, add-ons, tablets and printers, all paid from the wallet.
+// Purchases need { accepted: true } (the order summary was accepted); a Staff
+// member is asked for the PIN by the global popup (utils/pinPrompt).
 export const getSubscriptionStatus = () => axiosWrapper.get("/api/subscription");
-export const getSubscriptionPlans = () => axiosWrapper.get("/api/subscription/plans");
-export const getSubscriptionQuote = (planCode, commitmentMonths = 0) =>
-  axiosWrapper.get(`/api/subscription/quote/${planCode}`, { params: { commitmentMonths } });
-export const purchasePlan = (data) => axiosWrapper.post("/api/subscription/purchase", data);
-// Agreement v2.0: the selectable installation options and commitments, priced for this store.
-export const getSubscriptionTerms = () => axiosWrapper.get("/api/subscription/terms");
-export const purchaseInstallation = (data) => axiosWrapper.post("/api/subscription/installation", data);
-export const upgradeInstallation = (data) => axiosWrapper.post("/api/subscription/installation/upgrade", data);
+// What buying `item` charges now: "ADDON:<code>", "TABLET" or "PRINTER:<code>".
+export const getSubscriptionQuote = (item) => axiosWrapper.get("/api/subscription/quote", { params: { item } });
+export const addSubscriptionAddon = (data) => axiosWrapper.post("/api/subscription/addons", data);
+// Stops at renewal; it keeps working until then.
+export const stopSubscriptionAddon = (code) =>
+  axiosWrapper.delete(`/api/subscription/addons/${encodeURIComponent(code)}`);
+export const rentSubscriptionTablet = (data) => axiosWrapper.post("/api/subscription/tablets", data);
+export const buySubscriptionPrinter = (data) => axiosWrapper.post("/api/subscription/printers", data);
+export const renewSubscription = () => axiosWrapper.post("/api/subscription/renew");
 export const getPlatformInvoices = () => axiosWrapper.get("/api/subscription/invoices");
 
 /* ---------- Restaurant, KDS, waiter calls ---------- */

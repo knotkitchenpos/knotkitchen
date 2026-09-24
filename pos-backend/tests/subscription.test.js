@@ -9,7 +9,7 @@ const { PlatformInvoice } = require("../models/platformSubscriptionModel");
 const money = require("../services/money");
 
 /**
- * Subscription periods, upgrade proration, and invoices that never change.
+ * Subscription periods, add-on proration, and invoices that never change.
  *
  * The period arithmetic is where a spec sentence turns into money: "Do not use
  * the exact payment time to extend the subscription" and "the restaurant
@@ -90,64 +90,23 @@ test("a first-ever subscription starts today", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Upgrades
+// Proration (an add-on or tablet bought mid-period)
 // ---------------------------------------------------------------------------
 
-test("an upgrade is charged on the difference for the days remaining", () => {
-  // 1299 -> 1699 with 15 of 30 days left = 400 * 15/30 = 200.
-  const subscription = { currentPeriodEnd: P.startOfIstDay(ist("2026-10-01T00:00:00")) };
-  const r = P.upgradeCharge({
-    currentPricePaise: money.toPaise(1299),
-    newPricePaise: money.toPaise(1699),
-    subscription,
-    days: 30,
-    on: ist("2026-09-16T10:00:00"),
-  });
-  assert.equal(r.remainingDays, 15);
-  assert.equal(r.amountPaise, money.toPaise(200));
+test("an add-on bought mid-period pays for the time left, rounded up to the paise", () => {
+  const periodEnd = P.startOfIstDay(ist("2026-10-01T00:00:00"));
+  // 15 of 30 days left: half of 200.
+  assert.equal(P.prorate({ pricePaise: money.toPaise(200), periodEnd, days: 30, on: P.addDays(periodEnd, -15) }), money.toPaise(100));
+  // A third of a paise still owed is a whole paise, never a free fraction.
+  assert.equal(P.prorate({ pricePaise: 100, periodEnd, days: 30, on: P.addDays(periodEnd, -10) }), 34);
+  // To the millisecond, not whole days: one hour left is not a free day.
+  assert.equal(P.prorate({ pricePaise: 72000, periodEnd, days: 30, on: new Date(periodEnd.getTime() - 3600 * 1000) }), 100);
 });
 
-test("REGRESSION: a downgrade never produces a negative charge", () => {
-  // The ledger would refuse it, and it would amount to a refund nobody
-  // authorised.
-  const subscription = { currentPeriodEnd: P.startOfIstDay(ist("2026-10-01T00:00:00")) };
-  const r = P.upgradeCharge({
-    currentPricePaise: money.toPaise(1699),
-    newPricePaise: money.toPaise(1299),
-    subscription,
-    days: 30,
-    on: ist("2026-09-16T10:00:00"),
-  });
-  assert.equal(r.amountPaise, 0);
-});
-
-test("the other two upgrade policies do what they say", () => {
-  const subscription = { currentPeriodEnd: P.startOfIstDay(ist("2026-10-01T00:00:00")) };
-  const args = {
-    currentPricePaise: money.toPaise(1299),
-    newPricePaise: money.toPaise(1699),
-    subscription,
-    days: 30,
-    on: ist("2026-09-16T10:00:00"),
-  };
-  assert.equal(
-    P.upgradeCharge({ ...args, policy: "FULL_DIFFERENCE" }).amountPaise,
-    money.toPaise(400),
-  );
-  assert.equal(P.upgradeCharge({ ...args, policy: "FULL_PRICE" }).amountPaise, money.toPaise(1699));
-});
-
-test("an upgrade on the last day of a period costs nothing extra", () => {
-  const subscription = { currentPeriodEnd: P.startOfIstDay(ist("2026-09-17T00:00:00")) };
-  const r = P.upgradeCharge({
-    currentPricePaise: money.toPaise(1299),
-    newPricePaise: money.toPaise(1699),
-    subscription,
-    days: 30,
-    on: ist("2026-09-17T10:00:00"),
-  });
-  assert.equal(r.remainingDays, 0);
-  assert.equal(r.amountPaise, 0, "there is no remaining period to charge for");
+test("REGRESSION: proration never exceeds a full period or goes below zero", () => {
+  const periodEnd = P.startOfIstDay(ist("2026-10-01T00:00:00"));
+  assert.equal(P.prorate({ pricePaise: 30000, periodEnd, days: 30, on: P.addDays(periodEnd, -45) }), 30000);
+  assert.equal(P.prorate({ pricePaise: 30000, periodEnd, days: 30, on: P.addDays(periodEnd, 1) }), 0, "a refund nobody authorised");
 });
 
 // ---------------------------------------------------------------------------
@@ -197,12 +156,16 @@ test("an invoice snapshots both parties and every rate", () => {
 
 test("SOURCE: the balance is debited before the invoice is issued", () => {
   // The other order would produce an invoice marked PAID for a payment that
-  // failed for want of funds.
+  // failed for want of funds. Every charge goes through charge().
   const src = SRC("services/subscription.js");
-  const debitAt = src.indexOf("kind: \"SUBSCRIPTION\"");
-  const invoiceAt = src.indexOf("const invoice = await issueInvoice");
+  const charge = src.slice(src.indexOf("const charge = async"), src.indexOf("const canonical"));
+  const debitAt = charge.indexOf("await debit({");
+  const dupAt = charge.indexOf("if (duplicate) return");
+  const invoiceAt = charge.indexOf("await issueInvoice({");
   assert.ok(debitAt !== -1 && invoiceAt !== -1, "anchors moved; retarget this guard");
-  assert.ok(debitAt < invoiceAt, "money first, document second");
+  assert.ok(debitAt < dupAt && dupAt < invoiceAt, "money first, document second, and a repeat issues nothing");
+  assert.equal((src.match(/await debit\(/g) || []).length, 1, "no charge bypasses charge()");
+  assert.equal((src.match(/issueInvoice\(\{/g) || []).length, 1);
 });
 
 test("SOURCE: an unaffordable subscription is refused, not part-applied", () => {

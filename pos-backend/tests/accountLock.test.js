@@ -26,8 +26,12 @@ test("CRITICAL: a locked restaurant can still reach everything it needs to pay",
     "/api/business-balance/recharge/verify",
     "/api/business-balance/transactions",
     "/api/subscription",
-    "/api/subscription/plans",
-    "/api/subscription/purchase",
+    "/api/subscription/quote",
+    "/api/subscription/addons",
+    "/api/subscription/addons/WEBSITE",
+    "/api/subscription/tablets",
+    "/api/subscription/printers",
+    "/api/subscription/renew",
     "/api/subscription/invoices",
     "/api/restaurant/me",
   ];
@@ -68,7 +72,7 @@ test("the POS itself IS gated", () => {
 test("a prefix match cannot be tricked by a lookalike path", () => {
   // "/api/subscriptionXYZ" must not inherit "/api/subscription"'s exemption.
   assert.equal(isOpen("/api/subscription"), true);
-  assert.equal(isOpen("/api/subscription/plans"), true);
+  assert.equal(isOpen("/api/subscription/addons"), true);
   assert.equal(isOpen("/api/subscriptions-evil"), false);
   assert.equal(isOpen("/api/business-balance-evil"), false);
   assert.equal(isOpen("/api/userland"), false);
@@ -103,7 +107,7 @@ test("REGRESSION: the allow-list is matched on the full path, not the router-rel
   };
   try {
     assert.deepEqual(await call("/api/business-balance", "/"), { status: null, passed: true });
-    assert.deepEqual(await call("/api/subscription", "/plans"), { status: null, passed: true });
+    assert.deepEqual(await call("/api/subscription", "/addons"), { status: null, passed: true });
     assert.deepEqual(await call("/api/order", "/"), { status: 402, passed: false });
     assert.deepEqual(await call("/api/online-orders", "/abc/status"), { status: 402, passed: false });
   } finally {
@@ -121,7 +125,7 @@ const withAssess = async ({ lastEntry = null, dues = { count: 0 }, subscription 
   const Module = require("module");
   const orig = Module._load;
   Module._load = function (r) {
-    if (r === "./pricing") return { getPlatformConfig: async () => ({ graceHours }), getOverride: async () => override };
+    if (r === "./pricing") return { getPlatformConfig: async () => ({ graceHours, firstRechargeMinPaise: 250000 }), getOverride: async () => override };
     if (r === "./orderCharge") return { outstandingDues: async () => dues };
     if (r === "../models/platformSubscriptionModel") {
       return { PlatformSubscription: { findOne: () => ({ lean: async () => subscription }) } };
@@ -190,8 +194,14 @@ test("SOURCE: a demo store is never charged", () => {
   assert.equal((pricing.match(/enabled: Boolean\(charge\.enabled\) && started && !ovr\?\.billingExempt,/g) || []).length, 2,
     "neither the per-order nor the per-e-bill charge");
   const sub = SRC("services/subscription.js");
-  const q = sub.slice(sub.indexOf("const quote = async"), sub.indexOf("const purchasePlan"));
-  assert.match(q, /billingExempt\) \{\s*throw new SubscriptionError\(/, "and a subscription cannot be bought");
+  // Nothing can be bought or quoted...
+  for (const fn of ["const quote = async", "const addAddon = async", "const rentTablet = async", "const buyPrinter = async"]) {
+    const body = sub.slice(sub.indexOf(fn), sub.indexOf("\n};", sub.indexOf(fn)));
+    assert.match(body, /if \(ctx\.exempt\) throw new SubscriptionError\(DEMO_STORE, 409\);/, fn);
+  }
+  // ...nothing activates or renews. (Behaviour: tests/subscriptionFlow.test.js.)
+  assert.match(sub, /if \(exempt \|\| subscription\.activatedAt\) return null;/);
+  assert.match(sub, /if \(override\?\.billingExempt\) return \{ renewed: false \};/);
 });
 
 test("SOURCE: a lock is only applied after the configured grace period", () => {
@@ -206,7 +216,7 @@ test("SOURCE: a store that never bought a plan starts locked, with Billing still
   // "When a store is created, everything should be locked except Billing and
   // Subscription." No grace: it has nothing running that could be cut off.
   const src = SRC("services/accountLock.js");
-  assert.match(src, /if \(!subscription\?\.currentPeriodEnd\) \{\s*reasons\.push\("No plan is active yet\."\)/);
+  assert.match(src, /if \(!subscription\?\.currentPeriodEnd\) \{\s*reasons\.push\(\s*`No plan is active yet\. Recharge at least \$\{formatINR\(Number\(config\.firstRechargeMinPaise\) \|\| 0\)\} to start\. The POS plan starts automatically\.`/);
   // Demo stores are decided before this rule is reached.
   assert.ok(src.indexOf("override?.billingExempt") < src.indexOf("!subscription?.currentPeriodEnd"));
   // Whoever creates a new store's balance row assesses it in the same breath,
@@ -217,10 +227,10 @@ test("SOURCE: a store that never bought a plan starts locked, with Billing still
   assert.match(SRC("middlewares/accountLock.js"), /if \(!balance\) balance = await require\("\.\.\/services\/ledger"\)\.getBalance\(restaurantId\)/);
   // The balance poll keeps the stored lock current instead of only reading it.
   assert.match(SRC("routes/businessBalanceRoute.js"), /evaluateLock\(restaurantId\), outstandingDues\(restaurantId\)/);
-  // A staff member confirms a plan purchase with the Store PIN.
+  // A staff member confirms a purchase with the Store PIN.
   assert.ok(require("../middlewares/accountLock").isOpen("/api/restaurant/verify-pin"));
   const { isOpen } = require("../middlewares/accountLock");
-  for (const p of ["/api/subscription/plans", "/api/business-balance", "/api/user/refresh"]) assert.ok(isOpen(p), p);
+  for (const p of ["/api/subscription/addons", "/api/business-balance", "/api/user/refresh"]) assert.ok(isOpen(p), p);
   for (const p of ["/api/order", "/api/menu", "/api/table"]) assert.ok(!isOpen(p), p);
 });
 
@@ -228,7 +238,7 @@ test("a new store with no plan is locked at once; a demo store is not", async ()
   await withAssess({ subscription: null }, async (svc) => {
     const res = await svc.assessAccount("r1", new Date("2026-09-21"));
     assert.equal(res.shouldLock, true, "no grace: nothing is running yet");
-    assert.match(res.reasons.join(" "), /No plan is active yet/);
+    assert.match(res.reasons.join(" "), /No plan is active yet\. Recharge at least ₹2,500\.00 to start\. The POS plan starts automatically\./);
   });
   await withAssess({ subscription: null, override: { billingExempt: true } }, async (svc) => {
     assert.equal((await svc.assessAccount("r1", new Date("2026-09-21"))).shouldLock, false);
@@ -240,10 +250,13 @@ test("SOURCE: paying re-evaluates the lock immediately", () => {
   const recharge = SRC("services/recharge.js");
   assert.match(recharge, /await evaluateLock\(intent\.restaurantId\)/, "awaited, so the caller is told");
 
-  // Awaited in both branches, so Billing's refresh right after sees it unlocked.
+  // After every money movement, awaited, so Billing's refresh right after
+  // sees it unlocked: activation, each purchase, and both renewal outcomes.
   const sub = SRC("services/subscription.js");
-  const purchase = sub.slice(sub.indexOf("const purchasePlan"), sub.indexOf("const lapseCommitments"));
-  assert.equal((purchase.match(/await settleLock\(restaurantId\)/g) || []).length, 2);
+  for (const [fn, n] of [["const activate", 1], ["const addAddon", 1], ["const rentTablet", 1], ["const buyPrinter", 1], ["const renewOne", 2]]) {
+    const body = sub.slice(sub.indexOf(fn), sub.indexOf("\n};", sub.indexOf(fn)));
+    assert.equal((body.match(/await settleLock\(restaurantId\)/g) || []).length, n, fn);
+  }
   assert.match(SRC("services/orderCharge.js"), /fireEvaluateLock\(restaurantId\)/);
 });
 
@@ -261,6 +274,13 @@ test("SOURCE: the gate runs inside the shared auth middleware", () => {
   // each call site that a new route can forget.
   const auth = SRC("middlewares/tokenVerification.js");
   assert.match(auth, /return enforceAccountLock\(req, res, next\);/);
+});
+
+test("SOURCE: the sweep renews what is due before it locks anything", () => {
+  const src = SRC("services/accountLock.js");
+  const sweep = src.slice(src.indexOf("const sweepLocks"));
+  assert.ok(sweep.indexOf("renewDue(on)") !== -1 && sweep.indexOf("renewDue(on)") < sweep.indexOf("evaluateLock("));
+  assert.ok(!/commitment/i.test(src), "the commitment repayment reason is gone");
 });
 
 test("SOURCE: the sweep reads candidates, not every restaurant", () => {

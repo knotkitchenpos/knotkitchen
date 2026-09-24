@@ -9,10 +9,10 @@ import { clearActiveStoreId } from "../../utils/storeSession";
 /**
  * Non-payment lock, on the POS side.
  *
- * The server decides (services/accountLock.js): a new store with no plan is
- * locked from the start; once the Business Balance has run out -- or order
- * charges go unpaid, or the subscription ends -- the restaurant has the grace
- * period (24 hours) to pay. Locked, every staff API except Billing answers 402
+ * The server decides (services/accountLock.js): a new store is locked until
+ * its first recharge starts the POS plan; once the wallet (Business Balance)
+ * has run out -- or order charges go unpaid, or the POS plan does not renew --
+ * the restaurant has the grace period (24 hours) to pay. Locked, every staff API except Billing answers 402
  * ACCOUNT_LOCKED. Without this the POS just showed broken screens. Now:
  *
  *   during the grace period  a banner on every screen says when it locks
@@ -88,7 +88,7 @@ export const AccountLockBanner = ({ locked, locksAt, lockWarning }) => {
     return (
       <div role="alert" className="shrink-0 flex flex-wrap items-center justify-between gap-2 bg-[#B91C1C] px-4 py-2.5 text-white">
         <p className="text-[13px] font-bold">
-          The POS is locked. Only Billing &amp; Subscription is open until a plan is active and nothing is overdue.
+          The POS is locked. Only Billing &amp; Subscription is open: recharge the wallet there and it unlocks by itself.
         </p>
         <div className="flex gap-2">
           <button

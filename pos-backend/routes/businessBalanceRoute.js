@@ -5,7 +5,7 @@ const { getBalance, history } = require("../services/ledger");
 const { createRecharge, finalizeRecharge, RechargeError } = require("../services/recharge");
 const { outstandingDues } = require("../services/orderCharge");
 const { evaluateLock } = require("../services/accountLock");
-const { formatINR, toRupees } = require("../services/money");
+const { asAmount } = require("../services/money");
 const config = require("../config/config");
 
 const router = express.Router();
@@ -41,13 +41,6 @@ const ownRestaurantId = (req) => {
   if (!id) throw createHttpError(403, "No restaurant is associated with this account.");
   return id;
 };
-
-/** Paise are the internal unit; the UI gets both so it never has to divide. */
-const asAmount = (paise) => ({
-  paise,
-  rupees: toRupees(paise),
-  label: formatINR(paise),
-});
 
 // GET /api/business-balance — balance, dues, and whether the account is locked.
 router.get("/", isVerifiedUser, async (req, res, next) => {
@@ -106,6 +99,8 @@ router.get("/transactions", isVerifiedUser, async (req, res, next) => {
 });
 
 // POST /api/business-balance/recharge — open a top-up. Credits nothing.
+// Until the POS plan has started, the amount must be at least the first
+// top-up minimum (400, code FIRST_TOPUP_MINIMUM; services/recharge).
 router.post("/recharge", isVerifiedUser, async (req, res, next) => {
   try {
     const restaurantId = ownRestaurantId(req);

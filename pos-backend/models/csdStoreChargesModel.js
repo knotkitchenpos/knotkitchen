@@ -43,22 +43,18 @@ const csdStoreChargesSchema = new mongoose.Schema(
     ebillCharge: { type: Number, default: null, min: 0 },
     gstPercent: { type: Number, default: DEFAULTS.gstPercent, min: 0, max: 100 },
 
-    // Subscription amount. The plan NAME lives on Restaurant.subscription.plan
-    // (the POS reads it for entitlements); only the price is set here, so the
-    // two can't drift into disagreeing about which plan a store is on.
+    // Predates the catalogue and charges nothing any more; planPrices below
+    // is what a negotiated POS plan price is.
     monthlySubscription: { type: Number, default: DEFAULTS.monthlySubscription, min: 0 },
 
     /**
-     * A negotiated price for a specific plan -- "ABC pays 999 for Growth"
-     * while the standard price stays 1299.
+     * A negotiated price for one thing in the catalogue -- "ABC pays 299 for
+     * the POS plan" while the standard price stays 399. Codes: POS, an add-on
+     * code, TABLET_FIRST, TABLET_EXTRA, a printer code.
      *
      * Rupees, like every other amount on this document, because this is what
      * the admin dialog edits. services/pricing.js converts to paise at the
      * single point where money is computed.
-     *
-     * `monthlySubscription` above predates plans and is a single figure with
-     * no plan attached; an entry here for the restaurant's current plan wins
-     * over it.
      */
     planPrices: {
       type: [
@@ -74,9 +70,9 @@ const csdStoreChargesSchema = new mongoose.Schema(
     },
 
     /**
-     * A demo / test store: never billed and never locked. No subscription is
-     * needed (and none can be bought), no per-order or e-bill charge is taken,
-     * and nothing -- an expired plan, an empty balance -- locks the POS.
+     * A demo / test store: never billed and never locked. It gets every
+     * add-on without buying it, no per-order or e-bill charge is taken, and
+     * nothing -- an expired plan, an empty balance -- locks the POS.
      */
     billingExempt: { type: Boolean, default: false },
 

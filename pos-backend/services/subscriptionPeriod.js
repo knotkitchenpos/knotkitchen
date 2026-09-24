@@ -76,7 +76,9 @@ const nextPeriod = ({ subscription, days, policy = "FROM_PAYMENT", on = new Date
 
   const lapsedDays = previousEnd ? daysBetween(previousEnd, today) : 0;
 
-  if (policy === "FROM_EXPIRY" && previousEnd) {
+  // Backdating never sells a period that has already ended: a store expired
+  // for a whole period or more starts today, so paying unlocks it.
+  if (policy === "FROM_EXPIRY" && previousEnd && addDays(previousEnd, length) > today) {
     return { start: previousEnd, end: addDays(previousEnd, length), lapsedDays };
   }
 
@@ -84,41 +86,15 @@ const nextPeriod = ({ subscription, days, policy = "FROM_PAYMENT", on = new Date
 };
 
 /**
- * What an upgrade costs mid-period.
- *
- * PRORATE charges the difference for the days that remain, which is what
- * "calculated based on the remaining subscription period" asks for. The floor
- * at zero matters: moving to a plan that happens to be cheaper for this
- * restaurant must not produce a negative charge, which the ledger would
- * refuse anyway and which would be a refund nobody authorised.
+ * The share of a monthly price still to run: an add-on or tablet bought
+ * mid-period pays only for the time left until `periodEnd`, to the
+ * millisecond, rounded up to a whole paise. Never more than a full period,
+ * never below zero.
  */
-const upgradeCharge = ({
-  currentPricePaise,
-  newPricePaise,
-  subscription,
-  days,
-  policy = "PRORATE",
-  on = new Date(),
-}) => {
-  const difference = Math.max(0, Math.round(newPricePaise) - Math.round(currentPricePaise));
-  const length = Math.max(1, Math.round(Number(days) || 30));
-
-  if (policy === "FULL_PRICE") {
-    return { amountPaise: Math.round(newPricePaise), remainingDays: null, basis: "FULL_PRICE" };
-  }
-  if (policy === "FULL_DIFFERENCE") {
-    return { amountPaise: difference, remainingDays: null, basis: "FULL_DIFFERENCE" };
-  }
-
-  const remainingDays = subscription?.currentPeriodEnd
-    ? daysBetween(on, subscription.currentPeriodEnd)
-    : 0;
-
-  return {
-    amountPaise: Math.round((difference * Math.min(remainingDays, length)) / length),
-    remainingDays,
-    basis: "PRORATE",
-  };
+const prorate = ({ pricePaise, periodEnd, days, on = new Date() }) => {
+  const length = Math.max(1, Math.round(Number(days) || 30)) * DAY_MS;
+  const left = Math.min(length, Math.max(0, new Date(periodEnd).getTime() - new Date(on).getTime()));
+  return Math.ceil((Math.round(Number(pricePaise) || 0) * left) / length);
 };
 
 module.exports = {
@@ -129,5 +105,5 @@ module.exports = {
   daysBetween,
   isActiveAt,
   nextPeriod,
-  upgradeCharge,
+  prorate,
 };

@@ -18,8 +18,8 @@ const {
 // source for online pricing and channel toggles; Manage Website, Order
 // Toggles and Rules & Charges all write through it. The restrictions that
 // remain are per field, in the controller -- payment gateway credentials are
-// Owner-only there -- plus requireWebsitePlan: Manage Website needs Growth or
-// Scale, while the Order Toggles / Rules & Charges fields pass on any plan.
+// Owner-only there -- plus requireWebsitePlan: Manage Website needs the
+// Website add-on, while the Order Toggles / Rules & Charges fields always pass.
 router.route("/settings")
   .get(isVerifiedUser, getWebsiteSettings)
   .put(isVerifiedUser, requireProtectedAction, requireWebsitePlan, updateWebsiteSettings);

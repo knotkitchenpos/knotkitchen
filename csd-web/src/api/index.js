@@ -178,6 +178,9 @@ export const settings = {
 export const billingConfig = {
   get: () => api.get("/billing/config").then((r) => r.data.data),
   save: (payload) => api.patch("/billing/config", payload).then((r) => r.data.data),
+  // The tablet came back: its rental stops at the current period end (admin only).
+  endTablet: (restaurantId, serial) =>
+    api.post(`/billing/accounts/${restaurantId}/tablets/${serial}/end`).then((r) => r.data.data),
 };
 
 export const jobs = {

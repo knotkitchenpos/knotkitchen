@@ -8,65 +8,77 @@ import {
   createRecharge,
   verifyRecharge,
   getSubscriptionStatus,
-  getSubscriptionPlans,
-  purchasePlan,
   getSubscriptionQuote,
-  getSubscriptionTerms,
-  purchaseInstallation,
-  upgradeInstallation,
+  addSubscriptionAddon,
+  stopSubscriptionAddon,
+  rentSubscriptionTablet,
+  buySubscriptionPrinter,
+  renewSubscription,
   getPlatformInvoices,
 } from "../https";
-import { useSelector } from "react-redux";
-import SecurityPinModal from "../components/common/SecurityPinModal";
-import { checkActionAuthorization } from "../utils/security";
 import { loadCashfree } from "../utils/cashfree";
-import { inr } from "../utils";
 
 /**
- * Settings → Billing.
+ * Settings → Billing & Subscription.
  *
- * The restaurant's own view of what it owes KnotKitchen and how to pay it.
- * Everything here is read-and-pay: no price on this screen can be edited, and
- * none of these endpoints would accept one.
+ * The restaurant's own view of what it pays KnotKitchen and how. The wallet
+ * (Business Balance) pays for everything: the POS plan, add-ons, tablet
+ * rental and printers. Nothing on this screen can set a price, and none of
+ * these endpoints would accept one.
  *
  * This is also the screen a LOCKED account can still reach. If it ever stops
  * loading for a locked restaurant, that restaurant cannot pay its way out --
  * see middlewares/accountLock.js, where these paths are allow-listed.
+ *
+ * Buying is the Owner's call. A Staff member's purchase comes back 403
+ * PIN_REQUIRED and the global PIN popup (utils/pinPrompt) asks for the Store
+ * Properties PIN, then retries it. The server enforces it either way.
  */
 
-/** Cashfree JS v3, loaded on demand. Resolves null if it cannot load. */
 const PRESETS = [500, 1000, 2000, 5000, 10000];
 
 const money = (amount) => amount?.label || "₹0.00";
-const paise = (n) => inr((Number(n) || 0) / 100);
 const dateOf = (d) => (d ? new Date(d).toLocaleDateString("en-IN", { dateStyle: "medium" }) : "—");
+const timeOf = (d) =>
+  d ? new Date(d).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : "—";
+
+/** Top-up buttons. Before the POS plan starts, none may be under the first top-up minimum. */
+const presetsFrom = (minRupees) => (minRupees > 0 ? [minRupees, ...PRESETS.filter((p) => p > minRupees)] : PRESETS);
+
+/** Lines, GST and the total, exactly as the server priced them. */
+const Bill = ({ bill, totalLabel }) => (
+  <div className="divide-y divide-[#F1F5F9] rounded-xl border border-[#E2E8F0] text-[13px]">
+    {bill.lines.map((l) => (
+      <div key={l.description} className="flex justify-between gap-3 px-3 py-2 text-[#0F172A]">
+        <span className="min-w-0">{l.description}</span>
+        <span className="shrink-0 font-semibold tabular-nums">{money(l.amount)}</span>
+      </div>
+    ))}
+    <div className="flex justify-between gap-3 px-3 py-2 text-[#64748B]">
+      <span>GST</span>
+      <span className="shrink-0 font-semibold tabular-nums">{money(bill.tax)}</span>
+    </div>
+    <div className="flex justify-between gap-3 px-3 py-2 text-[14px] font-extrabold text-[#0F172A]">
+      <span>{totalLabel}</span>
+      <span className="shrink-0 tabular-nums">{money(bill.total)}</span>
+    </div>
+  </div>
+);
 
 /**
- * Agreement v2.0, Schedule 1: the order summary the restaurant accepts before
- * money moves. Every line the server will invoice is shown first, tax on its
- * own line, and the acceptance is recorded with the purchase.
+ * The order summary the restaurant accepts before money moves: every line
+ * the server will invoice (from GET /api/subscription/quote), GST, the total
+ * and the terms. The acceptance is recorded with the purchase.
  */
 const OrderSummary = ({ summary, onClose, onConfirm, busy }) => {
   const [accepted, setAccepted] = useState(false);
-  if (!summary) return null;
-  const { title, lines, total, terms, agreementVersion } = summary;
+  const { title, quote, terms } = summary;
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-label={title}>
       <div className="w-full max-w-[440px] rounded-2xl bg-white p-5 shadow-2xl">
         <h3 className="text-[16px] font-extrabold text-[#0F172A]">{title}</h3>
-        <p className="mt-0.5 text-[12px] text-[#64748B]">Order summary · KnotKitchen Restaurant Service Agreement {agreementVersion}</p>
-        <div className="mt-4 divide-y divide-[#F1F5F9] rounded-xl border border-[#E2E8F0] text-[13px]">
-          {lines.map((l) => (
-            <div key={l.label} className={`flex justify-between gap-3 px-3 py-2 ${l.muted ? "text-[#94A3B8]" : "text-[#0F172A]"}`}>
-              <span>{l.label}</span>
-              <span className="font-semibold tabular-nums">{l.value}</span>
-            </div>
-          ))}
-          <div className="flex justify-between gap-3 px-3 py-2 text-[14px] font-extrabold text-[#0F172A]">
-            <span>Total payable now</span>
-            <span className="tabular-nums">{total}</span>
-          </div>
-        </div>
+        <p className="mt-0.5 mb-4 text-[12px] text-[#64748B]">Order summary · paid from your wallet</p>
+        <Bill bill={quote} totalLabel="Total payable now" />
         {terms?.length > 0 && (
           <ul className="mt-3 list-disc space-y-1 pl-5 text-[12px] text-[#64748B]">
             {terms.map((t) => (
@@ -77,8 +89,8 @@ const OrderSummary = ({ summary, onClose, onConfirm, busy }) => {
         <label className="mt-4 flex items-start gap-2 text-[12.5px] text-[#0F172A]">
           <input type="checkbox" className="mt-0.5" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
           <span>
-            I have read the order summary above and accept it and the KnotKitchen Restaurant Service Agreement {agreementVersion}
-            on behalf of this restaurant. It will be paid from the Business Balance.
+            I have read the order summary above and accept it and the KnotKitchen Restaurant Service Agreement on
+            behalf of this restaurant. It will be paid from the wallet.
           </span>
         </label>
         <div className="mt-4 grid grid-cols-2 gap-2">
@@ -99,18 +111,10 @@ const OrderSummary = ({ summary, onClose, onConfirm, busy }) => {
   );
 };
 
-/** Clause 6.1: the commitment a restaurant may choose, or none. */
-const COMMITMENT_CHOICES = [
-  { months: 0, label: "Month to month", sub: "No discount, no commitment" },
-  { months: 3, label: "3 months", sub: "5% off the plan fee" },
-  { months: 6, label: "6 months", sub: "10% off the plan fee" },
-  { months: 12, label: "12 months", sub: "20% off the plan fee" },
-];
-
 const Card = ({ title, subtitle, children, right }) => (
-  <section className="rounded-2xl border border-[#E2E8F0] bg-white p-5">
+  <section className="rounded-2xl border border-[#E2E8F0] bg-white p-4 sm:p-5">
     <div className="flex items-start justify-between gap-4">
-      <div>
+      <div className="min-w-0">
         <h2 className="text-[13px] font-extrabold uppercase tracking-wider text-[#64748B]">{title}</h2>
         {subtitle && <p className="mt-0.5 text-[12px] text-[#94A3B8]">{subtitle}</p>}
       </div>
@@ -120,10 +124,33 @@ const Card = ({ title, subtitle, children, right }) => (
   </section>
 );
 
+const Tag = ({ tone, children }) => (
+  <span
+    className={`ml-2 inline-block whitespace-nowrap rounded-full px-2 py-0.5 align-middle text-[10.5px] font-extrabold ${
+      tone === "green"
+        ? "bg-[#DCFCE7] text-[#15803D]"
+        : tone === "amber"
+          ? "bg-[#FEF3C7] text-[#B45309]"
+          : tone === "red"
+            ? "bg-[#FEE2E2] text-[#B91C1C]"
+            : "bg-[#F1F5F9] text-[#64748B]"
+    }`}
+  >
+    {children}
+  </span>
+);
+
+const PRIMARY =
+  "shrink-0 rounded-xl bg-[#0F172A] px-4 py-2 text-[12.5px] font-extrabold text-white hover:bg-[#1E293B] disabled:opacity-40";
+const SECONDARY =
+  "shrink-0 rounded-xl border border-[#E2E8F0] px-4 py-2 text-[12.5px] font-bold text-[#334155] hover:border-[#CBD5E1] disabled:opacity-40";
+
 const Billing = () => {
   const qc = useQueryClient();
   const [amount, setAmount] = useState("");
   const [paying, setPaying] = useState(false);
+  // The order summary awaiting acceptance: { title, quote, terms, run, done }.
+  const [summary, setSummary] = useState(null);
 
   useEffect(() => {
     document.title = "KnotKitchen | Billing";
@@ -137,178 +164,26 @@ const Billing = () => {
     queryKey: ["business-balance", "transactions"],
     queryFn: () => getBalanceTransactions({ limit: 50 }),
   });
-  const { data: subRes } = useQuery({
+  const { data: subRes, isLoading: subLoading, isError: subError, refetch: refetchSub } = useQuery({
     queryKey: ["subscription"],
     queryFn: getSubscriptionStatus,
-  });
-  const { data: plansRes } = useQuery({
-    queryKey: ["subscription", "plans"],
-    queryFn: getSubscriptionPlans,
   });
   const { data: invRes } = useQuery({
     queryKey: ["subscription", "invoices"],
     queryFn: getPlatformInvoices,
   });
-  const { data: termsRes } = useQuery({
-    queryKey: ["subscription", "terms"],
-    queryFn: getSubscriptionTerms,
-  });
-  const terms = termsRes?.data?.data;
-
-  // Clause 6: chosen once, applied to every period it covers.
-  const [commitmentMonths, setCommitmentMonths] = useState(0);
-  const [installOption, setInstallOption] = useState("");
-  // The order summary awaiting acceptance, and what to run once accepted.
-  const [summary, setSummary] = useState(null);
-  const [pendingAction, setPendingAction] = useState(null);
 
   const balance = balanceRes?.data?.data;
   const transactions = txRes?.data?.data || [];
-  const subscription = subRes?.data?.data;
-  const plans = plansRes?.data?.data || [];
+  const sub = subRes?.data?.data;
   const invoices = invRes?.data?.data || [];
+  const periodDays = sub?.periodDays || 30;
+  // Until the POS plan has started, one top-up must reach the minimum: that one starts it.
+  const minRupees = sub?.needsActivation ? Number(sub.firstRechargeMin?.rupees) || 0 : 0;
+  const tablet = sub?.tablet;
+  const credits = Number(tablet?.credits) || 0;
 
-  const user = useSelector((st) => st.user);
-  const [pinOpen, setPinOpen] = useState(false);
-  // What each plan would actually cost RIGHT NOW. On an upgrade the server
-  // charges the difference for the days left in the period, not the full
-  // price again, and the operator should see that before committing.
-  const [upgradeQuotes, setUpgradeQuotes] = useState({});
-
-  useEffect(() => {
-    let cancelled = false;
-    const currentPrice = Number(plans.find((p) => p.code === subscription?.planCode)?.price) || 0;
-    const open = plans.filter(
-      (p) => p.isAvailable !== false && p.code !== subscription?.planCode && Number(p.price) >= currentPrice,
-    );
-    if (!open.length) return undefined;
-    Promise.all(
-      open.map((p) =>
-        getSubscriptionQuote(p.code, commitmentMonths)
-          .then((r) => [p.code, r?.data?.data])
-          .catch(() => [p.code, null]),
-      ),
-    ).then((rows) => {
-      if (cancelled) return;
-      setUpgradeQuotes(Object.fromEntries(rows.filter(([, v]) => v != null)));
-    });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plansRes, subscription?.planCode, commitmentMonths]);
-
-  /** Run `action` now, or after the Store Properties PIN for a Staff member. */
-  const authorise = (action) => {
-    const auth = checkActionAuthorization(user, { isOwnerOnly: false });
-    if (auth.status === "REQUIRE_PIN") {
-      setPendingAction(() => action);
-      setPinOpen(true);
-      return;
-    }
-    action();
-  };
-
-  /**
-   * Changing the plan is the Owner's decision. A Staff member has to enter
-   * the Store Properties PIN first; the server enforces the same rule, so
-   * this modal is the prompt, not the protection.
-   */
-  const changePlan = async (planCode) => {
-    let q;
-    try {
-      q = (await getSubscriptionQuote(planCode, commitmentMonths))?.data?.data;
-    } catch (err) {
-      enqueueSnackbar(err?.response?.data?.message || "Could not price that plan.", { variant: "error" });
-      return;
-    }
-    if (!q) return;
-    const run = () => buy.mutate({ planCode, commitmentMonths, accepted: true });
-    // A plain renewal on the same terms was accepted already; anything new is
-    // shown as an order summary first (Agreement clause 2.2).
-    if (!q.acceptanceRequired) {
-      authorise(run);
-      return;
-    }
-    const lines = [
-      { label: `${q.planName} plan · ${subscription?.periodDays || 30} days${q.isUpgrade ? ` (upgrade, ${q.remainingDays} days left)` : ""}`, value: money(q.charge) },
-    ];
-    if (q.discountPaise > 0) {
-      lines.push({ label: `${q.commitment.months}-month commitment discount (${q.commitment.discountPercent}%)`, value: `− ${money(q.discount)}` });
-      lines.push({ label: "Plan fee after discount", value: money(q.netCharge) });
-    }
-    lines.push({
-      label: q.tax?.applicable ? `GST ${q.tax.percent}%${q.tax.interState ? " (IGST)" : " (CGST + SGST)"}` : "GST",
-      value: q.tax?.applicable ? paise(q.tax.totalTaxPaise) : "Not applicable (KnotKitchen is not GST-registered)",
-      muted: !q.tax?.applicable,
-    });
-    const termsList = [];
-    if (q.commitment) {
-      termsList.push(
-        `${q.commitment.months}-month commitment: ${q.commitment.discountPercent}% off the ${q.planName} plan fee for ${q.commitment.periodsTotal} billing periods, then the standard fee. The discount never applies to the Installation Charge, per-order charges, domains, add-ons or taxes.`,
-      );
-      termsList.push("If the subscription is not renewed before the commitment ends, the discount received so far becomes payable (Agreement clause 6.5).");
-    }
-    termsList.push("Plan fees for a period that has started are not refunded (clause 12A.1). Plans cannot be downgraded.");
-    setSummary({
-      title: q.isUpgrade ? `Upgrade to ${q.planName}` : subscription?.planCode === planCode ? `Renew ${q.planName}` : `Subscribe to ${q.planName}`,
-      lines,
-      total: money(q.total),
-      terms: termsList,
-      agreementVersion: q.agreementVersion || "v2.0",
-      onConfirm: () => authorise(run),
-    });
-  };
-
-  const payInstallation = () => {
-    const option = terms?.installationOptions?.find((o) => o.code === installOption);
-    if (!option) {
-      enqueueSnackbar("Choose an installation option first.", { variant: "warning" });
-      return;
-    }
-    const run = () => installBuy.mutate({ optionCode: option.code, accepted: true });
-    const lines = [{ label: `Installation Charge · ${option.name}`, value: money(option.amount) }];
-    lines.push({
-      label: option.tax?.applicable ? `GST ${option.tax.percent}%${option.tax.interState ? " (IGST)" : " (CGST + SGST)"}` : "GST",
-      value: option.tax?.applicable ? paise(option.tax.totalTaxPaise) : "Not applicable (KnotKitchen is not GST-registered)",
-      muted: !option.tax?.applicable,
-    });
-    setSummary({
-      title: "Installation Charge",
-      lines,
-      total: option.total ? money(option.total) : money(option.amount),
-      terms: [
-        "One-time charge for installation, set-up and onboarding" + (option.equipment ? `, and the loan of a ${option.equipment}, which remains KnotKitchen's property` : "") + ".",
-        "Refundable when you leave: 25% before completing 12 months from activation, 100% on or after the 12-month anniversary, less any unpaid dues or unreturned equipment, with an itemised statement (Agreement clause 5.6).",
-      ],
-      agreementVersion: subscription?.agreementVersion || "v2.0",
-      onConfirm: () => authorise(run),
-    });
-  };
-
-  /** Later, from No Printer (or 2-inch) up to a printer: only the difference is charged. */
-  const payInstallationUpgrade = (option) => {
-    const run = () => installUpgrade.mutate({ optionCode: option.code, accepted: true });
-    setSummary({
-      title: `Upgrade installation to ${option.name}`,
-      lines: [
-        { label: `Difference over ${subscription?.installation?.optionName || "your current option"}`, value: money(option.amount) },
-        {
-          label: option.tax?.applicable ? `GST ${option.tax.percent}%${option.tax.interState ? " (IGST)" : " (CGST + SGST)"}` : "GST",
-          value: option.tax?.applicable ? paise(option.tax.totalTaxPaise) : "Not applicable (KnotKitchen is not GST-registered)",
-          muted: !option.tax?.applicable,
-        },
-      ],
-      total: option.total ? money(option.total) : money(option.amount),
-      terms: [
-        `One-time charge for the difference, and the loan of a ${option.equipment}, which remains KnotKitchen's property.`,
-        "The refund when you leave is worked out on the total Installation Charge paid; the 12 months still run from your activation date (Agreement clause 5.6).",
-      ],
-      agreementVersion: subscription?.agreementVersion || "v2.0",
-      onConfirm: () => authorise(run),
-    });
-  };
-
+  // Both prefixes: the balance, statement, plan, features and invoices.
   const refreshMoney = () => {
     qc.invalidateQueries({ queryKey: ["business-balance"] });
     qc.invalidateQueries({ queryKey: ["subscription"] });
@@ -396,90 +271,125 @@ const Billing = () => {
     }
   };
 
-  const buy = useMutation({
-    mutationFn: (body) => purchasePlan(body),
-    onSuccess: (res) => {
-      const d = res?.data?.data;
-      enqueueSnackbar(`${d?.planName || "Plan"} is active.`, { variant: "success" });
+  /**
+   * Every purchase and change on this screen. `run` makes the call, `done` is
+   * what to say when it worked. 402 means the wallet is short, and the server
+   * says by how much.
+   */
+  const act = useMutation({
+    mutationFn: ({ run }) => run(),
+    onSuccess: (res, { done }) => {
+      // A repeated tap on something already bought: nothing was charged again.
+      enqueueSnackbar(res?.data?.data?.already ? "Already done. Nothing was charged again." : done, { variant: "success" });
       setSummary(null);
       refreshMoney();
-      qc.invalidateQueries({ queryKey: ["subscription", "invoices"] });
     },
     onError: (err) => {
-      // 402 means the balance is short. Say by how much rather than just no.
-      enqueueSnackbar(
-        err?.response?.data?.message || "That plan could not be activated.",
-        { variant: err?.response?.status === 402 ? "warning" : "error" },
-      );
-    },
-  });
-
-  const installBuy = useMutation({
-    mutationFn: (body) => purchaseInstallation(body),
-    onSuccess: () => {
-      enqueueSnackbar("Installation Charge paid. You can now choose a plan.", { variant: "success" });
-      setSummary(null);
-      refreshMoney();
-      qc.invalidateQueries({ queryKey: ["subscription", "invoices"] });
-    },
-    onError: (err) => {
-      enqueueSnackbar(err?.response?.data?.message || "The Installation Charge could not be paid.", {
+      enqueueSnackbar(err?.response?.data?.message || err?.message || "That did not go through.", {
         variant: err?.response?.status === 402 ? "warning" : "error",
       });
     },
   });
+  const busy = act.isPending;
 
-  const installUpgrade = useMutation({
-    mutationFn: (body) => upgradeInstallation(body),
-    onSuccess: () => {
-      enqueueSnackbar("Installation upgraded.", { variant: "success" });
-      setSummary(null);
-      refreshMoney();
-      qc.invalidateQueries({ queryKey: ["subscription", "invoices"] });
-      qc.invalidateQueries({ queryKey: ["subscription", "terms"] });
-    },
-    onError: (err) => {
-      enqueueSnackbar(err?.response?.data?.message || "The installation could not be upgraded.", {
-        variant: err?.response?.status === 402 ? "warning" : "error",
-      });
-    },
-  });
+  /** Price it now (the same pricing the purchase uses), then show the order summary. */
+  const review = async ({ item, ...rest }) => {
+    try {
+      const quote = (await getSubscriptionQuote(item))?.data?.data;
+      if (quote) setSummary({ quote, ...rest });
+    } catch (err) {
+      enqueueSnackbar(err?.response?.data?.message || "That could not be priced.", { variant: "warning" });
+    }
+  };
 
-  if (isLoading) return <div className="p-6 text-[13px] text-[#94A3B8]">Loading billing…</div>;
+  const addAddon = (a) =>
+    review({
+      item: `ADDON:${a.code}`,
+      title: `Add ${a.name}`,
+      terms: [
+        `Charged now for the days left in this period, then ${money(a.price)} + GST every ${periodDays} days with the POS plan.`,
+        "Stop it any time: it keeps working until the end of the period already paid. No refunds.",
+      ],
+      run: () => addSubscriptionAddon({ code: a.code, accepted: true }),
+      done: `${a.name} is on.`,
+    });
+
+  const rentTablet = () =>
+    review({
+      item: "TABLET",
+      title: "Rent a tablet",
+      terms: [
+        `Charged now for the days left in this period, then ${money(tablet?.nextPrice)} + GST every ${periodDays} days with the POS plan.`,
+        "Uses one of your qualifying top-ups. The tablet stays KnotKitchen's property; to end the rental, return it through KnotKitchen support.",
+      ],
+      run: () => rentSubscriptionTablet({ accepted: true }),
+      done: "Tablet rented.",
+    });
+
+  const buyPrinter = (p) =>
+    review({
+      item: `PRINTER:${p.code}`,
+      title: `Buy a ${p.name}`,
+      terms: ["One-time purchase from your wallet. No monthly fee."],
+      run: () => buySubscriptionPrinter({ code: p.code, accepted: true }),
+      done: `${p.name} bought. The invoice is below.`,
+    });
+
+  // After a CSD credit, say: a top-up renews by itself.
+  const renewNow = () =>
+    act.mutate({
+      run: async () => {
+        const res = await renewSubscription();
+        if (!res?.data?.data?.renewed) throw new Error(res?.data?.data?.lastRenewalError || "Nothing is due for renewal yet.");
+        return res;
+      },
+      done: "The POS plan is renewed.",
+    });
+
+  if (isLoading || subLoading) return <div className="p-6 text-[13px] text-[#94A3B8]">Loading billing…</div>;
+  // Without the subscription the page would read as "EXPIRED" with no add-ons.
+  if (subError) {
+    return (
+      <div className="p-6 text-[13px] text-[#B91C1C]">
+        Could not load your plan.{" "}
+        <button type="button" onClick={() => refetchSub()} className="font-bold underline">
+          Try again
+        </button>
+      </div>
+    );
+  }
+
+  const [badge, tone] = sub?.exempt
+    ? ["DEMO", "green"]
+    : sub?.active
+      ? ["ACTIVE", "green"]
+      : sub?.needsActivation
+        ? ["NOT STARTED", "slate"]
+        : sub?.inGrace
+          ? ["GRACE", "amber"]
+          : ["EXPIRED", "red"];
+  const tablets = (sub?.tablets || []).filter((t) => t.active);
 
   return (
     <div className="h-full overflow-y-auto bg-[#F8FAFC] p-4 sm:p-5 space-y-5">
       <header>
-        <h1 className="text-[20px] font-extrabold text-[#0F172A]">Billing</h1>
-        <p className="text-[13px] text-[#64748B]">
-          Your KnotKitchen Business Balance, subscription and invoices.
-        </p>
+        <h1 className="text-[20px] font-extrabold text-[#0F172A]">Billing &amp; Subscription</h1>
+        <p className="text-[13px] text-[#64748B]">Your wallet, POS plan, add-ons, tablets, printers and invoices.</p>
       </header>
 
       {balance?.locked && (
         <div className="rounded-2xl border border-[#FECACA] bg-[#FEF2F2] p-4">
           <p className="text-[14px] font-extrabold text-[#B91C1C]">This account is locked</p>
           <p className="mt-1 text-[13px] text-[#7F1D1D]">
-            {balance.lockedReason ||
-              "There is an outstanding amount on this account."}{" "}
-            {subscription?.installationRequired
-              ? "Add balance, pay the Installation Charge, then choose a plan below. It unlocks as soon as the plan is active."
-              : !subscription?.active
-                ? "Add balance and choose a plan below. It unlocks as soon as the plan is active."
-                : "Add balance below and it unlocks automatically."}
+            {balance.lockedReason || "There is an outstanding amount on this account."} It unlocks by itself once paid.
           </p>
         </div>
       )}
 
       <div className="grid gap-5 lg:grid-cols-2">
         {/* ---------------------------------------------------------- */}
-        <Card
-          title="Business Balance"
-          subtitle="Used for your subscription and per-order charges."
-        >
-          <p className="text-[32px] font-extrabold leading-none text-[#0F172A]">
-            {money(balance?.balance)}
-          </p>
+        <Card title="Wallet" subtitle="Your Business Balance. It pays the POS plan, add-ons, tablets, printers and per-order charges.">
+          <p className="text-[32px] font-extrabold leading-none text-[#0F172A]">{money(balance?.balance)}</p>
 
           {balance?.dues?.count > 0 && (
             <p className="mt-2 text-[12.5px] font-semibold text-[#B45309]">
@@ -488,10 +398,18 @@ const Billing = () => {
             </p>
           )}
 
+          {sub?.needsActivation && (
+            <p className="mt-3 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] px-3 py-2 text-[12.5px] text-[#9A3412]">
+              <span className="font-extrabold">First recharge: at least {money(sub.firstRechargeMin)}.</span> Your POS
+              plan ({money(sub.basePlan?.price)} + GST for {periodDays} days) starts automatically when it arrives, and
+              the rest stays in your wallet.
+            </p>
+          )}
+
           <div className="mt-4">
-            <p className="text-[12px] font-bold text-[#64748B]">Add balance</p>
+            <p className="text-[12px] font-bold text-[#64748B]">Recharge</p>
             <div className="mt-2 flex flex-wrap gap-2">
-              {PRESETS.map((preset) => (
+              {presetsFrom(minRupees).map((preset) => (
                 <button
                   key={preset}
                   type="button"
@@ -507,18 +425,18 @@ const Billing = () => {
             <div className="mt-3 flex gap-2">
               <input
                 type="number"
-                min="1"
+                min={minRupees || 1}
                 inputMode="numeric"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
-                placeholder="Custom amount"
-                className="h-[42px] flex-1 rounded-xl border border-[#E2E8F0] px-3 text-[14px] text-[#0F172A] focus:border-[#FD5302] focus:outline-none"
+                placeholder={minRupees ? `At least ₹${minRupees.toLocaleString("en-IN")}` : "Custom amount"}
+                className="h-[42px] min-w-0 flex-1 rounded-xl border border-[#E2E8F0] px-3 text-[14px] text-[#0F172A] focus:border-[#FD5302] focus:outline-none"
               />
               <button
                 type="button"
                 disabled={paying || !amount}
                 onClick={() => topUp(amount)}
-                className="h-[42px] rounded-xl bg-[#FD5302] px-5 text-[13.5px] font-extrabold text-white hover:bg-[#D64502] disabled:opacity-50"
+                className="h-[42px] shrink-0 rounded-xl bg-[#FD5302] px-5 text-[13.5px] font-extrabold text-white hover:bg-[#D64502] disabled:opacity-50"
               >
                 {paying ? "Opening…" : "Add"}
               </button>
@@ -531,219 +449,183 @@ const Billing = () => {
 
         {/* ---------------------------------------------------------- */}
         <Card
-          title="Subscription"
-          subtitle={
-            subscription?.active
-              ? `Renews ${new Date(subscription.currentPeriodEnd).toLocaleDateString("en-IN", { dateStyle: "medium" })}`
-              : subscription?.exempt
-                ? "Demo store — no subscription or charges"
-                : "No active plan"
-          }
-          right={
-            <span
-              className={`rounded-full px-3 py-1 text-[11px] font-extrabold ${
-                subscription?.active || subscription?.exempt
-                  ? "bg-[#DCFCE7] text-[#15803D]"
-                  : subscription?.inGrace
-                    ? "bg-[#FEF3C7] text-[#B45309]"
-                    : "bg-[#F1F5F9] text-[#64748B]"
-              }`}
-            >
-              {subscription?.active ? "ACTIVE" : subscription?.exempt ? "DEMO" : subscription?.inGrace ? "GRACE" : "INACTIVE"}
-            </span>
-          }
+          title={`${sub?.basePlan?.name || "POS"} plan`}
+          subtitle={`${money(sub?.basePlan?.price)} + GST every ${periodDays} days, from your wallet`}
+          right={<Tag tone={tone}>{badge}</Tag>}
         >
-          {subscription?.exempt ? (
+          {sub?.exempt ? (
             <p className="text-[13px] text-[#64748B]">
-              KnotKitchen has set this store up as a demo store. It needs no subscription, is never
-              charged per order or per e-bill, and is never locked.
+              KnotKitchen has set this store up as a demo store. It has every add-on, is never charged for the plan,
+              per order or per e-bill, and is never locked.
             </p>
-          ) : subscription?.installationRequired ? (
-            /* Clause 5.4: the Installation Charge comes before the first plan. */
-            <div className="space-y-2">
-              <p className="text-[13px] text-[#64748B]">
-                Choose how KnotKitchen will be installed at your restaurant. This one-time charge is paid
-                before your first plan and is refundable when you leave (25% before 12 months, 100% after).
-              </p>
-              {(terms?.installationOptions || []).map((o) => (
-                <label
-                  key={o.code}
-                  className={`flex cursor-pointer items-center justify-between gap-3 rounded-xl border p-3 ${
-                    installOption === o.code ? "border-[#FD5302] bg-[#FFF7ED]" : "border-[#E2E8F0]"
-                  }`}
-                >
-                  <span className="flex items-center gap-3">
-                    <input type="radio" name="installation" checked={installOption === o.code} onChange={() => setInstallOption(o.code)} />
-                    <span>
-                      <span className="block text-[14px] font-extrabold text-[#0F172A]">{o.name}</span>
-                      <span className="block text-[12px] text-[#64748B]">
-                        {o.equipment ? `${o.equipment} on loan, stays KnotKitchen's` : "Set-up and onboarding only"}
-                      </span>
-                    </span>
-                  </span>
-                  <span className="text-[14px] font-extrabold text-[#0F172A]">
-                    {money(o.amount)}
-                    {o.tax?.applicable && <span className="block text-[11px] font-semibold text-[#94A3B8]">+ GST</span>}
-                  </span>
-                </label>
-              ))}
-              <button
-                type="button"
-                disabled={!installOption || installBuy.isPending}
-                onClick={payInstallation}
-                className="mt-1 rounded-xl bg-[#0F172A] px-4 py-2 text-[12.5px] font-extrabold text-white hover:bg-[#1E293B] disabled:opacity-40"
-              >
-                Continue
-              </button>
-            </div>
-          ) : plans.length === 0 ? (
-            <p className="text-[13px] text-[#94A3B8]">
-              No plans are available at the moment.
+          ) : sub?.needsActivation ? (
+            <p className="text-[13px] text-[#64748B]">
+              Not started yet. Recharge at least {money(sub.firstRechargeMin)} in one payment and the POS plan starts
+              automatically: {money(sub.basePlan?.price)} + GST comes out of it for the first {periodDays} days.
             </p>
           ) : (
-            <div className="space-y-2">
-              {subscription?.commitment?.running ? (
-                <p className="rounded-xl border border-[#BBF7D0] bg-[#F0FDF4] px-3 py-2 text-[12.5px] text-[#166534]">
-                  <span className="font-extrabold">{subscription.commitment.months}-month commitment</span> ·{" "}
-                  {subscription.commitment.discountPercent}% off the plan fee ·{" "}
-                  {subscription.commitment.periodsUsed} of {subscription.commitment.periodsTotal} periods used
-                  {subscription.commitment.endsAt ? ` · current period ends ${dateOf(subscription.commitment.endsAt)}` : ""}
-                </p>
-              ) : subscription?.commitment?.repaymentDuePaise > 0 ? (
-                <p className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-[12.5px] text-[#991B1B]">
-                  Your {subscription.commitment.months}-month commitment ended early. The discount received,{" "}
-                  {paise(subscription.commitment.repaymentDuePaise)} plus GST where applicable, is collected from your next top-up.
-                </p>
-              ) : (
-                <div>
-                  <p className="text-[12px] font-bold text-[#64748B]">Commitment (optional)</p>
-                  <div className="mt-1.5 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
-                    {COMMITMENT_CHOICES.map((c) => (
-                      <button
-                        key={c.months}
-                        type="button"
-                        aria-pressed={commitmentMonths === c.months}
-                        onClick={() => setCommitmentMonths(c.months)}
-                        className={`rounded-xl border px-2 py-2 text-left ${
-                          commitmentMonths === c.months ? "border-[#FD5302] bg-[#FFF7ED] ring-1 ring-[#FD5302]" : "border-[#E2E8F0]"
-                        }`}
-                      >
-                        <span className="block text-[12.5px] font-extrabold text-[#0F172A]">{c.label}</span>
-                        <span className="block text-[11px] text-[#64748B]">{c.sub}</span>
-                      </button>
-                    ))}
-                  </div>
+            <div className="space-y-3">
+              <p className="text-[13px] text-[#64748B]">
+                Current period: {dateOf(sub?.currentPeriodStart)} – {dateOf(sub?.currentPeriodEnd)}
+              </p>
+              {sub && !sub.active && (
+                <div className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-[12.5px] text-[#991B1B]">
+                  <p className="font-extrabold">The POS plan ended on {dateOf(sub.currentPeriodEnd)}.</p>
+                  <p className="mt-0.5">
+                    {sub.lastRenewalError || "It has not renewed yet."}{" "}
+                    {sub.inGrace ? `The POS locks at ${timeOf(sub.graceEndsAt)} unless it renews. ` : ""}
+                    Recharge the wallet and it renews at once.
+                  </p>
+                  <button type="button" disabled={busy} onClick={renewNow} className={`${SECONDARY} mt-2 bg-white`}>
+                    Try the renewal now
+                  </button>
                 </div>
               )}
-              {plans.map((plan) => {
-                const own = subscription?.planCode === plan.code;
-                const current = own && subscription?.active;
-                // Listed but closed to new subscriptions. Shown rather than
-                // hidden so a restaurant can see the whole ladder. A
-                // restaurant's own plan can always be renewed.
-                const locked = plan.isAvailable === false && !own;
-                // Never a downgrade, running or ended (the server refuses it
-                // too): a restaurant renews its plan or moves up.
-                const currentPlan = plans.find((p) => p.code === subscription?.planCode);
-                const lower =
-                  !own && !locked && currentPlan && Number(plan.price) < Number(currentPlan.price);
-                return (
-                  <div
-                    key={plan.code}
-                    className={`flex items-center justify-between gap-3 rounded-xl border p-3 ${
-                      current
-                        ? "border-[#FD5302] bg-[#FFF7ED]"
-                        : locked
-                          ? "border-[#E2E8F0] bg-[#F8FAFC] opacity-70"
-                          : "border-[#E2E8F0]"
-                    }`}
-                  >
-                    <div className="min-w-0">
-                      <p className="text-[14px] font-extrabold text-[#0F172A]">
-                        {plan.name}
-                        {current && (
-                          <span className="ml-2 text-[11px] font-bold text-[#C2410C]">CURRENT</span>
-                        )}
-                        {locked && (
-                          <span className="ml-2 text-[11px] font-bold text-[#94A3B8]">LOCKED</span>
-                        )}
-                        {lower && (
-                          <span className="ml-2 text-[11px] font-bold text-[#94A3B8]">LOWER PLAN</span>
-                        )}
-                      </p>
-                      <p className="text-[12px] text-[#64748B]">
-                        {money(plan.price)} / {subscription?.periodDays || 30} days
-                        {plan.source === "offer" && " · offer price"}
-                        {plan.source === "restaurant" && " · your agreed rate"}
-                      </p>
-                      {/* An upgrade mid-period is charged on the difference for
-                          the days that remain, never the full price again. */}
-                      {lower && (
-                        <p className="text-[11.5px] font-semibold text-[#94A3B8]">
-                          Plans can&apos;t be downgraded. Renew {currentPlan.name} or upgrade.
-                        </p>
-                      )}
-                      {upgradeQuotes[plan.code] != null && !current && !locked && !lower && (
-                        <p className="text-[11.5px] font-bold text-[#15803D]">
-                          You pay {money(upgradeQuotes[plan.code].total)} now
-                          {upgradeQuotes[plan.code].discountPaise > 0 && ` (${upgradeQuotes[plan.code].commitment.discountPercent}% off, GST included)`}
-                        </p>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      disabled={buy.isPending || current || locked || lower}
-                      onClick={() => changePlan(plan.code)}
-                      className="shrink-0 rounded-xl bg-[#0F172A] px-4 py-2 text-[12.5px] font-extrabold text-white hover:bg-[#1E293B] disabled:opacity-40"
-                    >
-                      {current ? "Active" : locked ? "Locked" : lower ? "Not available" : own ? "Renew" : subscription?.planCode ? "Upgrade" : "Subscribe"}
-                    </button>
-                  </div>
-                );
-              })}
+              {sub?.nextRenewal && (
+                <>
+                  <p className="text-[13px] font-bold text-[#0F172A]">
+                    {sub.active ? `Renews on ${dateOf(sub.nextRenewal.at)}` : "Due now"}: {money(sub.nextRenewal.total)} from
+                    your wallet
+                  </p>
+                  <Bill bill={sub.nextRenewal} totalLabel="Renewal total" />
+                </>
+              )}
             </div>
           )}
         </Card>
       </div>
 
-      {subscription?.installation && (
-        <Card title="Installation" subtitle="Agreement clause 5. One-time, refundable when you leave.">
-          <p className="text-[13px] text-[#0F172A]">
-            <span className="font-extrabold">{subscription.installation.optionName}</span> ·{" "}
-            {paise(subscription.installation.amountPaise)} paid on {dateOf(subscription.installation.paidAt)}
-            {subscription.activatedAt ? ` · activated ${dateOf(subscription.activatedAt)}` : ""}
-          </p>
-          <p className="mt-1 text-[12px] text-[#64748B]">
-            If you left today you would get back {paise(subscription.installation.refund?.refundPaise)} (
-            {subscription.installation.refund?.percent}%), less any unpaid dues or unreturned equipment.
-            {subscription.installation.refund?.anniversaryAt && !subscription.installation.refund?.completed12Months
-              ? ` 100% from ${dateOf(subscription.installation.refund.anniversaryAt)}.`
-              : ""}
-          </p>
-          {(subscription.installation.upgrades || []).map((u) => (
-            <p key={`${u.fromCode}-${u.toCode}`} className="mt-1 text-[12px] text-[#64748B]">
-              Upgraded from {u.fromName} to {u.toName} on {dateOf(u.upgradedAt)} ({paise(u.differencePaise)} + GST).
-            </p>
-          ))}
-          {(terms?.installationUpgrades || []).length > 0 && (
-            <div className="mt-3 space-y-2">
-              <p className="text-[12px] font-bold text-[#0F172A]">Need a printer? Upgrade and pay only the difference.</p>
-              {terms.installationUpgrades.map((o) => (
-                <div key={o.code} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#E2E8F0] px-3 py-2">
-                  <span className="text-[13px] font-semibold text-[#0F172A]">{o.name}</span>
-                  <button
-                    type="button"
-                    disabled={installUpgrade.isPending}
-                    onClick={() => payInstallationUpgrade(o)}
-                    className="rounded-xl bg-[#0F172A] px-4 py-2 text-[12.5px] font-extrabold text-white hover:bg-[#1E293B] disabled:opacity-40"
-                  >
-                    Upgrade · pay {money(o.total || o.amount)}
-                  </button>
+      {/* ------------------------------------------------------------ */}
+      <Card
+        title="Add-ons"
+        subtitle={`Monthly, from your wallet, renewing with the POS plan every ${periodDays} days. Added mid-period, you pay only for the days left.`}
+      >
+        {(sub?.addons || []).length === 0 ? (
+          <p className="text-[13px] text-[#94A3B8]">No add-ons are available at the moment.</p>
+        ) : (
+          <div className="space-y-2">
+            {sub.addons.map((a) => (
+              <div
+                key={a.code}
+                className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 ${
+                  a.owned || sub.exempt ? "border-[#FD5302] bg-[#FFF7ED]" : "border-[#E2E8F0]"
+                }`}
+              >
+                <div className="min-w-0 flex-1 basis-[220px]">
+                  <p className="text-[14px] font-extrabold text-[#0F172A]">
+                    {a.name}
+                    {sub.exempt ? (
+                      <Tag tone="green">INCLUDED</Tag>
+                    ) : a.owned && a.endsAt ? (
+                      <Tag tone="amber">STOPS {dateOf(a.endsAt).toUpperCase()}</Tag>
+                    ) : a.owned ? (
+                      <Tag tone="green">ON</Tag>
+                    ) : null}
+                  </p>
+                  {a.description && <p className="text-[12px] text-[#64748B]">{a.description}</p>}
+                  <p className="text-[12px] font-semibold text-[#334155]">
+                    {money(a.price)} + GST / {periodDays} days
+                  </p>
                 </div>
-              ))}
-            </div>
-          )}
-        </Card>
+                {!sub.exempt &&
+                  (a.owned && !a.endsAt ? (
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        act.mutate({
+                          run: () => stopSubscriptionAddon(a.code),
+                          done: `${a.name} stops at renewal. It works until ${dateOf(sub.currentPeriodEnd)}.`,
+                        })
+                      }
+                      className={SECONDARY}
+                    >
+                      Stop at renewal
+                    </button>
+                  ) : a.owned ? (
+                    // Stopped this period and taken back: already paid, so no charge.
+                    <button
+                      type="button"
+                      disabled={busy || !sub.active}
+                      onClick={() => act.mutate({ run: () => addSubscriptionAddon({ code: a.code }), done: `${a.name} keeps renewing.` })}
+                      className={PRIMARY}
+                    >
+                      Keep
+                    </button>
+                  ) : (
+                    <button type="button" disabled={busy || !sub.active} onClick={() => addAddon(a)} className={PRIMARY}>
+                      Add
+                    </button>
+                  ))}
+              </div>
+            ))}
+          </div>
+        )}
+        {sub && !sub.exempt && !sub.active && (
+          <p className="mt-3 text-[12px] font-semibold text-[#94A3B8]">
+            Add-ons can be added while the POS plan is running. Recharge the wallet to start or renew it.
+          </p>
+        )}
+      </Card>
+
+      {sub && !sub.exempt && (
+        <div className="grid gap-5 lg:grid-cols-2">
+          {/* ---------------------------------------------------------- */}
+          <Card
+            title="Tablets"
+            subtitle={`Monthly rental: the first ${money(tablet?.firstPrice)}, each extra ${money(tablet?.extraPrice)}, + GST.`}
+          >
+            {tablets.length === 0 ? (
+              <p className="text-[13px] text-[#94A3B8]">No tablets rented.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {tablets.map((t) => (
+                  <p key={t.serial} className="flex flex-wrap justify-between gap-2 text-[13px] text-[#0F172A]">
+                    <span className="font-bold">Tablet #{t.serial}</span>
+                    <span className="text-[#64748B]">
+                      {money(t.price)} + GST / {periodDays} days
+                      {t.endsAt ? ` · returned, rental ends ${dateOf(t.endsAt)}` : ` · since ${dateOf(t.rentedAt)}`}
+                    </span>
+                  </p>
+                ))}
+              </div>
+            )}
+            <p className="mt-3 text-[13px] text-[#0F172A]">
+              Next tablet: <span className="font-bold">{money(tablet?.nextPrice)} + GST</span> / {periodDays} days ·
+              Top-ups ready for a tablet: <span className="font-bold">{credits}</span>
+            </p>
+            <p className="mt-1 text-[12px] text-[#64748B]">
+              Each tablet needs its own recharge of at least {money(tablet?.rechargeRequired)} in one payment, made after
+              the POS plan started. The money stays in your wallet and pays your bills.
+            </p>
+            <button type="button" disabled={busy || credits < 1 || !sub.active} onClick={rentTablet} className={`${PRIMARY} mt-3`}>
+              {credits < 1 ? `Top up ${money(tablet?.rechargeRequired)} to rent a tablet` : "Rent a tablet"}
+            </button>
+          </Card>
+
+          {/* ---------------------------------------------------------- */}
+          <Card title="Printers" subtitle="Buy once from your wallet. No monthly fee.">
+            {(sub.printers || []).length === 0 ? (
+              <p className="text-[13px] text-[#94A3B8]">No printers are on sale at the moment.</p>
+            ) : (
+              <div className="space-y-2">
+                {sub.printers.map((p) => (
+                  <div key={p.code} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#E2E8F0] p-3">
+                    <div className="min-w-0 flex-1 basis-[220px]">
+                      <p className="text-[14px] font-extrabold text-[#0F172A]">{p.name}</p>
+                      <p className="text-[12px] text-[#64748B]">
+                        {money(p.price)} + GST, one time{p.owned ? ` · you have bought ${p.owned}` : ""}
+                      </p>
+                    </div>
+                    <button type="button" disabled={busy} onClick={() => buyPrinter(p)} className={PRIMARY}>
+                      Buy
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
       )}
 
       {/* ------------------------------------------------------------ */}
@@ -790,7 +672,7 @@ const Billing = () => {
       </Card>
 
       {/* ------------------------------------------------------------ */}
-      <Card title="Transactions" subtitle="Every credit and debit on your balance.">
+      <Card title="Transactions" subtitle="Every credit and debit on your wallet.">
         {transactions.length === 0 ? (
           <p className="text-[13px] text-[#94A3B8]">Nothing yet.</p>
         ) : (
@@ -829,27 +711,15 @@ const Billing = () => {
         )}
       </Card>
 
-      <OrderSummary
-        summary={summary}
-        busy={buy.isPending || installBuy.isPending || installUpgrade.isPending}
-        onClose={() => setSummary(null)}
-        onConfirm={() => summary?.onConfirm?.()}
-      />
-
-      <SecurityPinModal
-        isOpen={pinOpen}
-        title="Plan changes need authorisation"
-        actionLabel="Change plan"
-        onClose={() => {
-          setPinOpen(false);
-          setPendingAction(null);
-        }}
-        onSuccess={() => {
-          setPinOpen(false);
-          if (pendingAction) pendingAction();
-          setPendingAction(null);
-        }}
-      />
+      {/* Mounted only while open, so the terms box starts unticked every time. */}
+      {summary && (
+        <OrderSummary
+          summary={summary}
+          busy={busy}
+          onClose={() => setSummary(null)}
+          onConfirm={() => act.mutate({ run: summary.run, done: summary.done })}
+        />
+      )}
     </div>
   );
 };

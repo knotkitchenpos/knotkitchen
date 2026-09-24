@@ -9,8 +9,8 @@ const mongoose = require("mongoose");
  *
  * The invoice is a SNAPSHOT, not a view. Every number, rate, name and address
  * it needs is copied onto it at the moment it is issued, so an admin changing
- * the price of Growth from 1299 to 999 tomorrow cannot alter what a bill
- * issued today says. Nothing on an issued invoice is ever recomputed.
+ * the price of the POS plan tomorrow cannot alter what a bill issued today
+ * says. Nothing on an issued invoice is ever recomputed.
  */
 
 const subscriptionSchema = new mongoose.Schema(
@@ -26,9 +26,11 @@ const subscriptionSchema = new mongoose.Schema(
     planCode: { type: String, default: "" },
     planName: { type: String, default: "" },
 
+    // NONE until the first qualifying top-up activates the POS plan. EXPIRED
+    // when a renewal found the wallet short; the next top-up renews it.
     status: {
       type: String,
-      enum: ["NONE", "ACTIVE", "GRACE", "EXPIRED", "CANCELLED"],
+      enum: ["NONE", "ACTIVE", "EXPIRED", "CANCELLED"],
       default: "NONE",
       index: true,
     },
@@ -38,75 +40,85 @@ const subscriptionSchema = new mongoose.Schema(
     currentPeriodStart: { type: Date, default: null },
     currentPeriodEnd: { type: Date, default: null, index: true },
 
-    // What was actually charged for the period now running, so the UI can say
-    // "you pay 999" without re-resolving prices that may have moved since.
+    // What the last charge for a period came to, ex-tax, so the UI can say
+    // what was paid without re-resolving prices that may have moved since.
     lastPaidPricePaise: { type: Number, default: 0 },
     lastInvoiceId: { type: mongoose.Schema.Types.ObjectId, default: null },
     lastPaidAt: { type: Date, default: null },
 
-    autoRenew: { type: Boolean, default: false },
-    cancelledAt: { type: Date, default: null },
-
-    // Agreement v2.0, clause 15.3: the first period bought is the Activation
-    // Date, and the 12 months of clause 5.6 run from it. Never moves.
+    // The first qualifying top-up. Never moves; null means not activated yet.
     activatedAt: { type: Date, default: null },
 
-    // Clause 5: the one-time Installation Charge, paid before Activation.
-    // amountPaise is the total paid ex-tax (the clause 5.6 refund basis): the
-    // original purchase plus any upgrades. paidAt/invoiceId/ledgerEntryId are
-    // the original purchase's; each upgrade keeps its own in `upgrades`.
-    installation: {
-      optionCode: { type: String, default: "" },
-      optionName: { type: String, default: "" },
-      amountPaise: { type: Number, default: 0 },
-      paidAt: { type: Date, default: null },
-      invoiceId: { type: mongoose.Schema.Types.ObjectId, default: null },
-      ledgerEntryId: { type: mongoose.Schema.Types.ObjectId, default: null },
-      upgrades: {
-        type: [
-          new mongoose.Schema(
-            {
-              fromCode: String,
-              fromName: String,
-              toCode: String,
-              toName: String,
-              differencePaise: Number,
-              invoiceId: mongoose.Schema.Types.ObjectId,
-              ledgerEntryId: mongoose.Schema.Types.ObjectId,
-              upgradedAt: Date,
-            },
-            { _id: false },
-          ),
-        ],
-        default: [],
-      },
+    // Monthly add-ons. endsAt null renews with the plan; a date means it was
+    // stopped and lapses then (the current period end). Name, feature and
+    // price are snapshots of what was bought.
+    addons: {
+      type: [
+        new mongoose.Schema(
+          {
+            code: { type: String, required: true },
+            name: { type: String, default: "" },
+            feature: { type: String, default: "" },
+            pricePaise: { type: Number, default: 0 },
+            activatedAt: { type: Date, default: null },
+            endsAt: { type: Date, default: null },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
     },
 
-    // Clause 6: a Commitment Period is `periodsTotal` Billing Periods bought
-    // at `discountPercent` off. `periodsUsed` counts the ones bought so far.
-    // Leaving early (clause 6.5, discount-repayment model): the discount
-    // received so far becomes due, and the discount ends.
-    commitment: {
-      months: { type: Number, default: 0 },
-      discountPercent: { type: Number, default: 0 },
-      periodsTotal: { type: Number, default: 0 },
-      periodsUsed: { type: Number, default: 0 },
-      startedAt: { type: Date, default: null },
-      endsAt: { type: Date, default: null },
-      completedAt: { type: Date, default: null },
-      discountGrantedPaise: { type: Number, default: 0 },
-      lapsedAt: { type: Date, default: null },
-      repaymentDuePaise: { type: Number, default: 0 },
-      repaidAt: { type: Date, default: null },
+    // Rented tablets, numbered per store. endsAt is set by CSD when a tablet
+    // comes back (the physical return), at the current period end.
+    tablets: {
+      type: [
+        new mongoose.Schema(
+          {
+            serial: { type: Number, required: true },
+            pricePaise: { type: Number, default: 0 },
+            rentedAt: { type: Date, default: null },
+            endsAt: { type: Date, default: null },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
     },
+    // Qualifying top-ups not yet used to rent a tablet. One each.
+    tabletRechargeCredits: { type: Number, default: 0, min: 0 },
+
+    // One-time purchases (printers).
+    hardware: {
+      type: [
+        new mongoose.Schema(
+          {
+            // The payment key, so a purchase is recorded once however often it is retried.
+            key: { type: String, default: "" },
+            code: { type: String, required: true },
+            name: { type: String, default: "" },
+            pricePaise: { type: Number, default: 0 },
+            totalPaise: { type: Number, default: 0 },
+            invoiceId: { type: mongoose.Schema.Types.ObjectId, default: null },
+            purchasedAt: { type: Date, default: null },
+          },
+          { _id: false },
+        ),
+      ],
+      default: [],
+    },
+
+    lastRenewalAttemptAt: { type: Date, default: null },
+    // Why the last automatic renewal did not go through ("" once it has).
+    lastRenewalError: { type: String, default: "" },
   },
   { timestamps: true },
 );
 
 /**
- * Schedule 1 of the Agreement: the commercial values the restaurant saw and
- * accepted in the app. One row per acceptance, never edited; a later change
- * is a new version. The hash fingerprints `values` (services/commercialTerms).
+ * What the restaurant saw and accepted in the app for an explicit purchase
+ * (an add-on, a tablet, a printer). One row per acceptance, never edited. The
+ * hash fingerprints `values` (services/subscription scheduleHash).
  */
 const commercialScheduleSchema = new mongoose.Schema(
   {
@@ -114,7 +126,7 @@ const commercialScheduleSchema = new mongoose.Schema(
     storeId: { type: String, default: "", index: true },
     version: { type: Number, required: true },
     agreementVersion: { type: String, default: "v2.0" },
-    reason: { type: String, default: "" }, // INSTALLATION | SUBSCRIPTION | COMMITMENT | UPGRADE
+    reason: { type: String, default: "" }, // ADDON | TABLET | HARDWARE
     values: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
     hash: { type: String, required: true },
     acceptedAt: { type: Date, required: true },
@@ -176,7 +188,7 @@ const invoiceSchema = new mongoose.Schema(
 
     kind: {
       type: String,
-      enum: ["SUBSCRIPTION", "UPGRADE", "INSTALLATION", "COMMITMENT_REPAYMENT", "OTHER"],
+      enum: ["SUBSCRIPTION", "ADDON", "TABLET", "HARDWARE", "OTHER"],
       default: "SUBSCRIPTION",
     },
 
