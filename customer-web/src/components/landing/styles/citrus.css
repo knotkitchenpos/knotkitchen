@@ -93,7 +93,7 @@
   border-radius: 32px 32px 16px 16px;
   background: linear-gradient(135deg, #f7e0a9, #f4d4ba);
   box-shadow: var(--shadow);}
-.kkt-citrus .hero-visual img{height: 700px;
+.kkt-citrus .hero-visual img{height: auto; aspect-ratio: 4 / 3;
   width: 100%;
   object-fit: cover;
   border-radius: 30px 30px 18px 18px;}
@@ -152,9 +152,9 @@
   overflow: hidden;
   box-shadow: 0 12px 30px rgba(31, 43, 32, 0.06);}
 .kkt-citrus .menu-card img{width: 100%;
-  height: 260px;
+  height: auto; aspect-ratio: 4 / 3;
   object-fit: cover;}
-.kkt-citrus .menu-card.large img{height: 320px;}
+.kkt-citrus .menu-card.large img{height: auto; aspect-ratio: 4 / 3;}
 .kkt-citrus .card-copy{padding: 20px 18px 22px;}
 .kkt-citrus .card-topline{display: flex;
   align-items: center;
@@ -215,7 +215,7 @@
 .kkt-citrus .powered a{font-weight: 800; color: var(--ink);}
 @media (max-width: 900px){.kkt-citrus .hero,.kkt-citrus .story-grid,.kkt-citrus .visit-card,.kkt-citrus .card-grid{grid-template-columns: 1fr;}
 .kkt-citrus .hero{padding-top: 24px;}
-.kkt-citrus .hero-visual img{height: 480px;}
+.kkt-citrus .hero-visual img{height: auto; aspect-ratio: 4 / 3;}
 .kkt-citrus .section-header.inline,.kkt-citrus .cta,.kkt-citrus .site-footer{flex-direction: column;
     align-items: flex-start;}}
 @media (max-width: 640px){.kkt-citrus .nav{gap: 14px;
@@ -229,8 +229,8 @@
 .kkt-citrus .hero-actions{flex-direction: column;}}
 .kkt-citrus .feature-layout{display:grid;grid-template-columns:1.2fr .8fr;gap:24px;margin-top:30px}
 .kkt-citrus .menu-stack{display:grid;gap:24px}
-.kkt-citrus .menu-card.highlight img{height:420px}
-.kkt-citrus .menu-card.small img{height:180px}
+.kkt-citrus .menu-card.highlight img{height: auto; aspect-ratio: 4 / 3}
+.kkt-citrus .menu-card.small img{height: auto; aspect-ratio: 4 / 3}
 .kkt-citrus .mini-stats{display:flex;flex-wrap:wrap;gap:10px 22px;margin-top:28px;padding-top:18px;border-top:1px solid var(--line);font-size:.82rem;font-weight:700;color:var(--muted)}
 .kkt-citrus .mini-stats strong{color:var(--primary);margin-right:4px}
 .kkt-citrus .story-panel{display:grid;gap:8px;padding:22px;border-radius:22px;background:var(--panel);border:1px solid var(--line)}

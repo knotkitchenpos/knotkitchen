@@ -142,7 +142,7 @@ export default function ProductModal({ product, symbol, onClose, onAdd, allowNot
               of the same photo fills what the photo itself does not, instead
               of grey bars beside a tall or narrow photo. */}
           {product.image ? (
-            <div className="relative h-72 w-full overflow-hidden rounded-2xl bg-slate-100">
+            <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl bg-slate-100">
               <img
                 src={product.image}
                 alt=""

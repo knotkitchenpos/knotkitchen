@@ -28,6 +28,12 @@ test("the other guest pages are too", () => {
   }
 });
 
+test("REGRESSION: CSD's Open POS lands with no session and must not be sent to sign-in", () => {
+  // The token is used by the page itself; a session check first 401'd and
+  // hard-redirected to /auth, which asked for the Store ID.
+  assert.equal(isPublicPath("/impersonate"), true);
+});
+
 test("REGRESSION: /orders is staff, not a prefix match on /order", () => {
   // "/order" is the legacy ?table= QR page and matches exactly. Matching it as
   // a prefix also swallows the staff order list.

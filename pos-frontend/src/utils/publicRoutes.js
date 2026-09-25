@@ -15,7 +15,10 @@
  * matches exactly; matching it as a prefix would also swallow `/orders`, the
  * staff order list, and skip the session bootstrap on a page that needs it.
  */
-const PUBLIC_EXACT = ["/auth", "/order"];
+// "/impersonate" is CSD's "Open POS" landing: it arrives with a one-time token
+// and no POS session yet. Bootstrapping a session there 401s and bounced to
+// the sign-in screen (asking for the Store ID) before the token was used.
+const PUBLIC_EXACT = ["/auth", "/order", "/impersonate"];
 const PUBLIC_PREFIXES = ["/t/", "/pay/", "/store/"];
 
 export const isPublicPath = (pathname = window.location.pathname) =>

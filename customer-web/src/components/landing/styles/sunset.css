@@ -52,7 +52,7 @@
 .kkt-sunset .hero-badges{display: flex; flex-wrap: wrap; gap: 12px; margin-top: 24px; padding-top: 18px; border-top: 1px solid var(--line);}
 .kkt-sunset .hero-badges span{display: inline-flex; align-items: center; padding: 8px 12px; border-radius: 999px; background: rgba(201,87,54,0.08); color: var(--primary); font-weight: 700; font-size: 0.78rem;}
 .kkt-sunset .hero-visual{position: relative; padding: 18px; border-radius: 26px; background: linear-gradient(135deg, #f7d8b5, #f4b488); box-shadow: var(--shadow);}
-.kkt-sunset .hero-visual img{width: 100%; height: 700px; object-fit: cover; border-radius: 22px;}
+.kkt-sunset .hero-visual img{width: 100%; height: auto; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 22px;}
 .kkt-sunset .floating-tag{position: absolute; top: 24px; right: 24px; z-index: 2; padding: 10px 12px; border-radius: 999px; background: rgba(47,29,24,0.9); color: #fff; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase;}
 .kkt-sunset .story,.kkt-sunset .menu,.kkt-sunset .visit{padding: 90px 0;}
 .kkt-sunset .story-shell{display: grid; grid-template-columns: 1.35fr 0.65fr; gap: 22px;}
@@ -65,8 +65,8 @@
 .kkt-sunset .menu-row{display: grid; grid-template-columns: 1.45fr 0.8fr 0.8fr; gap: 20px;}
 .kkt-sunset .menu-card{background: var(--panel); border: 1px solid var(--line); border-radius: 24px; overflow: hidden; box-shadow: 0 12px 30px rgba(47,29,24,0.05);}
 .kkt-sunset .menu-card img{width: 100%; object-fit: cover;}
-.kkt-sunset .menu-card.wide img{height: 380px;}
-.kkt-sunset .menu-card.compact img{height: 250px;}
+.kkt-sunset .menu-card.wide img{height: auto; aspect-ratio: 4 / 3;}
+.kkt-sunset .menu-card.compact img{height: auto; aspect-ratio: 4 / 3;}
 .kkt-sunset .card-copy{padding: 20px 18px 22px;}
 .kkt-sunset .card-topline{display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 0.75rem; font-weight: 700; color: var(--muted);}
 .kkt-sunset .tag{display: inline-flex; align-items: center; justify-content: center; padding: 8px 10px; border-radius: 999px; background: rgba(201,87,54,0.12); color: var(--primary);}
@@ -81,7 +81,7 @@
 .kkt-sunset .powered a{font-weight: 800; color: var(--ink);}
 @media (max-width: 900px){.kkt-sunset .hero,.kkt-sunset .story-shell,.kkt-sunset .menu-row,.kkt-sunset .visit-card{grid-template-columns: 1fr;}
 .kkt-sunset .hero{padding-top: 24px;}
-.kkt-sunset .hero-visual img{height: 480px;}
+.kkt-sunset .hero-visual img{height: auto; aspect-ratio: 4 / 3;}
 .kkt-sunset .section-header.inline,.kkt-sunset .cta,.kkt-sunset .site-footer{flex-direction: column; align-items: flex-start;}}
 @media (max-width: 640px){.kkt-sunset .nav{gap: 14px; font-size: 0.7rem;}
 .kkt-sunset .brand{font-size: 1.7rem;}

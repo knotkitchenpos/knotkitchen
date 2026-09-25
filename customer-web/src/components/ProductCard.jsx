@@ -24,10 +24,11 @@ export default function ProductCard({ product, symbol, onSelect }) {
       className={base + disabled}
     >
       {product.image ? (
-        // The whole photo, never cropped. No blurred backdrop on cards (only
-        // in ProductModal): a blur on every card blanks the list while
-        // scrolling on slow devices.
-        <div className="w-full h-40 overflow-hidden bg-slate-100">
+        // 4:3, the shape item photos are made in the POS, so a photo fills
+        // the frame; any other shape shows whole, never cropped. No blurred
+        // backdrop on cards (only in ProductModal): a blur on every card
+        // blanks the list while scrolling on slow devices.
+        <div className="w-full aspect-[4/3] overflow-hidden bg-slate-100">
           <img
             src={thumbUrl(product.thumbnail || product.image, 640)}
             alt={product.imageAlt || product.name}
