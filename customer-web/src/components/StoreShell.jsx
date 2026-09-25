@@ -5,6 +5,12 @@ import ProductCard from "./ProductCard";
 import ProductModal from "./ProductModal";
 import CartDrawer from "./CartDrawer";
 import OrderConfirmation from "./OrderConfirmation";
+import { thumbUrl } from "../lib/thumbUrl";
+
+// A logo or cover whose file is gone hides instead of showing a broken image.
+const hideBroken = (e) => {
+  e.currentTarget.style.display = "none";
+};
 
 /**
  * StoreShell — the ordering page, laid out the way food-delivery apps are:
@@ -514,11 +520,9 @@ function RestaurantInfo({
         </div>
         {coverImage ? (
           <img
-            src={coverImage}
+            src={thumbUrl(coverImage, 640)}
             alt=""
-            onError={(e) => {
-              e.currentTarget.style.display = "none";
-            }}
+            onError={hideBroken}
             className="aspect-[4/3] w-28 shrink-0 rounded-xl object-cover sm:w-64"
           />
         ) : null}
@@ -632,11 +636,7 @@ function Header({ homePath, title, logo, cartCount, onOpenCart }) {
         {/* The masthead is the way back to the landing page. */}
         <Link to={homePath || "/"} className="flex min-w-0 items-center gap-3">
           {logo ? (
-            <img
-              src={logo}
-              alt=""
-              className="h-9 w-9 rounded-full object-cover"
-            />
+            <img src={thumbUrl(logo, 160)} alt="" onError={hideBroken} className="h-9 w-9 rounded-full object-cover" />
           ) : null}
           <span className="truncate font-semibold text-slate-900">{title}</span>
         </Link>
