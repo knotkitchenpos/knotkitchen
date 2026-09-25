@@ -28,5 +28,6 @@ test("menu cards load the small copy of an uploaded photo", async () => {
   assert.equal(thumbUrl("https://api.knotkitchen.com/uploads/1/products/a.webp", 640), "https://api.knotkitchen.com/uploads/1/products/a.webp?w=640");
   assert.equal(thumbUrl("https://cdn.example.com/a.webp", 640), "https://cdn.example.com/a.webp", "not ours: unchanged");
   assert.equal(thumbUrl("", 640), "");
-  assert.match(read("components/ProductCard.jsx"), /thumbUrl\(product\.thumbnail \|\| product\.image, 640\)/);
+  // A menu row shows the photo about 156px wide: the 320px copy is enough.
+  assert.match(read("components/ProductCard.jsx"), /thumbUrl\(product\.thumbnail \|\| product\.image, 320\)/);
 });
