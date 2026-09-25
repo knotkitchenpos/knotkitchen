@@ -41,7 +41,7 @@ export default function NightMarket({ landing, store, menuPath, onBookTable }) {
           </div>
           <div className="hero-visual">
             <div className="floating-tag">{c.heroBadge}</div>
-            <Photo srcs={c.heroImages} alt={c.heroAlt} />
+            <Photo w={1280} eager srcs={c.heroImages} alt={c.heroAlt} />
           </div>
         </section>
 

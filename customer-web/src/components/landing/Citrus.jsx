@@ -44,7 +44,7 @@ export default function Citrus({ landing, store, menuPath, onBookTable }) {
           </div>
           <div className="hero-visual">
             <div className="badge">{c.heroBadge}</div>
-            <Photo srcs={c.heroImages} alt={c.heroAlt} />
+            <Photo w={1280} eager srcs={c.heroImages} alt={c.heroAlt} />
           </div>
         </section>
 

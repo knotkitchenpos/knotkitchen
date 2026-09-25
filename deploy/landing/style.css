@@ -276,3 +276,8 @@ footer ul a:hover{color:var(--text)}
 .pricing-notes{margin-top:var(--grid-gap)}
 .pricing-notes ul{margin:8px 0 12px;padding-left:1.2em;color:var(--muted)}
 .pricing-notes li{margin:4px 0}
+
+/* Phones: the demo button stays in the bar, beside the menu button. */
+.nav-cta{margin-left:auto;padding:8px 14px;font-size:.9rem}
+@media(min-width:861px){.nav-cta{display:none}}
+@media(max-width:360px){.nav-cta{padding:7px 10px;font-size:.8rem}}

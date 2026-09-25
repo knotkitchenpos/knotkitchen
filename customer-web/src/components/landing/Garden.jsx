@@ -24,7 +24,7 @@ export default function Garden({ landing, store, menuPath, onBookTable }) {
         <section className="hero section-shell">
           <div className="hero-visual">
             <div className="card-badge">{c.heroBadge}</div>
-            <Photo srcs={c.heroImages} alt={c.heroAlt} />
+            <Photo w={1280} eager srcs={c.heroImages} alt={c.heroAlt} />
           </div>
           <div className="hero-copy">
             <p className="eyebrow">{c.kicker}</p>

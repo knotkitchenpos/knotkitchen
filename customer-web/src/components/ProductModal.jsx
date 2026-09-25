@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { capLabel, capOf } from "../lib/modifierGroups";
 import useScrollLock from "../lib/useScrollLock";
+import { thumbUrl } from "../lib/thumbUrl";
 
 /**
  * Product detail sheet.
@@ -144,13 +145,13 @@ export default function ProductModal({ product, symbol, onClose, onAdd, allowNot
           {product.image ? (
             <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl bg-slate-100">
               <img
-                src={product.image}
+                src={thumbUrl(product.image, 640)}
                 alt=""
                 aria-hidden="true"
                 className="absolute inset-0 h-full w-full scale-110 object-cover opacity-70 blur-2xl"
               />
               <img
-                src={product.image}
+                src={thumbUrl(product.image, 640)}
                 alt={product.imageAlt || product.name}
                 className="relative h-full w-full object-contain"
               />

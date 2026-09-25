@@ -213,13 +213,21 @@ order.{$BASE_DOMAIN} {
 	root * /srv/landing
 	file_server
 
-	# Anything the landing site does not have falls through to customer-web,
-	# which still owns the apex storefront routes.
+	# What the landing site does not have: the storefront preview routes and
+	# their files go to customer-web; anything else is a real 404 page (it used
+	# to be customer-web's app shell with a 200, a "soft 404").
 	handle_errors {
 		@notfound expression {err.status_code} == 404
 		handle @notfound {
-			reverse_proxy customer-web:80 {
-				header_up Host {host}
+			@storefront path /s/* /assets/* /og-image.png /site.webmanifest /apple-touch-icon.png /icon-192.png /icon-512.png /favicon-32.png
+			handle @storefront {
+				reverse_proxy customer-web:80 {
+					header_up Host {host}
+				}
+			}
+			handle {
+				rewrite * /404.html
+				file_server
 			}
 		}
 	}

@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { thumbUrl } from "../lib/thumbUrl";
 
 /**
  * Apply a store's theme (colors + fonts) as CSS variables on <html>.
@@ -43,32 +44,35 @@ export function useThemeVars(storeOrBootstrap) {
 /**
  * Apply the store's <title>, description, and favicon.
  *
- * Runs as soon as the bootstrap payload arrives so the browser tab and search
- * previews use the store's identity rather than the generic default in
- * index.html.
+ * The first paint already has them: nginx puts each page's own head into
+ * index.html (pos-backend services/storeHead.js). This keeps them right as
+ * the customer moves between pages without a reload, with the same wording:
+ * the store's title on the home page, "<page> | <store>" elsewhere.
  */
-export function useDocumentMeta(storeOrBootstrap) {
+export function useDocumentMeta(storeOrBootstrap, page = "") {
   useEffect(() => {
     if (!storeOrBootstrap) return undefined;
 
     const previousTitle = document.title;
-    const title =
-      storeOrBootstrap.siteTitle ||
-      storeOrBootstrap.branding?.siteTitle ||
+    const name =
       storeOrBootstrap.name ||
+      storeOrBootstrap.store?.name ||
+      storeOrBootstrap.branding?.siteTitle ||
+      storeOrBootstrap.siteTitle ||
       "Order Online";
-    document.title = title;
+    const siteTitle = storeOrBootstrap.siteTitle || storeOrBootstrap.branding?.siteTitle || name;
+    document.title = page ? `${page} | ${name}` : siteTitle;
 
     const description =
       storeOrBootstrap.siteDescription ||
       storeOrBootstrap.branding?.siteDescription ||
-      "";
-    const setMeta = (name, content) => {
+      `Order online from ${name}.`;
+    const setMeta = (metaName, content) => {
       if (!content) return null;
-      let tag = document.head.querySelector(`meta[name="${name}"]`);
+      let tag = document.head.querySelector(`meta[name="${metaName}"]`);
       if (!tag) {
         tag = document.createElement("meta");
-        tag.name = name;
+        tag.name = metaName;
         document.head.appendChild(tag);
       }
       tag.content = content;
@@ -76,11 +80,14 @@ export function useDocumentMeta(storeOrBootstrap) {
     };
     setMeta("description", description);
 
-    let faviconLink;
+    // The store's favicon, else its logo. The full storefront payload sends
+    // branding.favicon as a plain URL; the bootstrap sends faviconUrl.
+    const fav = storeOrBootstrap.branding?.favicon;
+    const logo = storeOrBootstrap.logoUrl || storeOrBootstrap.branding?.logo || "";
     const faviconUrl =
-      storeOrBootstrap.faviconUrl || storeOrBootstrap.branding?.favicon?.url || "";
+      storeOrBootstrap.faviconUrl || (typeof fav === "string" ? fav : fav?.url) || (logo ? thumbUrl(logo, 160) : "");
     if (faviconUrl) {
-      faviconLink = document.head.querySelector("link[rel='icon']") || document.createElement("link");
+      const faviconLink = document.head.querySelector("link[rel='icon']") || document.createElement("link");
       faviconLink.rel = "icon";
       faviconLink.href = faviconUrl;
       if (!faviconLink.parentNode) document.head.appendChild(faviconLink);
@@ -89,5 +96,5 @@ export function useDocumentMeta(storeOrBootstrap) {
     return () => {
       document.title = previousTitle;
     };
-  }, [storeOrBootstrap]);
+  }, [storeOrBootstrap, page]);
 }

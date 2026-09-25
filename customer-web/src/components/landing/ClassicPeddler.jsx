@@ -19,6 +19,9 @@ export default function ClassicPeddler({ landing, store, menuPath, onBookTable }
         <a className="wordmark" href="#top" aria-label={`${c.name} home`}>
           <Wordmark c={c} />
         </a>
+        <Link className="nav-order nav-order-mobile" to={menuPath}>
+          Order
+        </Link>
         <button className="menu-toggle" type="button" aria-expanded={navOpen} aria-controls="site-nav" onClick={() => setNavOpen((v) => !v)}>
           Menu <span aria-hidden="true">{navOpen ? "−" : "+"}</span>
         </button>
@@ -54,7 +57,7 @@ export default function ClassicPeddler({ landing, store, menuPath, onBookTable }
           <div className="hero-art reveal">
             <div className="sun-disc" />
             <Link className="hero-image-frame" to={menuPath} aria-label={`Order from ${c.name}`}>
-              <Photo srcs={c.heroImages} alt={c.heroAlt} />
+              <Photo w={1280} eager srcs={c.heroImages} alt={c.heroAlt} />
             </Link>
             {c.heroNote ? <p className="scribble">{c.heroNote}</p> : null}
             <span className="hero-sticker">{c.heroBadge}</span>

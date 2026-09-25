@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { useStorefront } from "../hooks/useStorefront";
 import { useDocumentMeta, useThemeVars } from "../hooks/useThemeVars";
 import { useCart } from "../hooks/useCart";
@@ -7,8 +7,11 @@ import StoreShell from "../components/StoreShell";
 import LoadingSkeleton from "../components/LoadingSkeleton";
 import Message from "../components/Message";
 import LandingTemplate from "../components/LandingTemplates";
+import OrderConfirmation from "../components/OrderConfirmation";
+import ConsentBanner from "../components/ConsentBanner";
+import { hasAnalytics, readConsent, startAnalytics, trackPage, trackPurchase, writeConsent } from "../lib/analytics";
 import LegalPage from "./LegalPage";
-import { landingRoute } from "../lib/landingRoute";
+import { landingRoute, legalPath } from "../lib/landingRoute";
 import { startCheckout, verifyCheckout } from "../lib/api";
 
 /** Cashfree JS v3, loaded on demand. Resolves null if it cannot load. */
@@ -60,12 +63,14 @@ const writePending = (slug, id) => {
 export default function StorePage({ slug, host }) {
   const identity = useMemo(() => ({ slug, host }), [slug, host]);
   const { bootstrap, store, error, loading } = useStorefront(identity);
-  const route = landingRoute(useLocation().pathname);
+  const { pathname } = useLocation();
+  const route = landingRoute(pathname);
   const { isMenu, homePath, menuPath } = route;
 
   // Bootstrap arrives first, so apply meta/theme from whichever is available.
-  // A legal page names itself; the store's own title would overwrite it.
-  useDocumentMeta(route.legalKey ? null : store || bootstrap);
+  // A legal page names itself; the store's own title would overwrite it. The
+  // menu is "Menu | <store>", as the server-side head says (storeHead.js).
+  useDocumentMeta(route.legalKey ? null : store || bootstrap, isMenu ? "Menu" : "");
   useThemeVars(store || bootstrap);
 
   const effectiveSlug = store?.store?.slug || bootstrap?.slug || slug || "";
@@ -74,6 +79,8 @@ export default function StorePage({ slug, host }) {
   const [placing, setPlacing] = useState(false);
   const [placeError, setPlaceError] = useState("");
   const [confirmedOrder, setConfirmedOrder] = useState(null);
+  // Back from paying, while the server checks the payment.
+  const [confirming, setConfirming] = useState(false);
 
   /**
    * Idempotency key per checkout attempt — a double-click or a retry after a
@@ -149,11 +156,10 @@ export default function StorePage({ slug, host }) {
     const returned = /^[a-f0-9]{24}$/i.test(params.get("checkout") || "") ? params.get("checkout") : "";
     const id = returned || readPending(effectiveSlug);
     if (!id) return;
-    if (returned) {
-      params.delete("checkout");
-      const qs = params.toString();
-      window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
-    }
+    // ?checkout stays in the address until the customer closes the
+    // confirmation: a refresh shows the thank-you again (the server answers a
+    // settled checkout with the same order), and it can be bookmarked.
+    setConfirming(true);
     confirmCheckout(id).catch((err) => {
       // Unpaid or gone: forget it, and say so if they just came back from paying.
       // "Could not confirm yet" (502): keep it and try again on the next visit.
@@ -161,8 +167,65 @@ export default function StorePage({ slug, host }) {
       if (returned) {
         setPlaceError(err.response?.data?.message || "We could not confirm your payment. Please try again.");
       }
-    });
+    }).finally(() => setConfirming(false));
   }, [effectiveSlug, confirmCheckout]);
+
+  const dismissOrder = () => {
+    setConfirmedOrder(null);
+    const params = new URLSearchParams(window.location.search);
+    if (params.has("checkout")) {
+      params.delete("checkout");
+      const qs = params.toString();
+      window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
+    }
+  };
+  // The store's own analytics (Manage Website), only once the visitor accepts.
+  const analytics = bootstrap?.analytics;
+  const [choice, setChoice] = useState("");
+  const consent = choice || readConsent(effectiveSlug);
+  const tracking = consent === "granted" && hasAnalytics(analytics);
+  useEffect(() => {
+    if (tracking) startAnalytics(analytics);
+  }, [tracking, analytics]);
+  useEffect(() => {
+    if (tracking) trackPage();
+  }, [tracking, pathname]);
+  useEffect(() => {
+    if (!tracking || !confirmedOrder?.orderNumber) return;
+    // The thank-you survives a refresh; the purchase is counted once.
+    const key = `kk_tracked:${confirmedOrder.orderNumber}`;
+    try {
+      if (window.localStorage.getItem(key)) return;
+      window.localStorage.setItem(key, "1");
+    } catch {
+      /* no storage: counted each time it shows */
+    }
+    trackPurchase({
+      id: confirmedOrder.orderNumber,
+      value: confirmedOrder.bills?.totalWithTax,
+      currency: store?.ordering?.currency || "INR",
+    });
+  }, [tracking, confirmedOrder, store]);
+  const banner =
+    effectiveSlug && hasAnalytics(analytics) && !consent ? (
+      <ConsentBanner
+        privacyPath={legalPath(route, "privacy")}
+        onChoice={(v) => {
+          writeConsent(effectiveSlug, v);
+          setChoice(v);
+        }}
+      />
+    ) : null;
+
+  // The thank-you shows over whichever page the customer came back to.
+  const confirmation = confirmedOrder ? (
+    <OrderConfirmation
+      order={confirmedOrder}
+      symbol={store?.ordering?.currencySymbol || bootstrap?.currencySymbol || "₹"}
+      prepTime={store?.ordering?.prepTimeMinutes}
+      onClose={dismissOrder}
+    />
+  ) : null;
 
   if (loading && !bootstrap && !store) return <LoadingSkeleton />;
   if (error && !store) {
@@ -185,15 +248,42 @@ export default function StorePage({ slug, host }) {
   // The legal pages read the full payload's `legal` block; they render the
   // shell straight away and fill in when it lands.
   if (route.legalKey) {
-    return <LegalPage store={store} bootstrap={bootstrap} route={route} />;
+    return (
+      <>
+        <LegalPage store={store} bootstrap={bootstrap} route={route} />
+        {confirmation}
+        {banner}
+      </>
+    );
+  }
+
+  // Only the home page, /menu and the legal pages exist, at the root or under
+  // the /s/<slug> preview mount. nginx already answers anything else 404.
+  const mount = (pathname.match(/^\/s\/[a-z0-9-]+/i) || [""])[0];
+  if (route.base !== mount) {
+    return (
+      <Message icon="🔍" iconSize="text-5xl" title="Page not found">
+        This page does not exist.{" "}
+        <Link to={mount || "/"} className="font-semibold text-slate-800 underline underline-offset-2">
+          Back to the restaurant
+        </Link>
+      </Message>
+    );
   }
 
   const landing = newerLanding(store?.landing, bootstrap?.landing);
   if (!isMenu && landing) {
-    return <LandingTemplate landing={landing} store={store} menuPath={menuPath} slug={effectiveSlug} />;
+    return (
+      <>
+        <LandingTemplate landing={landing} store={store} menuPath={menuPath} slug={effectiveSlug} />
+        {confirmation}
+        {banner}
+      </>
+    );
   }
 
   return (
+    <>
     <StoreShell
       homePath={homePath}
       bootstrap={bootstrap}
@@ -202,11 +292,12 @@ export default function StorePage({ slug, host }) {
       cart={cart}
       placing={placing}
       placeError={placeError}
-      notice={placeError}
-      confirmedOrder={confirmedOrder}
-      onDismissOrder={() => setConfirmedOrder(null)}
+      notice={placeError || (confirming ? "Confirming your payment… please don’t pay again." : "")}
       onPlaceOrder={handlePlaceOrder}
     />
+    {confirmation}
+    {banner}
+    </>
   );
 }
 

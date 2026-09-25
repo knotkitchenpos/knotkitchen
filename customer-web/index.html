@@ -2,16 +2,30 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#e2571e" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <link rel="manifest" href="/site.webmanifest" />
     <!--
-      The <title> and <meta description> are set at runtime by the store's
-      WebsiteSettings.branding, so this default is only ever visible during the
-      first paint or when the store cannot be resolved.
+      This page's own head -- title, description, canonical link, Open Graph
+      and Twitter card, the store's icons and its schema.org record -- is put
+      in by nginx for the page asked for (customer-web/nginx.conf, from
+      pos-backend services/storeHead.js), so link previews and search engines
+      that do not run JavaScript see the store, not "Order Online". The block
+      below is only the stand-in when that fails (and in `vite dev`). The app
+      keeps the title in step while the customer moves around.
     -->
+    <!--# block name="head" -->
     <title>Order Online</title>
-    <meta name="description" content="Order delicious food online — powered by Knot Kitchen." />
+    <meta name="description" content="Order delicious food online — powered by KnotKitchen." />
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Order Online" />
+    <meta property="og:image" content="/og-image.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <!--# endblock -->
+    <!--# include virtual="/__head" stub="head" -->
   </head>
   <body>
     <div id="root"></div>

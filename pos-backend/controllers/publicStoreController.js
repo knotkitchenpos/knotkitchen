@@ -172,8 +172,33 @@ const getPublicStoreByDomain = async (req, res, next) => {
         deliveryEnabled: Boolean(settings.ordering?.deliveryEnabled),
         currency: settings.ordering?.currency || restaurant?.currency || "GBP",
         currencySymbol: settings.ordering?.currencySymbol || "£",
+
+        // The owner's analytics IDs (public by nature: they are in every
+        // tracked page). The site loads them only after the visitor consents.
+        analytics: {
+          ga4Id: settings.analytics?.ga4Id || "",
+          metaPixelId: settings.analytics?.metaPixelId || "",
+        },
       },
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/public/store/head — the <head> tags of one store website page
+ * (services/storeHead.js). Called by customer-web's nginx for every page it
+ * serves (an SSI include), with the visitor's host and path in X-Store-Host /
+ * X-Store-Path; ?host= and ?path= work too, for a check by hand.
+ */
+const getStoreHead = async (req, res, next) => {
+  try {
+    const host = String(req.get("x-store-host") || req.query.host || "").slice(0, 253);
+    const path = String(req.get("x-store-path") || req.query.path || "/").slice(0, 500);
+    const html = await require("../services/storeHead").headFor({ host, path });
+    res.set("Cache-Control", "public, max-age=60");
+    res.type("text/html; charset=utf-8").status(200).send(html);
   } catch (error) {
     next(error);
   }
@@ -183,4 +208,5 @@ module.exports = {
   getPublicStoreInfo,
   getPublicStoreMenu,
   getPublicStoreByDomain,
+  getStoreHead,
 };

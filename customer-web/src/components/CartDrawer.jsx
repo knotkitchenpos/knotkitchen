@@ -90,6 +90,21 @@ export default function CartDrawer({
     !placing &&
     (orderType === "pickup" || address.line1.trim());
 
+  // Why "Place order" is greyed out, in words, next to it. (Min order and a
+  // closed service say so above; a mixed basket lists its lines.)
+  const reason =
+    cart.items.length === 0 || placing
+      ? ""
+      : !customer.name.trim()
+        ? "Enter your name to continue."
+        : phoneDigits.length !== 10
+          ? "Enter your 10-digit mobile number."
+          : needsPickupTime && !pickupAt
+            ? "Choose a pickup time."
+            : orderType === "delivery" && !address.line1.trim()
+              ? "Enter your delivery address."
+              : "";
+
   const submit = (e) => {
     e.preventDefault();
     onPlaceOrder({
@@ -346,7 +361,16 @@ export default function CartDrawer({
                 <p>Switch order type above, or remove them from your basket.</p>
               </div>
             ) : null}
-            {error ? <div className="text-sm text-red-600">{error}</div> : null}
+            {error ? (
+              <div role="alert" className="text-sm text-red-600">
+                {error}
+              </div>
+            ) : null}
+            {!error && reason ? (
+              <p role="status" className="text-center text-xs font-medium text-red-600">
+                {reason}
+              </p>
+            ) : null}
 
             <button
               type="submit"

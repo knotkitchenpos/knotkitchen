@@ -92,5 +92,5 @@ test("SOURCE: every landing design and the menu page link the five legal pages",
   for (const key of ["terms", "privacy", "refund-cancellation", "return", "shipping-delivery"]) {
     assert.match(pages, new RegExp(`key: "${key}"`), key);
   }
-  assert.match(WEB("pages", "StorePage.jsx"), /if \(route\.legalKey\) \{\s*return <LegalPage/);
+  assert.match(WEB("pages", "StorePage.jsx"), /if \(route\.legalKey\) \{\s*return \(?\s*(?:<>\s*)?<LegalPage/);
 });

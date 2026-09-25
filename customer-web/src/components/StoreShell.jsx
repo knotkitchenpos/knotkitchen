@@ -4,7 +4,6 @@ import { Link, useLocation } from "react-router-dom";
 import ProductCard from "./ProductCard";
 import ProductModal from "./ProductModal";
 import CartDrawer from "./CartDrawer";
-import OrderConfirmation from "./OrderConfirmation";
 import { thumbUrl } from "../lib/thumbUrl";
 
 // A logo or cover whose file is gone hides instead of showing a broken image.
@@ -37,9 +36,7 @@ export default function StoreShell({
   cart,
   placing,
   placeError,
-  confirmedOrder,
   onPlaceOrder,
-  onDismissOrder,
   notice,
 }) {
   const [selected, setSelected] = useState(null);
@@ -411,15 +408,6 @@ export default function StoreShell({
         placing={placing}
         error={placeError}
       />
-
-      {confirmedOrder ? (
-        <OrderConfirmation
-          order={confirmedOrder}
-          symbol={symbol}
-          prepTime={ordering.prepTimeMinutes}
-          onClose={onDismissOrder}
-        />
-      ) : null}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { thumbUrl } from "../../lib/thumbUrl";
 import "./styles/shared.css";
 import { Link, useLocation } from "react-router-dom";
 import { telHref } from "./content";
@@ -16,7 +17,7 @@ export function Wordmark({ c, markClass = "", plain = false }) {
   return (
     <>
       {c.logo ? (
-        <img src={c.logo} alt="" className="kkt-logo" onError={(e) => { e.currentTarget.style.display = "none"; }} />
+        <img src={thumbUrl(c.logo, 320)} alt="" className="kkt-logo" onError={(e) => { e.currentTarget.style.display = "none"; }} />
       ) : null}
       {plain ? (
         c.name
@@ -126,8 +127,10 @@ export function PoweredBy({ className = "powered" }) {
  * missing (deleted, or never finished uploading); the page should show the
  * next photo rather than a broken-image icon in the hero.
  */
-export function Photo({ srcs, alt = "", className }) {
-  const list = (srcs || []).filter(Boolean);
+export function Photo({ srcs, alt = "", className, w = 640, eager = false }) {
+  // The backend's smaller copy of an uploaded photo (a hero 1280 wide, a dish
+  // 640); a missing one falls through to the next source like any other.
+  const list = (srcs || []).filter(Boolean).map((u) => thumbUrl(u, w));
   const key = list.join("|");
   const [i, setI] = useState(0);
   useEffect(() => setI(0), [key]);
@@ -137,6 +140,7 @@ export function Photo({ srcs, alt = "", className }) {
       src={list[Math.min(i, list.length - 1)]}
       alt={alt}
       className={className}
+      loading={eager ? undefined : "lazy"}
       onError={() => setI((n) => (n < list.length - 1 ? n + 1 : n))}
     />
   );

@@ -554,6 +554,19 @@ const updateWebsiteSettings = async (req, res, next) => {
       }
     }
 
+    // ---- Visitor analytics (live on save; the website asks consent first) ----
+    if (body.analytics && typeof body.analytics === "object") {
+      const ga4Id = String(body.analytics.ga4Id || "").trim().toUpperCase();
+      const metaPixelId = String(body.analytics.metaPixelId || "").trim();
+      if (ga4Id && !/^G-[A-Z0-9]{4,15}$/.test(ga4Id)) {
+        return next(createHttpError(400, "The Google Analytics ID looks like G-XXXXXXXXXX."));
+      }
+      if (metaPixelId && !/^\d{6,20}$/.test(metaPixelId)) {
+        return next(createHttpError(400, "The Meta Pixel ID is numbers only."));
+      }
+      settings.analytics = { ga4Id, metaPixelId };
+    }
+
     // ---- Legal pages ----
     // Numbers are windows in hours/days; a blank or zero means "default".
     if (body.legal && typeof body.legal === "object") {

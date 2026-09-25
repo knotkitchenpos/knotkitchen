@@ -10,7 +10,8 @@ const path = require("path");
  * made once, on the first request, and kept next to the original
  * (`<file>.w320.webp`). Anything else falls through to the original file.
  */
-const WIDTHS = new Set([160, 320, 640]);
+// 1280 for a website's hero photo.
+const WIDTHS = new Set([160, 320, 640, 1280]);
 const IMAGE = /\.(webp|png|jpe?g)$/i;
 
 const imageThumbnail = (root) => {

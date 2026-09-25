@@ -369,6 +369,35 @@ const WebsiteSettings = () => {
               onChange={(v) => patch("enabled", v)}
             />
 
+            <div className="rounded-2xl border border-[#E2E8F0] bg-white p-4 space-y-3">
+              <div>
+                <p className="text-sm font-bold text-[#0F172A]">Visitor analytics</p>
+                <p className="text-xs text-[#94A3B8]">
+                  Optional. Your website asks each visitor first (a cookie banner) and loads nothing until they
+                  accept. Applies as soon as you save.
+                </p>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-4">
+                <Field label="Google Analytics 4 ID" hint="Looks like G-XXXXXXXXXX (Admin › Data streams).">
+                  <input
+                    className={inputClass}
+                    placeholder="G-XXXXXXXXXX"
+                    value={settings.analytics?.ga4Id || ""}
+                    onChange={(e) => patch("analytics.ga4Id", e.target.value.trim())}
+                  />
+                </Field>
+                <Field label="Meta Pixel ID" hint="Numbers only (Events Manager › Data sources).">
+                  <input
+                    className={inputClass}
+                    inputMode="numeric"
+                    placeholder="123456789012345"
+                    value={settings.analytics?.metaPixelId || ""}
+                    onChange={(e) => patch("analytics.metaPixelId", e.target.value.trim())}
+                  />
+                </Field>
+              </div>
+            </div>
+
             {/* Custom Domain Section (Module 2) */}
             <div className="mt-5 p-4 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-3">
               <div className="flex items-center justify-between">

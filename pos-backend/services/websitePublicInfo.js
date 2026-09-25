@@ -39,7 +39,8 @@ const mergedContact = (settings = {}, restaurant = null) => {
       clean(c.mapUrl) ||
       clean(restaurant?.mapsLink) ||
       clean(restaurant?.googleBusinessUrl) ||
-      mapsSearchUrl([restaurant?.name, addressLine1, addressLine2, city, postalCode]),
+      // Only with an address to search for; the name alone finds anyone.
+      (addressLine1 || city ? mapsSearchUrl([restaurant?.name, addressLine1, addressLine2, city, postalCode]) : ""),
     social: {
       facebook: clean(c.social?.facebook),
       instagram: clean(c.social?.instagram),

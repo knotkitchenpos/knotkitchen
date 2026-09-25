@@ -4,6 +4,7 @@ const {
   getPublicStoreInfo,
   getPublicStoreMenu,
   getPublicStoreByDomain,
+  getStoreHead,
 } = require("../controllers/publicStoreController");
 const { rateLimit, clientIp } = require("../middlewares/rateLimiter");
 const config = require("../config/config");
@@ -26,6 +27,17 @@ const bootstrapLimiter = rateLimit({
   max: config.storefrontReadRateMax,
   keyGenerator: (req) => `by-domain:${req.params.slug || req.params.storeId || clientIp(req)}`,
 });
+
+// Every page of every store website asks for its <head> through its nginx
+// (one caller address), so this is limited per store host, not per client.
+const headLimiter = rateLimit({
+  windowMs: config.storefrontReadRateWindowMs,
+  max: config.storefrontReadRateMax * 4,
+  keyGenerator: (req) => `store-head:${String(req.get("x-store-host") || req.query.host || clientIp(req)).toLowerCase()}`,
+});
+
+// Before /store/:storeId, which would otherwise take "head" as a store id.
+router.get("/store/head", headLimiter, getStoreHead);
 
 // Legacy 6-digit endpoints (kept for backwards compatibility with QR codes /
 // receipts printed with the numeric store id).

@@ -536,6 +536,12 @@ const websiteSettingsSchema = new mongoose.Schema(
     theme: { type: themeSettingsSchema, default: () => ({}) },
     ordering: { type: orderingSchema, default: () => ({}) },
     contact: { type: contactSchema, default: () => ({}) },
+    // The owner's own visitor analytics. Live when saved (not a published
+    // field); the website asks the visitor's consent before loading them.
+    analytics: {
+      ga4Id: { type: String, default: "", maxlength: 20 },
+      metaPixelId: { type: String, default: "", maxlength: 20 },
+    },
     legal: { type: legalSchema, default: () => ({}) },
     offers: { type: [offerSchema], default: [] },
     openingHours: { type: [openingHourSchema], default: [] },
