@@ -17,7 +17,7 @@ const GroupDrawer = ({
   deleteGroupMut,
   askConfirm,
   handleDeleteGroup,
-  setCustomCreatedGroups,
+  saveStandaloneGroupMut,
   onClose,
 }) => {
   const [editingCompIndex, setEditingCompIndex] = useState(null);
@@ -347,12 +347,11 @@ const GroupDrawer = ({
                     return;
                   }
                 }
-                // §Groups: a group may now be created / edited WITHOUT
-                // being attached to any product. Standalone groups live
-                // in the local `customCreatedGroups` registry so they
-                // still appear in the Groups list and in the "Bulk Add
-                // Group" picker — the operator can attach them later
-                // from Products → Select → Manage → Add Group.
+                // §Groups: a group may be created / edited WITHOUT being
+                // attached to any product. It is saved to the store's group
+                // list on the server, so it appears in the Groups list and
+                // the "Bulk Add Group" picker on every device -- attach it
+                // later from Products → Select → Manage → Add Group.
                 const trimmedName = groupName.trim();
                 // "Single" is a cap of one by definition. "Multiple" only
                 // carries a cap when Maximum Selection is switched on;
@@ -366,32 +365,30 @@ const GroupDrawer = ({
                 }));
   
                 if (!assignedDishIds || assignedDishIds.size === 0) {
-                  // Register (or update) the group locally — no server
-                  // call needed since it isn't attached to any product
-                  // yet. If the operator was renaming an existing
-                  // standalone group we also drop the old key so the
-                  // list doesn't show duplicates.
-                  setCustomCreatedGroups((prev) => {
-                    const next = { ...prev };
-                    if (editingGroup && editingGroup.name && editingGroup.name !== trimmedName) {
-                      delete next[editingGroup.name];
-                    }
-                    next[trimmedName] = {
-                      name: trimmedName,
+                  // No products yet: saved to the store's list only. A
+                  // rename drops the old name (the server keeps it while
+                  // products still carry it).
+                  saveStandaloneGroupMut.mutate(
+                    {
+                      groupName: trimmedName,
+                      oldGroupName: editingGroup ? editingGroup.name : undefined,
                       required: Boolean(groupRequired),
                       maxSelectionEnabled: capOn,
                       maxSelections: normalizedMax,
                       options: normalizedOptions,
-                    };
-                    return next;
-                  });
-                  enqueueSnackbar(
-                    editingGroup
-                      ? `Group "${trimmedName}" updated. Attach it to products from the Products tab when you're ready.`
-                      : `Group "${trimmedName}" created. Attach it to products from the Products tab when you're ready.`,
-                    { variant: "success" },
+                    },
+                    {
+                      onSuccess: () => {
+                        enqueueSnackbar(
+                          editingGroup
+                            ? `Group "${trimmedName}" updated. Attach it to products from the Products tab when you're ready.`
+                            : `Group "${trimmedName}" created. Attach it to products from the Products tab when you're ready.`,
+                          { variant: "success" },
+                        );
+                        onClose();
+                      },
+                    },
                   );
-                  onClose();
                   return;
                 }
   
@@ -405,7 +402,7 @@ const GroupDrawer = ({
                   dishIds: Array.from(assignedDishIds),
                 });
               }}
-              disabled={saveGroupMut.isPending}
+              disabled={saveGroupMut.isPending || saveStandaloneGroupMut?.isPending}
               className="w-full h-[46px] rounded-xl bg-[#0F172A] text-white text-[14px] font-extrabold shadow-lg hover:bg-[#1E293B] disabled:opacity-50"
             >
               {saveGroupMut.isPending ? "Saving Group…" : "Save Changes"}

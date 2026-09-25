@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
-import { readStoreScoped, writeStoreScoped } from "../../utils/storeSession";
 import { capOf } from "../../utils/modifierGroups";
 import { thumbUrl } from "../../utils";
 import {
@@ -23,6 +22,8 @@ import {
   deleteGroupFromDishes,
   toggleGroupActive,
   reorderGroups,
+  getMenuGroups,
+  saveMenuGroup,
   reorderDishes,
   reorderMenus,
   unpublishMenu,
@@ -134,20 +135,13 @@ const ManageMenu = () => {
   const { data: menusRes, isLoading } = useQuery({ queryKey: ["menus"], queryFn: getMenus });
   const menus = menusRes?.data?.data || [];
 
-  // Persisted registry of created groups so newly-created groups show up
-  // in the "Assign Groups / Components" list immediately, even before they
-  // are attached to any product.
-  // Scoped to the ACTIVE STORE. Under a bare key the browser handed the same
-  // groups to every store, so a newly created takeaway opened with the
-  // previous one's groups already listed and editing them changed both.
-  const [customCreatedGroups, setCustomCreatedGroups] = useState(() => {
-    const parsed = readStoreScoped("kk_custom_groups", {});
-    return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed) ? parsed : {};
-  });
-
-  useEffect(() => {
-    writeStoreScoped("kk_custom_groups", customCreatedGroups);
-  }, [customCreatedGroups]);
+  // The store's group list, from the server, so every device shows the same
+  // groups -- including ones not attached to any product yet. It used to be
+  // kept in each device's browser (kk_custom_groups): a group deleted on the
+  // laptop stayed listed on the tablet, and one created with no products
+  // never reached the other devices.
+  const { data: groupsRes } = useQuery({ queryKey: ["menu-groups"], queryFn: getMenuGroups });
+  const savedGroups = useMemo(() => (Array.isArray(groupsRes?.data?.data) ? groupsRes.data.data : []), [groupsRes]);
 
   /*
    * Real-time reflection guard.
@@ -209,8 +203,8 @@ const ManageMenu = () => {
   const allGroupsMap = useMemo(() => {
     const map = new Map();
 
-    // 1. Seed with custom created groups so unattached groups are visible
-    Object.values(customCreatedGroups).forEach((g) => {
+    // 1. Seed with the store's list so groups with no products are visible
+    savedGroups.forEach((g) => {
       if (!g || !g.name) return;
       map.set(g.name, {
         name: g.name,
@@ -263,7 +257,7 @@ const ManageMenu = () => {
       });
     });
     return map;
-  }, [menus, customCreatedGroups]);
+  }, [menus, savedGroups]);
 
   // Ordered by the persisted sortOrder the reorder endpoint writes. The list
   // used to come out in Map-insertion order, so a reorder reported success and
@@ -274,19 +268,8 @@ const ManageMenu = () => {
 
   const saveGroupMut = useMutation({
     mutationFn: saveGroupToDishes,
-    onSuccess: (res, variables) => {
+    onSuccess: (res) => {
       enqueueSnackbar(res?.data?.message || "Group saved!", { variant: "success" });
-      if (variables?.groupName) {
-        setCustomCreatedGroups((prev) => ({
-          ...prev,
-          [variables.groupName]: {
-            name: variables.groupName,
-            required: Boolean(variables.required),
-            maxSelections: Number(variables.maxSelections) || 1,
-            options: Array.isArray(variables.options) ? variables.options : [],
-          },
-        }));
-      }
       invalidate();
       setShowManageGroup(false);
       setEditingGroup(null);
@@ -294,23 +277,19 @@ const ManageMenu = () => {
     onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to save group", { variant: "error" }),
   });
 
+  // A group with no products yet: saved to the store's list only.
+  const saveStandaloneGroupMut = useMutation({
+    mutationFn: saveMenuGroup,
+    onSuccess: () => invalidate(),
+    onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to save group", { variant: "error" }),
+  });
+
+  // Deletes from the products AND the store's list (bulk sends groupNames,
+  // the single Delete button groupName), so every device drops it.
   const deleteGroupMut = useMutation({
     mutationFn: deleteGroupFromDishes,
-    onSuccess: (res, variables) => {
+    onSuccess: (res) => {
       enqueueSnackbar(res?.data?.message || "Group deleted!", { variant: "success" });
-      // Bulk sends groupNames, the single Delete button sends groupName.
-      // Missing the array form here left deleted groups showing in the list
-      // until the next refetch.
-      const removed = Array.isArray(variables?.groupNames)
-        ? variables.groupNames
-        : [variables?.groupName].filter(Boolean);
-      if (removed.length > 0) {
-        setCustomCreatedGroups((prev) => {
-          const next = { ...prev };
-          removed.forEach((name) => delete next[name]);
-          return next;
-        });
-      }
       invalidate();
       setShowManageGroup(false);
       setActiveGroup(null);
@@ -360,23 +339,9 @@ const ManageMenu = () => {
       message: msg,
       confirmLabel: "Delete Group",
       tone: "danger",
-      onConfirm: () => {
-        if (attachedCount === 0) {
-          // Standalone group — it only lives in the local custom registry,
-          // so there's nothing to hit on the server. Remove it locally.
-          setCustomCreatedGroups((prev) => {
-            const next = { ...prev };
-            delete next[targetGroup.name];
-            return next;
-          });
-          enqueueSnackbar(`Group "${targetGroup.name}" deleted.`, { variant: "success" });
-          setShowManageGroup(false);
-          setActiveGroup(null);
-          setEditingGroup(null);
-          return;
-        }
-        deleteGroupMut.mutate({ groupName: targetGroup.name });
-      },
+      // Always the server, even with no products: the group is on the
+      // store's list, which every device reads.
+      onConfirm: () => deleteGroupMut.mutate({ groupName: targetGroup.name }),
     });
   };
 
@@ -390,6 +355,7 @@ const ManageMenu = () => {
   // showing a just-deleted / just-hidden product until the next reload.
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["menus"], exact: true });
+    qc.invalidateQueries({ queryKey: ["menu-groups"] });
     qc.invalidateQueries({ queryKey: ["popular-items"] });
     // Kick a background refetch immediately so the drawer / list re-renders
     // with the new data as soon as the mutation resolves.
@@ -1818,7 +1784,7 @@ const ManageMenu = () => {
         deleteGroupMut={deleteGroupMut}
         askConfirm={askConfirm}
         handleDeleteGroup={handleDeleteGroup}
-        setCustomCreatedGroups={setCustomCreatedGroups}
+        saveStandaloneGroupMut={saveStandaloneGroupMut}
         onClose={() => {
           setShowManageGroup(false);
           setEditingGroup(null);

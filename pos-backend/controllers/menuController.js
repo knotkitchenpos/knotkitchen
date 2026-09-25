@@ -1,5 +1,6 @@
 const crypto = require("crypto");
 const Menu = require("../models/menuModel");
+const MenuGroup = require("../models/menuGroupModel");
 const createHttpError = require("http-errors");
 const mongoose = require("mongoose");
 const { logActivity } = require("../services/auditService");
@@ -481,6 +482,90 @@ const updateDish = async (req, res, next) => {
 
 
 // ===== Modifier Groups =====
+// ---------------------------------------------------------------------------
+// The store's group list (models/menuGroupModel). Every device reads it from
+// here, so a group created, changed or deleted on one shows on all of them.
+// ---------------------------------------------------------------------------
+
+/** Keep the list entry for a group. `overwrite:false` only creates a missing one. */
+const keepGroup = async (scope, name, fields, { overwrite = true } = {}) => {
+  const exists = await MenuGroup.exists({ ...scope, name });
+  if (exists && !overwrite) return;
+  const sortOrder = exists ? undefined : await MenuGroup.countDocuments(scope);
+  try {
+    await MenuGroup.updateOne(
+      { ...scope, name },
+      exists ? { $set: fields } : { $set: fields, $setOnInsert: { sortOrder } },
+      { upsert: true },
+    );
+  } catch (err) {
+    // Two devices creating the same group at once: the other one won.
+    if (err?.code !== 11000) throw err;
+    if (overwrite) await MenuGroup.updateOne({ ...scope, name }, { $set: fields });
+  }
+};
+
+const groupView = (g) => ({
+  name: g.name,
+  required: Boolean(g.required),
+  maxSelectionEnabled: g.maxSelectionEnabled === true,
+  maxSelections: Number(g.maxSelections) || 1,
+  options: (g.options || []).map((o) => ({ name: o.name, price: Number(o.price) || 0 })),
+  isActive: g.isActive !== false,
+  sortOrder: Number(g.sortOrder) || 0,
+});
+
+const cleanOptions = (options) =>
+  options.map((o) => {
+    if (!o || !o.name || !String(o.name).trim()) {
+      throw createHttpError(400, "Component name is required!");
+    }
+    const p = Number(o.price);
+    if (!Number.isFinite(p) || p < 0) {
+      throw createHttpError(400, `Price for component "${o.name}" must be numeric and cannot be negative!`);
+    }
+    return { name: String(o.name).trim(), price: p };
+  });
+
+// GET /api/menu/groups — every group this store has, attached to products or not.
+const listMenuGroups = async (req, res, next) => {
+  try {
+    const rows = await MenuGroup.find(menuScopeFor(req.user)).sort({ sortOrder: 1, name: 1 }).lean();
+    res.status(200).json({ success: true, data: rows.map(groupView) });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/menu/group/library { groupName, oldGroupName?, required,
+ * maxSelectionEnabled, maxSelections, options } — a group with no products
+ * yet (created or edited in Manage Menu). Attaching it later goes through
+ * /group as before.
+ */
+const saveMenuGroup = async (req, res, next) => {
+  try {
+    const name = String(req.body?.groupName || "").trim();
+    if (!name) return next(createHttpError(400, "Group Name is required!"));
+    if (!Array.isArray(req.body?.options)) return next(createHttpError(400, "Components options array is required!"));
+    const scope = menuScopeFor(req.user);
+    await keepGroup(scope, name, {
+      required: Boolean(req.body.required),
+      ...normalizeCap(req.body),
+      options: cleanOptions(req.body.options),
+    });
+    const old = String(req.body?.oldGroupName || "").trim();
+    // Renamed: the old name goes, unless products still carry it.
+    if (old && old !== name) {
+      const stillUsed = await Menu.exists({ ...scope, "items.modifierGroups.name": old });
+      if (!stillUsed) await MenuGroup.deleteOne({ ...scope, name: old });
+    }
+    res.status(200).json({ success: true, message: `Group "${name}" saved.` });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const bulkAddGroupToDishes = async (req, res, next) => {
   try {
     const { groupName, dishIds, required, maxSelections, options } = req.body;
@@ -537,6 +622,13 @@ const bulkAddGroupToDishes = async (req, res, next) => {
       }
       if (modified) await menu.save();
     }
+
+    await keepGroup(
+      menuScopeFor(req.user),
+      String(groupName).trim(),
+      { required: Boolean(required), ...normalizeCap(req.body), options: normalizedOptions },
+      { overwrite: false },
+    );
 
     res.status(200).json({ success: true, message: `Group "${groupName}" added to ${count} product(s)!` });
   } catch (error) {
@@ -604,16 +696,7 @@ const saveModifierGroupToDishes = async (req, res, next) => {
       );
     }
 
-    const validatedOptions = options.map((o) => {
-      if (!o.name || !String(o.name).trim()) {
-        throw createHttpError(400, "Component name is required!");
-      }
-      const p = Number(o.price);
-      if (!Number.isFinite(p) || p < 0) {
-        throw createHttpError(400, `Price for component "${o.name}" must be numeric and cannot be negative!`);
-      }
-      return { name: String(o.name).trim(), price: p };
-    });
+    const validatedOptions = cleanOptions(options);
 
     const dishIdSet = new Set(normalizedDishIds);
 
@@ -660,6 +743,12 @@ const saveModifierGroupToDishes = async (req, res, next) => {
       }
       if (modified) await menu.save();
     }
+
+    await keepGroup(menuScopeFor(req.user), String(groupName).trim(), {
+      required: Boolean(required),
+      ...normalizeCap(req.body),
+      options: validatedOptions,
+    });
 
     res.status(200).json({
       success: true,
@@ -716,6 +805,8 @@ const deleteGroupFromDishes = async (req, res, next) => {
     await Menu.updateMany(scope, {
       $pull: { "items.$[].modifierGroups": { name: { $in: names } } },
     });
+    // And off the store's list, so no device shows it any more.
+    await MenuGroup.deleteMany({ ...scope, name: { $in: names } });
 
     const label = names.length === 1 ? `Group "${names[0]}"` : `${names.length} groups`;
     res.status(200).json({
@@ -755,6 +846,8 @@ const toggleGroupActiveInDishes = async (req, res, next) => {
       if (modified) await menu.save();
     }
 
+    await MenuGroup.updateOne({ ...menuScopeFor(req.user), name: groupName.trim() }, { $set: { isActive: Boolean(isActive) } });
+
     res.status(200).json({ success: true, message: `Group "${groupName}" status updated!`, count });
   } catch (error) {
     next(error);
@@ -786,6 +879,12 @@ const reorderGroupsInDishes = async (req, res, next) => {
       }
       if (modified) await menu.save();
     }
+
+    const scope = menuScopeFor(req.user);
+    const writes = [...orderMap].map(([name, sortOrder]) => ({
+      updateOne: { filter: { ...scope, name }, update: { $set: { sortOrder } } },
+    }));
+    if (writes.length) await MenuGroup.bulkWrite(writes);
 
     res.status(200).json({ success: true, message: "Groups reordered successfully!" });
   } catch (error) {
@@ -1170,6 +1269,8 @@ module.exports = {
   reorderGroupsInDishes,
   bulkAddGroupToDishes,
   bulkRemoveGroupFromDishes,
+  listMenuGroups,
+  saveMenuGroup,
   publishMenu,
   unpublishMenu,
   publishAllMenusForUser,

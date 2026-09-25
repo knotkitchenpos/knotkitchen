@@ -70,6 +70,7 @@ const loadController = (MenuMock) => {
   const orig = Module._load;
   Module._load = function (r) {
     if (r === "../models/menuModel") return MenuMock;
+    if (r === "../models/menuGroupModel") return MenuMock.groups || { deleteMany: async () => ({}) };
     if (r === "../services/auditService") return { logActivity: async () => {} };
     return orig.apply(this, arguments);
   };

@@ -134,7 +134,19 @@ test("REGRESSION: the e-bill quotes the order number, not the session code", () 
 // Per-store local lists
 // ---------------------------------------------------------------------------
 
-test("REGRESSION: locally-created groups and areas are scoped to one store", () => {
+test("REGRESSION: the modifier group list is the server's, the same on every device", () => {
+  // Kept in each device's browser, a group deleted on the laptop stayed on
+  // the tablet, and one created with no products never reached the others.
+  const mm = FE("src", "components", "dashboard", "ManageMenu.jsx");
+  assert.match(mm, /queryKey: \["menu-groups"\], queryFn: getMenuGroups/);
+  assert.doesNotMatch(mm, /writeStoreScoped\("kk_custom_groups"/);
+  assert.match(mm, /onConfirm: \(\) => deleteGroupMut\.mutate\(\{ groupName: targetGroup\.name \}\)/, "delete always reaches the server");
+  assert.doesNotMatch(FE("src", "components", "dashboard", "manageMenu", "GroupDrawer.jsx"), /setCustomCreatedGroups/);
+  const ctrl = SRC("controllers/menuController.js");
+  assert.match(ctrl, /await MenuGroup\.deleteMany\(\{ \.\.\.scope, name: \{ \$in: names \} \}\)/);
+});
+
+test("REGRESSION: locally-created areas are scoped to one store", () => {
   // Stored under a bare key, the browser handed the same list to every store:
   // a newly created takeaway opened with the previous one's groups already in
   // it, and editing them changed both.
@@ -143,7 +155,6 @@ test("REGRESSION: locally-created groups and areas are scoped to one store", () 
   assert.match(store, /localStorage\.getItem\(key\)/, "old unscoped values still readable once");
 
   for (const [f, key] of [
-    [["src", "components", "dashboard", "ManageMenu.jsx"], "kk_custom_groups"],
     [["src", "pages", "Tables.jsx"], "kk_custom_areas"],
   ]) {
     const src = FE(...f);

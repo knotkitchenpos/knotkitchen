@@ -31,7 +31,7 @@ const INVALIDATE_ON = {
   newOrder: ["orders", "tables", "kds-orders", "popular-items"],
   "onlineOrder:created": ["orders", "kds-orders"],
   "onlineOrder:status": ["orders", "kds-orders", "tables"],
-  "menu:updated": ["menus", "popular-items", "store-properties"],
+  "menu:updated": ["menus", "menu-groups", "popular-items", "store-properties"],
   tableSessionUpdated: ["tables", "orders"],
   waiterCall: ["tables"],
   "tableBooking:created": ["table-bookings"],

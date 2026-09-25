@@ -19,6 +19,8 @@ const {
   reorderGroupsInDishes,
   bulkAddGroupToDishes,
   bulkRemoveGroupFromDishes,
+  listMenuGroups,
+  saveMenuGroup,
   publishMenu,
   unpublishMenu,
   publishSystemCache,
@@ -35,6 +37,8 @@ const { requireProtectedAction } = require("../middlewares/requirePermission");
 const router = express.Router();
 
 router.route("/").get(isVerifiedUser, getMenus);
+// The store's modifier groups, the same on every device.
+router.route("/groups").get(isVerifiedUser, listMenuGroups);
 router.route("/category").post(isVerifiedUser, requireProtectedAction, addCategory);
 router.route("/category").put(isVerifiedUser, requireProtectedAction, updateCategory);
 router.route("/subcategory").post(isVerifiedUser, requireProtectedAction, addSubcategory);
@@ -50,6 +54,7 @@ router.route("/group/toggle-active").post(isVerifiedUser, requireProtectedAction
 router.route("/group/reorder").put(isVerifiedUser, requireProtectedAction, reorderGroupsInDishes);
 router.route("/group/bulk-add").post(isVerifiedUser, requireProtectedAction, bulkAddGroupToDishes);
 router.route("/group/bulk-remove").post(isVerifiedUser, requireProtectedAction, bulkRemoveGroupFromDishes);
+router.route("/group/library").post(isVerifiedUser, requireProtectedAction, saveMenuGroup);
 
 // CSV Import / Export (Module 5)
 router.route("/csv/export").get(isVerifiedUser, exportCsv);

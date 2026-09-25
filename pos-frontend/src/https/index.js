@@ -208,6 +208,9 @@ export const bulkAddGroup = (data) =>
   axiosWrapper.post("/api/menu/group/bulk-add", data);
 export const bulkRemoveGroup = (data) =>
   axiosWrapper.post("/api/menu/group/bulk-remove", data);
+// The store's group list, the same on every device (groups with no products too).
+export const getMenuGroups = () => axiosWrapper.get("/api/menu/groups");
+export const saveMenuGroup = (data) => axiosWrapper.post("/api/menu/group/library", data);
 
 // Menu Versioning & Publishing Endpoints
 export const publishMenu = (menuId) => axiosWrapper.put(`/api/menu/${menuId}/publish`);
