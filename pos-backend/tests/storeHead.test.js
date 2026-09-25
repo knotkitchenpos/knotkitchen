@@ -26,7 +26,8 @@ const store = (over = {}) => ({
   },
 });
 
-const head = (p, result = store()) => buildHead({ host: "148379.knotkitchen.com", path: p, result });
+// Every photo "exists" unless a test says otherwise.
+const head = (p, result = store(), exists = () => true) => buildHead({ host: "148379.knotkitchen.com", path: p, result, exists });
 
 test("each page has its own title and description", () => {
   const home = head("/");
@@ -49,6 +50,15 @@ test("link previews: an absolute photo at a size WhatsApp takes, the canonical U
   // No photo at all: the site's own preview image.
   const bare = head("/", store({ landing: {}, branding: {} }));
   assert.match(bare, /og:image" content="https:\/\/148379\.knotkitchen\.com\/og-image\.png"/);
+});
+
+test("REGRESSION: a photo whose file is gone is skipped for the next, never a preview that 404s", () => {
+  const gone = (url) => !/hero\.webp/.test(url);
+  const h = head("/", store({ branding: { coverImage: { url: "https://api.knotkitchen.com/uploads/1/general/cover.webp" }, logo: { url: "https://api.knotkitchen.com/uploads/1/logo/a.png" } } }), gone);
+  assert.match(h, /og:image" content="https:\/\/api\.knotkitchen\.com\/uploads\/1\/general\/cover\.webp\?w=1280"/);
+  const none = head("/", store(), () => false);
+  assert.match(none, /og:image" content="https:\/\/148379\.knotkitchen\.com\/og-image\.png"/);
+  assert.doesNotMatch(none, /rel="icon"/, "no icon rather than a broken one");
 });
 
 test("the store's icon is its logo when it has no favicon", () => {

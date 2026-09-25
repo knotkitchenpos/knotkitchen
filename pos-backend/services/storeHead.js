@@ -12,6 +12,8 @@
  * around (customer-web/src/hooks/useThemeVars.js).
  */
 
+const fs = require("fs");
+const path = require("path");
 const { resolveStorefront } = require("./storefrontResolver");
 const { mergedContact } = require("./websitePublicInfo");
 
@@ -57,12 +59,38 @@ const parsePath = (raw) => {
 /** An uploaded photo at a size a preview can fetch quickly; other URLs as they are. */
 const sized = (url, w) => (/\/uploads\/[^?]+\.(webp|png|jpe?g)$/i.test(url || "") ? `${url}?w=${w}` : url || "");
 
+/**
+ * Whether a photo can actually be served. An upload whose original was
+ * deleted still has its record on the website settings, and its ?w= copy is
+ * made from the original -- a preview pointing at it gets a 404. A photo
+ * stored elsewhere (a URL not under our /uploads) is taken as it is.
+ */
+const servable = (url, w) => {
+  const m = String(url || "").match(/\/uploads\/([^?#]+)$/);
+  if (!m) return Boolean(url);
+  const root = path.resolve(require("../config/config").uploadsDir || "uploads");
+  let file;
+  try {
+    file = path.resolve(root, decodeURIComponent(m[1]));
+  } catch {
+    return false;
+  }
+  if (!file.startsWith(root + path.sep)) return false;
+  return fs.existsSync(file) || fs.existsSync(`${file}.w${w}.webp`);
+};
+
+/** The first photo in the list that can be served, at width w. */
+const firstServable = (urls, w, exists) => {
+  for (const u of urls) if (u && exists(u, w)) return sized(u, w);
+  return "";
+};
+
 const cleanHost = (h) => String(h || "").trim().toLowerCase().replace(/:\d+$/, "").replace(/[^a-z0-9.-]/g, "");
 
 /** The fragment for one page. Never throws: an unknown store gets the defaults, marked noindex. */
-const buildHead = ({ host, path, result }) => {
+const buildHead = ({ host, path: pagePath, result, exists = servable }) => {
   const h = cleanHost(host);
-  const { slug, page, legalKey, cleanPath } = parsePath(path);
+  const { slug, page, legalKey, cleanPath } = parsePath(pagePath);
   const lines = [];
   const meta = (name, content) => content && lines.push(`<meta name="${name}" content="${esc(content)}" />`);
   const prop = (p, content) => content && lines.push(`<meta property="${p}" content="${esc(content)}" />`);
@@ -102,12 +130,11 @@ const buildHead = ({ host, path, result }) => {
         : about;
   const url = `https://${h}${cleanPath === "/" ? "/" : cleanPath}`;
   const image =
-    sized(settings.landing?.backgroundImage?.url, 1280) ||
-    sized(branding.coverImage?.url, 1280) ||
-    sized(branding.logo?.url, 640) ||
+    firstServable([settings.landing?.backgroundImage?.url, branding.coverImage?.url], 1280, exists) ||
+    firstServable([branding.logo?.url], 640, exists) ||
     `https://${h}/og-image.png`;
   const imageAlt = settings.landing?.backgroundImage?.alt || branding.coverImage?.alt || name;
-  const icon = branding.favicon?.url || sized(branding.logo?.url, 160);
+  const icon = firstServable([branding.favicon?.url], 160, exists) || firstServable([branding.logo?.url], 160, exists);
 
   lines.push(`<title>${esc(title)}</title>`);
   meta("description", description);
@@ -118,7 +145,7 @@ const buildHead = ({ host, path, result }) => {
   if (settings.theme?.colors?.primary) meta("theme-color", settings.theme.colors.primary);
   if (icon) {
     lines.push(`<link rel="icon" href="${esc(icon)}" />`);
-    lines.push(`<link rel="apple-touch-icon" href="${esc(sized(branding.logo?.url, 320) || icon)}" />`);
+    lines.push(`<link rel="apple-touch-icon" href="${esc(firstServable([branding.logo?.url], 320, exists) || icon)}" />`);
   }
 
   prop("og:type", "website");
@@ -165,9 +192,9 @@ const buildHead = ({ host, path, result }) => {
 const TTL_MS = 60 * 1000;
 const cache = new Map();
 
-const headFor = async ({ host, path }) => {
+const headFor = async ({ host, path: pagePath }) => {
   const h = cleanHost(host);
-  const { slug, page, legalKey } = parsePath(path);
+  const { slug, page, legalKey } = parsePath(pagePath);
   // A real page's head depends only on the store and which page it is. A path
   // that is not a page names itself in og:url, so it is never cached (nor
   // can junk URLs fill the cache).
@@ -181,7 +208,7 @@ const headFor = async ({ host, path }) => {
   } catch (err) {
     console.warn("[storeHead] resolve failed:", err.message);
   }
-  const html = buildHead({ host: h, path, result });
+  const html = buildHead({ host: h, path: pagePath, result });
   if (cache.size > 5000) cache.clear();
   if (page !== "notfound") cache.set(key, { html, at: Date.now() });
   return html;
