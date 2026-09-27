@@ -21,9 +21,12 @@
 <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="assets/icon-180.png">
-<link rel="stylesheet" href="style.css">
+<link rel="preload" href="assets/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/bricolage-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 
 <header>
   <div class="wrap nav">
@@ -47,49 +50,47 @@
   </div>
 </header>
 
-<main class="wrap legal">
+<main id="main" class="wrap legal">
   <a class="back" href="index.html">&larr; Back to home</a>
   <h1>Refund &amp; Cancellation Policy</h1>
-  <p class="eff">Effective Date: 1st September, 2026</p>
+  <p class="eff">Effective Date: 27th September, 2026</p>
 
   <p>This Refund &amp; Cancellation Policy explains the conditions under which customers may cancel KnotKitchen services or request a refund.</p>
 
   <h2>1. Subscription Cancellation</h2>
-  <p>Customers may request cancellation of their KnotKitchen subscription by contacting KnotKitchen through the applicable support channel.</p>
-  <p>Cancellation may stop future renewals, but cancellation does not automatically entitle the customer to a refund for a subscription period that has already started or been paid for, unless otherwise required by applicable law or expressly agreed by KnotKitchen.</p>
+  <p>A restaurant may cancel its KnotKitchen POS subscription at any time, by itself in the KnotKitchen POS (Billing, owner only) or by written notice to <a href="mailto:support@knotkitchen.com">support@knotkitchen.com</a>.</p>
+  <p>Renewals stop at the end of the current 30-day billing period, and the service keeps working until then. When the cancellation takes effect, the subscription ends and the restaurant's store is marked Closed. Until then, the cancellation can be undone. The account is permanently deleted only if the restaurant asks, and legal and tax records are kept for the period the law requires.</p>
 
-  <h2>2. Refunds for Subscription Services</h2>
-  <p>KnotKitchen subscription fees are generally non-refundable once the subscription has been activated and access to the service has been provided.</p>
-  <p>However, KnotKitchen may consider refund requests on a case-by-case basis in circumstances such as:</p>
+  <h2>2. The KnotKitchen Wallet Is Not Refundable</h2>
+  <p>KnotKitchen charges (the POS Plan, add-ons, tablet rentals, per-order and e-bill charges) are prepaid from the KnotKitchen Wallet. The Wallet can be used only for KnotKitchen charges; it is not transferable and earns no interest.</p>
+  <p>Wallet balance is not refundable, and unused balance is not paid out on cancellation or closure, except:</p>
   <ul>
-    <li>Duplicate payment</li>
-    <li>Payment made in error</li>
-    <li>Technical issues preventing service activation</li>
-    <li>An incorrect charge attributable to KnotKitchen</li>
-    <li>Other exceptional circumstances approved by KnotKitchen</li>
+    <li>a duplicate or erroneous payment (see section 5);</li>
+    <li>where KnotKitchen terminates the service for its own convenience or because of its own breach, in which case the unused balance, and the fees paid for the unused part of the current period, are refunded by bank transfer;</li>
+    <li>a refund for a hardware order that KnotKitchen cancelled, which is paid out by bank transfer on request (see section 4); and</li>
+    <li>where applicable law requires a refund.</li>
   </ul>
 
-  <h2>3. Cancellation Before Activation</h2>
-  <p>If a customer requests cancellation before the relevant service has been activated, KnotKitchen may, at its discretion, provide a refund after deducting any applicable processing, setup, or other charges that have already been incurred.</p>
+  <h2>3. Plan and Add-on Fees</h2>
+  <p>POS Plan and add-on fees for a billing period that has started are not refunded. An add-on that is stopped keeps working until the end of the period already paid.</p>
 
   <h2>4. Hardware Orders</h2>
-  <p>Refunds or cancellations for physical hardware may be subject to the applicable <a href="return.html">Return Policy</a>, order terms, warranty conditions, and shipping status.</p>
-  <p>Once an order has been dispatched, cancellation may not be possible until the product is returned in accordance with the applicable return procedure.</p>
+  <p>A hardware order (tablet or printer) cancelled before KnotKitchen accepts it is refunded in full to the KnotKitchen Wallet. Once KnotKitchen has accepted the order, it can no longer be cancelled by the customer.</p>
+  <p>If KnotKitchen cancels a hardware order that has not been delivered, everything paid for it is refunded in full to the KnotKitchen Wallet, unless the cancellation was caused by the customer (for example, a refused delivery, a wrong address or contact, or a breach of the agreement), in which case the documented costs KnotKitchen actually incurred may be deducted. On request, KnotKitchen pays that refund out by bank transfer instead, to the extent it is still in the Wallet.</p>
+  <p>Printers: KnotKitchen replaces a printer that is dead on arrival or becomes faulty within 7 days of delivery. If KnotKitchen cannot supply a replacement within 15 days of the report, the price is refunded to the original payment method. After those 7 days, the manufacturer's warranty applies, and KnotKitchen will help the customer make the warranty claim.</p>
+  <p>Tablets are rented and remain KnotKitchen's property. Returns and loss or damage are covered by the <a href="return.html">Return Policy</a>.</p>
 
-  <h2>5. Failed or Duplicate Payments</h2>
-  <p>If an amount is successfully debited from a customer's account due to a failed or duplicate transaction, KnotKitchen will investigate the transaction.</p>
-  <p>Where a refund is determined to be applicable, it will generally be processed through the original payment method or applicable payment provider.</p>
+  <h2>5. Failed, Duplicate or Erroneous Payments</h2>
+  <p>If an amount is successfully debited from a customer's account due to a failed or duplicate payment to KnotKitchen, KnotKitchen will investigate the transaction.</p>
+  <p>A failed, duplicate or erroneous payment made to KnotKitchen is refunded to the original payment method. An amount wrongly deducted from the Wallet is credited back to the Wallet.</p>
 
   <h2>6. Refund Processing Time</h2>
   <p>Once a refund is approved, the time taken for the amount to appear in the customer's account may depend on the payment gateway, bank, card issuer, or other financial institution.</p>
 
-  <h2>7. Promotional Plans and Offers</h2>
-  <p>Special promotional pricing, launch offers, discounts, or limited-time plans may have additional terms and may not be refundable unless expressly stated otherwise.</p>
-
-  <h2>8. Service Termination Due to Violation</h2>
+  <h2>7. Service Termination Due to Violation</h2>
   <p>No refund may be provided for services suspended or terminated because of fraud, misuse, violation of these Terms, or other prohibited activities, subject to applicable law.</p>
 
-  <h2>9. How to Request a Refund or Cancellation</h2>
+  <h2>8. How to Request a Refund or Cancellation</h2>
   <p>To request a cancellation or refund, contact:</p>
   <p><strong>KnotKitchen</strong><br>
   Email: <a href="mailto:support@knotkitchen.com">support@knotkitchen.com</a><br>
@@ -97,7 +98,7 @@
   <p>Please include your registered account details, invoice/order number, and reason for the request.</p>
   <p>Each request will be reviewed according to the applicable policy and circumstances.</p>
 
-  <h2>10. Policy Changes</h2>
+  <h2>9. Policy Changes</h2>
   <p>KnotKitchen may update this policy from time to time. The latest version will be published on the KnotKitchen website.</p>
 
   <nav class="legal-nav">
@@ -112,7 +113,7 @@
 
 <footer>
   <div class="wrap">
-    <div class="f-bottom" style="margin-top:0;padding-top:0;border:0">
+    <div class="f-bottom bare">
       <span>© 2026 KnotKitchen. All rights reserved.</span>
       <span><a href="mailto:support@knotkitchen.com">support@knotkitchen.com</a> · <a href="tel:+918062181049">+91 8062181049</a></span>
     </div>

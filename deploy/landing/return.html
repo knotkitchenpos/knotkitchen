@@ -21,9 +21,12 @@
 <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="assets/icon-180.png">
-<link rel="stylesheet" href="style.css">
+<link rel="preload" href="assets/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/bricolage-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 
 <header>
   <div class="wrap nav">
@@ -47,10 +50,10 @@
   </div>
 </header>
 
-<main class="wrap legal">
+<main id="main" class="wrap legal">
   <a class="back" href="index.html">&larr; Back to home</a>
   <h1>Return Policy</h1>
-  <p class="eff">Effective Date: 1st September, 2026</p>
+  <p class="eff">Effective Date: 28th September, 2026</p>
 
   <p>At <strong>KnotKitchen</strong>, we aim to provide reliable products and services to our customers.</p>
 
@@ -58,8 +61,9 @@
   <p>KnotKitchen software subscriptions, digital services, and activated services are generally non-returnable once the service has been activated or access has been provided, subject to the applicable <a href="refund.html">Refund/Cancellation Policy</a>.</p>
 
   <h2>2. Hardware Products</h2>
-  <p>If KnotKitchen provides or sells physical hardware such as tablets, POS devices, printers, or accessories, returns may be accepted only where permitted under the applicable order, warranty, or product terms.</p>
-  <p>The product may be required to be:</p>
+  <p><strong>Printers (sold).</strong> The displayed price includes GST. Ownership and risk pass to the customer on delivery. KnotKitchen replaces at no charge a printer that is dead on arrival or becomes faulty within 7 days of delivery, if the customer reports it within those 7 days, unless the fault was caused by misuse, physical or liquid damage or unauthorised modification. If a replacement cannot be supplied within 15 days, the price is refunded to the original payment method. After that, the manufacturer's warranty applies, and KnotKitchen will help the customer make the warranty claim.</p>
+  <p><strong>Tablets (rented).</strong> Tablets remain KnotKitchen's property. They must be returned to KnotKitchen within 15 days after the rental ends. Loss or damage beyond normal wear is charged at the actual repair or replacement cost shown on the supplier invoice, by a debit to the KnotKitchen Wallet; any part the Wallet cannot cover is invoiced and payable within 15 days.</p>
+  <p>For any other hardware, returns may be accepted only where permitted under the applicable order, warranty, or product terms. A returned product may be required to be:</p>
   <ul>
     <li>Unused or in acceptable condition</li>
     <li>Returned with original accessories</li>
@@ -96,7 +100,7 @@
 
 <footer>
   <div class="wrap">
-    <div class="f-bottom" style="margin-top:0;padding-top:0;border:0">
+    <div class="f-bottom bare">
       <span>© 2026 KnotKitchen. All rights reserved.</span>
       <span><a href="mailto:support@knotkitchen.com">support@knotkitchen.com</a> · <a href="tel:+918062181049">+91 8062181049</a></span>
     </div>

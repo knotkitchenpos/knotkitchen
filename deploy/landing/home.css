@@ -2,17 +2,34 @@
    KnotKitchen landing page (index.html only).
    style.css still carries the shared header, footer, buttons and legal pages.
 
+   Type and the shared keyboard/button rules live in style.css. One accent: the brand orange. The only dark
+   surfaces are the hero (with the strip under it) and the closing card.
+
    Motion rules: everything animates transform/opacity only, nothing loops
    faster than 6s except the small status dots, and the whole lot switches off
    under prefers-reduced-motion (bottom of this file).
    ========================================================================== */
 
 :root{
-  --ink:#060f26; --ink-2:#0a1b45; --ink-3:#12306b;
-  --glow:#ff7a1a; --glow-2:#ffb15c; --sky:#5b8cff;
+  --ink:#060f26; --ink-2:#0a1b45;
+  --glow:#ff7a1a; --glow-2:#ffb15c;
   --on-dark:#e8eefc; --on-dark-muted:#9fb0d3; --hair:rgba(255,255,255,.10);
   --ease:cubic-bezier(.2,.7,.2,1);
+  /* shadows carry the navy, never plain black */
+  --lift:0 1px 2px rgba(10,27,69,.05),0 14px 34px -10px rgba(10,27,69,.16);
+  --lift-hi:0 2px 4px rgba(10,27,69,.06),0 28px 60px -12px rgba(10,27,69,.22);
+  /* film grain: a static SVG noise tile, painted once */
+  --grain:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
+
+/* ---------- keyboard ---------- */
+.kk-hero :focus-visible,.kk-close :focus-visible{outline-color:var(--glow-2)}
+
+/* a text link with an arrow that leans on hover: the quieter second action */
+.link-arrow{display:inline-flex;align-items:center;gap:8px;padding:12px 4px;font-weight:600;color:var(--text)}
+.link-arrow:hover{text-decoration:none}
+.link-arrow span{transition:transform .25s var(--ease)}
+.link-arrow:hover span{transform:translateX(4px)}
 
 /* ---------- scroll reveal ---------- */
 .reveal{opacity:0;transform:translateY(26px);transition:opacity .8s var(--ease),transform .8s var(--ease);
@@ -22,75 +39,73 @@
 /* ---------- hero ---------- */
 .kk-hero{position:relative;isolation:isolate;overflow:hidden;color:var(--on-dark);
   background:radial-gradient(120% 90% at 80% 0%,#15336f 0%,var(--ink-2) 38%,var(--ink) 100%);
-  padding:clamp(56px,8vw,112px) 0 clamp(64px,8vw,120px)}
+  padding:clamp(64px,9vw,128px) 0 clamp(72px,9vw,136px)}
 /* faint blueprint grid, faded out towards the edges */
 .kk-hero::before{content:"";position:absolute;inset:0;z-index:-1;
   background-image:linear-gradient(var(--hair) 1px,transparent 1px),linear-gradient(90deg,var(--hair) 1px,transparent 1px);
-  background-size:56px 56px;opacity:.5;
+  background-size:56px 56px;opacity:.35;
   -webkit-mask-image:radial-gradient(80% 70% at 50% 35%,#000 0%,transparent 100%);
           mask-image:radial-gradient(80% 70% at 50% 35%,#000 0%,transparent 100%)}
-/* Glows are radial gradients, not blurred discs: a blur filter on a 400px
-   element is re-rasterised on every frame it moves, a gradient is painted
-   once and then only translated by the compositor. */
-.orb{position:absolute;z-index:-1;border-radius:50%;opacity:.55;will-change:transform;
-  background:radial-gradient(closest-side,var(--c) 0%,var(--c) 38%,transparent 100%)}
-.orb.a{--c:var(--glow);width:620px;height:620px;right:-250px;top:-290px;opacity:.4;animation:drift 16s ease-in-out infinite}
-.orb.b{--c:var(--sky);width:600px;height:600px;left:-250px;bottom:-290px;opacity:.35;animation:drift 20s ease-in-out infinite reverse}
-.orb.c{--c:var(--glow-2);width:420px;height:420px;left:calc(42% - 80px);top:calc(30% - 80px);opacity:.18;animation:drift 24s ease-in-out infinite}
+.kk-hero::after,.kk-close::after{content:"";position:absolute;inset:0;z-index:-1;pointer-events:none;
+  background-image:var(--grain);opacity:.09;mix-blend-mode:overlay}
+/* One warm glow. A radial gradient, not a blurred disc: a blur filter is
+   re-rasterised on every frame it moves, a gradient is painted once and then
+   only translated by the compositor. */
+.orb{position:absolute;z-index:-1;border-radius:50%;will-change:transform;
+  background:radial-gradient(closest-side,var(--glow) 0%,var(--glow) 38%,transparent 100%);
+  width:680px;height:680px;right:-260px;top:-320px;opacity:.36;animation:drift 18s ease-in-out infinite}
 @keyframes drift{0%,100%{transform:translate3d(0,0,0)}50%{transform:translate3d(-46px,40px,0)}}
 
-.kk-hero-grid{display:grid;align-items:center;gap:clamp(36px,5vw,72px);
+.kk-hero-grid{display:grid;align-items:center;gap:clamp(40px,6vw,88px);
   grid-template-columns:repeat(auto-fit,minmax(min(100%,27rem),1fr))}
-.kk-pill{display:inline-flex;align-items:center;gap:10px;padding:7px 14px 7px 10px;border-radius:999px;
-  font-size:.8rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#ffd9bd;
-  background:rgba(255,255,255,.09);border:1px solid rgba(255,255,255,.16)}
+.kk-pill{display:inline-flex;align-items:center;gap:10px;font-size:.95rem;font-weight:500;color:#ffd9bd}
 /* the ripple is a scaled copy of the dot, not an animated box-shadow (paint every frame) */
 .kk-pill i{position:relative;width:8px;height:8px;border-radius:50%;background:#34d399}
 .kk-pill i::after{content:"";position:absolute;inset:0;border-radius:50%;background:#34d399;animation:ping 2s ease-out infinite}
 @keyframes ping{0%{transform:scale(1);opacity:.6}70%,100%{transform:scale(3.4);opacity:0}}
 
-.kk-hero h1{color:#fff;margin:.55em 0 .4em;font-size:clamp(2.2rem,6vw,4.1rem);font-weight:750;letter-spacing:-.035em;line-height:1.04}
-.kk-hero h1 .line{display:block;overflow:hidden}
+.kk-hero h1{color:#fff;margin:.45em 0 .42em;font-size:clamp(2.5rem,6.6vw,4.7rem);font-weight:720;letter-spacing:-.045em;line-height:.98}
+/* room under each line so the mask never clips a descender */
+.kk-hero h1 .line{display:block;overflow:hidden;padding-bottom:.08em;margin-bottom:-.08em}
 .kk-hero h1 .line>span{display:inline-block;transform:translateY(110%);animation:rise .9s var(--ease) forwards;animation-delay:calc(var(--i) * 120ms + 150ms)}
 @keyframes rise{to{transform:none}}
-.grad{background:linear-gradient(100deg,var(--glow-2),var(--glow) 45%,#ff4d6d);-webkit-background-clip:text;background-clip:text;color:transparent;
-  background-size:200% 100%;animation:sheen 7s ease-in-out infinite}
-@keyframes sheen{50%{background-position:100% 0}}
-.kk-hero .lede{color:#cdd8f0;font-size:clamp(1rem,1.2vw + .8rem,1.18rem);max-width:34em}
+.grad{color:var(--glow)}
+.kk-hero .lede{color:#cdd8f0;font-size:clamp(1.02rem,1.1vw + .8rem,1.2rem);max-width:33em}
 .kk-hero .fade{opacity:0;animation:fadeup .8s var(--ease) forwards;animation-delay:calc(var(--i) * 120ms + 450ms)}
 @keyframes fadeup{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:none}}
-.kk-cta{display:flex;flex-wrap:wrap;gap:12px;margin:26px 0 18px}
-.kk-hero .btn{position:relative;overflow:hidden;box-shadow:0 10px 30px rgba(244,98,10,.35)}
+.kk-cta{display:flex;flex-wrap:wrap;align-items:center;gap:10px 22px;margin:30px 0 22px}
+.kk-hero .btn{position:relative;overflow:hidden;box-shadow:0 12px 32px -6px rgba(244,98,10,.5)}
+.kk-hero .btn:hover{box-shadow:0 16px 40px -6px rgba(244,98,10,.6)}
 /* a slow light sweep across the primary button */
-.kk-hero .btn:not(.ghost)::after{content:"";position:absolute;inset:0;transform:translateX(-120%);
+.kk-hero .btn::after{content:"";position:absolute;inset:0;transform:translateX(-120%);
   background:linear-gradient(100deg,transparent 30%,rgba(255,255,255,.35) 50%,transparent 70%);animation:sweep 4.5s ease-in-out infinite}
 @keyframes sweep{60%,100%{transform:translateX(120%)}}
-.kk-hero .btn.ghost{color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.06);box-shadow:none}
-.kk-hero .btn.ghost:hover{background:rgba(255,255,255,.14)}
+.kk-hero .link-arrow,.kk-close .link-arrow{color:#fff}
 .kk-note{color:var(--on-dark-muted);font-size:.9rem;margin:0}
 
 /* ---------- hero: the live till ---------- */
 .stage{position:relative;perspective:1200px;padding:40px 0 66px}
 .till{position:relative;border-radius:20px;overflow:hidden;color:#0a1b45;background:#fff;
-  box-shadow:0 40px 90px rgba(0,0,0,.45),0 0 0 1px rgba(255,255,255,.12);
+  box-shadow:0 40px 90px -20px rgba(2,8,26,.7),0 0 0 1px rgba(255,255,255,.12);
   transform:rotateX(var(--rx,6deg)) rotateY(var(--ry,-10deg));transition:transform .4s var(--ease);will-change:transform}
 .till-bar{display:flex;align-items:center;gap:7px;padding:12px 16px;background:#f3f5fa;border-bottom:1px solid #e6e9f2}
 .till-bar b{width:10px;height:10px;border-radius:50%;background:#d5dae6}
 .till-bar span{margin-left:auto;font-size:.75rem;font-weight:600;color:#7a86a3}
 .till-head{display:flex;justify-content:space-between;align-items:center;padding:16px 18px 10px}
-.till-head strong{font-size:1rem}
-.status{font-size:.74rem;font-weight:700;padding:5px 11px;border-radius:999px;background:#fff1e6;color:#c9490a;transition:background .4s,color .4s}
+.till-head strong{font-size:1rem;font-weight:600}
+.status{font-size:.74rem;font-weight:600;padding:5px 11px;border-radius:8px;background:#fff1e6;color:#c9490a;transition:background .4s,color .4s}
 .status.ready{background:#dcfce7;color:#15803d}
 .status.paid{background:#e0e7ff;color:#3730a3}
 .rows{list-style:none;margin:0;padding:0 18px;min-height:176px}
 .rows li{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px dashed #e6e9f2;font-size:.95rem;
   opacity:0;transform:translateX(-14px);transition:opacity .45s var(--ease),transform .45s var(--ease)}
 .rows li.on{opacity:1;transform:none}
-.rows li span:last-child{font-variant-numeric:tabular-nums;font-weight:600}
+.rows li span:last-child,.till-total b,.price{font-variant-numeric:tabular-nums}
+.rows li span:last-child{font-weight:600}
 .till-total{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;margin-top:6px;background:#0a1b45;color:#fff}
-.till-total b{font-size:1.35rem;font-variant-numeric:tabular-nums}
+.till-total b{font-size:1.35rem;font-weight:600}
 .chip{position:absolute;z-index:2;display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:14px;font-size:.84rem;font-weight:600;
-  color:#0a1b45;background:rgba(255,255,255,.96);box-shadow:0 18px 40px rgba(0,0,0,.35);animation:bob 6s ease-in-out infinite;will-change:transform}
+  color:#0a1b45;background:rgba(255,255,255,.97);box-shadow:0 18px 40px -8px rgba(2,8,26,.55);animation:bob 6s ease-in-out infinite;will-change:transform}
 .chip svg{width:20px;height:20px;flex:none}
 .chip small{display:block;font-weight:500;color:#6b7896;font-size:.74rem}
 .chip.k{left:-18px;top:0;animation-delay:-2s}
@@ -98,37 +113,44 @@
 @keyframes bob{50%{transform:translateY(-12px)}}
 
 /* ---------- marquee ---------- */
-.marquee{position:relative;overflow:hidden;background:var(--ink);border-block:1px solid var(--hair);padding:18px 0}
+.marquee{position:relative;overflow:hidden;background:var(--ink);border-block:1px solid var(--hair);padding:20px 0}
 /* faded edges are two overlays: a mask would be re-applied to the moving strip every frame */
 .marquee::before,.marquee::after{content:"";position:absolute;top:0;bottom:0;width:12%;z-index:1;pointer-events:none}
 .marquee::before{left:0;background:linear-gradient(90deg,var(--ink),transparent)}
 .marquee::after{right:0;background:linear-gradient(270deg,var(--ink),transparent)}
-.marquee ul{display:flex;gap:44px;width:max-content;margin:0;padding:0;list-style:none;animation:slide 32s linear infinite;will-change:transform;
-  color:var(--on-dark-muted);font-weight:600;letter-spacing:.06em;text-transform:uppercase;font-size:.82rem}
-.marquee li{display:flex;align-items:center;gap:44px;white-space:nowrap}
-.marquee li::after{content:"";width:6px;height:6px;border-radius:50%;background:var(--glow)}
+.marquee ul{display:flex;gap:40px;width:max-content;margin:0;padding:0;list-style:none;animation:slide 36s linear infinite;will-change:transform;
+  color:var(--on-dark-muted);font:600 1.08rem/1.2 var(--display);letter-spacing:-.01em}
+.marquee li{display:flex;align-items:center;gap:40px;white-space:nowrap}
+.marquee li::after{content:"";width:6px;height:6px;border-radius:2px;background:var(--glow);transform:rotate(45deg)}
 @keyframes slide{to{transform:translateX(-50%)}}
 
 /* ---------- section scaffolding ---------- */
-.kk-sec{padding:clamp(56px,8vw,104px) 0}
-.kk-head{max-width:44rem;margin:0 0 clamp(28px,4vw,48px)}
-.kk-head .tag{display:inline-block;font-size:.78rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);margin-bottom:12px}
-.kk-head h2{font-size:clamp(1.7rem,4vw,2.8rem);font-weight:720;letter-spacing:-.03em;line-height:1.1;margin:0 0 .4em}
-.kk-head p{color:var(--muted);font-size:1.05rem;margin:0}
+.kk-sec{padding:clamp(64px,9vw,120px) 0 clamp(72px,10vw,136px)}
+.kk-alt{background:var(--bg-2)}
+.kk-head{max-width:44rem;margin:0 0 clamp(32px,4.5vw,56px)}
+.kk-head .tag{display:inline-flex;align-items:center;gap:10px;font-size:.92rem;font-weight:600;color:var(--accent);margin-bottom:14px}
+.kk-head .tag::before{content:"";width:22px;height:2px;border-radius:2px;background:currentColor}
+.kk-head h2{font-size:clamp(1.9rem,4.4vw,3.1rem);font-weight:700;letter-spacing:-.04em;line-height:1.04;margin:0 0 .45em}
+.kk-head p{color:var(--muted);font-size:1.05rem;margin:0;max-width:36em}
+
+/* heading on the left, the content beside it */
+.split{display:grid;gap:clamp(32px,6vw,96px);grid-template-columns:repeat(auto-fit,minmax(min(100%,22rem),1fr));align-items:start}
+.split>.kk-head{margin:0}
+@media(min-width:900px){.split>.kk-head{position:sticky;top:calc(var(--nav-h) + 40px)}}
 
 /* ---------- bento features ---------- */
 .bento{display:grid;gap:var(--grid-gap);grid-template-columns:repeat(6,1fr)}
-.tile{position:relative;overflow:hidden;grid-column:span 2;padding:var(--card-pad);border-radius:22px;background:var(--surface);
-  border:1px solid var(--line);box-shadow:var(--shadow);transition:transform .35s var(--ease),box-shadow .35s var(--ease),border-color .35s}
+.tile{position:relative;overflow:hidden;grid-column:span 2;padding:var(--card-pad);border-radius:24px;background:var(--surface);
+  border:1px solid transparent;box-shadow:var(--lift);transition:transform .35s var(--ease),box-shadow .35s var(--ease),border-color .35s}
 .tile.w3{grid-column:span 3}.tile.w4{grid-column:span 4}
-.tile:hover{transform:translateY(-4px);border-color:color-mix(in srgb,var(--orange) 45%,var(--line));box-shadow:0 2px 4px rgba(10,27,69,.06),0 24px 60px rgba(10,27,69,.13)}
+.tile:hover{transform:translateY(-4px);border-color:color-mix(in srgb,var(--orange) 35%,transparent);box-shadow:var(--lift-hi)}
 /* the pointer carries a soft light across the card (home.js sets --mx/--my) */
 .tile::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:0;transition:opacity .3s;
-  background:radial-gradient(380px circle at var(--mx,50%) var(--my,50%),rgba(244,98,10,.13),transparent 60%)}
+  background:radial-gradient(380px circle at var(--mx,50%) var(--my,50%),rgba(244,98,10,.12),transparent 60%)}
 .tile:hover::before{opacity:1}
 .tile h3{font-size:1.15rem;margin:0 0 .35em}
 .tile p{color:var(--muted);margin:0;max-width:36em}
-.art{height:120px;margin-bottom:18px;border-radius:14px;background:linear-gradient(180deg,#fff7ef,#fdeede);position:relative;overflow:hidden}
+.art{height:120px;margin-bottom:20px;border-radius:14px;background:linear-gradient(180deg,#fff7ef,#fdeede);position:relative;overflow:hidden}
 
 /* art: sales bars */
 .bars-art{display:flex;align-items:flex-end;gap:9px;padding:16px 18px}
@@ -137,7 +159,7 @@
 .in .bars-art i{transform:scaleY(1)}
 /* art: kitchen tickets */
 .tix{display:flex;gap:10px;padding:16px}
-.tix b{flex:1;border-radius:10px;background:#fff;border:1px solid #f1dcc6;padding:10px;font-size:.72rem;font-weight:700;color:#8a5a2b;
+.tix b{flex:1;border-radius:10px;background:#fff;border:1px solid #f1dcc6;padding:10px;font-size:.72rem;font-weight:600;color:#8a5a2b;
   animation:ticket 6s var(--ease) infinite;animation-delay:calc(var(--n) * -2s)}
 .tix b::after{content:"";display:block;height:6px;margin-top:8px;border-radius:3px;background:#f6e2cd;box-shadow:0 12px 0 #f6e2cd,0 24px 0 #f6e2cd}
 @keyframes ticket{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
@@ -167,83 +189,85 @@
 .rcpt::before{content:"";width:130px;height:12px;border-radius:6px;background:#0a1b45;position:relative;z-index:1;margin-top:14px}
 @keyframes print{0%{transform:translateY(-70%)}45%,85%{transform:translateY(0)}100%{transform:translateY(-70%)}}
 
-/* ---------- how it works ---------- */
-.kk-alt{background:var(--bg-2)}
-.track{position:relative;display:grid;gap:var(--grid-gap);grid-template-columns:repeat(auto-fit,minmax(min(100%,13.5rem),1fr));padding-top:34px}
-.track::before,.track::after{content:"";position:absolute;left:0;top:13px;height:3px;border-radius:3px}
-.track::before{right:0;background:var(--line)}
-.track::after{right:0;background:linear-gradient(90deg,var(--orange),var(--glow-2));transform:scaleX(var(--p,0));transform-origin:left;transition:transform .2s linear}
-/* above the progress line, so the line runs behind the numbered dots */
-.stop{position:relative;z-index:1;padding:22px;border-radius:18px;background:var(--surface);border:1px solid var(--line)}
-.stop::before{content:attr(data-n);position:absolute;top:-35px;left:18px;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;
-  font-size:.82rem;font-weight:700;color:#fff;background:var(--navy);box-shadow:0 0 0 5px var(--bg-2)}
-.stop h3{margin:0 0 .3em}.stop p{margin:0;color:var(--muted);font-size:.95rem}
+/* ---------- how it works: four numbered steps on one line ---------- */
+.track{position:relative;display:grid;gap:clamp(20px,3vw,40px);grid-template-columns:repeat(auto-fit,minmax(min(100%,13.5rem),1fr))}
+.track::before,.track::after{content:"";position:absolute;left:0;right:0;top:0;height:2px;border-radius:2px}
+.track::before{background:var(--line)}
+.track::after{background:linear-gradient(90deg,var(--orange),var(--glow-2));transform:scaleX(var(--p,0));transform-origin:left;transition:transform .2s linear}
+.stop{position:relative;padding-top:28px}
+.stop::before{content:"0" attr(data-n);display:block;margin-bottom:16px;font:700 clamp(2.6rem,4.4vw,3.4rem)/1 var(--display);
+  letter-spacing:-.05em;color:var(--orange);font-variant-numeric:tabular-nums}
+.stop h3{margin:0 0 .35em;font-size:1.15rem}
+.stop p{margin:0;color:var(--muted);font-size:.97rem;max-width:22em}
+/* The line joins four steps in a row. Once they wrap it would run over only
+   the first row, so each step carries its own rule instead. */
+@media(max-width:1000px){.track::before,.track::after{display:none}.stop{border-top:2px solid var(--line)}}
 
-/* The line joins four dots in a row. Once the steps wrap it would underline
-   only the first row, so it goes and the numbered dots carry the order. */
-@media(max-width:1000px){.track::before,.track::after{display:none}}
+/* ---------- platform: a list beside the heading ---------- */
+.plist{list-style:none;margin:0;padding:0}
+.plist li{display:grid;grid-template-columns:48px 1fr;gap:20px;padding:28px 0;border-top:1px solid var(--line)}
+.plist li:last-child{border-bottom:1px solid var(--line)}
+.plist svg{width:48px;height:48px;padding:12px;border-radius:14px;background:var(--surface);box-shadow:var(--lift);
+  stroke:var(--accent);fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.plist h3{margin:4px 0 .3em;font-size:1.15rem}
+.plist p{margin:0;color:var(--muted)}
+.kk-tags{display:flex;flex-wrap:wrap;gap:8px;margin:28px 0 0;padding:0;list-style:none}
+.kk-tags li{padding:7px 13px;border-radius:10px;font-size:.88rem;color:var(--muted);background:var(--surface);border:1px solid var(--line)}
 
-/* ---------- platform (dark) ---------- */
-.kk-dark{position:relative;overflow:hidden;color:var(--on-dark);background:linear-gradient(180deg,var(--ink) 0%,var(--ink-2) 100%)}
-.kk-dark .kk-head h2{color:#fff}.kk-dark .kk-head p{color:var(--on-dark-muted)}.kk-dark .kk-head .tag{color:var(--glow-2)}
-.glass{display:grid;gap:var(--grid-gap);grid-template-columns:repeat(auto-fit,minmax(min(100%,17rem),1fr))}
-.pane{position:relative;padding:26px;border-radius:20px;background:rgba(255,255,255,.04);border:1px solid var(--hair);transition:transform .35s var(--ease),background .35s}
-.pane:hover{transform:translateY(-4px);background:rgba(255,255,255,.07)}
-/* a lit edge that circles the card on hover */
-.pane::before{content:"";position:absolute;inset:-1px;border-radius:inherit;padding:1px;opacity:0;transition:opacity .4s;
-  background:conic-gradient(from var(--a,0deg),transparent 0 70%,var(--glow) 85%,transparent 100%);
-  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);-webkit-mask-composite:xor;mask-composite:exclude;
-  animation:spin 5s linear infinite paused}
-.pane:hover::before{opacity:1;animation-play-state:running}
-@property --a{syntax:"<angle>";inherits:false;initial-value:0deg}
-@keyframes spin{to{--a:360deg}}
-.pane svg{width:26px;height:26px;stroke:var(--glow-2);fill:none;stroke-width:1.7;margin-bottom:14px}
-.pane h3{color:#fff;margin:0 0 .35em}.pane p{margin:0;color:var(--on-dark-muted)}
-.kk-tags{display:flex;flex-wrap:wrap;gap:10px;margin:30px 0 0;padding:0;list-style:none}
-.kk-tags li{padding:8px 14px;border-radius:999px;font-size:.86rem;color:var(--on-dark);background:rgba(255,255,255,.06);border:1px solid var(--hair)}
-
-/* ---------- pricing ---------- */
-.plans{display:grid;gap:var(--grid-gap);grid-template-columns:repeat(auto-fit,minmax(min(100%,16rem),1fr));align-items:stretch}
-.plan-card{position:relative;padding:28px;border-radius:22px;background:var(--surface);border:1px solid var(--line);box-shadow:var(--shadow);
+/* ---------- pricing: the plan, its add-ons, then hardware ---------- */
+.price-grid,.hw-grid{display:grid;gap:var(--grid-gap);align-items:stretch}
+.price-grid{grid-template-columns:repeat(auto-fit,minmax(min(100%,24rem),1fr))}
+.hw-grid{margin-top:var(--grid-gap);grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr))}
+.plan-card{position:relative;display:flex;flex-direction:column;padding:clamp(24px,3vw,34px);border-radius:24px;background:var(--surface);border:1px solid var(--line);
   transition:transform .35s var(--ease),box-shadow .35s var(--ease)}
-.plan-card:hover{transform:translateY(-6px);box-shadow:0 2px 4px rgba(10,27,69,.06),0 24px 60px rgba(10,27,69,.13)}
-.plan-card h3{margin:0;font-size:1.05rem}
-.plan-card .price{font-size:2.4rem;font-weight:800;letter-spacing:-.03em;margin:10px 0 12px;color:var(--text)}
-.plan-card .price span{font-size:.95rem;font-weight:500;color:var(--muted);letter-spacing:0}
-.plan-card p{color:var(--muted);margin:0}
-.plan-card.featured{color:#fff;border-color:transparent;background:linear-gradient(160deg,#15336f,var(--ink-2) 55%,var(--ink))}
-.plan-card.featured .price{color:#fff}
+.plan-card:hover{transform:translateY(-4px);box-shadow:var(--lift-hi)}
+.plan-card h3{margin:0 0 .5em;font-size:1.1rem}
+.plan-card .price{font:700 clamp(2.4rem,4vw,3rem)/1.05 var(--display);letter-spacing:-.04em;margin:0 0 20px;color:var(--text)}
+.plan-card .price span{font:500 .95rem var(--display);color:var(--muted);letter-spacing:0}
+.plan-card p{color:var(--muted);margin:0 0 22px}
+.plan-card p:last-child{margin-bottom:0}
+.plan-card .small{font-size:.92rem}
+.plan-card .btn{margin-top:auto;align-self:flex-start}
+.plan-card.featured{color:#fff;border-color:transparent;box-shadow:var(--lift-hi);
+  background:radial-gradient(120% 100% at 100% 0%,#1b3f86 0%,var(--ink-2) 50%,var(--ink) 100%)}
+.plan-card.featured h3,.plan-card.featured .price{color:#fff}
 .plan-card.featured p,.plan-card.featured .price span{color:#cdd8f0}
-.plan-card .badge{position:absolute;top:18px;right:18px;padding:5px 11px;border-radius:999px;font-size:.72rem;font-weight:700;
-  color:#fff;background:linear-gradient(135deg,var(--orange),var(--orange-deep))}
-.plan-notes{margin-top:var(--grid-gap);padding:26px;border-radius:20px;background:var(--surface);border:1px solid var(--line)}
+/* what the plan includes: a drawn tick, not an icon font */
+.incl{list-style:none;margin:0 0 22px;padding:0;display:grid;gap:10px}
+.incl li{display:flex;align-items:baseline;gap:12px}
+.incl li::before{content:"";flex:none;width:12px;height:6px;border-left:2px solid var(--glow-2);border-bottom:2px solid var(--glow-2);transform:translateY(-4px) rotate(-45deg)}
+/* priced rows: name and line on the left, the amount on the right */
+.lines{list-style:none;margin:0 0 22px;padding:0}
+.lines li{display:flex;justify-content:space-between;align-items:baseline;gap:18px;padding:15px 0;border-top:1px solid var(--line)}
+.lines li:last-child{border-bottom:1px solid var(--line)}
+.lines b{display:block;font-weight:600}
+.lines span{display:block;color:var(--muted);font-size:.92rem}
+.lines em{flex:none;text-align:right;font:700 1.4rem/1.1 var(--display);font-style:normal;letter-spacing:-.03em;color:var(--text);font-variant-numeric:tabular-nums}
+.lines em small{display:block;margin-top:3px;font:500 .78rem var(--display);letter-spacing:0;color:var(--muted)}
+.plan-notes{margin-top:clamp(28px,4vw,44px);display:grid;gap:8px 48px;grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr))}
 .plan-notes h3{margin:0 0 .4em}
-.plan-notes ul{margin:8px 0 12px;padding-left:1.2em;color:var(--muted)}
-.plan-notes li{margin:4px 0}
+.plan-notes ul{margin:0;padding-left:1.2em;color:var(--muted)}
+.plan-notes li{margin:0 0 6px}
 .plan-notes p{margin:0;color:var(--muted)}
 
-/* ---------- FAQ ---------- */
-.faq{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(min(100%,26rem),1fr));align-items:start}
-.faq details{border-radius:16px;background:var(--surface);border:1px solid var(--line);overflow:hidden;transition:border-color .3s,box-shadow .3s}
-.faq details[open]{border-color:color-mix(in srgb,var(--orange) 40%,var(--line));box-shadow:var(--shadow)}
-.faq summary{list-style:none;cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:16px;padding:18px 20px;font-weight:650}
-.faq summary::-webkit-details-marker{display:none}
-.faq summary::after{content:"";flex:none;width:11px;height:11px;border-right:2px solid var(--accent);border-bottom:2px solid var(--accent);
-  transform:rotate(45deg);transition:transform .3s var(--ease)}
-.faq details[open] summary::after{transform:rotate(225deg)}
-.faq details p{margin:0;padding:0 20px 20px;color:var(--muted);animation:fadeup .4s var(--ease)}
+/* ---------- FAQ: every answer open, no clicking ---------- */
+.faq{margin:0}
+.faq>div{padding:24px 0;border-top:1px solid var(--line)}
+.faq>div:last-child{border-bottom:1px solid var(--line)}
+.faq dt{font-weight:600;font-size:1.06rem;margin:0 0 .35em;letter-spacing:-.01em}
+.faq dd{margin:0;color:var(--muted);max-width:40em}
 
 /* ---------- closing call ---------- */
-.kk-close{position:relative;overflow:hidden;border-radius:28px;padding:clamp(32px,5vw,64px);color:#fff;text-align:center;
-  background:radial-gradient(90% 140% at 50% 0%,#1b3f86 0%,var(--ink-2) 45%,var(--ink) 100%)}
-.kk-close::before{content:"";position:absolute;width:760px;height:760px;left:50%;top:-460px;margin-left:-380px;border-radius:50%;
-  background:radial-gradient(closest-side,var(--glow) 0%,var(--glow) 34%,transparent 100%);opacity:.45;animation:drift 14s ease-in-out infinite;will-change:transform}
-.kk-close>*{position:relative}
-.kk-close h2{color:#fff;font-size:clamp(1.7rem,4vw,2.8rem);letter-spacing:-.03em;margin:0 0 .4em}
-.kk-close p{color:#cdd8f0;max-width:38em;margin:0 auto 1em}
-.kk-close .kk-cta{justify-content:center}
-.kk-close .btn{box-shadow:0 10px 30px rgba(244,98,10,.4)}
-.kk-close .btn.ghost{color:#fff;border-color:rgba(255,255,255,.3);background:rgba(255,255,255,.06);box-shadow:none}
+.kk-close{position:relative;isolation:isolate;overflow:hidden;border-radius:28px;padding:clamp(34px,5.5vw,72px);color:#fff;
+  display:grid;gap:28px clamp(32px,5vw,72px);align-items:end;grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr));
+  background:radial-gradient(90% 140% at 0% 0%,#1b3f86 0%,var(--ink-2) 45%,var(--ink) 100%);box-shadow:var(--lift-hi)}
+.kk-close::before{content:"";position:absolute;z-index:-1;width:760px;height:760px;right:-300px;bottom:-460px;border-radius:50%;
+  background:radial-gradient(closest-side,var(--glow) 0%,var(--glow) 34%,transparent 100%);opacity:.4;animation:drift 14s ease-in-out infinite;will-change:transform}
+.kk-close h2{color:#fff;font-size:clamp(1.9rem,4.4vw,3.1rem);font-weight:700;letter-spacing:-.04em;line-height:1.04;margin:0 0 .45em}
+.kk-close p{color:#cdd8f0;max-width:32em;margin:0}
+.kk-close-act{display:flex;flex-wrap:wrap;align-items:center;gap:6px 22px}
+.kk-close .btn{box-shadow:0 12px 32px -6px rgba(244,98,10,.5)}
+.kk-close small{flex-basis:100%;color:var(--on-dark-muted);font-size:.88rem}
 
 /* A section that has scrolled away stops animating (home.js toggles this). */
 .offscreen,.offscreen *,.offscreen::before,.offscreen::after,.offscreen *::before,.offscreen *::after{animation-play-state:paused!important}

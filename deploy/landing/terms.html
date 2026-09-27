@@ -21,9 +21,12 @@
 <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="assets/icon-180.png">
-<link rel="stylesheet" href="style.css">
+<link rel="preload" href="assets/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/bricolage-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css?v=5">
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 
 <header>
   <div class="wrap nav">
@@ -47,13 +50,13 @@
   </div>
 </header>
 
-<main class="wrap legal">
+<main id="main" class="wrap legal">
   <a class="back" href="index.html">&larr; Back to home</a>
   <h1>Terms &amp; Conditions</h1>
-  <p class="eff">Effective Date: 1st September, 2026</p>
+  <p class="eff">Effective Date: 27th September, 2026</p>
 
   <p>Welcome to <strong>KnotKitchen</strong>. These Terms &amp; Conditions govern your access to and use of KnotKitchen's website, software, POS system, applications, integrations, and related services.</p>
-  <p>By registering for or using KnotKitchen, you agree to these Terms.</p>
+  <p>By registering for or using KnotKitchen, you agree to these Terms. Where a restaurant has signed a KnotKitchen Restaurant Service Agreement, that Agreement prevails over these Terms.</p>
 
   <h2>1. About KnotKitchen</h2>
   <p>KnotKitchen provides technology solutions for restaurants and food businesses, including POS, billing, order management, integrations, digital presence, restaurant management tools, and related services.</p>
@@ -70,12 +73,11 @@
   </ul>
 
   <h2>3. Subscription Plans</h2>
-  <p>KnotKitchen may offer different subscription plans with different features, pricing, usage limits, and hardware/services.</p>
-  <p>Plan details and pricing will be communicated on the KnotKitchen website, sales materials, invoices, or applicable service agreement.</p>
-  <p>KnotKitchen reserves the right to modify its plans, features, or pricing for future subscriptions or renewals, subject to applicable law and any existing contractual commitments.</p>
+  <p>KnotKitchen offers one POS plan with optional add-ons, as listed on the <a href="index.html#pricing">pricing page</a> and in the application.</p>
+  <p>KnotKitchen may change its prices for future renewals only after at least 30 days' notice by email or in the application, as the Restaurant Service Agreement provides.</p>
 
   <h2>4. Payments</h2>
-  <p>Applicable subscription fees, taxes, setup charges, hardware charges, transaction charges, or other fees must be paid according to the selected plan or applicable agreement.</p>
+  <p>KnotKitchen charges (the POS Plan, add-ons, tablet rentals, per-order and e-bill charges, and applicable taxes) are prepaid from the restaurant's KnotKitchen Wallet, which is not refundable except as stated in the <a href="refund.html">Refund &amp; Cancellation Policy</a>. Printers are paid once, online. Other fees must be paid according to the applicable agreement.</p>
   <p>Failure to complete payment may result in suspension or termination of applicable services.</p>
 
   <h2>5. Software and Service Availability</h2>
@@ -115,10 +117,10 @@
   <p>To the maximum extent permitted by applicable law, KnotKitchen will not be liable for indirect, incidental, special, consequential, or business losses arising from the use or inability to use the service.</p>
 
   <h2>13. Changes to These Terms</h2>
-  <p>We may update these Terms from time to time. Continued use of KnotKitchen after an update constitutes acceptance of the revised Terms, subject to applicable law.</p>
+  <p>We may update these Terms from time to time and will publish the latest version on the KnotKitchen website. A change that reduces a restaurant's rights or increases its obligations applies to it only after at least 30 days' notice by email and in the application, and with its express acceptance in the application or in writing. Until it accepts, the existing terms continue to apply to it.</p>
 
   <h2>14. Governing Law</h2>
-  <p>These Terms shall be governed by the applicable laws of India. Any disputes shall be subject to the jurisdiction of the appropriate courts in Kolkata, West Bengal, India.</p>
+  <p>These Terms shall be governed by the laws of India. A dispute is first raised in writing, and the parties will try to resolve it by negotiation. A dispute not resolved within 30 days of that notice is finally resolved by arbitration by a sole arbitrator under the Arbitration and Conciliation Act, 1996, with the seat and venue in Kolkata, West Bengal, India, in English. Either party may seek interim relief from a competent court, and a claim may still be brought before any statutory forum whose jurisdiction cannot lawfully be excluded. Subject to this, the courts at Kolkata, West Bengal, India have jurisdiction.</p>
 
   <h2>15. Contact</h2>
   <p><strong>KnotKitchen</strong><br>
@@ -138,7 +140,7 @@
 
 <footer>
   <div class="wrap">
-    <div class="f-bottom" style="margin-top:0;padding-top:0;border:0">
+    <div class="f-bottom bare">
       <span>© 2026 KnotKitchen. All rights reserved.</span>
       <span><a href="mailto:support@knotkitchen.com">support@knotkitchen.com</a> · <a href="tel:+918062181049">+91 8062181049</a></span>
     </div>

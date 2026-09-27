@@ -62,7 +62,7 @@
   const rest = new IntersectionObserver((entries) =>
     entries.forEach((e) => e.target.classList.toggle("offscreen", !e.isIntersecting)),
   );
-  $$(".kk-hero, .marquee, .bento, .kk-dark, .kk-close").forEach((el) => rest.observe(el));
+  $$(".kk-hero, .marquee, .bento, .kk-close").forEach((el) => rest.observe(el));
 
   // One write per frame, however many pointer or scroll events arrive.
   const perFrame = (fn) => {

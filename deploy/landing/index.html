@@ -21,10 +21,13 @@
 <link rel="icon" href="assets/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="assets/icon-180.png">
-<link rel="stylesheet" href="style.css?v=4">
-<link rel="stylesheet" href="home.css?v=3">
+<link rel="preload" href="assets/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/bricolage-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css?v=5">
+<link rel="stylesheet" href="home.css?v=5">
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 
 <header>
   <div class="wrap nav">
@@ -49,10 +52,10 @@
   </div>
 </header>
 
-<main>
+<main id="main">
 
 <section class="kk-hero">
-  <span class="orb a"></span><span class="orb b"></span><span class="orb c"></span>
+  <span class="orb"></span>
   <div class="wrap kk-hero-grid">
     <div>
       <span class="kk-pill fade" style="--i:0"><i></i>Smart POS for every kitchen</span>
@@ -64,7 +67,7 @@
       <p class="lede fade" style="--i:1">KnotKitchen is a point-of-sale and management platform for restaurants, cafes and cloud kitchens: billing, orders, tables, menus and payments in a single system your staff can learn in an afternoon.</p>
       <div class="kk-cta fade" style="--i:2">
         <a class="btn" href="#contact">Book a demo</a>
-        <a class="btn ghost" href="#features">See what's inside</a>
+        <a class="link-arrow" href="#features">See what's inside <span aria-hidden="true">&rarr;</span></a>
       </div>
       <p class="kk-note fade" style="--i:3">Works on tablets, desktops and POS terminals · Support from a real team</p>
     </div>
@@ -100,7 +103,7 @@
   </ul>
 </div>
 
-<section class="kk-sec" id="features">
+<section class="kk-sec kk-alt" id="features">
   <div class="wrap">
     <div class="kk-head reveal">
       <span class="tag">Features</span>
@@ -112,8 +115,8 @@
         <div class="art bars-art">
           <i style="--h:34%;--n:0"></i><i style="--h:52%;--n:1"></i><i style="--h:41%;--n:2"></i><i style="--h:68%;--n:3"></i><i style="--h:58%;--n:4"></i><i style="--h:82%;--n:5"></i><i style="--h:74%;--n:6"></i><i style="--h:96%;--n:7"></i>
         </div>
-        <h3>POS dashboard</h3>
-        <p>A live view of sales, active orders and performance so you always know how the day is going.</p>
+        <h3>Sales reports</h3>
+        <p>Sales, orders and payments for today or any date range, so you always know how the business is doing.</p>
       </article>
       <article class="tile reveal" style="--i:1">
         <div class="art tix"><b style="--n:0">#A12</b><b style="--n:1">#A13</b><b style="--n:2">#A14</b></div>
@@ -151,7 +154,7 @@
   </div>
 </section>
 
-<section class="kk-sec kk-alt" id="how">
+<section class="kk-sec" id="how">
   <div class="wrap">
     <div class="kk-head reveal">
       <span class="tag">How it works</span>
@@ -167,115 +170,149 @@
   </div>
 </section>
 
-<section class="kk-sec kk-dark" id="platform">
-  <div class="wrap">
+<section class="kk-sec kk-alt" id="platform">
+  <div class="wrap split">
     <div class="kk-head reveal">
       <span class="tag">Platform</span>
       <h2>Built to keep running through service</h2>
       <p>A modern web platform your staff open in a browser. Nothing to install on every device, and updates arrive on their own.</p>
+      <ul class="kk-tags">
+        <li>Dine-in</li><li>Takeaway</li><li>Delivery</li><li>Cloud kitchens</li>
+        <li>Cafes</li><li>Multi-user</li><li>Tablet &amp; desktop</li>
+      </ul>
     </div>
-    <div class="glass">
-      <div class="pane reveal" style="--i:0">
-        <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-        <h3>Roles for every seat</h3>
-        <p>Separate access for owners, managers and staff, with secure sign-in for each account.</p>
-      </div>
-      <div class="pane reveal" style="--i:1">
-        <svg viewBox="0 0 24 24"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
-        <h3>Integrations</h3>
-        <p>Connect payment providers and third-party platforms so orders and money land in the right place.</p>
-      </div>
-      <div class="pane reveal" style="--i:2">
-        <svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
-        <h3>Your data stays yours</h3>
-        <p>You own the business information you put into KnotKitchen. We process it to run the service for you.</p>
-      </div>
-    </div>
-    <ul class="kk-tags reveal">
-      <li>Dine-in</li><li>Takeaway</li><li>Delivery</li><li>Cloud kitchens</li>
-      <li>Cafes</li><li>Multi-user</li><li>Tablet &amp; desktop</li>
+    <ul class="plist">
+      <li class="reveal" style="--i:0">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <div><h3>Roles for every seat</h3><p>Separate access for owners, managers and staff, with secure sign-in for each account.</p></div>
+      </li>
+      <li class="reveal" style="--i:1">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 13a5 5 0 0 0 7 0l3-3a5 5 0 0 0-7-7l-1 1"/><path d="M14 11a5 5 0 0 0-7 0l-3 3a5 5 0 0 0 7 7l1-1"/></svg>
+        <div><h3>Integrations</h3><p>Connect payment providers and third-party platforms so orders and money land in the right place.</p></div>
+      </li>
+      <li class="reveal" style="--i:2">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3 21 2M17 6l3 3M14.5 8.5l2.5 2.5"/></svg>
+        <div><h3>Your data stays yours</h3><p>You own the business information you put into KnotKitchen. We process it to run the service for you.</p></div>
+      </li>
     </ul>
   </div>
 </section>
 
-<section class="kk-sec kk-alt" id="pricing">
+<section class="kk-sec" id="pricing">
   <div class="wrap">
     <div class="kk-head reveal">
       <span class="tag">Pricing</span>
-      <h2>Plans &amp; pricing</h2>
-      <p>Software as a service for restaurants, cafes and cloud kitchens. All prices are in Indian Rupees (INR) and billed per 30-day subscription period. Features and limits differ by plan and are confirmed in your service agreement.</p>
+      <h2>One POS plan.<br>Add only what you need.</h2>
+      <p>The POS plan, add-ons and tablets are prepaid from your KnotKitchen wallet; printers are paid once, online. Standard prices per outlet in Indian Rupees (INR); the app shows the exact amount before you pay. No installation fee.</p>
     </div>
-    <div class="plans">
+    <div class="price-grid">
+      <div class="plan-card featured reveal" style="--i:0">
+        <h3>POS plan</h3>
+        <p class="price">₹399 <span>+ GST / 30 days</span></p>
+        <ul class="incl">
+          <li>Billing, receipts and KOTs</li>
+          <li>Takeaway and delivery orders</li>
+          <li>Menu management</li>
+          <li>Sales reports for any date range</li>
+          <li>Staff accounts with roles</li>
+        </ul>
+        <p class="small">Start by recharging your wallet with ₹2,500 or more in one payment: ₹399 + GST is taken from it and the rest stays in your wallet. The plan, add-ons and tablets then renew together from the wallet every 30 days.</p>
+        <p class="small">If the balance can&rsquo;t cover a renewal, or runs out, you have 24 hours to recharge before the POS locks. Billing stays open, and the POS unlocks as soon as you pay.</p>
+        <a class="btn" href="#contact">Book a demo</a>
+      </div>
+      <div class="plan-card reveal" style="--i:1">
+        <h3>Add-ons</h3>
+        <p>Switch on what you need. Added mid-period, you pay only for the days left.</p>
+        <ul class="lines">
+          <li><div><b>QR Table Ordering</b><span>Tables and dine-in service, with a QR on each table so diners order from their phone.</span></div><em>₹200<small>+ GST / 30 days</small></em></li>
+          <li><div><b>Website</b><span>Your own ordering website and table booking, with online payments (also at QR tables) into your own Cashfree or PhonePe account.</span></div><em>₹300<small>+ GST / 30 days</small></em></li>
+          <li><div><b>GMB Management</b><span>We keep your Google Business Profile up to date.</span></div><em>₹100<small>+ GST / 30 days</small></em></li>
+        </ul>
+        <p class="small">Stop an add-on any time: it keeps working until the end of the period already paid, with no refund for the unused days.</p>
+      </div>
+    </div>
+    <div class="hw-grid">
       <div class="plan-card reveal" style="--i:0">
-        <h3>Essential</h3>
-        <p class="price">₹399 <span>/ 30 days</span></p>
-        <p>KnotKitchen restaurant POS &amp; management software subscription, per outlet.</p>
+        <h3>Tablets</h3>
+        <p class="price">₹600 <span>+ GST / 30 days</span></p>
+        <p>Rental; each extra tablet ₹500 + GST / 30 days. Each tablet needs its own wallet top-up of ₹4,000 or more in one payment, made after your POS plan has started (the first ₹2,500 recharge doesn&rsquo;t count). The money stays in your wallet and pays your bills.</p>
+        <p>Delivered and set up by KnotKitchen at serviceable locations in India. The tablet stays KnotKitchen&rsquo;s property: to end the rental, contact support and return it.</p>
       </div>
-      <div class="plan-card featured reveal" style="--i:1">
-        <h3>Growth</h3>
-        <p class="price">₹1,299 <span>/ 30 days</span></p>
-        <p>KnotKitchen restaurant POS &amp; management software subscription, per outlet.</p>
-      </div>
-      <div class="plan-card reveal" style="--i:2">
-        <h3>Scale</h3>
-        <p class="price">₹1,699 <span>/ 30 days</span></p>
-        <p>KnotKitchen restaurant POS &amp; management software subscription, per outlet. Not currently open to new subscriptions &mdash; <a href="contact.html">contact us</a>.</p>
+      <div class="plan-card reveal" style="--i:1">
+        <h3>Receipt printers</h3>
+        <ul class="lines">
+          <li><div><b>2-inch receipt printer</b></div><em>₹1,900<small>incl. GST, one time</small></em></li>
+          <li><div><b>3-inch receipt printer</b></div><em>₹4,250<small>incl. GST, one time</small></em></li>
+        </ul>
+        <p>Buy once, paid online by UPI, card or netbanking (not from your wallet). No monthly fee. Cancel before KnotKitchen accepts the order for a full refund to your wallet.</p>
       </div>
     </div>
     <div class="plan-notes reveal">
-      <h3>Other charges</h3>
-      <ul>
-        <li><strong>E-bills</strong> (digital receipts sent to customers by SMS/WhatsApp): ₹0.25 per e-bill.</li>
-        <li><strong>Hardware</strong> (tablets, POS terminals, printers), where needed: quoted in INR before purchase. See the <a href="shipping.html">Shipping</a> and <a href="return.html">Return</a> policies.</li>
-        <li>Applicable taxes, if any, are shown separately on your invoice.</li>
-      </ul>
-      <p>Cancellation and refunds: <a href="refund.html">Refund &amp; Cancellation Policy</a>.</p>
+      <div>
+        <h3>Other charges</h3>
+        <ul>
+          <li><strong>Online-paid orders</strong>: ₹9 + GST per order paid online through your website or table QR, from the start date shown in the app.</li>
+          <li><strong>E-bills</strong> (digital receipts sent to customers by SMS/WhatsApp): ₹0.25 + GST per e-bill sent. Failed sends are free.</li>
+          <li><strong>GST</strong>, where applicable, is shown separately on your invoice. Printer prices already include it.</li>
+          <li><strong>Delivery and returns</strong> of tablets and printers: see the <a href="shipping.html">Shipping</a> and <a href="return.html">Return</a> policies.</li>
+        </ul>
+      </div>
+      <div>
+        <h3>Cancellation &amp; refunds</h3>
+        <p>Cancel anytime from Billing in the app or by email; it takes effect at the end of the paid period. Your wallet balance is not refundable, except as the <a href="refund.html">Refund &amp; Cancellation Policy</a> states (for example, duplicate or erroneous payments).</p>
+      </div>
     </div>
   </div>
 </section>
 
-<section class="kk-sec" id="faq">
-  <div class="wrap">
-    <div class="kk-head reveal"><span class="tag">FAQ</span><h2>Common questions</h2></div>
-    <div class="faq reveal">
-      <details open>
-        <summary>What does it cost?</summary>
-        <p>Plans start at ₹399 per 30 days; Growth is ₹1,299 and Scale ₹1,699. Hardware is quoted separately in INR. <a href="#pricing">See pricing</a></p>
-      </details>
-      <details>
-        <summary>Do you supply hardware?</summary>
-        <p>Where a plan includes it, we can supply tablets, POS devices and printers, shipped to serviceable locations in India. <a href="shipping.html">Shipping</a></p>
-      </details>
-      <details>
-        <summary>Can I cancel?</summary>
-        <p>You can request cancellation at any time to stop future renewals. Refunds are reviewed case by case. <a href="refund.html">Refund policy</a></p>
-      </details>
-      <details>
-        <summary>How is my data handled?</summary>
-        <p>We collect only what is needed to run the service and protect it with reasonable safeguards. <a href="privacy.html">Privacy policy</a></p>
-      </details>
-      <details>
-        <summary>Who do I contact for support?</summary>
-        <p>Call <a href="tel:+918062181049">+91 8062181049</a> or write to <a href="mailto:support@knotkitchen.com">support@knotkitchen.com</a> with your account details and we will take it from there. <a href="contact.html">Contact us</a></p>
-      </details>
-      <details>
-        <summary>Where do you operate?</summary>
-        <p>We serve restaurants across India and are based in Kolkata, West Bengal.</p>
-      </details>
+<section class="kk-sec kk-alt" id="faq">
+  <div class="wrap split">
+    <div class="kk-head reveal">
+      <span class="tag">FAQ</span>
+      <h2>Common questions</h2>
+      <p>Anything else, write to <a href="mailto:support@knotkitchen.com">support@knotkitchen.com</a>.</p>
     </div>
+    <dl class="faq reveal">
+      <div>
+        <dt>What does it cost?</dt>
+        <dd>To start, recharge your KnotKitchen wallet with ₹2,500 or more in one payment. The POS plan (₹399 + GST per 30 days) is paid from it and the rest stays in your wallet. Add-ons are ₹100&ndash;₹300 + GST each per 30 days, tablets are rented per 30 days and printers are bought once. Orders paid online through your website or table QR cost ₹9 + GST each, and e-bills ₹0.25 + GST each. The wallet is not refundable (<a href="refund.html">refund policy</a>). <a href="#pricing">See pricing</a></dd>
+      </div>
+      <div>
+        <dt>Do you supply hardware?</dt>
+        <dd>Yes. Rent tablets per 30 days or buy receipt printers once, ordered from Billing in the app and delivered to serviceable locations in India. <a href="shipping.html">Shipping</a></dd>
+      </div>
+      <div>
+        <dt>Can I cancel?</dt>
+        <dd>Cancel anytime from Billing in the app or by email; it takes effect at the end of the paid period. The wallet balance is not refundable, except for duplicate or erroneous payments and the other cases in the refund policy. <a href="refund.html">Refund policy</a></dd>
+      </div>
+      <div>
+        <dt>How is my data handled?</dt>
+        <dd>We collect only what is needed to run the service and protect it with reasonable safeguards. <a href="privacy.html">Privacy policy</a></dd>
+      </div>
+      <div>
+        <dt>Who do I contact for support?</dt>
+        <dd>Call <a href="tel:+918062181049">+91 8062181049</a> or write to <a href="mailto:support@knotkitchen.com">support@knotkitchen.com</a> with your account details and we will take it from there. <a href="contact.html">Contact us</a></dd>
+      </div>
+      <div>
+        <dt>Where do you operate?</dt>
+        <dd>We serve restaurants across India and are based in Kolkata, West Bengal.</dd>
+      </div>
+    </dl>
   </div>
 </section>
 
-<section class="kk-sec" id="contact" style="padding-top:0">
+<section class="kk-sec" id="contact">
   <div class="wrap">
     <div class="kk-close reveal">
-      <h2>See KnotKitchen on your menu</h2>
-      <p>Send us your restaurant name and city, and we will walk you through a live demo built around how you actually work.</p>
-      <div class="kk-cta">
-        <a class="btn" href="mailto:support@knotkitchen.com?subject=KnotKitchen%20demo%20request">Email support@knotkitchen.com</a>
-        <a class="btn ghost" href="tel:+918062181049">Call +91 8062181049</a>
+      <div>
+        <h2>See KnotKitchen on your menu</h2>
+        <p>Send us your restaurant name and city, and we will walk you through a live demo built around how you actually work.</p>
       </div>
-      <p style="margin:0;font-size:.9rem;color:#9fb0d3">We usually reply within one business day.</p>
+      <div class="kk-close-act">
+        <a class="btn" href="mailto:support@knotkitchen.com?subject=KnotKitchen%20demo%20request">Email support@knotkitchen.com</a>
+        <a class="link-arrow" href="tel:+918062181049">Call +91 8062181049 <span aria-hidden="true">&rarr;</span></a>
+        <small>We usually reply within one business day.</small>
+      </div>
     </div>
   </div>
 </section>
@@ -289,8 +326,8 @@
         <a class="brand-mark" href="index.html">
           <img class="brand-stack" src="assets/logo-stacked.webp" alt="KnotKitchen" width="380" height="211" loading="lazy">
         </a>
-        <p style="color:var(--muted);max-width:30em">Technology for restaurants and food businesses — POS, billing, order management, integrations and restaurant management tools.</p>
-        <p style="color:var(--muted)"><a href="mailto:support@knotkitchen.com">support@knotkitchen.com</a><br><a href="tel:+918062181049">+91 8062181049</a></p>
+        <p class="f-about">Technology for restaurants and food businesses — POS, billing, order management, integrations and restaurant management tools.</p>
+        <p class="f-about"><a href="mailto:support@knotkitchen.com">support@knotkitchen.com</a><br><a href="tel:+918062181049">+91 8062181049</a></p>
       </div>
       <div>
         <h4>Product</h4>
@@ -317,11 +354,11 @@
     </div>
     <div class="f-bottom">
       <span>© 2026 KnotKitchen. All rights reserved.</span>
-      <span>Kolkata, West Bengal, India</span>
+      <span>J/183 Baishnabghata Patuli, Kolkata – 700094</span>
     </div>
   </div>
 </footer>
 
-<script src="home.js?v=3" defer></script>
+<script src="home.js?v=4" defer></script>
 </body>
 </html>

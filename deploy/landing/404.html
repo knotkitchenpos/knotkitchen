@@ -11,9 +11,12 @@
 <link rel="icon" href="/assets/favicon-32.png" type="image/png" sizes="32x32">
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/assets/icon-180.png">
-<link rel="stylesheet" href="/style.css">
+<link rel="preload" href="/assets/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/assets/fonts/bricolage-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="/style.css?v=5">
 </head>
 <body>
+<a class="skip" href="#main">Skip to content</a>
 
 <header>
   <div class="wrap nav">
@@ -36,7 +39,7 @@
   </div>
 </header>
 
-<main class="wrap legal">
+<main id="main" class="wrap legal">
   <h1>Page not found</h1>
   <p>The page you were looking for is not here. It may have moved, or the link may be mistyped.</p>
   <p><a class="btn" href="/">Go to the home page</a></p>
@@ -50,7 +53,7 @@
 
 <footer>
   <div class="wrap">
-    <div class="f-bottom" style="margin-top:0;padding-top:0;border:0">
+    <div class="f-bottom bare">
       <span>© 2026 KnotKitchen. All rights reserved.</span>
       <span><a href="mailto:support@knotkitchen.com">support@knotkitchen.com</a> · <a href="tel:+918062181049">+91 8062181049</a></span>
     </div>
