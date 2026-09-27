@@ -156,7 +156,7 @@ const ProductOptionsSheet = ({ item, currency = "₹", primary = "#FD5302", onCl
                   return (
                     <label
                       key={String(v._id)}
-                      className={`flex items-center justify-between gap-3 p-3 rounded-xl border text-[13px] ${
+                      className={`flex items-start justify-between gap-3 p-3 rounded-xl border text-[13px] ${
                         disabled
                           ? "opacity-50 border-slate-200"
                           : active
@@ -165,17 +165,17 @@ const ProductOptionsSheet = ({ item, currency = "₹", primary = "#FD5302", onCl
                       }`}
                       style={active && !disabled ? { ringColor: primary, borderColor: primary } : undefined}
                     >
-                      <span className="flex items-center gap-2.5 min-w-0">
+                      <span className="flex items-start gap-2.5 min-w-0">
                         <input
                           type="radio"
                           name="variant"
                           disabled={disabled}
                           checked={active}
                           onChange={() => setVariantId(String(v._id))}
-                          className="w-4 h-4"
+                          className="w-4 h-4 mt-px shrink-0"
                           style={{ accentColor: primary }}
                         />
-                        <span className="font-bold text-slate-800 truncate">{v.name}</span>
+                        <span className="font-bold text-slate-800 min-w-0 break-words leading-snug">{v.name}</span>
                       </span>
                       <span className="font-extrabold text-slate-900 shrink-0">{money(v.price)}</span>
                     </label>
@@ -209,22 +209,24 @@ const ProductOptionsSheet = ({ item, currency = "₹", primary = "#FD5302", onCl
                     return (
                       <label
                         key={ok}
-                        className={`flex items-center justify-between gap-3 p-3 rounded-xl border text-[13px] ${
+                        className={`flex items-start justify-between gap-3 p-3 rounded-xl border text-[13px] ${
                           atCap ? "opacity-45" : ""
                         } ${active ? "border-transparent ring-2" : "border-slate-200"}`}
                         style={active ? { borderColor: primary } : undefined}
                       >
-                        <span className="flex items-center gap-2.5 min-w-0">
+                        <span className="flex items-start gap-2.5 min-w-0">
                           <input
                             type={cap === 1 ? "radio" : "checkbox"}
                             name={cap === 1 ? `grp-${gk}` : undefined}
                             checked={active}
                             disabled={atCap}
                             onChange={() => toggleOption(g, gi, o, oi)}
-                            className="w-4 h-4"
+                            className="w-4 h-4 mt-px shrink-0"
                             style={{ accentColor: primary }}
                           />
-                          <span className="font-bold text-slate-800 truncate">{o.name}</span>
+                          {/* The whole name, wrapped: two long options cut off at
+                              the same point read the same. */}
+                          <span className="font-bold text-slate-800 min-w-0 break-words leading-snug">{o.name}</span>
                         </span>
                         {Number(o.price) > 0 ? (
                           <span className="font-extrabold text-slate-900 shrink-0">+{money(o.price)}</span>

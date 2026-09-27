@@ -631,7 +631,7 @@ export default function OrderOnline() {
                 <li key={it._id} className="flex justify-between items-center gap-3 px-4 py-2.5 text-sm">
                   <div className="min-w-0">
                     <p
-                      className={`font-semibold truncate ${
+                      className={`font-semibold break-words ${
                         it.status === "cancelled" ? "text-slate-400 line-through" : "text-slate-800"
                       }`}
                     >
@@ -912,9 +912,9 @@ export default function OrderOnline() {
                 return (
                   <li key={key} className="py-3 flex items-center gap-3">
                     <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-sm text-slate-900 truncate">{item.name}</p>
+                      <p className="font-semibold text-sm text-slate-900 break-words">{item.name}</p>
                       {chosen.length > 0 && (
-                        <p className="text-[11px] text-slate-500 truncate">{chosen.join(" · ")}</p>
+                        <p className="text-[11px] text-slate-500 break-words">{chosen.join(" · ")}</p>
                       )}
                       <p className="text-[11px] text-slate-500">{money(unitPrice)} each</p>
                     </div>
