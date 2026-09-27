@@ -9,6 +9,7 @@ function tokenizeInline(line){
     if(!part) return;
     let bold=false, content=part;
     if(part.startsWith('**') && part.endsWith('**') && part.length>=4){ bold=true; content=part.slice(2,-2); }
+    else content = content.replace(/\*([^*\s][^*]*?)\*/g,'$1'); // *italic*: no italic face, so plain
     content.split(/(\s+)/).forEach(w=>{ if(w!=='') tokens.push({text:w, bold}); });
   });
   return tokens;
@@ -27,6 +28,7 @@ function makePdfLayout(doc, opts){
     doc.setFontSize(size);
     const tokens = tokenizeInline(line);
     let cx = margin + indent;
+    const lineStart = margin + indent + bulletIndent;
     ensureSpace(lineHeight);
     if(isBullet){
       doc.setFont(font,'normal');
@@ -39,13 +41,26 @@ function makePdfLayout(doc, opts){
         return;
       }
       doc.setFont(font, tok.bold ? 'bold' : 'normal');
-      const w = doc.getTextWidth(tok.text);
-      if(cx + w > margin + maxWidth){
+      let text = tok.text;
+      let w = doc.getTextWidth(text);
+      if(cx + w > margin + maxWidth && cx > lineStart){
         y += lineHeight;
         ensureSpace(lineHeight);
-        cx = margin + indent + bulletIndent;
+        cx = lineStart;
       }
-      doc.text(tok.text, cx, y);
+      // A token wider than a whole line (a long "____" signature line, a URL)
+      // is cut to fit instead of running off the page.
+      while(cx + w > margin + maxWidth && text.length > 1){
+        let n = text.length - 1;
+        while(n > 1 && cx + doc.getTextWidth(text.slice(0, n)) > margin + maxWidth) n--;
+        doc.text(text.slice(0, n), cx, y);
+        text = text.slice(n);
+        w = doc.getTextWidth(text);
+        y += lineHeight;
+        ensureSpace(lineHeight);
+        cx = lineStart;
+      }
+      doc.text(text, cx, y);
       cx += w;
     });
     y += lineHeight;
@@ -80,7 +95,8 @@ function makePdfLayout(doc, opts){
 }
 
 function renderAgreementToPdf(doc, text, layout){
-  const rawLines = text.replace(/\\\n/g,'\n').split('\n');
+  // A trailing backslash is a markdown hard line break.
+  const rawLines = text.replace(/\\[ \t]*\r?\n/g,'\n').replace(/\\[ \t]*$/,'').split(/\r?\n/);
   rawLines.forEach(line=>{
     const trimmed = line.trim();
     if(trimmed===''){ layout.blank(); return; }
@@ -89,8 +105,63 @@ function renderAgreementToPdf(doc, text, layout){
     if(/^## /.test(trimmed)){ layout.heading(trimmed.replace(/^## /,''), {size:13.5, gapBefore:16, gapAfter:8}); return; }
     if(/^# /.test(trimmed)){ layout.heading(trimmed.replace(/^# /,''), {size:17, gapBefore:6, gapAfter:10}); return; }
     if(/^- /.test(trimmed)){ layout.bullet(trimmed.replace(/^- /,'')); return; }
+    if(/^\|/.test(trimmed)){
+      // Table rows print as one line each, cells separated; the |---| row is dropped.
+      if(/^\|[\s:|-]+\|?$/.test(trimmed)) return;
+      layout.paragraph(trimmed.replace(/^\||\|$/g,'').split('|').map(c=>c.trim()).join('  ·  '));
+      return;
+    }
     layout.paragraph(trimmed);
   });
+}
+
+function agreementVersionOf(text){
+  const m = /\*\*Agreement Version:\*\*\s*(v[\d.]+)/.exec(text || '');
+  return m ? m[1] : (window.AGREEMENT_VERSION || '');
+}
+
+// Drawn after layout, when the page count is known.
+function drawPdfFooters(doc, { agreementId, version, pageWidth, pageHeight, font }){
+  const total = doc.getNumberOfPages();
+  for(let i=1; i<=total; i++){
+    doc.setPage(i);
+    doc.setFont(font,'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(110,110,110);
+    const label = ['KnotKitchen Restaurant Service Agreement', agreementId, version, `Page ${i} of ${total}`].filter(Boolean).join(' · ');
+    doc.text(label, pageWidth/2, pageHeight - 24, { align:'center' });
+    doc.setTextColor(0,0,0);
+  }
+}
+
+function buildAgreementPdf(text, agreementId){
+  if(!window.jspdf || !window.jspdf.jsPDF){ throw new Error('jsPDF library not available'); }
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({unit:'pt', format:'a4'});
+
+  doc.addFileToVFS('Roboto-Regular.ttf', FONT_ROBOTO_REGULAR);
+  doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
+  doc.addFileToVFS('Roboto-Bold.ttf', FONT_ROBOTO_BOLD);
+  doc.addFont('Roboto-Bold.ttf', 'Roboto', 'bold');
+
+  const margin = 50;
+  const pageWidth = 595, pageHeight = 842;
+  const font = 'Roboto';
+
+  function drawLetterhead(){
+    const logoW = 130, logoH = logoW * (289/479);
+    try{ doc.addImage(LOGO_FULL, 'PNG', (pageWidth-logoW)/2, margin-14, logoW, logoH); }catch(imgErr){ /* continue without logo if image embed fails */ }
+    const lineY = margin - 14 + logoH + 14;
+    doc.setDrawColor(221,227,220);
+    doc.line(margin, lineY, pageWidth-margin, lineY);
+    return lineY + 22;
+  }
+
+  const startY = drawLetterhead();
+  const layout = makePdfLayout(doc, { margin, pageWidth, pageHeight, font, startY });
+  renderAgreementToPdf(doc, text, layout);
+  drawPdfFooters(doc, { agreementId, version: agreementVersionOf(text), pageWidth, pageHeight, font });
+  return doc;
 }
 
 function printAgreementFallback(){
@@ -110,35 +181,15 @@ function printAgreementFallback(){
   w.document.close();
 }
 
-function downloadAgreementPdf(){
+async function downloadAgreementPdf(){
+  // Always the current text (the details may have changed since step 7); a
+  // signed copy of an older text is dropped on the way.
+  if(!(await ensureAgreementText())) render();
+  const a = state.agreement;
+  // What was downloaded, so an upload signed on an older download is refused.
+  try{ a.downloadedTextHash = await sha256Hex(a.text); scheduleSave(); }catch(e){}
   try{
-    if(!window.jspdf || !window.jspdf.jsPDF){ throw new Error('jsPDF library not available'); }
-    const { jsPDF } = window.jspdf;
-    const doc = new jsPDF({unit:'pt', format:'a4'});
-    
-    doc.addFileToVFS('Roboto-Regular.ttf', FONT_ROBOTO_REGULAR);
-    doc.addFont('Roboto-Regular.ttf', 'Roboto', 'normal');
-    doc.addFileToVFS('Roboto-Bold.ttf', FONT_ROBOTO_BOLD);
-    doc.addFont('Roboto-Bold.ttf', 'Roboto', 'bold');
-
-    const margin = 50;
-    const pageWidth = 595, pageHeight = 842;
-    const font = 'Roboto';
-
-    function drawLetterhead(){
-      const logoW = 130, logoH = logoW * (289/479);
-      try{ doc.addImage(LOGO_FULL, 'PNG', (pageWidth-logoW)/2, margin-14, logoW, logoH); }catch(imgErr){ /* continue without logo if image embed fails */ }
-      const lineY = margin - 14 + logoH + 14;
-      doc.setDrawColor(221,227,220);
-      doc.line(margin, lineY, pageWidth-margin, lineY);
-      return lineY + 22;
-    }
-
-    const startY = drawLetterhead();
-    const layout = makePdfLayout(doc, { margin, pageWidth, pageHeight, font, startY });
-    renderAgreementToPdf(doc, state.agreement.text, layout);
-
-    doc.save(`KnotKitchen-Agreement-${state.agreement.id}.pdf`);
+    buildAgreementPdf(a.text, a.id).save(`KnotKitchen-Agreement-${a.id}.pdf`);
     showToast('Agreement PDF downloaded');
   }catch(err){
     console.error('PDF generation failed:', err);

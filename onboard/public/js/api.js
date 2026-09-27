@@ -26,6 +26,9 @@ async function handleSaveResponse(res) {
   if (res.status === 401) {
     return { success: false, sessionExpired: true, message: 'Your session has expired.' };
   }
+  if (res.status === 413) {
+    return { success: false, message: 'The files are too large to send together. Retry, or upload them one at a time.' };
+  }
   try {
     return await res.json();
   } catch (e) {

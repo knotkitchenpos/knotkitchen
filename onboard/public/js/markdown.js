@@ -5,7 +5,7 @@ function escapeHtml(s){ return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 
 function mdToHtml(md){
   let t = escapeHtml(md);
-  t = t.replace(/\\\n/g,'<br>\n');
+  t = t.replace(/\\[ \t]*\r?\n/g,'<br>\n').replace(/\\[ \t]*$/,'');
   t = t.replace(/^### (.*)$/gm,'<h5>$1</h5>');
   t = t.replace(/^## (.*)$/gm,'<h4>$1</h4>');
   t = t.replace(/^# (.*)$/gm,'<h3>$1</h3>');
@@ -34,7 +34,7 @@ function mdToHtml(md){
 
 function mdToPlain(md){
   return md
-    .replace(/\\\n/g,'\n')
+    .replace(/\\[ \t]*\r?\n/g,'\n')
     .replace(/\*\*(.*?)\*\*/g,'$1')
     .replace(/\*(.*?)\*/g,'$1')
     .replace(/^### (.*)$/gm,'$1')

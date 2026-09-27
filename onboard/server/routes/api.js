@@ -8,11 +8,38 @@ const { issueSessionCookie, requireAuth, requireAdmin, COOKIE_NAME } = require('
 const { allowServiceToken } = require('../middleware/serviceAuth');
 
 const router = express.Router();
-const DB_PATH = path.join(__dirname, '..', 'data', 'database.json');
-const UPLOADS_DIR = path.join(__dirname, '..', '..', 'uploads');
+// Overridable so the tests run against a scratch database and upload folder.
+const DB_PATH = process.env.ONBOARD_DB_PATH || path.join(__dirname, '..', 'data', 'database.json');
+const UPLOADS_DIR = process.env.ONBOARD_UPLOADS_DIR || path.join(__dirname, '..', '..', 'uploads');
 
 const SAFE_ID = /^[A-Za-z0-9_-]{1,80}$/; // agreement ids / file keys — no path separators
 const SAFE_USERNAME = /^[a-zA-Z0-9._-]{3,40}$/;
+const SAFE_FILE_NAME = /^[A-Za-z0-9_.-]{1,100}$/;
+
+// The statuses the portal's own saves send (saveAgreementToDb in index.html).
+// "Store Created" is set only by the store-created route below; "Completed"
+// by nobody any more.
+const CLIENT_STATUSES = ['Draft', 'eSigned', 'Submitted'];
+const SUBMITTED_STATUSES = ['submitted', 'store created', 'completed', 'signed', 'complete'];
+const SIGNATURE_METHODS = ['handwritten-scanned', 'aadhaar-esign', 'dsc'];
+const DEFAULT_SIGNATURE_METHOD = 'handwritten-scanned';
+// The five acceptance statements ticked on the portal's final step.
+const ACCEPTANCE_KEYS = ['accept_accurate', 'accept_authorised', 'accept_terms', 'accept_wallet', 'accept_signed'];
+// The only agreement version a new submission may carry. Must match
+// window.AGREEMENT_VERSION in public/js/agreement_v3.js.
+const CURRENT_AGREEMENT_VERSION = 'v3.0';
+const VERSION_LINE = /\*\*Agreement Version:\*\*\s*(v[\d.]+)/;
+
+// The version label in the text; the payload's own label only when the text has none.
+const versionOf = (text, payloadVersion) =>
+  (String(text || '').match(VERSION_LINE) || [])[1] ||
+  (/^v\d+(\.\d+)*$/.test(String(payloadVersion || '')) ? String(payloadVersion) : '');
+const isSubmittedRecord = (ag) => Boolean(ag && (
+  (ag.acceptance && ag.acceptance.submittedAt) ||
+  SUBMITTED_STATUSES.includes(String(ag.status || '').toLowerCase())
+));
+const sha256 = (buf) => crypto.createHash('sha256').update(buf).digest('hex');
+const DATA_URL = /^data:([A-Za-z-+\/.]+);base64,(.+)$/;
 
 function readDb() {
   try {
@@ -241,72 +268,185 @@ router.post('/agreements', (req, res) => {
   if (!agreement || !agreement.id || !SAFE_ID.test(agreement.id)) {
     return res.status(400).json({ success: false, message: 'Invalid data' });
   }
+  const status = agreement.status === undefined || agreement.status === '' ? 'Draft' : agreement.status;
+  if (!CLIENT_STATUSES.includes(status)) {
+    return res.status(400).json({ success: false, code: 'STATUS_NOT_ALLOWED', message: `Status "${String(status).slice(0, 40)}" cannot be set here.` });
+  }
+  const data = agreement.data && typeof agreement.data === 'object' ? agreement.data : {};
+  const signMethod = data.sign_method === undefined || data.sign_method === '' ? DEFAULT_SIGNATURE_METHOD : data.sign_method;
+  if (!SIGNATURE_METHODS.includes(signMethod)) {
+    return res.status(400).json({ success: false, code: 'SIGN_METHOD_INVALID', message: 'Unknown signature method.' });
+  }
+
   const db = readDb();
   const agId = agreement.id;
+  const previous = db.agreements[agId] || {};
+  const filesObj = agreement.files && typeof agreement.files === 'object' ? agreement.files : {};
+  const text = agreement.agreement_text || '';
+
+  // Once submitted, what was signed stays as it was: a sales agent can no
+  // longer change the text, the form data or the signed copy (an admin can).
+  const locked = isSubmittedRecord(previous);
+  const isAdmin = Boolean(req.user && req.user.role === 'admin');
+  if (locked && !isAdmin) {
+    const incoming = filesObj.esigned;
+    const kept = previous.files && previous.files.esigned;
+    // A key left out of the payload keeps the stored file (see below).
+    let esignedSame = !('esigned' in filesObj);
+    if (incoming && kept) {
+      if (incoming.dataUrl) {
+        const m = String(incoming.dataUrl).match(DATA_URL);
+        let keptHash = previous.acceptance && previous.acceptance.signedCopyHash;
+        if (!keptHash) {
+          try { keptHash = sha256(fs.readFileSync(path.join(UPLOADS_DIR, agId, path.basename(kept.url)))); } catch (e) { keptHash = ''; }
+        }
+        esignedSame = Boolean(m && keptHash && sha256(Buffer.from(m[2], 'base64')) === keptHash);
+      } else {
+        esignedSame = incoming.url === kept.url;
+      }
+    }
+    const changed = [];
+    if (text !== (previous.agreement_text || '')) changed.push('agreement text');
+    if (JSON.stringify(data) !== JSON.stringify(previous.data || {})) changed.push('details');
+    if (!esignedSame) changed.push('signed copy');
+    if (changed.length) {
+      return res.status(409).json({ success: false, code: 'AGREEMENT_LOCKED', message: `This agreement was already submitted, so its ${changed.join(', ')} can no longer be changed. Ask an admin.` });
+    }
+  }
+
+  const submitting = status === 'Submitted' && !locked;
+  if (submitting) {
+    const e = filesObj.esigned;
+    if (!e || !(e.dataUrl || e.url)) {
+      return res.status(400).json({ success: false, code: 'ESIGNED_REQUIRED', message: 'Upload the signed agreement before submitting.' });
+    }
+    const missing = ACCEPTANCE_KEYS.filter(k => data[k] !== true);
+    if (missing.length) {
+      return res.status(400).json({ success: false, code: 'ACCEPTANCE_REQUIRED', message: 'Tick all the acceptance statements before submitting.', missing });
+    }
+    if (versionOf(text, agreement.agreement_version) !== CURRENT_AGREEMENT_VERSION) {
+      return res.status(400).json({ success: false, code: 'AGREEMENT_OUTDATED', message: `This agreement is not the current version (${CURRENT_AGREEMENT_VERSION}). Open the Agreement step to regenerate it, then download, sign and upload it again.` });
+    }
+    // The signed copy was uploaded against exactly this text.
+    if (sha256(text) !== String(agreement.esigned_text_hash || '')) {
+      return res.status(400).json({ success: false, code: 'SIGNED_TEXT_MISMATCH', message: 'The agreement changed after it was signed. Download the new version and upload the new signed copy.' });
+    }
+  }
+
   const agFolder = path.join(UPLOADS_DIR, agId);
   if (!fs.existsSync(agFolder)) fs.mkdirSync(agFolder, { recursive: true });
-
-  const filesObj = agreement.files || {};
+  // Files left out of the payload are kept; only an explicit null removes one,
+  // so a save never has to carry every file again.
   const processedFiles = {};
+  for (const [key, kept] of Object.entries(previous.files || {})) {
+    if (!(key in filesObj)) processedFiles[key] = kept;
+  }
+  const nowIso = new Date().toISOString();
+  let replacedSigned = null; // what an admin's replacement of a submitted signed copy replaced
 
   for (const [key, fileData] of Object.entries(filesObj)) {
     if (!SAFE_ID.test(key)) continue; // reject keys that could traverse the filesystem
+    if (key === 'esigned' && locked && !isAdmin) {
+      // Checked unchanged above; never rewritten.
+      if (previous.files && previous.files.esigned) processedFiles.esigned = previous.files.esigned;
+      continue;
+    }
     if (fileData && fileData.dataUrl) {
       try {
-        const matches = fileData.dataUrl.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+        const matches = String(fileData.dataUrl).match(DATA_URL);
         if (matches && matches.length === 3) {
-          const ext = (fileData.name ? path.extname(fileData.name) : '.bin').replace(/[^a-zA-Z0-9.]/g, '').slice(0, 10) || '.bin';
+          const ext = (fileData.name ? path.extname(String(fileData.name)) : '.bin').replace(/[^a-zA-Z0-9.]/g, '').slice(0, 10) || '.bin';
           const fileName = `${key}${ext}`;
-          fs.writeFileSync(path.join(agFolder, fileName), Buffer.from(matches[2], 'base64'));
+          const bytes = Buffer.from(matches[2], 'base64');
+          const old = key === 'esigned' && locked && previous.files && previous.files.esigned;
+          if (old) {
+            // An admin replacing submitted evidence: the old copy is kept under a
+            // timestamped name and recorded in acceptance.history below.
+            const oldPath = path.join(agFolder, path.basename(String(old.url)));
+            let oldHash = (previous.acceptance && previous.acceptance.signedCopyHash) || '';
+            try { if (!oldHash) oldHash = sha256(fs.readFileSync(oldPath)); } catch (e) { /* file already gone */ }
+            if (oldHash && sha256(bytes) === oldHash) { processedFiles.esigned = old; continue; }
+            let keptUrl = '';
+            if (fs.existsSync(oldPath)) {
+              const keptName = `esigned-${nowIso.replace(/[-:.]/g, '')}${path.extname(oldPath)}`;
+              fs.renameSync(oldPath, path.join(agFolder, keptName));
+              keptUrl = `/uploads/${agId}/${keptName}`;
+            }
+            replacedSigned = { name: old.name || '', url: keptUrl, hash: oldHash };
+          }
+          fs.writeFileSync(path.join(agFolder, fileName), bytes);
           // Store only the reference — never the raw base64 blob — in the JSON DB.
-          processedFiles[key] = { name: fileData.name || fileName, url: `/uploads/${agId}/${fileName}` };
+          processedFiles[key] = { name: String(fileData.name || fileName).slice(0, 200), url: `/uploads/${agId}/${fileName}` };
         }
       } catch (e) {
         console.error('Error saving upload:', e);
       }
     } else if (fileData && fileData.url) {
-      // Existing file kept as-is (no new upload for this key).
-      processedFiles[key] = { name: fileData.name, url: fileData.url };
+      // Existing file kept (no new upload for this key). Only ever a file in
+      // this agreement's own folder.
+      const base = path.basename(String(fileData.url));
+      if (SAFE_FILE_NAME.test(base) && String(fileData.url) === `/uploads/${agId}/${base}` && fs.existsSync(path.join(agFolder, base))) {
+        processedFiles[key] = { name: String(fileData.name || base).slice(0, 200), url: `/uploads/${agId}/${base}` };
+      }
     }
   }
 
-  // Schedule 3 of the Agreement: what was accepted, when, from where. Kept
-  // from the first submission and never overwritten by a later save.
-  const previous = db.agreements[agId] || {};
-  const nowIso = new Date().toISOString();
-  const text = agreement.agreement_text || '';
+  if (submitting && !processedFiles.esigned) {
+    return res.status(400).json({ success: false, code: 'ESIGNED_REQUIRED', message: 'The signed agreement could not be stored. Upload it again.' });
+  }
+
+  const signedCopyHash = () => {
+    try {
+      return sha256(fs.readFileSync(path.join(UPLOADS_DIR, agId, path.basename(processedFiles.esigned.url))));
+    } catch (e) { return ''; }
+  };
+
+  // The acceptance record: what was accepted, when, from where and how it was
+  // signed. Kept from the first submission and never overwritten by a later
+  // save. An admin's later change of the signed copy or the text is appended
+  // to acceptance.history with the values it replaced.
   const acceptance = previous.acceptance || {};
-  const submitted = String(agreement.status || '').toLowerCase() === 'submitted';
-  if (submitted && !acceptance.submittedAt) {
+  if (submitting && !acceptance.submittedAt) {
     Object.assign(acceptance, {
       submittedAt: nowIso,
       submittedAtIst: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour12: false }),
-      agreementVersion: (text.match(/\*\*Agreement Version:\*\* (v[\d.]+)/) || [])[1] || '',
-      agreementHash: crypto.createHash('sha256').update(text).digest('hex'),
-      signedCopyHash: (() => {
-        const f = processedFiles.esigned;
-        try {
-          return f && f.url ? crypto.createHash('sha256').update(fs.readFileSync(path.join(UPLOADS_DIR, agId, path.basename(f.url)))).digest('hex') : '';
-        } catch (e) { return ''; }
-      })(),
+      agreementVersion: versionOf(text, agreement.agreement_version),
+      agreementHash: sha256(text),
+      signedCopyHash: signedCopyHash(),
       ip: req.ip || '',
       userAgent: String(req.headers['user-agent'] || '').slice(0, 300),
       agent: req.user ? { username: req.user.username, name: req.user.name } : null,
-      signatory: agreement.data ? { name: agreement.data.o_name || '', designation: agreement.data.o_designation || '', entityType: agreement.data.b_type || '' } : null,
-      signatureMethod: 'handwritten-scanned',
+      signatory: { name: data.o_name || '', designation: data.o_designation || '', entityType: data.b_type || '' },
+      signatureMethod: signMethod,
     });
+  } else if (locked && isAdmin && acceptance.submittedAt && (replacedSigned || sha256(text) !== acceptance.agreementHash)) {
+    acceptance.history = Array.isArray(acceptance.history) ? acceptance.history : [];
+    acceptance.history.push({
+      at: nowIso,
+      by: req.user ? { username: req.user.username, name: req.user.name } : null,
+      previousAgreementHash: acceptance.agreementHash || '',
+      previousSignedCopyHash: acceptance.signedCopyHash || '',
+      previousSignedCopy: replacedSigned, // { name, url, hash } of the kept file; null when only the text changed
+    });
+    acceptance.agreementHash = sha256(text);
+    if (replacedSigned) acceptance.signedCopyHash = signedCopyHash();
   }
 
+  // Spread the previous record first, so fields set elsewhere (storeId and the
+  // rest from store-created) survive a later save.
   db.agreements[agId] = {
+    ...previous,
     id: agId,
-    r_name: agreement.r_name || (agreement.data ? agreement.data.r_display || agreement.data.r_name : '—'),
-    o_name: agreement.o_name || (agreement.data ? agreement.data.o_name : '—'),
-    sales_agent: agreement.sales_agent || (agreement.data ? agreement.data.sales_agent : '—'),
-    created_at: agreement.created_at || new Date().toLocaleDateString('en-IN'),
-    status: agreement.status || 'Draft',
-    data: agreement.data || {},
+    r_name: agreement.r_name || data.r_display || data.r_name || '—',
+    o_name: agreement.o_name || data.o_name || '—',
+    sales_agent: agreement.sales_agent || data.sales_agent || '—',
+    created_at: agreement.created_at || previous.created_at || new Date().toLocaleDateString('en-IN'),
+    // A submitted agreement never goes back to Draft / eSigned, and keeps
+    // "Store Created" once CSD has set it.
+    status: locked ? previous.status : status,
+    data,
     files: processedFiles,
-    agreement_text: agreement.agreement_text || '',
+    agreement_text: text,
     acceptance,
   };
   writeDb(db);
@@ -319,6 +459,9 @@ router.delete('/agreements/:id', (req, res) => {
   const agId = req.params.id;
   if (!db.agreements[agId]) {
     return res.status(404).json({ success: false, message: 'Agreement not found' });
+  }
+  if (isSubmittedRecord(db.agreements[agId]) && !(req.user && req.user.role === 'admin')) {
+    return res.status(403).json({ success: false, code: 'AGREEMENT_LOCKED', message: 'A submitted agreement can only be deleted by an admin.' });
   }
 
   try {
@@ -348,6 +491,9 @@ router.delete('/agreements/:id/files/:fileKey', (req, res) => {
   }
 
   const ag = db.agreements[agId];
+  if (fileKey === 'esigned' && isSubmittedRecord(ag) && !(req.user && req.user.role === 'admin')) {
+    return res.status(403).json({ success: false, code: 'AGREEMENT_LOCKED', message: 'The signed copy of a submitted agreement can only be removed by an admin.' });
+  }
   if (ag.files && ag.files[fileKey]) {
     const fileObj = ag.files[fileKey];
     if (fileObj.url) {

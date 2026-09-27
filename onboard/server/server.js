@@ -34,7 +34,7 @@ app.use(cookieParser());
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true, limit: '20mb' }));
 
-const UPLOADS_DIR = path.join(__dirname, '..', 'uploads');
+const UPLOADS_DIR = process.env.ONBOARD_UPLOADS_DIR || path.join(__dirname, '..', 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }

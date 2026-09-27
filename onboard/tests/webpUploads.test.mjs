@@ -12,7 +12,12 @@ test("PNG uploads are converted to WebP in the browser, except the eSigned copy"
   const handle = html.slice(html.indexOf("async function handleFile"), html.indexOf("/* ============ STEP RENDERERS"));
   assert.match(handle, /if\(key !== 'esigned'\) file = await pngToWebp\(file\);/);
   // Converted before the size check, so a PNG that fits once converted is accepted.
-  assert.ok(handle.indexOf("pngToWebp(file)") < handle.indexOf("MAX_FILE_MB*1024*1024"));
+  assert.ok(handle.indexOf("maxMb*1024*1024") > 0);
+  assert.ok(handle.indexOf("pngToWebp(file)") < handle.indexOf("maxMb*1024*1024"));
+  // The signed copy (a multi-page scan) gets 10 MB; every other document keeps the 2 MB limit.
+  assert.match(handle, /const maxMb = key === 'esigned' \? MAX_SIGNED_MB : MAX_FILE_MB;/);
+  assert.match(html, /const MAX_SIGNED_MB = 10;/);
+  assert.match(html, /const MAX_FILE_MB = 2;/);
 
   const helper = html.slice(html.indexOf("async function pngToWebp"), html.indexOf("function fmtBytes"));
   assert.match(helper, /file\.type !== 'image\/png'/, "only PNGs");
