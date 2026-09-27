@@ -76,6 +76,8 @@ public class ThermalPrinterPlugin extends Plugin {
     // Calibration knobs: printers differ in how fast they drain their buffer.
     private static final int BT_CHUNK = 1024;
     private static final int USB_CHUNK = 16384;
+    // A printer just switched on takes a moment before it answers.
+    private static final long SPP_RETRY_PAUSE_MS = 1500;
 
     // Services the BLE printers put their write characteristic under; same
     // list as utils/printerDevice.js. Standard services never print.
@@ -194,16 +196,7 @@ public class ThermalPrinterPlugin extends Plugin {
             } catch (SecurityException ignored) {
                 // not scanning anyway
             }
-            BluetoothDevice device = adapter.getRemoteDevice(address);
-            socket = device.createRfcommSocketToServiceRecord(SPP);
-            try {
-                socket.connect();
-            } catch (IOException secureFailed) {
-                // Some printers only accept an unauthenticated channel.
-                closeQuietly(socket);
-                socket = device.createInsecureRfcommSocketToServiceRecord(SPP);
-                socket.connect();
-            }
+            socket = openSpp(remote);
             OutputStream out = socket.getOutputStream();
             for (int at = 0; at < bytes.length; at += BT_CHUNK) {
                 out.write(bytes, at, Math.min(BT_CHUNK, bytes.length - at));
@@ -219,6 +212,57 @@ public class ThermalPrinterPlugin extends Plugin {
             call.reject("Could not reach the Bluetooth printer. Check it is on and nearby. (" + e.getMessage() + ")");
         } finally {
             closeQuietly(socket);
+        }
+    }
+
+    /**
+     * An open serial-port connection to a paired classic printer.
+     *
+     * Unauthenticated first. An authenticated (secure) connection needs the
+     * link key the printer stored at pairing, and many cheap thermal printers
+     * forget it when they are switched off: Android then shows its "pairing
+     * request" dialog on every print after a restart, although the printer is
+     * still listed as paired. An unauthenticated channel needs no key, so it
+     * reconnects silently. Just after power-on the printer's service record
+     * is often not answering yet, so the fixed channel 1 (where these printers
+     * listen) is tried too, and the whole round once more after a pause.
+     * The authenticated channel is kept as the last resort for the few
+     * printers that refuse anything else -- the only step that can bring the
+     * pairing dialog back, and only when the printer really needs it.
+     */
+    @SuppressLint("MissingPermission")
+    private BluetoothSocket openSpp(BluetoothDevice device) throws IOException, InterruptedException {
+        IOException last = null;
+        for (int round = 0; round < 2; round++) {
+            if (round > 0) Thread.sleep(SPP_RETRY_PAUSE_MS);
+            for (int way = 0; way < 2; way++) {
+                BluetoothSocket socket = null;
+                try {
+                    socket = way == 0 ? device.createInsecureRfcommSocketToServiceRecord(SPP) : insecureChannelOne(device);
+                    socket.connect();
+                    return socket;
+                } catch (IOException e) {
+                    closeQuietly(socket);
+                    last = e;
+                }
+            }
+        }
+        BluetoothSocket secure = device.createRfcommSocketToServiceRecord(SPP);
+        try {
+            secure.connect();
+            return secure;
+        } catch (IOException e) {
+            closeQuietly(secure);
+            throw last != null ? last : e;
+        }
+    }
+
+    /** RFCOMM channel 1 without a service lookup; a hidden API, so it may be missing. */
+    private static BluetoothSocket insecureChannelOne(BluetoothDevice device) throws IOException {
+        try {
+            return (BluetoothSocket) device.getClass().getMethod("createInsecureRfcommSocket", int.class).invoke(device, 1);
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            throw new IOException("RFCOMM channel 1 is not available on this device.", e);
         }
     }
 

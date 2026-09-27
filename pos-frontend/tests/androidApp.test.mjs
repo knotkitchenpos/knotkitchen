@@ -66,6 +66,20 @@ test("REGRESSION: printing does not need BLUETOOTH_SCAN", () => {
   assert.match(java, /try \{\s*adapter\.cancelDiscovery\(\);\s*\} catch \(SecurityException ignored\)/);
 });
 
+test("REGRESSION: a paired printer switched off and on reconnects without asking to pair again", () => {
+  // The secure (authenticated) channel needs the link key the printer stored
+  // at pairing; cheap printers forget it on power-off, and Android then showed
+  // its pairing dialog on the next print although the printer was still paired.
+  const java = JAVA("ThermalPrinterPlugin.java");
+  assert.match(java, /socket = openSpp\(remote\);/, "classic printing goes through openSpp");
+  const open = java.slice(java.indexOf("private BluetoothSocket openSpp("), java.indexOf("private static BluetoothSocket insecureChannelOne("));
+  const insecure = open.indexOf("createInsecureRfcommSocketToServiceRecord(SPP)");
+  const secure = open.indexOf("createRfcommSocketToServiceRecord(SPP)");
+  assert.ok(insecure > 0 && secure > insecure, "unauthenticated first; the authenticated channel only as the last resort");
+  assert.match(open, /insecureChannelOne\(device\)/, "channel 1 fallback for a printer that has just been switched on");
+  assert.match(open, /Thread\.sleep\(SPP_RETRY_PAUSE_MS\)/, "and a second round after a pause");
+});
+
 test("Cashfree checkout in the app can list and open UPI apps", () => {
   // Without a JS bridge named "Android" (getAppList/openApp, Cashfree's WebView
   // contract) the checkout offered only "UPI ID / QR", and operators paid by
