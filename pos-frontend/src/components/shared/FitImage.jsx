@@ -1,26 +1,15 @@
 import React from "react";
 
 /**
- * A product photo that fills its frame without being cropped: the whole photo
- * sits on a blurred copy of itself, instead of being cut to the frame's shape
- * (object-cover) or sitting between grey bars (object-contain). Same look as
- * the website's product popup (customer-web ProductModal).
+ * A product photo that fills its frame edge to edge (object-cover), like every
+ * product photo in the POS and on the website: no grey side bars and no
+ * blurred copy beside a photo that is not the frame's shape.
  *
  * `className` sizes and shapes the frame (e.g. "w-full h-44 rounded-xl").
- *
- * For a single photo only (a popup). Not in scrolling lists: a blur on every
- * card blanked the product grid while scrolling on a low-end tablet.
  */
 const FitImage = ({ src, alt = "", className = "", loading }) => (
   <div className={`relative overflow-hidden bg-[#F1F5F9] ${className}`}>
-    <img
-      src={src}
-      alt=""
-      aria-hidden="true"
-      loading={loading}
-      className="absolute inset-0 h-full w-full scale-110 object-cover opacity-70 blur-xl"
-    />
-    <img src={src} alt={alt} loading={loading} className="relative h-full w-full object-contain" />
+    <img src={src} alt={alt} loading={loading} className="h-full w-full object-cover" />
   </div>
 );
 

@@ -118,7 +118,9 @@ test("SOURCE: nothing renders the raw subcat state directly", () => {
 
 test("REGRESSION: no blur on product cards, it blanked the grid while scrolling on the tablet", () => {
   assert.ok(!/blur-|FitImage/.test(SRC), "a blurred backdrop per card is too heavy for the tablet's WebView");
-  assert.match(SRC, /className="w-full h-full object-contain"/, "whole photo, never cropped");
+  // The owner's call (2026-09-28): photos fill the card, no grey side bars.
+  assert.match(SRC, /loading="lazy" className="w-full h-full object-cover" \/>/, "fills the frame edge to edge");
+  assert.ok(!/object-contain/.test(SRC), "never fitted inside the frame with bars beside it");
 });
 
 test("REGRESSION: long add-on and variant names end in ... inside their box", () => {

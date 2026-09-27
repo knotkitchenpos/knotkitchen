@@ -421,7 +421,7 @@ const ProductDrawer = ({
                   <span className="text-[12px] font-bold text-[#C2410C] animate-pulse">Uploading image…</span>
                 ) : prodImageUrl ? (
                   <div className="relative h-full w-full flex items-center justify-center">
-                    <img src={prodImageUrl} alt="Product" className="h-full object-contain rounded-lg" />
+                    <img src={prodImageUrl} alt="Product" className="h-full w-full object-cover rounded-lg" />
                     <span className="absolute bottom-1 bg-black/60 text-white text-[10px] px-2 py-0.5 rounded-full font-bold">
                       Click, paste or drop to replace
                     </span>

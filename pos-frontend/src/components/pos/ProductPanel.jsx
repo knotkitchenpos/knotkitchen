@@ -752,9 +752,10 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
                   {/* Image with veg mark overlay (top-left) */}
                   <div className="relative w-full aspect-[4/3] bg-[#F1F5F9]">
                     {img ? (
-                      // Whole photo, never cropped. No blurred backdrop here: a blur on
-                      // every card blanked the grid while scrolling on the tablet.
-                      <img src={thumbUrl(img, 320)} alt={item.name} loading="lazy" className="w-full h-full object-contain" />
+                      // Fills the 4:3 frame edge to edge: fitted inside it, a square
+                      // photo sat between grey side bars. No blurred backdrop: a blur
+                      // on every card blanked the grid while scrolling on the tablet.
+                      <img src={thumbUrl(img, 320)} alt={item.name} loading="lazy" className="w-full h-full object-cover" />
                     ) : (
                       <span className="w-full h-full flex items-center justify-center text-2xl">🍽️</span>
                     )}
@@ -803,7 +804,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
                   }`}
                 >
                   <div className="relative w-11 h-11 rounded-lg overflow-hidden bg-[#F1F5F9] shrink-0 flex items-center justify-center">
-                    {img ? <img src={thumbUrl(img, 160)} alt={item.name} loading="lazy" className="w-full h-full object-contain" /> : "🍽️"}
+                    {img ? <img src={thumbUrl(img, 160)} alt={item.name} loading="lazy" className="w-full h-full object-cover" /> : "🍽️"}
                     <DietMark veg={item.isVegetarian !== false} />
                   </div>
                   <div className="min-w-0 flex-1">

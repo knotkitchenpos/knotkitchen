@@ -139,21 +139,14 @@ export default function ProductModal({ product, symbol, onClose, onAdd, allowNot
 
         {/* Choices */}
         <div className="flex-1 space-y-5 overflow-y-auto p-4">
-          {/* The whole photo, never cropped, filling the frame: a blurred copy
-              of the same photo fills what the photo itself does not, instead
-              of grey bars beside a tall or narrow photo. */}
+          {/* The photo fills the 4:3 frame edge to edge, like the menu cards:
+              no grey or blurred bars beside a photo that is not 4:3. */}
           {product.image ? (
-            <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl bg-slate-100">
-              <img
-                src={thumbUrl(product.image, 640)}
-                alt=""
-                aria-hidden="true"
-                className="absolute inset-0 h-full w-full scale-110 object-cover opacity-70 blur-2xl"
-              />
+            <div className="aspect-[4/3] w-full overflow-hidden rounded-2xl bg-slate-100">
               <img
                 src={thumbUrl(product.image, 640)}
                 alt={product.imageAlt || product.name}
-                className="relative h-full w-full object-contain"
+                className="h-full w-full object-cover"
               />
             </div>
           ) : null}

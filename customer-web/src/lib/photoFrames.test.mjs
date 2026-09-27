@@ -13,7 +13,7 @@ const SRC = (rel) => fs.readFileSync(path.join(here, "..", rel), "utf8");
  */
 test("the menu card and the item popup frame photos 4:3", () => {
   assert.match(SRC("components/ProductCard.jsx"), /aspect-\[4\/3\]/);
-  assert.match(SRC("components/ProductModal.jsx"), /relative aspect-\[4\/3\] w-full/);
+  assert.match(SRC("components/ProductModal.jsx"), /aspect-\[4\/3\] w-full/);
 });
 
 test("every landing design frames its hero and dish photos 4:3, never at a fixed height", () => {
@@ -29,4 +29,12 @@ test("every landing design frames its hero and dish photos 4:3, never at a fixed
   for (const [, ratio] of peddler.matchAll(/(?:dish-image|hero-image-frame)\{[^}]*aspect-ratio:([^;}]+)/g)) {
     assert.equal(ratio.trim(), "4/3");
   }
+});
+
+test("REGRESSION: item photos fill their frame, with no grey or blurred side bars", () => {
+  const modal = SRC("components/ProductModal.jsx");
+  assert.doesNotMatch(modal, /object-contain/, "not fitted inside the frame");
+  assert.doesNotMatch(modal, /blur-/, "no blurred copy beside the photo");
+  assert.match(modal, /className="h-full w-full object-cover"/);
+  assert.match(SRC("components/ProductCard.jsx"), /object-cover/);
 });
