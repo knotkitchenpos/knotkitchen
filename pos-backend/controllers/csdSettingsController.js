@@ -50,6 +50,12 @@ const getSettings = async (req, res, next) => {
           databaseConnected: dbState === 1,
           timezone: "Asia/Kolkata",
         },
+        // KnotKitchen's own Cashfree account (Wallet top-ups, printers).
+        // Whether it is set, never the keys.
+        paymentGateway: {
+          mode: String(config.cashfreeEnv || "").toUpperCase() === "PROD" ? "PROD" : "TEST",
+          configured: Boolean(config.cashfreeAppId && config.cashfreeSecretKey),
+        },
         // Honest statement of what is not built, so an administrator isn't
         // left hunting for a feature that doesn't exist.
         notImplemented: [

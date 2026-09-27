@@ -22,8 +22,8 @@ const { resolvePlatformGateway } = require("./paymentGateway");
 const cashfree = require("./gateways/cashfree");
 const { credit } = require("./ledger");
 const { settlePendingCharges } = require("./orderCharge");
-const { evaluateLock } = require("./accountLock");
-const { afterRecharge, minimumTopUpPaise } = require("./subscription");
+const { evaluateLock, STORE_CLOSED_MESSAGE } = require("./accountLock");
+const { afterRecharge, minimumTopUpPaise, closedForTopUp } = require("./subscription");
 const { toPaise, toRupees, formatINR } = require("./money");
 
 class RechargeError extends Error {
@@ -100,8 +100,9 @@ const createRecharge = async ({ restaurantId, amountPaise, createdBy = null, ret
 };
 
 /**
- * Buy a printer through the gateway: the price + GST is charged by Cashfree,
- * not taken from the wallet. finalizeRecharge records the printer when paid.
+ * Buy a printer through the gateway: Cashfree charges the displayed price,
+ * which already includes GST (nothing is added on top), and the wallet is not
+ * touched. finalizeRecharge records the printer when paid.
  */
 const createPrinterPayment = async ({ restaurantId, code, acceptance, shipTo = null, createdBy = null, returnUrl } = {}) => {
   const { printer, pricePaise, totalPaise, lines } = await require("./subscription").preparePrinterPayment({ restaurantId, code, acceptance });
@@ -117,6 +118,10 @@ const createPrinterPayment = async ({ restaurantId, code, acceptance, shipTo = n
 
 /** Open a Cashfree order for a top-up or a printer. Nothing is credited or bought here. */
 const openPayment = async ({ restaurantId, amountPaise: amount, createdBy = null, returnUrl, purpose = "RECHARGE", item } = {}) => {
+  // Only NEW payments: one already paid is credited by finalizeRecharge.
+  if (await closedForTopUp(restaurantId)) {
+    throw new RechargeError(STORE_CLOSED_MESSAGE, 409, "SUBSCRIPTION_CANCELLED");
+  }
   const gw = platformOrThrow();
 
   const restaurant = await Restaurant.findById(restaurantId)

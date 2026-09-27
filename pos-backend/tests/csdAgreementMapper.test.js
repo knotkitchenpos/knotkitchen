@@ -117,9 +117,26 @@ test("a GSTIN present without the checkbox is trusted, and warned about", () => 
   assert.ok(warnings.some((w) => /GSTIN is present/i.test(w)));
 });
 
-test("claiming GST registration without a GSTIN warns", () => {
-  const { warnings } = mapAgreementToStore(agreement({ ...complete, b_gstin: "" }));
+test("claiming GST registration without a GSTIN warns and blocks creation", () => {
+  const { warnings, missing } = mapAgreementToStore(agreement({ ...complete, b_gstin: "" }));
   assert.ok(warnings.some((w) => /no GSTIN/i.test(w)));
+  assert.ok(missing.includes("GSTIN"), "a registered store needs its GSTIN on every bill");
+});
+
+test("a malformed GSTIN blocks creation, with the same check as manual onboarding", () => {
+  for (const bad of ["19ABCDE1234F1Y5", "ABCDE1234F", "19ABCDE1234F0Z5"]) {
+    const { missing } = mapAgreementToStore(agreement({ ...complete, b_gstin: bad }));
+    assert.ok(missing.some((m) => /^GSTIN/.test(m)), bad);
+  }
+  // Not registered and no GSTIN is fine.
+  const { missing } = mapAgreementToStore(agreement({ ...complete, b_gst: "No", b_gstin: "" }));
+  assert.deepEqual(missing, []);
+
+  // One shared format, not a copy per path.
+  const src = require("node:fs").readFileSync(
+    require("node:path").join(__dirname, "..", "controllers", "csdOnboardingController.js"), "utf8");
+  assert.match(src, /isValidGstin/);
+  assert.ok(!/GSTIN_RE\s*=/.test(src), "the manual form must not keep its own GSTIN regex");
 });
 
 test("a malformed FSSAI number is dropped with a warning, not stored", () => {
@@ -178,4 +195,77 @@ test("'eSigned' is NOT enough to create a store", () => {
   assert.ok(!isCompleted({ status: "" }));
   assert.ok(!isCompleted({}));
   assert.ok(!isCompleted(null));
+});
+
+/**
+ * C6: a store is only ever created from a signed agreement on the current
+ * version. A v2.0 agreement (installation charge, commitment discounts, a free
+ * domain) must not become a production store in one click.
+ */
+const { signingOf, signingProblem } = require("../controllers/csdAgreementController");
+const { AGREEMENT_VERSION } = require("../constants/agreement");
+
+const signed = (over = {}) => ({
+  status: "Submitted",
+  files: { esigned: { name: "signed.pdf", url: "/uploads/x/esigned.pdf" } },
+  acceptance: {
+    agreementVersion: AGREEMENT_VERSION,
+    submittedAt: "2026-09-27T05:00:00.000Z",
+    signatureMethod: "aadhaar-esign",
+  },
+  ...over,
+});
+
+test("the current agreement version is v3.0", () => {
+  assert.equal(AGREEMENT_VERSION, "v3.0");
+});
+
+test("list and detail carry what was signed, and how", () => {
+  assert.deepEqual(signingOf(signed()), {
+    agreementVersion: "v3.0",
+    submittedAt: "2026-09-27T05:00:00.000Z",
+    signatureMethod: "aadhaar-esign",
+    signedCopy: true,
+    currentVersion: "v3.0",
+  });
+  const bare = signingOf({ status: "Submitted" });
+  assert.equal(bare.signedCopy, false);
+  assert.equal(bare.agreementVersion, null);
+});
+
+test("a signed, current agreement may become a store", () => {
+  assert.equal(signingProblem(signed()), null);
+});
+
+test("no signed copy or no acceptance record is refused", () => {
+  assert.equal(signingProblem(signed({ files: {} })).code, "AGREEMENT_NOT_SIGNED");
+  assert.equal(signingProblem(signed({ acceptance: undefined })).code, "AGREEMENT_NOT_SIGNED");
+});
+
+test("REGRESSION: a draft with a signed copy but no submission is NOT_SIGNED, not OUTDATED", () => {
+  // The portal stores `acceptance: {}` on every draft save.
+  assert.equal(signingProblem(signed({ acceptance: {} })).code, "AGREEMENT_NOT_SIGNED");
+  assert.equal(
+    signingProblem(signed({ acceptance: { agreementVersion: AGREEMENT_VERSION } })).code,
+    "AGREEMENT_NOT_SIGNED",
+    "a version with no submission time is not an acceptance",
+  );
+});
+
+test("an older version is refused, naming the version", () => {
+  const p = signingProblem(signed({ acceptance: { agreementVersion: "v2.0", submittedAt: "2026-01-01T00:00:00.000Z" } }));
+  assert.equal(p.code, "AGREEMENT_OUTDATED");
+  assert.equal(p.version, "v2.0");
+});
+
+test("create-store checks signing before it writes anything", () => {
+  const src = require("node:fs").readFileSync(
+    require("node:path").join(__dirname, "..", "controllers", "csdAgreementController.js"), "utf8");
+  const body = src.slice(src.indexOf("const createStoreFromAgreement"));
+  const check = body.indexOf("signingProblem(agreement)");
+  assert.ok(check > 0, "create-store must check signing");
+  for (const write of ["CsdAgreementLink.create(", "Restaurant.create(", "Store.create(", "generateUniqueStoreId("]) {
+    assert.ok(check < body.indexOf(write), `signing is checked before ${write}`);
+  }
+  assert.match(body, /email: values\.restaurantEmail \|\| values\.ownerEmail/, "the restaurant's email is saved");
 });

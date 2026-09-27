@@ -22,6 +22,9 @@ const {
   updateBillingConfig,
   getAccountStanding,
   endTabletRental,
+  adjustWallet,
+  cancelAccountSubscription,
+  reinstateAccountSubscription,
 } = require("../controllers/csdBillingConfigController");
 const {
   listAgreements, getAgreement, createStoreFromAgreement, retryPortalNotify,
@@ -196,12 +199,16 @@ router.get("/settings", requireCsdAdmin, getSettings);
  * KnotKitchen's own pricing. The ONLY place the POS plan, add-ons, tablets,
  * printers, GST and the per-order charge can be set -- no restaurant-facing
  * route writes any of it. Reading is open to any CSD staff; changing a price,
- * or ending a tablet rental (the physical return), is admin-only.
+ * ending a tablet rental (the physical return), or cancelling or reinstating
+ * a store's subscription is admin-only (and audited).
  */
 router.get("/billing/config", getBillingConfig);
 router.patch("/billing/config", requireCsdAdmin, updateBillingConfig);
 router.get("/billing/accounts/:restaurantId", getAccountStanding);
 router.post("/billing/accounts/:restaurantId/tablets/:serial/end", requireCsdAdmin, endTabletRental);
+router.post("/billing/accounts/:restaurantId/wallet/adjust", requireCsdAdmin, adjustWallet);
+router.post("/billing/accounts/:restaurantId/subscription/cancel", requireCsdAdmin, cancelAccountSubscription);
+router.post("/billing/accounts/:restaurantId/subscription/reinstate", requireCsdAdmin, reinstateAccountSubscription);
 
 /**
  * Printer and tablet requests from POS Billing (paid by the store). Any CSD

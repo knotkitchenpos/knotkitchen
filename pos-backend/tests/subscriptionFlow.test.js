@@ -43,6 +43,7 @@ const reset = ({ exempt = false } = {}) => {
     failNextRequest: false,
     requestStatus: "REQUESTED",
     settled: [],
+    store: { storeId: "148379", status: "active", closureReason: "" },
   });
   state.balanceDoc = {
     restaurantId: RID,
@@ -168,7 +169,27 @@ const fakes = {
     },
     CommercialSchedule: {
       findOne: () => q(() => state.schedules[state.schedules.length - 1] || null),
-      create: async (d) => (state.schedules.push(d), d),
+      exists: async ({ reason }) => (state.schedules.some((s) => s.reason === reason) ? { _id: "cs" } : null),
+      create: async (d) => {
+        if (state.failNextSchedule) {
+          state.failNextSchedule = false;
+          throw new Error("database blip");
+        }
+        state.schedules.push(d);
+        return d;
+      },
+    },
+  },
+  // The store row a cancellation closes: `status` is matched as given or by $nin.
+  "../models/storeModel": {
+    // Only "is it closed?" is ever asked (services/accountLock isStoreClosed).
+    exists: async (filter) => (state.store.status === filter.status ? { _id: "st1" } : null),
+    updateOne: async (filter, update) => {
+      const want = filter.status;
+      const ok = want === undefined || (typeof want === "string" ? state.store.status === want : !want.$nin.includes(state.store.status));
+      if (!ok) return { matchedCount: 0, modifiedCount: 0 };
+      Object.assign(state.store, update.$set);
+      return { matchedCount: 1, modifiedCount: 1 };
     },
   },
   "../models/businessBalanceModel": {
@@ -336,8 +357,9 @@ test("an add-on is prorated for the rest of the period, taxed, and charged once 
   const invoice = state.invoices.find((i) => i.kind === "ADDON");
   assert.equal(invoice.lines[0].amountPaise, 10000);
   assert.equal(invoice.cgstPaise + invoice.sgstPaise, 1800);
-  assert.equal(state.schedules[0].reason, "ADDON");
-  assert.equal(state.schedules[0].acceptedBy.name, "Owner");
+  // (schedules[0] is the plan, recorded by the activation top-up.)
+  assert.equal(state.schedules[1].reason, "ADDON");
+  assert.equal(state.schedules[1].acceptedBy.name, "Owner");
 
   // A double click: already on, nothing charged.
   const again = await billing.addAddon({ restaurantId: RID, code: "TABLE_QR", acceptance: YES, on });
@@ -435,19 +457,23 @@ test("a printer is paid through the gateway, never the wallet: recorded once wit
   const walletBefore = state.balance;
   const debitsBefore = debits().length;
   const opened = await recharge.createPrinterPayment({ restaurantId: RID, code: "PRINTER_2IN", acceptance: YES });
-  assert.equal(opened.amountPaise, 224200, "₹1,900 + 18% GST, charged by Cashfree");
+  assert.equal(opened.amountPaise, 190000, "₹1,900, GST included: nothing is added on top");
   assert.equal(opened.purpose, "PRINTER");
   assert.equal(state.sub.hardware.length, 0, "nothing is recorded before Cashfree says paid");
 
-  state.paid[opened.gatewayOrderId] = 2242;
+  state.paid[opened.gatewayOrderId] = 1900;
   const done = await recharge.finalizeRecharge({ gatewayOrderId: opened.gatewayOrderId });
   assert.equal(done.purchased, true);
   assert.equal(done.credited, false, "not a top-up");
   assert.equal(state.balance, walletBefore, "the wallet is untouched");
   assert.equal(debits().length, debitsBefore, "no wallet debit");
   assert.equal(state.invoices[state.invoices.length - 1].kind, "HARDWARE");
-  assert.deepEqual(state.sub.hardware.map((h) => [h.code, h.pricePaise, h.totalPaise]), [["PRINTER_2IN", 190000, 224200]]);
+  assert.deepEqual(state.sub.hardware.map((h) => [h.code, h.pricePaise, h.totalPaise]), [["PRINTER_2IN", 190000, 190000]]);
   assert.equal(state.sub.hardware[0].invoiceId, state.invoices[state.invoices.length - 1]._id);
+  // Registered: the invoice shows the GST contained in the price, never added to it.
+  const inv = state.invoices[state.invoices.length - 1];
+  assert.deepEqual([inv.subtotalPaise, inv.totalTaxPaise, inv.totalPaise], [161017, 28983, 190000]);
+  assert.equal(inv.cgstPaise + inv.sgstPaise, 28983);
 
   assert.equal(state.settled.length, 0, "an open request is left alone");
 
@@ -711,6 +737,53 @@ test("REGRESSION: backdated renewal never sells a period that has already ended"
   assert.equal(state.balanceDoc.lockedAt, null, "paying unlocks");
 });
 
+test("a stored FROM_EXPIRY reads as FROM_PAYMENT, and nothing is written for it", async () => {
+  reset();
+  let saves = 0;
+  Object.assign(state.config, { renewalPolicy: "FROM_EXPIRY", save: async () => { saves += 1; } });
+  const config = await require("../services/pricing").getPlatformConfig();
+  assert.equal(config.renewalPolicy, "FROM_PAYMENT");
+  assert.equal(saves, 0);
+});
+
+test("a late renewal always starts the day it is paid, whatever the config row holds", async () => {
+  reset();
+  // A row that insists on FROM_EXPIRY, even past the read normalisation.
+  Object.defineProperty(state.config, "renewalPolicy", { get: () => "FROM_EXPIRY", set: () => {}, enumerable: true, configurable: true });
+  await ledger.credit({ restaurantId: RID, kind: "RECHARGE", amountPaise: 250000, idempotencyKey: "recharge-old" });
+  await billing.afterRecharge({ restaurantId: RID, amountPaise: 250000, on: new Date(Date.now() - 35 * 24 * HOUR) });
+  const end = state.sub.currentPeriodEnd;
+  assert.ok(end.getTime() < Date.now() - 4 * 24 * HOUR, "five days late, inside what FROM_EXPIRY would backdate");
+  await billing.renewDue();
+  assert.equal(state.sub.status, "ACTIVE");
+  assert.equal(state.sub.currentPeriodStart.getTime(), startOfIstDay(new Date()).getTime(), "FROM_PAYMENT: from today");
+});
+
+test("CSD closed the store mid-period: the Owner is sent to support, CSD to Store status", async () => {
+  reset();
+  await topUp(10000);
+  const on = addDays(state.sub.currentPeriodStart, 10);
+  // What csdStoreController does on close: the status first, then the cancel.
+  state.store.status = "closed";
+  await billing.cancelSubscription({ restaurantId: RID, reason: "Store closed in CSD", by: CSD, on });
+  assert.equal(state.sub.status, "ACTIVE", "runs to its period end");
+  assert.equal((await billing.statusFor(RID, on)).storeClosed, true, "so both UIs can hide Undo");
+
+  await rejects(billing.reinstateSubscription({ restaurantId: RID, by: OWNER }), 409, "CONTACT_SUPPORT");
+  await assert.rejects(billing.reinstateSubscription({ restaurantId: RID, by: CSD }), (err) => {
+    assert.equal(err.status, 409);
+    assert.equal(err.code, "STORE_CLOSED");
+    assert.equal(err.message, "Re-open the store from Store status.");
+    return true;
+  });
+  assert.ok(state.sub.cancelAt, "still set to end");
+
+  // Re-opening from Store status saves the status first, then reinstates.
+  state.store.status = "active";
+  await billing.reinstateSubscription({ restaurantId: RID, by: CSD });
+  assert.equal(state.sub.cancelAt, null);
+});
+
 // ---------------------------------------------------------------------------
 // Demo stores
 // ---------------------------------------------------------------------------
@@ -739,6 +812,200 @@ test("a demo store gets every feature and is never charged", async () => {
   assert.equal(debits().length, 0);
   assert.equal(state.invoices.length, 0);
   assert.equal((await lock.assessAccount(RID)).shouldLock, false);
+});
+
+// ---------------------------------------------------------------------------
+// Activation record, invoice parties, printer GST
+// ---------------------------------------------------------------------------
+
+test("activation records the plan taken, once, under the current agreement, and never fails for it", async () => {
+  reset();
+  await topUp(2500);
+  const rows = state.schedules.filter((s) => s.reason === "SUBSCRIPTION");
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].agreementVersion, "v3.0");
+  assert.deepEqual(rows[0].values.item, { plan: "POS", name: "POS", pricePaise: 39900, periodDays: 30, acceptedVia: "ACTIVATION_TOP_UP" });
+  assert.equal(rows[0].values.totalPaise, 47082);
+  // A retried activation (the save lost after the debit) does not record it twice.
+  state.sub.activatedAt = null;
+  await billing.activate({ restaurantId: RID });
+  assert.equal(state.schedules.filter((s) => s.reason === "SUBSCRIPTION").length, 1);
+
+  reset();
+  state.failNextSchedule = true;
+  const ok = await topUp(2500);
+  assert.equal(ok.plan.activated, true, "the record failing never stops the plan");
+  assert.equal(state.sub.status, "ACTIVE");
+});
+
+test("the invoice names the store by its legal name, with its GSTIN only when it is GST-registered", async () => {
+  reset();
+  Object.assign(state.restaurant, {
+    legalName: "Spice Garden Foods LLP",
+    taxId: "19ABCDE1234F1Z5",
+    gstRegistered: true,
+    address: { line1: "12 Park St", city: "Kolkata", postalCode: "700016", state: "West Bengal" },
+  });
+  await topUp(2500);
+  const { buyer, seller } = state.invoices[0];
+  assert.deepEqual([buyer.name, buyer.gstin], ["Spice Garden Foods LLP", "19ABCDE1234F1Z5"]);
+  assert.deepEqual(buyer.addressLines, ["12 Park St", "Kolkata – 700016"]);
+  assert.equal(seller.name, "KnotKitchen");
+  assert.deepEqual(seller.addressLines, ["J/183 Baishnabghata Patuli", "Kolkata – 700094"]);
+
+  reset();
+  Object.assign(state.restaurant, { taxId: "19ABCDE1234F1Z5", gstRegistered: false });
+  await topUp(2500);
+  assert.deepEqual([state.invoices[0].buyer.name, state.invoices[0].buyer.gstin], ["Spice Garden", ""]);
+});
+
+test("before GST registration a printer costs its price with no GST, and its invoice says so", async () => {
+  reset();
+  state.config.gst = { registered: false, percent: 0 };
+  await topUp(2500);
+  const opened = await recharge.createPrinterPayment({ restaurantId: RID, code: "PRINTER_3IN", acceptance: YES });
+  assert.equal(opened.amountPaise, 425000);
+  state.paid[opened.gatewayOrderId] = 4250;
+  await recharge.finalizeRecharge({ gatewayOrderId: opened.gatewayOrderId });
+  const inv = state.invoices.at(-1);
+  assert.deepEqual([inv.subtotalPaise, inv.totalTaxPaise, inv.totalPaise], [425000, 0, 425000]);
+  assert.equal(state.invoices[0].totalPaise, 39900, "and nothing else carries GST either");
+
+  const html = require("../services/invoiceDocument").renderInvoice(inv);
+  assert.ok(!html.includes("TAX INVOICE"));
+  assert.match(html, /not registered under GST/);
+});
+
+// ---------------------------------------------------------------------------
+// Cancellation
+// ---------------------------------------------------------------------------
+
+const OWNER = { type: "RESTAURANT", name: "Owner" };
+const CSD = { type: "CSD", name: "Ria" };
+
+test("a cancelled subscription runs to its period end, sells nothing new, then is CANCELLED and the store closed", async () => {
+  reset();
+  await topUp(10000);
+  await topUp(4000);
+  const on = addDays(state.sub.currentPeriodStart, 10);
+  const end = state.sub.currentPeriodEnd;
+
+  const { already } = await billing.cancelSubscription({ restaurantId: RID, reason: "Moving out", by: OWNER, on });
+  assert.equal(already, false);
+  assert.equal(state.sub.status, "ACTIVE", "still running until the paid period ends");
+  assert.equal(state.sub.cancelAt.getTime(), end.getTime());
+  const status = await billing.statusFor(RID, on);
+  assert.equal(status.cancelAt.getTime(), end.getTime());
+  assert.equal(status.cancelReason, "Moving out");
+  assert.deepEqual(status.cancelledBy, OWNER);
+  assert.equal(status.nextRenewal, null, "it will not renew");
+
+  await rejects(billing.addAddon({ restaurantId: RID, code: "GMB", acceptance: YES, on }), 409, "SUBSCRIPTION_ENDING");
+  await rejects(billing.rentTablet({ restaurantId: RID, acceptance: YES, on }), 409, "SUBSCRIPTION_ENDING");
+  assert.equal((await billing.cancelSubscription({ restaurantId: RID, by: OWNER, on })).already, true, "asking twice changes nothing");
+
+  // A top-up opened while it was still running, and paid only after it closed.
+  const { gatewayOrderId: lateTopUp } = await recharge.createRecharge({ restaurantId: RID, amountPaise: 250000 });
+  state.paid[lateTopUp] = 2500;
+
+  const debitsBefore = debits().length;
+  await lock.sweepLocks(new Date(end.getTime() + MIN));
+  assert.equal(state.sub.status, "CANCELLED");
+  assert.equal(state.sub.cancelledAt.getTime(), end.getTime() + MIN);
+  assert.equal(debits().length, debitsBefore, "nothing debited at the end");
+  assert.equal(state.store.status, "closed");
+  assert.equal(state.store.closureReason, "Moving out");
+  assert.ok(state.balanceDoc.lockedAt, "locked at once");
+  assert.ok(state.balance > 0, "the unused balance stays in the (non-refundable) wallet");
+
+  // N2: no new top-up is opened for a closed store...
+  await rejects(recharge.createRecharge({ restaurantId: RID, amountPaise: 250000 }), 409, "SUBSCRIPTION_CANCELLED");
+  assert.equal((await billing.statusFor(RID)).topUpBlocked, true);
+  // ...but money already paid is never lost: it is credited, and never brings the plan back.
+  const before = state.balance;
+  const late = await recharge.finalizeRecharge({ gatewayOrderId: lateTopUp });
+  assert.equal(late.credited, true);
+  assert.equal(state.balance, before + 250000);
+  assert.equal(state.sub.status, "CANCELLED");
+  assert.equal(debits().length, debitsBefore);
+  assert.equal(state.balanceDoc.lockedReason, lock.STORE_CLOSED_MESSAGE, "still locked, as closed");
+});
+
+test("the restaurant can undo its cancellation until it takes effect; after that only CSD, which reopens the store", async () => {
+  reset();
+  await topUp(10000);
+  const on = addDays(state.sub.currentPeriodStart, 10);
+  const end = state.sub.currentPeriodEnd;
+  await billing.cancelSubscription({ restaurantId: RID, by: OWNER, on });
+  await billing.reinstateSubscription({ restaurantId: RID, by: OWNER });
+  assert.equal(state.sub.cancelAt, null);
+  assert.ok((await billing.statusFor(RID, on)).nextRenewal, "renewing again");
+  await billing.renewDue(new Date(end.getTime() + MIN));
+  assert.equal(state.sub.status, "ACTIVE", "and it renewed");
+
+  // CSD's cancellation is CSD's to undo. This plan's period ended two days ago.
+  reset();
+  await ledger.credit({ restaurantId: RID, kind: "RECHARGE", amountPaise: 250000, idempotencyKey: "recharge-old" });
+  await billing.afterRecharge({ restaurantId: RID, amountPaise: 250000, on: new Date(Date.now() - 32 * 24 * HOUR) });
+  const lastEnd = state.sub.currentPeriodEnd;
+  await billing.cancelSubscription({ restaurantId: RID, reason: "Closed by CSD", by: CSD, on: new Date(lastEnd.getTime() - 24 * HOUR) });
+  await rejects(billing.reinstateSubscription({ restaurantId: RID, by: OWNER }), 409, "CONTACT_SUPPORT");
+
+  Object.assign(state.store, { status: "closed", closureReason: "Closed in CSD" }); // CSD closed the store itself
+  await billing.renewDue();
+  assert.equal(state.sub.status, "CANCELLED");
+  assert.deepEqual([state.store.status, state.store.closureReason], ["closed", "Closed in CSD"], "CSD's own reason is kept");
+  await rejects(billing.reinstateSubscription({ restaurantId: RID, by: OWNER }), 409, "CONTACT_SUPPORT");
+
+  await billing.reinstateSubscription({ restaurantId: RID, by: CSD });
+  assert.equal(state.sub.status, "EXPIRED", "the next top-up renews it");
+  assert.equal(state.store.status, "active", "the store is reopened");
+  await topUp(500);
+  assert.equal(state.sub.status, "ACTIVE");
+  assert.equal(state.balanceDoc.lockedAt, null);
+});
+
+test("cancelling a store with no running period ends it at once, and a top-up never activates it", async () => {
+  reset();
+  await billing.cancelSubscription({ restaurantId: RID, reason: "Never opened", by: CSD });
+  assert.equal(state.sub.status, "CANCELLED");
+  assert.equal(state.store.status, "closed");
+  await rejects(recharge.createRecharge({ restaurantId: RID, amountPaise: 250000 }), 409, "SUBSCRIPTION_CANCELLED");
+  assert.equal(state.sub.status, "CANCELLED");
+  assert.equal(state.invoices.length, 0);
+  await billing.reinstateSubscription({ restaurantId: RID, by: CSD });
+  assert.equal(state.sub.status, "NONE", "never activated: back to waiting for its first top-up");
+  await rejects(billing.cancelSubscription({ restaurantId: RID, by: { type: "SOMEONE" } }), 400);
+});
+
+test("N1: a store closed by CSD is locked at once, never renews, and cannot top up", async () => {
+  reset();
+  await topUp(10000);
+  const end = state.sub.currentPeriodEnd;
+  // CSD closed it, but cancelling its renewals failed (no cancelAt set).
+  state.store.status = "closed";
+  await lock.evaluateLock(RID);
+  assert.equal(state.balanceDoc.lockedReason, lock.STORE_CLOSED_MESSAGE, "locked with money in the wallet");
+  assert.equal((await billing.statusFor(RID)).storeClosed, true);
+  await rejects(recharge.createRecharge({ restaurantId: RID, amountPaise: 400000 }), 409, "SUBSCRIPTION_CANCELLED");
+
+  const debitsBefore = debits().length;
+  await lock.sweepLocks(new Date(end.getTime() + MIN));
+  assert.equal(state.sub.status, "CANCELLED", "the period end cancels instead of renewing");
+  assert.equal(debits().length, debitsBefore, "nothing debited");
+});
+
+test("SOURCE: cancelling is the Owner's alone, answered with the Billing status; CSD's is admin-only and audited", () => {
+  const route = SRC("routes/subscriptionRoute.js");
+  for (const r of ['router.post("/cancel"', 'router.post("/reinstate"']) {
+    assert.ok(route.includes(`${r}, isVerifiedUser, requireOwnerOnly, requireProtectedAction,`), r);
+  }
+  const csd = SRC("routes/csdRoute.js");
+  assert.match(csd, /router\.post\("\/billing\/accounts\/:restaurantId\/subscription\/cancel", requireCsdAdmin, cancelAccountSubscription\);/);
+  assert.match(csd, /router\.post\("\/billing\/accounts\/:restaurantId\/subscription\/reinstate", requireCsdAdmin, reinstateAccountSubscription\);/);
+  const ctrl = SRC("controllers/csdBillingConfigController.js");
+  assert.match(ctrl, /BILLING\.SUBSCRIPTION\.CANCEL/);
+  assert.match(ctrl, /reason\.length < 3 \|\| reason\.length > 300/);
 });
 
 // ---------------------------------------------------------------------------

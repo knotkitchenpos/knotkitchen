@@ -278,6 +278,18 @@ test("REGRESSION: there is exactly one per-restaurant override model", () => {
   const CsdStoreCharges = require("../models/csdStoreChargesModel");
   assert.ok(CsdStoreCharges.schema.path("planPrices"), "negotiated prices live here");
   assert.ok(CsdStoreCharges.schema.path("onlinePaidOrderCharge"), "as does the per-order charge");
+  // C7: a store is on the platform amount until CSD says otherwise, and can
+  // start the charge later than the platform date.
+  const row = new CsdStoreCharges({ storeId: "123456", ...CsdStoreCharges.DEFAULTS });
+  assert.equal(row.onlinePaidOrderCharge, null, "null = the platform amount, never a copied ₹9");
+  assert.equal(row.orderChargeFrom, null);
+  assert.equal(CsdStoreCharges.schema.path("orderChargeFrom").instance, "Date");
+  for (const gone of ["gstPercent", "monthlySubscription"]) {
+    assert.ok(!CsdStoreCharges.schema.path(gone), `${gone} is no longer a per-store setting`);
+  }
+  const csdCtrl = stripComments(SRC("controllers/csdRestaurantController.js"));
+  assert.ok(!/gstPercent|monthlySubscription/.test(csdCtrl), "nor returned or edited by CSD");
+  assert.match(csdCtrl, /orderChargeFrom/);
 
   // And pricing reads that one, not another.
   const pricing = stripComments(SRC("services/pricing.js"));
@@ -298,5 +310,42 @@ test("rupees become paise in exactly one place", () => {
       !/toPaise\(/.test(stripComments(SRC(file))),
       `${file} should receive paise already`,
     );
+  }
+});
+
+test("CSD settings show the payment gateway mode and whether it is set, never the keys", async () => {
+  // config is frozen, so the controller is loaded against a stand-in.
+  const configPath = require.resolve("../config/config");
+  const ctrlPath = require.resolve("../controllers/csdSettingsController");
+  require(configPath);
+  const realConfig = require.cache[configPath];
+  const CsdStaff = require("../models/csdStaffModel");
+  const count = CsdStaff.countDocuments;
+  CsdStaff.countDocuments = async () => 0;
+
+  const settingsWith = async (over) => {
+    require.cache[configPath] = { ...realConfig, exports: { ...realConfig.exports, ...over } };
+    delete require.cache[ctrlPath];
+    let body;
+    const res = { status: () => res, json: (b) => { body = b; } };
+    try {
+      await require(ctrlPath).getSettings({}, res, (e) => { throw e; });
+    } finally {
+      require.cache[configPath] = realConfig;
+      delete require.cache[ctrlPath];
+    }
+    return body;
+  };
+
+  try {
+    const body = await settingsWith({ cashfreeEnv: "prod", cashfreeAppId: "APPID-SECRET-1", cashfreeSecretKey: "KEY-SECRET-2" });
+    assert.deepStrictEqual(body.data.paymentGateway, { mode: "PROD", configured: true });
+    const text = JSON.stringify(body);
+    assert.ok(!text.includes("APPID-SECRET-1") && !text.includes("KEY-SECRET-2"), "no secret is returned");
+
+    const test = await settingsWith({ cashfreeEnv: "TEST", cashfreeAppId: "x", cashfreeSecretKey: "" });
+    assert.deepStrictEqual(test.data.paymentGateway, { mode: "TEST", configured: false });
+  } finally {
+    CsdStaff.countDocuments = count;
   }
 });

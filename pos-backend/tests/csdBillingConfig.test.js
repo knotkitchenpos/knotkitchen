@@ -148,7 +148,9 @@ test("SOURCE: ending a tablet rental is admin-only and audited", () => {
 test("SOURCE: viewing an account does not lock it", () => {
   // An admin opening a restaurant's page should not be the thing that locks
   // it out of its POS.
-  const ctrl = SRC("controllers/csdBillingConfigController.js");
+  // (A Wallet adjustment moves money, so it may re-evaluate; the view never does.)
+  const src = SRC("controllers/csdBillingConfigController.js");
+  const ctrl = src.slice(src.indexOf("const accountStanding"), src.indexOf("const changeSubscription"));
   assert.match(ctrl, /assessAccount/);
   assert.ok(!/evaluateLock/.test(ctrl), "assess reads; evaluate writes");
   // The plan it shows is read without creating (and so assessing) a balance.

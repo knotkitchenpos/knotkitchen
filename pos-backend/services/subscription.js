@@ -16,6 +16,9 @@
  *      printer is paid once.
  *   4. at the period end the plan, add-ons and tablets renew in one invoice,
  *      all or nothing (renewDue). Short -> EXPIRED; the next top-up renews.
+ *   5. cancelled (by the owner or CSD): renewals stop, and at the period end
+ *      the subscription is CANCELLED and the store closed. Until then it can
+ *      be undone (reinstateSubscription).
  *
  * Order of operations is deliberate. The balance is debited FIRST, and the
  * invoice is issued only once the money has actually moved. Issuing first
@@ -29,13 +32,16 @@ const mongoose = require("mongoose");
 const { PlatformSubscription, PlatformInvoice, CommercialSchedule } = require("../models/platformSubscriptionModel");
 const { BusinessBalance } = require("../models/businessBalanceModel");
 const Restaurant = require("../models/restaurantModel");
+const Store = require("../models/storeModel");
+const { AGREEMENT_VERSION } = require("../constants/agreement");
+const { SUPPORT_PHONE } = require("../constants/support");
 const { getPlatformConfig, getOverride, priceFor } = require("./pricing");
 const { computeTax } = require("./tax");
 const { debit, InsufficientBalanceError } = require("./ledger");
 const { amountInWords, formatINR, asAmount } = require("./money");
 const { nextPeriod, isActiveAt, prorate } = require("./subscriptionPeriod");
 const { nextInvoiceNumber } = require("./invoiceNumber");
-const { evaluateLock } = require("./accountLock");
+const { evaluateLock, isStoreClosed } = require("./accountLock");
 const { featuresFor } = require("./planFeatures");
 const { openRequest, defaultShipTo } = require("./hardwareRequests");
 
@@ -43,9 +49,6 @@ const { openRequest, defaultShipTo } = require("./hardwareRequests");
 // after already sees the lock gone. Never allowed to fail what it follows.
 const settleLock = (restaurantId) =>
   evaluateLock(restaurantId).catch((err) => console.warn("[Subscription] lock re-evaluation failed:", err.message));
-
-/** Agreement text the accepted purchase records belong to. */
-const AGREEMENT_VERSION = "v2.0";
 
 const DEMO_STORE = "This is a demo store. It has every add-on and is never charged.";
 const RENEW_FIRST = "Renew the POS plan first (top up the wallet).";
@@ -77,29 +80,35 @@ const load = async (restaurantId) => {
   return { config, subscription, override, restaurant, exempt: Boolean(override?.billingExempt) };
 };
 
+/** KnotKitchen's registered address, until CSD enters one under GST. */
+const KK_ADDRESS = ["J/183 Baishnabghata Patuli", "Kolkata – 700094"];
+
 /** Both parties, frozen as they are today. */
 const partiesFor = async (restaurantId, config) => {
   const restaurant = await Restaurant.findById(restaurantId)
-    .select("name storeName storeId address gstin ownerPhone phone ownerEmail email")
+    .select("name legalName storeId address taxId gstRegistered ownerPhone restaurantPhone contactPersonPhone ownerEmail")
     .lean();
 
   const gst = config.gst || {};
+  const a = restaurant?.address || {};
   return {
     restaurant,
     seller: {
       name: gst.legalName || "KnotKitchen",
-      gstin: gst.gstin || "",
-      addressLines: gst.addressLines || [],
+      gstin: gst.registered ? gst.gstin || "" : "",
+      addressLines: gst.addressLines?.length ? gst.addressLines : KK_ADDRESS,
       state: gst.placeOfSupplyState || "",
+      phone: SUPPORT_PHONE,
+      email: "support@knotkitchen.com",
     },
     buyer: {
-      name: restaurant?.storeName || restaurant?.name || "",
-      gstin: restaurant?.gstin || "",
-      addressLines: [restaurant?.address?.line1, restaurant?.address?.line2, restaurant?.address?.city]
-        .filter(Boolean),
-      state: restaurant?.address?.state || "",
-      phone: restaurant?.ownerPhone || restaurant?.phone || "",
-      email: restaurant?.ownerEmail || restaurant?.email || "",
+      name: restaurant?.legalName || restaurant?.name || "",
+      // The GSTIN lives in taxId; printed only for a store registered under GST.
+      gstin: restaurant?.gstRegistered ? restaurant?.taxId || "" : "",
+      addressLines: [a.line1, a.line2, [a.city, a.postalCode].filter(Boolean).join(" – ")].filter(Boolean),
+      state: a.state || "",
+      phone: restaurant?.ownerPhone || restaurant?.restaurantPhone || restaurant?.contactPersonPhone || "",
+      email: restaurant?.ownerEmail || "",
     },
   };
 };
@@ -110,11 +119,22 @@ const istDate = (d) =>
 const span = (config) => `${config.subscriptionDays} day${Number(config.subscriptionDays) === 1 ? "" : "s"}`;
 const liveAt = (item, on) => !item.endsAt || new Date(item.endsAt) > new Date(on);
 
-/** GST on each line by itself (as configured), and the totals. */
+/**
+ * GST on each line by itself, and the totals. The plan, add-ons and tablets
+ * are taxed on top (exclusive). A printer line (`gstInclusive`) is sold at a
+ * price that already includes GST: the amount charged never grows, and once
+ * GST applies the invoice shows the GST contained in it.
+ */
 const priceLines = (lines, { config, restaurant, on }) => {
   const taxed = lines.map((l) => ({
     ...l,
-    tax: computeTax({ amountPaise: l.amountPaise, gst: config.gst, restaurantState: restaurant?.address?.state, on }),
+    tax: computeTax({
+      amountPaise: l.amountPaise,
+      gst: config.gst,
+      restaurantState: restaurant?.address?.state,
+      on,
+      mode: l.gstInclusive ? "inclusive" : "exclusive",
+    }),
   }));
   const sum = (k) => taxed.reduce((t, l) => t + l.tax[k], 0);
   return { lines: taxed, subtotalPaise: sum("taxablePaise"), taxPaise: sum("totalTaxPaise"), totalPaise: sum("totalPaise") };
@@ -285,10 +305,21 @@ const requireAcceptance = (acceptance) => {
   }
 };
 
-/** Add-ons and tablets are prorated against a running POS period, so they need one. */
+/**
+ * Add-ons and tablets are prorated against a running POS period, so they need
+ * one -- and one that is going to continue: nothing new is sold to a
+ * subscription that has been cancelled.
+ */
 const requireActivePeriod = (subscription, on) => {
   if (subscription.status !== "ACTIVE" || !isActiveAt(subscription, on)) {
     throw new SubscriptionError(RENEW_FIRST, 409, { code: "PLAN_NOT_ACTIVE" });
+  }
+  if (subscription.cancelAt) {
+    throw new SubscriptionError(
+      `The POS subscription is cancelled and ends on ${istDate(subscription.cancelAt)}. Undo the cancellation to buy more.`,
+      409,
+      { code: "SUBSCRIPTION_ENDING" },
+    );
   }
 };
 
@@ -351,7 +382,7 @@ const printerPurchase = async ({ config, override, restaurant }, rawCode, on) =>
   const printer = (config.printers || []).find((p) => p.code === code && p.isActive !== false);
   if (!printer) throw new SubscriptionError("That printer is not available.", 404);
   const pricePaise = await priceFor({ code, config, override });
-  const lines = [{ description: `${printer.name} (one-time purchase)`, amountPaise: pricePaise }];
+  const lines = [{ description: `${printer.name} (one-time purchase)`, amountPaise: pricePaise, gstInclusive: true }];
   return { printer, pricePaise, bill: priceLines(lines, { config, restaurant, on }) };
 };
 
@@ -373,7 +404,7 @@ const quote = async ({ restaurantId, item, on = new Date() }) => {
 /** Start the POS plan now: the plan price + GST from the wallet, period from today. */
 const activate = async ({ restaurantId, on = new Date() }) => {
   const { config, subscription, override, restaurant, exempt } = await load(restaurantId);
-  if (exempt || subscription.activatedAt) return null;
+  if (exempt || subscription.activatedAt || subscription.status === "CANCELLED") return null;
 
   const base = config.basePlan || {};
   const code = base.code || "POS";
@@ -409,6 +440,26 @@ const activate = async ({ restaurantId, on = new Date() }) => {
   subscription.lastRenewalError = "";
   await subscription.save();
 
+  // The plan the store took by making the activation top-up, on record like
+  // any purchase. Once per store (a retried activation finds it), and never
+  // allowed to fail the activation it describes.
+  try {
+    if (!(await CommercialSchedule.exists({ restaurantId, reason: "SUBSCRIPTION" }))) {
+      await recordSchedule({
+        restaurantId,
+        storeId: subscription.storeId,
+        reason: "SUBSCRIPTION",
+        values: acceptedValues({
+          bill,
+          item: { plan: code, name, pricePaise: bill.subtotalPaise, periodDays: config.subscriptionDays, acceptedVia: "ACTIVATION_TOP_UP" },
+        }),
+        acceptance: null,
+      });
+    }
+  } catch (err) {
+    console.warn("[Subscription] recording the activation failed:", err.message);
+  }
+
   // Starting the plan is what lifts a new store's lock.
   await settleLock(restaurantId);
   return { subscription, invoice, charged: bill.totalPaise };
@@ -429,7 +480,8 @@ const afterRecharge = async ({ restaurantId, amountPaise, on = new Date() }) => 
     getSubscription(restaurantId),
     getOverride(restaurantId),
   ]);
-  if (override?.billingExempt) return { activated: false, tabletCredit: false };
+  // A cancelled subscription stays cancelled: only reinstating brings it back.
+  if (override?.billingExempt || subscription.status === "CANCELLED") return { activated: false, tabletCredit: false };
 
   const paid = Math.round(Number(amountPaise) || 0);
   let activated = false;
@@ -444,6 +496,16 @@ const afterRecharge = async ({ restaurantId, amountPaise, on = new Date() }) => 
 
   await renewDue(on, { restaurantId });
   return { activated, tabletCredit };
+};
+
+/**
+ * N2: a CANCELLED subscription or a closed store takes no new top-ups (or
+ * gateway purchases) -- the wallet is not refundable and could never be spent.
+ * A payment ALREADY made is still credited (services/recharge finalizeRecharge).
+ */
+const closedForTopUp = async (restaurantId) => {
+  const subscription = await PlatformSubscription.findOne({ restaurantId }).select("status").lean();
+  return subscription?.status === "CANCELLED" || (await isStoreClosed(restaurantId));
 };
 
 /** The smallest top-up this store may open now, in paise: the activation minimum until it has activated. */
@@ -670,7 +732,7 @@ const recordPrinterPayment = async ({ intent, paidPaise, on = new Date() }) => {
   if (!Array.isArray(lines) || !lines.length) {
     const restaurant = await Restaurant.findById(restaurantId).select("address").lean();
     lines = priceLines(
-      [{ description: `${intent.item?.name || "Printer"} (one-time purchase)`, amountPaise: Number(intent.item?.pricePaise) || 0 }],
+      [{ description: `${intent.item?.name || "Printer"} (one-time purchase)`, amountPaise: Number(intent.item?.pricePaise) || 0, gstInclusive: true }],
       { config, restaurant, on },
     ).lines;
   }
@@ -734,14 +796,21 @@ const renewOne = async (subscription, { config, on }) => {
   const restaurantId = subscription.restaurantId;
   if (!["ACTIVE", "EXPIRED"].includes(subscription.status)) return { renewed: false };
   if (!subscription.currentPeriodEnd || new Date(subscription.currentPeriodEnd) > new Date(on)) return { renewed: false };
+  // Cancelled: the paid period is over, so it ends here instead of renewing.
+  // A closed store (N1) never renews either, even if cancelling it failed.
+  if ((subscription.cancelAt && new Date(subscription.cancelAt) <= new Date(on)) || (await isStoreClosed(restaurantId))) {
+    await endSubscription(subscription, on);
+    return { renewed: false, cancelled: true };
+  }
   const override = await getOverride(restaurantId);
   if (override?.billingExempt) return { renewed: false };
   const restaurant = await Restaurant.findById(restaurantId).select("address").lean();
 
   const { lines, addons, tablets } = await renewalLines({ config, subscription, override });
   const bill = priceLines(lines, { config, restaurant, on });
-  // On time, the new period continues from the old end; late, renewalPolicy decides.
-  const period = nextPeriod({ subscription, days: config.subscriptionDays, policy: config.renewalPolicy, on });
+  // On time, the new period continues from the old end; late, it starts the
+  // day they pay. Always FROM_PAYMENT, whatever an old config row still holds.
+  const period = nextPeriod({ subscription, days: config.subscriptionDays, policy: "FROM_PAYMENT", on });
   subscription.lastRenewalAttemptAt = new Date(on);
 
   let result;
@@ -824,6 +893,94 @@ const renewDue = async (on = new Date(), { restaurantId } = {}) => {
 };
 
 // ---------------------------------------------------------------------------
+// Cancellation
+// ---------------------------------------------------------------------------
+
+/** This restaurant's Store row, by either key (restaurantId is optional on it). */
+const storeFilter = (subscription) => ({
+  $or: [{ restaurantId: subscription.restaurantId }, ...(subscription.storeId ? [{ storeId: subscription.storeId }] : [])],
+  isDeleted: { $ne: true },
+});
+
+/**
+ * The cancellation takes effect: CANCELLED, nothing debited, and the store
+ * marked closed (the same Store.status CSD's store-status screen writes).
+ */
+const endSubscription = async (subscription, on) => {
+  subscription.status = "CANCELLED";
+  subscription.cancelledAt = new Date(on);
+  if (!subscription.cancelAt) subscription.cancelAt = new Date(on);
+  await subscription.save();
+  // A store CSD already closed keeps its own closure reason.
+  await Store.updateOne(
+    { ...storeFilter(subscription), status: { $nin: ["closed", "deleted"] } },
+    { $set: { status: "closed", closedUntil: null, closureReason: subscription.cancelReason || "POS subscription cancelled" } },
+  );
+  await settleLock(subscription.restaurantId);
+};
+
+const BY_TYPES = ["RESTAURANT", "CSD"];
+
+/**
+ * Cancel the POS subscription. Renewals stop; a running period is kept to its
+ * end (nothing is refunded -- the wallet is not refundable), and then the
+ * subscription is CANCELLED and the store closed (renewOne). One with no
+ * running period ends now. Asking again changes nothing.
+ * `by` is { type: "RESTAURANT" | "CSD", name }.
+ */
+const cancelSubscription = async ({ restaurantId, reason = "", by, on = new Date() }) => {
+  if (!BY_TYPES.includes(by?.type)) throw new SubscriptionError("Say who is cancelling.", 400);
+  const subscription = await getSubscription(restaurantId);
+  if (subscription.status === "CANCELLED" || subscription.cancelAt) return { subscription, already: true };
+
+  subscription.cancelReason = String(reason || "").trim().slice(0, 300);
+  subscription.cancelledBy = { type: by.type, name: String(by.name || "").slice(0, 120) };
+  const running = subscription.status === "ACTIVE" && isActiveAt(subscription, on);
+  if (running) {
+    subscription.cancelAt = subscription.currentPeriodEnd;
+    await subscription.save();
+  } else {
+    subscription.cancelAt = new Date(on);
+    await endSubscription(subscription, on);
+  }
+  return { subscription, already: false };
+};
+
+/**
+ * Undo a cancellation. Before it takes effect, renewals simply resume. After
+ * (CSD only), the subscription becomes EXPIRED -- the next top-up renews it --
+ * and the store is reopened if the cancellation closed it. The restaurant
+ * cannot undo a cancellation CSD recorded.
+ */
+const reinstateSubscription = async ({ restaurantId, by }) => {
+  if (!BY_TYPES.includes(by?.type)) throw new SubscriptionError("Say who is reinstating.", 400);
+  const subscription = await getSubscription(restaurantId);
+  const cancelled = subscription.status === "CANCELLED";
+  if (!cancelled && !subscription.cancelAt) return { subscription, already: true };
+  // CSD closed the store mid-period: the subscription only ends at period end,
+  // but undoing that here would leave a closed store renewing. Reopening the
+  // store from Store status reinstates it (csdStoreController).
+  const storeClosed = !cancelled && (await isStoreClosed(restaurantId));
+  if (by.type === "RESTAURANT" && (cancelled || storeClosed || subscription.cancelledBy?.type === "CSD")) {
+    throw new SubscriptionError("This cancellation can only be undone by KnotKitchen. Contact support.", 409, { code: "CONTACT_SUPPORT" });
+  }
+  if (storeClosed) throw new SubscriptionError("Re-open the store from Store status.", 409, { code: "STORE_CLOSED" });
+
+  subscription.cancelAt = null;
+  subscription.cancelReason = "";
+  subscription.cancelledBy = { type: "", name: "" };
+  subscription.cancelledAt = null;
+  // Never activated: back to waiting for its first top-up.
+  if (cancelled) subscription.status = subscription.activatedAt ? "EXPIRED" : "NONE";
+  await subscription.save();
+  if (cancelled) {
+    await Store.updateOne({ ...storeFilter(subscription), status: "closed" }, { $set: { status: "active", closureReason: "" } });
+    await settleLock(restaurantId);
+  }
+  return { subscription, already: false };
+};
+
+// ---------------------------------------------------------------------------
 // Status
 // ---------------------------------------------------------------------------
 
@@ -835,7 +992,10 @@ const statusFor = async (restaurantId, on = new Date()) => {
   const graceEnds = subscription.currentPeriodEnd
     ? new Date(new Date(subscription.currentPeriodEnd).getTime() + Math.max(0, Number(config.graceHours || 0)) * 3600 * 1000)
     : null;
-  const balance = await BusinessBalance.findOne({ restaurantId }).select("balancePaise").lean();
+  const [balance, storeClosed] = await Promise.all([
+    BusinessBalance.findOne({ restaurantId }).select("balancePaise").lean(),
+    isStoreClosed(restaurantId),
+  ]);
 
   // The whole catalogue on sale, marked with what this store has. One it
   // owns that has since been retired still shows, so it can be stopped.
@@ -876,7 +1036,8 @@ const statusFor = async (restaurantId, on = new Date()) => {
   }
 
   let nextRenewal = null;
-  if (!exempt && subscription.activatedAt && subscription.currentPeriodEnd) {
+  // A cancelled subscription (or one being cancelled) does not renew.
+  if (!exempt && subscription.activatedAt && subscription.currentPeriodEnd && !subscription.cancelAt && subscription.status !== "CANCELLED") {
     const { lines } = await renewalLines({ config, subscription, override });
     nextRenewal = { at: subscription.currentPeriodEnd, ...billView(priceLines(lines, { config, restaurant, on })) };
   }
@@ -897,6 +1058,14 @@ const statusFor = async (restaurantId, on = new Date()) => {
     inGrace: !active && Boolean(subscription.activatedAt) && Boolean(graceEnds) && new Date(on) < graceEnds,
     graceEndsAt: graceEnds,
     lastRenewalError: subscription.lastRenewalError || "",
+    // Cancellation: when it takes (or took) effect, why, and who asked.
+    cancelAt: subscription.cancelAt || null,
+    cancelReason: subscription.cancelReason || "",
+    cancelledBy: subscription.cancelledBy?.type ? { type: subscription.cancelledBy.type, name: subscription.cancelledBy.name || "" } : null,
+    cancelledAt: subscription.cancelledAt || null,
+    // N2: no top-ups; the POS shows "contact support to reopen" instead.
+    storeClosed,
+    topUpBlocked: storeClosed || subscription.status === "CANCELLED",
     addons,
     tablets,
     tablet: {
@@ -926,6 +1095,7 @@ const statusFor = async (restaurantId, on = new Date()) => {
 };
 
 module.exports = {
+  closedForTopUp,
   getSubscription,
   quote,
   billView,
@@ -939,6 +1109,8 @@ module.exports = {
   preparePrinterPayment,
   recordPrinterPayment,
   renewDue,
+  cancelSubscription,
+  reinstateSubscription,
   statusFor,
   issueInvoice,
   scheduleHash,

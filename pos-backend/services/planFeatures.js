@@ -61,16 +61,17 @@ const hasFeature = async (restaurantId, feature, storeId) => {
 const hasWebsite = (restaurantId, storeId) => hasFeature(restaurantId, "website", storeId);
 
 /**
- * "The website is an add-on (₹300.00 + GST a month)." The price is read from
+ * "The website is an add-on (₹300.00 + GST / 30 days)." The price is read from
  * the catalogue, so the message cannot quote a price CSD has since changed.
  */
 const addonRequired = async (res, feature, what) => {
   let price = "";
   try {
-    const addon = ((await getPlatformConfig()).addons || []).find(
+    const config = await getPlatformConfig();
+    const addon = (config.addons || []).find(
       (a) => a.isActive !== false && a.feature === (feature === "paymentGateway" ? "website" : feature),
     );
-    if (addon) price = ` (${formatINR(addon.pricePaise)} + GST a month)`;
+    if (addon) price = ` (${formatINR(addon.pricePaise)} + GST / ${config.subscriptionDays || 30} days)`;
   } catch {
     // The refusal matters, not the price in it.
   }

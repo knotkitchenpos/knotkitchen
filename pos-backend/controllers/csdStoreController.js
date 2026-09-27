@@ -5,7 +5,6 @@ const WebsiteSettings = require("../models/websiteSettingsModel");
 const CsdAgreementLink = require("../models/csdAgreementLinkModel");
 const { buildStorefrontUrl } = require("../services/websiteProvisioningService");
 const { csdAudit } = require("../services/csdAuditService");
-const onboardPortalService = require("../services/onboardPortalService");
 const { formatAddress } = require("../services/address");
 const { purgeStoreData } = require("../services/storePurge");
 
@@ -207,23 +206,24 @@ const getStore = async (req, res, next) => {
  * at all (storefrontResolver refuses suspended/closed stores), so this is
  * admin-gated and always audited with the previous value.
  */
-// "deleted" is a terminal status. The store's row keeps its status field
-// for audit but is also isDeleted-flagged so every isDeleted:{$ne:true}
-// query across the app hides it. The associated Restaurant and the
-// agreement link are removed too — see permanentlyDeleteStore below.
-const ALLOWED_STATUS = ["active", "pending", "suspended", "closed_temporarily", "closed_until", "deleted"];
+// "closed" is the restaurant having left (N1): closed at once -- the POS is
+// locked except sign-in and Billing (STORE_CLOSED), the website, QR ordering
+// and booking are down -- and its renewals are cancelled. Re-opening it
+// (closed -> active) reinstates the subscription and lifts the lock.
+// "deleted" is a terminal status. The
+// store's row keeps its status field for audit but is also isDeleted-flagged
+// so every isDeleted:{$ne:true} query across the app hides it. The associated
+// Restaurant goes too — see permanentlyDeleteStore below.
+const ALLOWED_STATUS = ["active", "pending", "suspended", "closed_temporarily", "closed_until", "closed", "deleted"];
 
 /**
- * Terminal delete path. Soft-deletes the Store and Restaurant, drops the
- * CsdAgreementLink so the agreement is no longer marked "already processed",
- * and asks the onboarding portal to delete its own copy of the agreement
- * (files + record) so the whole thing genuinely goes away.
+ * Terminal delete path, run only when the restaurant asks to be deleted.
+ * Purges the store's data and removes the Store and Restaurant.
  *
- * Best-effort on the portal call: the local delete has already committed by
- * the time we hit the network, so a portal failure surfaces as a warning
- * rather than rolling back. The link row is deleted regardless because it is
- * the local record of "this agreement produced a store" and the store no
- * longer exists.
+ * Legal and tax records are KEPT for the retention period: the signed
+ * agreement (CsdAgreementLink with its snapshot, the signed-copy document),
+ * the CommercialSchedule and our invoices -- see services/storePurge.js. The
+ * portal's copy of the agreement is left alone for the same reason.
  */
 const permanentlyDeleteStore = async ({ req, store, storeId, reason }) => {
   const previous = { status: store.status, closedUntil: store.closedUntil || null };
@@ -273,26 +273,6 @@ const permanentlyDeleteStore = async ({ req, store, storeId, reason }) => {
   // delete only flagged can have one that the id above never pointed at.
   await Restaurant.deleteMany({ storeId });
 
-  // 3. Local agreement link: gone. Without this row, listing the portal's
-  //    agreements will no longer show a "store already created" badge.
-  if (link?._id) {
-    await CsdAgreementLink.deleteOne({ _id: link._id });
-  }
-
-  // 4. Remote agreement + files: best-effort. Never block on this.
-  let portalError = "";
-  if (agreementId) {
-    try {
-      if (onboardPortalService.isConfigured()) {
-        await onboardPortalService.deleteAgreement(agreementId);
-      } else {
-        portalError = "Onboarding portal not configured; agreement not removed.";
-      }
-    } catch (e) {
-      portalError = e?.message || "Portal deletion failed.";
-    }
-  }
-
   await csdAudit({
     req,
     staff: req.csdStaff,
@@ -307,7 +287,6 @@ const permanentlyDeleteStore = async ({ req, store, storeId, reason }) => {
       status: "deleted",
       reason: store.closureReason,
       agreementId: agreementId || null,
-      portalError: portalError || null,
       // Exactly what was destroyed, per collection.
       purged: purge.deleted,
       retained: purge.skipped,
@@ -315,7 +294,45 @@ const permanentlyDeleteStore = async ({ req, store, storeId, reason }) => {
     severity: "CRITICAL",
   });
 
-  return { agreementId, portalError };
+  return { agreementId };
+};
+
+/** The Restaurant behind a Store row (restaurantId is optional on it). */
+const restaurantIdOf = async (store, storeId) =>
+  store.restaurantId || (await Restaurant.findOne({ storeId }).select("_id").lean())?._id || null;
+
+/**
+ * N1: closing a store cancels its renewals; reopening a closed store
+ * reinstates them. Runs AFTER the status is saved, so a failure here never
+ * leaves the status half-applied; closing again simply retries the cancel
+ * (it is idempotent).
+ *
+ * "Already cancelled" and "never started" come back as 4xx and are not
+ * failures here -- there is simply nothing to stop. Returns what happened,
+ * for the audit entry.
+ */
+const syncSubscriptionWithStatus = async ({ req, store, storeId, from, to, restaurantId }) => {
+  const closing = to === "closed";
+  const reopening = from === "closed" && to === "active";
+  if (!closing && !reopening) return null;
+
+  restaurantId = restaurantId || (await restaurantIdOf(store, storeId));
+  if (!restaurantId) return "no restaurant";
+
+  // Lazy: the billing service is heavy and only these two transitions need it.
+  const { cancelSubscription, reinstateSubscription } = require("../services/subscription");
+  const by = { type: "CSD", name: req.csdStaff?.fullName || "" };
+  try {
+    const out = closing
+      ? await cancelSubscription({ restaurantId, reason: "Store closed in CSD", by })
+      : await reinstateSubscription({ restaurantId, by });
+    if (out?.already) return closing ? "already cancelled" : "nothing to reinstate";
+    return closing ? "renewals cancelled" : "reinstated";
+  } catch (err) {
+    const code = err?.status || err?.statusCode;
+    if (code >= 400 && code < 500) return `unchanged: ${err.message}`;
+    throw err;
+  }
 };
 
 const updateStoreStatus = async (req, res, next) => {
@@ -361,9 +378,9 @@ const updateStoreStatus = async (req, res, next) => {
     });
     if (!store) return next(createHttpError(404, "Store not found."));
 
-    // Terminal path: destroys the store + its agreement.
+    // Terminal path: destroys the store's data, keeping its legal records.
     if (status === "deleted") {
-      const { agreementId, portalError } = await permanentlyDeleteStore({
+      const { agreementId } = await permanentlyDeleteStore({
         req,
         store,
         storeId,
@@ -375,11 +392,8 @@ const updateStoreStatus = async (req, res, next) => {
           storeId,
           status: "deleted",
           agreementId: agreementId || null,
-          portalError: portalError || null,
         },
-        message: portalError
-          ? `Store deleted, but the agreement portal call failed: ${portalError}`
-          : "Store and agreement permanently deleted.",
+        message: "Store permanently deleted. Its signed agreement, contract and invoices are kept for the retention period.",
       });
     }
 
@@ -389,6 +403,28 @@ const updateStoreStatus = async (req, res, next) => {
     store.closedUntil = closedUntil;
     store.closureReason = status === "active" ? "" : reason;
     await store.save();
+
+    // Billing follows the saved status: cancel or reinstate, then lock or
+    // unlock at once (a closed store is locked whatever its wallet holds).
+    let subscription = null;
+    let failure = null;
+    const touchesClosed = status === "closed" || previous.status === "closed";
+    if (touchesClosed) {
+      const restaurantId = await restaurantIdOf(store, storeId);
+      try {
+        subscription = await syncSubscriptionWithStatus({
+          req, store, storeId, from: previous.status, to: status, restaurantId,
+        });
+      } catch (err) {
+        failure = err;
+        subscription = `failed: ${err.message}`;
+      }
+      if (restaurantId) {
+        await require("../services/accountLock")
+          .evaluateLock(restaurantId)
+          .catch((err) => console.warn("[csdStore] lock re-evaluation failed:", err.message));
+      }
+    }
 
     await csdAudit({
       req,
@@ -400,9 +436,19 @@ const updateStoreStatus = async (req, res, next) => {
       storeId,
       description: `Store ${storeId} status ${previous.status} → ${status}`,
       previousValue: previous,
-      newValue: { status, closedUntil, reason: store.closureReason },
+      newValue: { status, closedUntil, reason: store.closureReason, ...(subscription ? { subscription } : {}) },
       severity: status === "suspended" ? "WARNING" : "INFO",
     });
+
+    if (failure) {
+      return next(
+        createHttpError(
+          502,
+          `The store is now ${status}, but its subscription could not be updated (${failure.message}). ` +
+            (status === "closed" ? "Save the status again to retry." : "Set it closed and then active again to retry."),
+        ),
+      );
+    }
 
     res.status(200).json({
       success: true,
@@ -413,4 +459,4 @@ const updateStoreStatus = async (req, res, next) => {
   }
 };
 
-module.exports = { searchStores, getStore, updateStoreStatus, ALLOWED_STATUS };
+module.exports = { searchStores, getStore, updateStoreStatus, ALLOWED_STATUS, syncSubscriptionWithStatus };

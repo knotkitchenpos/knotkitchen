@@ -4,7 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const mongoose = require("mongoose");
 
-const { purgeStoreData, KEEP, HANDLED_BY_CALLER } = require("../services/storePurge");
+const { purgeStoreData, KEEP, KEEP_WHERE, HANDLED_BY_CALLER } = require("../services/storePurge");
 
 const SRC = (...p) => fs.readFileSync(path.join(__dirname, "..", ...p), "utf8");
 
@@ -98,6 +98,28 @@ test("the audit trail and our own invoices survive the store", async () => {
   assert.deepEqual(calls, [], "nothing on the keep list is deleted");
   assert.ok(out.skipped.includes("AuditLog"), "erasing the record OF the deletion is self-defeating");
   assert.ok(out.skipped.includes("PlatformInvoice"), "our issued invoices are our accounting records");
+});
+
+test("legal records survive a permanent delete: contract, agreement snapshot, signed copy", async () => {
+  for (const name of ["CommercialSchedule", "CsdAgreementLink", "PlatformInvoice"]) {
+    assert.ok(KEEP.has(name), `${name} is kept for the retention period`);
+  }
+
+  // The signed agreement document stays; the rest of the KYC pack goes.
+  const calls = [];
+  const models = { CsdStoreDocument: fakeModel({ storeId: {} }, calls, "CsdStoreDocument") };
+  await withModels(models, () => purgeStoreData({ restaurantId: RESTAURANT_ID, storeId: STORE_ID }));
+  assert.deepEqual(KEEP_WHERE.CsdStoreDocument, { category: "Signed Agreement" });
+  assert.deepEqual(calls, [
+    ["CsdStoreDocument", { $and: [{ storeId: STORE_ID }, { $nor: [{ category: "Signed Agreement" }] }] }],
+  ]);
+});
+
+test("the delete route keeps the agreement link and no longer deletes the portal's copy", () => {
+  const src = SRC("controllers", "csdStoreController.js");
+  assert.ok(!/CsdAgreementLink\.deleteOne/.test(src), "the link carries the signed snapshot");
+  assert.ok(!/deleteAgreement/.test(src), "the portal holds the signed original");
+  assert.ok(!/deleteAgreement/.test(SRC("services", "onboardPortalService.js")));
 });
 
 test("it refuses to run with no scope at all", async () => {

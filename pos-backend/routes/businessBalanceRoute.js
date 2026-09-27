@@ -56,6 +56,8 @@ router.get("/", isVerifiedUser, async (req, res, next) => {
         locked: Boolean(balance.lockedAt),
         lockedAt: balance.lockedAt,
         lockedReason: balance.lockedReason,
+        // N1/N2: closed by KnotKitchen -- no top-up form, "contact support to reopen".
+        closed: assessment.code === "STORE_CLOSED",
         // Not locked yet, but will be at `locksAt` unless the restaurant pays.
         locksAt: balance.lockedAt ? null : assessment.locksAt,
         lockWarning: balance.lockedAt ? "" : assessment.lockWarning,
@@ -96,7 +98,8 @@ router.get("/transactions", isVerifiedUser, async (req, res, next) => {
 
 // POST /api/business-balance/recharge — open a top-up. Credits nothing.
 // Until the POS plan has started, the amount must be at least the first
-// top-up minimum (400, code FIRST_TOPUP_MINIMUM; services/recharge).
+// top-up minimum (400, code FIRST_TOPUP_MINIMUM; services/recharge). A closed
+// store or CANCELLED subscription is refused (409, code SUBSCRIPTION_CANCELLED).
 router.post("/recharge", isVerifiedUser, async (req, res, next) => {
   try {
     const restaurantId = ownRestaurantId(req);

@@ -26,6 +26,7 @@
 const TableSession = require("../models/tableSessionModel");
 const PaymentLink = require("../models/paymentLinkModel");
 const RechargeOrder = require("../models/rechargeOrderModel");
+const WebsiteCheckout = require("../models/websiteCheckoutModel");
 const {
   resolveGateway,
   resolvePlatformGateway,
@@ -81,6 +82,9 @@ const cashfreeWebhook = async (req, res) => {
     const recharge = session || link ? null : await RechargeOrder.findOne({ gatewayOrderId: orderId });
 
     if (!session && !link && !recharge) {
+      // And a website customer paying for an order (web_<checkoutId>).
+      const websiteCheckout = await WebsiteCheckout.findOne({ gatewayOrderId: orderId });
+      if (websiteCheckout) return handleWebsiteCheckout(res, { websiteCheckout, orderId, rawBody, timestamp, signature });
       return ack(res, `nothing opened gateway order ${orderId}`);
     }
 
@@ -143,6 +147,7 @@ const cashfreeWebhook = async (req, res) => {
     });
     if (!status.paid) return ack(res, `order ${orderId} is ${status.orderStatus}, not PAID`);
 
+
     if (session) {
       const payable = session.bills?.totalWithTax || 0;
       if (Math.abs(Number(status.amount) - Number(payable)) > 0.01) {
@@ -193,6 +198,39 @@ const cashfreeWebhook = async (req, res) => {
     console.error("[cashfree-webhook] handler failed:", error?.message || error);
     return res.status(200).json({ success: true, error: "handler_error" });
   }
+};
+
+/**
+ * A website checkout the customer paid for: the same four steps, then the
+ * order is placed through the storefront's own settlement, which the browser's
+ * verify shares -- whichever arrives second adopts the order. Placed even if
+ * the store has been locked or closed since: the money is already taken (N4).
+ */
+const handleWebsiteCheckout = async (res, { websiteCheckout, orderId, rawBody, timestamp, signature }) => {
+  const { restaurantId, storeId } = websiteCheckout;
+  const gw = await resolveGateway({ restaurantId, storeId });
+  if (gw.provider !== PROVIDERS.CASHFREE || !gw.webhookSecret) return ack(res, "no Cashfree secret for this tenant");
+  if (!cashfree.verifyWebhook({ rawBody, timestamp, signature, secretKey: gw.webhookSecret })) {
+    console.warn(`[cashfree-webhook] signature rejected for order ${orderId}`);
+    return res.status(401).json({ success: false, message: "Invalid signature." });
+  }
+  if (websiteCheckout.status !== "PENDING") return ack(res, null, { alreadySettled: true });
+
+  const status = await cashfree.isOrderPaid({ appId: gw.keyId, secretKey: gw.secret, environment: gw.environment, orderId });
+  if (!status.paid) return ack(res, `order ${orderId} is ${status.orderStatus}, not PAID`);
+  if (Math.abs(Number(status.amount) - Number(websiteCheckout.amount)) > 0.01) {
+    return ack(res, `amount mismatch on ${orderId}: paid ${status.amount}, checkout ${websiteCheckout.amount}`, { mismatch: true });
+  }
+
+  const { placePaidCheckout } = require("./storefrontController");
+  const out = await placePaidCheckout({
+    checkout: websiteCheckout,
+    paid: status,
+    restaurantId,
+    outletId: websiteCheckout.orderData?.outletId || null,
+    storeId,
+  });
+  return ack(res, null, { settled: out.placed ? "website" : false });
 };
 
 /**

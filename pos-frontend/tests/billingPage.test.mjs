@@ -108,3 +108,35 @@ test("a printer or tablet is requested to a delivery address, then priced and pa
   // CSD moving it along refreshes the till live.
   assert.match(SRC("src/hooks/useRealtimeSync.js"), /"hardwareRequest:updated": \["subscription", "business-balance"\]/);
 });
+
+test("cancelling is the owner's, in an in-page box; a closed store cannot top up", () => {
+  const billing = SRC("src/pages/Billing.jsx");
+  // window.prompt returns null in Electron, so the cancel would do nothing there.
+  assert.ok(!billing.includes("window.prompt("));
+  assert.match(billing, /const CancelPlan = /);
+  assert.match(billing, /After that your store is Closed\./);
+  assert.match(billing, /Your wallet balance is not refundable\./);
+  assert.match(billing, /\) : owner && \(\s*<button[^>]*onClick=\{\(\) => setCancelling\(true\)\}/);
+  assert.match(billing, /\{canUndo && owner && !sub\.storeClosed && \(/);
+  // 409 SUBSCRIPTION_CANCELLED (or a cancelled plan) replaces the recharge form.
+  assert.match(billing, /code === "SUBSCRIPTION_CANCELLED"\) setClosedByServer\(true\)/);
+  assert.match(billing, /\{storeClosed \? \([\s\S]{0,300}This store is closed\. Contact KnotKitchen support to reopen\./);
+});
+
+test("a store KnotKitchen closed shows it is closed, with no Undo and no recharge", () => {
+  const billing = SRC("src/pages/Billing.jsx");
+  assert.match(
+    billing,
+    /const storeClosed = cancelled \|\| closedByServer \|\| Boolean\(sub\?\.topUpBlocked \|\| sub\?\.storeClosed \|\| balance\?\.closed\);/,
+  );
+  // The pending-cancellation banner says closed instead of "Cancels on …".
+  assert.match(
+    billing,
+    /\{sub\.storeClosed \? \(\s*<p[^>]*>This store is closed\. Contact KnotKitchen support to reopen\.<\/p>\s*\) : \(\s*<p>\s*<span className="font-extrabold">Cancels on/,
+  );
+  // The recharge form sits in the not-closed branch only.
+  const closed = billing.indexOf("{storeClosed ? (");
+  const recharge = billing.indexOf(">Recharge</p>");
+  const branchEnd = closed + billing.slice(closed).search(/<\/>\s*\)\}/);
+  assert.ok(closed > 0 && closed < recharge && recharge < branchEnd);
+});

@@ -7,6 +7,7 @@ const { mapAgreementToStore } = require("../services/agreementMapper");
 const { generateUniqueStoreId } = require("../services/storeIdGenerator");
 const { provisionWebsiteForStore } = require("../services/websiteProvisioningService");
 const { csdAudit } = require("../services/csdAuditService");
+const { AGREEMENT_VERSION } = require("../constants/agreement");
 
 const str = (v) => String(v ?? "").trim();
 
@@ -28,6 +29,41 @@ const COMPLETED = new Set([
   "submitted", "completed", "signed", "complete", "store created",
 ]);
 const isCompleted = (a) => COMPLETED.has(str(a?.status).toLowerCase());
+
+/**
+ * What was signed, from the portal's one-time acceptance record and its
+ * uploaded signed copy. Shown in the list and the detail, and checked before
+ * a store is created: a store must never be built from an unsigned agreement
+ * or from an older version with different commercial terms.
+ */
+const signingOf = (a) => ({
+  agreementVersion: str(a?.acceptance?.agreementVersion) || null,
+  submittedAt: a?.acceptance?.submittedAt || null,
+  signatureMethod: str(a?.acceptance?.signatureMethod) || null,
+  signedCopy: Boolean(a?.files?.esigned),
+  currentVersion: AGREEMENT_VERSION,
+});
+
+/** null when a store may be created from this agreement, else the 409 body. */
+const signingProblem = (a) => {
+  const s = signingOf(a);
+  // A real acceptance record has a submission time. The portal saves
+  // `acceptance: {}` on every draft, so the object alone proves nothing.
+  if (!s.signedCopy || !s.submittedAt) {
+    return {
+      code: "AGREEMENT_NOT_SIGNED",
+      message: "This agreement has no signed copy or acceptance record. Complete signing in the onboarding portal first.",
+    };
+  }
+  if (s.agreementVersion !== AGREEMENT_VERSION) {
+    return {
+      code: "AGREEMENT_OUTDATED",
+      version: s.agreementVersion,
+      message: `This agreement was signed on version ${s.agreementVersion || "(unknown)"}; the current version is ${AGREEMENT_VERSION}. Have the restaurant sign the current agreement.`,
+    };
+  }
+  return null;
+};
 
 /**
  * GET /api/csd/agreements — admin only.
@@ -66,6 +102,7 @@ const listAgreements = async (req, res, next) => {
           salesAgent: a.sales_agent || a.data?.sales_agent || "",
           status: a.status,
           createdAt: a.created_at || null,
+          ...signingOf(a),
           storeCreated: !!link,
           storeId: link?.storeId || null,
           storeCreatedAt: link?.createdAt || null,
@@ -109,6 +146,7 @@ const getAgreement = async (req, res, next) => {
         salesAgent: agreement.sales_agent || agreement.data?.sales_agent || "",
         createdAt: agreement.created_at || null,
         completed: isCompleted(agreement),
+        ...signingOf(agreement),
         storeCreated: !!link,
         storeId: link?.storeId || null,
         mapped: values,
@@ -158,6 +196,11 @@ const createStoreFromAgreement = async (req, res, next) => {
     const agreement = await portal.getAgreement(id);
     if (!isCompleted(agreement)) {
       return next(createHttpError(400, "This agreement is not marked as completed."));
+    }
+
+    const problem = signingProblem(agreement);
+    if (problem) {
+      return res.status(409).json({ success: false, status: 409, ...problem });
     }
 
     const { values, missing, warnings } = mapAgreementToStore(agreement);
@@ -220,7 +263,7 @@ const createStoreFromAgreement = async (req, res, next) => {
       },
       ownerName: values.ownerName,
       ownerPhone: values.ownerPhone,
-      ownerEmail: values.ownerEmail,
+      ownerEmail: values.ownerEmail || values.restaurantEmail,
       restaurantPhone: values.restaurantPhone,
       restaurantType: values.restaurantType,
       mapsLink: values.mapsLink,
@@ -265,7 +308,12 @@ const createStoreFromAgreement = async (req, res, next) => {
         storeName: values.restaurantName,
         restaurantId: restaurant._id,
         currency: "INR",
-        contact: { phone: values.restaurantPhone || values.ownerPhone, email: values.ownerEmail },
+        // The restaurant's own email is its public contact on the website;
+        // the POS falls back to the owner's when it is blank.
+        contact: {
+          phone: values.restaurantPhone || values.ownerPhone,
+          email: values.restaurantEmail || values.ownerEmail,
+        },
       });
     } catch (err) {
       storefrontError = err.message;
@@ -369,4 +417,12 @@ const retryPortalNotify = async (req, res, next) => {
   }
 };
 
-module.exports = { listAgreements, getAgreement, createStoreFromAgreement, retryPortalNotify, isCompleted };
+module.exports = {
+  listAgreements,
+  getAgreement,
+  createStoreFromAgreement,
+  retryPortalNotify,
+  isCompleted,
+  signingOf,
+  signingProblem,
+};

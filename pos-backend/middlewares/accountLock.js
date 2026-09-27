@@ -1,4 +1,5 @@
 const { BusinessBalance } = require("../models/businessBalanceModel");
+const { STORE_CLOSED, STORE_CLOSED_MESSAGE } = require("../services/accountLock");
 
 /**
  * Gate the POS for a restaurant that has not paid.
@@ -12,11 +13,13 @@ const { BusinessBalance } = require("../models/businessBalanceModel");
  * open. Anything not on the list is refused with a machine-readable code the
  * POS can act on by sending the operator to Billing.
  *
- * Customer-facing traffic is NOT gated. Blocking the storefront or QR ordering
- * punishes the restaurant's DINERS -- someone mid-meal could not settle their
- * table bill -- for a dispute between KnotKitchen and the restaurant. It is
- * available as a wider `lockScope` if the business decides it wants that
- * leverage, but it is never the default.
+ * A store CSD closed is locked the same way (reason STORE_CLOSED): sign-in
+ * and Billing stay open, so the owner can see why, and nothing else does.
+ *
+ * This gates staff only. The customer side of the same lock is applied where
+ * diners arrive: the storefront resolver takes the store's website (and its
+ * ordering and table booking) down, and table QR takes no new orders -- see
+ * services/accountLock.js. A seated party can still pay and call a waiter.
  *
  * One indexed read per request, and only for signed-in staff. Lock state is
  * decided elsewhere (services/accountLock.js) on the events that change it;
@@ -86,6 +89,8 @@ const enforceAccountLock = async (req, res, next) => {
     return res.status(402).json({
       success: false,
       code: "ACCOUNT_LOCKED",
+      // Why: STORE_CLOSED (reopened only by KnotKitchen) or UNPAID (paying lifts it).
+      reason: balance.lockedReason === STORE_CLOSED_MESSAGE ? STORE_CLOSED : "UNPAID",
       message:
         balance.lockedReason ||
         "This account is locked for non-payment. Settle the outstanding amount in Settings → Billing to continue.",

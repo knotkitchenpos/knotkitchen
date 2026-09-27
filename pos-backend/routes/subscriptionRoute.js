@@ -10,12 +10,14 @@ const {
   removeAddon,
   rentTablet,
   renewDue,
+  cancelSubscription,
+  reinstateSubscription,
   SubscriptionError,
 } = require("../services/subscription");
 const { PlatformInvoice } = require("../models/platformSubscriptionModel");
 const { urlForInvoice } = require("../services/receiptLink");
 const { asAmount } = require("../services/money");
-const { requireProtectedAction } = require("../middlewares/requirePermission");
+const { requireProtectedAction, requireOwnerOnly } = require("../middlewares/requirePermission");
 const {
   HardwareRequestError,
   resolveShipTo,
@@ -204,6 +206,35 @@ router.post("/renew", isVerifiedUser, requireProtectedAction, async (req, res, n
         lastRenewalError: status.lastRenewalError,
       },
     });
+  } catch (err) {
+    asSubscriptionError(err, next);
+  }
+});
+
+// POST /api/subscription/cancel { reason? } — the Owner cancels the POS
+// subscription: renewals stop, it runs to the end of the paid period, then the
+// store is closed. Nothing is refunded. Answers with GET /api/subscription.
+router.post("/cancel", isVerifiedUser, requireOwnerOnly, requireProtectedAction, async (req, res, next) => {
+  try {
+    const restaurantId = ownRestaurantId(req);
+    await cancelSubscription({
+      restaurantId,
+      reason: String(req.body?.reason || ""),
+      by: { type: "RESTAURANT", name: req.user?.name || "" },
+    });
+    res.status(200).json({ success: true, data: await statusFor(restaurantId) });
+  } catch (err) {
+    asSubscriptionError(err, next);
+  }
+});
+
+// POST /api/subscription/reinstate — the Owner undoes the cancellation before
+// it takes effect. Answers with GET /api/subscription.
+router.post("/reinstate", isVerifiedUser, requireOwnerOnly, requireProtectedAction, async (req, res, next) => {
+  try {
+    const restaurantId = ownRestaurantId(req);
+    await reinstateSubscription({ restaurantId, by: { type: "RESTAURANT", name: req.user?.name || "" } });
+    res.status(200).json({ success: true, data: await statusFor(restaurantId) });
   } catch (err) {
     asSubscriptionError(err, next);
   }

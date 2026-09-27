@@ -56,7 +56,8 @@ const getDashboard = async (req, res, next) => {
       Store.countDocuments({ isDeleted: { $ne: true }, status: "active" }),
       // "Stopped using KnotKitchen or been disabled" — deliberately excludes
       // closed_temporarily / closed_until, which are ordinary trading pauses.
-      Store.countDocuments({ isDeleted: { $ne: true }, status: { $in: ["suspended", "deleted"] } }),
+      // "closed" is a store that has left (its subscription cancelled).
+      Store.countDocuments({ isDeleted: { $ne: true }, status: { $in: ["suspended", "closed", "deleted"] } }),
 
       Store.aggregate([
         { $match: { isDeleted: { $ne: true } } },

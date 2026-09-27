@@ -65,8 +65,15 @@ test("a website order is only placed after the gateway says it was paid", () => 
   assert.match(route, /router\.post\("\/:slug\/checkout", orderLimiter, startStorefrontCheckout\)/);
   const ctrl = fs.readFileSync(require.resolve("../controllers/storefrontController"), "utf8");
   const verify = ctrl.slice(ctrl.indexOf("const verifyStorefrontCheckout"), ctrl.indexOf("/** Customer-facing projection"));
-  assert.ok(verify.indexOf("isOrderPaid") < verify.indexOf("new Order("), "payment is checked before the order exists");
+  assert.ok(verify.indexOf("isOrderPaid") < verify.indexOf("placePaidCheckout("), "payment is checked before the order exists");
   assert.match(verify, /if \(!result\.paid\)/);
+  // The paid order is placed by placePaidCheckout, which verify and the
+  // webhook call once the gateway says PAID.
+  const place = ctrl.slice(ctrl.indexOf("const placePaidCheckout"), ctrl.indexOf("const verifyStorefrontCheckout"));
+  assert.match(place, /new Order\(/);
+  const hook = fs.readFileSync(require.resolve("../controllers/cashfreeWebhookController"), "utf8");
+  const settle = hook.slice(hook.indexOf("const handleWebsiteCheckout"));
+  assert.ok(settle.indexOf("if (!status.paid)") < settle.indexOf("placePaidCheckout("), "the webhook asks the gateway first");
   const open = ctrl.slice(ctrl.indexOf("const openCheckout"), ctrl.indexOf("const startStorefrontCheckout"));
   assert.ok(!/order\.save\(/.test(open), "opening a payment must not save an order");
 });

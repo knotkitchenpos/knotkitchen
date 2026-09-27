@@ -303,6 +303,9 @@ export const getHardwareRequests = () => axiosWrapper.get("/api/subscription/har
 // Only while KnotKitchen has not started on it; the money goes back to the wallet.
 export const cancelHardwareRequest = (id) => axiosWrapper.post(`/api/subscription/hardware-requests/${encodeURIComponent(id)}/cancel`);
 export const renewSubscription = () => axiosWrapper.post("/api/subscription/renew");
+// Renewals stop at the end of the current period, then the store is Closed. Undo until then.
+export const cancelSubscription = (data) => axiosWrapper.post("/api/subscription/cancel", data);
+export const reinstateSubscription = () => axiosWrapper.post("/api/subscription/reinstate", {});
 export const getPlatformInvoices = () => axiosWrapper.get("/api/subscription/invoices");
 
 /* ---------- Restaurant, KDS, waiter calls ---------- */

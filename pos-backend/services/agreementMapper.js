@@ -15,6 +15,8 @@
  *   sales_agent
  */
 
+const { isValidGstin } = require("./gst");
+
 const str = (v) => String(v ?? "").trim();
 const digits = (v) => str(v).replace(/\D/g, "");
 
@@ -80,8 +82,14 @@ const mapAgreementToStore = (agreement) => {
 
   const gstRegistered = isYes(d.b_gst);
   const gstin = str(d.b_gstin).toUpperCase();
+  // The GSTIN is printed on every customer bill and on KnotKitchen's
+  // invoices, so a registered store needs a well-formed one -- the same
+  // check the manual onboarding form applies.
   if (gstRegistered && !gstin) {
     warnings.push("The agreement says the business is GST registered but has no GSTIN.");
+    missing.push("GSTIN");
+  } else if (gstin && !isValidGstin(gstin)) {
+    missing.push("GSTIN (not a valid 15-character GSTIN)");
   }
   if (!gstRegistered && gstin) {
     // Trust the number over the checkbox — a GSTIN is not filled in by accident.

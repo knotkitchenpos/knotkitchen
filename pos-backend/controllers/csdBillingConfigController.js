@@ -1,8 +1,16 @@
+const crypto = require("crypto");
 const createHttpError = require("http-errors");
-const { PlatformBillingConfig } = require("../models/platformBillingModel");
+const mongoose = require("mongoose");
+const Restaurant = require("../models/restaurantModel");
 const { getPlatformConfig } = require("../services/pricing");
-const { assessAccount } = require("../services/accountLock");
-const { statusFor, endTablet, SubscriptionError } = require("../services/subscription");
+const { assessAccount, evaluateLock } = require("../services/accountLock");
+const {
+  credit, debit, getBalance, findByIdempotencyKey, InsufficientBalanceError,
+} = require("../services/ledger");
+const { settlePendingCharges } = require("../services/orderCharge");
+const {
+  statusFor, endTablet, cancelSubscription, reinstateSubscription, SubscriptionError,
+} = require("../services/subscription");
 const { toPaise, toRupees, formatINR } = require("../services/money");
 const { csdAudit } = require("../services/csdAuditService");
 
@@ -63,7 +71,6 @@ const present = (config) => ({
     gstin: config.gst?.gstin || "",
     effectiveFrom: config.gst?.effectiveFrom || null,
     percent: config.gst?.percent || 0,
-    mode: config.gst?.mode || "exclusive",
     placeOfSupplyState: config.gst?.placeOfSupplyState || "",
     legalName: config.gst?.legalName || "",
     addressLines: config.gst?.addressLines || [],
@@ -84,7 +91,6 @@ const present = (config) => ({
   subscriptionDays: config.subscriptionDays,
   graceHours: config.graceHours,
   renewalPolicy: config.renewalPolicy,
-  lockScope: config.lockScope || "STAFF",
   updatedAt: config.updatedAt,
 });
 
@@ -101,6 +107,8 @@ const CODE = /^[A-Z0-9_]{2,30}$/;
 // Codes a price override can name besides the catalogue's own (services/pricing).
 const RESERVED_CODES = ["POS", "TABLET_FIRST", "TABLET_EXTRA"];
 const FEATURES = ["", "website", "tableQr"];
+// Order.source values whose orders are paid online (website, table QR).
+const ORDER_CHARGE_SOURCES = ["WEBSITE", "QR"];
 
 /** A price in rupees, as paise, or an error on `key`. */
 const readPrice = (value, key, fieldErrors) => {
@@ -215,12 +223,20 @@ const updateBillingConfig = async (req, res, next) => {
         gstin: String(g.gstin || "").trim().toUpperCase(),
         effectiveFrom: asDate(g.effectiveFrom),
         percent: percent === null ? config.gst?.percent || 0 : percent,
-        mode: g.mode === "inclusive" ? "inclusive" : "exclusive",
+        // Not editable. Everything but printers is taxed on top and printers
+        // are GST-inclusive, whatever this says (every computeTax caller
+        // passes its mode); kept only so old rows stay valid.
+        mode: "exclusive",
         placeOfSupplyState: String(g.placeOfSupplyState || "").trim(),
         legalName: String(g.legalName || "").trim(),
-        addressLines: Array.isArray(g.addressLines)
-          ? g.addressLines.map((l) => String(l).slice(0, 200))
-          : [],
+        // One line per row; a textarea's text is split the same way. Left
+        // out, the address already saved stays.
+        addressLines: g.addressLines === undefined
+          ? config.gst?.addressLines || []
+          : (Array.isArray(g.addressLines) ? g.addressLines : String(g.addressLines || "").split("\n"))
+            .map((l) => String(l).trim().slice(0, 200))
+            .filter(Boolean)
+            .slice(0, 6),
       };
     }
 
@@ -234,13 +250,18 @@ const updateBillingConfig = async (req, res, next) => {
         fieldErrors["websiteOrderCharge.effectiveFrom"] =
           "Set the date the charge starts applying.";
       }
+      const sources = Array.isArray(c.chargeableSources)
+        ? [...new Set(c.chargeableSources.map((s) => String(s).trim().toUpperCase()))]
+        : (config.websiteOrderCharge?.chargeableSources || []).filter((s) => ORDER_CHARGE_SOURCES.includes(s));
+      // Only orders paid online can carry the charge: website and table QR.
+      if (sources.some((s) => !ORDER_CHARGE_SOURCES.includes(s))) {
+        fieldErrors["websiteOrderCharge.chargeableSources"] = `Choose from ${ORDER_CHARGE_SOURCES.join(", ")}.`;
+      }
       config.websiteOrderCharge = {
         enabled: Boolean(c.enabled),
         amountPaise: toPaise(amount === null ? toRupees(config.websiteOrderCharge?.amountPaise || 0) : amount),
         effectiveFrom: asDate(c.effectiveFrom),
-        chargeableSources: Array.isArray(c.chargeableSources)
-          ? [...new Set(c.chargeableSources.map((s) => String(s).trim().toUpperCase()))]
-          : config.websiteOrderCharge?.chargeableSources || [],
+        chargeableSources: sources,
         taxable: c.taxable !== false,
       };
     }
@@ -275,13 +296,11 @@ const updateBillingConfig = async (req, res, next) => {
       } else config[key] = n;
     }
 
-    for (const [key, allowed] of [
-      ["renewalPolicy", ["FROM_PAYMENT", "FROM_EXPIRY"]],
-      ["lockScope", ["STAFF", "STAFF_AND_STOREFRONT"]],
-    ]) {
-      if (body[key] === undefined) continue;
-      if (!allowed.includes(body[key])) fieldErrors[key] = `Must be one of ${allowed.join(", ")}.`;
-      else config[key] = body[key];
+    if (body.renewalPolicy !== undefined) {
+      // FROM_EXPIRY backdates a late renewal, which the agreement (6.4) forbids.
+      const allowed = ["FROM_PAYMENT"];
+      if (!allowed.includes(body.renewalPolicy)) fieldErrors.renewalPolicy = "Renewal always starts from the payment (FROM_PAYMENT).";
+      else config.renewalPolicy = body.renewalPolicy;
     }
 
     if (Object.keys(fieldErrors).length) {
@@ -322,16 +341,176 @@ const updateBillingConfig = async (req, res, next) => {
  * Read-only. Deliberately does not APPLY the lock: an admin looking at a
  * restaurant should not be the thing that locks it.
  */
+const accountStanding = async (restaurantId) => {
+  const [assessment, subscription] = await Promise.all([assessAccount(restaurantId), statusFor(restaurantId)]);
+  return { ...assessment, duesLabel: formatINR(assessment.duesPaise), subscription };
+};
+
 const getAccountStanding = async (req, res, next) => {
   try {
-    const [assessment, subscription] = await Promise.all([
-      assessAccount(req.params.restaurantId),
-      statusFor(req.params.restaurantId),
-    ]);
-    res.status(200).json({
-      success: true,
-      data: { ...assessment, duesLabel: formatINR(assessment.duesPaise), subscription },
-    });
+    res.status(200).json({ success: true, data: await accountStanding(req.params.restaurantId) });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /api/csd/billing/accounts/:restaurantId/subscription/cancel { reason }
+ * POST /api/csd/billing/accounts/:restaurantId/subscription/reinstate
+ * Admin only, audited. Recording a restaurant's cancellation (a written
+ * notice, say), or undoing one -- after it took effect too, which reopens a
+ * store the cancellation closed. Both answer with the account standing.
+ */
+const changeSubscription = (action) => async (req, res, next) => {
+  try {
+    const { restaurantId } = req.params;
+    if (!mongoose.isValidObjectId(restaurantId) || !(await Restaurant.exists({ _id: restaurantId }))) {
+      return next(createHttpError(404, "Restaurant not found."));
+    }
+    const reason = String(req.body?.reason || "").trim();
+    if (action === "cancel" && (reason.length < 3 || reason.length > 300)) {
+      return next(createHttpError(400, "Give the reason (3 to 300 characters).", { fieldErrors: { reason: "3 to 300 characters." } }));
+    }
+    const by = { type: "CSD", name: req.csdStaff?.fullName || "" };
+    const before = await statusFor(restaurantId);
+    const { subscription, already } = action === "cancel"
+      ? await cancelSubscription({ restaurantId, reason, by })
+      : await reinstateSubscription({ restaurantId, by });
+
+    if (!already) {
+      await csdAudit({
+        req,
+        staff: req.csdStaff,
+        action: action === "cancel" ? "BILLING.SUBSCRIPTION.CANCEL" : "BILLING.SUBSCRIPTION.REINSTATE",
+        resource: "PlatformSubscription",
+        entityType: "PlatformSubscription",
+        entityId: String(subscription._id),
+        storeId: subscription.storeId || "",
+        description: action === "cancel"
+          ? `POS subscription cancelled, effective ${new Date(subscription.cancelAt).toISOString()}: ${reason}`
+          : "POS subscription cancellation undone",
+        previousValue: { status: before.status, cancelAt: before.cancelAt, cancelReason: before.cancelReason },
+        newValue: { status: subscription.status, cancelAt: subscription.cancelAt || null, cancelReason: subscription.cancelReason || "" },
+        severity: "WARNING",
+      });
+    }
+    res.status(200).json({ success: true, data: await accountStanding(restaurantId) });
+  } catch (err) {
+    if (err instanceof SubscriptionError) return next(createHttpError(err.status, err.message, { code: err.code }));
+    next(err);
+  }
+};
+
+/**
+ * POST /api/csd/billing/accounts/:restaurantId/wallet/adjust — admin only, audited.
+ * { direction: "CREDIT"|"DEBIT", amount (rupees), reason, reference?, idempotencyKey? }
+ *
+ * A manual Wallet movement: a tablet lost or damaged (at actual cost), an
+ * erroneous charge put back, a permitted refund paid out by bank transfer
+ * (a DEBIT whose reference is the UTR). Through the ledger only, and never
+ * through afterRecharge: a credit is not a top-up, so it never starts the plan
+ * or earns a tablet credit.
+ *
+ * Idempotent on the client's key, else on the same movement (direction,
+ * amount, reason, reference) repeated within a minute -- a double-clicked
+ * button must not debit twice.
+ */
+const ADJUST_WINDOW_MS = 60 * 1000;
+
+const adjustWallet = async (req, res, next) => {
+  try {
+    const { restaurantId } = req.params;
+    if (!mongoose.isValidObjectId(restaurantId) || !(await Restaurant.exists({ _id: restaurantId }))) {
+      return next(createHttpError(404, "Restaurant not found."));
+    }
+    const body = req.body || {};
+    const direction = String(body.direction || "").trim().toUpperCase();
+    const amount = num(body.amount);
+    const amountPaise = amount === null || Number.isNaN(amount) ? 0 : toPaise(amount);
+    const reason = String(body.reason || "").trim();
+    const reference = String(body.reference || "").trim();
+    const clientKey = String(body.idempotencyKey || "").trim();
+
+    const fieldErrors = {};
+    if (!["CREDIT", "DEBIT"].includes(direction)) fieldErrors.direction = "Choose CREDIT or DEBIT.";
+    if (!(amountPaise > 0)) fieldErrors.amount = "Enter an amount greater than zero.";
+    if (reason.length < 3 || reason.length > 300) fieldErrors.reason = "3 to 300 characters.";
+    if (reference.length > 100) fieldErrors.reference = "At most 100 characters.";
+    if (clientKey.length > 100) fieldErrors.idempotencyKey = "At most 100 characters.";
+    const reject = () => next(createHttpError(400, "Please correct the highlighted fields.", { fieldErrors }));
+    if (Object.keys(fieldErrors).length) return reject();
+
+    const replay = async () =>
+      res.status(200).json({ success: true, duplicate: true, data: await accountStanding(restaurantId) });
+    const now = Date.now();
+    let idempotencyKey;
+    if (clientKey) {
+      idempotencyKey = `csd-adjust-${restaurantId}-${clientKey}`;
+      if (await findByIdempotencyKey(idempotencyKey)) return replay();
+    } else {
+      const fingerprint = crypto
+        .createHash("sha256")
+        .update([restaurantId, direction, amountPaise, reason, reference].join("|"))
+        .digest("hex")
+        .slice(0, 32);
+      const bucket = Math.floor(now / ADJUST_WINDOW_MS);
+      idempotencyKey = `csd-adjust-${fingerprint}-${bucket}`;
+      // The key holds one clock minute; the previous minute's key catches a
+      // repeat that straddles the boundary.
+      const recent = (await findByIdempotencyKey(idempotencyKey))
+        || (await findByIdempotencyKey(`csd-adjust-${fingerprint}-${bucket - 1}`));
+      if (recent && now - new Date(recent.createdAt).getTime() < ADJUST_WINDOW_MS) return replay();
+    }
+
+    const before = (await getBalance(restaurantId)).balancePaise;
+    if (direction === "DEBIT" && amountPaise > before) {
+      fieldErrors.amount = `A debit cannot be more than the Wallet balance (${formatINR(before)}).`;
+      return reject();
+    }
+
+    const staffName = req.csdStaff ? `${req.csdStaff.staffId || ""} ${req.csdStaff.fullName || ""}`.trim() : "";
+    let moved;
+    try {
+      moved = await (direction === "CREDIT" ? credit : debit)({
+        restaurantId,
+        kind: direction === "CREDIT" ? "ADJUSTMENT_CREDIT" : "ADJUSTMENT_DEBIT",
+        amountPaise,
+        description: `Adjustment by KnotKitchen: ${reason}${reference ? ` (ref ${reference})` : ""}`,
+        idempotencyKey,
+        refType: "CsdAdjustment",
+        meta: { reason, reference, by: staffName, staffId: req.csdStaff?._id ? String(req.csdStaff._id) : "" },
+      });
+    } catch (err) {
+      if (!(err instanceof InsufficientBalanceError)) throw err;
+      fieldErrors.amount = `A debit cannot be more than the Wallet balance (${formatINR(err.availablePaise)}).`;
+      return reject();
+    }
+
+    if (!moved.duplicate) {
+      await csdAudit({
+        req,
+        staff: req.csdStaff,
+        action: direction === "CREDIT" ? "BILLING.WALLET.CREDIT" : "BILLING.WALLET.DEBIT",
+        resource: "BusinessBalance",
+        entityType: "LedgerEntry",
+        entityId: String(moved.entry?._id || ""),
+        description: `Wallet ${direction.toLowerCase()} of ${formatINR(amountPaise)}: ${reason}${reference ? ` (ref ${reference})` : ""}`,
+        previousValue: { balancePaise: before },
+        newValue: { balancePaise: moved.entry?.balanceAfterPaise, direction, amountPaise, reason, reference },
+        severity: "WARNING",
+      });
+
+      // Money in collects dues and can lift a lock, as a hardware refund
+      // does; money out can start the grace period. Never fails the request.
+      try {
+        if (direction === "CREDIT") await settlePendingCharges(restaurantId);
+        await evaluateLock(restaurantId);
+      } catch (err) {
+        console.warn("[csd-billing] settling after adjustment failed:", err.message);
+      }
+    }
+
+    res.status(200).json({ success: true, duplicate: Boolean(moved.duplicate), data: await accountStanding(restaurantId) });
   } catch (err) {
     next(err);
   }
@@ -374,6 +553,9 @@ module.exports = {
   updateBillingConfig,
   getAccountStanding,
   endTabletRental,
+  adjustWallet,
+  cancelAccountSubscription: changeSubscription("cancel"),
+  reinstateAccountSubscription: changeSubscription("reinstate"),
   present,
   readCatalog,
 };

@@ -22,7 +22,13 @@
  * sees a rupee amount again.
  */
 
-const { PlatformBillingConfig, DEFAULT_ADDONS, DEFAULT_PRINTERS } = require("../models/platformBillingModel");
+const {
+  PlatformBillingConfig,
+  DEFAULT_ADDONS,
+  DEFAULT_PRINTERS,
+  DEFAULT_ORDER_CHARGE,
+  DEFAULT_EBILL_CHARGE,
+} = require("../models/platformBillingModel");
 const CsdStoreCharges = require("../models/csdStoreChargesModel");
 const Restaurant = require("../models/restaurantModel");
 const { toPaise } = require("./money");
@@ -43,10 +49,38 @@ const getPlatformConfig = async () => {
       existing.printers = DEFAULT_PRINTERS.map((a) => ({ ...a }));
       seeded = true;
     }
+    if (backfillCharges(existing)) seeded = true;
     if (seeded) await existing.save();
+    // FROM_EXPIRY is retired (renewal always starts from the payment). A row
+    // that still holds it reads as FROM_PAYMENT; nothing is written for it.
+    if (existing.renewalPolicy === "FROM_EXPIRY") existing.renewalPolicy = "FROM_PAYMENT";
     return existing;
   }
   return PlatformBillingConfig.create({ singleton: "platform" });
+};
+
+/**
+ * A usage charge nobody has configured: off, no start date, no amount. The
+ * shipped price goes in, still OFF -- CSD switches it on and picks the date.
+ * Anything an admin set (a switch, a date, an amount) is left alone.
+ *
+ * Mutates `config`; true when it changed something.
+ */
+const backfillCharges = (config) => {
+  const unset = (c) => !c || (!c.enabled && !c.effectiveFrom && !Number(c.amountPaise));
+  let changed = false;
+  if (unset(config.websiteOrderCharge)) {
+    config.set("websiteOrderCharge.amountPaise", DEFAULT_ORDER_CHARGE.amountPaise);
+    if (!config.websiteOrderCharge.chargeableSources?.length) {
+      config.set("websiteOrderCharge.chargeableSources", [...DEFAULT_ORDER_CHARGE.chargeableSources]);
+    }
+    changed = true;
+  }
+  if (unset(config.ebillCharge)) {
+    config.set("ebillCharge.amountPaise", DEFAULT_EBILL_CHARGE.amountPaise);
+    changed = true;
+  }
+  return changed;
 };
 
 /**
@@ -98,21 +132,30 @@ const priceFor = async ({ restaurantId, code, config, override } = {}) => {
 };
 
 /**
- * The per-order website charge for a restaurant.
+ * The per-order charge for a restaurant, for an order placed `on` that day.
  *
  * `enabled` is answered independently of the amount, because a restaurant set
  * to 0 is still "enabled and charged nothing" -- distinct from the charge
  * being switched off, and the two produce different reporting.
+ *
+ * Two start dates, both chosen in CSD: the platform's effectiveFrom, and an
+ * optional per-store orderChargeFrom that can only delay it further for that
+ * store. Without a platform date nothing is charged anywhere.
  */
 const resolveOrderCharge = async ({ restaurantId, on = new Date(), config, override } = {}) => {
   const cfg = config || (await getPlatformConfig());
   const charge = cfg.websiteOrderCharge || {};
   const ovr = override !== undefined ? override : await getOverride(restaurantId);
 
-  const started = charge.effectiveFrom ? new Date(on) >= new Date(charge.effectiveFrom) : false;
+  const storeFrom = ovr?.orderChargeFrom ? new Date(ovr.orderChargeFrom) : null;
+  const startsAt = charge.effectiveFrom
+    ? new Date(Math.max(new Date(charge.effectiveFrom).getTime(), storeFrom ? storeFrom.getTime() : 0))
+    : null;
+  const started = startsAt ? new Date(on) >= startsAt : false;
 
   // A stored 0 means "this restaurant is not charged per order" and is a real
-  // setting; only an absent field falls through to the platform amount.
+  // setting; only null (the default) or an absent field falls through to the
+  // platform amount.
   const hasCustom =
     ovr && ovr.onlinePaidOrderCharge !== null && ovr.onlinePaidOrderCharge !== undefined;
   const amountPaise = hasCustom
@@ -123,6 +166,7 @@ const resolveOrderCharge = async ({ restaurantId, on = new Date(), config, overr
     // A demo store (CSD) is never charged per order.
     enabled: Boolean(charge.enabled) && started && !ovr?.billingExempt,
     started,
+    startsAt,
     amountPaise,
     taxable: charge.taxable !== false,
     chargeableSources: charge.chargeableSources || [],

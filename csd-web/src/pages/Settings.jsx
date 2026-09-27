@@ -43,6 +43,9 @@ const Settings = () => {
   if (!data) return <p className="text-sm text-navy-500">Loading settings…</p>;
 
   const { authentication: a, access: ac, platform: p } = data;
+  // Never carries secrets: just the mode and whether keys are set.
+  const gw = data.paymentGateway || p.paymentGateway;
+  const gwOk = gw?.mode === "PROD" && gw?.configured;
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -99,7 +102,24 @@ const Settings = () => {
           <Row label="Base domain">{p.baseDomain || "—"}</Row>
           <Row label="Database"><Yes ok={p.databaseConnected} yes="Connected" no="Disconnected" /></Row>
           <Row label="Reporting timezone">{p.timezone}</Row>
+          <Row label="Payment gateway" hint="Wallet top-ups and printer payments go through it">
+            {gw ? (
+              <span className={gwOk ? "" : "font-semibold text-red-600"}>
+                {gw.mode} · {gw.configured ? "configured" : "not configured"}
+              </span>
+            ) : "—"}
+          </Row>
         </Card>
+        {gw && !gwOk && (
+          <div className="flex items-start gap-2.5 rounded-xl border border-red-300 bg-red-50 p-4 text-sm text-red-800">
+            <FiAlertTriangle className="mt-0.5 shrink-0" aria-hidden="true" />
+            <span>
+              <strong>The payment gateway is not ready for real payments.</strong> Wallet top-ups and
+              printer payments do not take real money until it is in PROD mode with its keys
+              configured.
+            </span>
+          </div>
+        )}
 
         {data.notImplemented?.length > 0 && (
           <Card title="Not yet available" subtitle="Known gaps, so you aren't left looking for them">

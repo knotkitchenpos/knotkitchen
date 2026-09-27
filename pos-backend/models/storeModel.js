@@ -24,9 +24,12 @@ const storeSchema = new mongoose.Schema(
     // Must stay in sync with knotkitchen-admin/backend/models/storeModel.js.
     // The admin portal can close a store temporarily or until a date, and those
     // values are written to this same shared collection.
+    // "closed" is permanent: the restaurant has left (its cancellation took
+    // effect, or CSD closed it). The POS is locked except sign-in and Billing
+    // and the website, QR ordering and booking are down until CSD reopens it.
     status: {
       type: String,
-      enum: ["pending", "active", "suspended", "closed_temporarily", "closed_until", "deleted"],
+      enum: ["pending", "active", "suspended", "closed_temporarily", "closed_until", "closed", "deleted"],
       default: "pending",
     },
     closedUntil: { type: Date },

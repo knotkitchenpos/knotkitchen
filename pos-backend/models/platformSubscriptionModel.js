@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { AGREEMENT_VERSION } = require("../constants/agreement");
 
 /**
  * A restaurant's KnotKitchen subscription, and the invoices it produced.
@@ -28,6 +29,7 @@ const subscriptionSchema = new mongoose.Schema(
 
     // NONE until the first qualifying top-up activates the POS plan. EXPIRED
     // when a renewal found the wallet short; the next top-up renews it.
+    // CANCELLED once a cancellation took effect; only reinstating undoes it.
     status: {
       type: String,
       enum: ["NONE", "ACTIVE", "EXPIRED", "CANCELLED"],
@@ -115,22 +117,34 @@ const subscriptionSchema = new mongoose.Schema(
     lastRenewalAttemptAt: { type: Date, default: null },
     // Why the last automatic renewal did not go through ("" once it has).
     lastRenewalError: { type: String, default: "" },
+
+    // Cancelled by the restaurant or CSD (services/subscription
+    // cancelSubscription). cancelAt is when it takes effect -- the end of the
+    // paid period -- and renewals stop until then; cancelledAt is when it did.
+    cancelAt: { type: Date, default: null },
+    cancelReason: { type: String, default: "" },
+    cancelledBy: {
+      type: { type: String, enum: ["", "RESTAURANT", "CSD"], default: "" },
+      name: { type: String, default: "" },
+    },
+    cancelledAt: { type: Date, default: null },
   },
   { timestamps: true },
 );
 
 /**
  * What the restaurant saw and accepted in the app for an explicit purchase
- * (an add-on, a tablet, a printer). One row per acceptance, never edited. The
- * hash fingerprints `values` (services/subscription scheduleHash).
+ * (an add-on, a tablet, a printer), and the POS plan it took by making the
+ * activation top-up. One row per acceptance, never edited. The hash
+ * fingerprints `values` (services/subscription scheduleHash).
  */
 const commercialScheduleSchema = new mongoose.Schema(
   {
     restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: "Restaurant", required: true, index: true },
     storeId: { type: String, default: "", index: true },
     version: { type: Number, required: true },
-    agreementVersion: { type: String, default: "v2.0" },
-    reason: { type: String, default: "" }, // ADDON | TABLET | HARDWARE
+    agreementVersion: { type: String, default: AGREEMENT_VERSION },
+    reason: { type: String, default: "" }, // SUBSCRIPTION | ADDON | TABLET | HARDWARE
     values: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
     hash: { type: String, required: true },
     acceptedAt: { type: Date, required: true },

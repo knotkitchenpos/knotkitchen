@@ -76,10 +76,15 @@ const findSettingsByHost = async (host) => {
 /**
  * Resolve the full storefront context.
  *
- * @param {object} params { identifier, host }
+ * `honourPaid` is for settling a checkout the customer has ALREADY paid: the
+ * store is found but none of the "unavailable" refusals apply (closed, locked,
+ * website off). Money taken online is always honoured with the order; only new
+ * checkouts are refused.
+ *
+ * @param {object} params { identifier, host, honourPaid }
  * @returns {Promise<{ok:boolean, status?:number, reason?:string, settings?, store?, restaurant?, restaurantId?, storeId?, timezone?}>}
  */
-const resolveStorefront = async ({ identifier, host } = {}) => {
+const resolveStorefront = async ({ identifier, host, honourPaid = false } = {}) => {
   let settings = await findSettingsByIdentifier(identifier);
 
   // Host-based resolution (future subdomain/custom domain deployments).
@@ -95,50 +100,16 @@ const resolveStorefront = async ({ identifier, host } = {}) => {
   const store = await Store.findOne({ storeId: settings.storeId, isDeleted: { $ne: true } });
   if (!store) return { ok: false, status: 404, reason: "STORE_NOT_FOUND" };
 
-  // A store suspended/closed by the platform admin must not serve a storefront,
-  // regardless of the restaurant's own website toggle.
-  if (["suspended", "deleted", "pending"].includes(store.status)) {
-    return { ok: false, status: 403, reason: "STORE_UNAVAILABLE", settings, store };
-  }
-  if (store.status === "closed_temporarily") {
-    return { ok: false, status: 403, reason: "STORE_CLOSED", settings, store };
-  }
-  if (store.status === "closed_until" && store.closedUntil && new Date(store.closedUntil) > new Date()) {
-    return { ok: false, status: 403, reason: "STORE_CLOSED", settings, store };
-  }
-
-  // Restaurant-controlled website switch (§20).
-  if (!settings.enabled) {
-    return { ok: false, status: 403, reason: "WEBSITE_DISABLED", settings, store };
-  }
-
   const restaurantId = settings.restaurantId || store.restaurantId;
-
-  // The add-ons decide too: the website is the Website add-on, so without it
-  // the site is off whatever the switch says.
-  // Required here, for the same reason as accountLock below.
-  const { hasWebsite } = require("./planFeatures");
-  if (!(await hasWebsite(restaurantId, settings.storeId))) {
-    return { ok: false, status: 403, reason: "WEBSITE_DISABLED", settings, store };
-  }
-
   const restaurant = restaurantId ? await Restaurant.findById(restaurantId) : null;
-
-  if (restaurant && (restaurant.isActive === false || restaurant.isDeleted)) {
-    return { ok: false, status: 403, reason: "STORE_UNAVAILABLE", settings, store };
-  }
-
-  // Required here: accountLock pulls in billing services this module must not
-  // load for every storefront import.
-  const { isOrderingLocked } = require("./accountLock");
+  const refusal = honourPaid ? null : await unavailableReason({ settings, store, restaurant, restaurantId });
+  if (refusal) return { ok: false, status: 403, ...refusal, settings, store };
 
   return {
     ok: true,
     settings,
     store,
     restaurant,
-    // Locked for non-payment: the site stays up, ordering and booking stop.
-    orderingLocked: await isOrderingLocked(restaurantId),
     restaurantId: restaurantId || null,
     outletId: settings.outletId || null,
     storeId: settings.storeId,
@@ -146,10 +117,46 @@ const resolveStorefront = async ({ identifier, host } = {}) => {
   };
 };
 
+/** Why this store may not serve its website or take a new order, or null. */
+const unavailableReason = async ({ settings, store, restaurant, restaurantId }) => {
+  // A store suspended/closed by the platform admin must not serve a storefront,
+  // regardless of the restaurant's own website toggle.
+  if (["suspended", "deleted", "pending", "closed"].includes(store.status)) {
+    return { reason: "STORE_UNAVAILABLE" };
+  }
+  if (store.status === "closed_temporarily") return { reason: "STORE_CLOSED" };
+  if (store.status === "closed_until" && store.closedUntil && new Date(store.closedUntil) > new Date()) {
+    return { reason: "STORE_CLOSED" };
+  }
+
+  // Restaurant-controlled website switch (§20).
+  if (!settings.enabled) return { reason: "WEBSITE_DISABLED" };
+
+  // The add-ons decide too: the website is the Website add-on, so without it
+  // the site is off whatever the switch says.
+  // Required here, for the same reason as accountLock below.
+  const { hasWebsite } = require("./planFeatures");
+  if (!(await hasWebsite(restaurantId, settings.storeId))) return { reason: "WEBSITE_DISABLED" };
+
+  if (restaurant && (restaurant.isActive === false || restaurant.isDeleted)) {
+    return { reason: "STORE_UNAVAILABLE" };
+  }
+
+  // Locked (unpaid past the grace period, or never activated): the website is
+  // down, and with it ordering and table booking. `locked` lets a client say
+  // "temporarily unavailable" rather than "not found".
+  // Required here: accountLock pulls in billing services this module must not
+  // load for every storefront import.
+  const { isOrderingLocked } = require("./accountLock");
+  if (await isOrderingLocked(restaurantId)) return { reason: "STORE_UNAVAILABLE", locked: true };
+
+  return null;
+};
+
 /** Friendly, non-leaking messages for each failure reason. */
 const REASON_MESSAGES = {
   STORE_NOT_FOUND: "We couldn't find this restaurant.",
-  STORE_UNAVAILABLE: "Online ordering is currently unavailable. Please try again later.",
+  STORE_UNAVAILABLE: "This restaurant's online store is temporarily unavailable. Please try again later.",
   STORE_CLOSED: "This restaurant is temporarily closed. Please try again later.",
   WEBSITE_DISABLED: "Online ordering is currently unavailable. Please try again later.",
 };

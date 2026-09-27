@@ -9,15 +9,16 @@ import { inr } from "../lib/format";
  * component's body is a new type on every render, so React remounts it and
  * the input loses focus after each keystroke.
  */
-const Field = ({ label, name, prefix, suffix, hint, form, errors, onChange }) => (
+const Field = ({ label, name, prefix, suffix, hint, placeholder, type = "number", form, errors, onChange }) => (
   <label className="block">
     <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-navy-600">{label}</span>
     <div className={`flex items-center gap-2 rounded-xl border px-3.5 py-2.5 ${
       errors[name] ? "border-red-400" : "border-navy-200 focus-within:border-brand-500"
     }`}>
       {prefix && <span className="shrink-0 text-sm text-navy-500">{prefix}</span>}
-      <input name={name} value={form[name]} onChange={onChange} type="number" min="0" step="0.01"
-        className="w-full bg-transparent text-sm text-navy-900 outline-none" />
+      <input name={name} value={form[name]} onChange={onChange} type={type}
+        min={type === "number" ? "0" : undefined} step={type === "number" ? "0.01" : undefined}
+        placeholder={placeholder} className="w-full bg-transparent text-sm text-navy-900 outline-none" />
       {suffix && <span className="shrink-0 text-sm text-navy-500">{suffix}</span>}
     </div>
     {errors[name] ? (
@@ -33,21 +34,33 @@ const Field = ({ label, name, prefix, suffix, hint, form, errors, onChange }) =>
  * plan, each add-on, the first and each extra tablet, each printer. The codes
  * are the ones services/pricing priceFor matches.
  */
-const catalogItems = (c) => [
-  { code: c.basePlan.code, label: `${c.basePlan.name} plan / month`, price: c.basePlan.price },
-  ...c.addons.map((a) => ({ code: a.code, label: `${a.name} / month`, price: a.price })),
-  { code: "TABLET_FIRST", label: "First tablet / month", price: c.tablet.firstPrice },
-  { code: "TABLET_EXTRA", label: "Each extra tablet / month", price: c.tablet.extraPrice },
-  ...c.printers.map((p) => ({ code: p.code, label: `${p.name} (one-time)`, price: p.price })),
-];
+const catalogItems = (c) => {
+  const per = `/ ${c.subscriptionDays} days`;
+  return [
+    { code: c.basePlan.code, label: `${c.basePlan.name} plan ${per}`, price: c.basePlan.price },
+    ...c.addons.map((a) => ({ code: a.code, label: `${a.name} ${per}`, price: a.price })),
+    { code: "TABLET_FIRST", label: `First tablet ${per}`, price: c.tablet.firstPrice },
+    { code: "TABLET_EXTRA", label: `Each extra tablet ${per}`, price: c.tablet.extraPrice },
+    // Printer prices already include GST; nothing is added on top.
+    ...c.printers.map((p) => ({ code: p.code, label: `${p.name} (one-time)`, price: p.price, gstIncluded: true })),
+  ];
+};
+
+/** yyyy-mm-dd for a date input, or "". */
+const asInputDate = (v) => {
+  if (!v) return "";
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? "" : d.toISOString().slice(0, 10);
+};
 
 const box = "rounded-xl border px-3 py-2 text-sm text-navy-900 outline-none focus:border-brand-500";
 
 /** §29 — admin-only. The route is guarded server-side regardless. */
 const ChargesDialog = ({ storeId, charges, onClose, onSaved }) => {
   const [form, setForm] = useState({
-    onlinePaidOrderCharge: String(charges.onlinePaidOrderCharge ?? ""),
-    gstPercent: String(charges.gstPercent ?? ""),
+    // Blank = the platform rate (null on the server), never a stored ₹9.
+    onlinePaidOrderCharge: charges.onlinePaidOrderCharge == null ? "" : String(charges.onlinePaidOrderCharge),
+    orderChargeFrom: asInputDate(charges.orderChargeFrom),
   });
   const [prices, setPrices] = useState(() =>
     (charges.planPrices || []).map((p) => ({ code: String(p.code).toUpperCase(), price: String(p.price) })),
@@ -91,8 +104,9 @@ const ChargesDialog = ({ storeId, charges, onClose, onSaved }) => {
     setErrors({});
     try {
       await api.updateCharges(storeId, {
-        onlinePaidOrderCharge: Number(form.onlinePaidOrderCharge),
-        gstPercent: Number(form.gstPercent),
+        onlinePaidOrderCharge:
+          String(form.onlinePaidOrderCharge).trim() === "" ? null : Number(form.onlinePaidOrderCharge),
+        orderChargeFrom: form.orderChargeFrom || null,
         billingExempt: exempt,
         // The whole list, so removing a row puts the store back on the standard price.
         planPrices: prices.map((p) => ({ code: p.code, price: Number(p.price) })),
@@ -105,13 +119,6 @@ const ChargesDialog = ({ storeId, charges, onClose, onSaved }) => {
     } finally {
       setBusy(false);
     }
-  };
-
-  const gross = (base) => {
-    const n = Number(base);
-    const g = Number(form.gstPercent);
-    if (Number.isNaN(n) || Number.isNaN(g)) return null;
-    return n * (1 + g / 100);
   };
 
   const fieldProps = { form, errors, onChange: set };
@@ -134,13 +141,16 @@ const ChargesDialog = ({ storeId, charges, onClose, onSaved }) => {
         {banner && <p className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{banner}</p>}
 
         <form onSubmit={submit} className="space-y-4">
-          <Field label="Online paid order charge" name="onlinePaidOrderCharge" prefix="₹" suffix="/ order" {...fieldProps} />
-          <Field label="GST" name="gstPercent" suffix="%" {...fieldProps} />
+          <Field label="Online paid order charge" name="onlinePaidOrderCharge" prefix="₹" suffix="/ order"
+            placeholder="Platform rate" hint="Blank = platform rate, ₹9. + GST where applicable." {...fieldProps} />
+          <Field label="Charge this store from" name="orderChargeFrom" type="date"
+            hint="Blank = the platform start date. A date here can only delay charging, never bring it forward."
+            {...fieldProps} />
 
           <div>
             <span className="block text-xs font-semibold uppercase tracking-wider text-navy-600">Negotiated prices</span>
             <span className="mt-0.5 block text-xs text-navy-400">
-              Rupees, before GST. Anything not listed is charged at the standard price.
+              Rupees, before GST (printers: including GST). Anything not listed is charged at the standard price.
             </span>
             {errors.planPrices && <span className="mt-1 block text-xs text-red-600">{errors.planPrices}</span>}
 
@@ -176,7 +186,9 @@ const ChargesDialog = ({ storeId, charges, onClose, onSaved }) => {
                     {codeErr || priceErr ? (
                       <span className="mt-1 block text-xs text-red-600">{codeErr || priceErr}</span>
                     ) : item ? (
-                      <span className="mt-1 block text-xs text-navy-400">Standard price {inr(item.price)} + GST</span>
+                      <span className="mt-1 block text-xs text-navy-400">
+                        Standard price {inr(item.price)} {item.gstIncluded ? "incl. GST" : "+ GST where applicable"}
+                      </span>
                     ) : null}
                   </div>
                 );
@@ -200,17 +212,6 @@ const ChargesDialog = ({ storeId, charges, onClose, onSaved }) => {
               </span>
             </span>
           </label>
-
-          {/* Show the number the restaurant actually pays — the spec quotes
-              amounts as "+ GST", which is easy to misread when editing. */}
-          <div className="rounded-xl bg-navy-50 p-3 text-xs text-navy-600">
-            <div className="flex justify-between">
-              <span>Per online paid order, incl. GST</span>
-              <span className="font-semibold text-navy-900">
-                {gross(form.onlinePaidOrderCharge) === null ? "—" : inr(gross(form.onlinePaidOrderCharge))}
-              </span>
-            </div>
-          </div>
 
           <p className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
             <FiAlertTriangle className="mt-0.5 shrink-0" aria-hidden="true" />

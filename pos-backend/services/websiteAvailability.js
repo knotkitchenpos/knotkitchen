@@ -19,8 +19,10 @@ const { localDate, formatTime } = require("./tableBookings");
 
 const DEFAULT_TZ = "Asia/Kolkata";
 
+// Customer-facing (website checkout and the store page): the website calls
+// collection "Pickup".
 const LABELS = {
-  collection: "Collection",
+  collection: "Pickup",
   delivery: "Delivery",
   table: "Table booking",
 };
@@ -131,6 +133,44 @@ const availabilityAt = (settings, channel, at = new Date(), timeZone = DEFAULT_T
   };
 };
 
+/** A channel's week as saved in Website Timing, Sunday first; null when no hours are saved (open all day). */
+const weekOf = (settings, channel) => {
+  const weekly = settings?.channelHours?.[channel]?.weekly;
+  if (!Array.isArray(weekly) || weekly.length === 0) return null;
+  return [0, 1, 2, 3, 4, 5, 6].map((day) => {
+    const entry = entryFor(weekly, day);
+    const ok = Boolean(entry?.isOpen) && toMinutes(entry.openTime) != null && toMinutes(entry.closeTime) != null;
+    return { day, isOpen: ok, openTime: ok ? entry.openTime : "", closeTime: ok ? entry.closeTime : "" };
+  });
+};
+
+/**
+ * Website Timing & Holidays as the website shows them: the week of every
+ * channel the restaurant offers online, and the holidays still ahead. The
+ * same saved hours availabilityAt enforces, so what the page says is what
+ * checkout allows.
+ */
+const publicHours = (settings, timeZone = DEFAULT_TZ, at = new Date()) => {
+  const today = localClock(at, timeZone || DEFAULT_TZ).ymd;
+  const ordering = settings?.ordering || {};
+  const channels = [];
+  if (ordering.pickupEnabled !== false) channels.push("collection");
+  if (ordering.deliveryEnabled === true) channels.push("delivery");
+  if (ordering.tableBooking?.enabled !== false) channels.push("table");
+  const holidays = (settings?.holidays || [])
+    .map((h) => {
+      const start = isoDay(h.startDate);
+      return { start, end: isoDay(h.endDate) || start, reason: String(h.reason || "").slice(0, 120) };
+    })
+    .filter((h) => h.start && h.end >= today)
+    .sort((a, b) => (a.start < b.start ? -1 : 1))
+    .slice(0, 5);
+  return {
+    channels: channels.map((key) => ({ key, week: weekOf(settings, key) })),
+    holidays,
+  };
+};
+
 /** All three channels right now, for the storefront payload. */
 const websiteAvailability = (settings, timeZone = DEFAULT_TZ, at = new Date()) => ({
   collection: availabilityAt(settings, "collection", at, timeZone),
@@ -141,6 +181,7 @@ const websiteAvailability = (settings, timeZone = DEFAULT_TZ, at = new Date()) =
 module.exports = {
   availabilityAt,
   websiteAvailability,
+  publicHours,
   windowsOn,
   holidayOn,
   closedForTodayOn,

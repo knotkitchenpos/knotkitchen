@@ -1,5 +1,6 @@
 /**
- * The TAX INVOICE, as a page.
+ * KnotKitchen's invoice, as a page: a TAX INVOICE once KnotKitchen is
+ * registered under GST, a plain INVOICE saying so before that.
  *
  * HTML rather than a generated PDF: the browser's own print-to-PDF produces a
  * better document than a PDF library would, on every platform, with no
@@ -59,6 +60,15 @@ const taxColumns = (invoice) =>
 const renderInvoice = (invoice) => {
   const columns = taxColumns(invoice);
   const hasTax = invoice.totalTaxPaise > 0;
+  // Only a GST-registered seller issues a tax invoice. Before registration
+  // it is a plain invoice that says why there is no GST on it.
+  const registered = Boolean(invoice.seller?.gstin);
+  const docType = registered ? "TAX INVOICE" : "INVOICE";
+  const notes = [
+    registered ? "" : "KnotKitchen is not registered under GST. No GST has been charged.",
+    // A printer's price already includes GST: the GST shown is contained in it, not added.
+    invoice.kind === "HARDWARE" && hasTax ? "The price includes GST; the GST shown is contained in it." : "",
+  ].filter(Boolean);
 
   const head = [
     "<th>#</th>",
@@ -97,7 +107,7 @@ const renderInvoice = (invoice) => {
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">
-<title>${esc(invoice.invoiceNumber)} — Tax Invoice</title>
+<title>${esc(invoice.invoiceNumber)} — ${registered ? "Tax Invoice" : "Invoice"}</title>
 <style>
   :root { color-scheme: light; }
   * { box-sizing: border-box; }
@@ -146,7 +156,7 @@ const renderInvoice = (invoice) => {
       </div>
     </div>
     <div class="doctype">
-      <h1>TAX INVOICE</h1>
+      <h1>${docType}</h1>
       <div class="meta">
         <div>Invoice No. <b>${esc(invoice.invoiceNumber)}</b></div>
         <div>Date <b>${esc(dateOnly(invoice.invoiceDate))}</b></div>
@@ -183,6 +193,7 @@ const renderInvoice = (invoice) => {
   </div>
 
   <div class="words"><b>In words:</b> ${esc(invoice.totalInWords)}</div>
+  ${notes.map((n) => `<div class="words">${esc(n)}</div>`).join("")}
 
   ${invoice.status === "VOID" ? '<div class="void">VOID — this invoice has been cancelled</div>' : ""}
 

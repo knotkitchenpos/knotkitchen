@@ -176,6 +176,9 @@ const HardwareRequestDetail = () => {
             {r.type === "TABLET" ? " The tablet rental stops now and the store gets its tablet top-up back." : " The printer is no longer counted as the store's."}
             {" "}Leave the amount empty to refund everything paid (for a tablet a renewal already billed, that share too).
             {" "}A full refund voids the invoice; a part refund is noted on it.
+            {" "}Refund in full unless the restaurant caused the cancellation (refused delivery, wrong address,
+            breach); only then may documented costs be deducted. If the restaurant asks, KnotKitchen pays the
+            refund out by bank transfer: record it with Adjust wallet (debit, reference = UTR) on its page.
           </p>
           <div className="mt-3 grid gap-3 sm:grid-cols-3">
             <input className={`${INPUT} sm:col-span-2`} placeholder="Reason (the store sees it)" value={cancel.reason}

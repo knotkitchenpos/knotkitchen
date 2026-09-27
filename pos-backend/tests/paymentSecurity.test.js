@@ -140,6 +140,9 @@ const cashfreeStub = {
 
 const realCashfree = require("../services/gateways/cashfree");
 
+const websiteCheckouts = {};
+const placedCheckouts = [];
+
 const mocks = {
   "../models/paymentLinkModel": PaymentLinkMock,
   "../models/paymentTransactionModel": PaymentTransactionMock,
@@ -147,6 +150,15 @@ const mocks = {
   "../models/orderModel": noopModel,
   "../models/tableSessionModel": noopModel,
   "../models/restaurantModel": noopModel,
+  // Website checkouts, by gateway order id (none unless a test adds one).
+  "../models/websiteCheckoutModel": { findOne: async (q) => websiteCheckouts[q.gatewayOrderId] || null },
+  // The storefront's settlement, recorded rather than run.
+  "./storefrontController": {
+    placePaidCheckout: async (args) => {
+      placedCheckouts.push(args);
+      return { placed: { _id: "order1" }, already: false };
+    },
+  },
   "../services/messagingService": { sendPaymentLinkMessage: async () => {} },
   "../services/gateways/cashfree": cashfreeStub,
   mongoose: mongooseMock,
@@ -352,6 +364,50 @@ test("CRITICAL: a forged event for an order we never opened settles nothing", as
   assert.equal(res.statusCode, 200);
   assert.notEqual(res.body?.settled, "link");
   assert.equal(writes.transactions.length, 0);
+});
+
+test("N4: a PAID website checkout is placed by the webhook, whatever the store's state now", async () => {
+  // The customer paid, then never came back to the site -- or came back to a
+  // store locked or closed meanwhile. The webhook places the order: money
+  // taken online is always honoured. It checks nothing about the lock.
+  resetState();
+  placedCheckouts.length = 0;
+  websiteCheckouts.web_CHK1 = { _id: "chk1", restaurantId: "r1", storeId: "148379", status: "PENDING", amount: 450, orderData: { outletId: "o1" } };
+  cashfreeStub.paid = true;
+  cashfreeStub.amount = 450;
+  // No table session or payment link carries this order id.
+  const [sessionFind, linkFind] = [noopModel.findOne, PaymentLinkMock.findOne];
+  noopModel.findOne = async () => null;
+  PaymentLinkMock.findOne = async () => null;
+  try {
+    const body = { type: "PAYMENT_SUCCESS_WEBHOOK", data: { order: { order_id: "web_CHK1" } } };
+    const req = hookReq({ body });
+    req.headers["x-webhook-signature"] = signFor(JSON.stringify(body), "1725500000", process.env.CASHFREE_SECRET_KEY);
+    const { res } = await run(hookCtrl.cashfreeWebhook, req);
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body.settled, "website");
+    assert.equal(placedCheckouts.length, 1);
+    assert.equal(placedCheckouts[0].checkout, websiteCheckouts.web_CHK1);
+    assert.deepEqual([placedCheckouts[0].restaurantId, placedCheckouts[0].storeId, placedCheckouts[0].outletId], ["r1", "148379", "o1"]);
+
+    // Not paid for the full amount: nothing is placed.
+    placedCheckouts.length = 0;
+    cashfreeStub.amount = 1;
+    const short = await run(hookCtrl.cashfreeWebhook, req);
+    assert.equal(short.res.body.mismatch, true);
+    assert.equal(placedCheckouts.length, 0);
+
+    // A wrong signature settles nothing.
+    const forged = hookReq({ body, signature: "d3Jvbmctc2lnbmF0dXJl" });
+    assert.equal((await run(hookCtrl.cashfreeWebhook, forged)).res.statusCode, 401);
+    assert.equal(placedCheckouts.length, 0);
+  } finally {
+    delete websiteCheckouts.web_CHK1;
+    noopModel.findOne = sessionFind;
+    PaymentLinkMock.findOne = linkFind;
+    cashfreeStub.paid = false;
+    cashfreeStub.amount = 2000;
+  }
 });
 
 test("signature is verified against RAW bytes, not a re-serialisation", () => {

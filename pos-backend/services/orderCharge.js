@@ -1,5 +1,5 @@
 /**
- * KnotKitchen's per-order website fee.
+ * KnotKitchen's per-order fee on orders paid online (website and table QR).
  *
  * Charged to the RESTAURANT, once, when a qualifying order is paid. Deducted
  * straight from the Business Balance -- there is no monthly accrual.
@@ -33,6 +33,17 @@ const isPaid = (order) =>
   Array.isArray(order.payments) &&
   order.payments.some((p) => String(p?.status || "").toLowerCase() === "paid");
 
+/**
+ * Paid ONLINE, through the payment gateway: the only orders this fee is for.
+ *
+ * Every gateway settlement -- the website checkout, a table QR payment, a
+ * payment link -- stamps the gateway's order id on the order in the same
+ * write that marks it paid (storefrontController, tableSessionController,
+ * paymentLinkSettlement). Cash, card at the counter, pay-at-pickup and a
+ * manual "online"/UPI entry at the till never do, so they never qualify.
+ */
+const isPaidOnline = (order) => isPaid(order) && Boolean(order.paymentData?.gatewayOrderId);
+
 const isRefunded = (order) =>
   REFUNDED_STATUSES.includes(String(order.orderStatus || ""));
 
@@ -45,12 +56,20 @@ const isRefunded = (order) =>
  */
 const no = (reason, permanent) => ({ ok: false, reason, permanent });
 
-const qualifies = (order, charge) => {
+const qualifies = (order, charge, { anySource = false } = {}) => {
   // Permanent refusals are settled facts and get stamped on the order, so it
   // is never looked at again.
-  if (!charge.enabled) return no("Per-order charge is not enabled.", true);
+  if (!charge.enabled) {
+    return no(
+      charge.started === false
+        ? "Order was placed before the per-order charge started."
+        : "Per-order charge is not enabled.",
+      true,
+    );
+  }
   if (!charge.amountPaise) return no("Charge is zero for this restaurant.", true);
-  if (!charge.chargeableSources.includes(order.source)) {
+  // A table bill is charged whatever each round's source (see chargeTableSession).
+  if (!anySource && !charge.chargeableSources.includes(order.source)) {
     return no(`Order source ${order.source} is not chargeable.`, true);
   }
   if (isCancelled(order.orderStatus)) return no("Order was cancelled.", true);
@@ -61,6 +80,8 @@ const qualifies = (order, charge) => {
   // becomes paid later -- at checkout, on delivery, or through a gateway
   // callback. Stamping it now would exempt it from ever being charged.
   if (!isPaid(order)) return no("Order is not paid yet.", false);
+  // Settled, but not through the gateway: a final answer.
+  if (!isPaidOnline(order)) return no("Order was not paid online through the payment gateway.", true);
 
   return { ok: true };
 };
@@ -81,8 +102,23 @@ const chargeOrder = async (orderId) => {
     return { charged: order.platformCharge.status === "PAID", already: true, order };
   }
 
+  // A table order is billed per BILL, not per order, and only when the table
+  // pays through the gateway (chargeTableSession). Charging a round here as
+  // well could put a second ₹9 on the same bill, or bill a table settled in
+  // cash whose orders still carry an abandoned online checkout's gateway id.
+  // Not stamped: the gateway settle decides.
+  if (order.tableSessionId) {
+    return { charged: false, reason: "Table orders are charged once per bill, when the table pays online.", order };
+  }
+
   const config = await getPlatformConfig();
-  const charge = await resolveOrderCharge({ restaurantId: order.restaurantId, config });
+  // Dated by when the order was PLACED, so an order taken before the start
+  // date is never billed because it happened to settle after it.
+  const charge = await resolveOrderCharge({
+    restaurantId: order.restaurantId,
+    on: order.createdAt || new Date(),
+    config,
+  });
 
   const verdict = qualifies(order, charge);
   if (!verdict.ok) {
@@ -95,12 +131,20 @@ const chargeOrder = async (orderId) => {
     return { charged: false, reason: verdict.reason, pendingPayment: !verdict.permanent, order };
   }
 
+  return applyCharge(order, charge, config);
+};
+
+/** Debit the fee for one order and stamp the outcome on it. */
+const applyCharge = async (order, charge, config) => {
   const restaurant = await Restaurant.findById(order.restaurantId).select("address").lean();
   const tax = charge.taxable
     ? computeTax({
         amountPaise: charge.amountPaise,
         gst: config.gst,
         restaurantState: restaurant?.address?.state,
+        // Always tax-exclusive: GST goes on top, like the plan lines. Only
+        // printer lines are GST-inclusive; gst.mode is not consulted.
+        mode: "exclusive",
       })
     : { totalTaxPaise: 0, totalPaise: charge.amountPaise, percent: 0 };
 
@@ -117,7 +161,7 @@ const chargeOrder = async (orderId) => {
       restaurantId: order.restaurantId,
       kind: "ORDER_CHARGE",
       amountPaise: tax.totalPaise,
-      description: `Website order charge — #${order.orderNumber || order._id}`,
+      description: `Online order charge — #${order.orderNumber || order._id}`,
       idempotencyKey: idempotencyKeyFor(order._id),
       refType: "Order",
       refId: order._id,
@@ -148,6 +192,75 @@ const chargeOrder = async (orderId) => {
 const fireOrderCharge = (orderId) => {
   chargeOrder(orderId).catch((err) => {
     console.warn("[OrderCharge] failed:", err && err.message);
+  });
+};
+
+/**
+ * A table bill paid through the gateway is ONE online payment, so it is
+ * charged once: however many rounds the table ordered, and whether each round
+ * was punched at the till (POS) or ordered from the QR. The fee sits on the
+ * session's earliest live order; every other order points at it.
+ *
+ * Only settleSessionFromGateway calls this. A table settled in cash or at the
+ * counter never reaches it, so it is never charged.
+ *
+ * Safe to repeat. A charge already on any order of the session (PAID or
+ * PENDING) is the answer; otherwise the target is chosen deterministically
+ * (oldest first) and debited under its own per-order key, so a browser and a
+ * webhook settling at once pick the same order and the ledger keeps one.
+ */
+const chargeTableSession = async (sessionId) => {
+  const orders = await Order.find({ tableSessionId: sessionId, isDeleted: { $ne: true } })
+    .sort({ createdAt: 1, _id: 1 });
+  const live = orders.filter((o) => !isCancelled(o.orderStatus) && !isRefunded(o));
+  if (!live.length) return { charged: false, reason: "No live order on this table bill." };
+
+  let target = orders.find((o) => ["PAID", "PENDING"].includes(o.platformCharge?.status));
+  let result;
+  if (target) {
+    result = { charged: target.platformCharge.status === "PAID", already: true, order: target };
+  } else {
+    target = live[0];
+    const config = await getPlatformConfig();
+    const charge = await resolveOrderCharge({
+      restaurantId: target.restaurantId,
+      on: target.createdAt || new Date(),
+      config,
+    });
+    const verdict = qualifies(target, charge, { anySource: true });
+    if (verdict.ok) {
+      result = await applyCharge(target, charge, config);
+    } else if (!verdict.permanent) {
+      // Not paid yet (should not happen after a settle): stamp nothing, so a
+      // later settle can still decide.
+      return { charged: false, reason: verdict.reason, pendingPayment: true, order: target };
+    } else {
+      // The bill is settled, so the answer is final either way. A stamp from an
+      // earlier per-order look (e.g. "source POS is not chargeable") is replaced.
+      target.platformCharge = { status: "NOT_APPLICABLE", reason: verdict.reason };
+      await target.save();
+      result = { charged: false, reason: verdict.reason, order: target };
+    }
+  }
+
+  const reason = ["PAID", "PENDING"].includes(target.platformCharge?.status)
+    ? tableChargeReason(target._id)
+    : target.platformCharge?.reason;
+  for (const o of orders) {
+    if (String(o._id) === String(target._id)) continue;
+    if (o.platformCharge?.status === "NOT_APPLICABLE" && o.platformCharge.reason === reason) continue;
+    o.platformCharge = { status: "NOT_APPLICABLE", reason };
+    await o.save();
+  }
+  return result;
+};
+
+const tableChargeReason = (orderId) => `Table bill charged once (order ${orderId})`;
+
+/** Fire-and-forget: a table settle must not be delayed or broken by billing. */
+const fireTableSessionCharge = (sessionId) => {
+  chargeTableSession(sessionId).catch((err) => {
+    console.warn("[OrderCharge] table bill failed:", err && err.message);
   });
 };
 
@@ -189,7 +302,7 @@ const settlePendingCharges = async (restaurantId) => {
         restaurantId,
         kind: "ORDER_CHARGE",
         amountPaise: order.platformCharge.totalPaise,
-        description: `Website order charge — #${order.orderNumber || order._id}`,
+        description: `Online order charge — #${order.orderNumber || order._id}`,
         idempotencyKey: idempotencyKeyFor(order._id),
         refType: "Order",
         refId: order._id,
@@ -215,8 +328,12 @@ const settlePendingCharges = async (restaurantId) => {
 module.exports = {
   chargeOrder,
   fireOrderCharge,
+  chargeTableSession,
+  fireTableSessionCharge,
+  tableChargeReason,
   settlePendingCharges,
   outstandingDues,
   qualifies,
+  isPaidOnline,
   idempotencyKeyFor,
 };

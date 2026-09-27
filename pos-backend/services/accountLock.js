@@ -10,16 +10,21 @@
  *   an expired subscription    the period ended and the wallet could not
  *                              renew it
  *
- * What "locked" means is deliberately narrow. The spec is explicit that a
- * locked restaurant can still sign in, open Billing, see what it owes and pay
- * -- a lock that stopped someone paying would be self-defeating. So this gates
- * the POS, not the door.
+ * A store whose POS plan never started, or whose cancellation took effect, is
+ * locked at once, with no grace. So is a store marked "closed" (CSD closed
+ * it, or its cancellation took effect), whatever its wallet holds: the lock
+ * reason is STORE_CLOSED, and only reopening it in CSD lifts it.
  *
- * By default it does NOT gate the storefront or QR ordering either. Blocking
- * those punishes the restaurant's DINERS -- someone mid-meal could not settle
- * their table bill -- for a dispute between KnotKitchen and the restaurant.
- * `lockScope` can widen it to the storefront if the business wants that
- * leverage, but it is not the default and should be a deliberate choice.
+ * What "locked" means (the agreement's terms):
+ *   - the POS is locked except sign-in and Billing -- a locked restaurant can
+ *     still see what it owes and pay, or paying could not undo the lock
+ *     (middlewares/accountLock.js);
+ *   - the store's website is down: the storefront resolver reports the store
+ *     unavailable (services/storefrontResolver.js), so the site, its ordering
+ *     and table booking all stop;
+ *   - table QR takes no new orders. A party already seated can still pay its
+ *     bill and call a waiter.
+ * It lifts the moment the amount is paid.
  *
  * Lock state is evaluated on the events that can change it, not on every
  * request. A POS makes hundreds of calls a minute and none of them should pay
@@ -28,10 +33,33 @@
 
 const { BusinessBalance, LedgerEntry } = require("../models/businessBalanceModel");
 const { PlatformSubscription } = require("../models/platformSubscriptionModel");
+const mongoose = require("mongoose");
+const Store = require("../models/storeModel");
+const Restaurant = require("../models/restaurantModel");
 const { getPlatformConfig, getOverride } = require("./pricing");
 const { formatINR } = require("./money");
 
 const HOUR_MS = 60 * 60 * 1000;
+
+const STORE_CLOSED = "STORE_CLOSED";
+const STORE_CLOSED_MESSAGE = "This store is closed. Contact KnotKitchen support to reopen.";
+
+/**
+ * Is this restaurant's Store marked "closed" (permanently, not a trading
+ * pause)? The Store row carries restaurantId only sometimes, so the storeId
+ * from the Restaurant is tried too.
+ */
+const isStoreClosed = async (restaurantId) => {
+  if (!mongoose.isValidObjectId(restaurantId)) return false;
+  const restaurant = await Restaurant.findById(restaurantId).select("storeId").lean();
+  return Boolean(
+    await Store.exists({
+      $or: [{ restaurantId }, ...(restaurant?.storeId ? [{ storeId: restaurant.storeId }] : [])],
+      status: "closed",
+      isDeleted: { $ne: true },
+    }),
+  );
+};
 
 /**
  * When the balance hit zero, or null if it has money (or never had any).
@@ -62,12 +90,28 @@ const assessAccount = async (restaurantId, on = new Date()) => {
   // require would resolve to undefined on whichever side loaded second.
   const { outstandingDues } = require("./orderCharge");
 
-  const [dues, subscription, emptySince, override] = await Promise.all([
+  const [dues, subscription, emptySince, override, closed] = await Promise.all([
     outstandingDues(restaurantId),
     PlatformSubscription.findOne({ restaurantId }).lean(),
     balanceEmptySince(restaurantId),
     getOverride(restaurantId),
+    isStoreClosed(restaurantId),
   ]);
+
+  // Closed (N1): locked at once, whatever the wallet or the demo flag says.
+  // Nothing is owed, so there is no deadline or warning to show.
+  if (closed) {
+    return {
+      shouldLock: true,
+      code: STORE_CLOSED,
+      reasons: [STORE_CLOSED_MESSAGE],
+      locksAt: null,
+      lockWarning: "",
+      duesPaise: dues.totalPaise,
+      duesCount: dues.count,
+      graceHours: config.graceHours,
+    };
+  }
 
   // A demo store set in CSD is never locked, for any reason.
   if (override?.billingExempt) {
@@ -79,7 +123,6 @@ const assessAccount = async (restaurantId, on = new Date()) => {
       duesPaise: 0,
       duesCount: 0,
       graceHours: config.graceHours,
-      lockScope: config.lockScope || "STAFF",
     };
   }
 
@@ -116,7 +159,10 @@ const assessAccount = async (restaurantId, on = new Date()) => {
   // minimum starts the plan (services/subscription afterRecharge). No grace
   // period, there is nothing it was using that could be cut off mid-service.
   // Demo stores (billingExempt, above) never reach this.
-  if (!subscription?.currentPeriodEnd) {
+  if (subscription?.status === "CANCELLED") {
+    // Closed: nothing renews, so there is nothing to wait for.
+    reasons.push("The POS subscription was cancelled and this store is closed. Contact KnotKitchen support to reopen it.");
+  } else if (!subscription?.currentPeriodEnd) {
     reasons.push(
       `No plan is active yet. Recharge at least ${formatINR(Number(config.firstRechargeMinPaise) || 0)} to start. The POS plan starts automatically.`,
     );
@@ -133,6 +179,7 @@ const assessAccount = async (restaurantId, on = new Date()) => {
 
   return {
     shouldLock: reasons.length > 0,
+    code: reasons.length > 0 ? "UNPAID" : "",
     reasons,
     // Not locked yet, but will be at this moment unless it is dealt with.
     locksAt: reasons.length === 0 && deadlines.length ? new Date(deadlines[0].at) : null,
@@ -140,7 +187,6 @@ const assessAccount = async (restaurantId, on = new Date()) => {
     duesPaise: dues.totalPaise,
     duesCount: dues.count,
     graceHours: config.graceHours,
-    lockScope: config.lockScope || "STAFF",
   };
 };
 
@@ -185,9 +231,11 @@ const evaluateLock = async (restaurantId, on = new Date()) => {
 };
 
 /**
- * Is this restaurant locked for non-payment? Read by the customer-facing side:
- * a locked restaurant's website and table QR stop taking new orders, because
- * nobody on its POS can accept them.
+ * Is this restaurant locked (after its grace period, never activated, or
+ * its store closed)?
+ * Read by the customer-facing side: the storefront resolver takes a locked
+ * store's website down, and table QR stops taking new orders, because nobody
+ * on its POS can accept them.
  *
  * Fails open, like the staff gate: a database hiccup must not close a
  * restaurant that has paid.
@@ -198,7 +246,9 @@ const isOrderingLocked = async (restaurantId) => {
   if (!restaurantId) return false;
   try {
     const balance = await BusinessBalance.findOne({ restaurantId }).select("lockedAt").lean();
-    return Boolean(balance?.lockedAt);
+    // A closed store is locked even before anything has stored the lock
+    // (no balance row yet, or the evaluation after closing it failed).
+    return Boolean(balance?.lockedAt) || (await isStoreClosed(restaurantId));
   } catch (err) {
     console.warn("[AccountLock] ordering lock check failed, allowing:", err && err.message);
     return false;
@@ -282,6 +332,9 @@ const startLockSweeper = ({ intervalMs = 15 * 60 * 1000, renewEveryMs = 60 * 100
 };
 
 module.exports = {
+  STORE_CLOSED,
+  STORE_CLOSED_MESSAGE,
+  isStoreClosed,
   CUSTOMER_PAUSED_MESSAGE,
   isOrderingLocked,
   balanceEmptySince,

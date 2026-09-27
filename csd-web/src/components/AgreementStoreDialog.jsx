@@ -4,6 +4,23 @@ import {
   FiX, FiCheckCircle, FiAlertTriangle, FiMapPin, FiArrowRight, FiCopy, FiCheck, FiExternalLink,
 } from "react-icons/fi";
 import { agreements as api, errorMessage, fieldErrors } from "../api";
+import NextSteps from "./NextSteps";
+import { dt } from "../lib/format";
+
+const SIGN_METHODS = {
+  "handwritten-scanned": "Handwritten, scanned",
+  "aadhaar-esign": "Aadhaar eSign",
+  dsc: "Digital Signature Certificate",
+};
+
+/** Why a store cannot be created from this agreement yet, or "". */
+const blockReason = (d, current) => {
+  if (!d.signedCopy) return "There is no signed copy of this agreement. Upload it in the onboarding portal first.";
+  if (current && d.agreementVersion !== current) {
+    return `This agreement is version ${d.agreementVersion || "unknown"}; the current version is ${current}. The restaurant must sign the current agreement first.`;
+  }
+  return "";
+};
 
 /**
  * The agreement → store flow.
@@ -52,15 +69,23 @@ const AgreementStoreDialog = ({ agreement, onClose, onCreated }) => {
       setStep("created");
       onCreated?.();
     } catch (err) {
+      const body = err?.response?.data || {};
       const fe = fieldErrors(err);
       setErrors(fe);
-      setBanner(Object.keys(fe).length ? "Please correct the highlighted fields." : errorMessage(err));
+      setBanner(
+        body.code === "AGREEMENT_NOT_SIGNED"
+          ? "There is no signed copy of this agreement. Upload it in the onboarding portal first."
+          : body.code === "AGREEMENT_OUTDATED"
+            ? `This agreement is version ${body.version || "unknown"}, not the current one. The restaurant must sign the current agreement first.`
+            : Object.keys(fe).length ? "Please correct the highlighted fields." : errorMessage(err)
+      );
     } finally {
       setBusy(false);
     }
   };
 
   const m = detail?.mapped;
+  const blocked = detail ? blockReason(detail, detail.currentVersion) : "";
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4">
@@ -133,6 +158,26 @@ const AgreementStoreDialog = ({ agreement, onClose, onCreated }) => {
                     </span>
                   </div>
                 )}
+
+                {blocked && (
+                  <div className="flex items-start gap-2.5 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-800">
+                    <FiAlertTriangle className="mt-0.5 shrink-0" aria-hidden="true" />
+                    <span>{blocked}</span>
+                  </div>
+                )}
+
+                <section className="rounded-xl border border-navy-200 p-3.5">
+                  <h3 className="mb-1.5 text-xs font-bold uppercase tracking-wider text-navy-600">Agreement</h3>
+                  <dl>
+                    <Row label="Version" warn={detail.agreementVersion !== detail.currentVersion}>
+                      {detail.agreementVersion &&
+                        `${detail.agreementVersion}${detail.agreementVersion === detail.currentVersion ? " (current)" : ` (current is ${detail.currentVersion})`}`}
+                    </Row>
+                    <Row label="Signed by">{SIGN_METHODS[detail.signatureMethod] || detail.signatureMethod}</Row>
+                    <Row label="Signed copy" warn={!detail.signedCopy}>{detail.signedCopy ? "Uploaded" : "Missing"}</Row>
+                    <Row label="Submitted">{detail.submittedAt && dt(detail.submittedAt)}</Row>
+                  </dl>
+                </section>
 
                 {detail.warnings?.length > 0 && (
                   <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900">
@@ -229,9 +274,9 @@ const AgreementStoreDialog = ({ agreement, onClose, onCreated }) => {
                     className="rounded-xl border border-navy-300 px-4 py-2.5 text-sm font-semibold text-navy-700 hover:bg-navy-50">
                     Cancel
                   </button>
-                  <button type="submit" disabled={busy || detail.missing?.length > 0}
+                  <button type="submit" disabled={busy || detail.missing?.length > 0 || Boolean(blocked)}
                     className="rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-500 disabled:opacity-50">
-                    {busy ? "Creating store…" : "Save & activate store"}
+                    {busy ? "Creating store…" : "Create store"}
                   </button>
                 </div>
               </form>
@@ -244,7 +289,7 @@ const AgreementStoreDialog = ({ agreement, onClose, onCreated }) => {
           <div className="text-center">
             <FiCheckCircle className="mx-auto text-emerald-600" size={40} aria-hidden="true" />
             <h2 className="mt-3 text-xl font-bold text-navy-900">{result.restaurantName} created</h2>
-            <p className="mt-1 text-sm text-navy-600">Share this Store ID with the restaurant.</p>
+            <p className="mt-1 text-sm text-navy-600">Share this Store ID with the restaurant. Next:</p>
 
             <div className="mt-5 flex items-center justify-center gap-3">
               <span className="rounded-xl bg-navy-50 px-5 py-3 font-mono text-3xl font-bold tracking-widest text-navy-900">
@@ -261,6 +306,8 @@ const AgreementStoreDialog = ({ agreement, onClose, onCreated }) => {
                 {copied ? <FiCheck className="text-emerald-600" /> : <FiCopy />}
               </button>
             </div>
+
+            <NextSteps storeId={result.storeId} />
 
             {/* Surface partial failures rather than implying everything worked. */}
             {result.documents?.imported > 0 && (

@@ -78,6 +78,26 @@ test("the charge is off until it is switched on AND its date has passed", async 
   assert.equal(noDate.enabled, false, "enabled with no start date charges nothing");
 });
 
+test("the e-bill charge applies only from the date CSD picks", async () => {
+  const config = { ebillCharge: { enabled: true, amountPaise: 25, effectiveFrom: new Date("2026-10-01T00:00:00+05:30") } };
+  const before = await resolveEBillCharge({ config, override: null, on: new Date("2026-09-30T23:59:00+05:30") });
+  const from = await resolveEBillCharge({ config, override: null, on: new Date("2026-10-01T00:00:00+05:30") });
+  assert.equal(before.enabled, false);
+  assert.equal(from.enabled, true);
+  // A per-store value of null (the default) is the platform amount.
+  const unset = await resolveEBillCharge({ config, override: { ebillCharge: null } });
+  assert.deepEqual([unset.amountPaise, unset.source], [25, "platform"]);
+});
+
+test("the platform ships the e-bill charge at ₹0.25 + GST, OFF with no date", () => {
+  const { PlatformBillingConfig } = require("../models/platformBillingModel");
+  const { ebillCharge } = new PlatformBillingConfig();
+  assert.deepEqual(
+    [ebillCharge.amountPaise, ebillCharge.taxable, ebillCharge.enabled, ebillCharge.effectiveFrom],
+    [25, true, false, null],
+  );
+});
+
 test("REGRESSION: every delivered message is charged, including a re-send", () => {
   // Keying on the order would make the second and every later send free, and
   // each one is a real WhatsApp message with a real cost.

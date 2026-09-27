@@ -55,8 +55,11 @@ const gstApplicableAt = (gst, on = new Date()) => {
  * taxable value and tax is added; under "inclusive" it is the gross and the
  * tax is extracted from within it. Either way `totalPaise` is what the
  * restaurant actually pays, so callers never have to know which mode is set.
+ *
+ * `mode`, when given, overrides `gst.mode` for this amount: a printer's price
+ * already contains GST whatever the configured mode is.
  */
-const computeTax = ({ amountPaise, gst, restaurantState, on = new Date() } = {}) => {
+const computeTax = ({ amountPaise, gst, restaurantState, on = new Date(), mode: forced } = {}) => {
   const base = Math.round(Number(amountPaise) || 0);
 
   if (!gstApplicableAt(gst, on)) {
@@ -64,7 +67,7 @@ const computeTax = ({ amountPaise, gst, restaurantState, on = new Date() } = {})
   }
 
   const percent = Number(gst.percent);
-  const mode = gst.mode === "inclusive" ? "inclusive" : "exclusive";
+  const mode = (forced || gst.mode) === "inclusive" ? "inclusive" : "exclusive";
 
   // Inclusive: base already contains the tax, so the taxable value is
   // base / (1 + rate) and the tax is the remainder. Derived by subtraction so

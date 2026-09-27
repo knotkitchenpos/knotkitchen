@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
+import { useSelector } from "react-redux";
 import { Capacitor } from "@capacitor/core";
 import {
   getBusinessBalance,
@@ -14,19 +15,22 @@ import {
   rentSubscriptionTablet,
   buySubscriptionPrinter,
   renewSubscription,
+  cancelSubscription,
+  reinstateSubscription,
   getPlatformInvoices,
   getHardwareRequests,
   cancelHardwareRequest,
 } from "../https";
 import { loadCashfree } from "../utils/cashfree";
+import { isOwner } from "../utils/security";
 
 /**
  * Settings → Billing & Subscription.
  *
  * The restaurant's own view of what it pays KnotKitchen and how. The wallet
- * (Business Balance) pays for everything: the POS plan, add-ons, tablet
- * rental and printers. Nothing on this screen can set a price, and none of
- * these endpoints would accept one.
+ * (Business Balance) pays the POS plan, add-ons and tablet rental; printers
+ * are paid online. Nothing on this screen can set a price, and none of these
+ * endpoints would accept one. The owner can cancel the subscription here.
  *
  * This is also the screen a LOCKED account can still reach. If it ever stops
  * loading for a locked restaurant, that restaurant cannot pay its way out --
@@ -114,6 +118,47 @@ const OrderSummary = ({ summary, onClose, onConfirm, busy }) => {
             className="h-[42px] rounded-xl bg-[#FD5302] text-[13px] font-extrabold text-white disabled:opacity-50"
           >
             {busy ? "Working…" : "Accept and pay"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * Cancel the POS plan. An in-page box, not window.prompt: the Electron app
+ * answers prompt() with null, so the cancel would silently do nothing there.
+ */
+const CancelPlan = ({ sub, onClose, onConfirm, busy }) => {
+  const [reason, setReason] = useState("");
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-label="Cancel subscription">
+      <div className="w-full max-w-[440px] max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
+        <h3 className="text-[16px] font-extrabold text-[#0F172A]">Cancel subscription</h3>
+        <p className="mt-2 text-[13px] text-[#334155]">
+          {sub?.active
+            ? `Renewals stop on ${dateOf(sub.currentPeriodEnd)}. After that your store is Closed.`
+            : "The POS plan ends now and your store is Closed."}{" "}
+          Your wallet balance is not refundable.
+        </p>
+        <textarea
+          className="mt-3 min-h-[80px] w-full rounded-xl border border-[#E2E8F0] px-3 py-2 text-[14px] text-[#0F172A] focus:border-[#FD5302] focus:outline-none"
+          placeholder="Reason (optional)"
+          maxLength={300}
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+        />
+        <div className="mt-4 grid grid-cols-2 gap-2">
+          <button type="button" onClick={onClose} disabled={busy} className="h-[42px] rounded-xl border border-[#E2E8F0] text-[13px] font-bold text-[#334155]">
+            Keep my plan
+          </button>
+          <button
+            type="button"
+            onClick={() => onConfirm(reason.trim())}
+            disabled={busy}
+            className="h-[42px] rounded-xl bg-[#B91C1C] text-[13px] font-extrabold text-white disabled:opacity-50"
+          >
+            {busy ? "Working…" : "Cancel subscription"}
           </button>
         </div>
       </div>
@@ -327,6 +372,10 @@ const Billing = () => {
   const [summary, setSummary] = useState(null);
   // A printer/tablet waiting for its delivery address: { title, next(shipTo) }.
   const [deliverFor, setDeliverFor] = useState(null);
+  const [cancelling, setCancelling] = useState(false);
+  // The server said 409 SUBSCRIPTION_CANCELLED: this store is closed, so no top-up.
+  const [closedByServer, setClosedByServer] = useState(false);
+  const owner = isOwner(useSelector((state) => state.user));
 
   useEffect(() => {
     document.title = "KnotKitchen | Billing";
@@ -449,6 +498,7 @@ const Billing = () => {
       if (await checkout(opened.data.data)) return;
       await settleTopUp(gatewayOrderId);
     } catch (err) {
+      if (err?.response?.data?.code === "SUBSCRIPTION_CANCELLED") setClosedByServer(true);
       enqueueSnackbar(
         err?.response?.data?.message || err?.message || "The top-up could not be completed.",
         { variant: "error" },
@@ -474,6 +524,7 @@ const Billing = () => {
       refreshMoney();
     },
     onError: (err) => {
+      if (err?.response?.data?.code === "SUBSCRIPTION_CANCELLED") setClosedByServer(true);
       enqueueSnackbar(err?.response?.data?.message || err?.message || "That did not go through.", {
         variant: err?.response?.status === 402 ? "warning" : "error",
       });
@@ -517,7 +568,8 @@ const Billing = () => {
           terms: [
             `Charged now for the days left in this period, then ${money(tablet?.nextPrice)} + GST every ${periodDays} days with the POS plan.`,
             "KnotKitchen delivers it to the address above and sets it up. You can cancel for a full refund to the wallet until KnotKitchen accepts the request.",
-            "Uses one of your qualifying top-ups. The tablet stays KnotKitchen's property; to end the rental, return it through KnotKitchen support.",
+            "Uses one of your qualifying top-ups. The tablet stays KnotKitchen's property; to end the rental, contact KnotKitchen support and return it within 15 days after the rental ends.",
+            "Loss or damage beyond normal wear is charged at the actual repair or replacement cost.",
           ],
           run: () => rentSubscriptionTablet({ accepted: true, shipTo }),
           done: "Tablet requested. KnotKitchen will confirm and deliver it.",
@@ -536,6 +588,7 @@ const Billing = () => {
           terms: [
             "One-time purchase, paid now by UPI, card or netbanking. Not from your wallet. No monthly fee.",
             "KnotKitchen delivers it to the address above. You can cancel until KnotKitchen accepts the request; the refund goes to your KnotKitchen wallet.",
+            "Price includes GST. Replaced if dead on arrival or faulty within 7 days of delivery; after that the manufacturer's warranty applies.",
           ],
           run: async () => {
             const inApp = Capacitor.isNativePlatform();
@@ -576,6 +629,18 @@ const Billing = () => {
       done: "The POS plan is renewed.",
     });
 
+  // Owner only (requireOwnerOnly on the server): staff never see the link.
+  const cancelPlan = (reason) =>
+    act.mutate(
+      {
+        run: () => cancelSubscription({ reason }),
+        done: sub?.active ? `Cancelled. The POS plan ends on ${dateOf(sub.currentPeriodEnd)}.` : "Cancelled.",
+      },
+      { onSuccess: () => setCancelling(false) },
+    );
+  const undoCancel = () =>
+    act.mutate({ run: () => reinstateSubscription(), done: "Cancellation undone. The POS plan keeps renewing." });
+
   if (isLoading || subLoading) return <div className="p-6 text-[13px] text-[#94A3B8]">Loading billing…</div>;
   // Without the subscription the page would read as "EXPIRED" with no add-ons.
   if (subError) {
@@ -591,13 +656,20 @@ const Billing = () => {
 
   const [badge, tone] = sub?.exempt
     ? ["DEMO", "green"]
-    : sub?.active
-      ? ["ACTIVE", "green"]
-      : sub?.needsActivation
-        ? ["NOT STARTED", "slate"]
-        : sub?.inGrace
-          ? ["GRACE", "amber"]
-          : ["EXPIRED", "red"];
+    : sub?.status === "CANCELLED"
+      ? ["CANCELLED", "red"]
+      : sub?.active
+        ? ["ACTIVE", "green"]
+        : sub?.needsActivation
+          ? ["NOT STARTED", "slate"]
+          : sub?.inGrace
+            ? ["GRACE", "amber"]
+            : ["EXPIRED", "red"];
+  const cancelled = sub?.status === "CANCELLED";
+  // Closed at once by KnotKitchen, or cancelled and taken effect: no top-up, only support reopens it.
+  const storeClosed = cancelled || closedByServer || Boolean(sub?.topUpBlocked || sub?.storeClosed || balance?.closed);
+  // The restaurant can undo only its own cancellation, and only before it takes effect.
+  const canUndo = Boolean(sub?.cancelAt) && !cancelled && sub?.cancelledBy?.type !== "CSD";
   const tablets = (sub?.tablets || []).filter((t) => t.active);
 
   return (
@@ -618,7 +690,7 @@ const Billing = () => {
 
       <div className="grid gap-5 lg:grid-cols-2">
         {/* ---------------------------------------------------------- */}
-        <Card title="Wallet" subtitle="Your Business Balance. It pays the POS plan, add-ons, tablets and per-order charges.">
+        <Card title="Wallet" subtitle="Your Business Balance, prepaid for KnotKitchen charges: the POS plan, add-ons, tablets, per-order and e-bill charges. It is not refundable.">
           <p className="text-[32px] font-extrabold leading-none text-[#0F172A]">{money(balance?.balance)}</p>
 
           {balance?.dues?.count > 0 && (
@@ -628,6 +700,12 @@ const Billing = () => {
             </p>
           )}
 
+          {storeClosed ? (
+            <p className="mt-3 rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-[12.5px] font-semibold text-[#991B1B]">
+              This store is closed. Contact KnotKitchen support to reopen.
+            </p>
+          ) : (
+          <>
           {sub?.needsActivation && (
             <p className="mt-3 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] px-3 py-2 text-[12.5px] text-[#9A3412]">
               <span className="font-extrabold">First recharge: at least {money(sub.firstRechargeMin)}.</span> Your POS
@@ -675,6 +753,8 @@ const Billing = () => {
               Paid securely through Cashfree. Your balance updates once the payment is confirmed.
             </p>
           </div>
+          </>
+          )}
         </Card>
 
         {/* ---------------------------------------------------------- */}
@@ -688,6 +768,11 @@ const Billing = () => {
               KnotKitchen has set this store up as a demo store. It has every add-on, is never charged for the plan,
               per order or per e-bill, and is never locked.
             </p>
+          ) : cancelled ? (
+            <p className="text-[13px] text-[#64748B]">
+              Cancelled on {dateOf(sub.cancelledAt || sub.cancelAt)}. Your store is marked Closed and the plan does not
+              renew. To reopen it, contact KnotKitchen support.
+            </p>
           ) : sub?.needsActivation ? (
             <p className="text-[13px] text-[#64748B]">
               Not started yet. Recharge at least {money(sub.firstRechargeMin)} in one payment and the POS plan starts
@@ -698,7 +783,7 @@ const Billing = () => {
               <p className="text-[13px] text-[#64748B]">
                 Current period: {dateOf(sub?.currentPeriodStart)} – {dateOf(sub?.currentPeriodEnd)}
               </p>
-              {sub && !sub.active && (
+              {sub && !sub.active && !sub.cancelAt && (
                 <div className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-[12.5px] text-[#991B1B]">
                   <p className="font-extrabold">The POS plan ended on {dateOf(sub.currentPeriodEnd)}.</p>
                   <p className="mt-0.5">
@@ -720,6 +805,27 @@ const Billing = () => {
                   <Bill bill={sub.nextRenewal} totalLabel="Renewal total" />
                 </>
               )}
+              {sub?.cancelAt ? (
+                <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] px-3 py-2 text-[12.5px] text-[#9A3412]">
+                  {sub.storeClosed ? (
+                    <p className="font-extrabold">This store is closed. Contact KnotKitchen support to reopen.</p>
+                  ) : (
+                    <p>
+                      <span className="font-extrabold">Cancels on {dateOf(sub.cancelAt)}.</span> Then your store is marked
+                      Closed.{canUndo ? (owner ? "" : " The owner can undo it.") : " Cancelled by KnotKitchen: contact support to undo it."}
+                    </p>
+                  )}
+                  {canUndo && owner && !sub.storeClosed && (
+                    <button type="button" disabled={busy} onClick={undoCancel} className={`${SECONDARY} bg-white`}>
+                      Undo
+                    </button>
+                  )}
+                </div>
+              ) : owner && (
+                <button type="button" disabled={busy} onClick={() => setCancelling(true)} className="text-[12.5px] font-bold text-[#B91C1C] underline underline-offset-2 disabled:opacity-40">
+                  Cancel subscription
+                </button>
+              )}
             </div>
           )}
         </Card>
@@ -728,7 +834,7 @@ const Billing = () => {
       {/* ------------------------------------------------------------ */}
       <Card
         title="Add-ons"
-        subtitle={`Monthly, from your wallet, renewing with the POS plan every ${periodDays} days. Added mid-period, you pay only for the days left.`}
+        subtitle={`Per ${periodDays} days, from your wallet, renewing with the POS plan. Added mid-period, you pay only for the days left.`}
       >
         {(sub?.addons || []).length === 0 ? (
           <p className="text-[13px] text-[#94A3B8]">No add-ons are available at the moment.</p>
@@ -803,7 +909,7 @@ const Billing = () => {
           {/* ---------------------------------------------------------- */}
           <Card
             title="Tablets"
-            subtitle={`Monthly rental: the first ${money(tablet?.firstPrice)}, each extra ${money(tablet?.extraPrice)}, + GST.`}
+            subtitle={`Rental per ${periodDays} days: the first ${money(tablet?.firstPrice)}, each extra ${money(tablet?.extraPrice)}, + GST.`}
           >
             {tablets.length === 0 ? (
               <p className="text-[13px] text-[#94A3B8]">No tablets rented.</p>
@@ -844,7 +950,7 @@ const Billing = () => {
                     <div className="min-w-0 flex-1 basis-[220px]">
                       <p className="text-[14px] font-extrabold text-[#0F172A]">{p.name}</p>
                       <p className="text-[12px] text-[#64748B]">
-                        {money(p.price)} + GST, one time{p.owned ? ` · you have bought ${p.owned}` : ""}
+                        {money(p.price)} incl. GST, one time{p.owned ? ` · you have bought ${p.owned}` : ""}
                       </p>
                     </div>
                     <button type="button" disabled={busy} onClick={() => buyPrinter(p)} className={PRIMARY}>
@@ -976,6 +1082,8 @@ const Billing = () => {
           onConfirm={() => act.mutate({ run: summary.run, done: summary.done })}
         />
       )}
+
+      {cancelling && <CancelPlan sub={sub} busy={busy} onClose={() => setCancelling(false)} onConfirm={cancelPlan} />}
     </div>
   );
 };

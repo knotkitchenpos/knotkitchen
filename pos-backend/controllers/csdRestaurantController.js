@@ -183,9 +183,10 @@ const getRestaurant = async (req, res, next) => {
         },
 
         charges: {
-          onlinePaidOrderCharge: charges.onlinePaidOrderCharge,
-          gstPercent: charges.gstPercent,
-          monthlySubscription: charges.monthlySubscription,
+          // null = the platform amount and start date (CSD → Billing).
+          onlinePaidOrderCharge: charges.onlinePaidOrderCharge ?? null,
+          orderChargeFrom: charges.orderChargeFrom || null,
+          ebillCharge: charges.ebillCharge ?? null,
           billingExempt: Boolean(charges.billingExempt),
           // Negotiated prices, rupees: [{ code, price }] (services/pricing priceFor).
           planPrices: charges.planPrices || [],
@@ -582,17 +583,34 @@ const updateCharges = async (req, res, next) => {
     const fieldErrors = {};
     const patch = {};
 
+    // null (or blank) puts the store back on the platform amount; 0 is a
+    // real "charged nothing".
     for (const [key, label, max] of [
       ["onlinePaidOrderCharge", "Online paid order charge", 10000],
       ["ebillCharge", "E-bill charge", 1000],
-      ["gstPercent", "GST percentage", 100],
-      ["monthlySubscription", "Monthly subscription", 1000000],
     ]) {
       if (b[key] === undefined) continue;
+      if (b[key] === null || b[key] === "") {
+        patch[key] = null;
+        continue;
+      }
       const n = Number(b[key]);
       if (Number.isNaN(n) || n < 0) fieldErrors[key] = `${label} must be a positive number.`;
       else if (n > max) fieldErrors[key] = `${label} looks too large.`;
       else patch[key] = n;
+    }
+    // Delays the per-order charge for this store beyond the platform start.
+    if (b.orderChargeFrom !== undefined) {
+      if (b.orderChargeFrom === null || b.orderChargeFrom === "") {
+        patch.orderChargeFrom = null;
+      } else {
+        const d = new Date(b.orderChargeFrom);
+        if (typeof b.orderChargeFrom !== "string" || Number.isNaN(d.getTime())) {
+          fieldErrors.orderChargeFrom = "Enter a valid date, or leave it blank.";
+        } else {
+          patch.orderChargeFrom = d;
+        }
+      }
     }
     if (b.notes !== undefined) patch.notes = str(b.notes).slice(0, 1000);
     if (b.billingExempt !== undefined) {
@@ -644,11 +662,13 @@ const updateCharges = async (req, res, next) => {
       new CsdStoreCharges({ storeId, ...CsdStoreCharges.DEFAULTS });
 
     const previous = {
-      onlinePaidOrderCharge: existing.onlinePaidOrderCharge,
-      gstPercent: existing.gstPercent,
-      monthlySubscription: existing.monthlySubscription,
+      onlinePaidOrderCharge: existing.onlinePaidOrderCharge ?? null,
+      orderChargeFrom: existing.orderChargeFrom || null,
+      ebillCharge: existing.ebillCharge ?? null,
       billingExempt: Boolean(existing.billingExempt),
     };
+    const same = (a, b) => String(a instanceof Date ? a.toISOString() : a ?? null)
+      === String(b instanceof Date ? b.toISOString() : b ?? null);
 
     for (const [k, v] of Object.entries(patch)) {
       if (k === "planPrices") {
@@ -658,7 +678,7 @@ const updateCharges = async (req, res, next) => {
           to: v.map((p) => `${p.code}:${p.price}`).join(", "),
           byId: req.csdStaff._id, byStaffId: req.csdStaff.staffId, byName: req.csdStaff.fullName,
         });
-      } else if (k !== "notes" && existing[k] !== v) {
+      } else if (k !== "notes" && !same(existing[k], v)) {
         existing.history.push({
           field: k, from: existing[k], to: v,
           byId: req.csdStaff._id, byStaffId: req.csdStaff.staffId, byName: req.csdStaff.fullName,
@@ -687,10 +707,9 @@ const updateCharges = async (req, res, next) => {
     res.status(200).json({
       success: true,
       data: {
-        onlinePaidOrderCharge: existing.onlinePaidOrderCharge,
-        gstPercent: existing.gstPercent,
-        monthlySubscription: existing.monthlySubscription,
-        ebillCharge: existing.ebillCharge,
+        onlinePaidOrderCharge: existing.onlinePaidOrderCharge ?? null,
+        orderChargeFrom: existing.orderChargeFrom || null,
+        ebillCharge: existing.ebillCharge ?? null,
         billingExempt: Boolean(existing.billingExempt),
         planPrices: existing.planPrices || [],
         notes: existing.notes,

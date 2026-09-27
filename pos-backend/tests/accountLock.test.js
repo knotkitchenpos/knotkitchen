@@ -40,9 +40,11 @@ test("CRITICAL: a locked restaurant can still reach everything it needs to pay",
   }
 });
 
-test("CRITICAL: a lock never reaches the restaurant's own customers", async () => {
-  // Blocking diners punishes them for a dispute between KnotKitchen and the
-  // restaurant. They never sign in, and the gate only looks at signed-in staff.
+test("CRITICAL: the staff gate never touches a diner's request", async () => {
+  // Diners never sign in, and this gate only looks at signed-in staff. The
+  // customer side of a lock (website down, no new QR orders) is applied by
+  // the storefront resolver and the QR routes, which leave a seated party
+  // able to pay.
   const { enforceAccountLock } = require("../middlewares/accountLock");
   let passed = false;
   await enforceAccountLock({ baseUrl: "/api/qr", path: "/session/abc" }, {}, () => (passed = true));
@@ -121,10 +123,12 @@ test("REGRESSION: the allow-list is matched on the full path, not the router-rel
 
 /** Run `fn` against accountLock with its reads replaced. Paid up by default. */
 const LIVE_PLAN = { currentPeriodEnd: new Date("2099-01-01T00:00:00Z") };
-const withAssess = async ({ lastEntry = null, dues = { count: 0 }, subscription = LIVE_PLAN, graceHours = 24, override = null }, fn) => {
+const withAssess = async ({ lastEntry = null, dues = { count: 0 }, subscription = LIVE_PLAN, graceHours = 24, override = null, closed = false }, fn) => {
   const Module = require("module");
   const orig = Module._load;
   Module._load = function (r) {
+    if (r === "../models/storeModel") return { exists: async (f) => (closed && f.status === "closed" ? { _id: "s1" } : null) };
+    if (r === "../models/restaurantModel") return { findById: () => ({ select: () => ({ lean: async () => ({ storeId: "148379" }) }) }) };
     if (r === "./pricing") return { getPlatformConfig: async () => ({ graceHours, firstRechargeMinPaise: 250000 }), getOverride: async () => override };
     if (r === "./orderCharge") return { outstandingDues: async () => dues };
     if (r === "../models/platformSubscriptionModel") {
@@ -200,7 +204,7 @@ test("SOURCE: a demo store is never charged", () => {
     assert.match(body, /if \(ctx\.exempt\) throw new SubscriptionError\(DEMO_STORE, 409\);/, fn);
   }
   // ...nothing activates or renews. (Behaviour: tests/subscriptionFlow.test.js.)
-  assert.match(sub, /if \(exempt \|\| subscription\.activatedAt\) return null;/);
+  assert.match(sub, /if \(exempt \|\| subscription\.activatedAt \|\| subscription\.status === "CANCELLED"\) return null;/);
   assert.match(sub, /if \(override\?\.billingExempt\) return \{ renewed: false \};/);
 });
 
@@ -243,6 +247,26 @@ test("a new store with no plan is locked at once; a demo store is not", async ()
   await withAssess({ subscription: null, override: { billingExempt: true } }, async (svc) => {
     assert.equal((await svc.assessAccount("r1", new Date("2026-09-21"))).shouldLock, false);
   });
+});
+
+test("a cancelled subscription locks at once, with no grace", async () => {
+  const subscription = { status: "CANCELLED", currentPeriodEnd: new Date("2026-09-20T18:30:00Z") };
+  await withAssess({ subscription }, async (svc) => {
+    const res = await svc.assessAccount("r1", new Date("2026-09-20T18:31:00Z"));
+    assert.equal(res.shouldLock, true);
+    assert.match(res.reasons.join(" "), /cancelled and this store is closed/);
+  });
+});
+
+test("REGRESSION: the dead lockScope setting is gone; a lock always takes the website down", () => {
+  // It was never in the schema, so CSD's "The POS only" choice was silently
+  // dropped while every lock also closed the storefront.
+  for (const rel of ["services/accountLock.js", "middlewares/accountLock.js", "controllers/csdBillingConfigController.js"]) {
+    assert.ok(!/lockScope/.test(SRC(rel)), rel);
+  }
+  const { present } = require("../controllers/csdBillingConfigController");
+  assert.equal("lockScope" in present({}), false);
+  assert.match(SRC("services/storefrontResolver.js"), /if \(await isOrderingLocked\(restaurantId\)\) return \{ reason: "STORE_UNAVAILABLE", locked: true \}/);
 });
 
 test("SOURCE: paying re-evaluates the lock immediately", () => {
@@ -304,4 +328,50 @@ test("the refusal tells the client what to do about it", () => {
   assert.match(src, /code: "ACCOUNT_LOCKED"/, "machine-readable, so the UI can route to Billing");
   assert.match(src, /status\(402\)/, "payment required, not forbidden -- it is temporary");
   assert.match(src, /billingPath/);
+});
+
+test("N1: a closed store is locked at once (STORE_CLOSED), whatever its wallet or demo flag", async () => {
+  const RID = "64b000000000000000000009";
+  const rich = { createdAt: new Date("2026-09-01"), balanceAfterPaise: 900000 };
+  for (const override of [null, { billingExempt: true }]) {
+    await withAssess({ lastEntry: rich, closed: true, override }, async (svc) => {
+      const res = await svc.assessAccount(RID, new Date("2026-09-21"));
+      assert.equal(res.shouldLock, true);
+      assert.equal(res.code, "STORE_CLOSED");
+      assert.deepEqual(res.reasons, [svc.STORE_CLOSED_MESSAGE]);
+      assert.equal(res.lockWarning, "");
+    });
+  }
+  // Reopened: the same paid-up store is not locked.
+  await withAssess({ lastEntry: rich, closed: false }, async (svc) => {
+    const res = await svc.assessAccount(RID, new Date("2026-09-21"));
+    assert.equal(res.shouldLock, false);
+  });
+});
+
+test("N1: the POS gate says a closed store is STORE_CLOSED; other locks are UNPAID", async () => {
+  const { BusinessBalance } = require("../models/businessBalanceModel");
+  const { enforceAccountLock } = require("../middlewares/accountLock");
+  const { STORE_CLOSED_MESSAGE } = require("../services/accountLock");
+  assert.equal(STORE_CLOSED_MESSAGE, "This store is closed. Contact KnotKitchen support to reopen.");
+  const original = BusinessBalance.findOne;
+  const gate = async (lockedReason) => {
+    BusinessBalance.findOne = () => ({ select: () => ({ lean: async () => ({ lockedAt: new Date(), lockedReason }) }) });
+    let body = null;
+    let status = null;
+    await enforceAccountLock(
+      { user: { restaurantId: "r1" }, baseUrl: "/api/order", path: "/" },
+      { status: (s) => ((status = s), { json: (b) => (body = b) }) },
+      () => {},
+    );
+    return { status, body };
+  };
+  try {
+    const closed = await gate(STORE_CLOSED_MESSAGE);
+    assert.equal(closed.status, 402);
+    assert.deepEqual([closed.body.code, closed.body.reason, closed.body.message], ["ACCOUNT_LOCKED", "STORE_CLOSED", STORE_CLOSED_MESSAGE]);
+    assert.equal((await gate("The subscription expired and the grace period has passed.")).body.reason, "UNPAID");
+  } finally {
+    BusinessBalance.findOne = original;
+  }
 });

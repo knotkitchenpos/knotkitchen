@@ -43,6 +43,7 @@ export function useStorefront(identity) {
         if (!cancelled) {
           setError({
             status: err.response?.status || 0,
+            code: err.response?.data?.code || "",
             message: err.response?.data?.message || "We couldn't find this restaurant.",
           });
         }
@@ -65,6 +66,8 @@ export function useStorefront(identity) {
           if (!cancelled && !error) {
             setError({
               status: err.response?.status || 0,
+              // STORE_UNAVAILABLE etc.: StorePage shows "temporarily unavailable", not an error.
+              code: err.response?.data?.code || "",
               message: err.response?.data?.message || "We couldn't load this restaurant's menu.",
             });
           }

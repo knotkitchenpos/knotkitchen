@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { FiCheckCircle, FiAlertCircle, FiCopy, FiArrowRight } from "react-icons/fi";
 import { onboarding, errorMessage, fieldErrors } from "../api";
+import NextSteps from "../components/NextSteps";
 
 const EMPTY = {
   restaurantName: "", addressLine1: "", addressLine2: "", city: "", state: "",
@@ -88,7 +89,7 @@ const Onboarding = () => {
         <div className="rounded-2xl border border-emerald-300 bg-emerald-50 p-6 text-center">
           <FiCheckCircle className="mx-auto text-emerald-600" size={40} aria-hidden="true" />
           <h1 className="mt-3 text-xl font-bold text-navy-900">{created.restaurantName} onboarded</h1>
-          <p className="mt-1 text-sm text-navy-600">Share this Store ID with the restaurant to sign in.</p>
+          <p className="mt-1 text-sm text-navy-600">Share this Store ID with the restaurant. Next:</p>
 
           <div className="mt-5 flex items-center justify-center gap-3">
             <span className="rounded-xl bg-white px-5 py-3 font-mono text-3xl font-bold tracking-widest text-navy-900">
@@ -109,10 +110,12 @@ const Onboarding = () => {
           </div>
           {copied && <p className="mt-2 text-xs text-emerald-700">Copied.</p>}
 
+          <NextSteps storeId={created.storeId} />
+
           {created.storefrontError && (
             <p className="mx-auto mt-4 max-w-md rounded-xl border border-amber-300 bg-amber-50 p-3 text-left text-xs text-amber-800">
               The store was created, but its public website could not be provisioned
-              ({created.storefrontError}). The store works normally; provisioning can be retried.
+              ({created.storefrontError}). The store works normally.
             </p>
           )}
 

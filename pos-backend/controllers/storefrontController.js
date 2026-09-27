@@ -24,8 +24,7 @@ const { emitOrderCreated } = require("../services/socket");
 const WebsiteCheckout = require("../models/websiteCheckoutModel");
 const { resolveGateway } = require("../services/paymentGateway");
 const { localDate } = require("../services/tableBookings");
-const { availabilityAt, websiteAvailability } = require("../services/websiteAvailability");
-const { CUSTOMER_PAUSED_MESSAGE } = require("../services/accountLock");
+const { availabilityAt, websiteAvailability, publicHours } = require("../services/websiteAvailability");
 const config = require("../config/config");
 const { buildStorefrontUrl } = require("../services/websiteProvisioningService");
 
@@ -163,7 +162,7 @@ const popularItemIds = async (restaurantId, limit = 3) => {
   return rows.map((r) => String(r._id));
 };
 
-const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezone, restaurant, orderingLocked = false, preview = false }) => {
+const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezone, restaurant, preview = false }) => {
   // Hard tenant filter: only this restaurant's menus, then the PUBLISHED
   // copy of each (dishes, Display Status, visibility, schedule, dispatch),
   // minus the ones hidden on the website. One rule, from services/menuCache,
@@ -218,13 +217,9 @@ const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezon
 
   // Website Timing & Holidays: each channel's own hours, Close for Today and
   // the Holiday Calendar. See services/websiteAvailability.
+  // (A store locked for non-payment never gets here: resolveStorefront takes
+  // its whole website down.)
   const availability = websiteAvailability(settings, timezone);
-  // Locked for non-payment closes every channel, whatever the hours say.
-  if (orderingLocked && !preview) {
-    for (const channel of ["collection", "delivery", "table"]) {
-      availability[channel] = { open: false, kind: "locked", reason: CUSTOMER_PAUSED_MESSAGE, windows: [] };
-    }
-  }
   const anyOrdering = availability.collection.open || availability.delivery.open;
   const openState = preview
     ? { isOpen: true, reason: "", nextOpen: null }
@@ -313,15 +308,19 @@ const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezon
         image: o.image?.url || "",
       })),
     openingHours: settings.useBusinessHours ? settings.openingHours || [] : [],
+    // Website Timing & Holidays: what the page shows as pickup, delivery and
+    // table booking hours (the same hours checkout enforces).
+    hours: publicHours(settings, timezone),
     categories,
   };
 };
 
 /** Shared guard: resolve tenant or respond with a friendly public error. */
-const requireStorefront = async (req, next) => {
+const requireStorefront = async (req, next, { honourPaid = false } = {}) => {
   const result = await resolveStorefront({
     identifier: req.params.slug,
     host: req.headers.host,
+    honourPaid,
   });
 
   if (!result.ok) {
@@ -330,6 +329,9 @@ const requireStorefront = async (req, next) => {
       REASON_MESSAGES[result.reason] || "Store unavailable."
     );
     error.reason = result.reason;
+    // Sent to the client (globalErrorHandler), so the site can render
+    // "temporarily unavailable" for STORE_UNAVAILABLE rather than an error.
+    error.code = result.reason;
     next(error);
     return null;
   }
@@ -393,7 +395,6 @@ const buildStorefrontOrder = (finalize) => async (req, res, next) => {
     const now = new Date();
     const availability = availabilityAt(settings, channel, now, timezone);
     if (!availability.open) return next(createHttpError(409, availability.reason));
-    if (ctx.orderingLocked) return next(createHttpError(409, CUSTOMER_PAUSED_MESSAGE));
 
     if (requestedType === "pickup" && settings.ordering?.pickupEnabled === false) {
       return next(createHttpError(409, "This restaurant does not offer pickup."));
@@ -758,21 +759,93 @@ const openCheckout = async ({ res, next, ctx, order, idempotencyKey, name, phone
 const startStorefrontCheckout = buildStorefrontOrder(openCheckout);
 
 /**
+ * Place the order for a checkout the gateway has confirmed PAID.
+ *
+ * Shared by the browser's verify and the Cashfree webhook, so whichever
+ * arrives first places it and the other adopts it. Never refused because the
+ * store has since been locked or closed: the customer's money is already
+ * taken, and it is always honoured with the order.
+ *
+ * Returns { placed } (the order) or { pending: true } when another request is
+ * placing it right now.
+ */
+const placePaidCheckout = async ({ checkout, paid, restaurantId, outletId, storeId }) => {
+  // Claim it: two tabs, or a retry racing the first request, place it once.
+  const claimed = await WebsiteCheckout.findOneAndUpdate(
+    { _id: checkout._id, status: "PENDING" },
+    { $set: { status: "PLACING", transactionId: paid.cfOrderId || checkout.gatewayOrderId } },
+    { new: true },
+  );
+  if (!claimed) {
+    const now = await WebsiteCheckout.findById(checkout._id);
+    const placed = now?.orderId ? await Order.findById(now.orderId) : null;
+    return placed ? { placed, already: true } : { pending: true };
+  }
+
+  const data = { ...claimed.orderData };
+  const transactionId = claimed.transactionId;
+  const order = new Order({
+    ...data,
+    paymentMethod: "online",
+    payments: [{ method: "online", amount: claimed.amount, status: "paid", transactionId }],
+    // The merchant order id Cashfree knows this payment by: a refund needs it.
+    paymentData: { gatewayOrderId: checkout.gatewayOrderId || "", gatewayPaymentId: transactionId || "" },
+    channelMeta: { ...(data.channelMeta || {}), placedAt: new Date() },
+  });
+
+  // The same find-or-create as an unpaid order: a retry that already
+  // placed this checkout's order adopts it instead of writing a second.
+  let placed;
+  try {
+    ({ doc: placed } = await findOrCreate({
+      find: () => findPlacedOrder(restaurantId, data.idempotencyKey),
+      create: () => saveWithFreshNumber(order, restaurantId),
+    }));
+  } catch (err) {
+    await WebsiteCheckout.updateOne({ _id: claimed._id }, { $set: { status: "PENDING" } });
+    throw err;
+  }
+
+  await WebsiteCheckout.updateOne({ _id: claimed._id }, { $set: { status: "PLACED", orderId: placed._id } });
+
+  try {
+    await upsertCustomer({
+      restaurantId,
+      outletId,
+      name: placed.customerDetails?.name,
+      phone: placed.customerDetails?.phone,
+      total: claimed.amount,
+    });
+  } catch (err) {
+    console.warn("Customer upsert failed for website order:", err.message);
+  }
+
+  try {
+    emitOrderCreated({ restaurantId, outletId, storeId, order: placed });
+  } catch (err) {
+    console.warn("Realtime emit failed for website order:", err.message);
+  }
+
+  return { placed, already: false };
+};
+
+/**
  * POST /api/storefront/:slug/checkout/:checkoutId/verify
  *
  * The browser only says "I came back from the payment page". Whether the
  * order is placed is decided by asking the gateway about the order WE opened,
- * never by anything in the request.
+ * never by anything in the request. A store locked or closed since the
+ * checkout opened still gets the order (honourPaid): the money is taken.
  */
 const verifyStorefrontCheckout = async (req, res, next) => {
   try {
-    const ctx = await requireStorefront(req, next);
+    const ctx = await requireStorefront(req, next, { honourPaid: true });
     if (!ctx) return;
     const { restaurantId, outletId, storeId } = ctx;
 
     const id = String(req.params.checkoutId || "");
     if (!/^[a-f0-9]{24}$/i.test(id)) return next(createHttpError(404, "Checkout not found."));
-    let checkout = await WebsiteCheckout.findOne({ _id: id, storeId });
+    const checkout = await WebsiteCheckout.findOne({ _id: id, storeId });
     if (!checkout) return next(createHttpError(404, "Checkout not found."));
 
     const placedView = async (c) => {
@@ -809,62 +882,11 @@ const verifyStorefrontCheckout = async (req, res, next) => {
       return next(createHttpError(409, "The amount paid does not match this order. Please contact the restaurant."));
     }
 
-    // Claim it: two tabs, or a retry racing the first request, place it once.
-    const claimed = await WebsiteCheckout.findOneAndUpdate(
-      { _id: checkout._id, status: "PENDING" },
-      { $set: { status: "PLACING", transactionId: result.cfOrderId || checkout.gatewayOrderId } },
-      { new: true },
-    );
-    if (!claimed) {
-      checkout = await WebsiteCheckout.findById(checkout._id);
-      return placedView(checkout);
-    }
-
-    const data = { ...claimed.orderData };
-    const transactionId = claimed.transactionId;
-    const order = new Order({
-      ...data,
-      paymentMethod: "online",
-      payments: [{ method: "online", amount: claimed.amount, status: "paid", transactionId }],
-      // The merchant order id Cashfree knows this payment by: a refund needs it.
-      paymentData: { gatewayOrderId: checkout.gatewayOrderId || "", gatewayPaymentId: transactionId || "" },
-      channelMeta: { ...(data.channelMeta || {}), placedAt: new Date() },
-    });
-
-    // The same find-or-create as an unpaid order: a retry that already
-    // placed this checkout's order adopts it instead of writing a second.
-    let placed;
-    try {
-      ({ doc: placed } = await findOrCreate({
-        find: () => findPlacedOrder(restaurantId, data.idempotencyKey),
-        create: () => saveWithFreshNumber(order, restaurantId),
-      }));
-    } catch (err) {
-      await WebsiteCheckout.updateOne({ _id: claimed._id }, { $set: { status: "PENDING" } });
-      throw err;
-    }
-
-    await WebsiteCheckout.updateOne({ _id: claimed._id }, { $set: { status: "PLACED", orderId: placed._id } });
-
-    try {
-      await upsertCustomer({
-        restaurantId,
-        outletId,
-        name: placed.customerDetails?.name,
-        phone: placed.customerDetails?.phone,
-        total: claimed.amount,
-      });
-    } catch (err) {
-      console.warn("Customer upsert failed for website order:", err.message);
-    }
-
-    try {
-      emitOrderCreated({ restaurantId, outletId, storeId, order: placed });
-    } catch (err) {
-      console.warn("Realtime emit failed for website order:", err.message);
-    }
-
-    res.status(201).json({ success: true, message: "Order placed successfully", data: publicOrderView(placed) });
+    const out = await placePaidCheckout({ checkout, paid: result, restaurantId, outletId, storeId });
+    if (!out.placed) return next(createHttpError(409, "Your payment is being processed. Please wait a moment and try again."));
+    res
+      .status(out.already ? 200 : 201)
+      .json({ success: true, message: "Order placed successfully", data: publicOrderView(out.placed) });
   } catch (error) {
     next(error);
   }
@@ -928,6 +950,7 @@ module.exports = {
   createStorefrontOrder,
   startStorefrontCheckout,
   verifyStorefrontCheckout,
+  placePaidCheckout,
   buildStorefrontPayload,
   toPublicProduct,
   publicOrderView,

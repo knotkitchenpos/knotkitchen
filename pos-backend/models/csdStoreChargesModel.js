@@ -13,10 +13,11 @@ const mongoose = require("mongoose");
  * migration over every existing restaurant just to store the defaults.
  */
 
+// null = "use the platform amount" (CSD → Billing). A row must never copy a
+// platform price into itself, or it silently overrides every later change.
 const DEFAULTS = {
-  onlinePaidOrderCharge: 9, // ₹ per online paid order
-  gstPercent: 18,
-  monthlySubscription: 999,
+  onlinePaidOrderCharge: null,
+  orderChargeFrom: null,
 };
 
 const changeSchema = new mongoose.Schema(
@@ -36,16 +37,17 @@ const csdStoreChargesSchema = new mongoose.Schema(
   {
     storeId: { type: String, required: true, unique: true, index: true },
 
-    // Per-order commission on website orders paid online.
+    // Per-order charge on website and table-QR orders paid online, rupees.
+    // null means "use the platform amount"; 0 means "this restaurant is
+    // charged nothing", which is a real setting.
     onlinePaidOrderCharge: { type: Number, default: DEFAULTS.onlinePaidOrderCharge, min: 0 },
+    // Delays the per-order charge for this store only: it is charged for
+    // orders placed on or after max(platform effectiveFrom, orderChargeFrom).
+    // null = the platform start date alone.
+    orderChargeFrom: { type: Date, default: DEFAULTS.orderChargeFrom },
     // Per e-bill delivered. null means "use the platform amount"; 0 means
     // "this restaurant is charged nothing", which is a real setting.
     ebillCharge: { type: Number, default: null, min: 0 },
-    gstPercent: { type: Number, default: DEFAULTS.gstPercent, min: 0, max: 100 },
-
-    // Predates the catalogue and charges nothing any more; planPrices below
-    // is what a negotiated POS plan price is.
-    monthlySubscription: { type: Number, default: DEFAULTS.monthlySubscription, min: 0 },
 
     /**
      * A negotiated price for one thing in the catalogue -- "ABC pays 299 for

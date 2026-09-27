@@ -46,6 +46,9 @@ const chargeForEBill = async ({ restaurantId, messageId, refType = "", refId = n
         amountPaise: charge.amountPaise,
         gst: config.gst,
         restaurantState: restaurant?.address?.state,
+        // Always tax-exclusive: GST goes on top, like the plan lines. Only
+        // printer lines are GST-inclusive; gst.mode is not consulted.
+        mode: "exclusive",
       })
     : { totalTaxPaise: 0, totalPaise: charge.amountPaise, percent: 0 };
 

@@ -36,7 +36,8 @@ const printerSchema = new mongoose.Schema(
   {
     code: { type: String, required: true, trim: true },
     name: { type: String, required: true, trim: true },
-    // One-time, before GST.
+    // One-time, and GST-INCLUSIVE: the displayed price is what the store
+    // pays. GST is never added on top of it.
     pricePaise: { type: Number, required: true, min: 0 },
     isActive: { type: Boolean, default: true },
   },
@@ -99,6 +100,31 @@ const gstSchema = new mongoose.Schema(
   { _id: false },
 );
 
+/**
+ * The usage charges as shipped: priced, but OFF with no start date. CSD
+ * switches each one on and picks the day it starts; until then nothing is
+ * charged. services/pricing.getPlatformConfig backfills these into a config
+ * row that predates them, without switching anything on.
+ *
+ * The per-order charge applies to orders paid ONLINE through the gateway on
+ * the store's website ("WEBSITE") or a table QR ("QR") -- the Order.source
+ * values those channels write.
+ */
+const DEFAULT_ORDER_CHARGE = {
+  enabled: false,
+  amountPaise: 900,
+  effectiveFrom: null,
+  chargeableSources: ["WEBSITE", "QR"],
+  taxable: true,
+};
+
+const DEFAULT_EBILL_CHARGE = {
+  enabled: false,
+  amountPaise: 25,
+  effectiveFrom: null,
+  taxable: true,
+};
+
 const orderChargeSchema = new mongoose.Schema(
   {
     enabled: { type: Boolean, default: false },
@@ -156,9 +182,12 @@ const platformBillingConfigSchema = new mongoose.Schema(
     // one go; that top-up starts the POS plan.
     firstRechargeMinPaise: { type: Number, default: 250000, min: 0 },
     gst: { type: gstSchema, default: () => ({}) },
-    websiteOrderCharge: { type: orderChargeSchema, default: () => ({}) },
+    websiteOrderCharge: {
+      type: orderChargeSchema,
+      default: () => ({ ...DEFAULT_ORDER_CHARGE, chargeableSources: [...DEFAULT_ORDER_CHARGE.chargeableSources] }),
+    },
     // Charged per e-bill actually delivered -- never per attempt.
-    ebillCharge: { type: messageChargeSchema, default: () => ({}) },
+    ebillCharge: { type: messageChargeSchema, default: () => ({ ...DEFAULT_EBILL_CHARGE }) },
     subscriptionDays: { type: Number, default: 30, min: 1 },
 
     /**
@@ -203,5 +232,7 @@ const platformBillingConfigSchema = new mongoose.Schema(
 module.exports = {
   DEFAULT_ADDONS,
   DEFAULT_PRINTERS,
+  DEFAULT_ORDER_CHARGE,
+  DEFAULT_EBILL_CHARGE,
   PlatformBillingConfig: mongoose.model("PlatformBillingConfig", platformBillingConfigSchema),
 };

@@ -13,6 +13,7 @@ import { hasAnalytics, readConsent, startAnalytics, trackPage, trackPurchase, wr
 import LegalPage from "./LegalPage";
 import { landingRoute, legalPath } from "../lib/landingRoute";
 import { startCheckout, verifyCheckout } from "../lib/api";
+import { isStoreUnavailable } from "../lib/storeUnavailable";
 
 /** Cashfree JS v3, loaded on demand. Resolves null if it cannot load. */
 function loadCashfree() {
@@ -228,6 +229,23 @@ export default function StorePage({ slug, host }) {
   ) : null;
 
   if (loading && !bootstrap && !store) return <LoadingSkeleton />;
+  // Locked, closed or website off: a calm page with no menu or cart, not an error.
+  // A customer back from paying still sees their order confirmed.
+  if (error && !store && isStoreUnavailable(error)) {
+    if (confirmation) return confirmation;
+    if (confirming) {
+      return (
+        <Message icon="⏳" iconSize="text-5xl" title="Confirming your payment…">
+          Please don&apos;t pay again.
+        </Message>
+      );
+    }
+    return (
+      <Message icon="🍽️" iconSize="text-5xl" title={bootstrap?.name || "Temporarily unavailable"}>
+        This restaurant&apos;s online store is temporarily unavailable. Please contact the restaurant directly.
+      </Message>
+    );
+  }
   if (error && !store) {
     return (
       <Message icon="🕒" iconSize="text-5xl" title={error.status === 404 ? "Restaurant not found" : "Something went wrong"}>

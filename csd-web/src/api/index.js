@@ -17,9 +17,19 @@ const api = axios.create({
  * Turn an axios failure into a plain message for the UI.
  * The server deliberately returns generic text on auth failures; surface it
  * verbatim rather than inventing detail the server chose not to disclose.
+ * The exception: 409s whose server text is written for the restaurant are
+ * said the way CSD needs them.
  */
+const CODE_MESSAGES = {
+  SUBSCRIPTION_CANCELLED:
+    "This store is closed and its subscription cancelled. Re-open it first (Store status → Active).",
+  INSUFFICIENT_BALANCE: "The wallet does not hold that much. A debit cannot take it below ₹0.",
+  CONTACT_SUPPORT: "Only KnotKitchen can undo this cancellation; use Re-open subscription.",
+  SUBSCRIPTION_ENDING: "This store's subscription is being cancelled. Undo the cancellation first.",
+};
+
 export const errorMessage = (err, fallback = "Something went wrong.") =>
-  err?.response?.data?.message || err?.message || fallback;
+  CODE_MESSAGES[err?.response?.data?.code] || err?.response?.data?.message || err?.message || fallback;
 
 /**
  * 401 means the session is gone — expired, or the account was disabled
@@ -181,6 +191,16 @@ export const billingConfig = {
   // The tablet came back: its rental stops at the current period end (admin only).
   endTablet: (restaurantId, serial) =>
     api.post(`/billing/accounts/${restaurantId}/tablets/${serial}/end`).then((r) => r.data.data),
+  // Renewals stop at the period end, then the store is marked Closed (admin
+  // only). Both answer with the account payload, whose .subscription is fresh.
+  cancelSubscription: (restaurantId, reason) =>
+    api.post(`/billing/accounts/${restaurantId}/subscription/cancel`, { reason }).then((r) => r.data.data),
+  reinstateSubscription: (restaurantId) =>
+    api.post(`/billing/accounts/${restaurantId}/subscription/reinstate`).then((r) => r.data.data),
+  // Admin only, audited: { direction: "CREDIT" | "DEBIT", amount (rupees),
+  // reason, reference?, idempotencyKey }. Answers with the account payload.
+  adjustWallet: (restaurantId, payload) =>
+    api.post(`/billing/accounts/${restaurantId}/wallet/adjust`, payload).then((r) => r.data.data),
 };
 
 /**

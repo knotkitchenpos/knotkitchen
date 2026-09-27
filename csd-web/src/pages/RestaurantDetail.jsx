@@ -66,7 +66,8 @@ const STATUS_OPTIONS = [
   { value: "suspended", label: "Disabled (suspended)", hint: "Blocks all POS sign-ins and hides the storefront. Use for policy violations." },
   { value: "closed_temporarily", label: "Closed temporarily", hint: "Same block as suspended, but framed to staff as an operator-side pause (staff training, renovation)." },
   { value: "closed_until", label: "Closed until a date", hint: "Auto-reopens after the chosen date passes." },
-  { value: "deleted", label: "Delete permanently", hint: "DESTRUCTIVE. Removes the store, its restaurant record and the linked agreement (files included) from the onboarding portal. Cannot be undone." },
+  { value: "closed", label: "Closed (restaurant closed)", hint: "The restaurant has closed or left. The store is locked at once (the POS keeps only sign-in and Billing), its website, QR ordering and booking go offline, and renewals are cancelled. Re-opening (back to Active) restores it." },
+  { value: "deleted", label: "Delete permanently", hint: "DESTRUCTIVE. Removes the store, its data and its restaurant record. Cannot be undone. Legal records (the signed agreement, invoices and the wallet ledger) are kept." },
 ];
 
 const StoreStatusCard = ({ storeId, current, onChanged }) => {
@@ -92,28 +93,28 @@ const StoreStatusCard = ({ storeId, current, onChanged }) => {
       // Two-step confirm for deletion, and typed acknowledgement so a
       // muscle-memory Enter can't wipe a store.
       const typed = window.prompt(
-        `PERMANENT DELETE — this removes the store, the restaurant record AND the linked agreement (files included) from the onboarding portal. This cannot be undone.\n\nType the Store ID (${storeId}) to confirm:`
+        `PERMANENT DELETE — this removes the store, its data and the restaurant record. This cannot be undone. Legal records (the signed agreement, invoices and the wallet ledger) are kept.\n\nType the Store ID (${storeId}) to confirm:`
       );
       if (typed !== storeId) return setMsg(typed == null ? "" : "Store ID did not match. Nothing was deleted.");
-    } else if (!window.confirm(`Change store ${storeId} status to "${next}"? This is audited.`)) {
+    } else if (!window.confirm(
+      next === "closed"
+        ? `Close store ${storeId} now? It is locked at once (the POS keeps only sign-in and Billing), its website, QR ordering and booking go offline, and renewals are cancelled. Re-opening (back to Active) restores it. This is audited.`
+        : current === "closed" && next === "active"
+          ? `Re-open store ${storeId}? Its subscription is reinstated and the closure lock lifts. If its period has ended, the plan restarts with the store's next top-up. This is audited.`
+          : `Change store ${storeId} status to "${next}"? This is audited.`
+    )) {
       return;
     }
     setBusy(true);
     try {
-      const res = await storesApi.updateStatus(storeId, {
+      await storesApi.updateStatus(storeId, {
         status: next,
         reason: reason.trim() || undefined,
         closedUntil: requiresUntil ? new Date(until).toISOString() : undefined,
       });
       setReason("");
       setUntil("");
-      setMsg(
-        isDelete
-          ? res?.portalError
-            ? `Store deleted, but the agreement portal call failed: ${res.portalError}`
-            : "Store and agreement permanently deleted."
-          : "Status updated."
-      );
+      setMsg(isDelete ? "Store permanently deleted. Legal records are kept." : "Status updated.");
       onChanged && onChanged();
     } catch (err) {
       setMsg(errorMessage(err, "Could not update status."));
@@ -207,7 +208,15 @@ const None = () => <p className="text-sm text-navy-400">None</p>;
  * what the next renewal will take from the wallet. Amounts arrive as
  * { paise, rupees, label }; only the label is shown.
  */
-const PosPlanCard = ({ sub, canEnd, onEndTablet }) => {
+/** "Name (KnotKitchen)" / "Name (Restaurant)" from { type, name }. */
+const byLabel = (by) => {
+  if (!by) return null;
+  if (typeof by === "string") return by;
+  const who = by.type === "CSD" ? "KnotKitchen" : by.type === "RESTAURANT" ? "Restaurant" : by.type;
+  return [by.name, who && `(${who})`].filter(Boolean).join(" ") || null;
+};
+
+const PosPlanCard = ({ sub, storeClosed: storeStatusClosed, isAdmin, onEndTablet, onCancel, onReinstate, onAdjust }) => {
   const { storeId } = useParams();
   if (!sub) {
     return (
@@ -216,26 +225,65 @@ const PosPlanCard = ({ sub, canEnd, onEndTablet }) => {
       </Card>
     );
   }
-  const status = sub.exempt
-    ? "Demo store — every add-on, never billed"
-    : sub.needsActivation
-      ? `Not started — waits for a first top-up of ${sub.firstRechargeMin.label}`
-      : sub.active
-        ? "Active"
-        : sub.inGrace
-          ? `Expired — locks ${dt(sub.graceEndsAt)}`
-          : sub.status === "EXPIRED" ? "Expired" : sub.status;
+  const cancelled = sub.status === "CANCELLED";
+  // Closed from Store status (or already closed by the server): undoing the cancellation would not reopen it.
+  const storeClosed = storeStatusClosed || Boolean(sub.storeClosed);
+  const per = `/ ${sub.periodDays} days`;
+  const status = (() => {
+    if (cancelled) {
+      return `Cancelled${sub.cancelledAt ? ` ${dOnly(sub.cancelledAt)}` : ""}${storeClosed ? " · Store closed" : ""}`;
+    }
+    if (sub.cancelAt) return `Cancels on ${dOnly(sub.cancelAt)}`;
+    if (sub.exempt) return "Demo store — every add-on, never billed";
+    if (sub.needsActivation) return `Not started — waits for a first top-up of ${sub.firstRechargeMin.label}`;
+    if (sub.active) return "Active";
+    if (sub.inGrace) return `Expired — locks ${dt(sub.graceEndsAt)}`;
+    return sub.status === "EXPIRED" ? "Expired" : sub.status;
+  })();
   const addons = sub.addons.filter((a) => a.owned);
 
+  // Admin only; the server checks too.
+  const action = !isAdmin ? null : cancelled ? (
+    <button type="button" onClick={onReinstate}
+      className="text-xs font-semibold text-brand-600 hover:text-brand-700">
+      Re-open subscription
+    </button>
+  ) : sub.cancelAt && storeClosed ? (
+    <span className="text-xs font-semibold text-navy-400">Store closed — re-open it from Store status</span>
+  ) : sub.cancelAt ? (
+    <button type="button" onClick={onReinstate}
+      className="text-xs font-semibold text-brand-600 hover:text-brand-700">
+      Undo cancellation
+    </button>
+  ) : (
+    <button type="button" onClick={onCancel}
+      className="text-xs font-semibold text-red-600 hover:text-red-700">
+      Cancel subscription…
+    </button>
+  );
+
   return (
-    <Card title="POS plan">
+    <Card title="POS plan" action={action}>
       <dl>
         <Row label="Status">{status}</Row>
-        <Row label="Plan">{`${sub.basePlan.name} · ${sub.basePlan.price.label} + GST`}</Row>
+        {(sub.cancelAt || cancelled) && sub.cancelReason && <Row label="Cancel reason">{sub.cancelReason}</Row>}
+        {(sub.cancelAt || cancelled) && byLabel(sub.cancelledBy) && (
+          <Row label="Cancelled by">{byLabel(sub.cancelledBy)}</Row>
+        )}
+        {storeClosed && !cancelled && <Row label="Store">Store closed</Row>}
+        <Row label="Plan">{`${sub.basePlan.name} · ${sub.basePlan.price.label} + GST where applicable ${per}`}</Row>
         {sub.currentPeriodEnd && (
           <Row label="Period">{`${dOnly(sub.currentPeriodStart)} → ${dOnly(sub.currentPeriodEnd)}`}</Row>
         )}
-        <Row label="Wallet">{sub.balance.label}</Row>
+        <Row label="Wallet">
+          {sub.balance.label}
+          {isAdmin && (
+            <button type="button" onClick={onAdjust}
+              className="ml-3 text-xs font-semibold text-brand-600 hover:text-brand-700">
+              Adjust wallet…
+            </button>
+          )}
+        </Row>
         <Row label="Tablet credits">
           {`${sub.tablet.credits} · one per top-up of ${sub.tablet.rechargeRequired.label}`}
         </Row>
@@ -249,7 +297,7 @@ const PosPlanCard = ({ sub, canEnd, onEndTablet }) => {
             <li key={a.code} className="flex justify-between gap-3 border-b border-navy-100 py-1.5 last:border-b-0">
               <span className="text-navy-800">{a.name}</span>
               <span className="text-right text-navy-900">
-                {a.price.label} / month{a.endsAt ? ` · stops ${dOnly(a.endsAt)}` : ""}
+                {a.price.label} {per}{a.endsAt ? ` · stops ${dOnly(a.endsAt)}` : ""}
               </span>
             </li>
           ))}
@@ -266,9 +314,9 @@ const PosPlanCard = ({ sub, canEnd, onEndTablet }) => {
                 <span className="ml-1.5 text-xs text-navy-400">since {dOnly(t.rentedAt)}</span>
               </span>
               <span className="flex items-center gap-3 text-right text-navy-900">
-                {t.price.label} / month{t.endsAt ? ` · ends ${dOnly(t.endsAt)}` : ""}
+                {t.price.label} {per}{t.endsAt ? ` · ends ${dOnly(t.endsAt)}` : ""}
                 {/* The physical return: admin only, and the server checks. */}
-                {canEnd && !t.endsAt && (
+                {isAdmin && !t.endsAt && (
                   <button type="button" onClick={() => onEndTablet(t.serial)}
                     className="text-xs font-semibold text-red-600 hover:text-red-700">
                     End rental
@@ -334,7 +382,14 @@ const RestaurantDetail = () => {
   const [customerCount, setCustomerCount] = useState(null);
   const [staff, setStaff] = useState([]);
   const [activity, setActivity] = useState([]);
-  const [dialog, setDialog] = useState(null); // 'charges' | 'customers' | 'gbp' | 'website'
+  const [dialog, setDialog] = useState(null); // 'charges' | 'customers' | 'gbp' | 'website' | 'cancel' | 'adjust'
+  // One key per opened dialog, so a double submit or a retry is applied once.
+  const [adjust, setAdjust] = useState(null); // { direction, amount, reason, reference, key }
+  const [adjustErr, setAdjustErr] = useState("");
+  const [adjusting, setAdjusting] = useState(false);
+  const [cancelReason, setCancelReason] = useState("");
+  const [cancelErr, setCancelErr] = useState("");
+  const [cancelling, setCancelling] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const [openingPos, setOpeningPos] = useState(false);
   const [gbpUrl, setGbpUrl] = useState("");
@@ -393,6 +448,84 @@ const RestaurantDetail = () => {
       await load();
     } catch (err) {
       window.alert(errorMessage(err, "Could not end the rental."));
+    }
+  };
+
+  const openAdjust = () => {
+    setAdjustErr("");
+    setAdjust({ direction: "DEBIT", amount: "", reason: "", reference: "", key: crypto.randomUUID() });
+    setDialog("adjust");
+  };
+
+  const adjustWallet = async (e) => {
+    e.preventDefault();
+    const amount = Number(adjust.amount);
+    const reason = adjust.reason.trim();
+    const balance = Number(data.charges.subscription?.balance?.rupees);
+    const debit = adjust.direction === "DEBIT";
+    if (!(amount > 0)) return setAdjustErr("Enter an amount above ₹0.");
+    if (debit && Number.isFinite(balance) && amount > balance) {
+      return setAdjustErr(`A debit cannot exceed the wallet balance (${data.charges.subscription.balance.label}).`);
+    }
+    if (reason.length < 3 || reason.length > 300) return setAdjustErr("Give a reason of 3 to 300 characters.");
+    if (!window.confirm(
+      `${debit ? "DEBIT" : "CREDIT"} ₹${amount} ${debit ? "from" : "to"} ${data.header.restaurantName}'s wallet? This is audited.`
+    )) return;
+    setAdjusting(true);
+    setAdjustErr("");
+    try {
+      // Answers with the account payload; its .subscription carries the new balance.
+      const res = await billingApi.adjustWallet(data.charges.restaurantId, {
+        direction: adjust.direction,
+        amount,
+        reason,
+        reference: adjust.reference.trim() || undefined,
+        idempotencyKey: adjust.key,
+      });
+      setData((d) => ({ ...d, charges: { ...d.charges, subscription: res.subscription } }));
+      setDialog(null);
+    } catch (err) {
+      const f = fieldErrors(err);
+      setAdjustErr(f.amount || f.reason || f.reference || errorMessage(err, "Could not adjust the wallet."));
+    } finally {
+      setAdjusting(false);
+    }
+  };
+
+  const cancelSubscription = async (e) => {
+    e.preventDefault();
+    const reason = cancelReason.trim();
+    if (reason.length < 3 || reason.length > 300) {
+      setCancelErr("Give a reason of 3 to 300 characters.");
+      return;
+    }
+    setCancelling(true);
+    setCancelErr("");
+    try {
+      await billingApi.cancelSubscription(data.charges.restaurantId, reason);
+      // Reload: one with no running period ends now and closes the store.
+      await load();
+      setDialog(null);
+      setCancelReason("");
+    } catch (err) {
+      setCancelErr(fieldErrors(err).reason || errorMessage(err, "Could not cancel the subscription."));
+    } finally {
+      setCancelling(false);
+    }
+  };
+
+  const reinstate = async () => {
+    const cancelled = data.charges.subscription?.status === "CANCELLED";
+    if (!window.confirm(cancelled
+      ? "Re-open this store's POS subscription? A store it closed is re-opened too and its lock lifts. The plan restarts with the store's next top-up. This is audited."
+      : "Undo the cancellation? Renewals carry on as normal at the period end. This is audited."
+    )) return;
+    try {
+      await billingApi.reinstateSubscription(data.charges.restaurantId);
+      // Reload: reinstating also re-opens a closed store.
+      await load();
+    } catch (err) {
+      window.alert(errorMessage(err, "Could not undo the cancellation."));
     }
   };
 
@@ -710,12 +843,16 @@ const RestaurantDetail = () => {
           }>
           <dl>
             <Row label="Online paid orders">
-              {inr(charges.onlinePaidOrderCharge)} + GST / order
+              {charges.onlinePaidOrderCharge == null
+                ? "Platform rate"
+                : `${inr(charges.onlinePaidOrderCharge)} + GST where applicable / order`}
             </Row>
-            <Row label="GST">{charges.gstPercent}%</Row>
+            <Row label="Charged from">
+              {charges.orderChargeFrom ? dOnly(charges.orderChargeFrom) : "Platform start date"}
+            </Row>
             {charges.billingExempt && <Row label="Billing">Demo store — never billed</Row>}
             {(charges.planPrices || []).map((p) => (
-              <Row key={p.code} label={`Price: ${p.code}`}>{inr(p.price)} + GST</Row>
+              <Row key={p.code} label={`Price: ${p.code}`}>{inr(p.price)} + GST where applicable</Row>
             ))}
           </dl>
           {charges.usingDefaults && (
@@ -731,7 +868,15 @@ const RestaurantDetail = () => {
         </Card>
 
         {/* The POS plan as the restaurant's Billing page sees it. */}
-        <PosPlanCard sub={charges.subscription} canEnd={isAdmin} onEndTablet={endTablet} />
+        <PosPlanCard
+          sub={charges.subscription}
+          storeClosed={basic.status === "closed"}
+          isAdmin={isAdmin}
+          onEndTablet={endTablet}
+          onCancel={() => { setCancelErr(""); setDialog("cancel"); }}
+          onReinstate={reinstate}
+          onAdjust={openAdjust}
+        />
 
         <Card title="Restaurant staff">
           {staff.length === 0 ? (
@@ -843,6 +988,91 @@ const RestaurantDetail = () => {
       )}
       {dialog === "website" && (
         <WebsiteDesignDialog storeId={storeId} onClose={() => setDialog(null)} />
+      )}
+      {dialog === "cancel" && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <form onSubmit={cancelSubscription} className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <h2 className="mb-2 text-lg font-bold text-navy-900">Cancel POS subscription</h2>
+            <p className="mb-3 text-sm text-navy-600">
+              Renewals stop at the end of the current period
+              {charges.subscription?.currentPeriodEnd ? ` (${dOnly(charges.subscription.currentPeriodEnd)})` : ""}.
+              Then the subscription is cancelled and the store is marked Closed. Until then it can be
+              undone. The wallet balance is not refunded. To close the store at once, use Store status → Closed.
+            </p>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-navy-500" htmlFor="cancel-reason">
+              Reason
+            </label>
+            <textarea id="cancel-reason" rows={3} maxLength={300} value={cancelReason}
+              onChange={(e) => { setCancelReason(e.target.value); setCancelErr(""); }}
+              placeholder="e.g. Written notice from the owner, restaurant closing"
+              className={`w-full rounded-xl border px-3.5 py-2.5 text-sm outline-none ${
+                cancelErr ? "border-red-400" : "border-navy-200 focus:border-brand-500"
+              }`} />
+            {cancelErr && <p className="mt-1 text-xs text-red-600">{cancelErr}</p>}
+            <p className="mt-2 text-xs text-navy-400">3 to 300 characters. Recorded against your name.</p>
+            <div className="mt-5 flex justify-end gap-3">
+              <button type="button" onClick={() => setDialog(null)} disabled={cancelling}
+                className="rounded-xl border border-navy-300 px-4 py-2.5 text-sm font-semibold text-navy-700 hover:bg-navy-50">
+                Keep subscription
+              </button>
+              <button type="submit" disabled={cancelling}
+                className="rounded-xl bg-red-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50">
+                {cancelling ? "Cancelling…" : "Cancel subscription"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
+      {dialog === "adjust" && adjust && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <form onSubmit={adjustWallet} className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <h2 className="mb-2 text-lg font-bold text-navy-900">Adjust wallet</h2>
+            <p className="mb-3 text-sm text-navy-600">
+              Balance now: {charges.subscription?.balance?.label ?? "—"}. Debit for tablet loss or damage at
+              actual cost, erroneous charges, or to record a permitted bank refund (reference = UTR). The
+              wallet is not otherwise refundable.
+            </p>
+            <div className="mb-3 flex gap-2" role="radiogroup" aria-label="Direction">
+              {[["DEBIT", "Debit (take out)"], ["CREDIT", "Credit (put in)"]].map(([v, label]) => (
+                <button key={v} type="button" role="radio" aria-checked={adjust.direction === v}
+                  onClick={() => { setAdjust((a) => ({ ...a, direction: v })); setAdjustErr(""); }}
+                  className={`flex-1 rounded-xl border px-3 py-2 text-sm font-semibold ${
+                    adjust.direction === v
+                      ? v === "DEBIT" ? "border-red-600 bg-red-600 text-white" : "border-emerald-600 bg-emerald-600 text-white"
+                      : "border-navy-200 text-navy-700 hover:bg-navy-50"
+                  }`}>
+                  {label}
+                </button>
+              ))}
+            </div>
+            {[
+              ["amount", "Amount (₹)", { type: "number", min: "0.01", step: "0.01", required: true }],
+              ["reason", "Reason", { maxLength: 300, required: true, placeholder: "e.g. Tablet #2 screen damage, supplier invoice" }],
+              ["reference", "Reference (optional)", { maxLength: 100, placeholder: "Invoice number or bank UTR" }],
+            ].map(([key, label, props]) => (
+              <label key={key} className="mb-3 block">
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wider text-navy-500">{label}</span>
+                <input {...props} value={adjust[key]}
+                  onChange={(e) => { const v = e.target.value; setAdjust((a) => ({ ...a, [key]: v })); setAdjustErr(""); }}
+                  className="w-full rounded-xl border border-navy-200 px-3.5 py-2.5 text-sm outline-none focus:border-brand-500" />
+              </label>
+            ))}
+            {adjustErr && <p className="text-xs text-red-600">{adjustErr}</p>}
+            <p className="mt-2 text-xs text-navy-400">Reason 3 to 300 characters. Recorded against your name.</p>
+            <div className="mt-5 flex justify-end gap-3">
+              <button type="button" onClick={() => setDialog(null)} disabled={adjusting}
+                className="rounded-xl border border-navy-300 px-4 py-2.5 text-sm font-semibold text-navy-700 hover:bg-navy-50">
+                Cancel
+              </button>
+              <button type="submit" disabled={adjusting}
+                className="rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-500 disabled:opacity-50">
+                {adjusting
+                  ? "Saving…"
+                  : `${adjust.direction === "DEBIT" ? "Debit" : "Credit"}${Number(adjust.amount) > 0 ? ` ₹${Number(adjust.amount)}` : ""}`}
+              </button>
+            </div>
+          </form>
+        </div>
       )}
       {dialog === "gbp" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">

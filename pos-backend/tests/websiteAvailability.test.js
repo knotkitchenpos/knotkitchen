@@ -69,3 +69,28 @@ test("a holiday closes all three channels for every day in the range, then reope
   assert.equal(availabilityAt(s, "collection", ist("2026-09-19", "17:00"), TZ).open, true);
   assert.equal(availabilityAt(s, "collection", ist("2026-09-23", "17:00"), TZ).open, true);
 });
+
+test("the website shows each offered channel's week and the holidays still ahead", () => {
+  const { publicHours } = require("../services/websiteAvailability");
+  const s = settings({
+    ordering: { pickupEnabled: true, deliveryEnabled: true, tableBooking: { enabled: true } },
+    holidays: [
+      { startDate: new Date("2026-09-01T00:00:00Z"), endDate: new Date("2026-09-02T00:00:00Z"), reason: "Past" },
+      { startDate: new Date("2026-10-20T00:00:00Z"), endDate: new Date("2026-10-22T00:00:00Z"), reason: "Durga Puja" },
+    ],
+  });
+  s.channelHours.delivery.weekly[0] = { day: 0, isOpen: false, openTime: "12:00", closeTime: "21:00" };
+  const h = publicHours(s, TZ, ist("2026-09-14", "10:00"));
+  assert.deepEqual(h.channels.map((c) => c.key), ["collection", "delivery", "table"]);
+  assert.deepEqual(h.channels[0].week[1], { day: 1, isOpen: true, openTime: "11:00", closeTime: "22:00" });
+  assert.deepEqual(h.channels[1].week[0], { day: 0, isOpen: false, openTime: "", closeTime: "" }, "a closed day");
+  assert.deepEqual(h.holidays, [{ start: "2026-10-20", end: "2026-10-22", reason: "Durga Puja" }], "past holidays drop off");
+});
+
+test("only channels the restaurant offers are shown; no hours saved means open all day", () => {
+  const { publicHours } = require("../services/websiteAvailability");
+  const s = settings({ ordering: { pickupEnabled: true, deliveryEnabled: false, tableBooking: { enabled: false } } });
+  s.channelHours.collection = {};
+  const h = publicHours(s, TZ, ist("2026-09-14", "10:00"));
+  assert.deepEqual(h.channels, [{ key: "collection", week: null }]);
+});

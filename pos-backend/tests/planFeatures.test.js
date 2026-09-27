@@ -94,7 +94,7 @@ test("table QR ordering: diners and QR printing are refused without the add-on",
   const refused = await call(without.requireTableQrPlan, {});
   assert.equal(refused.status, 403);
   assert.equal(refused.json.code, "PLAN_UPGRADE_REQUIRED", "the code clients branch on is unchanged");
-  assert.match(refused.json.message, /QR Table Ordering is an add-on \(₹200\.00 \+ GST a month\)\. Add it in Settings → Billing & Subscription\./);
+  assert.match(refused.json.message, /QR Table Ordering is an add-on \(₹200\.00 \+ GST \/ 30 days\)\. Add it in Settings → Billing & Subscription\./);
 
   const withQr = load({ addons: [TABLE_QR] });
   assert.deepEqual(await outcome(withQr.requireTableQrPlan, {}), { status: null, passed: true });
@@ -111,7 +111,7 @@ test("without the Website add-on: no Manage Website or website hours, but the PO
     assert.deepEqual(await outcome(requireWebsitePlan, body), { status: 403, passed: false }, JSON.stringify(body));
   }
   const refused = await call(requireWebsitePlan, { enabled: true });
-  assert.match(refused.json.message, /^The website is an add-on \(₹300\.00 \+ GST a month\)\. Add it in Settings/);
+  assert.match(refused.json.message, /^The website is an add-on \(₹300\.00 \+ GST \/ 30 days\)\. Add it in Settings/);
   // Order Toggles and Rules & Charges write these through /api/website/settings.
   for (const body of [{ ordering: { autoReadyMinutes: {} } }, { couponsConfig: [] }, { freeItemConfig: [] }]) {
     assert.deepEqual(await outcome(requireWebsitePlan, body), { status: null, passed: true }, JSON.stringify(body));
@@ -171,7 +171,7 @@ test("SOURCE: the gate is on every website write, the storefront, and the POS st
     assert.match(routes, new RegExp(`"/${r}"\\)\\.put\\(isVerifiedUser, requireProtectedAction, requireWebsitePlan,`), r);
   }
   assert.match(SRC("routes", "websiteRoute.js"), /requireProtectedAction, requireWebsitePlan, updateWebsiteSettings/);
-  assert.match(SRC("services", "storefrontResolver.js"), /if \(!\(await hasWebsite\(restaurantId, settings\.storeId\)\)\) \{\s*return \{ ok: false, status: 403, reason: "WEBSITE_DISABLED"/);
+  assert.match(SRC("services", "storefrontResolver.js"), /if \(!\(await hasWebsite\(restaurantId, settings\.storeId\)\)\) return \{ reason: "WEBSITE_DISABLED" \};/);
   assert.match(SRC("services", "subscription.js"), /features: featuresFor\(\{ subscription, exempt, on \}\),/);
 });
 
@@ -181,7 +181,7 @@ test("the payment gateway comes with the Website add-on", async () => {
   assert.deepEqual(await outcome(without.requireWebsitePlan, gatewayBody), { status: 403, passed: false });
   const refused = await call(without.requirePaymentGatewayPlan, {});
   assert.equal(refused.status, 403);
-  assert.match(refused.json.message, /Online payments come with the Website add-on \(₹300\.00 \+ GST a month\)/);
+  assert.match(refused.json.message, /Online payments come with the Website add-on \(₹300\.00 \+ GST \/ 30 days\)/);
   const withSite = load({ addons: [WEBSITE] });
   assert.deepEqual(await outcome(withSite.requireWebsitePlan, gatewayBody), { status: null, passed: true }, "gateway-only save");
   assert.deepEqual(await outcome(withSite.requirePaymentGatewayPlan, {}), { status: null, passed: true });

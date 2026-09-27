@@ -35,6 +35,19 @@ const mongoose = require("mongoose");
  *
  *   ProductId                the hardware/product registration, which is
  *                            reassigned to a new store rather than destroyed.
+ *
+ *   CommercialSchedule       what the restaurant accepted and at what price,
+ *                            each add-on, tablet and printer. Contract record.
+ *
+ *   CsdAgreementLink         the signed agreement as it was when the store
+ *                            was built (sourceSnapshot: text, acceptance,
+ *                            hashes). The agreement promises its retention
+ *                            after termination, and keeping the link also
+ *                            stops the same agreement being turned into a
+ *                            second store.
+ *
+ * A permanent delete honours the restaurant's request to be forgotten, but
+ * legal and tax records are kept for the retention period.
  */
 const KEEP = new Set([
   "AuditLog",
@@ -42,7 +55,20 @@ const KEEP = new Set([
   "PlatformInvoice",
   "BusinessBalanceLedger",
   "ProductId",
+  "CommercialSchedule",
+  "CsdAgreementLink",
 ]);
+
+/**
+ * Collections that are swept EXCEPT for the rows matching this filter.
+ *
+ *   CsdStoreDocument         the signed agreement itself (and its file on
+ *                            disk, which the sweep never touches) survives;
+ *                            the rest of the KYC pack goes with the store.
+ */
+const KEEP_WHERE = {
+  CsdStoreDocument: { category: "Signed Agreement" },
+};
 
 const LEGACY_COLLECTIONS = ["outlets", "teams", "subscriptions", "invoices", "subscriptionpayments"];
 
@@ -80,8 +106,9 @@ const purgeStoreData = async ({ restaurantId, storeId }) => {
       skipped.push(name);
       continue;
     }
-    const filter = scopeFilterFor(Model, { restaurantId, storeId });
-    if (!filter) continue;
+    const scope = scopeFilterFor(Model, { restaurantId, storeId });
+    if (!scope) continue;
+    const filter = KEEP_WHERE[name] ? { $and: [scope, { $nor: [KEEP_WHERE[name]] }] } : scope;
 
     try {
       const res = await Model.deleteMany(filter);
@@ -111,4 +138,4 @@ const purgeStoreData = async ({ restaurantId, storeId }) => {
   return { deleted, skipped };
 };
 
-module.exports = { purgeStoreData, KEEP, HANDLED_BY_CALLER };
+module.exports = { purgeStoreData, KEEP, KEEP_WHERE, HANDLED_BY_CALLER };

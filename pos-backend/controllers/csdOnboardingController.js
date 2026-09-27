@@ -5,6 +5,7 @@ const { generateUniqueStoreId } = require("../services/storeIdGenerator");
 const { provisionWebsiteForStore } = require("../services/websiteProvisioningService");
 const { normalizePhone } = require("../services/otpService");
 const { csdAudit } = require("../services/csdAuditService");
+const { isValidGstin } = require("../services/gst");
 
 const RESTAURANT_TYPES = [
   "Fine Dining", "Casual Dining", "Quick Service", "Cafe", "Cloud Kitchen",
@@ -14,8 +15,8 @@ const RESTAURANT_TYPES = [
 const str = (v) => String(v ?? "").trim();
 
 // Format-only checks. These catch typos at the point of entry; they are not a
-// claim that the number is registered with GST/FSSAI.
-const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][0-9A-Z][Z][0-9A-Z]$/;
+// claim that the number is registered with GST/FSSAI. The GSTIN format lives
+// in services/gst.js, shared with the agreement mapper and the bill.
 const FSSAI_RE = /^\d{14}$/;
 const PIN_RE = /^\d{6}$/;
 
@@ -69,7 +70,7 @@ const validate = (body) => {
   // Only demand a GSTIN when the operator said the business is registered.
   if (v.gstRegistered) {
     if (!v.gstin) errors.gstin = "Enter the GSTIN, or mark the business as not GST registered.";
-    else if (!GSTIN_RE.test(v.gstin)) errors.gstin = "That doesn't look like a valid GSTIN.";
+    else if (!isValidGstin(v.gstin)) errors.gstin = "That doesn't look like a valid GSTIN.";
   }
 
   if (v.fssaiNumber && !FSSAI_RE.test(v.fssaiNumber))

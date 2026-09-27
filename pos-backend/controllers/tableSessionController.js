@@ -29,6 +29,7 @@ const {
 } = require("../constants/orderStatus");
 const { computeReadyDueAt, computeCompleteDueAt } = require("../services/autoReadyService");
 const { fireAutoEBill } = require("../services/eBillService");
+const { fireTableSessionCharge } = require("../services/orderCharge");
 
 const crypto = require("crypto");
 const { findActiveBlock, blockedError } = require("./tableBookingController");
@@ -1303,6 +1304,13 @@ const settleSessionFromGateway = async ({
     failure = err;
   });
   if (failure) throw failure;
+
+  // Paid online and settled: KnotKitchen's per-order charge is due now, ONCE
+  // for the whole bill, whatever mix of POS and QR rounds it holds. Only this
+  // gateway path fires it -- a till-recorded settle (cash, card at the counter)
+  // is never charged. chargeTableSession is idempotent, so a browser + webhook
+  // double settle cannot bill twice.
+  fireTableSessionCharge(sessionId);
   return payload;
 };
 
