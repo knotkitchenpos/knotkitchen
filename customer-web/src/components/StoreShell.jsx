@@ -5,6 +5,7 @@ import ProductCard from "./ProductCard";
 import ProductModal from "./ProductModal";
 import CartDrawer from "./CartDrawer";
 import { thumbUrl } from "../lib/thumbUrl";
+import { DAYS, holidayText, time12, todayLines, weekGroups } from "../lib/hoursText";
 
 // A logo or cover whose file is gone hides instead of showing a broken image.
 const hideBroken = (e) => {
@@ -159,6 +160,8 @@ export default function StoreShell({
           coverImage={branding.coverImage}
           contact={s.contact}
           openingHours={s.openingHours}
+          hours={s.hours}
+          availability={s.availability}
           storeState={s.store}
           ordering={s.ordering ? ordering : null}
           symbol={symbol}
@@ -332,6 +335,7 @@ export default function StoreShell({
           <Footer
             contact={s.contact}
             openingHours={s.openingHours}
+            hours={s.hours}
             legal={s.legal}
           />
         ) : null}
@@ -412,16 +416,6 @@ export default function StoreShell({
   );
 }
 
-const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const time12 = (hhmm) => {
-  const [h, m] = String(hhmm || "")
-    .split(":")
-    .map(Number);
-  if (!Number.isFinite(h)) return hhmm || "";
-  const d = new Date();
-  d.setHours(h, Number.isFinite(m) ? m : 0, 0, 0);
-  return d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
-};
 
 /** Name, what it serves, where, whether it is open, and the ways to reach it. */
 function RestaurantInfo({
@@ -430,14 +424,22 @@ function RestaurantInfo({
   coverImage,
   contact,
   openingHours,
+  hours,
+  availability,
   storeState,
   ordering,
   symbol,
 }) {
   const [copied, setCopied] = useState(false);
-  const today = (openingHours || []).find(
-    (h) => Number(h.day) === new Date().getDay(),
-  );
+  // Website Timing & Holidays when the storefront sends it; the business
+  // hours from Store Properties only for an older payload without it.
+  const channelToday = todayLines(hours, availability);
+  // Today's times, when any channel has some. Closed outside them, the times
+  // say it all; closed for a holiday or Close for Today, the reason does.
+  const hoursToday = channelToday.some((l) => l.text !== "closed today");
+  const today = channelToday.length
+    ? null
+    : (openingHours || []).find((h) => Number(h.day) === new Date().getDay());
   const address = [contact?.addressLine1, contact?.city]
     .filter(Boolean)
     .join(", ");
@@ -489,11 +491,17 @@ function RestaurantInfo({
               ) : (
                 <span className="font-medium text-red-600">
                   Closed
-                  {storeState.closedReason
+                  {storeState.closedReason && !hoursToday
                     ? ` · ${storeState.closedReason}`
                     : ""}
                 </span>
               )}
+              {hoursToday ? (
+                <span className="text-slate-500">
+                  {" "}
+                  – {channelToday.map((l) => `${l.label} ${l.text}`).join(" · ")} (Today)
+                </span>
+              ) : null}
               {today ? (
                 <span className="text-slate-500">
                   {" "}
@@ -652,7 +660,8 @@ function Notice({ tone = "info", children }) {
   );
 }
 
-function Footer({ contact, openingHours, legal }) {
+function Footer({ contact, openingHours, hours, legal }) {
+  const groups = weekGroups(hours);
   return (
     <footer className="mt-12 grid gap-6 border-t pb-10 pt-6 text-sm text-slate-600 sm:grid-cols-2">
       <div>
@@ -689,7 +698,37 @@ function Footer({ contact, openingHours, legal }) {
           </a>
         ) : null}
       </div>
-      {openingHours?.length ? (
+      {groups.length ? (
+        <div className="space-y-4">
+          {groups.map((g) => (
+            <div key={g.title}>
+              <h3 className="mb-2 font-semibold text-slate-900">{g.title}</h3>
+              {g.days ? (
+                <ul className="space-y-0.5">
+                  {g.days.map((d) => (
+                    <li key={d.day} className="flex max-w-xs justify-between gap-4">
+                      <span>{d.day}</span>
+                      <span>{d.text}</span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>Every day · open all day</p>
+              )}
+            </div>
+          ))}
+          {hours?.holidays?.length ? (
+            <div>
+              <h3 className="mb-2 font-semibold text-slate-900">Holidays</h3>
+              <ul className="space-y-0.5">
+                {hours.holidays.map((h) => (
+                  <li key={`${h.start}-${h.end}`}>Closed {holidayText(h)}</li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      ) : openingHours?.length ? (
         <div>
           <h3 className="mb-2 font-semibold text-slate-900">Opening hours</h3>
           <ul className="space-y-0.5">

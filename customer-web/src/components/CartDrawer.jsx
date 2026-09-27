@@ -148,7 +148,7 @@ export default function CartDrawer({
               const sig = cart.lineSignature(line);
               return (
                 <div key={sig} className="flex items-start gap-3">
-                  <div className="flex-1">
+                  <div className="min-w-0 flex-1 break-words">
                     <div className="font-medium">{line.name}</div>
                     {line.variant?.name ? (
                       <div className="text-xs text-slate-500">{line.variant.name}</div>

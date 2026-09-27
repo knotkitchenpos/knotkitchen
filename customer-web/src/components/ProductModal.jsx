@@ -306,20 +306,22 @@ function Group({ title, hint, hintTone, children }) {
 function Choice({ type, name, label, price, checked, atCap, onChange }) {
   return (
     <label
-      className={`flex items-center justify-between gap-3 rounded-xl border p-3 text-[13px] ${
+      className={`flex items-start justify-between gap-3 rounded-xl border p-3 text-[13px] ${
         atCap ? "opacity-45" : "cursor-pointer"
       } ${checked ? "border-brand" : "border-slate-200"}`}
     >
-      <span className="flex min-w-0 items-center gap-2.5">
+      {/* The whole name, wrapped: "Club Sandwich - Two Layer Filling (3 Slices
+          Of Bread)" cut off at "(3 Slices Of Bre…" hid what the choice was. */}
+      <span className="flex min-w-0 items-start gap-2.5">
         <input
           type={type}
           name={name}
           checked={checked}
           disabled={atCap}
           onChange={onChange}
-          className="h-4 w-4 accent-[var(--brand,#e2571e)]"
+          className="mt-px h-4 w-4 shrink-0 accent-[var(--brand,#e2571e)]"
         />
-        <span className="truncate font-bold text-slate-800">{label}</span>
+        <span className="min-w-0 break-words font-bold leading-snug text-slate-800">{label}</span>
       </span>
       {price ? (
         <span className="shrink-0 font-extrabold text-slate-900">{price}</span>

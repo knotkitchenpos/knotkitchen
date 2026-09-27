@@ -35,8 +35,8 @@ export default function OrderConfirmation({ order, symbol, prepTime, onClose }) 
 
         <div className="border-t pt-3 space-y-1 text-sm">
           {order.items.map((i, idx) => (
-            <div key={idx} className="flex justify-between">
-              <span className="truncate pr-2">
+            <div key={idx} className="flex justify-between gap-2">
+              <span className="min-w-0 break-words">
                 {i.quantity}× {i.name}
               </span>
               <span>
