@@ -27,6 +27,77 @@ const to12h = (hhmm) => {
   return `${hour}:${String(m ?? 0).padStart(2, "0")} ${period}`;
 };
 
+const DAY_SHORT = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const CHANNEL_LABEL = { collection: "Pickup", delivery: "Delivery", table: "Table booking" };
+
+/** "18 Oct" from "2026-10-18". */
+const dayMonth = (ymd) =>
+  new Date(`${ymd}T00:00:00Z`).toLocaleDateString("en-IN", { day: "numeric", month: "short", timeZone: "UTC" });
+
+/**
+ * The store's Website Timing & Holidays: one column per channel it offers,
+ * Close for Today and the holidays ahead (GET /restaurants/:id storeProperties).
+ */
+const WebsiteHours = ({ hours, closedForToday }) => {
+  const channels = hours?.channels || [];
+  if (!channels.length) return <p className="text-sm text-navy-400">No online channel is switched on.</p>;
+  const cell = (week, day) => {
+    if (!week) return "All day";
+    const d = week[day];
+    return d?.isOpen ? `${to12h(d.openTime)} – ${to12h(d.closeTime)}` : "Closed";
+  };
+  return (
+    <div className="space-y-2">
+      {closedForToday && (
+        <p className="flex items-start gap-1.5 rounded-lg bg-amber-50 p-2.5 text-xs text-amber-800">
+          <FiAlertTriangle className="mt-0.5 shrink-0" aria-hidden="true" />
+          Closed for today{closedForToday.reason ? ` — ${closedForToday.reason}` : ""}.
+        </p>
+      )}
+      <div className="overflow-x-auto">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs text-navy-500">
+              <th className="py-1 pr-3 font-semibold">Day</th>
+              {channels.map((c) => (
+                <th key={c.key} className="py-1 pr-3 font-semibold">{CHANNEL_LABEL[c.key] || c.key}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {DAY_SHORT.map((label, day) => (
+              <tr key={label} className="border-t border-navy-100">
+                <td className="py-1.5 pr-3 text-navy-700">{label}</td>
+                {channels.map((c) => {
+                  const text = cell(c.week, day);
+                  return (
+                    <td key={c.key} className={`whitespace-nowrap py-1.5 pr-3 ${text === "Closed" ? "text-navy-400" : "text-navy-900"}`}>
+                      {text}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {hours?.holidays?.length ? (
+        <div className="text-sm">
+          <p className="text-xs font-semibold text-navy-500">Upcoming holidays</p>
+          <ul>
+            {hours.holidays.map((h) => (
+              <li key={`${h.start}-${h.end}`} className="text-navy-800">
+                {h.start === h.end ? dayMonth(h.start) : `${dayMonth(h.start)} – ${dayMonth(h.end)}`}
+                {h.reason ? ` · ${h.reason}` : ""}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+    </div>
+  );
+};
+
 const Card = ({ title, action, children, className = "" }) => (
   <section className={`rounded-2xl border border-navy-200 bg-white p-3.5 ${className}`}>
     <div className="mb-2 flex items-center justify-between gap-3">
@@ -407,6 +478,21 @@ const RestaurantDetail = () => {
   }, [storeId]);
 
   useEffect(() => { load(); }, [load]);
+
+  // The store changes its own settings in the POS (timings, holidays, Close for
+  // Today) while this page may be open: coming back to the tab refetches.
+  // Data only, so a half-typed field here is not reset.
+  useEffect(() => {
+    const refresh = () => {
+      if (document.visibilityState === "visible") api.get(storeId).then(setData).catch(() => {});
+    };
+    document.addEventListener("visibilitychange", refresh);
+    window.addEventListener("focus", refresh);
+    return () => {
+      document.removeEventListener("visibilitychange", refresh);
+      window.removeEventListener("focus", refresh);
+    };
+  }, [storeId]);
 
   useEffect(() => {
     api.orderSummary(storeId, period).then(setSummary).catch(() => setSummary(null));
@@ -803,30 +889,14 @@ const RestaurantDetail = () => {
             </p>
           )}
 
-          <h3 className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wider text-navy-500">
-            Operating hours
+          <h3 className="mb-1 mt-4 text-xs font-semibold uppercase tracking-wider text-navy-500">
+            Website timing &amp; holidays
           </h3>
-          {!storeProperties.usesBusinessHours && (
-            <p className="mb-2 flex items-start gap-1.5 rounded-lg bg-amber-50 p-2.5 text-xs text-amber-800">
-              <FiAlertTriangle className="mt-0.5 shrink-0" aria-hidden="true" />
-              Business hours are not enforced for this store — it accepts orders at any time,
-              regardless of the schedule below.
-            </p>
-          )}
-          <ul className="text-sm">
-            {storeProperties.openingHours.map((h) => (
-              <li key={h.day} className="flex justify-between border-b border-navy-100 py-1.5 last:border-b-0">
-                <span className="text-navy-700">{h.label}</span>
-                <span className={h.isOpen === false ? "text-navy-400" : "text-navy-900"}>
-                  {h.isOpen === false
-                    ? "Closed"
-                    : h.openTime
-                      ? `${to12h(h.openTime)} → ${to12h(h.closeTime)}`
-                      : "Not set"}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <p className="mb-2 text-xs text-navy-400">
+            As the store set them in the POS (Settings › Website Timing &amp; Holidays). The website and
+            checkout follow these hours.
+          </p>
+          <WebsiteHours hours={storeProperties.websiteHours} closedForToday={storeProperties.closedForToday} />
         </Card>
 
         {/* ── Row 5 ─────────────────────────────────────────────────── */}

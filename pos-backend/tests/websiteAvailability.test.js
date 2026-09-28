@@ -94,3 +94,15 @@ test("only channels the restaurant offers are shown; no hours saved means open a
   const h = publicHours(s, TZ, ist("2026-09-14", "10:00"));
   assert.deepEqual(h.channels, [{ key: "collection", week: null }]);
 });
+
+test("SOURCE: the CSD store page shows Website Timing & Holidays, not the unused business hours", () => {
+  const fs = require("node:fs");
+  const path = require("node:path");
+  const ctrl = fs.readFileSync(path.join(__dirname, "..", "controllers", "csdRestaurantController.js"), "utf8");
+  assert.match(ctrl, /const channels = websiteAvailability\(settings, timezone\);/, "Open now as the storefront decides it");
+  assert.match(ctrl, /websiteHours: publicHours\(settings, timezone\),/);
+  assert.doesNotMatch(ctrl, /isStoreOpen|settings\?\.openingHours \|\|/, "the business hours nothing edits any more");
+  const page = fs.readFileSync(path.join(__dirname, "..", "..", "csd-web", "src", "pages", "RestaurantDetail.jsx"), "utf8");
+  assert.match(page, /<WebsiteHours hours=\{storeProperties\.websiteHours\}/);
+  assert.match(page, /addEventListener\("visibilitychange", refresh\)/, "refetched when the tab comes back");
+});

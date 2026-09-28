@@ -12,7 +12,7 @@ const CsdStoreCharges = require("../models/csdStoreChargesModel");
 const CsdPosSession = require("../models/csdPosSessionModel");
 const CsdJob = require("../models/csdJobModel");
 
-const { isStoreOpen } = require("../services/businessHours");
+const { websiteAvailability, publicHours } = require("../services/websiteAvailability");
 const { buildStorefrontUrl } = require("../services/websiteProvisioningService");
 const { csdAudit } = require("../services/csdAuditService");
 const config = require("../config/config");
@@ -20,7 +20,6 @@ const { formatAddress } = require("../services/address");
 const { statusFor } = require("../services/subscription");
 
 const str = (v) => String(v ?? "").trim();
-const DAYS = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
 /** Load the store + its restaurant + website settings, or 404. */
@@ -60,18 +59,16 @@ const getRestaurant = async (req, res, next) => {
     const { store, restaurant, settings } = await loadStore(storeId);
 
     const timezone = restaurant?.timezone || "Asia/Kolkata";
-    // §18: computed live from the configured hours, never a stored flag.
-    const openState = isStoreOpen(settings, timezone);
-
-    const openingHours = DAYS.map((label, day) => {
-      const row = (settings?.openingHours || []).find((h) => h.day === day);
-      return {
-        day, label,
-        isOpen: row ? row.isOpen !== false : null,
-        openTime: row?.openTime || null,
-        closeTime: row?.closeTime || null,
-      };
-    });
+    // Computed live from Website Timing & Holidays -- the hours the POS edits
+    // and the website and checkout enforce -- the same way the storefront
+    // decides "Open now". The old business hours (settings.openingHours) are
+    // no longer edited anywhere, so they only ever showed the defaults.
+    const channels = websiteAvailability(settings, timezone);
+    const anyOpen = channels.collection.open || channels.delivery.open;
+    const openState = {
+      isOpen: anyOpen,
+      reason: anyOpen ? "" : channels.collection.reason || channels.delivery.reason,
+    };
 
     // The POS plan as the POS sees it (GET /api/subscription): add-ons,
     // tablets and credits, hardware, the next renewal.
@@ -102,8 +99,11 @@ const getRestaurant = async (req, res, next) => {
           availability: {
             isOpen: !!openState.isOpen,
             reason: openState.reason || "",
-            nextOpen: openState.nextOpen || null,
+            nextOpen: null,
             timezone,
+            channels: Object.fromEntries(
+              ["collection", "delivery", "table"].map((k) => [k, { open: channels[k].open, reason: channels[k].reason }]),
+            ),
           },
         },
 
@@ -170,8 +170,9 @@ const getRestaurant = async (req, res, next) => {
             // are configured min/max delivery windows.
             hasConfiguredMinMax: false,
           },
-          usesBusinessHours: !!settings?.useBusinessHours,
-          openingHours,
+          // Website Timing & Holidays: each channel the store offers, its week
+          // (null = no hours saved, open all day) and the holidays ahead.
+          websiteHours: publicHours(settings, timezone),
           closedForToday: settings?.closedForToday?.enabled
             ? { reason: settings.closedForToday.reason || "" }
             : null,
