@@ -247,6 +247,11 @@ const openingHourSchema = new mongoose.Schema(
     openTime: { type: String, default: "09:00" }, // HH:mm
     closeDay: { type: Number, min: 0, max: 6, default: null }, // 0 = Sunday, 1 = Monday...
     closeTime: { type: String, default: "22:00" }, // HH:mm
+    // Extra slots on the same day ("Add Hour" in the POS), e.g. a lunch and a dinner shift.
+    periods: {
+      type: [new mongoose.Schema({ openTime: String, closeTime: String }, { _id: false })],
+      default: undefined,
+    },
   },
   { _id: false }
 );

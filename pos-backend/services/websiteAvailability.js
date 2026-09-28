@@ -11,7 +11,8 @@
  *                        collection  Collection Time
  *                        delivery    Delivery Time
  *                        table       Restaurant Time (table bookings)
- *                      A channel with no hours saved is open all day.
+ *                      A channel with no hours saved uses DEFAULT_HOURS, the
+ *                      times the POS Website Timing screen shows for it.
  *
  * Everything is evaluated in the restaurant's timezone; the server is UTC.
  */
@@ -66,39 +67,64 @@ const closedForTodayOn = (settings, ymd) =>
 const entryFor = (weekly, day) => (weekly || []).find((w) => Number(w.day) === day) || null;
 
 /**
+ * The hours a channel with nothing saved runs on: exactly what the POS Website
+ * Timing & Holidays screen shows for it (pos-frontend TimingsHolidaysView).
+ * Treating "nothing saved" as open all day made the website say "Pickup open
+ * all day" while the POS showed the store 4:00 PM - 11:50 PM.
+ */
+const DEFAULT_HOURS = Object.freeze({ openTime: "16:00", closeTime: "23:50" });
+const DEFAULT_WEEK = Object.freeze(
+  [0, 1, 2, 3, 4, 5, 6].map((day) => Object.freeze({ day, isOpen: true, ...DEFAULT_HOURS })),
+);
+
+/** The week a channel runs on: what the store saved, else DEFAULT_WEEK. */
+const weeklyFor = (settings, channel) => {
+  const weekly = settings?.channelHours?.[channel]?.weekly;
+  return Array.isArray(weekly) && weekly.length ? weekly : DEFAULT_WEEK;
+};
+
+/**
+ * A day's time slots: its main hours, then any extra slots added with "Add
+ * Hour" in the POS (`periods`). Empty when the day is closed.
+ */
+const slotsOf = (entry) =>
+  entry?.isOpen
+    ? [entry, ...(Array.isArray(entry.periods) ? entry.periods : [])]
+        .filter((s) => toMinutes(s?.openTime) != null && toMinutes(s?.closeTime) != null)
+        .map((s) => ({ openTime: s.openTime, closeTime: s.closeTime }))
+    : [];
+
+/** "4:00 PM – 1:50 AM": a day's hours as the store set them, never split at midnight. */
+const dayRange = (entry) =>
+  slotsOf(entry)
+    .map((s) => `${formatTime(s.openTime)} – ${formatTime(s.closeTime)}`)
+    .join(", ");
+
+/**
  * The open windows on a local date, in minutes, including the tail of the
- * previous day's overnight shift. `null` when the channel has no hours saved.
+ * previous day's overnight shift.
  */
 const windowsOn = (settings, channel, ymd) => {
-  const weekly = settings?.channelHours?.[channel]?.weekly;
-  if (!Array.isArray(weekly) || weekly.length === 0) return null;
-
+  const weekly = weeklyFor(settings, channel);
   const day = new Date(`${ymd}T00:00:00Z`).getUTCDay();
   const windows = [];
 
-  const today = entryFor(weekly, day);
-  if (today?.isOpen) {
-    const open = toMinutes(today.openTime);
-    const close = toMinutes(today.closeTime);
-    if (open != null && close != null) {
-      if (close > open) windows.push({ from: open, to: close });
-      else if (close === open) windows.push({ from: 0, to: 24 * 60 });
-      else windows.push({ from: open, to: 24 * 60 }); // runs past midnight
-    }
+  for (const slot of slotsOf(entryFor(weekly, day))) {
+    const open = toMinutes(slot.openTime);
+    const close = toMinutes(slot.closeTime);
+    if (close > open) windows.push({ from: open, to: close });
+    else if (close === open) windows.push({ from: 0, to: 24 * 60 });
+    else windows.push({ from: open, to: 24 * 60 }); // runs past midnight
   }
 
-  const yesterday = entryFor(weekly, (day + 6) % 7);
-  if (yesterday?.isOpen) {
-    const open = toMinutes(yesterday.openTime);
-    const close = toMinutes(yesterday.closeTime);
-    if (open != null && close != null && close < open) windows.push({ from: 0, to: close });
+  for (const slot of slotsOf(entryFor(weekly, (day + 6) % 7))) {
+    const open = toMinutes(slot.openTime);
+    const close = toMinutes(slot.closeTime);
+    if (close < open) windows.push({ from: 0, to: close });
   }
 
   return windows.sort((a, b) => a.from - b.from);
 };
-
-const hhmm = (minutes) =>
-  `${String(Math.floor(minutes / 60) % 24).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
 
 /**
  * @returns {{ open: boolean, kind: ""|"holiday"|"closedToday"|"hours", reason: string, windows: {from,to}[]|null }}
@@ -116,15 +142,13 @@ const availabilityAt = (settings, channel, at = new Date(), timeZone = DEFAULT_T
   }
 
   const windows = windowsOn(settings, channel, ymd);
-  if (windows === null) return { open: true, kind: "", reason: "", windows: null };
-
   if (windows.some((w) => minutes >= w.from && minutes < w.to)) {
     return { open: true, kind: "", reason: "", windows };
   }
 
-  const hoursText = windows.length
-    ? windows.map((w) => `${formatTime(hhmm(w.from))} – ${formatTime(hhmm(w.to))}`).join(", ")
-    : "";
+  // Today's hours as the store set them ("4:00 PM – 1:50 AM"), not the
+  // midnight-split windows ("12:00 AM – 1:50 AM, 4:00 PM – 12:00 AM").
+  const hoursText = dayRange(entryFor(weeklyFor(settings, channel), localClock(at, timeZone || DEFAULT_TZ).day));
   return {
     open: false,
     kind: "hours",
@@ -133,14 +157,14 @@ const availabilityAt = (settings, channel, at = new Date(), timeZone = DEFAULT_T
   };
 };
 
-/** A channel's week as saved in Website Timing, Sunday first; null when no hours are saved (open all day). */
+/** A channel's week, Sunday first: what the store saved in Website Timing, else DEFAULT_WEEK. */
 const weekOf = (settings, channel) => {
-  const weekly = settings?.channelHours?.[channel]?.weekly;
-  if (!Array.isArray(weekly) || weekly.length === 0) return null;
+  const weekly = weeklyFor(settings, channel);
   return [0, 1, 2, 3, 4, 5, 6].map((day) => {
-    const entry = entryFor(weekly, day);
-    const ok = Boolean(entry?.isOpen) && toMinutes(entry.openTime) != null && toMinutes(entry.closeTime) != null;
-    return { day, isOpen: ok, openTime: ok ? entry.openTime : "", closeTime: ok ? entry.closeTime : "" };
+    const [main, ...periods] = slotsOf(entryFor(weekly, day));
+    return main
+      ? { day, isOpen: true, openTime: main.openTime, closeTime: main.closeTime, periods }
+      : { day, isOpen: false, openTime: "", closeTime: "", periods: [] };
   });
 };
 
@@ -151,7 +175,8 @@ const weekOf = (settings, channel) => {
  * checkout allows.
  */
 const publicHours = (settings, timeZone = DEFAULT_TZ, at = new Date()) => {
-  const today = localClock(at, timeZone || DEFAULT_TZ).ymd;
+  const clock = localClock(at, timeZone || DEFAULT_TZ);
+  const today = clock.ymd;
   const ordering = settings?.ordering || {};
   const channels = [];
   if (ordering.pickupEnabled !== false) channels.push("collection");
@@ -165,10 +190,33 @@ const publicHours = (settings, timeZone = DEFAULT_TZ, at = new Date()) => {
     .filter((h) => h.start && h.end >= today)
     .sort((a, b) => (a.start < b.start ? -1 : 1))
     .slice(0, 5);
+  const weekly = settings?.channelHours || {};
+  const holidayToday = holidayOn(settings, today);
   return {
-    channels: channels.map((key) => ({ key, week: weekOf(settings, key) })),
+    // saved: false while the store has not saved this channel's hours in the
+    // POS (DEFAULT_WEEK applies).
+    channels: channels.map((key) => ({
+      key,
+      week: weekOf(settings, key),
+      saved: Array.isArray(weekly[key]?.weekly) && weekly[key].weekly.length > 0,
+    })),
+    // The store's weekday today, so "today's hours" never depend on the
+    // visitor's clock, and why everything is shut today if it is.
+    today: clock.day,
+    closedToday: holidayToday
+      ? holidayToday.reason || "Closed for a holiday"
+      : closedForTodayOn(settings, today)
+        ? settings.closedForToday.reason || "Closed for today"
+        : "",
     holidays,
   };
+};
+
+/** A channel's hours on a local date as the store set them: "4:00 PM – 1:50 AM", or "Closed". */
+const hoursOnLabel = (settings, channel, ymd) => {
+  if (holidayOn(settings, ymd) || closedForTodayOn(settings, ymd)) return "Closed";
+  const day = new Date(`${ymd}T00:00:00Z`).getUTCDay();
+  return dayRange(entryFor(weeklyFor(settings, channel), day)) || "Closed";
 };
 
 /** All three channels right now, for the storefront payload. */
@@ -182,8 +230,10 @@ module.exports = {
   availabilityAt,
   websiteAvailability,
   publicHours,
+  hoursOnLabel,
   windowsOn,
   holidayOn,
   closedForTodayOn,
   localClock,
+  DEFAULT_HOURS,
 };

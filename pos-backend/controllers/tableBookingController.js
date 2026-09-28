@@ -15,27 +15,20 @@ const {
   overlappingBlockQuery,
   formatTime,
 } = require("../services/tableBookings");
-const { availabilityAt, windowsOn } = require("../services/websiteAvailability");
+const { availabilityAt, hoursOnLabel } = require("../services/websiteAvailability");
 const { CUSTOMER_PAUSED_MESSAGE } = require("../services/accountLock");
 
 /**
- * Bookable times on a date: the booking slot grid, kept to Restaurant Time
- * for that date and to times the website is open (not a holiday, not closed
- * for today).
+ * Bookable times on a date: every slot of the day that falls in Restaurant
+ * Time (POS > Website Timing & Holidays) and when the website is open (not a
+ * holiday, not closed for today). Restaurant Time is the one source: the
+ * booking window stored with the booking settings no longer narrows it, so
+ * the hours the website shows for table booking are the hours on offer.
  */
 const openSlots = (settings, config, date, timeZone) =>
-  slotsFor(config, date, { timeZone }).filter((time) =>
+  slotsFor({ ...config, openTime: "00:00", closeTime: "23:59" }, date, { timeZone }).filter((time) =>
     availabilityAt(settings, "table", zonedInstant(date, time, timeZone), timeZone).open,
   );
-
-/** "4:00 PM – 10:00 PM" for a date, from Restaurant Time when it is set. */
-const hoursLabelFor = (settings, config, date) => {
-  const windows = windowsOn(settings, "table", date);
-  if (windows === null) return `${formatTime(config.openTime)} – ${formatTime(config.closeTime)}`;
-  if (!windows.length) return "Closed";
-  const hhmm = (m) => `${String(Math.floor(m / 60) % 24).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
-  return windows.map((w) => `${formatTime(hhmm(w.from))} – ${formatTime(hhmm(w.to))}`).join(", ");
-};
 
 // Lazy: services/socket pulls in the HTTP server.
 const getSocket = () => require("../services/socket");
@@ -124,9 +117,7 @@ const getPublicBookingSlots = async (req, res, next) => {
       data: {
         enabled: config.enabled && !websiteClosed,
         closedReason: ctx.orderingLocked ? CUSTOMER_PAUSED_MESSAGE : websiteClosed ? now.reason : "",
-        openTime: config.openTime,
-        closeTime: config.closeTime,
-        hoursLabel: hoursLabelFor(ctx.settings, config, date),
+        hoursLabel: hoursOnLabel(ctx.settings, "table", date),
         dates,
         date,
         slots: config.enabled && !websiteClosed ? openSlots(ctx.settings, config, date, timeZone) : [],
@@ -169,7 +160,7 @@ const createPublicTableBooking = async (req, res, next) => {
       throw createHttpError(400, "Please choose a date within the next 7 days.");
     }
     if (!openSlots(settings, config, date, timeZone).includes(time)) {
-      throw createHttpError(400, `Please choose an available time. Booking hours that day: ${hoursLabelFor(settings, config, date)}.`);
+      throw createHttpError(400, `Please choose an available time. Booking hours that day: ${hoursOnLabel(settings, "table", date)}.`);
     }
 
     const booking = await TableBooking.create({

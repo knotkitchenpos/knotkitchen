@@ -248,8 +248,10 @@ const WebsiteDesignDialog = ({ storeId, onClose }) => {
 
   // ---- Hours (Website Timing) ----
   const weeklyFor = (channel) => settings?.channelHours?.[channel]?.weekly || [];
+  // Unsaved days show the hours the website runs on: the POS default, 4:00 PM – 11:50 PM
+  // (DEFAULT_HOURS in pos-backend/services/websiteAvailability.js).
   const dayEntry = (channel, day) =>
-    weeklyFor(channel).find((w) => Number(w.day) === day) || { day, isOpen: true, openTime: "11:00", closeTime: "22:00" };
+    weeklyFor(channel).find((w) => Number(w.day) === day) || { day, isOpen: true, openTime: "16:00", closeTime: "23:50" };
   const setDay = (channel, day, changes) => {
     const all = DAY_NAMES.map((_, d) => ({ ...dayEntry(channel, d) }));
     all[day] = { ...all[day], ...changes };
@@ -940,23 +942,12 @@ const WebsiteDesignDialog = ({ storeId, onClose }) => {
                 checked={settings.ordering?.tableBooking?.enabled !== false}
                 onChange={(v) => patch("ordering.tableBooking.enabled", v)}
               />
+              {/* Booking times are not set here: slots follow the Restaurant Time
+                  the store saves in POS → Website Timing & Holidays. */}
+              <p className="text-xs text-[#64748B] mt-3">
+                Booking times follow the Restaurant Time set in the POS (Website Timing &amp; Holidays).
+              </p>
               <div className="grid sm:grid-cols-2 gap-4 mt-4">
-                <Field label="Booking From">
-                  <input
-                    type="time"
-                    className={inputClass}
-                    value={settings.ordering?.tableBooking?.openTime || "16:00"}
-                    onChange={(e) => patch("ordering.tableBooking.openTime", e.target.value)}
-                  />
-                </Field>
-                <Field label="Booking Until">
-                  <input
-                    type="time"
-                    className={inputClass}
-                    value={settings.ordering?.tableBooking?.closeTime || "22:00"}
-                    onChange={(e) => patch("ordering.tableBooking.closeTime", e.target.value)}
-                  />
-                </Field>
                 {[
                   ["slotMinutes", "Time Slot Every (minutes)", 30],
                   ["holdBeforeMinutes", "Block Table Before Booking (minutes)", 30],
@@ -992,7 +983,7 @@ const WebsiteDesignDialog = ({ storeId, onClose }) => {
             <p className="mb-3 text-xs text-[#64748B]">
               {HOUR_CHANNELS.find((c) => c.key === hoursChannel)?.hint} Close for Today and holidays are set by the
               restaurant in the POS under Website Timing &amp; Holidays.
-              {weeklyFor(hoursChannel).length === 0 ? " No hours saved yet: this is open all day until you save." : ""}
+              {weeklyFor(hoursChannel).length === 0 ? " No hours saved yet: the website uses the default 4:00 PM – 11:50 PM shown here until you save." : ""}
             </p>
             <div className="divide-y divide-[#E2E8F0] rounded-xl border border-[#E2E8F0]">
               {DAY_NAMES.map((dayName, day) => {
@@ -1012,6 +1003,12 @@ const WebsiteDesignDialog = ({ storeId, onClose }) => {
                     <input type="time" value={entry.closeTime} disabled={!entry.isOpen}
                       onChange={(e) => setDay(hoursChannel, day, { closeTime: e.target.value })}
                       className={`${inputClass} w-32 disabled:opacity-40`} />
+                    {/* Extra slots are added with Add Hour in the POS; saving here keeps them. */}
+                    {entry.isOpen && entry.periods?.length ? (
+                      <span className="text-xs text-[#64748B]">
+                        + {entry.periods.map((p) => `${p.openTime}–${p.closeTime}`).join(", ")} (set in POS)
+                      </span>
+                    ) : null}
                     <button type="button" onClick={() => copyToAllDays(hoursChannel, day)}
                       className="ml-auto text-xs font-semibold text-[#C2410C] hover:underline">
                       Copy to all days

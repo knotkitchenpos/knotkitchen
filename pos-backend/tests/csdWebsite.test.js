@@ -32,7 +32,15 @@ test("Hours are cleaned per channel and bad times are refused", () => {
     table: { weekly: [{ day: 0, isOpen: "yes", openTime: "16:00", closeTime: "22:00" }] },
     bogus: { weekly: [] },
   });
-  assert.deepEqual(out.collection, [{ day: 1, isOpen: true, openTime: "11:00", closeTime: "22:00" }]);
+  assert.deepEqual(out.collection, [{ day: 1, isOpen: true, openTime: "11:00", closeTime: "22:00", periods: [] }]);
+  const split = cleanChannelHours({
+    collection: { weekly: [{ day: 1, isOpen: true, openTime: "11:00", closeTime: "15:00", periods: [{ openTime: "18:00", closeTime: "23:00" }] }] },
+  });
+  assert.deepEqual(split.collection[0].periods, [{ openTime: "18:00", closeTime: "23:00" }], "Add Hour slots survive a CSD save");
+  assert.throws(
+    () => cleanChannelHours({ collection: { weekly: [{ day: 1, isOpen: true, openTime: "11:00", closeTime: "15:00", periods: [{ openTime: "6pm", closeTime: "23:00" }] }] } }),
+    /HH:MM/,
+  );
   assert.equal(out.table[0].isOpen, true);
   assert.ok(!("bogus" in out));
   assert.throws(() => cleanChannelHours({ delivery: { weekly: [{ day: 2, isOpen: true, openTime: "9am", closeTime: "22:00" }] } }), /HH:MM/);

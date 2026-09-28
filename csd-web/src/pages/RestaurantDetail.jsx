@@ -42,9 +42,10 @@ const WebsiteHours = ({ hours, closedForToday }) => {
   const channels = hours?.channels || [];
   if (!channels.length) return <p className="text-sm text-navy-400">No online channel is switched on.</p>;
   const cell = (week, day) => {
-    if (!week) return "All day";
-    const d = week[day];
-    return d?.isOpen ? `${to12h(d.openTime)} – ${to12h(d.closeTime)}` : "Closed";
+    const d = week?.[day];
+    return d?.isOpen
+      ? [d, ...(d.periods || [])].map((s) => `${to12h(s.openTime)} – ${to12h(s.closeTime)}`).join(", ")
+      : "Closed";
   };
   return (
     <div className="space-y-2">
@@ -60,7 +61,11 @@ const WebsiteHours = ({ hours, closedForToday }) => {
             <tr className="text-left text-xs text-navy-500">
               <th className="py-1 pr-3 font-semibold">Day</th>
               {channels.map((c) => (
-                <th key={c.key} className="py-1 pr-3 font-semibold">{CHANNEL_LABEL[c.key] || c.key}</th>
+                <th key={c.key} className="py-1 pr-3 font-semibold">
+                  {CHANNEL_LABEL[c.key] || c.key}
+                  {/* Never saved in the POS: the website runs on the POS default hours shown. */}
+                  {c.saved === false && <span className="block font-normal text-navy-400">default, not saved</span>}
+                </th>
               ))}
             </tr>
           </thead>

@@ -52,7 +52,14 @@ const cleanChannelHours = (input) => {
       if (!HHMM.test(String(row.openTime || "")) || !HHMM.test(String(row.closeTime || ""))) {
         throw createHttpError(400, "Opening and closing times must be HH:MM.");
       }
-      byDay.set(day, { day, isOpen: Boolean(row.isOpen), openTime: row.openTime, closeTime: row.closeTime });
+      // Keep the extra slots the store added in the POS; CSD edits only the main hours.
+      const periods = (Array.isArray(row.periods) ? row.periods : []).slice(0, 5).map((p) => {
+        if (!HHMM.test(String(p?.openTime || "")) || !HHMM.test(String(p?.closeTime || ""))) {
+          throw createHttpError(400, "Opening and closing times must be HH:MM.");
+        }
+        return { openTime: p.openTime, closeTime: p.closeTime };
+      });
+      byDay.set(day, { day, isOpen: Boolean(row.isOpen), openTime: row.openTime, closeTime: row.closeTime, periods });
     }
     out[channel] = [...byDay.values()].sort((a, b) => a.day - b.day);
   }

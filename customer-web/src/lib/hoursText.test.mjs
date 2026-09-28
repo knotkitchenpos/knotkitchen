@@ -38,6 +38,41 @@ test("today's line shows each ordering channel's own hours from Website Timing",
   assert.equal(todayLines(hours, { collection: { windows: [] }, delivery: { windows: null } })[1].text, "open all day");
 });
 
+test("REGRESSION: an overnight range reads as one range, not split at midnight", () => {
+  const hours = {
+    today: 2,
+    closedToday: "",
+    channels: [
+      { key: "collection", week: week("16:00", "23:50") },
+      { key: "delivery", week: week("16:00", "02:00") },
+    ],
+  };
+  // The live windows are split at midnight; the header must not be.
+  const availability = { delivery: { windows: [{ from: 0, to: 120 }, { from: 960, to: 1440 }] } };
+  assert.deepEqual(todayLines(hours, availability).map((l) => `${l.label} ${l.text}`), [
+    "Pickup 4:00 pm – 11:50 pm",
+    "Delivery 4:00 pm – 2:00 am",
+  ]);
+});
+
+test("a holiday or Close for Today closes every channel today; a day off closes that channel", () => {
+  const closedTue = week("11:00", "21:00");
+  closedTue[2] = { day: 2, isOpen: false, openTime: "", closeTime: "" };
+  const channels = [
+    { key: "collection", week: week("09:00", "22:00") },
+    { key: "delivery", week: closedTue },
+  ];
+  assert.deepEqual(todayLines({ today: 2, closedToday: "", channels }).map((l) => l.text), ["9:00 am – 10:00 pm", "closed today"]);
+  assert.deepEqual(todayLines({ today: 2, closedToday: "Durga Puja", channels }).map((l) => l.text), ["closed today", "closed today"]);
+});
+
+test("extra slots from Add Hour show beside the main hours, today and in the week", () => {
+  const split = week("11:00", "15:00").map((d) => ({ ...d, periods: [{ openTime: "18:00", closeTime: "23:00" }] }));
+  const hours = { today: 1, closedToday: "", channels: [{ key: "collection", week: split }] };
+  assert.equal(todayLines(hours)[0].text, "11:00 am – 3:00 pm, 6:00 pm – 11:00 pm");
+  assert.deepEqual(weekGroups(hours)[0].days[1], { day: "Mon", text: "11:00 am – 3:00 pm, 6:00 pm – 11:00 pm" });
+});
+
 test("the footer lists every channel's week, merging channels with the same hours", () => {
   const closedSunday = week("11:00", "21:00");
   closedSunday[0] = { day: 0, isOpen: false, openTime: "", closeTime: "" };

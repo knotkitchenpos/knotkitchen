@@ -26,6 +26,9 @@ const fromMinutes = (minutes) =>
 
 const range = (from, to) => `${time12(from)} – ${time12(to)}`;
 
+/** An open day's slots: "11:00 am – 3:00 pm, 6:00 pm – 11:00 pm" (extra slots come from Add Hour in the POS). */
+const dayText = (d) => [d, ...(d.periods || [])].map((s) => range(s.openTime, s.closeTime)).join(", ");
+
 /** "Pickup", "Pickup & Delivery", "Pickup, Delivery & Table booking". */
 const joinLabels = (labels) =>
   labels.length <= 1 ? labels[0] || "" : `${labels.slice(0, -1).join(", ")} & ${labels[labels.length - 1]}`;
@@ -33,25 +36,35 @@ const joinLabels = (labels) =>
 /**
  * Today's hours for the channels that take orders (table booking is a
  * booking, not an order): [{ key, label, text }].
+ *
+ * Read from today's saved day, so 4 pm – 2 am reads as one range rather than
+ * the midnight-split windows. Older payloads without `hours.today` fall back
+ * to those windows.
  */
 export const todayLines = (hours, availability) =>
   (hours?.channels || [])
     .filter((c) => c.key !== "table")
     .map((c) => {
-      const windows = availability?.[c.key]?.windows;
-      const text =
-        windows == null
-          ? "open all day"
-          : windows.length === 0
-            ? "closed today"
-            : windows.map((w) => range(fromMinutes(w.from), fromMinutes(w.to))).join(", ");
+      let text;
+      if (hours.today != null && c.week) {
+        const d = c.week[hours.today];
+        text = hours.closedToday || !d?.isOpen ? "closed today" : dayText(d);
+      } else {
+        const windows = availability?.[c.key]?.windows;
+        text =
+          windows == null
+            ? "open all day"
+            : windows.length === 0
+              ? "closed today"
+              : windows.map((w) => range(fromMinutes(w.from), fromMinutes(w.to))).join(", ");
+      }
       return { key: c.key, label: CHANNEL_LABEL[c.key] || c.key, text };
     });
 
 /**
  * One weekly list per channel, channels with the same week merged into one:
- * [{ title, days: [{ day, text }] | null }]. `days` is null for a channel with
- * no hours saved, which is open all day.
+ * [{ title, days: [{ day, text }] | null }]. A channel with no hours saved
+ * comes with the POS default week, so `days` is null only on older payloads.
  */
 export const weekGroups = (hours) => {
   const groups = [];
@@ -64,7 +77,7 @@ export const weekGroups = (hours) => {
   return groups.map((g) => ({
     title: `${joinLabels(g.labels)} hours`,
     days: g.week
-      ? g.week.map((d) => ({ day: DAYS[d.day], text: d.isOpen ? range(d.openTime, d.closeTime) : "Closed" }))
+      ? g.week.map((d) => ({ day: DAYS[d.day], text: d.isOpen ? dayText(d) : "Closed" }))
       : null,
   }));
 };

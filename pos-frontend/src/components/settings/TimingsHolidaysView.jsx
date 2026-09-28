@@ -242,6 +242,14 @@ const TimingsHolidaysView = () => {
           </div>
         </div>
 
+        {/* Nothing saved for this channel: the website already runs on the
+            times shown (pos-backend websiteAvailability DEFAULT_HOURS). */}
+        {!(channelData.weekly || []).length && (
+          <p className="rounded-lg bg-[#FFF7ED] px-3 py-2 text-[12.5px] font-semibold text-[#9A3412]">
+            Not saved yet. The website uses the times below (4:00 PM – 11:50 PM). Change and Submit to set your own.
+          </p>
+        )}
+
         {/* Same timing for all days option */}
         <div className="flex items-center gap-2 select-none text-[13px] font-bold text-[#475569]">
           <input
