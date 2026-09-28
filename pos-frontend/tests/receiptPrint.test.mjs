@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { layoutKot, layoutReceipt, layoutReport, billLines, wrap, PAPER } from "../src/utils/receiptLayout.js";
 import { itemDisplayName } from "../src/utils/orderItems.js";
-import { rasterJob, toMonochrome } from "../src/utils/escpos.js";
+import { rasterJob, toMonochrome, TEAR_FEED_DOTS } from "../src/utils/escpos.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SRC = (rel) => fs.readFileSync(path.join(__dirname, "..", rel), "utf8");
@@ -123,8 +123,21 @@ test("ESC/POS job: init, GS v 0 bands of the right size, feed and cut", () => {
   assert.deepEqual([...job.slice(0, 2)], [0x1b, 0x40]);
   assert.deepEqual([...job.slice(2, 10)], [0x1d, 0x76, 0x30, 0, 2, 0, 120, 0]);
   const bands = Math.ceil(height / 120);
-  assert.equal(job.length, 2 + bands * 8 + 2 * height + 3 + 4);
+  // A printer with a cutter: only GS V B 0, which feeds to the cutter itself.
+  assert.equal(job.length, 2 + bands * 8 + 2 * height + 4);
   assert.deepEqual([...job.slice(-4)], [0x1d, 0x56, 0x42, 0]);
+  assert.notDeepEqual([...job.slice(-7, -4)], [0x1b, 0x64, 0x04], "REGRESSION: no 4-line feed before the cut (a long blank tail)");
+  // Tear-off: a short feed past the tear bar and no cut.
+  const tear = rasterJob(bits, width, height, { cutter: false });
+  assert.deepEqual([...tear.slice(-3)], [0x1b, 0x4a, TEAR_FEED_DOTS]);
+  assert.ok(TEAR_FEED_DOTS <= 120, "about 13 mm, not 4 lines");
+});
+
+test("the paper end follows Device Configuration, else the paper size", async () => {
+  const print = SRC("src/utils/printReceipt.js");
+  assert.match(print, /encode\(bits, canvas\.width, canvas\.height, \{ cutter: hasCutter\(printer\) \}\)/);
+  assert.match(print, /typeof printer\.cutter === "boolean" \? printer\.cutter : paperFor\(printer\) === "80"/);
+  assert.match(SRC("src/components/settings/DeviceConfiguration.jsx"), /onClick=\{\(\) => patchDevice\(\{ cutter: p\.cutter \}\)\}/);
 });
 
 test("every receipt print goes through the one renderer", () => {
@@ -375,4 +388,24 @@ test("the order receipt closes itself after 6 seconds, or on a tap outside it", 
   assert.match(src, /<div onClick=\{close\} className="fixed inset-0/, "tap outside closes");
   assert.match(src, /onClick=\{\(e\) => e\.stopPropagation\(\)\}/, "a tap on the card does not");
   assert.match(src, /onPointerDown=\{\(\) => clearTimeout\(autoClose\.current\)\}/, "using the card keeps it open");
+});
+
+test("REGRESSION: receipts print in the font the POS ships, not the device's", () => {
+  // Android has no Arial/Helvetica: "sans-serif" came out in the tablet's
+  // system font (a handwriting theme on some tablets).
+  const layout = SRC("src/utils/receiptLayout.js");
+  assert.match(layout, /export const RECEIPT_FONT_NAME = "KK Receipt";/);
+  assert.match(layout, /const FAMILY = `"\$\{RECEIPT_FONT_NAME\}", Arial, Helvetica, sans-serif`;/);
+  const font = SRC("src/utils/receiptFont.js");
+  assert.match(font, /import latin from "\.\.\/assets\/fonts\/geist-latin\.woff2";/);
+  assert.match(font, /import latinExt from "\.\.\/assets\/fonts\/geist-latin-ext\.woff2";/, "latin-ext carries the rupee sign");
+  assert.match(font, /U\+20AD-20C0/, "the rupee sign's range");
+  for (const f of ["geist-latin.woff2", "geist-latin-ext.woff2"]) {
+    assert.ok(fs.statSync(path.join(__dirname, "..", "src/assets/fonts", f)).size > 10000, `${f} is shipped`);
+  }
+  // Loaded before anything is measured or drawn, on every print path.
+  const print = SRC("src/utils/printReceipt.js");
+  assert.match(print, /ensureReceiptFont\(\),\n  \]\);/, "receipts");
+  assert.match(print, /await ensureReceiptFont\(\);\n  const canvas = renderKotCanvas/, "KOTs");
+  assert.match(print, /await ensureReceiptFont\(\);\n  const canvas = paintLayout\(\(measure\) => layoutReport/, "reports");
 });

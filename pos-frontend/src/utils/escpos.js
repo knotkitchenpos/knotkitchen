@@ -63,11 +63,19 @@ export const ditherInPlace = (rgba, width, height) => {
 // Bands keep each command inside the smallest printer buffers.
 const BAND_ROWS = 120;
 
+// Calibration knob: how far a tear-off printer feeds after a print so the last
+// line clears its tear bar (8 dots = 1 mm at 203 dpi).
+export const TEAR_FEED_DOTS = 104; // 13 mm
+
 /**
- * The full print job: initialise, the image in bands, feed past the tear bar,
- * cut. Printers without a cutter ignore the cut.
+ * The full print job: initialise, the image in bands, then the paper end.
+ *
+ *   cutter  GS V B 0 only: the printer feeds to its own cutter and cuts. The
+ *           4-line feed that used to come first added ~17 mm of blank paper to
+ *           every 3-inch receipt, on top of the feed to the cutter.
+ *   tear    ESC J: feed just past the tear bar; no cut command.
  */
-export const rasterJob = (bits, width, height) => {
+export const rasterJob = (bits, width, height, { cutter = true } = {}) => {
   const rowBytes = Math.ceil(width / 8);
   const chunks = [Uint8Array.of(0x1b, 0x40)]; // ESC @
   for (let top = 0; top < height; top += BAND_ROWS) {
@@ -77,8 +85,11 @@ export const rasterJob = (bits, width, height) => {
       bits.subarray(top * rowBytes, (top + rows) * rowBytes),
     );
   }
-  chunks.push(Uint8Array.of(0x1b, 0x64, 0x04)); // ESC d 4: feed 4 lines
-  chunks.push(Uint8Array.of(0x1d, 0x56, 0x42, 0x00)); // GS V B 0: partial cut
+  chunks.push(
+    cutter
+      ? Uint8Array.of(0x1d, 0x56, 0x42, 0x00) // GS V B 0: feed to the cutter, partial cut
+      : Uint8Array.of(0x1b, 0x4a, TEAR_FEED_DOTS), // ESC J n: feed n dots
+  );
   const out = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
   let at = 0;
   for (const c of chunks) {

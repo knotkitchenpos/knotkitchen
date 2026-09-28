@@ -6,6 +6,7 @@ import { layoutKot, layoutReceipt, layoutReport, paperOf } from "./receiptLayout
 import { ditherInPlace, rasterJob, toMonochrome } from "./escpos.js";
 import { catJob } from "./catprinter.js";
 import { loadPrinterConfig, sendToPrinter } from "./printerDevice.js";
+import { ensureReceiptFont } from "./receiptFont.js";
 import { readStoreScoped, writeStoreScoped } from "./storeSession.js";
 import { BACKEND_URL } from "../config";
 
@@ -71,6 +72,7 @@ export const renderReceiptCanvas = async ({ order, store, settings, paper }) => 
   const [logo, qr] = await Promise.all([
     settings.showLogo !== false ? loadBitmap(store.logo) : null,
     settings.showQrCode ? loadBitmap(settings.qrCodeImage) : null,
+    ensureReceiptFont(),
   ]);
   return paintLayout((measure) => layoutReceipt({ order, store, settings, images: { logo, qr }, paper, measure }), { logo, qr });
 };
@@ -187,6 +189,7 @@ export const printKot = async (order, { items, round = false, auto = false, conf
   const printer = config || loadPrinterConfig();
   const { store } = context || (await loadReceiptContext());
   const paper = paperFor(printer);
+  await ensureReceiptFont();
   const canvas = renderKotCanvas({ order, items, store, paper, round });
   return sendCanvas(canvas, { printer, paper, auto });
 };
@@ -199,6 +202,7 @@ export const printKot = async (order, { items, round = false, auto = false, conf
 export const printReport = async (report, { config } = {}) => {
   const printer = config || loadPrinterConfig();
   const paper = paperFor(printer);
+  await ensureReceiptFont();
   const canvas = paintLayout((measure) => layoutReport({ ...report, paper, measure }), {});
   return sendCanvas(canvas, { printer, paper, auto: false });
 };
@@ -206,13 +210,16 @@ export const printReport = async (report, { config } = {}) => {
 /** A mini printer is always 57 mm and speaks its own language, not ESC/POS. */
 const paperFor = (printer) => (printer.protocol === "cat" || printer.paper === "58" ? "58" : "80");
 
+/** Device Configuration > Paper end; unset, a 3-inch printer is taken to have a cutter and a 2-inch one not. */
+export const hasCutter = (printer) => (typeof printer.cutter === "boolean" ? printer.cutter : paperFor(printer) === "80");
+
 /** Hand a rendered ticket to whatever this device prints with. */
 const sendCanvas = async (canvas, { printer, paper, auto }) => {
   if (printer.type === "usb" || printer.type === "bluetooth") {
     const pixels = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
     const bits = toMonochrome(pixels.data, canvas.width, canvas.height);
     const encode = printer.protocol === "cat" ? catJob : rasterJob;
-    await sendToPrinter(printer, encode(bits, canvas.width, canvas.height));
+    await sendToPrinter(printer, encode(bits, canvas.width, canvas.height, { cutter: hasCutter(printer) }));
     return { printed: true, via: printer.type };
   }
   if (auto && printer.type !== "system") return { printed: false, via: "none" };

@@ -19,6 +19,7 @@ import {
 import {
   desktopPrinting,
   printOrderReceipt,
+  hasCutter,
   receiptContextFrom,
   renderReceiptCanvas,
   SAMPLE_ORDER,
@@ -100,6 +101,11 @@ const CONNECTIONS = [
 const PAPERS = [
   { key: "80", label: "80 mm", sub: "3 inch" },
   { key: "58", label: "58 mm", sub: "2 inch" },
+];
+
+const PAPER_ENDS = [
+  { key: "cutter", cutter: true, label: "Auto-cutter", sub: "The printer cuts the receipt" },
+  { key: "tear", cutter: false, label: "Tear-off", sub: "You tear it against the edge" },
 ];
 
 const PROTOCOLS = [
@@ -449,6 +455,31 @@ const DeviceConfiguration = () => {
               ))}
             </div>
           </div>
+
+          {device.protocol !== "cat" && (
+            <div className="mt-4">
+              <p className="text-[13px] font-bold text-[#0F172A]">Paper end</p>
+              <p className="text-[11.5px] text-[#94A3B8] mt-0.5">
+                How the receipt comes off. The right choice leaves no long blank strip after each print.
+              </p>
+              <div className="mt-2 grid grid-cols-2 gap-2 max-w-[360px]">
+                {PAPER_ENDS.map((p) => (
+                  <button
+                    key={p.key}
+                    type="button"
+                    aria-pressed={hasCutter(device) === p.cutter}
+                    onClick={() => patchDevice({ cutter: p.cutter })}
+                    className={`h-[56px] rounded-xl border text-left px-3 ${
+                      hasCutter(device) === p.cutter ? "border-[#FD5302] bg-[#FFF6F0] ring-1 ring-[#FD5302]" : "border-[#E2E8F0] bg-white"
+                    }`}
+                  >
+                    <span className="block text-[14px] font-extrabold text-[#0F172A]">{p.label}</span>
+                    <span className="block text-[11.5px] text-[#64748B]">{p.sub}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="mt-4 flex flex-wrap gap-2">
             <button type="button" className={btnGhost} onClick={testPrint} disabled={!device.type}>

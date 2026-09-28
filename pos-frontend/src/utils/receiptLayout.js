@@ -23,7 +23,10 @@ export const PAPER = {
 
 export const paperOf = (size) => PAPER[String(size) === "58" ? 58 : 80];
 
-const FAMILY = "Arial, Helvetica, sans-serif";
+// The POS ships this font and loads it before drawing (utils/receiptFont.js),
+// so every device prints the same. The rest is the fallback if it could not load.
+export const RECEIPT_FONT_NAME = "KK Receipt";
+const FAMILY = `"${RECEIPT_FONT_NAME}", Arial, Helvetica, sans-serif`;
 export const font = (size, bold = false) => `${bold ? "bold " : ""}${size}px ${FAMILY}`;
 
 // The rate and price columns carry no symbol; only the totals block does.
