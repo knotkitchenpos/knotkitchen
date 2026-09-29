@@ -1,4 +1,4 @@
-/* KnotKitchen Restaurant Service Agreement v4.0. Keep AGREEMENT_VERSION in step
+/* KnotKitchen Restaurant Service Agreement v3.0. Keep AGREEMENT_VERSION in step
    with pos-backend/constants/agreement.js. This Agreement states no prices: all
    prices, charges and minimum top-ups are shown and accepted in the KnotKitchen
    application (the Commercial Schedule). The PDF renderer supports only
@@ -15,7 +15,7 @@ window.KK_PARTY = {
   supportPhone: "+91 8062181049",
 };
 
-window.AGREEMENT_TEMPLATE_V4 = `## KNOTKITCHEN RESTAURANT SERVICE AGREEMENT
+window.AGREEMENT_TEMPLATE_V3 = `## KNOTKITCHEN RESTAURANT SERVICE AGREEMENT
 
 **Agreement ID:** [AGREEMENT_ID]\\
 **Agreement Version:** [VERSION]\\
@@ -211,9 +211,22 @@ By signing this Agreement, the Restaurant's authorised signatory confirms that:
 
 ## EXECUTION
 
+### FOR KNOTKITCHEN
+
+**For [KK_PARTY_NAME]**\\
+Name and designation of authorised signatory: ____________________\\
+Signature: ____________________\\
+Date: ____________________
+
+Onboarding agent: [SALES_AGENT]
+
+### FOR THE RESTAURANT
+
 **For [RESTAURANT_NAME]** ([LEGAL_NAME], [ENTITY_TYPE])\\
 **Authorised Signatory:** [OWNER], [DESIGNATION]\\
-**Signature method:** Electronic Signature.
+**Signature method:** [SIGN_METHOD]\\
+Signature: ____________________\\
+Date: ____________________
 
 ANNEXURE_A_PLACEHOLDER
 
