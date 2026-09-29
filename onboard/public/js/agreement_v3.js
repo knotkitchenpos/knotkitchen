@@ -5,7 +5,7 @@
    #/##/### headings, ---, flat "- " bullets, **bold**, paragraphs and a trailing
    \\ line break: no tables, no nested bullets, no numbered markdown lists. */
 
-window.AGREEMENT_VERSION = "v4.0";
+window.AGREEMENT_VERSION = "v3.0";
 
 window.KK_PARTY = {
   name: "KnotKitchen",
