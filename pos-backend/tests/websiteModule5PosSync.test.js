@@ -1,5 +1,8 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
+// Saved all-day hours: these tests are about the order flow, not timings
+// (with nothing saved the website runs on the default 4:00 PM – 11:50 PM).
+const ALL_DAY = { weekly: [0, 1, 2, 3, 4, 5, 6].map((day) => ({ day, isOpen: true, openTime: "00:00", closeTime: "00:00" })) };
 
 const RESTAURANT_ID = "507f1f77bcf86cd799439011";
 const STORE_ID = "123456";
@@ -14,6 +17,7 @@ test("Website Module 5: Website order creates 'WEBSITE' source order and emits r
     slug: "royal-palace",
     enabled: true,
     ordering: { pickupEnabled: true, deliveryEnabled: true },
+    channelHours: { collection: ALL_DAY, delivery: ALL_DAY },
   };
 
   const mockStore = {
