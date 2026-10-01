@@ -155,7 +155,16 @@ const DeviceConfiguration = () => {
     // A mini printer only prints its own language on 57 mm paper; the name
     // usually gives it away, and the choice below is there when it does not.
     const cat = looksLikeCatPrinter(picked.name);
-    patchDevice({ type: kind, usb: undefined, bluetooth: undefined, ...picked, ...(cat ? { protocol: "cat", paper: "58" } : {}) });
+    // The PIN belongs to one printer: a different one starts without it.
+    const samePrinter = Boolean(picked.bluetooth?.address) && picked.bluetooth.address === device.bluetooth?.address;
+    patchDevice({
+      type: kind,
+      usb: undefined,
+      bluetooth: undefined,
+      ...picked,
+      pin: samePrinter ? device.pin : "",
+      ...(cat ? { protocol: "cat", paper: "58" } : {}),
+    });
     enqueueSnackbar(`${picked.name} connected. Choose the paper size, then Test Print.`, { variant: "success" });
   };
 
@@ -404,6 +413,25 @@ const DeviceConfiguration = () => {
                     {connecting ? "Connecting…" : isThis("bluetooth") ? "Reconnect / change printer" : "Search & connect"}
                   </button>
                   <PrinterChoices choices={choices} kind="bluetooth" onPick={pickPrinter} />
+                  {nativePrinting && isThis("bluetooth") && device.protocol !== "cat" && (
+                    <label className="block max-w-[360px]">
+                      <span className="text-[13px] font-bold text-[#0F172A]">Printer PIN</span>
+                      <span className="block text-[11.5px] text-[#94A3B8] mt-0.5">
+                        The PIN you typed when pairing (usually 0000 or 1234). If the printer forgets the pairing when
+                        switched off, the app uses it to reconnect without Android asking to pair again. A wrong PIN
+                        un-pairs the printer.
+                      </span>
+                      <input
+                        inputMode="numeric"
+                        autoComplete="off"
+                        maxLength={16}
+                        value={device.pin || ""}
+                        onChange={(e) => patchDevice({ pin: e.target.value.replace(/\D/g, "") })}
+                        placeholder="e.g. 0000"
+                        className="mt-1.5 h-[40px] w-full rounded-xl border border-[#E2E8F0] px-3 text-[14px] font-bold"
+                      />
+                    </label>
+                  )}
                 </>
               )}
             </div>

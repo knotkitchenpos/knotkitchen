@@ -267,6 +267,9 @@ export const sendToPrinter = async (config, bytes) => {
       type: config.type,
       data: toBase64(bytes),
       address: config.bluetooth?.address,
+      // Answers the printer's own pairing request when, switched off and on,
+      // it forgot the pairing: no "Bluetooth pairing request" dialog.
+      pin: config.pin || "",
       vendorId: config.usb?.vendorId,
       productId: config.usb?.productId,
       // The mini printers are BLE only, whatever the pairing says, and pace

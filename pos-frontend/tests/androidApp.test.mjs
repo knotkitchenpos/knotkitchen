@@ -80,6 +80,33 @@ test("REGRESSION: a paired printer switched off and on reconnects without asking
   assert.match(open, /Thread\.sleep\(SPP_RETRY_PAUSE_MS\)/, "and a second round after a pause");
 });
 
+test("REGRESSION: a printer that forgot its pairing and asks for the PIN is answered without Android's dialog", () => {
+  const java = JAVA("ThermalPrinterPlugin.java");
+  // Answering starts before the connection and stops when the job ends.
+  assert.ok(
+    java.indexOf('pinAnswer = answerPinRequests(remote, call.getString("pin", ""));') < java.indexOf("socket = openSpp(remote);"),
+  );
+  // Only for a printer still paired: never pairs a removed or unknown device silently.
+  assert.match(java, /if \(remote\.getBondState\(\) == BluetoothDevice\.BOND_BONDED\) \{\s*pinAnswer = answerPinRequests/);
+  assert.match(java, /finally \{\s*closeQuietly\(socket\);\s*stopAnswering\(pinAnswer\);/);
+  const answer = java.slice(java.indexOf("private static final class PinAnswer"), java.indexOf("/* --------------------------------------------------------------- usb -- */"));
+  // Only this printer, only the PIN variant, only once: a wrong PIN un-pairs it.
+  assert.match(answer, /address\.equalsIgnoreCase\(device\.getAddress\(\)\)/);
+  assert.match(answer, /variant != BluetoothDevice\.PAIRING_VARIANT_PIN \|\| !answered\.compareAndSet\(false, true\)/);
+  assert.match(answer, /if \(device\.setPin\(pin\) && isOrderedBroadcast\(\)\) abortBroadcast\(\);/);
+  // No PIN saved: nothing is answered and Android behaves as before.
+  assert.match(java, /if \(pin == null \|\| !pin\.matches\("\[0-9\]\{1,16\}"\)\) return null;/);
+  // The web hands the saved PIN over with every Bluetooth print.
+  assert.match(SRC("src/utils/printerDevice.js"), /pin: config\.pin \|\| "",/);
+  // Device Configuration: the field in the app for a Bluetooth receipt printer,
+  // digits only, kept for the same printer and cleared for another one.
+  const config = SRC("src/components/settings/DeviceConfiguration.jsx");
+  assert.match(config, /nativePrinting && isThis\("bluetooth"\) && device\.protocol !== "cat" &&/);
+  assert.match(config, /patchDevice\(\{ pin: e\.target\.value\.replace\(\/\\D\/g, ""\) \}\)/);
+  assert.match(config, /picked\.bluetooth\.address === device\.bluetooth\?\.address/);
+  assert.match(config, /pin: samePrinter \? device\.pin : "",/);
+});
+
 test("Cashfree checkout in the app can list and open UPI apps", () => {
   // Without a JS bridge named "Android" (getAppList/openApp, Cashfree's WebView
   // contract) the checkout offered only "UPI ID / QR", and operators paid by

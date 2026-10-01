@@ -27,6 +27,7 @@ import android.os.Build;
 import android.util.Base64;
 
 import androidx.core.content.ContextCompat;
+import androidx.core.content.IntentCompat;
 
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -40,6 +41,7 @@ import com.getcapacitor.annotation.PermissionCallback;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
@@ -48,6 +50,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
@@ -186,6 +189,7 @@ public class ThermalPrinterPlugin extends Plugin {
             return;
         }
         BluetoothSocket socket = null;
+        PinAnswer pinAnswer = null;
         try {
             // Discovery slows a connection down, but stopping it needs
             // BLUETOOTH_SCAN on Android 12+, which this app does not hold: it
@@ -195,6 +199,11 @@ public class ThermalPrinterPlugin extends Plugin {
                 adapter.cancelDiscovery();
             } catch (SecurityException ignored) {
                 // not scanning anyway
+            }
+            // Only a printer that is still paired: one the owner removed in
+            // Settings, or one a wrong PIN un-paired, is never paired silently.
+            if (remote.getBondState() == BluetoothDevice.BOND_BONDED) {
+                pinAnswer = answerPinRequests(remote, call.getString("pin", ""));
             }
             socket = openSpp(remote);
             OutputStream out = socket.getOutputStream();
@@ -209,9 +218,77 @@ public class ThermalPrinterPlugin extends Plugin {
             Thread.currentThread().interrupt();
             call.reject("Printing was interrupted.");
         } catch (Exception e) {
-            call.reject("Could not reach the Bluetooth printer. Check it is on and nearby. (" + e.getMessage() + ")");
+            if (pinAnswer != null && pinAnswer.answered.get() && remote.getBondState() == BluetoothDevice.BOND_NONE) {
+                call.reject("Android un-paired the printer while reconnecting. The PIN in Device Configuration may be wrong. "
+                    + "Pair it again in Settings > Bluetooth and check the PIN.");
+            } else {
+                call.reject("Could not reach the Bluetooth printer. Check it is on and nearby. (" + e.getMessage() + ")");
+            }
         } finally {
             closeQuietly(socket);
+            stopAnswering(pinAnswer);
+        }
+    }
+
+    /**
+     * Answers Android's pairing request for this printer with the PIN saved in
+     * Device Configuration, but only while this app is connecting to it.
+     *
+     * Insecure RFCOMM (openSpp) avoids the request when only Android wanted
+     * authentication. A printer that forgets its link key when switched off
+     * AND insists on authentication starts PIN pairing itself. Without this,
+     * Android showed its "Bluetooth pairing request" dialog on the next print,
+     * although the printer was still listed as paired. Only the legacy PIN
+     * variant, only the saved printer, only once per job (a wrong PIN makes
+     * Android drop the bond, so it is never tried twice), and only when the
+     * owner entered a PIN. Returns null when there is nothing to answer with.
+     * The caller registers it only for a printer that is still paired.
+     */
+    private PinAnswer answerPinRequests(BluetoothDevice device, String pin) {
+        if (pin == null || !pin.matches("[0-9]{1,16}")) return null;
+        PinAnswer receiver = new PinAnswer(device.getAddress(), pin.getBytes(StandardCharsets.US_ASCII));
+        IntentFilter filter = new IntentFilter(BluetoothDevice.ACTION_PAIRING_REQUEST);
+        // Ahead of Settings' dialog: the highest priority an app may ask for.
+        filter.setPriority(IntentFilter.SYSTEM_HIGH_PRIORITY - 1);
+        // EXPORTED: the request comes from the Bluetooth process, not this app.
+        // It is a protected broadcast, so no other app can send it.
+        ContextCompat.registerReceiver(getContext(), receiver, filter, ContextCompat.RECEIVER_EXPORTED);
+        return receiver;
+    }
+
+    private void stopAnswering(PinAnswer receiver) {
+        if (receiver == null) return;
+        try {
+            getContext().unregisterReceiver(receiver);
+        } catch (IllegalArgumentException ignored) {
+            // already gone
+        }
+    }
+
+    private static final class PinAnswer extends BroadcastReceiver {
+        final String address;
+        final byte[] pin;
+        final AtomicBoolean answered = new AtomicBoolean(false);
+
+        PinAnswer(String address, byte[] pin) {
+            this.address = address;
+            this.pin = pin;
+        }
+
+        @SuppressLint("MissingPermission")
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            BluetoothDevice device = IntentCompat.getParcelableExtra(intent, BluetoothDevice.EXTRA_DEVICE, BluetoothDevice.class);
+            int variant = intent.getIntExtra(BluetoothDevice.EXTRA_PAIRING_VARIANT, -1);
+            if (device == null || !address.equalsIgnoreCase(device.getAddress())) return;
+            if (variant != BluetoothDevice.PAIRING_VARIANT_PIN || !answered.compareAndSet(false, true)) return;
+            try {
+                // Settings' dialog never opens. Where the broadcast is not
+                // ordered it opens and closes itself once the bond is made.
+                if (device.setPin(pin) && isOrderedBroadcast()) abortBroadcast();
+            } catch (SecurityException ignored) {
+                // No "Nearby devices" permission: Android's own dialog stays.
+            }
         }
     }
 
@@ -524,7 +601,10 @@ public class ThermalPrinterPlugin extends Plugin {
 
     /* ------------------------------------------------------------- print -- */
 
-    /** { type: "bluetooth", address } or { type: "usb", vendorId, productId }, plus data: base64 ESC/POS. */
+    /**
+     * { type: "bluetooth", address, pin? } or { type: "usb", vendorId, productId },
+     * plus data: base64 ESC/POS. pin answers a printer that asks to pair again.
+     */
     @PluginMethod
     public void print(PluginCall call) {
         if ("bluetooth".equals(call.getString("type")) && needsBluetoothPermission()) {
