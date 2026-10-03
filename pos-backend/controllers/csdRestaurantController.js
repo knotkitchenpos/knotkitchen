@@ -184,8 +184,10 @@ const getRestaurant = async (req, res, next) => {
         },
 
         charges: {
-          // null = the platform amount and start date (CSD → Billing).
+          // null = the platform amount and start date (CSD → Billing). The
+          // platform fee: website orders, then table-QR orders.
           onlinePaidOrderCharge: charges.onlinePaidOrderCharge ?? null,
+          qrPaidOrderCharge: charges.qrPaidOrderCharge ?? null,
           orderChargeFrom: charges.orderChargeFrom || null,
           ebillCharge: charges.ebillCharge ?? null,
           billingExempt: Boolean(charges.billingExempt),
@@ -587,7 +589,8 @@ const updateCharges = async (req, res, next) => {
     // null (or blank) puts the store back on the platform amount; 0 is a
     // real "charged nothing".
     for (const [key, label, max] of [
-      ["onlinePaidOrderCharge", "Online paid order charge", 10000],
+      ["onlinePaidOrderCharge", "Website platform fee", 10000],
+      ["qrPaidOrderCharge", "Table QR platform fee", 10000],
       ["ebillCharge", "E-bill charge", 1000],
     ]) {
       if (b[key] === undefined) continue;
@@ -600,7 +603,7 @@ const updateCharges = async (req, res, next) => {
       else if (n > max) fieldErrors[key] = `${label} looks too large.`;
       else patch[key] = n;
     }
-    // Delays the per-order charge for this store beyond the platform start.
+    // Delays the platform fee (both sources) for this store beyond the platform start.
     if (b.orderChargeFrom !== undefined) {
       if (b.orderChargeFrom === null || b.orderChargeFrom === "") {
         patch.orderChargeFrom = null;
@@ -623,9 +626,11 @@ const updateCharges = async (req, res, next) => {
     }
 
     /**
-     * A negotiated price for one thing in the catalogue -- "ABC pays 299 for
-     * the POS plan" while the standard price stays 399. Codes: POS, an add-on,
-     * TABLET_FIRST, TABLET_EXTRA, a printer (services/pricing priceFor).
+     * A negotiated price for one thing in the catalogue -- "ABC pays 449 for
+     * the POS plan" while the standard price stays 499. Codes: POS, an add-on
+     * (per its own period: WEBSITE is per year), a device (TABLET or a
+     * printer, GST-inclusive), TABLET_FIRST / TABLET_EXTRA for rented tablets
+     * (services/pricing priceFor).
      *
      * Sent as a whole list, not a patch, so removing an entry is possible:
      * with a merge there would be no way to put a restaurant back on the
@@ -664,6 +669,7 @@ const updateCharges = async (req, res, next) => {
 
     const previous = {
       onlinePaidOrderCharge: existing.onlinePaidOrderCharge ?? null,
+      qrPaidOrderCharge: existing.qrPaidOrderCharge ?? null,
       orderChargeFrom: existing.orderChargeFrom || null,
       ebillCharge: existing.ebillCharge ?? null,
       billingExempt: Boolean(existing.billingExempt),
@@ -709,6 +715,7 @@ const updateCharges = async (req, res, next) => {
       success: true,
       data: {
         onlinePaidOrderCharge: existing.onlinePaidOrderCharge ?? null,
+        qrPaidOrderCharge: existing.qrPaidOrderCharge ?? null,
         orderChargeFrom: existing.orderChargeFrom || null,
         ebillCharge: existing.ebillCharge ?? null,
         billingExempt: Boolean(existing.billingExempt),

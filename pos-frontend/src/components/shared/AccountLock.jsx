@@ -11,7 +11,7 @@ import { clearActiveStoreId } from "../../utils/storeSession";
  *
  * The server decides (services/accountLock.js): a new store is locked until
  * its first recharge starts the POS plan; once the wallet (Business Balance)
- * has run out -- or order charges go unpaid, or the POS plan does not renew --
+ * has run out -- or platform fees go unpaid, or the POS plan does not renew --
  * the restaurant has the grace period (24 hours) to pay. Locked, every staff API except Billing answers 402
  * ACCOUNT_LOCKED. Without this the POS just showed broken screens. Now:
  *

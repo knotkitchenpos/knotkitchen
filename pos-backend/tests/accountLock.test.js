@@ -199,13 +199,15 @@ test("SOURCE: a demo store is never charged", () => {
     "neither the per-order nor the per-e-bill charge");
   const sub = SRC("services/subscription.js");
   // Nothing can be bought or quoted...
-  for (const fn of ["const quote = async", "const addAddon = async", "const rentTablet = async", "const preparePrinterPayment = async"]) {
+  for (const fn of ["const quote = async", "const addAddon = async", "const preparePrinterPayment = async"]) {
     const body = sub.slice(sub.indexOf(fn), sub.indexOf("\n};", sub.indexOf(fn)));
     assert.match(body, /if \(ctx\.exempt\) throw new SubscriptionError\(DEMO_STORE, 409\);/, fn);
   }
   // ...nothing activates or renews. (Behaviour: tests/subscriptionFlow.test.js.)
   assert.match(sub, /if \(exempt \|\| subscription\.activatedAt \|\| subscription\.status === "CANCELLED"\) return null;/);
   assert.match(sub, /if \(override\?\.billingExempt\) return \{ renewed: false \};/);
+  const own = sub.slice(sub.indexOf("const renewAddons"), sub.indexOf("\n};", sub.indexOf("const renewAddons")));
+  assert.match(own, /if \(override\?\.billingExempt\) return result;/, "nor renews a yearly add-on");
 });
 
 test("SOURCE: a lock is only applied after the configured grace period", () => {
@@ -279,7 +281,7 @@ test("SOURCE: paying re-evaluates the lock immediately", () => {
   const sub = SRC("services/subscription.js");
   // (Printers are paid through the gateway and never move the wallet, so they
   // have no lock to re-check: see the assertion after this loop.)
-  for (const [fn, n] of [["const activate", 1], ["const addAddon", 1], ["const rentTablet", 1], ["const renewOne", 2]]) {
+  for (const [fn, n] of [["const activate", 1], ["const addAddon", 1], ["const renewOne", 2], ["const renewAddons", 1]]) {
     const body = sub.slice(sub.indexOf(fn), sub.indexOf("\n};", sub.indexOf(fn)));
     assert.equal((body.match(/await settleLock\(restaurantId\)/g) || []).length, n, fn);
   }

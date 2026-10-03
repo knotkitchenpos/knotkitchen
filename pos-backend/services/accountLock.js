@@ -147,10 +147,10 @@ const assessAccount = async (restaurantId, on = new Date()) => {
     const dueSince = new Date(dues.oldestAt).getTime();
     if (now - dueSince > graceMs) {
       reasons.push(
-        `${dues.count} unpaid order charge(s) totalling ${formatINR(dues.totalPaise)}.`,
+        `${dues.count} unpaid platform fee(s) totalling ${formatINR(dues.totalPaise)}.`,
       );
     } else {
-      deadlines.push({ at: dueSince + graceMs, why: `${dues.count} order charge(s) are unpaid.` });
+      deadlines.push({ at: dueSince + graceMs, why: `${dues.count} unpaid platform fee(s).` });
     }
   }
 

@@ -7,8 +7,8 @@
  * Two layers, and only two:
  *
  *   PlatformBillingConfig   the platform-wide catalogue (the POS plan,
- *                           add-ons, tablets, printers, GST, the per-order
- *                           charge). A singleton.
+ *                           add-ons, devices, legacy tablet rentals, GST, the
+ *                           usage charges). A singleton.
  *   CsdStoreCharges         what THIS restaurant was negotiated. Already
  *                           existed, already audited, already has a CSD
  *                           dialog behind it -- so the price overrides were
@@ -26,7 +26,10 @@ const {
   PlatformBillingConfig,
   DEFAULT_ADDONS,
   DEFAULT_PRINTERS,
+  DEFAULT_PLAN_PAISE,
+  CATALOG_VERSION,
   DEFAULT_ORDER_CHARGE,
+  DEFAULT_QR_ORDER_CHARGE,
   DEFAULT_EBILL_CHARGE,
 } = require("../models/platformBillingModel");
 const CsdStoreCharges = require("../models/csdStoreChargesModel");
@@ -50,7 +53,21 @@ const getPlatformConfig = async () => {
       seeded = true;
     }
     if (backfillCharges(existing)) seeded = true;
-    if (seeded) await existing.save();
+    if (!(Number(existing.catalogVersion) >= CATALOG_VERSION)) {
+      await upgradeCatalog(existing);
+      // Saved only if nobody else saved this row since it was read: two
+      // servers upgrading at once write it once, and the other re-reads.
+      existing.increment();
+      seeded = true;
+    }
+    if (seeded) {
+      try {
+        await existing.save();
+      } catch (err) {
+        if (err?.name === "VersionError") return getPlatformConfig();
+        throw err;
+      }
+    }
     // FROM_EXPIRY is retired (renewal always starts from the payment). A row
     // that still holds it reads as FROM_PAYMENT; nothing is written for it.
     if (existing.renewalPolicy === "FROM_EXPIRY") existing.renewalPolicy = "FROM_PAYMENT";
@@ -69,18 +86,112 @@ const getPlatformConfig = async () => {
 const backfillCharges = (config) => {
   const unset = (c) => !c || (!c.enabled && !c.effectiveFrom && !Number(c.amountPaise));
   let changed = false;
-  if (unset(config.websiteOrderCharge)) {
-    config.set("websiteOrderCharge.amountPaise", DEFAULT_ORDER_CHARGE.amountPaise);
-    if (!config.websiteOrderCharge.chargeableSources?.length) {
-      config.set("websiteOrderCharge.chargeableSources", [...DEFAULT_ORDER_CHARGE.chargeableSources]);
-    }
-    changed = true;
-  }
-  if (unset(config.ebillCharge)) {
-    config.set("ebillCharge.amountPaise", DEFAULT_EBILL_CHARGE.amountPaise);
+  for (const [key, shipped] of [
+    ["websiteOrderCharge", DEFAULT_ORDER_CHARGE],
+    ["qrOrderCharge", DEFAULT_QR_ORDER_CHARGE],
+    ["ebillCharge", DEFAULT_EBILL_CHARGE],
+  ]) {
+    if (!unset(config[key])) continue;
+    config.set(`${key}.amountPaise`, shipped.amountPaise);
     changed = true;
   }
   return changed;
+};
+
+/**
+ * What catalogVersion 1 shipped. A stored value still equal to one of these
+ * was never changed in CSD, so the upgrade moves it to today's catalogue;
+ * anything CSD did change is left exactly as it is.
+ */
+const V1 = { planPaise: 39900, websitePaise: 30000, printer2inPaise: 190000, printer3inPaise: 425000, orderChargePaise: 900 };
+const NEW_DEVICES = ["TABLET", "PRINTER_3IN_LAN", "PRINTER_3IN_USB"];
+
+/**
+ * Move a stored config row from catalogVersion 1 to 2 (the October 2026
+ * prices), once. Stands in for a migration the owner would otherwise have to
+ * run by hand.
+ *
+ * The one order charge for website + table QR becomes one charge per source:
+ * the website's keeps its switch and date only if WEBSITE was one of its
+ * sources, and the new table-QR one copies them only if QR was. Store rows
+ * still holding the ₹9 CsdStoreCharges once copied into every row (and nobody
+ * edited) go back to the platform rate -- migration 011's reset.
+ *
+ * Mutates `config`; the caller saves it.
+ */
+const upgradeCatalog = async (config) => {
+  if (Number(config.basePlan?.pricePaise) === V1.planPaise) config.set("basePlan.pricePaise", DEFAULT_PLAN_PAISE);
+
+  const site = (config.addons || []).find((a) => a.code === "WEBSITE");
+  if (site && Number(site.pricePaise) === V1.websitePaise) {
+    const shipped = DEFAULT_ADDONS.find((a) => a.code === "WEBSITE");
+    site.pricePaise = shipped.pricePaise;
+    site.periodDays = shipped.periodDays;
+    await yearlyWebsitePrices();
+  }
+  for (const [code, oldPaise] of [["PRINTER_2IN", V1.printer2inPaise], ["PRINTER_3IN", V1.printer3inPaise]]) {
+    const printer = (config.printers || []).find((p) => p.code === code);
+    if (!printer || Number(printer.pricePaise) !== oldPaise) continue;
+    const shipped = DEFAULT_PRINTERS.find((p) => p.code === code);
+    printer.pricePaise = shipped.pricePaise;
+    printer.name = shipped.name;
+  }
+  // A code is unique across both lists (CSD may have given one to an add-on).
+  const codes = new Set([...(config.addons || []), ...(config.printers || [])].map((x) => x.code));
+  for (const code of NEW_DEVICES) {
+    if (codes.has(code)) continue;
+    const device = { ...DEFAULT_PRINTERS.find((p) => p.code === code) };
+    // The tablet heads the list, as on the price list; printers go after.
+    if (code === "TABLET") config.printers.unshift(device);
+    else config.printers.push(device);
+  }
+
+  const old = config.websiteOrderCharge || {};
+  const sources = config.get("websiteOrderCharge.chargeableSources", null, { strict: false }) || [];
+  const from = (source) =>
+    sources.includes(source)
+      ? { enabled: Boolean(old.enabled), effectiveFrom: old.effectiveFrom || null }
+      : { enabled: false, effectiveFrom: null };
+  const taxable = old.taxable !== false;
+  const amountPaise = Number(old.amountPaise) === V1.orderChargePaise ? DEFAULT_ORDER_CHARGE.amountPaise : Number(old.amountPaise) || 0;
+  const qr = { ...from("QR"), amountPaise: DEFAULT_QR_ORDER_CHARGE.amountPaise, taxable };
+  // Assigned whole, so the retired chargeableSources goes with the old value.
+  config.websiteOrderCharge = { ...from("WEBSITE"), amountPaise, taxable };
+  config.qrOrderCharge = qr;
+  config.catalogVersion = CATALOG_VERSION;
+
+  await CsdStoreCharges.updateMany(
+    { onlinePaidOrderCharge: 9, history: { $not: { $elemMatch: { field: "onlinePaidOrderCharge" } } } },
+    { $set: { onlinePaidOrderCharge: null } },
+  );
+};
+
+/**
+ * A store's negotiated Website price was per 30 days; once the catalogue
+ * Website is sold per year it would otherwise buy a whole year. Each one
+ * becomes 12 times itself, with a history line so CSD can see why. That line
+ * marks the row done, and the write is guarded on the row's updatedAt, so two
+ * servers upgrading at once (or a CSD edit in between) never multiply a price
+ * twice.
+ */
+const YEARLY_WEBSITE = "Website now yearly (x12)";
+const yearlyWebsitePrices = async () => {
+  const isSite = (p) => String(p.code).toUpperCase() === "WEBSITE";
+  const list = (prices) => prices.map((p) => `${p.code}:${p.price}`).join(", ");
+  const rows = await CsdStoreCharges.find({
+    "planPrices.code": /^website$/i,
+    history: { $not: { $elemMatch: { field: "planPrices", byName: YEARLY_WEBSITE } } },
+  }).lean();
+  for (const row of rows) {
+    const to = row.planPrices.map((p) => (isSite(p) ? { ...p, price: p.price * 12 } : p));
+    await CsdStoreCharges.updateOne(
+      { _id: row._id, updatedAt: row.updatedAt ?? null },
+      {
+        $set: { planPrices: to },
+        $push: { history: { field: "planPrices", from: list(row.planPrices), to: list(to), byName: YEARLY_WEBSITE } },
+      },
+    );
+  }
 };
 
 /**
@@ -105,8 +216,9 @@ const getOverride = async (restaurantId, { storeId } = {}) => {
 
 /**
  * The catalogue price of one code, in paise, or null when no such thing is
- * sold. Codes: the POS plan ("POS"), an add-on, TABLET_FIRST, TABLET_EXTRA,
- * a printer.
+ * sold. Codes: the POS plan ("POS"), an add-on (per its own period when it
+ * has one), a device (TABLET or a printer, GST-inclusive), and TABLET_FIRST /
+ * TABLET_EXTRA for tablets rented before tablets were sold.
  */
 const catalogPricePaise = (config, code) => {
   if (code === (config.basePlan?.code || "POS")) return Number(config.basePlan?.pricePaise) || 0;
@@ -131,8 +243,16 @@ const priceFor = async ({ restaurantId, code, config, override } = {}) => {
   return row ? toPaise(row.price) : catalog;
 };
 
+// Each order source with a platform fee: its platform charge, and the
+// per-store override (rupees) that replaces the amount for one store.
+const ORDER_CHARGES = {
+  WEBSITE: ["websiteOrderCharge", "onlinePaidOrderCharge"],
+  QR: ["qrOrderCharge", "qrPaidOrderCharge"],
+};
+
 /**
- * The per-order charge for a restaurant, for an order placed `on` that day.
+ * The platform fee on an order from `source` ("WEBSITE" or "QR") at a
+ * restaurant, for an order placed `on` that day. Any other source has none.
  *
  * `enabled` is answered independently of the amount, because a restaurant set
  * to 0 is still "enabled and charged nothing" -- distinct from the charge
@@ -140,11 +260,15 @@ const priceFor = async ({ restaurantId, code, config, override } = {}) => {
  *
  * Two start dates, both chosen in CSD: the platform's effectiveFrom, and an
  * optional per-store orderChargeFrom that can only delay it further for that
- * store. Without a platform date nothing is charged anywhere.
+ * store (both sources). Without a platform date nothing is charged anywhere.
  */
-const resolveOrderCharge = async ({ restaurantId, on = new Date(), config, override } = {}) => {
+const resolveOrderCharge = async ({ restaurantId, source, on = new Date(), config, override } = {}) => {
+  const [chargeKey, overrideKey] = ORDER_CHARGES[source] || [];
+  if (!chargeKey) {
+    return { enabled: false, amountPaise: 0, taxable: false, source: "platform", reason: `Order source ${source} is not chargeable.` };
+  }
   const cfg = config || (await getPlatformConfig());
-  const charge = cfg.websiteOrderCharge || {};
+  const charge = cfg[chargeKey] || {};
   const ovr = override !== undefined ? override : await getOverride(restaurantId);
 
   const storeFrom = ovr?.orderChargeFrom ? new Date(ovr.orderChargeFrom) : null;
@@ -156,11 +280,8 @@ const resolveOrderCharge = async ({ restaurantId, on = new Date(), config, overr
   // A stored 0 means "this restaurant is not charged per order" and is a real
   // setting; only null (the default) or an absent field falls through to the
   // platform amount.
-  const hasCustom =
-    ovr && ovr.onlinePaidOrderCharge !== null && ovr.onlinePaidOrderCharge !== undefined;
-  const amountPaise = hasCustom
-    ? toPaise(ovr.onlinePaidOrderCharge)
-    : Number(charge.amountPaise || 0);
+  const hasCustom = ovr && ovr[overrideKey] !== null && ovr[overrideKey] !== undefined;
+  const amountPaise = hasCustom ? toPaise(ovr[overrideKey]) : Number(charge.amountPaise || 0);
 
   return {
     // A demo store (CSD) is never charged per order.
@@ -169,7 +290,6 @@ const resolveOrderCharge = async ({ restaurantId, on = new Date(), config, overr
     startsAt,
     amountPaise,
     taxable: charge.taxable !== false,
-    chargeableSources: charge.chargeableSources || [],
     source: hasCustom ? "restaurant" : "platform",
   };
 };

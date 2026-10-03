@@ -8,8 +8,8 @@ const mongoose = require("mongoose");
  * admin panel is the only place prices change -- nothing reads a price from
  * code.
  *
- * Effective dating is deliberately shallow. Only the two dates the business
- * actually needs are stored (GST start, order-charge start), because invoices
+ * Effective dating is deliberately shallow. Only the dates the business
+ * actually needs are stored (GST start, each usage charge's start), because invoices
  * SNAPSHOT what they charged at the moment they were issued. Immutable invoices are what make old bills correct forever; a full
  * temporal history of config would be a second, redundant source of truth.
  */
@@ -22,6 +22,11 @@ const addonSchema = new mongoose.Schema(
     description: { type: String, default: "", trim: true },
     // Paise, per billing period, before GST. Integers only -- see services/money.js.
     pricePaise: { type: Number, required: true, min: 0 },
+    // null rides the POS plan's period (prorated when bought mid-period,
+    // renewed with the plan). A number is the add-on's OWN period: bought at
+    // full price for that many days from the day it is paid, and renewed on
+    // its own date (the yearly Website). services/subscription.
+    periodDays: { type: Number, default: null, min: 1, max: 366 },
     // What it unlocks (services/planFeatures). "" is a service with no switch
     // in the product, such as GMB Management.
     feature: { type: String, enum: ["", "website", "tableQr"], default: "" },
@@ -62,7 +67,8 @@ const DEFAULT_ADDONS = [
     code: "WEBSITE",
     name: "Website",
     description: "Your own ordering website, online payments and table booking.",
-    pricePaise: 30000,
+    pricePaise: 360000,
+    periodDays: 365,
     feature: "website",
     sortOrder: 2,
   },
@@ -76,10 +82,22 @@ const DEFAULT_ADDONS = [
   },
 ];
 
+// Devices: one-time, GST-inclusive, paid online. Kept under `printers` (the
+// tablet too, since tablets stopped being rented) so the purchase path stays
+// one path; the apps call the list "Devices".
 const DEFAULT_PRINTERS = [
-  { code: "PRINTER_2IN", name: "2-inch receipt printer", pricePaise: 190000 },
-  { code: "PRINTER_3IN", name: "3-inch receipt printer", pricePaise: 425000 },
+  { code: "TABLET", name: "Tablet", pricePaise: 1000000 },
+  { code: "PRINTER_2IN", name: "2-inch Bluetooth printer", pricePaise: 170000 },
+  { code: "PRINTER_3IN", name: "3-inch Bluetooth printer", pricePaise: 430000 },
+  { code: "PRINTER_3IN_LAN", name: "3-inch LAN printer", pricePaise: 390000 },
+  { code: "PRINTER_3IN_USB", name: "3-inch USB printer", pricePaise: 350000 },
 ];
+
+const DEFAULT_PLAN_PAISE = 49900;
+
+// Bumped when the shipped catalogue changes in a way a stored row has to be
+// moved to; services/pricing.getPlatformConfig does that once per version.
+const CATALOG_VERSION = 2;
 
 const gstSchema = new mongoose.Schema(
   {
@@ -106,15 +124,23 @@ const gstSchema = new mongoose.Schema(
  * charged. services/pricing.getPlatformConfig backfills these into a config
  * row that predates them, without switching anything on.
  *
- * The per-order charge applies to orders paid ONLINE through the gateway on
- * the store's website ("WEBSITE") or a table QR ("QR") -- the Order.source
- * values those channels write.
+ * The platform fee is one charge per order source, each with its own amount:
+ * websiteOrderCharge for website orders ("WEBSITE") and qrOrderCharge for
+ * table-QR orders ("QR") -- the Order.source values those channels write. It
+ * is added to the customer's bill only when they pay online, and the same
+ * amount is then deducted from the store's wallet. Never shown in the POS app.
  */
 const DEFAULT_ORDER_CHARGE = {
   enabled: false,
-  amountPaise: 900,
+  amountPaise: 300,
   effectiveFrom: null,
-  chargeableSources: ["WEBSITE", "QR"],
+  taxable: true,
+};
+
+const DEFAULT_QR_ORDER_CHARGE = {
+  enabled: false,
+  amountPaise: 100,
+  effectiveFrom: null,
   taxable: true,
 };
 
@@ -125,28 +151,10 @@ const DEFAULT_EBILL_CHARGE = {
   taxable: true,
 };
 
-const orderChargeSchema = new mongoose.Schema(
-  {
-    enabled: { type: Boolean, default: false },
-    amountPaise: { type: Number, default: 0, min: 0 },
-    effectiveFrom: { type: Date, default: null },
-    // Which orders qualify. Empty means nothing is charged -- an explicit
-    // opt-in, so a new order source cannot start billing restaurants by
-    // simply existing.
-    chargeableSources: { type: [String], default: [] },
-    taxable: { type: Boolean, default: true },
-  },
-  { _id: false },
-);
-
 /**
- * Per-message charge for an e-bill.
- *
- * Same shape as the order charge because it is the same kind of thing: an
- * amount, a date it starts applying, and whether GST is added. A third charge
- * later should reuse this rather than inventing a fourth shape.
- *
- * No `chargeableSources` -- an e-bill is one thing, not several channels.
+ * A usage charge: an amount, the date it starts applying, and whether GST is
+ * added. The platform fee (one per order source) and the e-bill charge are all
+ * this shape; a new charge should reuse it rather than invent another.
  */
 const messageChargeSchema = new mongoose.Schema(
   {
@@ -167,25 +175,24 @@ const platformBillingConfigSchema = new mongoose.Schema(
     basePlan: {
       code: { type: String, default: "POS" },
       name: { type: String, default: "POS", trim: true },
-      pricePaise: { type: Number, default: 39900, min: 0 },
+      pricePaise: { type: Number, default: DEFAULT_PLAN_PAISE, min: 0 },
     },
     addons: { type: [addonSchema], default: () => DEFAULT_ADDONS.map((a) => ({ ...a })) },
-    // Monthly tablet rental. Each tablet needs its own qualifying top-up of
-    // at least rechargeRequiredPaise first (services/subscription).
+    // Tablet RENTAL prices, for tablets already rented only: they keep
+    // renewing at these until ended. No new rentals -- a tablet is now bought
+    // once, like a printer (the TABLET device below).
     tablet: {
       firstPricePaise: { type: Number, default: 60000, min: 0 },
       extraPricePaise: { type: Number, default: 50000, min: 0 },
-      rechargeRequiredPaise: { type: Number, default: 400000, min: 0 },
     },
     printers: { type: [printerSchema], default: () => DEFAULT_PRINTERS.map((p) => ({ ...p })) },
     // A store that has not activated yet must top up at least this much in
     // one go; that top-up starts the POS plan.
     firstRechargeMinPaise: { type: Number, default: 250000, min: 0 },
     gst: { type: gstSchema, default: () => ({}) },
-    websiteOrderCharge: {
-      type: orderChargeSchema,
-      default: () => ({ ...DEFAULT_ORDER_CHARGE, chargeableSources: [...DEFAULT_ORDER_CHARGE.chargeableSources] }),
-    },
+    // Platform fee per online-paid website order, and per table-QR one.
+    websiteOrderCharge: { type: messageChargeSchema, default: () => ({ ...DEFAULT_ORDER_CHARGE }) },
+    qrOrderCharge: { type: messageChargeSchema, default: () => ({ ...DEFAULT_QR_ORDER_CHARGE }) },
     // Charged per e-bill actually delivered -- never per attempt.
     ebillCharge: { type: messageChargeSchema, default: () => ({ ...DEFAULT_EBILL_CHARGE }) },
     subscriptionDays: { type: Number, default: 30, min: 1 },
@@ -214,6 +221,15 @@ const platformBillingConfigSchema = new mongoose.Schema(
     // runs out) before the account locks.
     graceHours: { type: Number, default: 24, min: 0 },
     currency: { type: String, default: "INR" },
+    // Which shipped catalogue this row has been moved to. A new row starts on
+    // the current one; a stored row without it reads as unset (a plain
+    // default would be filled in on load and hide that it is old).
+    catalogVersion: {
+      type: Number,
+      default: function catalogVersionDefault() {
+        return this.isNew ? CATALOG_VERSION : undefined;
+      },
+    },
     updatedBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   },
   { timestamps: true },
@@ -232,7 +248,10 @@ const platformBillingConfigSchema = new mongoose.Schema(
 module.exports = {
   DEFAULT_ADDONS,
   DEFAULT_PRINTERS,
+  DEFAULT_PLAN_PAISE,
+  CATALOG_VERSION,
   DEFAULT_ORDER_CHARGE,
+  DEFAULT_QR_ORDER_CHARGE,
   DEFAULT_EBILL_CHARGE,
   PlatformBillingConfig: mongoose.model("PlatformBillingConfig", platformBillingConfigSchema),
 };

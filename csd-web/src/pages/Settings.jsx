@@ -102,7 +102,7 @@ const Settings = () => {
           <Row label="Base domain">{p.baseDomain || "—"}</Row>
           <Row label="Database"><Yes ok={p.databaseConnected} yes="Connected" no="Disconnected" /></Row>
           <Row label="Reporting timezone">{p.timezone}</Row>
-          <Row label="Payment gateway" hint="Wallet top-ups and printer payments go through it">
+          <Row label="Payment gateway" hint="Wallet top-ups and tablet/printer payments go through it">
             {gw ? (
               <span className={gwOk ? "" : "font-semibold text-red-600"}>
                 {gw.mode} · {gw.configured ? "configured" : "not configured"}
@@ -115,7 +115,7 @@ const Settings = () => {
             <FiAlertTriangle className="mt-0.5 shrink-0" aria-hidden="true" />
             <span>
               <strong>The payment gateway is not ready for real payments.</strong> Wallet top-ups and
-              printer payments do not take real money until it is in PROD mode with its keys
+              tablet/printer payments do not take real money until it is in PROD mode with its keys
               configured.
             </span>
           </div>

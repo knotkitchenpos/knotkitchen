@@ -129,6 +129,8 @@ const OrderDrawer = ({ orderId, onClose }) => {
                       {inr(order.bills.totalWithTax ?? order.bills.total)}
                     </span>
                   </Row>
+                  {/* KnotKitchen's fee on an online payment: paid on top of the restaurant's total, not part of it. */}
+                  {order.bills.platformFee > 0 && <Row label="Platform fee">{inr(order.bills.platformFee)}</Row>}
                 </dl>
               </section>
 

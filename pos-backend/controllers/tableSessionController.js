@@ -2,7 +2,7 @@ const mongoose = require("mongoose");
 const { logActivity } = require("../services/auditService");
 const { buildCooldownUpdate } = require("../services/tableCooldownService");
 const { userScope } = require("../services/tenantContext");
-const { round2 } = require("../services/money");
+const { round2, toRupees } = require("../services/money");
 const { resolveGstForRestaurant } = require("../services/gst");
 const Table = require("../models/tableModel");
 const TableSession = require("../models/tableSessionModel");
@@ -894,10 +894,20 @@ const recordSessionPayment = async (req, res, next) => {
       throw createHttpError(400, `Payment amount mismatch. Expected ₹${payableAmount}.`);
     }
 
+    // KnotKitchen's platform fee the diner paid on top of the bill online.
+    // Read ONLY from req.platformFee, which settleSessionFromGateway sets from
+    // the fee stored on the session -- never from the body, because this is
+    // also the till's own route. A cash or counter settle carries none.
+    const fee = req.platformFee;
+    const feePaise = Math.max(0, Math.round(Number(fee?.totalPaise) || 0));
+    const platformFee = toRupees(feePaise);
+    // What actually changed hands; bills.totalWithTax stays the restaurant's bill.
+    const chargedAmount = round2(payableAmount + platformFee);
+
     // A split: several counter methods that add up to the bill. Each part is
     // its own history line and ledger entry; the session and the kitchen
     // order read "Split (Cash ₹500 + UPI ₹300)".
-    let parts = [{ method: normalizedMethod, amount: payableAmount }];
+    let parts = [{ method: normalizedMethod, amount: chargedAmount }];
     if (normalizedMethod === "SPLIT") {
       const { validateSplits } = require("../services/splitPayment");
       const check = validateSplits(req.body.splits, payableAmount);
@@ -927,6 +937,7 @@ const recordSessionPayment = async (req, res, next) => {
     // needs the merchant order id.
     const gatewayOrderId = session.payment?.gatewayOrderId || "";
     const gatewayProvider = session.payment?.gatewayProvider || "";
+    const storedFee = session.payment?.platformFee || {};
     session.payment = {
       method: normalizedMethod,
       status: paid ? "PAID" : "FAILED",
@@ -935,7 +946,16 @@ const recordSessionPayment = async (req, res, next) => {
       recordedBy: req.user?._id,
       gatewayProvider,
       gatewayOrderId,
+      // Kept only for the payment that carried it; a cash settle after an
+      // abandoned online attempt clears the quote that attempt stored. A
+      // failed attempt keeps it: the diner's open checkout still expects it.
+      platformFee: !paid
+        ? { amountPaise: Number(storedFee.amountPaise) || 0, taxPaise: Number(storedFee.taxPaise) || 0, totalPaise: Number(storedFee.totalPaise) || 0, taxPercent: Number(storedFee.taxPercent) || 0 }
+        : feePaise
+          ? { amountPaise: Number(fee.amountPaise) || 0, taxPaise: Number(fee.taxPaise) || 0, totalPaise: feePaise, taxPercent: Number(fee.taxPercent) || 0 }
+          : {},
     };
+    if (paid) session.bills.platformFee = platformFee;
 
     if (paid) {
       session.paymentRequestedAt = session.paymentRequestedAt || new Date();
@@ -943,7 +963,7 @@ const recordSessionPayment = async (req, res, next) => {
       // 3. Mark session PAID — the lifecycle passes through PAID before closing.
       //    (1. payment already marked successful above, 2. bill marked PAID below)
       session.status = "PAID";
-      addTimeline(session, "PAYMENT_COMPLETED", `Payment of ₹${payableAmount} received via ${normalizedMethod}`, "POS", req.user?._id);
+      addTimeline(session, "PAYMENT_COMPLETED", `Payment of ₹${chargedAmount} received via ${normalizedMethod}`, "POS", req.user?._id);
       addTimeline(session, "SESSION_PAID", "Session marked PAID", "POS", req.user?._id);
 
       // 4 + 5. Close the session and make the table available
@@ -1002,7 +1022,7 @@ const recordSessionPayment = async (req, res, next) => {
             },
             bills: session.bills,
             status: paid ? "PAID" : "PENDING",
-            paidAmount: paid ? payableAmount : 0,
+            paidAmount: paid ? chargedAmount : 0,
             dueAmount: paid ? 0 : payableAmount,
             settledAt: paid ? new Date() : undefined,
           },
@@ -1016,7 +1036,7 @@ const recordSessionPayment = async (req, res, next) => {
         { _id: billId, restaurantId: session.restaurantId },
         {
           status: paid ? "PAID" : "PARTIAL",
-          paidAmount: payableAmount,
+          paidAmount: chargedAmount,
           dueAmount: paid ? 0 : payableAmount,
           settledAt: paid ? new Date() : undefined,
           bills: session.bills,
@@ -1052,6 +1072,7 @@ const recordSessionPayment = async (req, res, next) => {
             "bills.taxPercent": session.bills?.taxPercent || 0,
             "bills.tax": session.bills?.tax || 0,
             "bills.tip": tip,
+            "bills.platformFee": platformFee,
             tips: tip,
             ...(gatewayOrderId ? { "paymentData.gatewayOrderId": gatewayOrderId, "paymentData.gatewayPaymentId": transactionId || "" } : {}),
             ...(buyer ? { "customerDetails.company": buyer.company, "customerDetails.gstin": buyer.gstin } : {}),
@@ -1273,12 +1294,16 @@ const closeSessionWithoutPayment = async (req, res, next) => {
  *
  * `recordedBy` is left unset on purpose: nobody at the counter recorded this.
  * The gateway's transaction id is the record.
+ *
+ * `platformFee` is the fee stored on the session when the payment was opened.
+ * It travels on req, never in the body: the body is what a till can send.
  */
 const settleSessionFromGateway = async ({
   sessionId,
   restaurantId,
   method = "ONLINE",
   amount,
+  platformFee,
   transactionId,
   idempotencyKey,
 }) => {
@@ -1286,6 +1311,7 @@ const settleSessionFromGateway = async ({
     params: { id: String(sessionId) },
     body: { method, amount, transactionId, idempotencyKey, paymentStatus: "success" },
     user: { restaurantId },
+    platformFee,
   };
 
   let payload = null;
@@ -1305,8 +1331,8 @@ const settleSessionFromGateway = async ({
   });
   if (failure) throw failure;
 
-  // Paid online and settled: KnotKitchen's per-order charge is due now, ONCE
-  // for the whole bill, whatever mix of POS and QR rounds it holds. Only this
+  // Paid online and settled: the platform fee the diner paid is debited now,
+  // ONCE for the whole bill, whatever mix of POS and QR rounds it holds. Only this
   // gateway path fires it -- a till-recorded settle (cash, card at the counter)
   // is never charged. chargeTableSession is idempotent, so a browser + webhook
   // double settle cannot bill twice.

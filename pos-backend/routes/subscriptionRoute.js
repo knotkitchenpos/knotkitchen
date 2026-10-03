@@ -8,7 +8,6 @@ const {
   statusFor,
   addAddon,
   removeAddon,
-  rentTablet,
   renewDue,
   cancelSubscription,
   reinstateSubscription,
@@ -29,7 +28,7 @@ const {
 const router = express.Router();
 
 /**
- * The restaurant's own POS plan, add-ons, tablets, printers and invoices.
+ * The restaurant's own POS plan, add-ons, devices (tablets and printers) and invoices.
  *
  * Read-and-buy only. Nothing here can set a price: the catalogue, GST and
  * per-restaurant rates are all admin-owned, and this router never writes to
@@ -74,7 +73,7 @@ const purchased = (result) => ({
     : null,
 });
 
-// GET /api/subscription — the plan, add-ons, tablets, printers, next renewal.
+// GET /api/subscription — the plan, add-ons, rented tablets, devices, next renewal.
 router.get("/", isVerifiedUser, async (req, res, next) => {
   try {
     const restaurantId = ownRestaurantId(req);
@@ -86,7 +85,8 @@ router.get("/", isVerifiedUser, async (req, res, next) => {
   }
 });
 
-// GET /api/subscription/quote?item=ADDON:<code>|TABLET|PRINTER:<code> — what buying it charges now.
+// GET /api/subscription/quote?item=ADDON:<code>|PRINTER:<code> — what buying it
+// charges now (TABLET = PRINTER:TABLET, the tablet device).
 router.get("/quote", isVerifiedUser, async (req, res, next) => {
   try {
     const bill = await quote({ restaurantId: ownRestaurantId(req), item: String(req.query.item || "") });
@@ -96,7 +96,8 @@ router.get("/quote", isVerifiedUser, async (req, res, next) => {
   }
 });
 
-// POST /api/subscription/addons { code, accepted } — add one for the rest of this period.
+// POST /api/subscription/addons { code, accepted } — add one for the rest of
+// this period, or (one with its own period, the yearly Website) for a full period from today.
 router.post("/addons", isVerifiedUser, requireProtectedAction, async (req, res, next) => {
   try {
     const result = await addAddon({
@@ -111,7 +112,8 @@ router.post("/addons", isVerifiedUser, requireProtectedAction, async (req, res, 
   }
 });
 
-// DELETE /api/subscription/addons/:code — stop it at renewal (no refund).
+// DELETE /api/subscription/addons/:code — stop it at the end of the period
+// already paid (its own, or the POS's). No refund.
 router.delete("/addons/:code", isVerifiedUser, requireProtectedAction, async (req, res, next) => {
   try {
     const { endsAt } = await removeAddon({ restaurantId: ownRestaurantId(req), code: String(req.params.code) });
@@ -121,26 +123,17 @@ router.delete("/addons/:code", isVerifiedUser, requireProtectedAction, async (re
   }
 });
 
-// POST /api/subscription/tablets { accepted, shipTo } — rent one more tablet,
-// delivered by KnotKitchen to shipTo (the store's own address when left out).
-router.post("/tablets", isVerifiedUser, requireProtectedAction, async (req, res, next) => {
-  try {
-    const restaurantId = ownRestaurantId(req);
-    const result = await rentTablet({
-      restaurantId,
-      createdBy: req.user?._id,
-      acceptance: acceptanceFrom(req),
-      shipTo: await resolveShipTo(restaurantId, req.body?.shipTo),
-    });
-    res.status(201).json({ success: true, data: purchased(result) });
-  } catch (err) {
-    asSubscriptionError(err, next);
-  }
-});
+// POST /api/subscription/tablets — renting a tablet is retired. A tablet is
+// bought once, like a printer: POST /printers { code: "TABLET" }.
+router.post("/tablets", isVerifiedUser, (req, res, next) =>
+  next(createHttpError(409, "Tablets are now bought once, like printers.", { code: "TABLET_NOW_PURCHASED" })),
+);
 
-// POST /api/subscription/printers { code, accepted } — buy a printer outright.
-// A printer is paid through Cashfree, never from the wallet: this opens the
-// payment; /api/business-balance/recharge/verify (or the webhook) records it.
+// POST /api/subscription/printers { code, accepted, shipTo } — buy a device
+// (a printer, or the tablet: code "TABLET") outright, delivered by
+// KnotKitchen to shipTo (the store's own address when left out). Paid through
+// Cashfree, never from the wallet: this opens the payment;
+// /api/business-balance/recharge/verify (or the webhook) records it.
 router.post("/printers", isVerifiedUser, requireProtectedAction, async (req, res, next) => {
   try {
     const { createPrinterPayment, ownReturnUrl, RechargeError } = require("../services/recharge");
@@ -191,7 +184,8 @@ router.post("/hardware-requests/:id/cancel", isVerifiedUser, requireProtectedAct
   }
 });
 
-// POST /api/subscription/renew — try the renewal now (after a CSD credit, say).
+// POST /api/subscription/renew — try the renewal now (after a CSD credit, say):
+// the POS plan, and any add-on whose own period has ended.
 router.post("/renew", isVerifiedUser, requireProtectedAction, async (req, res, next) => {
   try {
     const restaurantId = ownRestaurantId(req);
@@ -204,6 +198,9 @@ router.post("/renew", isVerifiedUser, requireProtectedAction, async (req, res, n
         status: status.status,
         currentPeriodEnd: status.currentPeriodEnd,
         lastRenewalError: status.lastRenewalError,
+        // Add-ons on their own clock: renewed now, or why not ({ code, message }).
+        addonsRenewed: result.addonsRenewed,
+        addonErrors: result.addonErrors,
       },
     });
   } catch (err) {

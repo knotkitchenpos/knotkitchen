@@ -21,6 +21,7 @@ function pickupTimes(windowHours, windows) {
 const clock = (d) => d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
 import { allowsFulfilment } from "../lib/dispatch";
 import useScrollLock from "../lib/useScrollLock";
+import { cartEstimate } from "../lib/orderTotals";
 
 /**
  * Cart / checkout drawer.
@@ -56,14 +57,11 @@ export default function CartDrawer({
   const [address, setAddress] = useState({ line1: "", line2: "", city: "", postalCode: "", instructions: "" });
 
   const symbol = ordering?.currencySymbol || "£";
-  const deliveryFee =
-    orderType === "delivery" && cart.subtotal < (ordering?.freeDeliveryAbove || 0)
-      ? Number(ordering?.deliveryFee || 0)
-      : 0;
-  const packaging = Number(ordering?.packagingFee || 0);
-  const taxable = cart.subtotal + deliveryFee + packaging;
-  const taxAmount = ordering?.taxInclusive ? 0 : taxable * (Number(ordering?.taxPercent || 0) / 100);
-  const total = taxable + taxAmount;
+  const { deliveryFee, packaging, taxAmount, platformFee, total } = cartEstimate({
+    subtotal: cart.subtotal,
+    ordering,
+    orderType,
+  });
 
   const minReached = cart.subtotal >= Number(ordering?.minOrderValue || 0);
 
@@ -330,6 +328,8 @@ export default function CartDrawer({
               {taxAmount ? (
                 <Row label={`Tax (${ordering?.taxPercent}%)`} value={`${symbol}${taxAmount.toFixed(2)}`} />
               ) : null}
+              {/* Shown before the customer pays, never added at the gateway as a surprise. */}
+              {platformFee ? <Row label="Platform fee" value={`${symbol}${platformFee.toFixed(2)}`} /> : null}
               <Row label="Estimated total" value={`${symbol}${total.toFixed(2)}`} bold />
             </div>
 

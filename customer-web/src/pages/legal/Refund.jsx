@@ -23,8 +23,9 @@ export default function Refund({ L }) {
       <p>
         The Restaurant may cancel an Order at any stage due to item unavailability, kitchen capacity constraints,
         delivery-area limitations, a pricing/listing error, or suspected fraud. Where an Order is cancelled by the
-        Restaurant after payment has been captured, the full amount paid for that Order will be refunded in accordance with
-        clause 4.5.
+        Restaurant after payment has been captured, the full amount paid for that Order, including the Platform fee, will be
+        refunded in accordance with clause 4.5. The same applies whoever cancels an Order paid online: any refund of a
+        cancelled Order includes its Platform fee, which KnotKitchen returns to the Restaurant when the Order is cancelled.
       </p>
       <h3>4.3 Grounds for a Post-Delivery Refund</h3>
       <p>Refunds after delivery are considered by the Restaurant, at its discretion, for genuine and promptly reported issues including:</p>

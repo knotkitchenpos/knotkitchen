@@ -125,7 +125,8 @@ test("SOURCE: a table opened at the till can still be paid from the QR: the dine
   assert.match(intent, /tenDigits\(req\.body\?\.phone\)\.length === 10/);
   assert.match(intent, /session\.customerPhone = tenDigits\(req\.body\.phone\)/);
   assert.match(intent, /gw\.enabled && payable > 0 && hasPhone/, "no doomed gateway call without a phone");
-  assert.match(intent, /needsPhone: Boolean\(gw\.enabled && payable > 0 && !hasPhone\)/);
+  assert.match(intent, /const needsPhone = Boolean\(gw\.enabled && payable > 0 && !hasPhone\)/);
+  assert.match(intent, /\n\s*needsPhone,\n/);
   // The amount still comes from the session's own bill, never the request.
   assert.ok(!/req\.body\?\.amount|req\.body\.amount/.test(intent));
 });

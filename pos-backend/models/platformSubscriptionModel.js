@@ -51,9 +51,15 @@ const subscriptionSchema = new mongoose.Schema(
     // The first qualifying top-up. Never moves; null means not activated yet.
     activatedAt: { type: Date, default: null },
 
-    // Monthly add-ons. endsAt null renews with the plan; a date means it was
-    // stopped and lapses then (the current period end). Name, feature and
+    // Add-ons. endsAt null keeps renewing; a date means it was stopped and
+    // lapses then (the end of the period already paid). Name, feature and
     // price are snapshots of what was bought.
+    //
+    // periodDays/paidUntil null: it rides the POS period and renews with the
+    // plan. Set: it has its own clock (the yearly Website) -- paid up to
+    // paidUntil, renewed on its own when that passes (services/subscription
+    // renewAddons). A failed own renewal lapses only the add-on, never the
+    // POS, and says why in lastRenewalError.
     addons: {
       type: [
         new mongoose.Schema(
@@ -64,6 +70,9 @@ const subscriptionSchema = new mongoose.Schema(
             pricePaise: { type: Number, default: 0 },
             activatedAt: { type: Date, default: null },
             endsAt: { type: Date, default: null },
+            periodDays: { type: Number, default: null },
+            paidUntil: { type: Date, default: null },
+            lastRenewalError: { type: String, default: "" },
           },
           { _id: false },
         ),
@@ -71,7 +80,8 @@ const subscriptionSchema = new mongoose.Schema(
       default: [],
     },
 
-    // Rented tablets, numbered per store. endsAt is set by CSD when a tablet
+    // Rented tablets, numbered per store: rentals from before tablets were
+    // sold, still renewing until ended. endsAt is set by CSD when a tablet
     // comes back (the physical return), at the current period end.
     tablets: {
       type: [
@@ -89,10 +99,7 @@ const subscriptionSchema = new mongoose.Schema(
       ],
       default: [],
     },
-    // Qualifying top-ups not yet used to rent a tablet. One each.
-    tabletRechargeCredits: { type: Number, default: 0, min: 0 },
-
-    // One-time purchases (printers).
+    // One-time purchases (devices: tablets and printers).
     hardware: {
       type: [
         new mongoose.Schema(

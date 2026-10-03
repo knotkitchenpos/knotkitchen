@@ -8,16 +8,17 @@ const { resolveEBillCharge } = require("../services/pricing");
 const money = require("../services/money");
 
 /**
- * The per-e-bill charge: ₹0.25 a message, from the same Business Balance.
+ * The per-e-bill charge: ₹0.25 a bill, from the same Business Balance.
  *
- * Two rules make this different from the per-order charge, and both are the
+ * Two rules make this different from the platform fee, and both are the
  * kind that only show up in a support conversation if they are wrong:
  *
  *   charge on DELIVERY, never on an attempt   billing for a message the
  *                                             customer never received
  *
- *   charge EVERY delivered message            keying on the order would make
- *                                             every re-send free
+ *   charge once per BILL                      a re-send, or the settle modal
+ *                                             and the auto-send both firing,
+ *                                             must not bill the store twice
  */
 
 const SRC = (rel) => fs.readFileSync(path.join(__dirname, "..", rel), "utf8");
@@ -98,18 +99,21 @@ test("the platform ships the e-bill charge at ₹0.25 + GST, OFF with no date", 
   );
 });
 
-test("REGRESSION: every delivered message is charged, including a re-send", () => {
-  // Keying on the order would make the second and every later send free, and
-  // each one is a real WhatsApp message with a real cost.
-  assert.equal(idempotencyKeyFor("req_1"), "ebill-req_1");
-  assert.notEqual(idempotencyKeyFor("req_1"), idempotencyKeyFor("req_2"));
-
-  const src = SRC("services/ebillCharge.js");
-  assert.match(src, /idempotencyKeyFor = \(messageId\)/, "keyed by the message, not the order");
-  assert.ok(
-    !/idempotencyKeyFor = \(orderId\)|ebill-\$\{order/.test(src),
-    "an order-keyed idempotency key makes re-sends free",
+test("REGRESSION: an e-bill is charged once per bill, a re-send costs nothing more", () => {
+  // Two messages for one bill share a key, so the ledger keeps one debit.
+  assert.equal(idempotencyKeyFor({ billRef: "s1", messageId: "req_1" }), "ebill-bill-s1");
+  assert.equal(
+    idempotencyKeyFor({ billRef: "s1", messageId: "req_1" }),
+    idempotencyKeyFor({ billRef: "s1", messageId: "req_2" }),
   );
+  assert.notEqual(idempotencyKeyFor({ billRef: "s1" }), idempotencyKeyFor({ billRef: "s2" }));
+  // With no bill to point at, each delivered message stands on its own.
+  assert.equal(idempotencyKeyFor({ billRef: null, messageId: "req_1" }), "ebill-req_1");
+
+  // A table order's bill is its session's, so the order's button and the
+  // session's bill the same key.
+  const src = SRC("services/eBillService.js");
+  assert.match(src, /billRef: tableSession\?\._id \|\| order\?\.tableSessionId \|\| order\?\._id \|\| null,/);
 });
 
 test("REGRESSION: a failed send is never charged", () => {
@@ -132,8 +136,8 @@ test("SOURCE: a shortfall never fails a message already delivered", () => {
 });
 
 test("SOURCE: the ledger has a kind of its own for it", () => {
-  // So the statement reads "E-bill sent" rather than lumping it in with the
-  // per-order charge, and reporting can separate the two.
+  // So the statement reads "E-bill" rather than lumping it in with the
+  // platform fee, and reporting can separate the two.
   const { DEBIT_KINDS } = require("../models/businessBalanceModel");
   assert.ok(DEBIT_KINDS.includes("EBILL_CHARGE"));
   assert.match(SRC("services/ebillCharge.js"), /kind: "EBILL_CHARGE"/);
@@ -151,7 +155,9 @@ test("SOURCE: it is configured, not hard-coded", () => {
 
   // And the admin panel can set it.
   const ctrl = SRC("controllers/csdBillingConfigController.js");
-  assert.match(ctrl, /body\.ebillCharge !== undefined/);
-  assert.match(ctrl, /ebillCharge\.effectiveFrom/);
+  // (Through the one validator every usage charge shares.)
+  assert.match(ctrl, /const USAGE_CHARGES = \[[^\]]*"ebillCharge"[^\]]*\];/);
+  assert.match(ctrl, /for \(const key of USAGE_CHARGES\) \{\s*if \(body\[key\] === undefined\) continue;/);
+  assert.match(ctrl, /fieldErrors\[`\$\{key\}\.effectiveFrom`\]/);
   assert.match(SRC("controllers/csdRestaurantController.js"), /"ebillCharge", "E-bill charge"/);
 });

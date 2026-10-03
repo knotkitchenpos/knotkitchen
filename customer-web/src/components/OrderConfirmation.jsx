@@ -1,5 +1,6 @@
 import React from "react";
 import useScrollLock from "../lib/useScrollLock";
+import { totalPaid } from "../lib/orderTotals";
 
 /**
  * Shown after a successful order. The `order` payload comes directly from the
@@ -64,11 +65,21 @@ export default function OrderConfirmation({ order, symbol, prepTime, onClose }) 
               </span>
             </div>
           ) : null}
+          {/* KnotKitchen's fee for paying online; it is outside the bill's total. */}
+          {order.bills?.platformFee ? (
+            <div className="flex justify-between">
+              <span>Platform fee</span>
+              <span>
+                {symbol}
+                {Number(order.bills.platformFee).toFixed(2)}
+              </span>
+            </div>
+          ) : null}
           <div className="flex justify-between font-semibold text-slate-900 pt-1">
             <span>Total paid</span>
             <span>
               {symbol}
-              {Number(order.bills?.totalWithTax || 0).toFixed(2)}
+              {totalPaid(order).toFixed(2)}
             </span>
           </div>
         </div>

@@ -17,7 +17,7 @@ const GMB = { code: "GMB", feature: "", endsAt: null };
 const CATALOG = {
   addons: [
     { code: "TABLE_QR", feature: "tableQr", pricePaise: 20000, isActive: true },
-    { code: "WEBSITE", feature: "website", pricePaise: 30000, isActive: true },
+    { code: "WEBSITE", feature: "website", pricePaise: 360000, periodDays: 365, isActive: true },
   ],
 };
 
@@ -83,6 +83,15 @@ test("a stopped add-on works until its endsAt, and not after", () => {
   assert.equal(featuresFor({ subscription, on: endsAt }).paymentGateway, false);
 });
 
+test("a yearly add-on works until its paidUntil: a renewal the wallet could not cover switches it off", () => {
+  const { featuresFor } = load();
+  const paidUntil = new Date("2027-10-01T00:00:00+05:30");
+  const subscription = { addons: [{ ...WEBSITE, periodDays: 365, paidUntil }, TABLE_QR] };
+  assert.equal(featuresFor({ subscription, on: new Date("2027-09-30T23:59:00+05:30") }).website, true);
+  const lapsed = featuresFor({ subscription, on: paidUntil });
+  assert.deepEqual([lapsed.website, lapsed.paymentGateway, lapsed.tableQr], [false, false, true], "only that add-on");
+});
+
 test("a CSD-made add-on unlocks by its feature, whatever its code", () => {
   const { featuresFor } = load();
   assert.equal(featuresFor({ subscription: { addons: [{ code: "WEB_PLUS", feature: "website" }] } }).website, true);
@@ -111,7 +120,7 @@ test("without the Website add-on: no Manage Website or website hours, but the PO
     assert.deepEqual(await outcome(requireWebsitePlan, body), { status: 403, passed: false }, JSON.stringify(body));
   }
   const refused = await call(requireWebsitePlan, { enabled: true });
-  assert.match(refused.json.message, /^The website is an add-on \(₹300\.00 \+ GST \/ 30 days\)\. Add it in Settings/);
+  assert.match(refused.json.message, /^The website is an add-on \(₹3,600\.00 \+ GST \/ year\)\. Add it in Settings/);
   // Order Toggles and Rules & Charges write these through /api/website/settings.
   for (const body of [{ ordering: { autoReadyMinutes: {} } }, { couponsConfig: [] }, { freeItemConfig: [] }]) {
     assert.deepEqual(await outcome(requireWebsitePlan, body), { status: null, passed: true }, JSON.stringify(body));
@@ -181,7 +190,7 @@ test("the payment gateway comes with the Website add-on", async () => {
   assert.deepEqual(await outcome(without.requireWebsitePlan, gatewayBody), { status: 403, passed: false });
   const refused = await call(without.requirePaymentGatewayPlan, {});
   assert.equal(refused.status, 403);
-  assert.match(refused.json.message, /Online payments come with the Website add-on \(₹300\.00 \+ GST \/ 30 days\)/);
+  assert.match(refused.json.message, /Online payments come with the Website add-on \(₹3,600\.00 \+ GST \/ year\)/);
   const withSite = load({ addons: [WEBSITE] });
   assert.deepEqual(await outcome(withSite.requireWebsitePlan, gatewayBody), { status: null, passed: true }, "gateway-only save");
   assert.deepEqual(await outcome(withSite.requirePaymentGatewayPlan, {}), { status: null, passed: true });

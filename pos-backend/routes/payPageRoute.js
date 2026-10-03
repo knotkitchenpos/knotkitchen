@@ -55,12 +55,18 @@ router.get("/:checkoutId", async (req, res) => {
 
   const config = JSON.stringify({ paymentSessionId: checkout.paymentSessionId, mode: checkout.mode || "sandbox" }).replace(/</g, "\\u003c");
   const back = escapeHtml(backToStore(checkout));
+  // The last screen before money moves, so a platform fee is spelled out here.
+  const rs = (n) => `₹${escapeHtml(Number(n).toFixed(2))}`;
+  const fee = Number(checkout.orderData?.bills?.platformFee) || 0;
+  const amountLine = fee > 0
+    ? `Order ${rs(checkout.orderData.bills.totalWithTax)} + Platform fee ${rs(fee)} = ${rs(checkout.amount)}`
+    : `Amount: ${rs(checkout.amount)}`;
   res.status(200).send(
     page(
       "Secure payment",
       `<div class="spin" aria-hidden="true"></div>
 <h1 style="font-size:1.2rem">Opening secure payment…</h1>
-<p>Amount: ₹${escapeHtml(Number(checkout.amount).toFixed(2))}</p>
+<p>${amountLine}</p>
 <p id="err" hidden>The payment page could not be opened. <a href="${back}">Return to the restaurant</a>.</p>
 <script src="https://sdk.cashfree.com/js/v3/cashfree.js"></script>
 <script>

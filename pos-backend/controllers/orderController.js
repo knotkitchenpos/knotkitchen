@@ -11,7 +11,7 @@ const { generateOrderNumberSafe } = require("../services/orderNumberService");
 const { computeReadyDueAt, computeCompleteDueAt } = require("../services/autoReadyService");
 const { notifyOrderReady } = require("../services/readyNotificationService");
 const { fireAutoEBill } = require("../services/eBillService");
-const { fireOrderCharge } = require("../services/orderCharge");
+const { fireOrderCharge, fireOrderChargeReversal } = require("../services/orderCharge");
 const { emitOrderCreated, emitOrderStatusChanged } = require("../services/socket");
 
 
@@ -529,9 +529,9 @@ const addOrder = async (req, res, next) => {
     // Fire-and-forget, and a no-op unless posSettings.autoEBill is on and the
     // order carries a phone number.
     if (isPaidAtTill) fireAutoEBill({ orderId: order._id });
-    // Same trigger, different direction: the e-bill goes to the diner,
-    // this bills the restaurant. A no-op unless the admin has enabled a
-    // per-order charge for this source.
+    // Same trigger, different direction: the e-bill goes to the diner, this
+    // settles the platform fee with the restaurant. A till order never carries
+    // one, so it is only stamped "No platform fee was collected."
     if (isPaidAtTill) fireOrderCharge(order._id);
 
     // A POS order emitted nothing at all, so a second till, the KDS and the
@@ -798,6 +798,8 @@ const updateOrder = async (req, res, next) => {
     // diner's QR page kept the dishes. Required lazily: tableSessionController
     // requires this file back.
     if (canonicalStatus(nextStatus) === CANCELLED) {
+      // A platform fee already debited for this order goes back to the wallet.
+      fireOrderChargeReversal(order._id);
       try {
         const { releaseSessionForCancelledOrder } = require("./tableSessionController");
         await releaseSessionForCancelledOrder(order, req.user?.name || "POS");

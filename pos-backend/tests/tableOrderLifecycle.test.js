@@ -262,9 +262,14 @@ test("the QR payment amount comes from the session's own bill", () => {
     QR_ROUTE.indexOf("const paymentVerify = async"),
   );
   assert.match(block, /const payable = session\.bills\?\.totalWithTax \|\| 0/);
-  assert.match(block, /amount: payable/, "the gateway order is opened for the bill");
+  // Plus KnotKitchen's platform fee, quoted on the server and stored with the
+  // gateway order so verify, the webhook and the debit all use the same one.
+  assert.match(block, /await quotePlatformFee\(\{ restaurantId, source: "QR" \}\)/);
+  assert.match(block, /const gatewayAmount = round2\(payable \+ platformFee\)/);
+  assert.match(block, /amount: gatewayAmount/, "the gateway order is opened for the bill plus the fee");
+  assert.match(block, /session\.payment\.platformFee = fee \|\| \{\}/);
   assert.ok(
-    !/req\.body\?\.amount/.test(block),
+    !/req\.body\?\.amount|req\.body\??\.platformFee/.test(block),
     "a tampered browser must not be able to name its own price",
   );
   // Nothing that reaches the diner's phone is a secret: a payment session id

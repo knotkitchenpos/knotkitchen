@@ -1,21 +1,25 @@
 /**
- * The POS plan, its add-ons, tablets and printers: activating, buying and
- * renewing them.
+ * The POS plan, its add-ons and devices (tablets and printers): activating,
+ * buying and renewing them.
  *
- * Paid from the Business Balance (the wallet), never from a card at this
- * step -- the gateway's only job is topping the wallet up. That keeps one
- * money path: everything KnotKitchen charges is a ledger debit, and the
- * ledger is the only thing that can move a balance.
+ * The plan and add-ons are paid from the Business Balance (the wallet), never
+ * from a card at this step -- the gateway's only job is topping the wallet up
+ * (and selling a device outright). That keeps one money path: everything
+ * KnotKitchen charges is a ledger debit, and the ledger is the only thing that
+ * can move a balance.
  *
  * The life of a store:
  *   1. created: status NONE, and locked ("No plan is active yet").
  *   2. one top-up of at least firstRechargeMinPaise starts the POS plan by
  *      itself (afterRecharge): the plan price + GST is debited, the period
  *      starts today, the rest stays in the wallet.
- *   3. add-ons and tablets bought mid-period pay for the days left; a
- *      printer is paid once.
- *   4. at the period end the plan, add-ons and tablets renew in one invoice,
- *      all or nothing (renewDue). Short -> EXPIRED; the next top-up renews.
+ *   3. add-ons bought mid-period pay for the days left -- except one with its
+ *      own period (the yearly Website), which pays a full period from the day
+ *      it is bought. A device is paid once, online.
+ *   4. at the period end the plan, add-ons and tablets rented before tablets
+ *      were sold renew in one invoice, all or nothing (renewDue). Short ->
+ *      EXPIRED; the next top-up renews. An add-on with its own period renews
+ *      alone on its own date (renewAddons); short, only it lapses.
  *   5. cancelled (by the owner or CSD): renewals stop, and at the period end
  *      the subscription is CANCELLED and the store closed. Until then it can
  *      be undone (reinstateSubscription).
@@ -43,7 +47,7 @@ const { nextPeriod, isActiveAt, prorate } = require("./subscriptionPeriod");
 const { nextInvoiceNumber } = require("./invoiceNumber");
 const { evaluateLock, isStoreClosed } = require("./accountLock");
 const { featuresFor } = require("./planFeatures");
-const { openRequest, defaultShipTo } = require("./hardwareRequests");
+const { defaultShipTo } = require("./hardwareRequests");
 
 // Awaited after every money movement, so the Billing page's refresh right
 // after already sees the lock gone. Never allowed to fail what it follows.
@@ -116,12 +120,30 @@ const partiesFor = async (restaurantId, config) => {
 const iso = (d) => new Date(d).toISOString();
 const istDate = (d) =>
   new Date(d).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric" });
-const span = (config) => `${config.subscriptionDays} day${Number(config.subscriptionDays) === 1 ? "" : "s"}`;
+const span = (days) => `${days} day${Number(days) === 1 ? "" : "s"}`;
 const liveAt = (item, on) => !item.endsAt || new Date(item.endsAt) > new Date(on);
 
 /**
- * GST on each line by itself, and the totals. The plan, add-ons and tablets
- * are taxed on top (exclusive). A printer line (`gstInclusive`) is sold at a
+ * An add-on entry's own period in days, or 0 when it rides the POS period.
+ * The entry's snapshot wins; one bought before its catalogue add-on got a
+ * period of its own (the once-monthly Website) takes the catalogue's, and
+ * leaves the POS renewal at its next one (renewOne).
+ */
+const ownDays = (entry, config) =>
+  Number(entry.periodDays) || Number((config.addons || []).find((a) => a.code === entry.code)?.periodDays) || 0;
+
+/**
+ * The days the catalogue's price for an add-on buys: its own period, else the
+ * POS period. An entry kept on a period CSD has since changed (a yearly
+ * Website moved back to the POS period) is charged at this per-day rate, so
+ * a 30-day price never pays for a year.
+ */
+const catalogDays = (code, config) =>
+  Number((config.addons || []).find((a) => a.code === code)?.periodDays) || Number(config.subscriptionDays);
+
+/**
+ * GST on each line by itself, and the totals. The plan, add-ons and tablet
+ * rentals are taxed on top (exclusive). A device line (`gstInclusive`) is sold at a
  * price that already includes GST: the amount charged never grows, and once
  * GST applies the invoice shows the GST contained in it.
  */
@@ -306,9 +328,9 @@ const requireAcceptance = (acceptance) => {
 };
 
 /**
- * Add-ons and tablets are prorated against a running POS period, so they need
- * one -- and one that is going to continue: nothing new is sold to a
- * subscription that has been cancelled.
+ * Add-ons sit on a running POS period, so they need one -- and one that is
+ * going to continue: nothing new is sold to a subscription that has been
+ * cancelled.
  */
 const requireActivePeriod = (subscription, on) => {
   if (subscription.status !== "ACTIVE" || !isActiveAt(subscription, on)) {
@@ -358,41 +380,43 @@ const addonPurchase = async ({ config, subscription, override, restaurant }, raw
   if (!addon) throw new SubscriptionError("That add-on is not available.", 404);
   requireActivePeriod(subscription, on);
   const pricePaise = await priceFor({ code, config, override });
+  // One with its own period (the yearly Website) is bought whole, from today;
+  // the rest ride the POS period and pay only for the days left of it.
+  const days = Number(addon.periodDays) || 0;
+  const period = days
+    ? nextPeriod({ subscription: null, days, on })
+    : { start: new Date(on), end: subscription.currentPeriodEnd };
   // Taking back one stopped this period is free: the period is already paid.
   const amountPaise = owned
     ? 0
-    : prorate({ pricePaise, periodEnd: subscription.currentPeriodEnd, days: config.subscriptionDays, on });
-  const lines = owned ? [] : [{ description: `${addon.name} add-on, until ${istDate(subscription.currentPeriodEnd)}`, amountPaise }];
-  return { addon, owned, pricePaise, bill: priceLines(lines, { config, restaurant, on }) };
+    : days
+      ? pricePaise
+      : prorate({ pricePaise, periodEnd: period.end, days: config.subscriptionDays, on });
+  const lines = owned ? [] : [{ description: `${addon.name} add-on, until ${istDate(period.end)}`, amountPaise }];
+  return { addon, owned, pricePaise, days, period, bill: priceLines(lines, { config, restaurant, on }) };
 };
 
-const tabletPurchase = async ({ config, subscription, override, restaurant }, on) => {
-  requireActivePeriod(subscription, on);
-  const tablets = subscription.tablets || [];
-  const code = tablets.some((t) => liveAt(t, on)) ? "TABLET_EXTRA" : "TABLET_FIRST";
-  const pricePaise = await priceFor({ code, config, override });
-  const serial = tablets.reduce((max, t) => Math.max(max, Number(t.serial) || 0), 0) + 1;
-  const amountPaise = prorate({ pricePaise, periodEnd: subscription.currentPeriodEnd, days: config.subscriptionDays, on });
-  const lines = [{ description: `Tablet #${serial} rental, until ${istDate(subscription.currentPeriodEnd)}`, amountPaise }];
-  return { code, serial, pricePaise, bill: priceLines(lines, { config, restaurant, on }) };
-};
-
+/** A device (a tablet or a printer): one-time, GST-inclusive, paid online. */
 const printerPurchase = async ({ config, override, restaurant }, rawCode, on) => {
   const code = String(rawCode || "").trim().toUpperCase();
   const printer = (config.printers || []).find((p) => p.code === code && p.isActive !== false);
-  if (!printer) throw new SubscriptionError("That printer is not available.", 404);
+  if (!printer) throw new SubscriptionError("That device is not available.", 404);
   const pricePaise = await priceFor({ code, config, override });
   const lines = [{ description: `${printer.name} (one-time purchase)`, amountPaise: pricePaise, gstInclusive: true }];
   return { printer, pricePaise, bill: priceLines(lines, { config, restaurant, on }) };
 };
 
-/** What buying `item` would charge right now: "ADDON:<code>", "TABLET" or "PRINTER:<code>". */
+/**
+ * What buying `item` would charge right now: "ADDON:<code>" or
+ * "PRINTER:<code>" (any device). "TABLET" is the tablet device, as older
+ * tills still ask for it.
+ */
 const quote = async ({ restaurantId, item, on = new Date() }) => {
   const ctx = await load(restaurantId);
   if (ctx.exempt) throw new SubscriptionError(DEMO_STORE, 409);
   const [type, code] = String(item || "").split(":");
   if (type === "ADDON") return (await addonPurchase(ctx, code, on)).bill;
-  if (type === "TABLET") return (await tabletPurchase(ctx, on)).bill;
+  if (type === "TABLET") return (await printerPurchase(ctx, "TABLET", on)).bill;
   if (type === "PRINTER") return (await printerPurchase(ctx, code, on)).bill;
   throw new SubscriptionError("Say what to price: ADDON:<code>, TABLET or PRINTER:<code>.", 400);
 };
@@ -411,7 +435,7 @@ const activate = async ({ restaurantId, on = new Date() }) => {
   const name = base.name || code;
   const period = nextPeriod({ subscription: null, days: config.subscriptionDays, on });
   const bill = priceLines(
-    [{ description: `${name} plan — ${span(config)}`, amountPaise: await priceFor({ code, config, override }) }],
+    [{ description: `${name} plan — ${span(config.subscriptionDays)}`, amountPaise: await priceFor({ code, config, override }) }],
     { config, restaurant, on },
   );
 
@@ -467,12 +491,10 @@ const activate = async ({ restaurantId, on = new Date() }) => {
 
 /**
  * A top-up (RECHARGE) was just credited. Only services/recharge calls this,
- * so a CSD credit never activates anything or earns a tablet.
- *   not activated yet, and this one top-up is at least the minimum:
- *     the POS plan starts now
- *   activated before this top-up, and it is at least the tablet amount:
- *     one tablet credit (so the activation top-up never counts)
- * Then anything due renews at once -- which is what unlocks an expired store.
+ * so a CSD credit never activates anything. Not activated yet, and this one
+ * top-up is at least the minimum: the POS plan starts now. Then anything due
+ * renews at once -- which is what unlocks an expired store, and brings back a
+ * lapsed yearly add-on.
  */
 const afterRecharge = async ({ restaurantId, amountPaise, on = new Date() }) => {
   const [config, subscription, override] = await Promise.all([
@@ -481,21 +503,16 @@ const afterRecharge = async ({ restaurantId, amountPaise, on = new Date() }) => 
     getOverride(restaurantId),
   ]);
   // A cancelled subscription stays cancelled: only reinstating brings it back.
-  if (override?.billingExempt || subscription.status === "CANCELLED") return { activated: false, tabletCredit: false };
+  if (override?.billingExempt || subscription.status === "CANCELLED") return { activated: false };
 
   const paid = Math.round(Number(amountPaise) || 0);
   let activated = false;
-  let tabletCredit = false;
-  if (!subscription.activatedAt) {
-    if (paid >= (Number(config.firstRechargeMinPaise) || 0)) activated = Boolean(await activate({ restaurantId, on }));
-  } else if (paid >= (Number(config.tablet?.rechargeRequiredPaise) || 0)) {
-    // Atomic, so two top-ups landing together both count.
-    await PlatformSubscription.updateOne({ _id: subscription._id }, { $inc: { tabletRechargeCredits: 1 } });
-    tabletCredit = true;
+  if (!subscription.activatedAt && paid >= (Number(config.firstRechargeMinPaise) || 0)) {
+    activated = Boolean(await activate({ restaurantId, on }));
   }
 
   await renewDue(on, { restaurantId });
-  return { activated, tabletCredit };
+  return { activated };
 };
 
 /**
@@ -523,7 +540,11 @@ const minimumTopUpPaise = async (restaurantId) => {
 // Buying
 // ---------------------------------------------------------------------------
 
-/** Add an add-on for the rest of this period (prorated), renewing with the plan after. */
+/**
+ * Add an add-on: for the rest of this period (prorated), renewing with the
+ * plan after -- or, one with its own period, for a full period from today,
+ * renewing on its own date.
+ */
 const addAddon = async ({ restaurantId, code, acceptance, createdBy = null, on = new Date() }) => {
   const ctx = await load(restaurantId);
   const { config, subscription } = ctx;
@@ -544,9 +565,10 @@ const addAddon = async ({ restaurantId, code, acceptance, createdBy = null, on =
     bill: p.bill,
     kind: "ADDON",
     description: `${p.addon.name} add-on`,
-    idempotencyKey: `addon-${subscription._id}-${p.addon.code}-${iso(subscription.currentPeriodEnd)}`,
+    // One purchase per period it pays for: the POS period, or its own.
+    idempotencyKey: `addon-${subscription._id}-${p.addon.code}-${iso(p.period.end)}`,
     config,
-    period: { start: new Date(on), end: subscription.currentPeriodEnd },
+    period: p.period,
     createdBy,
     meta: { addon: p.addon.code },
   });
@@ -558,14 +580,30 @@ const addAddon = async ({ restaurantId, code, acceptance, createdBy = null, on =
   const granted = await grant(
     subscription,
     { "addons.code": { $ne: p.addon.code } },
-    { $push: { addons: { code: p.addon.code, name: p.addon.name, feature: p.addon.feature || "", pricePaise: p.pricePaise, activatedAt: new Date(on), endsAt: null } } },
+    {
+      $push: {
+        addons: {
+          code: p.addon.code,
+          name: p.addon.name,
+          feature: p.addon.feature || "",
+          pricePaise: p.pricePaise,
+          activatedAt: new Date(on),
+          endsAt: null,
+          periodDays: p.days || null,
+          paidUntil: p.days ? p.period.end : null,
+        },
+      },
+    },
   );
   if (!duplicate) {
     await recordSchedule({
       restaurantId,
       storeId: subscription.storeId,
       reason: "ADDON",
-      values: acceptedValues({ bill: p.bill, item: { addon: p.addon.code, name: p.addon.name, monthlyPricePaise: p.pricePaise } }),
+      values: acceptedValues({
+        bill: p.bill,
+        item: { addon: p.addon.code, name: p.addon.name, pricePaise: p.pricePaise, periodDays: p.days || config.subscriptionDays },
+      }),
       acceptance,
     });
   }
@@ -573,90 +611,23 @@ const addAddon = async ({ restaurantId, code, acceptance, createdBy = null, on =
   return { subscription: await getSubscription(restaurantId), invoice, charged, already: !granted };
 };
 
-/** Stop an add-on at renewal. No refund: it keeps working until the period it was paid for ends. */
+/**
+ * Stop an add-on at renewal. No refund: it keeps working until the period it
+ * was paid for ends -- its own (paidUntil), or the POS period it rides.
+ */
 const removeAddon = async ({ restaurantId, code, on = new Date() }) => {
   const subscription = await getSubscription(restaurantId);
   const key = String(code || "").trim().toUpperCase();
   const addon = (subscription.addons || []).find((a) => a.code === key && liveAt(a, on));
   if (!addon) throw new SubscriptionError("That add-on is not on your plan.", 404);
   if (!addon.endsAt) {
-    addon.endsAt = subscription.currentPeriodEnd || new Date(on);
+    addon.endsAt = addon.paidUntil || subscription.currentPeriodEnd || new Date(on);
     await subscription.save();
   }
   return { subscription, endsAt: addon.endsAt };
 };
 
-/**
- * Rent one more tablet. Each needs its own qualifying top-up (a credit).
- * Paid now; KnotKitchen then delivers it to `shipTo` (a hardware request).
- */
-const rentTablet = async ({ restaurantId, acceptance, shipTo = null, createdBy = null, on = new Date() }) => {
-  const ctx = await load(restaurantId);
-  const { config, subscription } = ctx;
-  if (ctx.exempt) throw new SubscriptionError(DEMO_STORE, 409);
-  const p = await tabletPurchase(ctx, on);
-  if ((Number(subscription.tabletRechargeCredits) || 0) < 1) {
-    throw new SubscriptionError(
-      `Top up at least ${formatINR(config.tablet?.rechargeRequiredPaise || 0)} in one go to rent a tablet. The money stays in your wallet and pays your bills.`,
-      409,
-      { code: "TABLET_TOPUP_REQUIRED" },
-    );
-  }
-  requireAcceptance(acceptance);
-
-  const { invoice, duplicate, charged } = await charge({
-    subscription,
-    bill: p.bill,
-    kind: "TABLET",
-    description: `Tablet #${p.serial} rental`,
-    // Two requests racing for the same tablet number pay once.
-    idempotencyKey: `tablet-${subscription._id}-${p.serial}`,
-    config,
-    period: { start: new Date(on), end: subscription.currentPeriodEnd },
-    createdBy,
-    meta: { tablet: p.serial, priceCode: p.code },
-  });
-  // The tablet and the credit it uses, in one step: two requests at once (a
-  // free first tablet has no debit to de-duplicate them) get one tablet.
-  const granted = await grant(
-    subscription,
-    { "tablets.serial": { $ne: p.serial }, tabletRechargeCredits: { $gte: 1 } },
-    {
-      $push: { tablets: { serial: p.serial, pricePaise: p.pricePaise, rentedAt: new Date(on), endsAt: null, shipTo } },
-      $inc: { tabletRechargeCredits: -1 },
-    },
-  );
-  if (granted && !duplicate) {
-    await recordSchedule({
-      restaurantId,
-      storeId: subscription.storeId,
-      reason: "TABLET",
-      values: acceptedValues({ bill: p.bill, item: { tablet: p.serial, priceCode: p.code, monthlyPricePaise: p.pricePaise } }),
-      acceptance,
-    });
-  }
-  if (granted) {
-    // Paid: KnotKitchen now delivers it. Never fails the rental -- a request
-    // that did not open is opened when the store next opens Billing.
-    try {
-      await openRequest({
-        type: "TABLET",
-        key: `tablet-${subscription._id}-${p.serial}`,
-        restaurantId,
-        item: { code: p.code, name: `Tablet #${p.serial}`, tabletSerial: p.serial },
-        payment: { invoiceId: invoice?._id || null },
-        shipTo,
-        on,
-      });
-    } catch (err) {
-      console.warn("[Subscription] opening the tablet request failed:", err.message);
-    }
-    await settleLock(restaurantId);
-  }
-  return { subscription: await getSubscription(restaurantId), invoice, charged, serial: p.serial, already: !granted };
-};
-
-/** CSD only: a tablet came back. It stops renewing at the current period end. */
+/** CSD only: a rented tablet came back. It stops renewing at the current period end. */
 const endTablet = async ({ restaurantId, serial, on = new Date() }) => {
   const subscription = await getSubscription(restaurantId);
   const tablet = (subscription.tablets || []).find((t) => t.serial === Number(serial));
@@ -669,17 +640,17 @@ const endTablet = async ({ restaurantId, serial, on = new Date() }) => {
 };
 
 /**
- * A printer is paid through the payment gateway, never from the wallet:
- * this prices it and records what was accepted; services/recharge opens the
- * Cashfree order, and recordPrinterPayment records the printer once Cashfree
- * says it is paid.
+ * A device (a tablet or a printer) is paid through the payment gateway, never
+ * from the wallet: this prices it and records what was accepted;
+ * services/recharge opens the Cashfree order, and recordPrinterPayment
+ * records the device once Cashfree says it is paid.
  */
 const preparePrinterPayment = async ({ restaurantId, code, acceptance, on = new Date() }) => {
   const ctx = await load(restaurantId);
   if (ctx.exempt) throw new SubscriptionError(DEMO_STORE, 409);
   const p = await printerPurchase(ctx, code, on);
-  // A gateway cannot take Rs 0; a free printer is handed over by KnotKitchen.
-  if (!(p.bill.totalPaise > 0)) throw new SubscriptionError("This printer has no price here. Contact KnotKitchen to have it sent.", 409);
+  // A gateway cannot take Rs 0; a free device is handed over by KnotKitchen.
+  if (!(p.bill.totalPaise > 0)) throw new SubscriptionError("This device has no price here. Contact KnotKitchen to have it sent.", 409);
   requireAcceptance(acceptance);
   await recordSchedule({
     restaurantId,
@@ -693,7 +664,7 @@ const preparePrinterPayment = async ({ restaurantId, code, acceptance, on = new 
 };
 
 /**
- * Cashfree has confirmed a printer payment: add the printer and its invoice.
+ * Cashfree has confirmed a device payment: add the device and its invoice.
  * The payment's own gateway order id is the key, so the return from checkout
  * and the webhook arriving together record it once.
  */
@@ -761,28 +732,32 @@ const recordPrinterPayment = async ({ intent, paidPaise, on = new Date() }) => {
 // ---------------------------------------------------------------------------
 
 /**
- * What the next renewal charges: the POS plan, and every add-on and tablet
- * still renewing, at this store's prices today. Stopped ones (endsAt at or
- * before the period end) lapse and are left out. The first tablet is priced
- * as the first, the rest as extras. `target` is the entry a line renews.
+ * What the next renewal charges: the POS plan, and every add-on and rented
+ * tablet still renewing, at this store's prices today. Stopped ones (endsAt
+ * at or before the period end) lapse and are left out, and so is an add-on
+ * with its own period, which renews on its own date (renewAddons). The first
+ * tablet is priced as the first, the rest as extras. `target` is the entry a
+ * line renews.
  */
 const renewalLines = async ({ config, subscription, override }) => {
   const periodEnd = subscription.currentPeriodEnd;
+  const days = span(config.subscriptionDays);
   const keep = (x) => !x.endsAt || new Date(x.endsAt) > new Date(periodEnd);
   const addons = (subscription.addons || []).filter(keep);
   const tablets = (subscription.tablets || []).filter(keep).sort((a, b) => a.serial - b.serial);
   const base = config.basePlan || {};
   const lines = [
-    { description: `${base.name || "POS"} plan — ${span(config)}`, amountPaise: await priceFor({ code: base.code || "POS", config, override }), target: null },
+    { description: `${base.name || "POS"} plan — ${days}`, amountPaise: await priceFor({ code: base.code || "POS", config, override }), target: null },
   ];
   for (const a of addons) {
+    if (ownDays(a, config)) continue;
     const price = await priceFor({ code: a.code, config, override });
     // An add-on CSD has since removed from the catalogue renews at what it was bought for.
-    lines.push({ description: `${a.name} add-on — ${span(config)}`, amountPaise: price === null ? Number(a.pricePaise) || 0 : price, target: a });
+    lines.push({ description: `${a.name} add-on — ${days}`, amountPaise: price === null ? Number(a.pricePaise) || 0 : price, target: a });
   }
   for (const [i, t] of tablets.entries()) {
     const amountPaise = await priceFor({ code: i === 0 ? "TABLET_FIRST" : "TABLET_EXTRA", config, override });
-    lines.push({ description: `Tablet #${t.serial} rental — ${span(config)}`, amountPaise, target: t });
+    lines.push({ description: `Tablet #${t.serial} rental — ${days}`, amountPaise, target: t });
   }
   return { lines, addons, tablets };
 };
@@ -794,6 +769,7 @@ const renewalLines = async ({ config, subscription, override }) => {
  */
 const renewOne = async (subscription, { config, on }) => {
   const restaurantId = subscription.restaurantId;
+  const previousEnd = subscription.currentPeriodEnd;
   if (!["ACTIVE", "EXPIRED"].includes(subscription.status)) return { renewed: false };
   if (!subscription.currentPeriodEnd || new Date(subscription.currentPeriodEnd) > new Date(on)) return { renewed: false };
   // Cancelled: the paid period is over, so it ends here instead of renewing.
@@ -836,6 +812,15 @@ const renewOne = async (subscription, { config, on }) => {
   }
 
   for (const l of lines) if (l.target) l.target.pricePaise = l.amountPaise;
+  // One bought before its add-on got a period of its own (the once-monthly
+  // Website) leaves the plan here: paid up to the end just renewed, it is due
+  // on its own clock from now (renewAddons, straight after this).
+  for (const a of addons) {
+    const days = ownDays(a, config);
+    if (!days || a.paidUntil) continue;
+    a.periodDays = days;
+    a.paidUntil = previousEnd;
+  }
   // Stopped add-ons lapse here. Returned tablets stay listed (ended) so tablet
   // numbers, and the payment keys built from them, never repeat.
   subscription.addons = addons;
@@ -854,24 +839,95 @@ const renewOne = async (subscription, { config, on }) => {
 };
 
 /**
- * Renew every subscription whose period has ended (or just this restaurant's).
- * Run by the lock sweep, after every top-up, and by POST /api/subscription/renew.
+ * Renew the add-ons with their own period (the yearly Website) whose paid
+ * period has ended, each on its own invoice: a full period at this store's
+ * price today, continuing from paidUntil when on time and from the day it is
+ * paid when late. Never part of the POS renewal and never fatal to it: short
+ * of money, only the add-on lapses (planFeatures stops it at paidUntil), the
+ * reason stays on it, and the next top-up or sweep tries again. A POS being
+ * cancelled (or a closed store) does not renew it: it ends with the period
+ * already paid.
  */
-// ponytail: an EXPIRED store is retried every sweep (a few reads each); skip ones whose balance has not moved if that grows.
+const renewAddons = async (subscription, { config, on }) => {
+  const result = { renewed: [], errors: [] };
+  const due = (subscription.addons || []).filter((a) => !a.endsAt && a.paidUntil && new Date(a.paidUntil) <= new Date(on));
+  if (!due.length) return result;
+  const restaurantId = subscription.restaurantId;
+  const override = await getOverride(restaurantId);
+  if (override?.billingExempt) return result;
+  if (subscription.cancelAt || subscription.status === "CANCELLED" || (await isStoreClosed(restaurantId))) {
+    for (const a of due) a.endsAt = a.paidUntil;
+    await subscription.save();
+    return result;
+  }
+  const restaurant = await Restaurant.findById(restaurantId).select("address").lean();
+
+  let changed = false;
+  for (const a of due) {
+    // The plan renews first (renewOne): while it is lapsed the wallet goes to it.
+    let error = RENEW_FIRST;
+    if (subscription.status === "ACTIVE" && isActiveAt(subscription, on)) {
+      const days = ownDays(a, config);
+      const price = await priceFor({ code: a.code, config, override });
+      const amountPaise = price === null ? Number(a.pricePaise) || 0 : Math.round((price * days) / catalogDays(a.code, config));
+      const period = nextPeriod({ subscription: { currentPeriodEnd: a.paidUntil }, days, policy: "FROM_PAYMENT", on });
+      const bill = priceLines([{ description: `${a.name} add-on — ${span(days)}`, amountPaise }], { config, restaurant, on });
+      try {
+        await charge({
+          subscription,
+          bill,
+          kind: "ADDON",
+          description: `${a.name} add-on renewal`,
+          // One renewal per paid period, however many sweeps and top-ups try it.
+          idempotencyKey: `addon-renewal-${subscription._id}-${a.code}-${iso(a.paidUntil)}`,
+          config,
+          period,
+          meta: { addon: a.code, renewal: true },
+        });
+        a.pricePaise = amountPaise;
+        a.paidUntil = period.end;
+        error = "";
+        result.renewed.push(a.code);
+      } catch (err) {
+        if (!(err instanceof SubscriptionError)) throw err;
+        error = err.message;
+      }
+    }
+    if (error) result.errors.push({ code: a.code, message: error });
+    // Retried every sweep while short: the same reason is not written again.
+    if (!error || (a.lastRenewalError || "") !== error) {
+      a.lastRenewalError = error;
+      changed = true;
+    }
+  }
+  if (changed) await subscription.save();
+  if (result.renewed.length) await settleLock(restaurantId);
+  return result;
+};
+
+/**
+ * Renew every subscription whose period has ended, or that has an add-on
+ * whose own period has (or just this restaurant's). Run by the lock sweep,
+ * after every top-up, and by POST /api/subscription/renew.
+ */
+// ponytail: an EXPIRED store (or a lapsed yearly add-on) is retried every sweep (a few reads each); skip ones whose balance has not moved if that grows.
 const renewDue = async (on = new Date(), { restaurantId } = {}) => {
   const config = await getPlatformConfig();
   const due = await PlatformSubscription.find({
     ...(restaurantId ? { restaurantId } : {}),
     status: { $in: ["ACTIVE", "EXPIRED"] },
-    currentPeriodEnd: { $ne: null, $lte: new Date(on) },
+    $or: [
+      { currentPeriodEnd: { $ne: null, $lte: new Date(on) } },
+      { addons: { $elemMatch: { endsAt: null, paidUntil: { $ne: null, $lte: new Date(on) } } } },
+    ],
   });
-  let renewed = 0;
-  let failed = 0;
+  // The plan first, then the add-ons on their own clock: the POS is paid for first.
+  const renewAll = async (s) => ({ plan: await renewOne(s, { config, on }), addons: await renewAddons(s, { config, on }) });
+  const totals = { considered: due.length, renewed: 0, failed: 0, addonsRenewed: [], addonErrors: [] };
   for (const s of due) {
+    let r;
     try {
-      const r = await renewOne(s, { config, on });
-      if (r.renewed) renewed += 1;
-      else if (r.error) failed += 1;
+      r = await renewAll(s);
     } catch (err) {
       // A top-up and the sweep renewing at once: the loser's save hits a
       // VersionError after the (shared, idempotent) debit. Reload and finish
@@ -879,17 +935,23 @@ const renewDue = async (on = new Date(), { restaurantId } = {}) => {
       let failure = err;
       if (err?.name === "VersionError") {
         try {
-          const r = await renewOne(await getSubscription(s.restaurantId), { config, on });
-          if (r.renewed) renewed += 1;
-          continue;
+          r = await renewAll(await getSubscription(s.restaurantId));
+          failure = null;
         } catch (retryErr) {
           failure = retryErr;
         }
       }
-      console.warn(`[Subscription] renewal ${s.restaurantId}:`, failure.message);
+      if (failure) {
+        console.warn(`[Subscription] renewal ${s.restaurantId}:`, failure.message);
+        continue;
+      }
     }
+    if (r.plan.renewed) totals.renewed += 1;
+    else if (r.plan.error) totals.failed += 1;
+    totals.addonsRenewed.push(...r.addons.renewed);
+    totals.addonErrors.push(...r.addons.errors);
   }
-  return { considered: due.length, renewed, failed };
+  return totals;
 };
 
 // ---------------------------------------------------------------------------
@@ -999,24 +1061,37 @@ const statusFor = async (restaurantId, on = new Date()) => {
 
   // The whole catalogue on sale, marked with what this store has. One it
   // owns that has since been retired still shows, so it can be stopped.
+  const renews = !exempt && !subscription.cancelAt && subscription.status !== "CANCELLED";
   const addons = [];
   for (const a of [...(config.addons || [])].sort((x, y) => (x.sortOrder || 0) - (y.sortOrder || 0))) {
     const owned = (subscription.addons || []).find((o) => o.code === a.code && liveAt(o, on));
     if (a.isActive === false && !owned) continue;
+    // Its own period (the yearly Website), else the POS period it rides.
+    const own = Number(owned?.periodDays) || Number(a.periodDays) || 0;
     addons.push({
       code: a.code,
       name: a.name,
       description: a.description || "",
       feature: a.feature || "",
-      price: asAmount(await price(a.code)),
+      // Per period below: what its renewal charges for that period.
+      price: asAmount(Math.round(((await price(a.code)) * (own || config.subscriptionDays)) / catalogDays(a.code, config))),
+      periodDays: own || config.subscriptionDays,
+      // Bought whole for its own period and renewed on its own date.
+      yearly: Boolean(own),
       // On the plan (a stopped one stays until its endsAt)...
       owned: Boolean(owned),
-      // ...and paid up: the POS period it rides on is running.
-      active: Boolean(owned) && active,
+      // ...and paid up: its own period, or the POS period it rides on.
+      active: Boolean(owned) && (owned.paidUntil ? new Date(owned.paidUntil) > new Date(on) : active),
       endsAt: owned?.endsAt || null,
+      paidUntil: owned?.paidUntil || null,
+      // One not yet moved to its own clock moves (and is charged) at the POS renewal.
+      renewsAt: owned && !owned.endsAt && renews ? owned.paidUntil || subscription.currentPeriodEnd : null,
+      // Why its own renewal did not go through ("" once it has).
+      lastRenewalError: owned?.lastRenewalError || "",
     });
   }
 
+  // Tablets rented before tablets were sold: they keep renewing until ended.
   const tablets = (subscription.tablets || []).map((t) => ({
     serial: t.serial,
     price: asAmount(t.pricePaise),
@@ -1025,6 +1100,7 @@ const statusFor = async (restaurantId, on = new Date()) => {
     active: liveAt(t, on),
   }));
   const [firstPrice, extraPrice] = await Promise.all([price("TABLET_FIRST"), price("TABLET_EXTRA")]);
+  // Devices on sale: the tablet and the printers.
   const printers = [];
   for (const p of (config.printers || []).filter((x) => x.isActive !== false)) {
     printers.push({
@@ -1068,13 +1144,8 @@ const statusFor = async (restaurantId, on = new Date()) => {
     topUpBlocked: storeClosed || subscription.status === "CANCELLED",
     addons,
     tablets,
-    tablet: {
-      firstPrice: asAmount(firstPrice),
-      extraPrice: asAmount(extraPrice),
-      rechargeRequired: asAmount(Number(config.tablet?.rechargeRequiredPaise) || 0),
-      nextPrice: asAmount(tablets.some((t) => t.active) ? extraPrice : firstPrice),
-      credits: Number(subscription.tabletRechargeCredits) || 0,
-    },
+    // What rented tablets renew at. No new rentals: a tablet is a device now.
+    tablet: { firstPrice: asAmount(firstPrice), extraPrice: asAmount(extraPrice) },
     printers,
     hardware: (subscription.hardware || []).map((h) => ({
       code: h.code,
@@ -1104,7 +1175,6 @@ module.exports = {
   minimumTopUpPaise,
   addAddon,
   removeAddon,
-  rentTablet,
   endTablet,
   preparePrinterPayment,
   recordPrinterPayment,

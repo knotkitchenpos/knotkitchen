@@ -1,13 +1,9 @@
-/* The agreement's text: labels, the annexures and the full agreement body,
+/* The agreement's text: labels, Annexure A and the full agreement body,
    built from the application state. Globals; loaded before the main script. */
 
-function inr(n){
-  return '₹' + Number(n).toLocaleString('en-IN', { maximumFractionDigits: 2 });
-}
-
+// No amount here: the Agreement states no prices (the Add-on is priced in the app).
 function gbpLabel(v){
-  const gmb = ((window.KK_PRICES || {}).addons || {}).gmb;
-  return v==='knotkitchen' ? `KnotKitchen will manage it (this is the paid GMB Management Add-on, ${inr(gmb)} + GST per Billing Period, taken up in the KnotKitchen application)`
+  return v==='knotkitchen' ? 'KnotKitchen will manage it (this is the paid GMB Management Add-on, priced and taken up in the KnotKitchen application)'
     : v==='restaurant' ? 'Restaurant will manage it'
     : v==='agency' ? 'Another person / agency will manage it' : '—';
 }
@@ -25,8 +21,7 @@ function signMethodLabel(v){
 /* ============ AGREEMENT TEMPLATE ============ */
 /* The clause text lives in js/agreement_v3.js (v3.0). Bracket placeholders
    are replaced from onboarding data at generation time; clause wording is
-   never altered by the app. Annexure A records the Restaurant's profile;
-   Annexure B lists the standard charges from window.KK_PRICES. */
+   never altered by the app. Annexure A records the Restaurant's profile. */
 const AGREEMENT_TEMPLATE = window.AGREEMENT_TEMPLATE_V3;
 
 function buildAnnexure(){
@@ -44,30 +39,6 @@ Recorded in the KnotKitchen system from the Restaurant's onboarding submission. 
 - **Business Type:** ${d.b_type || '—'}
 - **Google Business Profile Management:** ${gbpLabel(d.gbp)}
 - **Sales Agent:** ${(d.sales_agent && d.sales_agent.trim()) ? d.sales_agent.trim() : '—'}
-`;
-}
-
-function buildAnnexureB(){
-  const p = window.KK_PRICES;
-  const per = `per Billing Period of ${p.periodDays} days`;
-  return `---
-
-## ANNEXURE B — STANDARD CHARGES AT THE EFFECTIVE DATE
-
-- POS Plan, ${per}: ${inr(p.posPlan)}
-- Activation Top-up (minimum first single Wallet top-up; it stays in the Wallet and is not a charge): ${inr(p.firstTopUp)}
-- QR Table Ordering Add-on (tables, table QR ordering and dine-in), ${per}: ${inr(p.addons.qr)}
-- Website Add-on (ordering website, online payments and table booking), ${per}: ${inr(p.addons.website)}
-- GMB Management Add-on, ${per}: ${inr(p.addons.gmb)}
-- Tablet rental, first Tablet, ${per}: ${inr(p.tabletFirst)}
-- Tablet rental, each additional Tablet, ${per}: ${inr(p.tabletExtra)}
-- Tablet Top-up (minimum single Wallet top-up for each Tablet; it stays in the Wallet and is not a charge): ${inr(p.tabletTopUp)}
-- 2-inch thermal Printer, one-time purchase, GST included: ${inr(p.printer2in)}
-- 3-inch thermal Printer, one-time purchase, GST included: ${inr(p.printer3in)}
-- Order Charge, per Paid-Online Order, from the start date shown in the application: ${inr(p.orderCharge)}
-- E-bill Charge, per e-bill sent, from the start date shown in the application: ${inr(p.ebill)}
-
-Printer prices include GST, and no GST is added to them. All other amounts exclude GST. GST is added only once KnotKitchen is registered under GST, from the GST start date shown in the application (clause 4.4). The price shown in the application when the Restaurant accepts a purchase, as recorded in the Commercial Schedule, governs, and prices may change only under clause 2.8.
 `;
 }
 
@@ -97,9 +68,8 @@ function buildAgreementText(){
     '[PHONE]': d.o_phone || '—',
     '[EMAIL]': d.o_email || '—',
     '[SALES_AGENT]': (d.sales_agent && d.sales_agent.trim()) ? d.sales_agent.trim() : 'KnotKitchen Onboarding Team',
-    // Annexures last, so the form values inside them are never re-scanned for placeholders.
+    // Annexure last, so the form values inside it are never re-scanned for placeholders.
     'ANNEXURE_A_PLACEHOLDER': buildAnnexure(),
-    'ANNEXURE_B_PLACEHOLDER': buildAnnexureB(),
   };
   let text = AGREEMENT_TEMPLATE;
   for(const k in map){ text = text.split(k).join(map[k]); }

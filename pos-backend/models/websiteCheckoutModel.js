@@ -17,6 +17,8 @@ const websiteCheckoutSchema = new mongoose.Schema(
     restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: "Restaurant", required: true, index: true },
     storeId: { type: String, required: true, index: true },
     orderData: { type: mongoose.Schema.Types.Mixed, required: true },
+    // What the gateway was opened for: the bill plus KnotKitchen's platform
+    // fee. The fee itself rides in orderData (bills.platformFee, platformCharge).
     amount: { type: Number, required: true },
     currency: { type: String, default: "INR" },
     gatewayProvider: { type: String, default: "cashfree" },

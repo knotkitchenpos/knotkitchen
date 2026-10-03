@@ -1,7 +1,8 @@
 /**
- * Printer and tablet requests (services/hardwareRequests.js): the address a
- * courier needs, one request per payment, CSD moving it along, and a cancel
- * that releases the printer/tablet and refunds the wallet exactly once.
+ * Device requests (services/hardwareRequests.js): the address a courier
+ * needs, one request per payment, CSD moving it along, and a cancel that
+ * releases the device (or ends a legacy tablet rental) and refunds the wallet
+ * exactly once.
  *
  * The models, ledger and counters are replaced below by an in-memory store.
  */
@@ -33,7 +34,6 @@ const reset = () => {
       storeId: "148379",
       currentPeriodEnd: new Date(Date.now() + 10 * 24 * 3600 * 1000),
       tablets: [{ serial: 1, pricePaise: 60000, rentedAt: new Date(), endsAt: null }],
-      tabletRechargeCredits: 0,
       hardware: [{ key: "printer-pay-KKBAL-1", code: "PRINTER_2IN", name: "2-inch printer", totalPaise: 224200, invoiceId: "invP", purchasedAt: new Date() }],
     },
     requests: [],
@@ -225,7 +225,6 @@ test("the store cancels a request KnotKitchen has not started: everything back t
   assert.equal(refunds()[0].amountPaise, 35400, "a store cannot choose a smaller refund, and gets it all");
   assert.equal(refunds()[0].idempotencyKey, `hwreq-refund-${tablet._id}`);
   assert.ok(state.sub.tablets[0].endsAt, "the tablet stops at once, so it never renews");
-  assert.equal(state.sub.tabletRechargeCredits, 1, "the top-up it used is given back");
   assert.equal(state.sub.tablets.length, 1, "the row stays, so tablet numbers never repeat");
   assert.equal(state.invoices.find((i) => i._id === "invT").status, "VOID");
   assert.ok(cancelled.cancel.settledAt);
@@ -234,7 +233,6 @@ test("the store cancels a request KnotKitchen has not started: everything back t
   const twice = await hw.cancelRequest({ id: tablet._id, restaurantId: RID, by: { type: "STORE" } });
   assert.equal(twice.status, "CANCELLED");
   assert.equal(refunds().length, 1, "never refunded twice");
-  assert.equal(state.sub.tabletRechargeCredits, 1);
 
   // Another store's request is not found.
   await rejects(hw.cancelRequest({ id: tablet._id, restaurantId: "someone-else", by: { type: "STORE" } }), 404);
@@ -304,7 +302,6 @@ test("a cancel interrupted before the refund is finished by the next look, and r
 
   await hw.reconcile(RID);
   assert.equal(refunds().length, 1);
-  assert.equal(state.sub.tabletRechargeCredits, 1, "the credit came back once, on the first try");
   assert.ok(tablet.cancel.settledAt);
   await hw.reconcile(RID);
   assert.equal(refunds().length, 1);
@@ -359,18 +356,47 @@ test("a cancelled tablet on an expired plan ends at that period's end, so the ne
   const tablet = await openTablet();
   await hw.cancelRequest({ id: tablet._id, restaurantId: RID, by: { type: "STORE" } });
   assert.equal(state.sub.tablets[0].endsAt.getTime(), periodEnd.getTime());
-  assert.equal(state.sub.tabletRechargeCredits, 1);
 });
 
-test("a tablet CSD had already set to end later is ended now by the cancel, and its top-up comes back", async () => {
+test("a tablet CSD had already set to end later is ended now by the cancel", async () => {
   reset();
   const tablet = await openTablet();
   state.sub.tablets[0].endsAt = state.sub.currentPeriodEnd; // CSD pressed End rental on the store page
   const cancelled = await hw.cancelRequest({ id: tablet._id, restaurantId: RID, by: { type: "STORE" } });
   assert.equal(state.sub.tablets[0].endsAt.getTime(), new Date(cancelled.cancel.at).getTime());
-  assert.equal(state.sub.tabletRechargeCredits, 1);
   await hw.reconcile(RID);
-  assert.equal(state.sub.tabletRechargeCredits, 1, "once");
+  assert.equal(refunds().length, 1, "once");
+});
+
+test("a tablet bought online is a device, not a rental: cancelled, it is released and refunded like a printer", async () => {
+  reset();
+  state.sub.hardware.push({ key: "printer-pay-KKBAL-2", code: "TABLET", name: "Tablet", totalPaise: 1000000, invoiceId: "invB", purchasedAt: new Date() });
+  state.invoices.push({ _id: "invB", status: "PAID", notes: "" });
+  // Paid via the gateway: a wallet entry under the same key is never read as its payment.
+  state.entries.push({ _id: "leX", idempotencyKey: "printer-pay-KKBAL-2", amountPaise: 1 });
+  const bought = await hw.openRequest({
+    type: "TABLET",
+    key: "printer-pay-KKBAL-2",
+    restaurantId: RID,
+    item: { code: "TABLET", name: "Tablet" },
+    payment: { amountPaise: 1000000, gatewayOrderId: "KKBAL-2" },
+  });
+  assert.deepEqual([bought.type, bought.payment.method, bought.payment.amountPaise, bought.payment.invoiceId], ["TABLET", "GATEWAY", 1000000, "invB"]);
+  assert.equal(hw.storeView(bought).refundable.paise, 1000000);
+
+  await hw.cancelRequest({ id: bought._id, restaurantId: RID, by: { type: "STORE" } });
+  assert.equal(refunds()[0].amountPaise, 1000000);
+  assert.ok(state.sub.hardware.find((h) => h.code === "TABLET").cancelledAt, "no longer the store's");
+  assert.equal(state.sub.tablets[0].endsAt, null, "the rented tablet is untouched");
+  assert.equal(state.invoices.find((i) => i._id === "invB").status, "VOID");
+
+  // Its request, if it never opened, is opened as a TABLET paid via the gateway.
+  reset();
+  state.sub.hardware = [{ key: "printer-pay-KKBAL-3", code: "TABLET", name: "Tablet", totalPaise: 1000000, invoiceId: "invB", purchasedAt: new Date() }];
+  state.intents.push({ gatewayOrderId: "KKBAL-3", item: { shipTo: { name: "Front desk", phone: "9000000002" } } });
+  await hw.reconcile(RID);
+  const opened = state.requests.find((r) => r.key === "printer-pay-KKBAL-3");
+  assert.deepEqual([opened.type, opened.payment.method, opened.payment.gatewayOrderId, opened.shipTo.name], ["TABLET", "GATEWAY", "KKBAL-3", "Front desk"]);
 });
 
 test("CSD cancelling one the store already cancelled is refused, not recorded as a second refund", async () => {

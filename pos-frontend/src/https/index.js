@@ -286,17 +286,17 @@ export const createRecharge = (data) => axiosWrapper.post("/api/business-balance
 export const verifyRecharge = (data) =>
   axiosWrapper.post("/api/business-balance/recharge/verify", data);
 
-// The POS plan, add-ons, tablets and printers, all paid from the wallet.
-// Purchases need { accepted: true } (the order summary was accepted); a Staff
-// member is asked for the PIN by the global popup (utils/pinPrompt).
+// The POS plan and add-ons are paid from the wallet; devices (tablets and
+// printers) are bought once, online, through the printer endpoints. Purchases
+// need { accepted: true } (the order summary was accepted); a Staff member is
+// asked for the PIN by the global popup (utils/pinPrompt).
 export const getSubscriptionStatus = () => axiosWrapper.get("/api/subscription");
-// What buying `item` charges now: "ADDON:<code>", "TABLET" or "PRINTER:<code>".
+// What buying `item` charges now: "ADDON:<code>" or "PRINTER:<code>" (a tablet is PRINTER:TABLET).
 export const getSubscriptionQuote = (item) => axiosWrapper.get("/api/subscription/quote", { params: { item } });
 export const addSubscriptionAddon = (data) => axiosWrapper.post("/api/subscription/addons", data);
 // Stops at renewal; it keeps working until then.
 export const stopSubscriptionAddon = (code) =>
   axiosWrapper.delete(`/api/subscription/addons/${encodeURIComponent(code)}`);
-export const rentSubscriptionTablet = (data) => axiosWrapper.post("/api/subscription/tablets", data);
 export const buySubscriptionPrinter = (data) => axiosWrapper.post("/api/subscription/printers", data);
 // Printers and tablets on their way: KnotKitchen delivers what was paid for.
 export const getHardwareRequests = () => axiosWrapper.get("/api/subscription/hardware-requests");

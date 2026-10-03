@@ -6,6 +6,7 @@
 const { isSettled } = require("../constants/orderStatus");
 const { formatAddress } = require("./address");
 const { resolveItemAmounts } = require("./orderItemAmounts");
+const { round2 } = require("./money");
 
 const formatPaymentMethod = (method) => {
   const m = String(method || "").trim().toUpperCase();
@@ -100,6 +101,11 @@ const buildReceipt = ({
     total = subtotal;
   }
 
+  // KnotKitchen's platform fee the diner paid online, outside the bill.
+  // `total` stays the restaurant's bill; the diner sees what they paid.
+  const platformFee = Number((tableSession?.bills || order?.bills)?.platformFee) || 0;
+  const totalPaid = round2(total + platformFee);
+
   // Customer details
   const customerDetails =
     tableSession?.customerDetails ||
@@ -172,6 +178,8 @@ const buildReceipt = ({
     taxes,
     charges,
     total,
+    platformFee,
+    totalPaid,
     paymentStatus,
     paymentMethod: formatPaymentMethod(rawPaymentMethod),
   };

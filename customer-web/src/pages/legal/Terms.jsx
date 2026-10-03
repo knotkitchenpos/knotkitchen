@@ -29,7 +29,8 @@ export default function Terms({ L }) {
         any contract of sale formed between a Customer and the Restaurant. That contract of sale is formed exclusively
         between the Customer and the Restaurant at the moment an Order is confirmed by the Restaurant, and all rights and
         obligations arising from it (delivery of conforming goods, payment, refund, warranty, etc.) rest between those two
-        parties alone.
+        parties alone. The Platform fee on an Order paid online (clause 2.5) is KnotKitchen's charge for its technology;
+        it does not make KnotKitchen a seller of, or a party to, that contract of sale.
       </p>
       <h3>2.4 Food Quality, Safety, Allergens, and Menu Accuracy</h3>
       <p>The Restaurant is solely and exclusively responsible for:</p>
@@ -66,9 +67,11 @@ export default function Terms({ L }) {
         suspected fraudulent activity, or an inability to service the delivery location. Where an Order is cancelled by the
         Restaurant after payment, the amount paid will be refunded in accordance with the Refund &amp; Cancellation Policy.
         All menu prices, applicable taxes (including GST where the Restaurant is registered), packaging charges,
-        platform/convenience fees (if any), and delivery charges are determined solely by the Restaurant (or, for delivery
-        charges under the opt-in KnotKitchen delivery service, as agreed between the Restaurant and KnotKitchen) and are
-        displayed to the Customer prior to checkout.
+        convenience fees (if any), and delivery charges are determined solely by the Restaurant (or, for delivery charges
+        under the opt-in KnotKitchen delivery service, as agreed between the Restaurant and KnotKitchen) and are displayed
+        to the Customer prior to checkout. In addition, an Order paid online carries KnotKitchen's Platform fee (see
+        clause 1.1), which is set by KnotKitchen, includes any applicable GST, and is shown as its own line, included in
+        the total, before the Customer pays. No Platform fee is charged on an Order paid in cash or at the counter.
       </p>
       <h3>2.6 Payments</h3>
       <p>
@@ -84,8 +87,9 @@ export default function Terms({ L }) {
         </li>
         <li>
           KnotKitchen is not a party to the payment transaction between the Customer, the Restaurant, and the Payment
-          Gateway, and receives no share of transaction value except any technology/platform fee separately agreed between
-          KnotKitchen and the Restaurant, which is unrelated to and does not affect the Customer;
+          Gateway. The only part of a Customer's payment that reaches KnotKitchen is the Platform fee shown on the bill
+          (clause 2.5), which the Restaurant collects with the Order payment and passes on to KnotKitchen; any other fee
+          agreed between KnotKitchen and the Restaurant is paid by the Restaurant and does not affect the Customer;
         </li>
         <li>
           KnotKitchen bears no responsibility or liability for payment failures, delayed settlement to the Restaurant,
@@ -254,6 +258,11 @@ export default function Terms({ L }) {
       <p>
         No. KnotKitchen builds and secures this website only. The Restaurant is responsible for food quality, order
         fulfilment, refunds, and (unless you're told otherwise at checkout) delivery.
+      </p>
+      <h4>What is the Platform fee?</h4>
+      <p>
+        KnotKitchen's fee for ordering and paying online. It is shown as its own line before you pay and is refunded if
+        your Order is cancelled. There is no Platform fee when you pay in cash or at the counter.
       </p>
       <h4>Who do I contact for a refund?</h4>
       <p>The Restaurant directly, using the contact details under Grievance Redressal, not KnotKitchen.</p>

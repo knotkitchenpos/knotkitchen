@@ -80,7 +80,8 @@ export function Definitions({ L }) {
                 underlying software infrastructure on behalf of the Restaurant, under a separate onboarding/service
                 agreement with the Restaurant. KnotKitchen is an "intermediary" within the meaning of Section 2(1)(w) of
                 the Information Technology Act, 2000 and does not itself sell food, own inventory, set menu prices, accept
-                or reject orders, or fulfil orders.
+                or reject orders, or fulfil orders. The only charge KnotKitchen sets on a Customer's bill is the Platform
+                fee.
               </td>
             </tr>
             <tr>
@@ -134,6 +135,19 @@ export function Definitions({ L }) {
                 and accepted by the Restaurant.
               </td>
             </tr>
+            <tr>
+              <td>
+                <strong>"Platform fee"</strong>
+              </td>
+              <td>
+                KnotKitchen's fee for ordering and paying online, charged only on an Order paid online (through this
+                website or the Restaurant's table QR ordering), never on an Order paid in cash or at the counter. It is set
+                by KnotKitchen, not the Restaurant, includes any applicable GST, and is shown as its own "Platform fee" line,
+                included in the total, before the Customer pays. The Restaurant collects it together with the Order payment
+                and passes it on to KnotKitchen. It is a fee for KnotKitchen's technology, not part of the price of any food,
+                and it is refunded if the Order is cancelled.
+              </td>
+            </tr>
           </tbody>
         </table>
       </div>
@@ -146,7 +160,7 @@ export function Definitions({ L }) {
         <li>
           In relation to <strong>food quality, ingredients, allergens, menu pricing, order acceptance/rejection, refunds,
           cancellations, returns, FSSAI compliance, GST/billing, and delivery carried out by the Restaurant's own staff</strong>,
-          "we/our/us" means the <strong>Restaurant</strong> exclusively.
+          "we/our/us" means the <strong>Restaurant</strong> exclusively, except that the Platform fee is KnotKitchen's.
         </li>
         <li>
           In relation to <strong>website availability, uptime, page functionality, checkout integration, data hosting, and

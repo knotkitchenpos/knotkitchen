@@ -94,6 +94,12 @@ const HardwareRequestDetail = () => {
   if (!r) return <p className="text-sm text-navy-500">Loading request…</p>;
 
   const open = ["REQUESTED", "ACCEPTED", "DISPATCHED"].includes(r.status);
+  const tablet = r.type === "TABLET";
+  // Tablets used to be rented (paid from the wallet, or free) and are now
+  // bought online like a printer, always through the gateway; only the
+  // payment method tells the two apart.
+  const rental = tablet && r.payment.method !== "GATEWAY";
+  const device = tablet ? "tablet" : "printer";
   const setD = (k) => (e) => setDispatch((f) => ({ ...f, [k]: e.target.value }));
 
   const copyAddress = async () => {
@@ -173,8 +179,8 @@ const HardwareRequestDetail = () => {
           <p className="mt-1 text-sm text-navy-600">
             The refund goes to the store&apos;s KnotKitchen wallet (the store paid {r.payment.amount.label}
             {r.payment.method === "GATEWAY" ? " by card/UPI" : r.payment.method === "WALLET" ? " from its wallet" : ""}).
-            {r.type === "TABLET" ? " The tablet rental stops now and the store gets its tablet top-up back." : " The printer is no longer counted as the store's."}
-            {" "}Leave the amount empty to refund everything paid (for a tablet a renewal already billed, that share too).
+            {rental ? " The tablet rental stops now." : ` The ${device} is no longer counted as the store's.`}
+            {" "}Leave the amount empty to refund everything paid{rental ? " (a renewal already billed for this tablet, that share too)" : ""}.
             {" "}A full refund voids the invoice; a part refund is noted on it.
             {" "}Refund in full unless the restaurant caused the cancellation (refused delivery, wrong address,
             breach); only then may documented costs be deducted. If the restaurant asks, KnotKitchen pays the
@@ -221,12 +227,12 @@ const HardwareRequestDetail = () => {
           {(r.status === "ACCEPTED" || r.status === "DISPATCHED") && (
             <Card title="Delivered and set up">
               <form onSubmit={submitDeliver} className="grid gap-3 sm:grid-cols-2">
-                <input className={INPUT} placeholder={r.type === "TABLET" ? "Device serial / IMEI" : "Printer serial number"} value={deliver.deviceSerial}
+                <input className={INPUT} placeholder={tablet ? "Device serial / IMEI" : "Printer serial number"} value={deliver.deviceSerial}
                   onChange={(e) => setDeliver((f) => ({ ...f, deviceSerial: e.target.value }))} maxLength={80} />
                 <input className={INPUT} placeholder="Note (optional)" value={deliver.note}
                   onChange={(e) => setDeliver((f) => ({ ...f, note: e.target.value }))} maxLength={500} />
                 <p className="text-xs text-navy-500 sm:col-span-2">
-                  {r.type === "TABLET"
+                  {rental
                     ? "Record the serial: the tablet is KnotKitchen's and comes back when the rental ends."
                     : "Record the serial for the warranty."}
                 </p>

@@ -331,10 +331,11 @@ test("the e-bill variable order matches the registered WhatsApp template", () =>
 
 test("the total is a bare amount -- the template supplies the currency symbol", () => {
   // Lives in eBillService now, so the manual button and the automatic send
-  // format it identically rather than each doing their own.
+  // format it identically rather than each doing their own. The amount is
+  // what the diner paid (bill + any online platform fee).
   assert.match(
     SRC("services/eBillService.js"),
-    /Number\(receipt\.total \|\| 0\)\.toFixed\(2\)/,
+    /Number\(receipt\.totalPaid \|\| receipt\.total \|\| 0\)\.toFixed\(2\)/,
     "'Total: Rs {{2}}' must not become 'Total: Rs Rs525'",
   );
 });

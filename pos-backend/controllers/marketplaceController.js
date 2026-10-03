@@ -57,7 +57,10 @@ const webhookMarketplaceOrder = async (req, res, next) => {
     if (!order || !mongoose.Types.ObjectId.isValid(order.restaurantId)) {
       return next(createHttpError(400, "Order payload with restaurantId is required!"));
     }
-    const newOrder = new Order(order);
+    // KnotKitchen's platform fee is only ever quoted and stamped by this
+    // server; a pushed order carries none.
+    const { platformCharge, ...pushed } = order;
+    const newOrder = new Order({ ...pushed, bills: { ...pushed.bills, platformFee: 0 } });
     newOrder.marketplace = order.marketplace || "Manual";
     newOrder.orderStatus = order.orderStatus || AWAITING_ACCEPTANCE;
     await newOrder.save();
@@ -70,10 +73,23 @@ const webhookMarketplaceOrder = async (req, res, next) => {
 
 const manualMarketplaceOrder = async (req, res, next) => {
   try {
-    // The order belongs to the caller's restaurant, whatever the body says.
-    const order = new Order({ ...req.body, createdBy: req.user._id, restaurantId: req.user.restaurantId || null });
-    order.marketplace = req.body.marketplace || "Manual";
-    order.orderStatus = req.body.orderStatus || AWAITING_ACCEPTANCE;
+    // EXPLICIT ALLOW-LIST, like addOrder: a spread body could stamp its own
+    // platform fee (credited back on cancel), table session, payments or
+    // status. The order belongs to the caller's restaurant, whatever the body says.
+    const body = req.body || {};
+    const { platformFee, ...bills } = body.bills || {};
+    const order = new Order({
+      customerDetails: body.customerDetails,
+      orderType: body.orderType,
+      deliveryAddress: body.deliveryAddress,
+      items: body.items,
+      bills,
+      marketplace: body.marketplace || "Manual",
+      marketplaceOrderId: body.marketplaceOrderId,
+      orderStatus: AWAITING_ACCEPTANCE,
+      createdBy: req.user._id,
+      restaurantId: req.user.restaurantId || null,
+    });
     await order.save();
     broadcastNewOrder(order);
     res.status(201).json({ success: true, message: "Marketplace order added!", data: order });

@@ -8,9 +8,10 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SRC = (rel) => fs.readFileSync(path.join(__dirname, "..", rel), "utf8");
 
 /**
- * Billing v3: one POS plan started by the first recharge, monthly add-ons,
- * rented tablets and bought printers, all paid from the wallet. No plans to
- * pick, no installation charge, no commitment.
+ * Billing v3: one POS plan started by the first recharge, add-ons (monthly with
+ * the plan, or yearly on their own date) paid from the wallet, and devices
+ * (tablets and printers) bought once online. No plans to pick, no installation
+ * charge, no commitment.
  */
 
 test("the API wrappers match /api/subscription, and the old plan endpoints are gone", () => {
@@ -18,11 +19,11 @@ test("the API wrappers match /api/subscription, and the old plan endpoints are g
   assert.match(api, /axiosWrapper\.get\("\/api\/subscription\/quote", \{ params: \{ item \} \}\)/);
   assert.match(api, /axiosWrapper\.post\("\/api\/subscription\/addons", data\)/);
   assert.match(api, /axiosWrapper\.delete\(`\/api\/subscription\/addons\/\$\{encodeURIComponent\(code\)\}`\)/);
-  assert.match(api, /axiosWrapper\.post\("\/api\/subscription\/tablets", data\)/);
   assert.match(api, /axiosWrapper\.post\("\/api\/subscription\/printers", data\)/);
   assert.match(api, /axiosWrapper\.post\("\/api\/subscription\/renew"\)/);
   assert.match(api, /axiosWrapper\.get\("\/api\/subscription\/invoices"\)/);
-  for (const gone of ["/plans", "/purchase", "/installation", "/terms", "/quote/"]) {
+  // Tablets are bought like printers now: no rental wrapper is left.
+  for (const gone of ["/plans", "/purchase", "/installation", "/terms", "/quote/", "/tablets"]) {
     assert.ok(!api.includes(`/api/subscription${gone}`), gone);
   }
 });
@@ -30,11 +31,9 @@ test("the API wrappers match /api/subscription, and the old plan endpoints are g
 test("every purchase is priced by /quote, shown as an order summary, and sent only once accepted", () => {
   const billing = SRC("src/pages/Billing.jsx");
   assert.match(billing, /item: `ADDON:\$\{a\.code\}`/);
-  assert.match(billing, /item: "TABLET"/);
   assert.match(billing, /item: `PRINTER:\$\{p\.code\}`/);
   assert.match(billing, /await getSubscriptionQuote\(item\)/);
   assert.match(billing, /addSubscriptionAddon\(\{ code: a\.code, accepted: true \}\)/);
-  assert.match(billing, /rentSubscriptionTablet\(\{ accepted: true, shipTo \}\)/);
   // A printer is paid through Cashfree, never from the wallet, and only a
   // payment Cashfree confirmed counts.
   assert.match(billing, /buySubscriptionPrinter\(\{\s*code: p\.code,\s*accepted: true,/);
@@ -62,13 +61,42 @@ test("the POS plan card shows the next renewal from the wallet, line by line", (
   assert.match(billing, /await renewSubscription\(\)/);
 });
 
-test("add-ons stop at renewal and can be kept; tablets wait for a qualifying top-up", () => {
+test("add-ons stop at renewal and can be kept", () => {
   const billing = SRC("src/pages/Billing.jsx");
   assert.match(billing, /run: \(\) => stopSubscriptionAddon\(a\.code\)/);
   assert.match(billing, /Stop at renewal/);
   assert.match(billing, /addSubscriptionAddon\(\{ code: a\.code \}\)[\s\S]{0,300}Keep/);
-  assert.match(billing, /disabled=\{busy \|\| credits < 1 \|\| !sub\.active\}/);
-  assert.match(billing, /credits < 1 \? `Top up \$\{money\(tablet\?\.rechargeRequired\)\} to rent a tablet` : "Request a tablet"/);
+});
+
+test("a yearly add-on shows its own period, renewal and failure, and its own accepted terms", () => {
+  const billing = SRC("src/pages/Billing.jsx");
+  // "₹3,600.00 + GST / year", never "/ 30 days".
+  assert.match(billing, /\+ GST \/ \{a\.yearly \? "year" : `\$\{a\.periodDays \|\| periodDays\} days`\}/);
+  assert.match(billing, / · renews \$\{dateOf\(a\.renewsAt\)\}/);
+  assert.match(billing, /\{a\.lastRenewalError\} Recharge the wallet and it renews by itself\./);
+  // Bought whole for a year: no days-left share, its own renewal, no refund.
+  assert.match(billing, /terms: a\.yearly\s*\?\s*\[\s*`\$\{money\(a\.price\)\} \+ GST now for one year \(until \$\{until\}\), then yearly from your wallet\.`,\s*`Stop any time: it works until \$\{until\}\. No refund\.`/);
+  // Stopping it keeps it to the end of its own paid year.
+  assert.match(billing, /It works until \$\{dateOf\(a\.paidUntil \|\| sub\.currentPeriodEnd\)\}/);
+});
+
+test("tablets are bought once online like printers; rentals are listed only while they last", () => {
+  const billing = SRC("src/pages/Billing.jsx");
+  // No rental flow, top-up credits or per-tablet recharge left.
+  assert.doesNotMatch(billing, /rentSubscriptionTablet|rentTablet|credits|rechargeRequired|item: "TABLET"/);
+  // The server's device list (Tablet + printers) is bought through the gateway.
+  assert.match(billing, /<Card title="Devices"/);
+  assert.match(billing, /\{sub\.printers\.map\(\(p\) =>[\s\S]{0,800}onClick=\{\(\) => buyPrinter\(p\)\}/);
+  assert.match(billing, /enqueueSnackbar\("Paid\. KnotKitchen will confirm and deliver it/);
+  // Legacy rentals stay visible until each one ends.
+  assert.match(billing, /\{tablets\.length > 0 && \(\s*<Card title="Rented tablets"/);
+});
+
+test("the POS never shows the platform-fee or e-bill charges, only unpaid dues that explain a lock", () => {
+  const billing = SRC("src/pages/Billing.jsx");
+  assert.doesNotMatch(billing, /per-order|e-bill|per order|order charge/i);
+  assert.match(billing, /\{balance\.dues\.count\} unpaid platform fee\(s\) — \{money\(balance\.dues\)\}/);
+  assert.match(billing, /is never charged for the plan\s+and is never locked\./);
 });
 
 test("no plan picker, installation or commitment is left in the POS", () => {
@@ -93,7 +121,6 @@ test("no plan picker, installation or commitment is left in the POS", () => {
 test("a printer or tablet is requested to a delivery address, then priced and paid; the store follows and can cancel it", () => {
   const billing = SRC("src/pages/Billing.jsx");
   // Address first (prefilled from the store), then the usual order summary.
-  assert.match(billing, /const rentTablet = \(\) =>\s*setDeliverFor\(/);
   assert.match(billing, /const buyPrinter = \(p\) =>\s*setDeliverFor\(/);
   assert.match(billing, /initial=\{sub\?\.shipTo\}/);
   assert.match(billing, /buySubscriptionPrinter\(\{\s*code: p\.code,\s*accepted: true,\s*shipTo,/);

@@ -194,7 +194,7 @@ test("the tax total always equals the sum of its own components", () => {
 const CATALOG = {
   basePlan: { code: "POS", name: "POS", pricePaise: 39900 },
   addons: [{ code: "WEBSITE", pricePaise: 30000 }, { code: "GMB", pricePaise: 10000 }],
-  tablet: { firstPricePaise: 60000, extraPricePaise: 50000, rechargeRequiredPaise: 400000 },
+  tablet: { firstPricePaise: 60000, extraPricePaise: 50000 },
   printers: [{ code: "PRINTER_2IN", pricePaise: 190000 }],
 };
 
@@ -236,7 +236,7 @@ test("REGRESSION: no price, rate or charge is written into the code", () => {
   ];
   const forbidden = [
     [/\b18\b/, "the GST rate"],
-    [/\b1299\b|\b399\b|\b599\b|\b1699\b|\b2500\b|\b4000\b/, "a price"],
+    [/\b1299\b|\b399\b|\b499\b|\b599\b|\b1699\b|\b2500\b|\b4000\b/, "a price"],
     [/\b0\.18\b/, "a tax multiplier"],
   ];
 

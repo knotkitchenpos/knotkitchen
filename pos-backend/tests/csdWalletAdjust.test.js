@@ -26,6 +26,8 @@ const reset = (balance = 0) => Object.assign(state, {
     save: async () => { state.saved += 1; },
   },
   order: null,
+  // The resolved per-order rate: ₹3 for the website.
+  charge: { enabled: true, amountPaise: 300, taxable: true },
 });
 
 class InsufficientBalanceError extends Error {
@@ -65,7 +67,7 @@ const lock = {
 };
 const pricing = {
   getPlatformConfig: async () => state.config,
-  resolveOrderCharge: async () => ({ enabled: true, amountPaise: 900, chargeableSources: ["WEBSITE", "QR"], taxable: true }),
+  resolveOrderCharge: async () => state.charge,
   resolveEBillCharge: async () => ({ enabled: true, amountPaise: 25, taxable: true }),
 };
 const fakes = {
@@ -91,7 +93,7 @@ Module._load = function load(request, parent) {
 };
 
 const ctrl = require("../controllers/csdBillingConfigController");
-const { chargeOrder } = require("../services/orderCharge");
+const { chargeOrder, quotePlatformFee } = require("../services/orderCharge");
 const { chargeForEBill } = require("../services/ebillCharge");
 
 /** Run a handler; resolve with { status, body } or the error it passed on. */
@@ -226,26 +228,81 @@ test("the tax mode is no longer editable or shown", async () => {
 // N5: usage charges are taxed on top, whatever gst.mode says
 // ---------------------------------------------------------------------------
 
-test("the per-order charge is ₹9 + GST even when the stored mode is inclusive", async () => {
+test("the platform fee is quoted ₹3 + GST even when the stored mode is inclusive", async () => {
   reset(100000);
+  const fee = await quotePlatformFee({ restaurantId: RID, source: "WEBSITE" });
+  assert.deepEqual(fee, { amountPaise: 300, taxPaise: 54, totalPaise: 354, taxPercent: 18 }, "18% added on top, not taken out");
+
+  // No GST before KnotKitchen's own registration is effective.
+  state.config.gst.effectiveFrom = new Date("2099-01-01");
+  assert.deepEqual(await quotePlatformFee({ restaurantId: RID, source: "WEBSITE" }), {
+    amountPaise: 300, taxPaise: 0, totalPaise: 300, taxPercent: 0,
+  });
+
+  // Off, not started, zero, a demo store: no fee at all.
+  for (const charge of [{ enabled: false, amountPaise: 300 }, { enabled: true, amountPaise: 0 }]) {
+    state.charge = charge;
+    assert.equal(await quotePlatformFee({ restaurantId: RID, source: "WEBSITE" }), null);
+  }
+});
+
+test("REGRESSION: the debit equals the fee the diner paid, even after CSD changes the rate", async () => {
+  reset(100000);
+  const fee = await quotePlatformFee({ restaurantId: RID, source: "WEBSITE" });
   state.order = {
-    _id: "o1", restaurantId: RID, orderNumber: 7, source: "QR", orderStatus: "Paid", createdAt: new Date(),
-    payments: [{ status: "paid" }], paymentData: { gatewayOrderId: "KK-T-1" }, save: async () => {},
+    _id: "o1", restaurantId: RID, orderNumber: 7, source: "WEBSITE", orderStatus: "Pending", createdAt: new Date(),
+    payments: [{ status: "paid" }], paymentData: { gatewayOrderId: "KK-W-1" },
+    platformCharge: { ...fee, status: null }, save: async () => {},
   };
+  // Repriced between checkout and the debit.
+  state.charge = { enabled: true, amountPaise: 900, taxable: true };
+  state.config.gst.percent = 5;
+
   const r = await chargeOrder("o1");
   assert.equal(r.charged, true);
-  assert.equal(state.entries[0].amountPaise, 900 + 162, "18% added on top, not taken out");
-  assert.equal(state.order.platformCharge.taxPaise, 162);
+  assert.equal(state.entries[0].amountPaise, 354, "what the diner paid, not today's rate");
+  assert.equal(state.entries[0].kind, "ORDER_CHARGE");
+  assert.equal(state.entries[0].description, "Platform fee — #7");
+  assert.deepEqual(
+    [state.order.platformCharge.status, state.order.platformCharge.taxPaise, state.order.platformCharge.totalPaise],
+    ["PAID", 54, 354],
+  );
 
   // Idempotent: a second settle of the same order bills nothing more.
   await chargeOrder("o1");
   assert.equal(state.entries.length, 1);
 });
 
+test("a cash-paid order carries no fee and is only stamped", async () => {
+  reset(100000);
+  state.order = {
+    _id: "o2", restaurantId: RID, orderNumber: 8, source: "POS", orderStatus: "Completed", createdAt: new Date(),
+    payments: [{ status: "paid", method: "cash" }], save: async () => {},
+  };
+  const r = await chargeOrder("o2");
+  assert.equal(r.charged, false);
+  assert.equal(state.entries.length, 0);
+  assert.deepEqual([state.order.platformCharge.status, state.order.platformCharge.reason], ["NOT_APPLICABLE", "No platform fee was collected."]);
+});
+
 test("the e-bill charge is ₹0.25 + GST even when the stored mode is inclusive", async () => {
   reset(100000);
   await chargeForEBill({ restaurantId: RID, messageId: "m1" });
   assert.equal(state.entries[0].amountPaise, 25 + 5, "25p + 18% (4.5p, rounded) on top");
+});
+
+test("the e-bill is charged once per bill: the first delivery pays, a re-send does not", async () => {
+  reset(100000);
+  const send = (billRef, messageId) => chargeForEBill({ restaurantId: RID, billRef, messageId, orderNumber: "42" });
+  assert.equal((await send("s1", "m1")).charged, true);
+  // The settle modal and the auto-send both firing, then a manual re-send.
+  assert.equal((await send("s1", "m2")).charged, false);
+  assert.equal((await send("s1", "m3")).charged, false);
+  assert.equal(state.entries.length, 1);
+  assert.equal(state.entries[0].description, "E-bill — #42");
+  // Another bill is another charge.
+  assert.equal((await send("s2", "m4")).charged, true);
+  assert.equal(state.entries.length, 2);
 });
 
 // ---------------------------------------------------------------------------

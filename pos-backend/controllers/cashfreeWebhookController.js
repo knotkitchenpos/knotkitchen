@@ -33,8 +33,9 @@ const {
   PROVIDERS,
 } = require("../services/paymentGateway");
 const cashfree = require("../services/gateways/cashfree");
+const { round2, toRupees } = require("../services/money");
 
-const ack = (res, note, extra = {}) => {
+const ack =(res, note, extra = {}) => {
   if (note) console.warn(`[cashfree-webhook] ${note}`);
   return res.status(200).json({ success: true, ...extra });
 };
@@ -150,12 +151,15 @@ const cashfreeWebhook = async (req, res) => {
 
     if (session) {
       const payable = session.bills?.totalWithTax || 0;
-      if (Math.abs(Number(status.amount) - Number(payable)) > 0.01) {
+      // Opened for the bill plus the platform fee stored with the gateway order.
+      const platformFee = session.payment?.platformFee;
+      const expected = round2(payable + toRupees(platformFee?.totalPaise));
+      if (Math.abs(Number(status.amount) - Number(expected)) > 0.01) {
         // The bill moved after checkout opened. Settling it here would close
         // the table for less than it owes; leave it for staff.
         return ack(
           res,
-          `amount mismatch on ${orderId}: paid ${status.amount}, bill ${payable}`,
+          `amount mismatch on ${orderId}: paid ${status.amount}, expected ${expected}`,
           { mismatch: true },
         );
       }
@@ -167,6 +171,7 @@ const cashfreeWebhook = async (req, res) => {
           restaurantId: session.restaurantId,
           method: "ONLINE",
           amount: payable,
+          platformFee,
           transactionId: status.cfOrderId || orderId,
           // The same key the browser path uses, so whichever arrives second is
           // a no-op rather than a second payment.

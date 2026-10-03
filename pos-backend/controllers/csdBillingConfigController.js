@@ -17,8 +17,10 @@ const { csdAudit } = require("../services/csdAuditService");
 /**
  * The admin panel's view of KnotKitchen's own pricing.
  *
- * This is the only place the POS plan, add-ons, tablets, printers, GST and
- * the per-order charge can be set. No restaurant-facing route writes any of it -- that is the whole point
+ * This is the only place the POS plan, add-ons (and their periods), devices,
+ * legacy tablet-rental prices, GST and the usage charges (platform fee per
+ * source, e-bill) can be set. No restaurant-facing route writes any of it,
+ * nor shows the usage charges -- that is the whole point
  * of the specification's rule that "all financial settings must be controlled
  * by the KnotKitchen Admin Panel".
  *
@@ -35,6 +37,9 @@ const asDate = (v) => {
   return Number.isNaN(d.getTime()) ? null : d;
 };
 
+// The usage charges, all one shape: the platform fee per order source, and the e-bill.
+const USAGE_CHARGES = ["websiteOrderCharge", "qrOrderCharge", "ebillCharge"];
+
 /** Config as the admin edits it: money in rupees, everything else verbatim. */
 const present = (config) => ({
   basePlan: {
@@ -49,15 +54,18 @@ const present = (config) => ({
     description: a.description || "",
     price: toRupees(a.pricePaise),
     priceLabel: formatINR(a.pricePaise),
+    // null rides the POS period; a number is its own (365 = yearly).
+    periodDays: a.periodDays ?? null,
     feature: a.feature || "",
     isActive: a.isActive !== false,
     sortOrder: a.sortOrder || 0,
   })),
+  // What tablets rented before tablets were sold renew at.
   tablet: {
     firstPrice: toRupees(config.tablet?.firstPricePaise || 0),
     extraPrice: toRupees(config.tablet?.extraPricePaise || 0),
-    rechargeRequired: toRupees(config.tablet?.rechargeRequiredPaise || 0),
   },
+  // Devices (the tablet and printers): one-time, GST-inclusive.
   printers: (config.printers || []).map((p) => ({
     code: p.code,
     name: p.name,
@@ -75,19 +83,17 @@ const present = (config) => ({
     legalName: config.gst?.legalName || "",
     addressLines: config.gst?.addressLines || [],
   },
-  websiteOrderCharge: {
-    enabled: config.websiteOrderCharge?.enabled || false,
-    amount: toRupees(config.websiteOrderCharge?.amountPaise || 0),
-    effectiveFrom: config.websiteOrderCharge?.effectiveFrom || null,
-    chargeableSources: config.websiteOrderCharge?.chargeableSources || [],
-    taxable: config.websiteOrderCharge?.taxable !== false,
-  },
-  ebillCharge: {
-    enabled: config.ebillCharge?.enabled || false,
-    amount: toRupees(config.ebillCharge?.amountPaise || 0),
-    effectiveFrom: config.ebillCharge?.effectiveFrom || null,
-    taxable: config.ebillCharge?.taxable !== false,
-  },
+  ...Object.fromEntries(
+    USAGE_CHARGES.map((key) => [
+      key,
+      {
+        enabled: config[key]?.enabled || false,
+        amount: toRupees(config[key]?.amountPaise || 0),
+        effectiveFrom: config[key]?.effectiveFrom || null,
+        taxable: config[key]?.taxable !== false,
+      },
+    ]),
+  ),
   subscriptionDays: config.subscriptionDays,
   graceHours: config.graceHours,
   renewalPolicy: config.renewalPolicy,
@@ -107,8 +113,6 @@ const CODE = /^[A-Z0-9_]{2,30}$/;
 // Codes a price override can name besides the catalogue's own (services/pricing).
 const RESERVED_CODES = ["POS", "TABLET_FIRST", "TABLET_EXTRA"];
 const FEATURES = ["", "website", "tableQr"];
-// Order.source values whose orders are paid online (website, table QR).
-const ORDER_CHARGE_SOURCES = ["WEBSITE", "QR"];
 
 /** A price in rupees, as paise, or an error on `key`. */
 const readPrice = (value, key, fieldErrors) => {
@@ -125,9 +129,9 @@ const readPrice = (value, key, fieldErrors) => {
  * it. All-or-nothing on purpose: a half-applied price list is worse than a
  * rejected one, because the half that applied is now live. `seen` is shared
  * between the two lists, because a price override names a code without
- * saying which list it is in.
+ * saying which list it is in. `current` is the add-on list saved now.
  */
-const readCatalog = (input, field, fieldErrors, seen, { addons = false } = {}) => {
+const readCatalog = (input, field, fieldErrors, seen, { addons = false, current = [] } = {}) => {
   if (!Array.isArray(input)) {
     fieldErrors[field] = "Must be a list.";
     return null;
@@ -151,9 +155,23 @@ const readCatalog = (input, field, fieldErrors, seen, { addons = false } = {}) =
     if (!FEATURES.includes(feature)) {
       fieldErrors[`${field}.${i}.feature`] = "Feature must be none, website or tableQr.";
     }
+    // Blank rides the POS period; otherwise its own, in whole days. Left out
+    // (a CSD page loaded before periods existed) keeps the saved one, so a
+    // save from it never turns the yearly Website monthly.
+    const saved = current.find((a) => a.code === code);
+    const periodDays = raw?.periodDays === undefined ? (saved?.periodDays ?? null) : num(raw.periodDays);
+    if (periodDays !== null && !(Number.isInteger(periodDays) && periodDays >= 1 && periodDays <= 366)) {
+      fieldErrors[`${field}.${i}.periodDays`] = "Use whole days from 1 to 366, or leave it blank for the POS period.";
+    } else if (saved && (saved.periodDays ?? null) !== periodDays) {
+      // Fixed once saved, like the code: stores already on the add-on, and
+      // their negotiated prices, were agreed for that period. A different
+      // period is a new add-on.
+      fieldErrors[`${field}.${i}.periodDays`] = "The billing period can't change once saved. Add a new add-on for a different period.";
+    }
     return {
       ...item,
       description: String(raw?.description || "").trim().slice(0, 300),
+      periodDays,
       feature,
       sortOrder: Number(raw?.sortOrder) || 0,
     };
@@ -180,7 +198,7 @@ const updateBillingConfig = async (req, res, next) => {
     // Codes stay unique across both lists, counting the one not being sent.
     const seen = new Set();
     const addons = body.addons !== undefined
-      ? readCatalog(body.addons, "addons", fieldErrors, seen, { addons: true })
+      ? readCatalog(body.addons, "addons", fieldErrors, seen, { addons: true, current: config.addons || [] })
       : null;
     if (body.addons === undefined) (config.addons || []).forEach((x) => seen.add(x.code));
     const printers = body.printers !== undefined
@@ -188,18 +206,18 @@ const updateBillingConfig = async (req, res, next) => {
       : null;
     if (body.addons !== undefined && body.printers === undefined) {
       for (const x of config.printers || []) {
-        if (seen.has(x.code)) fieldErrors.addons = `The code "${x.code}" is already a printer.`;
+        if (seen.has(x.code)) fieldErrors.addons = `The code "${x.code}" is already a device.`;
       }
     }
     if (addons) config.addons = addons;
     if (printers) config.printers = printers;
 
+    // Legacy rental prices: what tablets already rented renew at.
     if (body.tablet !== undefined) {
       const t = body.tablet || {};
       config.tablet = {
         firstPricePaise: readPrice(t.firstPrice, "tablet.firstPrice", fieldErrors),
         extraPricePaise: readPrice(t.extraPrice, "tablet.extraPrice", fieldErrors),
-        rechargeRequiredPaise: readPrice(t.rechargeRequired, "tablet.rechargeRequired", fieldErrors),
       };
     }
 
@@ -240,46 +258,21 @@ const updateBillingConfig = async (req, res, next) => {
       };
     }
 
-    if (body.websiteOrderCharge !== undefined) {
-      const c = body.websiteOrderCharge || {};
+    // The platform fee (website, table QR) and the e-bill charge: an amount
+    // (left out keeps the saved one), a start date it needs to be on, and GST.
+    for (const key of USAGE_CHARGES) {
+      if (body[key] === undefined) continue;
+      const c = body[key] || {};
       const amount = num(c.amount);
       if (amount !== null && (Number.isNaN(amount) || amount < 0)) {
-        fieldErrors["websiteOrderCharge.amount"] = "The charge must be zero or more.";
+        fieldErrors[`${key}.amount`] = "The charge must be zero or more.";
       }
       if (c.enabled && !asDate(c.effectiveFrom)) {
-        fieldErrors["websiteOrderCharge.effectiveFrom"] =
-          "Set the date the charge starts applying.";
+        fieldErrors[`${key}.effectiveFrom`] = "Set the date the charge starts applying.";
       }
-      const sources = Array.isArray(c.chargeableSources)
-        ? [...new Set(c.chargeableSources.map((s) => String(s).trim().toUpperCase()))]
-        : (config.websiteOrderCharge?.chargeableSources || []).filter((s) => ORDER_CHARGE_SOURCES.includes(s));
-      // Only orders paid online can carry the charge: website and table QR.
-      if (sources.some((s) => !ORDER_CHARGE_SOURCES.includes(s))) {
-        fieldErrors["websiteOrderCharge.chargeableSources"] = `Choose from ${ORDER_CHARGE_SOURCES.join(", ")}.`;
-      }
-      config.websiteOrderCharge = {
+      config[key] = {
         enabled: Boolean(c.enabled),
-        amountPaise: toPaise(amount === null ? toRupees(config.websiteOrderCharge?.amountPaise || 0) : amount),
-        effectiveFrom: asDate(c.effectiveFrom),
-        chargeableSources: sources,
-        taxable: c.taxable !== false,
-      };
-    }
-
-    if (body.ebillCharge !== undefined) {
-      const c = body.ebillCharge || {};
-      const amount = num(c.amount);
-      if (amount !== null && (Number.isNaN(amount) || amount < 0)) {
-        fieldErrors["ebillCharge.amount"] = "The charge must be zero or more.";
-      }
-      if (c.enabled && !asDate(c.effectiveFrom)) {
-        fieldErrors["ebillCharge.effectiveFrom"] = "Set the date the charge starts applying.";
-      }
-      config.ebillCharge = {
-        enabled: Boolean(c.enabled),
-        amountPaise: toPaise(
-          amount === null ? toRupees(config.ebillCharge?.amountPaise || 0) : amount,
-        ),
+        amountPaise: toPaise(amount === null ? toRupees(config[key]?.amountPaise || 0) : amount),
         effectiveFrom: asDate(c.effectiveFrom),
         taxable: c.taxable !== false,
       };
@@ -336,7 +329,8 @@ const updateBillingConfig = async (req, res, next) => {
 
 /**
  * GET /api/csd/billing/accounts/:restaurantId — would this account lock, and
- * why; and its plan: add-ons, tablets, credits, hardware, next renewal.
+ * why; and its plan: add-ons (with their own renewals), rented tablets,
+ * devices, next renewal.
  *
  * Read-only. Deliberately does not APPLY the lock: an admin looking at a
  * restaurant should not be the thing that locks it.
@@ -405,11 +399,10 @@ const changeSubscription = (action) => async (req, res, next) => {
  * POST /api/csd/billing/accounts/:restaurantId/wallet/adjust — admin only, audited.
  * { direction: "CREDIT"|"DEBIT", amount (rupees), reason, reference?, idempotencyKey? }
  *
- * A manual Wallet movement: a tablet lost or damaged (at actual cost), an
- * erroneous charge put back, a permitted refund paid out by bank transfer
+ * A manual Wallet movement: a rented tablet lost or damaged (at actual cost),
+ * an erroneous charge put back, a permitted refund paid out by bank transfer
  * (a DEBIT whose reference is the UTR). Through the ledger only, and never
- * through afterRecharge: a credit is not a top-up, so it never starts the plan
- * or earns a tablet credit.
+ * through afterRecharge: a credit is not a top-up, so it never starts the plan.
  *
  * Idempotent on the client's key, else on the same movement (direction,
  * amount, reason, reference) repeated within a minute -- a double-clicked

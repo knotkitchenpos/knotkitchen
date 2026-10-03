@@ -8,15 +8,18 @@
  *   DELIVERED  handed over and set up
  *   CANCELLED  the printer/tablet is released and the refund is in the wallet
  *
- * Paying is unchanged: a printer is paid through Cashfree (services/recharge),
- * a tablet from the wallet (services/subscription rentTablet). Each opens its
- * request here once the payment has landed, keyed by the payment's own key,
- * so a retried payment opens one request.
+ * A device -- a printer or a tablet -- is bought through Cashfree
+ * (services/recharge, payment.method GATEWAY) and opens its request here once
+ * the payment has landed, keyed by the payment's own key, so a retried
+ * payment opens one request. A tablet RENTED before tablets were sold was
+ * paid from the wallet (payment.method WALLET, key `tablet-<sub>-<serial>`);
+ * its request ends the rental instead. Rental or purchase is told apart by
+ * how it was paid, never by the type alone (legacyRental).
  *
  * A refund always goes to the wallet (a REFUND ledger credit), for a card
  * payment too: it is instant, needs no gateway round trip, and pays the
  * store's next bills. Never through afterRecharge -- a refund is not a top-up
- * and must not start a plan or earn a tablet.
+ * and must not start a plan.
  */
 
 const HardwareRequest = require("../models/hardwareRequestModel");
@@ -52,6 +55,10 @@ const MOVES = {
 };
 
 const text = (v, max) => String(v == null ? "" : v).trim().slice(0, max);
+
+// A tablet not bought through the gateway: a rental from before tablets were
+// sold (wallet-paid, or free at a negotiated Rs 0).
+const legacyRental = (r) => r.type === "TABLET" && r.payment?.method !== "GATEWAY";
 
 // ---------------------------------------------------------------------------
 // Delivery address
@@ -146,16 +153,18 @@ const openRequest = async ({ type, key, restaurantId, item = {}, payment = {}, s
         PlatformSubscription.findOne({ restaurantId }).select("_id storeId hardware").lean(),
       ]);
       const storeId = restaurant?.storeId || subscription?.storeId || "";
-      // A tablet is paid by a wallet debit under the same key as the request;
-      // a printer's invoice is fixed on its hardware row.
-      const entry = type === "TABLET" ? await findByIdempotencyKey(key) : null;
+      // A device bought through the gateway has its invoice fixed on its
+      // hardware row; a rented tablet was paid by a wallet debit under the
+      // same key as the request.
+      const viaGateway = Boolean(payment.gatewayOrderId);
+      const entry = viaGateway ? null : await findByIdempotencyKey(key);
       const invoiceId =
         payment.invoiceId ||
-        (type === "PRINTER"
+        (viaGateway
           ? (subscription?.hardware || []).find((h) => h.key === key)?.invoiceId
           : entry && (await PlatformInvoice.findOne({ restaurantId, ledgerEntryId: entry._id }).select("_id").lean())?._id) ||
         null;
-      const amountPaise = type === "TABLET" ? Number(entry?.amountPaise) || 0 : Math.round(Number(payment.amountPaise) || 0);
+      const amountPaise = viaGateway ? Math.round(Number(payment.amountPaise) || 0) : Number(entry?.amountPaise) || 0;
       return HardwareRequest.create({
         requestNo: await nextRequestNo(storeId),
         key,
@@ -165,7 +174,7 @@ const openRequest = async ({ type, key, restaurantId, item = {}, payment = {}, s
         type,
         item: { code: item.code || "", name: item.name || (type === "TABLET" ? "Tablet" : "Printer"), tabletSerial: item.tabletSerial ?? null },
         payment: {
-          method: amountPaise > 0 ? (type === "TABLET" ? "WALLET" : "GATEWAY") : "NONE",
+          method: amountPaise > 0 ? (viaGateway ? "GATEWAY" : "WALLET") : "NONE",
           amountPaise,
           gatewayOrderId: payment.gatewayOrderId || "",
           ledgerEntryId: entry?._id || null,
@@ -196,20 +205,20 @@ const notify = (request) => {
 };
 
 /**
- * Release the printer/tablet, refund, and mark the invoice. Every step is
- * guarded to happen once, so a cancel interrupted halfway is finished by
- * calling this again.
+ * Release the device (or end the rental), refund, and mark the invoice. Every
+ * step is guarded to happen once, so a cancel interrupted halfway is finished
+ * by calling this again.
  */
 const settleCancellation = async (request) => {
   const at = request.cancel?.at || new Date();
-  if (request.type === "TABLET") {
+  if (legacyRental(request)) {
     // Ends now (not at the period end, as a returned tablet does): it was
     // never handed over, so it must not renew. On a plan whose period has
     // already run out (expired), at that period's end, or the renewal that
-    // follows the refund would bill it again. The tablet top-up it used is
-    // given back. A tablet CSD had already set to end later is ended too.
-    // Once ended at or before `end` it no longer matches, so this runs once.
-    // The row stays, so tablet numbers never repeat.
+    // follows the refund would bill it again. A tablet CSD had already set to
+    // end later is ended too. Once ended at or before `end` it no longer
+    // matches, so this runs once. The row stays, so tablet numbers never
+    // repeat.
     const sub = await PlatformSubscription.findOne({ restaurantId: request.restaurantId }).select("currentPeriodEnd").lean();
     const periodEnd = sub?.currentPeriodEnd ? new Date(sub.currentPeriodEnd) : null;
     const end = periodEnd && periodEnd < new Date(at) ? periodEnd : new Date(at);
@@ -218,7 +227,7 @@ const settleCancellation = async (request) => {
         restaurantId: request.restaurantId,
         tablets: { $elemMatch: { serial: request.item.tabletSerial, endsAt: { $not: { $lte: end } } } },
       },
-      { $set: { "tablets.$.endsAt": end }, $inc: { tabletRechargeCredits: 1 } },
+      { $set: { "tablets.$.endsAt": end } },
     );
   } else {
     await PlatformSubscription.updateOne(
@@ -272,13 +281,14 @@ const settleCancellation = async (request) => {
 };
 
 /**
- * Everything the store paid for this request. A tablet still waiting for
- * delivery when a period ended was renewed with the plan (renewal invoices
- * carry a "Tablet #N rental — ..." line); that share is refundable too.
+ * Everything the store paid for this request. A rented tablet still waiting
+ * for delivery when a period ended was renewed with the plan (renewal
+ * invoices carry a "Tablet #N rental — ..." line); that share is refundable
+ * too.
  */
 const refundableFor = async (request) => {
   let paid = Number(request.payment?.amountPaise) || 0;
-  if (request.type === "TABLET" && request.item?.tabletSerial != null) {
+  if (legacyRental(request) && request.item?.tabletSerial != null) {
     const tag = `Tablet #${request.item.tabletSerial} rental — `;
     const renewals = await PlatformInvoice.find({
       restaurantId: request.restaurantId,
@@ -325,7 +335,7 @@ const cancelRequest = async ({ id, restaurantId = null, by, reason = "", refundP
       throw new HardwareRequestError(
         by.type === "STORE"
           ? "KnotKitchen is already preparing this. Call support to cancel it."
-          : "A delivered request cannot be cancelled. A tablet coming back is ended from the store's page.",
+          : "A delivered request cannot be cancelled. A rented tablet coming back is ended from the store's page.",
         409,
         "NOT_CANCELLABLE",
       );
@@ -481,23 +491,33 @@ const reconcile = async (restaurantId) => {
   if (sub) {
     const since = LAUNCHED_AT.getTime();
     const paid = [
+      // Devices bought through the gateway.
       ...(sub.hardware || [])
         .filter((h) => h.key && !h.cancelledAt && new Date(h.purchasedAt).getTime() >= since)
-        .map((h) => ({ type: "PRINTER", key: h.key, item: { code: h.code, name: h.name }, amountPaise: h.totalPaise, invoiceId: h.invoiceId })),
+        .map((h) => ({
+          type: h.code === "TABLET" ? "TABLET" : "PRINTER",
+          key: h.key,
+          item: { code: h.code, name: h.name },
+          amountPaise: h.totalPaise,
+          invoiceId: h.invoiceId,
+          gatewayOrderId: h.key.replace(/^printer-pay-/, ""),
+        })),
+      // Tablets rented (from the wallet) before tablets were sold.
       ...(sub.tablets || [])
         .filter((t) => !t.endsAt && new Date(t.rentedAt).getTime() >= since)
         .map((t) => ({
           type: "TABLET",
           key: `tablet-${sub._id}-${t.serial}`,
           item: { code: "TABLET", name: `Tablet #${t.serial}`, tabletSerial: t.serial },
-          // Kept on the row by rentTablet, so the address typed survives.
+          // Kept on the row when it was rented, so the address typed survives.
           shipTo: t.shipTo || null,
+          gatewayOrderId: "",
         })),
     ];
     if (paid.length) {
       const have = new Set((await HardwareRequest.find({ key: { $in: paid.map((p) => p.key) } }).select("key").lean()).map((r) => r.key));
       for (const p of paid.filter((x) => !have.has(x.key))) {
-        const gatewayOrderId = p.type === "PRINTER" ? p.key.replace(/^printer-pay-/, "") : "";
+        const { gatewayOrderId } = p;
         const intent = gatewayOrderId ? await RechargeOrder.findOne({ gatewayOrderId }).select("item").lean() : null;
         await openRequest({
           type: p.type,
@@ -592,7 +612,7 @@ const listForStore = async (restaurantId) => {
     console.warn("[hardwareRequests] reconcile failed:", err.message);
   }
   const rows = await HardwareRequest.find({ restaurantId }).sort({ createdAt: -1 }).limit(50).lean();
-  for (const r of rows) if (r.status === "REQUESTED" && r.type === "TABLET") r.refundablePaise = await refundableFor(r);
+  for (const r of rows) if (r.status === "REQUESTED" && legacyRental(r)) r.refundablePaise = await refundableFor(r);
   return rows.map(storeView);
 };
 

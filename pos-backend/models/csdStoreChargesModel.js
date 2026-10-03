@@ -17,6 +17,7 @@ const mongoose = require("mongoose");
 // platform price into itself, or it silently overrides every later change.
 const DEFAULTS = {
   onlinePaidOrderCharge: null,
+  qrPaidOrderCharge: null,
   orderChargeFrom: null,
 };
 
@@ -37,12 +38,14 @@ const csdStoreChargesSchema = new mongoose.Schema(
   {
     storeId: { type: String, required: true, unique: true, index: true },
 
-    // Per-order charge on website and table-QR orders paid online, rupees.
-    // null means "use the platform amount"; 0 means "this restaurant is
-    // charged nothing", which is a real setting.
+    // The platform fee on this store's online-paid orders, rupees before GST:
+    // website orders here ("Website platform fee"), table-QR orders below
+    // ("Table QR platform fee"). null means "use the platform amount"; 0
+    // means "this restaurant's customers pay none", which is a real setting.
     onlinePaidOrderCharge: { type: Number, default: DEFAULTS.onlinePaidOrderCharge, min: 0 },
-    // Delays the per-order charge for this store only: it is charged for
-    // orders placed on or after max(platform effectiveFrom, orderChargeFrom).
+    qrPaidOrderCharge: { type: Number, default: DEFAULTS.qrPaidOrderCharge, min: 0 },
+    // Delays the platform fee (both sources) for this store only: it applies
+    // to orders placed on or after max(platform effectiveFrom, orderChargeFrom).
     // null = the platform start date alone.
     orderChargeFrom: { type: Date, default: DEFAULTS.orderChargeFrom },
     // Per e-bill delivered. null means "use the platform amount"; 0 means
@@ -50,9 +53,11 @@ const csdStoreChargesSchema = new mongoose.Schema(
     ebillCharge: { type: Number, default: null, min: 0 },
 
     /**
-     * A negotiated price for one thing in the catalogue -- "ABC pays 299 for
-     * the POS plan" while the standard price stays 399. Codes: POS, an add-on
-     * code, TABLET_FIRST, TABLET_EXTRA, a printer code.
+     * A negotiated price for one thing in the catalogue -- "ABC pays 449 for
+     * the POS plan" while the standard price stays 499. Codes: POS, an add-on
+     * code (per that add-on's own period: a WEBSITE price is per YEAR), a
+     * device code (TABLET or a printer, GST-inclusive), and TABLET_FIRST /
+     * TABLET_EXTRA for tablets rented before tablets were sold.
      *
      * Rupees, like every other amount on this document, because this is what
      * the admin dialog edits. services/pricing.js converts to paise at the
@@ -73,7 +78,7 @@ const csdStoreChargesSchema = new mongoose.Schema(
 
     /**
      * A demo / test store: never billed and never locked. It gets every
-     * add-on without buying it, no per-order or e-bill charge is taken, and
+     * add-on without buying it, no platform fee or e-bill charge is taken, and
      * nothing -- an expired plan, an empty balance -- locks the POS.
      */
     billingExempt: { type: Boolean, default: false },

@@ -100,9 +100,10 @@ const createRecharge = async ({ restaurantId, amountPaise, createdBy = null, ret
 };
 
 /**
- * Buy a printer through the gateway: Cashfree charges the displayed price,
- * which already includes GST (nothing is added on top), and the wallet is not
- * touched. finalizeRecharge records the printer when paid.
+ * Buy a device (a printer or the tablet) through the gateway: Cashfree
+ * charges the displayed price, which already includes GST (nothing is added
+ * on top), and the wallet is not touched. finalizeRecharge records it when
+ * paid.
  */
 const createPrinterPayment = async ({ restaurantId, code, acceptance, shipTo = null, createdBy = null, returnUrl } = {}) => {
   const { printer, pricePaise, totalPaise, lines } = await require("./subscription").preparePrinterPayment({ restaurantId, code, acceptance });
@@ -239,7 +240,8 @@ const finalizeRecharge = async ({ gatewayOrderId }) => {
     );
   }
 
-  // A printer paid through the gateway: record it; the wallet is not touched.
+  // A device (printer or tablet) paid through the gateway: record it; the
+  // wallet is not touched.
   if (intent.purpose === "PRINTER") {
     const { recorded, invoice } = await require("./subscription").recordPrinterPayment({ intent, paidPaise });
     // KnotKitchen now delivers it. Never fails the payment -- a request that
@@ -247,7 +249,7 @@ const finalizeRecharge = async ({ gatewayOrderId }) => {
     try {
       const requests = require("./hardwareRequests");
       const request = await requests.openRequest({
-        type: "PRINTER",
+        type: intent.item?.code === "TABLET" ? "TABLET" : "PRINTER",
         key: `printer-pay-${intent.gatewayOrderId}`,
         restaurantId: intent.restaurantId,
         item: { code: intent.item?.code, name: intent.item?.name },
@@ -285,8 +287,9 @@ const finalizeRecharge = async ({ gatewayOrderId }) => {
   await intent.save();
 
   // Money just arrived: start the POS plan (a first top-up at the minimum),
-  // earn a tablet credit, renew an expired plan. Only the call that actually
-  // credited does this, so a callback racing the browser cannot count twice.
+  // renew an expired plan or a lapsed yearly add-on. Only the call that
+  // actually credited does this, so a callback racing the browser cannot
+  // count twice.
   // Never allowed to fail the top-up -- the credit already happened and is
   // not in doubt.
   let plan = null;

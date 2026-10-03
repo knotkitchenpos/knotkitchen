@@ -136,7 +136,10 @@ const render = (receipt) => {
         ${line("Subtotal", money(r.subtotal))}
         ${Number(r.charges) ? line("Charges", money(r.charges)) : ""}
         ${Number(r.taxes) ? line("Tax", money(r.taxes)) : ""}
-        <div class="grand"><span>Total</span><span>${money(r.total)}</span></div>
+        ${Number(r.platformFee) > 0 ? line("Platform fee", money(r.platformFee)) : ""}
+        ${Number(r.platformFee) > 0
+          ? `<div class="grand"><span>Total paid</span><span>${money(r.totalPaid)}</span></div>`
+          : `<div class="grand"><span>Total</span><span>${money(r.total)}</span></div>`}
       </div>
       <div class="foot">${Number(r.quantities)} item(s) · Powered by KnotKitchen</div>
     </div>`,

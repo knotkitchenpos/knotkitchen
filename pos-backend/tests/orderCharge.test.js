@@ -7,37 +7,33 @@ const { qualifies, idempotencyKeyFor } = require("../services/orderCharge");
 const money = require("../services/money");
 
 /**
- * Which orders KnotKitchen bills the restaurant for.
+ * Which orders KnotKitchen debits the restaurant's wallet for.
  *
- * The spec lists what must NOT be charged: failed, cancelled, unpaid,
- * duplicate, internal POS orders, and "other orders that Admin has not
- * configured as chargeable". Enumerating exclusions is the fragile way round
- * -- a source added later is chargeable by omission, and every restaurant on
- * the platform starts being billed for something nobody decided to bill for.
- *
- * So it is an allow-list, empty by default, and these tests hold it that way.
+ * The diner pays the platform fee online, on top of the bill, and the wallet
+ * is then debited exactly that. So the question is no longer "is this source
+ * chargeable" but "did the diner pay a fee on this order" -- the snapshot
+ * quoted at checkout. No snapshot (cash, counter, POS, payment links, legacy
+ * orders) means nothing is debited, whatever the source; and the spec's
+ * exclusions -- failed, cancelled, unpaid -- still stop a debit.
  */
 
 const SRC = (rel) => fs.readFileSync(path.join(__dirname, "..", rel), "utf8");
 
-const CHARGE_ON = {
-  enabled: true,
-  amountPaise: money.toPaise(9),
-  chargeableSources: ["WEBSITE"],
-  taxable: true,
-};
+// ₹3 + 18% GST, as quoted to the diner at checkout.
+const FEE = { amountPaise: 300, taxPaise: 54, totalPaise: 354, taxPercent: 18 };
 
 const paidWebsiteOrder = (over = {}) => ({
   source: "WEBSITE",
   orderStatus: "Completed",
-  payments: [{ method: "online", status: "paid", amount: 500 }],
+  payments: [{ method: "online", status: "paid", amount: 503.54 }],
   paymentData: { gatewayOrderId: "KK-W-1", gatewayPaymentId: "cf_1" },
+  platformCharge: { ...FEE, status: null },
   isDeleted: false,
   ...over,
 });
 
-test("a paid website order is charged", () => {
-  assert.equal(qualifies(paidWebsiteOrder(), CHARGE_ON).ok, true);
+test("a paid website order carrying a fee is charged", () => {
+  assert.equal(qualifies(paidWebsiteOrder()).ok, true);
 });
 
 test("REGRESSION: the exclusions in the spec are all refused, with a reason", () => {
@@ -48,38 +44,26 @@ test("REGRESSION: the exclusions in the spec are all refused, with a reason", ()
     "payment pending": paidWebsiteOrder({ payments: [{ status: "pending" }] }),
     "payment failed": paidWebsiteOrder({ payments: [{ status: "failed" }] }),
     deleted: paidWebsiteOrder({ isDeleted: true }),
-    "internal POS": paidWebsiteOrder({ source: "POS" }),
+    "no fee collected": paidWebsiteOrder({ platformCharge: undefined }),
   };
 
   for (const [label, order] of Object.entries(refused)) {
-    const verdict = qualifies(order, CHARGE_ON);
+    const verdict = qualifies(order);
     assert.equal(verdict.ok, false, `${label} must not be charged`);
     assert.ok(verdict.reason, `${label} must record WHY it was not charged`);
   }
 });
 
-test("REGRESSION: a new order source is not chargeable by default", () => {
-  // The failure this prevents: someone adds a source, ships it, and every
-  // restaurant is quietly billed for a channel nobody priced.
-  for (const source of ["QR", "MARKETPLACE", "PHONE", "SOMETHING_NEW"]) {
-    const verdict = qualifies(paidWebsiteOrder({ source }), CHARGE_ON);
-    assert.equal(verdict.ok, false, `${source} must be opt-in`);
-    assert.match(verdict.reason, /not chargeable/);
+test("REGRESSION: an order the diner paid no fee on is never debited, whatever its source", () => {
+  // Debiting a fee nobody collected would take the restaurant's own money.
+  for (const source of ["WEBSITE", "QR", "POS", "MARKETPLACE", "PHONE", "SOMETHING_NEW"]) {
+    for (const platformCharge of [undefined, {}, { status: null, totalPaise: 0 }]) {
+      const verdict = qualifies(paidWebsiteOrder({ source, platformCharge }));
+      assert.equal(verdict.ok, false, source);
+      assert.equal(verdict.permanent, true, `${source}: a settled fact, stamp it`);
+      assert.equal(verdict.reason, "No platform fee was collected.");
+    }
   }
-
-  // And with nothing configured at all, nothing is billed.
-  const noSources = { ...CHARGE_ON, chargeableSources: [] };
-  assert.equal(qualifies(paidWebsiteOrder(), noSources).ok, false);
-});
-
-test("the admin switches are honoured before anything else", () => {
-  assert.equal(qualifies(paidWebsiteOrder(), { ...CHARGE_ON, enabled: false }).ok, false);
-
-  // A restaurant set to zero is configured, not broken -- but there is
-  // nothing to debit, so no ledger entry should be created for it.
-  const free = qualifies(paidWebsiteOrder(), { ...CHARGE_ON, amountPaise: 0 });
-  assert.equal(free.ok, false);
-  assert.match(free.reason, /zero/i);
 });
 
 test("payment status is read the way the rest of the codebase reads it", () => {
@@ -88,9 +72,9 @@ test("payment status is read the way the rest of the codebase reads it", () => {
   const split = paidWebsiteOrder({
     payments: [{ status: "failed" }, { status: "paid" }],
   });
-  assert.equal(qualifies(split, CHARGE_ON).ok, true, "one successful payment is enough");
+  assert.equal(qualifies(split).ok, true, "one successful payment is enough");
   assert.equal(
-    qualifies(paidWebsiteOrder({ payments: [{ status: "PAID" }] }), CHARGE_ON).ok,
+    qualifies(paidWebsiteOrder({ payments: [{ status: "PAID" }] })).ok,
     true,
     "case must not decide whether someone is billed",
   );
@@ -134,7 +118,7 @@ test("REGRESSION: an unpaid order is left open, not permanently exempted", () =>
   // A website order is created with its payment PENDING and becomes paid
   // later. Stamping NOT_APPLICABLE on first sight would exempt every website
   // order from the fee forever -- the charge would silently never collect.
-  const notYet = qualifies(paidWebsiteOrder({ payments: [{ status: "pending" }] }), CHARGE_ON);
+  const notYet = qualifies(paidWebsiteOrder({ payments: [{ status: "pending" }] }));
   assert.equal(notYet.ok, false);
   assert.equal(notYet.permanent, false, "an unpaid order must stay chargeable later");
 
@@ -143,12 +127,11 @@ test("REGRESSION: an unpaid order is left open, not permanently exempted", () =>
     cancelled: paidWebsiteOrder({ orderStatus: "Cancelled" }),
     refunded: paidWebsiteOrder({ orderStatus: "Refunded" }),
     deleted: paidWebsiteOrder({ isDeleted: true }),
-    "POS source": paidWebsiteOrder({ source: "POS" }),
+    "no fee": paidWebsiteOrder({ source: "POS", platformCharge: undefined }),
   };
   for (const [label, order] of Object.entries(settled)) {
-    assert.equal(qualifies(order, CHARGE_ON).permanent, true, `${label} is final`);
+    assert.equal(qualifies(order).permanent, true, `${label} is final`);
   }
-  assert.equal(qualifies(paidWebsiteOrder(), { ...CHARGE_ON, enabled: false }).permanent, true);
 });
 
 test("SOURCE: only a permanent refusal is written to the order", () => {
@@ -158,13 +141,13 @@ test("SOURCE: only a permanent refusal is written to the order", () => {
 
 // --- Paid ONLINE only, from the dates CSD picks ------------------------------
 
-const BOTH = { ...CHARGE_ON, chargeableSources: ["WEBSITE", "QR"] };
+const BOTH = { enabled: true, amountPaise: 300, taxable: true };
 
 test("only an order paid through the gateway is charged; cash and counter payments never are", () => {
   // Website checkout and a table QR paid online both stamp the gateway order id.
-  assert.equal(qualifies(paidWebsiteOrder(), BOTH).ok, true, "website, paid online");
+  assert.equal(qualifies(paidWebsiteOrder()).ok, true, "website, paid online");
   assert.equal(
-    qualifies(paidWebsiteOrder({ source: "QR", paymentData: { gatewayOrderId: "KK-T-9" } }), BOTH).ok,
+    qualifies(paidWebsiteOrder({ source: "QR", paymentData: { gatewayOrderId: "KK-T-9" } })).ok,
     true,
     "table QR, paid online",
   );
@@ -176,29 +159,33 @@ test("only an order paid through the gateway is charged; cash and counter paymen
     "pay at pickup, settled in cash": { source: "QR", payments: [{ method: "cash", status: "paid" }], paymentData: {} },
   };
   for (const [label, over] of Object.entries(offline)) {
-    const verdict = qualifies(paidWebsiteOrder(over), BOTH);
+    const verdict = qualifies(paidWebsiteOrder(over));
     assert.equal(verdict.ok, false, `${label} must not be charged`);
     assert.equal(verdict.permanent, true, `${label} is settled; stamp it`);
     assert.match(verdict.reason, /not paid online/);
   }
 
   // Unpaid is still "not yet", not "not online".
-  const pending = qualifies(paidWebsiteOrder({ payments: [{ status: "pending" }], paymentData: {} }), BOTH);
+  const pending = qualifies(paidWebsiteOrder({ payments: [{ status: "pending" }], paymentData: {} }));
   assert.equal(pending.permanent, false);
 });
 
-test("the platform ships the charge priced at ₹9 for website + table QR, but OFF with no date", () => {
+test("the platform fee ships per source -- website ₹3, table QR ₹1 -- each OFF with no date", () => {
   const { PlatformBillingConfig } = require("../models/platformBillingModel");
   const Order = require("../models/orderModel");
   const fresh = new PlatformBillingConfig();
-  assert.equal(fresh.websiteOrderCharge.amountPaise, 900);
-  assert.deepEqual([...fresh.websiteOrderCharge.chargeableSources], ["WEBSITE", "QR"]);
-  assert.equal(fresh.websiteOrderCharge.enabled, false);
-  assert.equal(fresh.websiteOrderCharge.effectiveFrom, null);
-  assert.equal(fresh.websiteOrderCharge.taxable, true);
-  // The sources are the ones the order channels actually write.
+  for (const [key, paise] of [["websiteOrderCharge", 300], ["qrOrderCharge", 100]]) {
+    assert.deepEqual(
+      [fresh[key].amountPaise, fresh[key].enabled, fresh[key].effectiveFrom, fresh[key].taxable],
+      [paise, false, null, true],
+      key,
+    );
+  }
+  // One charge per source: no list of sources to keep in step any more...
+  assert.equal(PlatformBillingConfig.schema.path("websiteOrderCharge.chargeableSources"), undefined);
+  // ...and the sources priced are the ones the order channels actually write.
   const sources = Order.schema.path("source").enumValues;
-  for (const s of fresh.websiteOrderCharge.chargeableSources) assert.ok(sources.includes(s), s);
+  for (const s of ["WEBSITE", "QR"]) assert.ok(sources.includes(s), s);
 });
 
 test("the charge starts at the platform date, and a store date can only delay it", async () => {
@@ -206,7 +193,7 @@ test("the charge starts at the platform date, and a store date can only delay it
   const config = {
     websiteOrderCharge: { ...BOTH, effectiveFrom: new Date("2026-10-01T00:00:00+05:30") },
   };
-  const at = (iso, override = null) => resolveOrderCharge({ config, override, on: new Date(iso) });
+  const at = (iso, override = null) => resolveOrderCharge({ config, override, source: "WEBSITE", on: new Date(iso) });
 
   assert.equal((await at("2026-09-30T23:59:00+05:30")).enabled, false, "before the platform date");
   assert.equal((await at("2026-10-01T00:00:00+05:30")).enabled, true, "on the platform date");
@@ -223,31 +210,50 @@ test("the charge starts at the platform date, and a store date can only delay it
   const undated = await resolveOrderCharge({
     config: { websiteOrderCharge: { ...BOTH, effectiveFrom: null } },
     override: later,
+    source: "WEBSITE",
     on: new Date("2027-01-01"),
   });
   assert.equal(undated.enabled, false);
-
-  // And qualifies says why.
-  const early = await at("2026-09-30T10:00:00+05:30");
-  assert.match(qualifies(paidWebsiteOrder(), early).reason, /before the per-order charge started/);
-  assert.equal(qualifies(paidWebsiteOrder(), early).permanent, true);
 });
 
-test("a per-store amount of null means the platform amount; 0 is a real rate", async () => {
+test("each source has its own fee and per-store rate: null means the platform amount, 0 is a real rate", async () => {
   const { resolveOrderCharge } = require("../services/pricing");
-  const config = { websiteOrderCharge: { ...BOTH, amountPaise: 900, effectiveFrom: new Date("2020-01-01") } };
-  const platform = await resolveOrderCharge({ config, override: { onlinePaidOrderCharge: null } });
-  assert.deepEqual([platform.amountPaise, platform.source], [900, "platform"]);
-  const none = await resolveOrderCharge({ config, override: {} });
-  assert.deepEqual([none.amountPaise, none.source], [900, "platform"]);
-  const custom = await resolveOrderCharge({ config, override: { onlinePaidOrderCharge: 5 } });
-  assert.deepEqual([custom.amountPaise, custom.source], [500, "restaurant"]);
-  const free = await resolveOrderCharge({ config, override: { onlinePaidOrderCharge: 0 } });
-  assert.deepEqual([free.amountPaise, free.source], [0, "restaurant"]);
+  const config = {
+    websiteOrderCharge: { enabled: true, amountPaise: 300, effectiveFrom: new Date("2020-01-01") },
+    qrOrderCharge: { enabled: true, amountPaise: 100, effectiveFrom: new Date("2020-01-01") },
+  };
+  const fee = async (source, override) => {
+    const c = await resolveOrderCharge({ config, override, source });
+    return [c.enabled, c.amountPaise, c.source];
+  };
+  assert.deepEqual(await fee("WEBSITE", { onlinePaidOrderCharge: null }), [true, 300, "platform"]);
+  assert.deepEqual(await fee("WEBSITE", {}), [true, 300, "platform"]);
+  assert.deepEqual(await fee("WEBSITE", { onlinePaidOrderCharge: 5, qrPaidOrderCharge: 2 }), [true, 500, "restaurant"]);
+  assert.deepEqual(await fee("WEBSITE", { onlinePaidOrderCharge: 0 }), [true, 0, "restaurant"]);
+  assert.deepEqual(await fee("QR", { onlinePaidOrderCharge: 5 }), [true, 100, "platform"], "the website rate never prices a table");
+  assert.deepEqual(await fee("QR", { qrPaidOrderCharge: 2 }), [true, 200, "restaurant"]);
+  // The table-QR fee has its own switch.
+  const qrOff = await resolveOrderCharge({ config: { ...config, qrOrderCharge: { ...config.qrOrderCharge, enabled: false } }, override: null, source: "QR" });
+  assert.equal(qrOff.enabled, false);
+  // Any other source (the POS, a marketplace) has no platform fee.
+  for (const source of ["POS", "MARKETPLACE", undefined]) {
+    const none = await resolveOrderCharge({ config, override: null, source });
+    assert.deepEqual([none.enabled, none.amountPaise], [false, 0], String(source));
+    assert.match(none.reason, /is not chargeable/);
+  }
+  // A demo store's customers pay none.
+  assert.deepEqual(await fee("QR", { billingExempt: true }), [false, 100, "platform"]);
 });
 
-test("SOURCE: the charge is dated by when the order was placed", () => {
-  assert.match(SRC("services/orderCharge.js"), /on: order\.createdAt/);
+test("SOURCE: the debit is the fee the diner paid, never a rate looked up again", () => {
+  // CSD may change the rate between checkout and the debit; the wallet must
+  // still lose exactly what the diner was charged.
+  const src = SRC("services/orderCharge.js");
+  const quote = src.slice(src.indexOf("const quotePlatformFee"), src.indexOf("const isPaid ="));
+  assert.match(quote, /resolveOrderCharge\(/, "the rate is read once, when the fee is quoted");
+  const rest = src.slice(src.indexOf("const isPaid ="));
+  assert.ok(!/resolveOrderCharge\(|getPlatformConfig\(|computeTax\(/.test(rest), "debits read the stored snapshot only");
+  assert.match(rest, /amountPaise: stamp\.totalPaise/);
 });
 
 test("an existing config row gets the shipped prices, OFF, and admin values are never touched", async () => {
@@ -267,36 +273,39 @@ test("an existing config row gets the shipped prices, OFF, and admin values are 
     }
   };
 
-  // Never configured: priced, sourced, and still off.
+  // Never configured: priced, and still off.
   const { got: old, saves } = await load({
-    websiteOrderCharge: { enabled: false, amountPaise: 0, effectiveFrom: null, chargeableSources: [] },
+    websiteOrderCharge: { enabled: false, amountPaise: 0, effectiveFrom: null },
+    qrOrderCharge: { enabled: false, amountPaise: 0, effectiveFrom: null },
     ebillCharge: { enabled: false, amountPaise: 0, effectiveFrom: null },
   });
   assert.equal(saves, 1);
-  assert.equal(old.websiteOrderCharge.amountPaise, 900);
-  assert.deepEqual([...old.websiteOrderCharge.chargeableSources], ["WEBSITE", "QR"]);
+  assert.equal(old.websiteOrderCharge.amountPaise, 300);
   assert.equal(old.websiteOrderCharge.enabled, false, "backfill never switches it on");
   assert.equal(old.websiteOrderCharge.effectiveFrom, null);
+  assert.deepEqual([old.qrOrderCharge.amountPaise, old.qrOrderCharge.enabled], [100, false]);
   assert.equal(old.ebillCharge.amountPaise, 25);
   assert.equal(old.ebillCharge.enabled, false);
 
   // An admin's choices, each on its own, stand.
   const set = {
-    websiteOrderCharge: { enabled: true, amountPaise: 0, effectiveFrom: new Date("2026-10-01"), chargeableSources: ["WEBSITE"] },
+    websiteOrderCharge: { enabled: true, amountPaise: 0, effectiveFrom: new Date("2026-10-01") },
+    qrOrderCharge: { enabled: false, amountPaise: 0, effectiveFrom: new Date("2026-11-01") },
     ebillCharge: { enabled: false, amountPaise: 0, effectiveFrom: new Date("2026-12-01") },
   };
   const { got: admin, saves: adminSaves } = await load(set);
   assert.equal(adminSaves, 0, "nothing to backfill");
   assert.equal(admin.websiteOrderCharge.amountPaise, 0);
-  assert.deepEqual([...admin.websiteOrderCharge.chargeableSources], ["WEBSITE"]);
+  assert.equal(admin.qrOrderCharge.amountPaise, 0);
   assert.equal(admin.ebillCharge.amountPaise, 0);
 
   const priced = await load({
-    websiteOrderCharge: { enabled: false, amountPaise: 1200, chargeableSources: ["WEBSITE"] },
+    websiteOrderCharge: { enabled: false, amountPaise: 1200 },
+    qrOrderCharge: { enabled: false, amountPaise: 150 },
     ebillCharge: { enabled: false, amountPaise: 50 },
   });
   assert.equal(priced.saves, 0);
   assert.equal(priced.got.websiteOrderCharge.amountPaise, 1200);
-  assert.deepEqual([...priced.got.websiteOrderCharge.chargeableSources], ["WEBSITE"]);
+  assert.equal(priced.got.qrOrderCharge.amountPaise, 150);
   assert.equal(priced.got.ebillCharge.amountPaise, 50);
 });

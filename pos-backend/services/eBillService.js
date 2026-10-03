@@ -122,20 +122,23 @@ const deliverEBill = async ({ order, tableSession, bill, restaurant, phone }) =>
     orderNumber: receipt.orderNumber,
     restaurantName: receipt.restaurant.name,
     // The template renders "Total: Rs {{2}}", so the variable is the bare
-    // amount -- no symbol, always two decimals.
-    total: Number(receipt.total || 0).toFixed(2),
+    // amount -- no symbol, always two decimals. What the diner paid, so an
+    // online payment's platform fee is included.
+    total: Number(receipt.totalPaid || receipt.total || 0).toFixed(2),
     itemsCount: receipt.quantities,
     receiptUrl: billUrl,
   });
 
-  // Charged on DELIVERY, never on an attempt. A send that failed cost the
-  // restaurant nothing and must cost them nothing. Fire-and-forget: the
-  // message is already gone and a billing problem must not turn a delivered
-  // e-bill into an error.
+  // Charged on DELIVERY, never on an attempt, and once per BILL. A send that
+  // failed cost the restaurant nothing and must cost them nothing. A table
+  // order's bill is its session's, so either button bills it once.
+  // Fire-and-forget: the message is already gone and a billing problem must
+  // not turn a delivered e-bill into an error.
   if (result.sent) {
     fireEBillCharge({
       restaurantId: (order || tableSession)?.restaurantId,
       messageId: result.messageId,
+      billRef: tableSession?._id || order?.tableSessionId || order?._id || null,
       refType: tableSession ? "TableSession" : "Order",
       refId: (tableSession || order)?._id || null,
       orderNumber: receipt.orderNumber,

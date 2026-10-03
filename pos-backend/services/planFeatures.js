@@ -14,9 +14,11 @@
  *            Website add-on. Money already in flight (link verify, webhooks,
  *            refunds) is never gated, so a lapsed add-on cannot strand a
  *            payment.
- * An add-on counts while it is on the subscription and not past its endsAt
- * (a stopped add-on keeps working until the period it was paid for ends).
- * Demo stores set in CSD (billingExempt) get everything.
+ * An add-on counts while it is on the subscription, not past its endsAt (a
+ * stopped add-on keeps working until the period it was paid for ends) and,
+ * when it has its own period (the yearly Website), not past its paidUntil: a
+ * renewal the wallet could not cover switches off that add-on alone, never
+ * the POS. Demo stores set in CSD (billingExempt) get everything.
  */
 
 const mongoose = require("mongoose");
@@ -26,7 +28,10 @@ const { formatINR } = require("./money");
 
 const addonLive = (subscription, feature, on) =>
   (subscription?.addons || []).some(
-    (a) => a.feature === feature && (!a.endsAt || new Date(a.endsAt) > new Date(on)),
+    (a) =>
+      a.feature === feature &&
+      (!a.endsAt || new Date(a.endsAt) > new Date(on)) &&
+      (!a.paidUntil || new Date(a.paidUntil) > new Date(on)),
   );
 
 // onlineOrdering: Order Toggles & Auto-Ready and Rules, Charges & Promotions
@@ -61,8 +66,9 @@ const hasFeature = async (restaurantId, feature, storeId) => {
 const hasWebsite = (restaurantId, storeId) => hasFeature(restaurantId, "website", storeId);
 
 /**
- * "The website is an add-on (₹300.00 + GST / 30 days)." The price is read from
- * the catalogue, so the message cannot quote a price CSD has since changed.
+ * "The website is an add-on (₹3,600.00 + GST / year)." The price and its
+ * period are read from the catalogue, so the message cannot quote a price CSD
+ * has since changed.
  */
 const addonRequired = async (res, feature, what) => {
   let price = "";
@@ -71,7 +77,8 @@ const addonRequired = async (res, feature, what) => {
     const addon = (config.addons || []).find(
       (a) => a.isActive !== false && a.feature === (feature === "paymentGateway" ? "website" : feature),
     );
-    if (addon) price = ` (${formatINR(addon.pricePaise)} + GST / ${config.subscriptionDays || 30} days)`;
+    const days = Number(addon?.periodDays) || config.subscriptionDays || 30;
+    if (addon) price = ` (${formatINR(addon.pricePaise)} + GST / ${days === 365 ? "year" : `${days} days`})`;
   } catch {
     // The refusal matters, not the price in it.
   }

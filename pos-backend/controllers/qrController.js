@@ -25,6 +25,9 @@ const { AUDIENCES, ORDER_TYPES, projectMenus, allowsOrderType } = require("../se
 const { resolveGateway, isOnlinePaymentEnabled, PROVIDERS } = require("../services/paymentGateway");
 const config = require("../config/config");
 const { findOrCreate } = require("../services/idempotency");
+const { round2, toRupees } = require("../services/money");
+// Lazy for the same reason as accountLock above.
+const quotePlatformFee = (args) => require("../services/orderCharge").quotePlatformFee(args);
 
 /**
  * The table QR: what a diner's phone talks to after scanning the card on
@@ -247,6 +250,7 @@ const getTableByToken = async (req, res, next) => {
       isDeleted: { $ne: true },
     }).lean();
     const brandLogo = restaurant ? await resolveBrandLogo(restaurantId, restaurant) : "";
+    const onlinePaymentEnabled = await isOnlinePaymentEnabled({ restaurantId });
 
     res.status(200).json({
       success: true,
@@ -284,7 +288,7 @@ const getTableByToken = async (req, res, next) => {
               // ever take a QR payment. The gateway lives on WebsiteSettings
               // (or the platform env keys) -- services/paymentGateway is the
               // one place that knows.
-              onlinePaymentEnabled: await isOnlinePaymentEnabled({ restaurantId }),
+              onlinePaymentEnabled,
             }
           : null,
         menu,
@@ -298,10 +302,15 @@ const getTableByToken = async (req, res, next) => {
         // before the order goes in. The bill itself is struck server-side.
         charges: await require("../services/gst")
           .resolveGstForRestaurant(restaurantId, "system")
-          .then((g) => ({
+          .then(async (g) => ({
             taxPercent: Math.round((g.rate || 0) * 10000) / 100,
             taxInclusive: Boolean(g.inclusive),
             serviceChargePercent: g.serviceChargePercent || 0,
+            // KnotKitchen's platform fee on paying online (rupees incl. GST, 0
+            // when none or no gateway), so the diner sees it before tapping Pay.
+            onlinePlatformFee: onlinePaymentEnabled
+              ? toRupees((await quotePlatformFee({ restaurantId, source: "QR" }))?.totalPaise)
+              : 0,
           })),
         // Locked for non-payment: the menu still shows and a seated party can
         // still call a waiter and pay, but no new orders go in.
@@ -734,6 +743,13 @@ const paymentIntent = async (req, res, next) => {
     // carries no secret and cannot be used against any other order.
     let checkout = null;
     const gw = await resolveGateway({ restaurantId });
+    // KnotKitchen's platform fee goes on top of the bill when it is paid
+    // online: one fee per online payment, quoted here on the server. It is
+    // stored with the gateway order below, and verify, the webhook and the
+    // wallet debit all use that stored snapshot.
+    const fee = gw.enabled && payable > 0 ? await quotePlatformFee({ restaurantId, source: "QR" }) : null;
+    const platformFee = toRupees(fee?.totalPaise);
+    const gatewayAmount = round2(payable + platformFee);
     if (gw.enabled && payable > 0 && hasPhone) {
       try {
         const cashfree = require("../services/gateways/cashfree");
@@ -741,7 +757,7 @@ const paymentIntent = async (req, res, next) => {
           appId: gw.keyId,
           secretKey: gw.secret,
           environment: gw.environment,
-          amount: payable,
+          amount: gatewayAmount,
           currency: "INR",
           // Their order_id is what we read back to decide whether the bill
           // was paid, so it must be unique per attempt: a diner who
@@ -761,6 +777,7 @@ const paymentIntent = async (req, res, next) => {
         session.payment = session.payment || {};
         session.payment.gatewayOrderId = order.orderId;
         session.payment.gatewayProvider = PROVIDERS.CASHFREE;
+        session.payment.platformFee = fee || {};
         await session.save();
 
         checkout = {
@@ -771,7 +788,7 @@ const paymentIntent = async (req, res, next) => {
           // "sandbox" or "production" — the Cashfree JS SDK needs to be
           // told which, and getting it wrong silently fails to open.
           mode: order.environment === "PROD" ? "production" : "sandbox",
-          amount: payable,
+          amount: gatewayAmount,
           currency: "INR",
         };
       } catch (gwErr) {
@@ -782,18 +799,26 @@ const paymentIntent = async (req, res, next) => {
       }
     }
 
+    // The store CAN take the payment; it only needs the diner's number.
+    const needsPhone = Boolean(gw.enabled && payable > 0 && !hasPhone);
+    // Paid online now (a checkout is open) or as soon as the phone is given:
+    // the phone step's Pay button must already say what the gateway charges.
+    const online = Boolean(checkout) || needsPhone;
     res.status(200).json({
       success: true,
       data: {
         sessionId: session._id,
         sessionCode: session.sessionCode,
         status: session.status,
-        amount: payable,
+        // What the online payment charges: the bill plus the platform fee.
+        // With nothing to be paid online, just the bill.
+        amount: online ? gatewayAmount : payable,
+        billAmount: payable,
+        platformFee: online ? platformFee : 0,
         currency: "INR",
         paymentStatus: session.payment?.status || "PENDING",
         onlinePaymentEnabled: Boolean(checkout),
-        // The store CAN take the payment; it only needs the diner's number.
-        needsPhone: Boolean(gw.enabled && payable > 0 && !hasPhone),
+        needsPhone,
         checkout,
       },
     });
@@ -824,6 +849,10 @@ const paymentVerify = async (req, res, next) => {
     }
 
     const payable = session.bills?.totalWithTax || 0;
+    // The gateway order was opened for the bill plus the platform fee stored
+    // with it in paymentIntent -- never a fee the browser names.
+    const platformFee = session.payment?.platformFee;
+    const expected = round2(payable + toRupees(platformFee?.totalPaise));
     let transactionId = "";
 
     // The order id comes from OUR session, never from the request. A
@@ -868,7 +897,7 @@ const paymentVerify = async (req, res, next) => {
     // The gateway is authoritative on the amount too. A bill that grew
     // after the order was opened (the diner added a round while checkout
     // was on screen) must not be closed by the smaller payment.
-    if (Math.abs(Number(result.amount) - Number(payable)) > 0.01) {
+    if (Math.abs(Number(result.amount) - Number(expected)) > 0.01) {
       return res.status(409).json({
         success: false,
         message:
@@ -883,6 +912,7 @@ const paymentVerify = async (req, res, next) => {
       restaurantId,
       method: "ONLINE",
       amount: payable,
+      platformFee,
       transactionId,
       // A double-submit from a flaky phone must not settle twice.
       idempotencyKey: `qr-online-${transactionId}`,

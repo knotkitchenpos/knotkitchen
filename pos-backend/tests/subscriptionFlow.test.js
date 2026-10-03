@@ -1,8 +1,9 @@
 /**
- * Billing v3, end to end: a top-up activates the POS plan, add-ons and
- * tablets are bought mid-period, printers once, and everything renews from
- * the wallet in one invoice -- or the store expires, locks after the grace
- * period, and the next top-up renews and unlocks it.
+ * Billing v3, end to end: a top-up activates the POS plan, add-ons are bought
+ * mid-period (the yearly Website whole, on its own clock), devices once, and
+ * everything else renews from the wallet in one invoice -- or the store
+ * expires, locks after the grace period, and the next top-up renews and
+ * unlocks it.
  *
  * Real services (subscription, recharge, accountLock, pricing, tax, periods,
  * planFeatures) over an in-memory store: the models, the ledger and the
@@ -88,7 +89,10 @@ const move = async (a, direction) => {
 };
 
 const fakes = {
-  "../models/platformBillingModel": { PlatformBillingConfig: { findOne: () => q(() => state.config) } },
+  "../models/platformBillingModel": {
+    ...require("../models/platformBillingModel"),
+    PlatformBillingConfig: { findOne: () => q(() => state.config) },
+  },
   "../models/csdStoreChargesModel": { findOne: () => q(() => state.override) },
   "../models/restaurantModel": { findById: () => q(() => state.restaurant) },
   "../models/orderModel": { distinct: async () => [] },
@@ -111,7 +115,6 @@ const fakes = {
           activatedAt: null,
           addons: [],
           tablets: [],
-          tabletRechargeCredits: 0,
           hardware: [],
           lastRenewalAttemptAt: null,
           lastRenewalError: "",
@@ -307,26 +310,25 @@ test("activation only on a single top-up at or above the minimum, never below", 
   assert.equal(state.sub.planCode, "POS");
   const [invoice] = state.invoices;
   assert.equal(invoice.kind, "SUBSCRIPTION");
-  assert.deepEqual(invoice.lines.map((l) => [l.description, l.amountPaise]), [["POS plan — 30 days", 39900]]);
-  assert.equal(invoice.totalPaise, 47082, "₹399 + 18% GST");
+  assert.deepEqual(invoice.lines.map((l) => [l.description, l.amountPaise]), [["POS plan — 30 days", 49900]]);
+  assert.equal(invoice.totalPaise, 58882, "₹499 + 18% GST");
   // The period is today's IST midnight plus 30 days; the rest stays in the wallet.
   assert.equal(state.sub.currentPeriodStart.getTime(), startOfIstDay(new Date()).getTime());
   assert.equal(state.sub.currentPeriodEnd.getTime(), addDays(state.sub.currentPeriodStart, 30).getTime());
-  assert.equal(state.balance, 200000 + 240000 + 250000 - 47082);
+  assert.equal(state.balance, 200000 + 240000 + 250000 - 58882);
   assert.equal(state.balanceDoc.lockedAt, null, "and the store unlocks in the same response");
 
   // A second qualifying top-up never activates (or charges) again.
   await topUp(2500);
   assert.equal(state.invoices.length, 1);
   assert.equal(debits().length, 1);
-  assert.equal(state.sub.tabletRechargeCredits, 0, "below the tablet amount");
 });
 
 test("after activation any top-up is fine; a demo store has no minimum and is never activated", async () => {
   reset();
   await topUp(2500);
   await topUp(100);
-  assert.equal(state.balance, 250000 - 47082 + 10000);
+  assert.equal(state.balance, 250000 - 58882 + 10000);
 
   reset({ exempt: true });
   await topUp(100);
@@ -369,83 +371,231 @@ test("an add-on is prorated for the rest of the period, taxed, and charged once 
 
   // Two requests racing: one key, one charge, one entry.
   await Promise.all([
-    billing.addAddon({ restaurantId: RID, code: "WEBSITE", acceptance: YES, on }),
-    billing.addAddon({ restaurantId: RID, code: "WEBSITE", acceptance: YES, on }),
+    billing.addAddon({ restaurantId: RID, code: "GMB", acceptance: YES, on }),
+    billing.addAddon({ restaurantId: RID, code: "GMB", acceptance: YES, on }),
   ]);
-  assert.equal(debits("SUBSCRIPTION").filter((e) => e.meta?.addon === "WEBSITE").length, 1);
-  assert.equal(state.sub.addons.filter((a) => a.code === "WEBSITE").length, 1);
-  assert.equal(state.balance, before - 11800 - 17700);
+  assert.equal(debits("SUBSCRIPTION").filter((e) => e.meta?.addon === "GMB").length, 1);
+  assert.equal(state.sub.addons.filter((a) => a.code === "GMB").length, 1);
+  assert.equal(state.balance, before - 11800 - 5900);
 
-  // What the add-ons unlock.
+  // What the add-ons unlock, and each one's period.
   const status = await billing.statusFor(RID, on);
-  assert.deepEqual(status.features, { website: true, tableQr: true, paymentGateway: true, onlineOrdering: true });
-  assert.deepEqual(status.addons.map((a) => [a.code, a.owned, a.active]), [["TABLE_QR", true, true], ["WEBSITE", true, true], ["GMB", false, false]]);
+  assert.deepEqual(status.features, { website: false, tableQr: true, paymentGateway: false, onlineOrdering: true });
+  assert.deepEqual(
+    status.addons.map((a) => [a.code, a.owned, a.active, a.periodDays, a.yearly]),
+    [["TABLE_QR", true, true, 30, false], ["WEBSITE", false, false, 365, true], ["GMB", true, true, 30, false]],
+  );
   assert.equal(status.addons[0].price.label, "₹200.00");
+  assert.equal(status.addons[0].renewsAt.getTime(), state.sub.currentPeriodEnd.getTime(), "with the plan");
+  assert.equal(status.addons[1].price.label, "₹3,600.00", "per year");
 });
 
 test("stopping an add-on keeps it to the period end without a refund; taking it back is free", async () => {
   reset();
   await topUp(10000);
   const on = addDays(state.sub.currentPeriodStart, 15);
-  await billing.addAddon({ restaurantId: RID, code: "WEBSITE", acceptance: YES, on });
+  await billing.addAddon({ restaurantId: RID, code: "TABLE_QR", acceptance: YES, on });
   const paid = state.balance;
 
-  const { endsAt } = await billing.removeAddon({ restaurantId: RID, code: "WEBSITE", on });
+  const { endsAt } = await billing.removeAddon({ restaurantId: RID, code: "TABLE_QR", on });
   assert.equal(endsAt.getTime(), state.sub.currentPeriodEnd.getTime());
   assert.equal(state.balance, paid, "no refund");
   let status = await billing.statusFor(RID, on);
-  assert.equal(status.features.website, true, "still works until the period ends");
-  assert.ok(!status.nextRenewal.lines.some((l) => /Website/.test(l.description)), "and is not renewed");
-  assert.equal((await billing.statusFor(RID, state.sub.currentPeriodEnd)).features.website, false);
+  assert.equal(status.features.tableQr, true, "still works until the period ends");
+  assert.equal(status.addons.find((a) => a.code === "TABLE_QR").renewsAt, null);
+  assert.ok(!status.nextRenewal.lines.some((l) => /QR Table/.test(l.description)), "and is not renewed");
+  assert.equal((await billing.statusFor(RID, state.sub.currentPeriodEnd)).features.tableQr, false);
 
   // Changed their mind within the period: back on, nothing charged, no terms to accept again.
-  const back = await billing.addAddon({ restaurantId: RID, code: "WEBSITE", acceptance: null, on });
+  const back = await billing.addAddon({ restaurantId: RID, code: "TABLE_QR", acceptance: null, on });
   assert.equal(back.charged, 0);
   assert.equal(state.balance, paid);
   status = await billing.statusFor(RID, on);
-  assert.equal(status.addons.find((a) => a.code === "WEBSITE").endsAt, null);
-  assert.ok(status.nextRenewal.lines.some((l) => /Website/.test(l.description)));
+  assert.equal(status.addons.find((a) => a.code === "TABLE_QR").endsAt, null);
+  assert.ok(status.nextRenewal.lines.some((l) => /QR Table/.test(l.description)));
 });
 
 // ---------------------------------------------------------------------------
-// Tablets and printers
+// The yearly Website: its own period, its own renewal
 // ---------------------------------------------------------------------------
 
-test("each tablet needs its own ₹4,000 top-up, never the activation one; first ₹600, then ₹500", async () => {
+test("the Website is bought whole for a year from today, never prorated, and stays off the POS renewal", async () => {
   reset();
-  await topUp(10000); // activates; does not count, however large
-  assert.equal(state.sub.tabletRechargeCredits, 0);
+  await topUp(10000);
   const on = addDays(state.sub.currentPeriodStart, 15);
-  await rejects(billing.rentTablet({ restaurantId: RID, acceptance: YES, on }), 409, "TABLET_TOPUP_REQUIRED");
-  await assert.rejects(billing.rentTablet({ restaurantId: RID, acceptance: YES, on }), /Top up at least ₹4,000\.00 in one go/);
+  const quoted = await billing.quote({ restaurantId: RID, item: "ADDON:WEBSITE", on });
+  assert.deepEqual([quoted.lines[0].amountPaise, quoted.totalPaise], [360000, 424800], "₹3,600 + GST, whatever is left of the POS period");
 
-  await topUp(3999);
-  assert.equal(state.sub.tabletRechargeCredits, 0, "₹1 short does not count");
-  const r = await topUp(4000);
-  assert.equal(r.plan.tabletCredit, true);
-  assert.equal(state.sub.tabletRechargeCredits, 1);
-  // A redelivered callback for the same top-up counts once.
-  await recharge.finalizeRecharge({ gatewayOrderId: state.intents[state.intents.length - 1].gatewayOrderId });
-  assert.equal(state.sub.tabletRechargeCredits, 1);
+  const bought = await billing.addAddon({ restaurantId: RID, code: "WEBSITE", acceptance: YES, on });
+  assert.equal(bought.charged, 424800);
+  const yearEnd = addDays(on, 365);
+  const entry = state.sub.addons.find((a) => a.code === "WEBSITE");
+  assert.deepEqual([entry.periodDays, entry.paidUntil.getTime()], [365, yearEnd.getTime()]);
+  const invoice = state.invoices.at(-1);
+  assert.deepEqual([invoice.kind, invoice.periodStart.getTime(), invoice.periodEnd.getTime()], ["ADDON", on.getTime(), yearEnd.getTime()]);
+  assert.equal(debits().at(-1).idempotencyKey, `addon-sub1-WEBSITE-${yearEnd.toISOString()}`, "keyed on its own period");
+  assert.deepEqual(state.schedules.at(-1).values.item, { addon: "WEBSITE", name: "Website", pricePaise: 360000, periodDays: 365 });
 
-  assert.equal((await billing.quote({ restaurantId: RID, item: "TABLET", on })).totalPaise, 35400);
-  const first = await billing.rentTablet({ restaurantId: RID, acceptance: YES, on });
-  assert.equal(first.charged, 35400, "half of ₹600 + GST");
-  assert.equal(state.invoices[state.invoices.length - 1].kind, "TABLET");
-  assert.equal(state.sub.tabletRechargeCredits, 0, "one credit per tablet");
-  await rejects(billing.rentTablet({ restaurantId: RID, acceptance: YES, on }), 409, "TABLET_TOPUP_REQUIRED");
+  const site = (await billing.statusFor(RID, on)).addons.find((a) => a.code === "WEBSITE");
+  assert.deepEqual([site.yearly, site.periodDays, site.active], [true, 365, true]);
+  assert.equal(site.renewsAt.getTime(), yearEnd.getTime());
+  assert.equal(site.paidUntil.getTime(), yearEnd.getTime());
 
-  await topUp(4000);
-  const second = await billing.rentTablet({ restaurantId: RID, acceptance: YES, on });
-  assert.equal(second.charged, 29500, "half of ₹500 + GST");
-  assert.deepEqual(state.sub.tablets.map((t) => [t.serial, t.pricePaise]), [[1, 60000], [2, 50000]]);
+  // The 30-day renewal is the plan alone; the Website keeps its year.
+  const end = state.sub.currentPeriodEnd;
+  assert.equal((await billing.statusFor(RID, on)).nextRenewal.total.paise, 58882);
+  await billing.renewDue(new Date(end.getTime() + MIN));
+  assert.deepEqual(state.invoices.at(-1).lines.map((l) => l.description), ["POS plan — 30 days"]);
+  assert.equal(entry.paidUntil.getTime(), yearEnd.getTime());
 
-  const status = await billing.statusFor(RID, on);
-  assert.equal(status.tablet.nextPrice.paise, 50000);
-  assert.equal(status.tablet.credits, 0);
-  assert.equal(status.tablets.length, 2);
-  // The money stays in the wallet.
-  assert.equal(state.balance, 1000000 - 47082 + 399900 + 400000 - 35400 + 400000 - 29500);
+  // Stopped, it runs to the end of the year paid -- not the POS period.
+  const { endsAt } = await billing.removeAddon({ restaurantId: RID, code: "WEBSITE", on });
+  assert.equal(endsAt.getTime(), yearEnd.getTime());
+  assert.equal((await billing.statusFor(RID, addDays(yearEnd, -1))).features.website, true);
+  assert.equal((await billing.statusFor(RID, yearEnd)).features.website, false);
+});
+
+test("a yearly add-on renews on its own date: on time from its end, late from the day paid, short only it lapses", async () => {
+  reset();
+  await topUp(20000);
+  const start = state.sub.currentPeriodStart;
+  await billing.addAddon({ restaurantId: RID, code: "WEBSITE", acceptance: YES, on: addDays(start, 1) });
+  const entry = state.sub.addons.find((a) => a.code === "WEBSITE");
+
+  // On time (the paid year ending inside this POS period, for the test).
+  entry.paidUntil = addDays(start, 10);
+  let r = await billing.renewDue(new Date(addDays(start, 10).getTime() + MIN));
+  assert.deepEqual([r.renewed, r.addonsRenewed], [0, ["WEBSITE"]], "the plan is not due; the Website is");
+  const invoice = state.invoices.at(-1);
+  assert.deepEqual([invoice.kind, invoice.totalPaise, invoice.periodStart.getTime()], ["ADDON", 424800, addDays(start, 10).getTime()]);
+  assert.equal(debits().at(-1).idempotencyKey, `addon-renewal-sub1-WEBSITE-${addDays(start, 10).toISOString()}`);
+  assert.equal(entry.paidUntil.getTime(), addDays(start, 375).getTime(), "continuous");
+  assert.equal(state.sub.currentPeriodEnd.getTime(), addDays(start, 30).getTime(), "the POS period is untouched");
+
+  // Two days late: the new year starts the day it is paid.
+  entry.paidUntil = addDays(start, 11);
+  await billing.renewDue(addDays(start, 13));
+  assert.equal(entry.paidUntil.getTime(), addDays(start, 13 + 365).getTime());
+
+  // Short: only the Website lapses. The POS runs on, unlocked.
+  entry.paidUntil = addDays(start, 14);
+  await ledger.debit({ restaurantId: RID, kind: "ADJUSTMENT_DEBIT", amountPaise: state.balance - 10000 });
+  const on = addDays(start, 15);
+  r = await billing.renewDue(on);
+  assert.deepEqual(r.addonErrors, [{ code: "WEBSITE", message: "Top up the wallet: you need ₹4,148.00 more." }]);
+  assert.equal(entry.lastRenewalError, "Top up the wallet: you need ₹4,148.00 more.");
+  let status = await billing.statusFor(RID, on);
+  assert.equal(status.features.website, false);
+  assert.deepEqual([status.status, status.active], ["ACTIVE", true]);
+  const site = status.addons.find((a) => a.code === "WEBSITE");
+  assert.deepEqual([site.owned, site.active, site.lastRenewalError], [true, false, "Top up the wallet: you need ₹4,148.00 more."]);
+  assert.equal((await lock.assessAccount(RID, on)).shouldLock, false);
+
+  // Retried every sweep, without writing the same reason again.
+  let saves = 0;
+  state.sub.save = async function save() {
+    saves += 1;
+    return this;
+  };
+  await billing.renewDue(new Date(on.getTime() + MIN));
+  assert.equal(saves, 0);
+
+  // The next top-up renews it, from the day it is paid.
+  await ledger.credit({ restaurantId: RID, kind: "RECHARGE", amountPaise: 500000, idempotencyKey: "recharge-late" });
+  await billing.afterRecharge({ restaurantId: RID, amountPaise: 500000, on });
+  assert.equal(entry.paidUntil.getTime(), addDays(on, 365).getTime());
+  assert.equal(entry.lastRenewalError, "");
+  assert.equal((await billing.statusFor(RID, on)).features.website, true);
+});
+
+test("a yearly add-on whose catalogue went back to the POS period renews its own year at the per-day rate", async () => {
+  reset();
+  await topUp(20000);
+  const start = state.sub.currentPeriodStart;
+  await billing.addAddon({ restaurantId: RID, code: "WEBSITE", acceptance: YES, on: addDays(start, 1) });
+  const entry = state.sub.addons.find((a) => a.code === "WEBSITE");
+  // CSD's Billing period select: Website on the POS period again, ₹300 per 30 days.
+  Object.assign(state.config.addons.find((a) => a.code === "WEBSITE"), { periodDays: null, pricePaise: 30000 });
+  entry.paidUntil = addDays(start, 10);
+  const on = new Date(addDays(start, 10).getTime() + MIN);
+
+  const site = (await billing.statusFor(RID, on)).addons.find((a) => a.code === "WEBSITE");
+  assert.deepEqual([site.periodDays, site.price.paise], [365, 365000], "shown as what the year will cost");
+  const r = await billing.renewDue(on);
+  assert.deepEqual(r.addonsRenewed, ["WEBSITE"]);
+  const invoice = state.invoices.at(-1);
+  assert.deepEqual([invoice.lines[0].amountPaise, invoice.totalPaise], [365000, 430700], "₹300 × 365/30 + GST, not ₹300 for a year");
+  assert.equal(entry.paidUntil.getTime(), addDays(start, 375).getTime());
+});
+
+test("a yearly add-on never renews while the POS is being cancelled: it ends with its paid year", async () => {
+  reset();
+  await topUp(10000);
+  const start = state.sub.currentPeriodStart;
+  await billing.addAddon({ restaurantId: RID, code: "WEBSITE", acceptance: YES, on: addDays(start, 1) });
+  const entry = state.sub.addons.find((a) => a.code === "WEBSITE");
+  entry.paidUntil = addDays(start, 20);
+  await billing.cancelSubscription({ restaurantId: RID, reason: "Moving out", by: { type: "RESTAURANT", name: "Owner" }, on: addDays(start, 5) });
+
+  const debitsBefore = debits().length;
+  await billing.renewDue(new Date(addDays(start, 20).getTime() + MIN));
+  assert.equal(debits().length, debitsBefore, "nothing charged");
+  assert.equal(entry.endsAt.getTime(), addDays(start, 20).getTime());
+  assert.equal((await billing.statusFor(RID, addDays(start, 21))).features.website, false);
+});
+
+test("a Website bought monthly before it went yearly leaves the plan at its next renewal and is billed a year then", async () => {
+  reset();
+  await topUp(10000);
+  const end = state.sub.currentPeriodEnd;
+  state.sub.addons.push({ code: "WEBSITE", name: "Website", feature: "website", pricePaise: 30000, activatedAt: state.sub.currentPeriodStart, endsAt: null });
+  const status = await billing.statusFor(RID);
+  assert.equal(status.nextRenewal.total.paise, 58882, "no longer a 30-day line");
+  const site = status.addons.find((a) => a.code === "WEBSITE");
+  assert.deepEqual([site.yearly, site.periodDays, site.paidUntil], [true, 365, null]);
+  assert.equal(site.renewsAt.getTime(), end.getTime(), "it moves to its own clock at the plan's renewal");
+
+  await lock.sweepLocks(new Date(end.getTime() + MIN));
+  const [plan, website] = state.invoices.slice(-2);
+  assert.deepEqual(plan.lines.map((l) => l.description), ["POS plan — 30 days"]);
+  assert.deepEqual([website.kind, website.totalPaise, website.periodStart.getTime()], ["ADDON", 424800, end.getTime()]);
+  const entry = state.sub.addons.find((a) => a.code === "WEBSITE");
+  assert.deepEqual([entry.periodDays, entry.paidUntil.getTime()], [365, addDays(end, 365).getTime()]);
+});
+
+// ---------------------------------------------------------------------------
+// Devices: tablets and printers
+// ---------------------------------------------------------------------------
+
+test("a tablet is bought once, online, like a printer: ₹10,000 including GST; renting one is gone", async () => {
+  reset();
+  await topUp(10000);
+  for (const item of ["TABLET", "PRINTER:TABLET"]) {
+    const quoted = await billing.quote({ restaurantId: RID, item });
+    assert.deepEqual(quoted.lines.map((l) => [l.description, l.amountPaise]), [["Tablet (one-time purchase)", 1000000]], item);
+    assert.equal(quoted.totalPaise, 1000000, "GST included, nothing on top");
+  }
+  assert.equal("rentTablet" in billing, false);
+
+  const walletBefore = state.balance;
+  const opened = await recharge.createPrinterPayment({ restaurantId: RID, code: "TABLET", acceptance: YES });
+  assert.equal(opened.amountPaise, 1000000);
+  state.paid[opened.gatewayOrderId] = 10000;
+  await recharge.finalizeRecharge({ gatewayOrderId: opened.gatewayOrderId });
+  assert.equal(state.balance, walletBefore, "the wallet is untouched");
+  assert.deepEqual(state.sub.hardware.map((h) => [h.code, h.name, h.totalPaise]), [["TABLET", "Tablet", 1000000]]);
+  const inv = state.invoices.at(-1);
+  assert.deepEqual([inv.kind, inv.subtotalPaise, inv.totalTaxPaise, inv.totalPaise], ["HARDWARE", 847458, 152542, 1000000]);
+  const [request] = state.requests;
+  assert.deepEqual([request.type, request.key, request.item.code], ["TABLET", `printer-pay-${opened.gatewayOrderId}`, "TABLET"], "a TABLET request, paid via the gateway");
+
+  const status = await billing.statusFor(RID);
+  assert.equal(status.printers.find((p) => p.code === "TABLET").owned, 1);
+  assert.deepEqual(Object.keys(status.tablet).sort(), ["extraPrice", "firstPrice"], "only what rented tablets renew at");
+  assert.equal(status.nextRenewal.lines.length, 1, "a bought tablet never renews");
+
+  const route = SRC("routes/subscriptionRoute.js");
+  assert.match(route, /router\.post\("\/tablets", isVerifiedUser, \(req, res, next\) =>\s*next\(createHttpError\(409, "Tablets are now bought once, like printers\.", \{ code: "TABLET_NOW_PURCHASED" \}\)\)/);
 });
 
 test("a printer is paid through the gateway, never the wallet: recorded once with its invoice, never renewed", async () => {
@@ -457,23 +607,24 @@ test("a printer is paid through the gateway, never the wallet: recorded once wit
   const walletBefore = state.balance;
   const debitsBefore = debits().length;
   const opened = await recharge.createPrinterPayment({ restaurantId: RID, code: "PRINTER_2IN", acceptance: YES });
-  assert.equal(opened.amountPaise, 190000, "₹1,900, GST included: nothing is added on top");
+  assert.equal(opened.amountPaise, 170000, "₹1,700, GST included: nothing is added on top");
   assert.equal(opened.purpose, "PRINTER");
   assert.equal(state.sub.hardware.length, 0, "nothing is recorded before Cashfree says paid");
 
-  state.paid[opened.gatewayOrderId] = 1900;
+  state.paid[opened.gatewayOrderId] = 1700;
   const done = await recharge.finalizeRecharge({ gatewayOrderId: opened.gatewayOrderId });
   assert.equal(done.purchased, true);
   assert.equal(done.credited, false, "not a top-up");
   assert.equal(state.balance, walletBefore, "the wallet is untouched");
   assert.equal(debits().length, debitsBefore, "no wallet debit");
   assert.equal(state.invoices[state.invoices.length - 1].kind, "HARDWARE");
-  assert.deepEqual(state.sub.hardware.map((h) => [h.code, h.pricePaise, h.totalPaise]), [["PRINTER_2IN", 190000, 190000]]);
+  assert.deepEqual(state.sub.hardware.map((h) => [h.code, h.pricePaise, h.totalPaise]), [["PRINTER_2IN", 170000, 170000]]);
   assert.equal(state.sub.hardware[0].invoiceId, state.invoices[state.invoices.length - 1]._id);
   // Registered: the invoice shows the GST contained in the price, never added to it.
   const inv = state.invoices[state.invoices.length - 1];
-  assert.deepEqual([inv.subtotalPaise, inv.totalTaxPaise, inv.totalPaise], [161017, 28983, 190000]);
-  assert.equal(inv.cgstPaise + inv.sgstPaise, 28983);
+  assert.deepEqual([inv.subtotalPaise, inv.totalTaxPaise, inv.totalPaise], [144068, 25932, 170000]);
+  assert.equal(inv.cgstPaise + inv.sgstPaise, 25932);
+  assert.equal(state.requests[0].type, "PRINTER");
 
   assert.equal(state.settled.length, 0, "an open request is left alone");
 
@@ -493,27 +644,17 @@ test("a printer is paid through the gateway, never the wallet: recorded once wit
   assert.ok(!status.nextRenewal.lines.some((l) => /printer/i.test(l.description)));
 });
 
-test("a paid tablet or printer opens one delivery request, to the address given, and never before it is paid", async () => {
+test("a paid device opens one delivery request, to the address given, and never before it is paid", async () => {
   reset();
   await topUp(10000);
-  await topUp(4000);
-  const on = addDays(state.sub.currentPeriodStart, 15);
   const shipTo = { name: "Asha", phone: "9830012345", line1: "12 Park St", city: "Kolkata", state: "West Bengal", postalCode: "700016" };
-
-  const rented = await billing.rentTablet({ restaurantId: RID, acceptance: YES, shipTo, on });
-  assert.equal(rented.serial, 1);
-  assert.equal(state.requests.length, 1);
-  const tablet = state.requests[0];
-  assert.deepEqual([tablet.type, tablet.key, tablet.item.tabletSerial, tablet.item.name], ["TABLET", "tablet-sub1-1", 1, "Tablet #1"]);
-  assert.equal(tablet.key, debits("SUBSCRIPTION").at(-1).idempotencyKey, "the request is keyed by the rental's own payment");
-  assert.equal(tablet.shipTo, shipTo);
 
   const opened = await recharge.createPrinterPayment({ restaurantId: RID, code: "PRINTER_3IN", acceptance: YES, shipTo });
   assert.equal(state.intents.at(-1).item.shipTo, shipTo, "the address rides on the payment");
-  assert.equal(state.requests.length, 1, "nothing is requested before Cashfree says paid");
+  assert.equal(state.requests.length, 0, "nothing is requested before Cashfree says paid");
   state.paid[opened.gatewayOrderId] = opened.amountPaise / 100;
   await recharge.finalizeRecharge({ gatewayOrderId: opened.gatewayOrderId });
-  const printer = state.requests[1];
+  const printer = state.requests[0];
   assert.deepEqual(
     [printer.type, printer.key, printer.payment.amountPaise, printer.item.code],
     ["PRINTER", `printer-pay-${opened.gatewayOrderId}`, opened.amountPaise, "PRINTER_3IN"],
@@ -521,15 +662,16 @@ test("a paid tablet or printer opens one delivery request, to the address given,
   assert.equal(printer.shipTo, shipTo);
 
   // A request that fails to open never fails what was paid for; Billing opens it later.
-  await topUp(4000);
+  const tablet = await recharge.createPrinterPayment({ restaurantId: RID, code: "TABLET", acceptance: YES, shipTo });
+  state.paid[tablet.gatewayOrderId] = tablet.amountPaise / 100;
   state.failNextRequest = true;
-  const second = await billing.rentTablet({ restaurantId: RID, acceptance: YES, on });
-  assert.equal(second.serial, 2);
-  assert.equal(state.sub.tablets.length, 2);
+  const done = await recharge.finalizeRecharge({ gatewayOrderId: tablet.gatewayOrderId });
+  assert.equal(done.purchased, true);
+  assert.equal(state.sub.hardware.length, 2);
 
   // A cancelled printer is no longer owned.
   state.sub.hardware[0].cancelledAt = new Date();
-  const status = await billing.statusFor(RID, on);
+  const status = await billing.statusFor(RID);
   assert.equal(status.printers.find((p) => p.code === "PRINTER_3IN").owned, 0);
   assert.equal(status.hardware[0].cancelled, true);
   assert.ok(status.shipTo, "Billing gets the store's own address to start from");
@@ -584,19 +726,19 @@ test("a Rs 0 printer is refused before anything is recorded", async () => {
 // Renewal
 // ---------------------------------------------------------------------------
 
-test("at the period end the plan, add-ons and tablets renew from the wallet in one invoice", async () => {
+test("at the period end the plan, add-ons and rented tablets renew from the wallet in one invoice", async () => {
   reset();
   await topUp(10000);
-  await topUp(4000);
   const on = addDays(state.sub.currentPeriodStart, 15);
   await billing.addAddon({ restaurantId: RID, code: "TABLE_QR", acceptance: YES, on });
-  await billing.addAddon({ restaurantId: RID, code: "WEBSITE", acceptance: YES, on });
-  await billing.rentTablet({ restaurantId: RID, acceptance: YES, on });
-  await billing.removeAddon({ restaurantId: RID, code: "WEBSITE", on });
+  await billing.addAddon({ restaurantId: RID, code: "GMB", acceptance: YES, on });
+  // A tablet rented before tablets were sold keeps renewing at its rental price.
+  state.sub.tablets.push({ serial: 1, pricePaise: 60000, rentedAt: on, endsAt: null });
+  await billing.removeAddon({ restaurantId: RID, code: "GMB", on });
 
   const end = state.sub.currentPeriodEnd;
   const quoted = (await billing.statusFor(RID, on)).nextRenewal;
-  assert.equal(quoted.total.paise, 141482);
+  assert.equal(quoted.total.paise, 153282);
   const before = state.balance;
   const invoicesBefore = state.invoices.length;
 
@@ -606,18 +748,17 @@ test("at the period end the plan, add-ons and tablets renew from the wallet in o
   const invoice = state.invoices[state.invoices.length - 1];
   assert.equal(invoice.kind, "SUBSCRIPTION");
   assert.deepEqual(invoice.lines.map((l) => [l.description, l.amountPaise]), [
-    ["POS plan — 30 days", 39900],
+    ["POS plan — 30 days", 49900],
     ["QR Table Ordering add-on — 30 days", 20000],
     ["Tablet #1 rental — 30 days", 60000],
   ]);
-  assert.equal(invoice.totalPaise, 141482, "each line + GST; the stopped Website add-on lapsed");
+  assert.equal(invoice.totalPaise, 153282, "each line + GST; the stopped GMB add-on lapsed");
   assert.equal(invoice.totalPaise, quoted.total.paise, "what Billing said it would be");
-  assert.equal(state.balance, before - 141482);
+  assert.equal(state.balance, before - 153282);
   assert.equal(state.sub.status, "ACTIVE");
   assert.equal(state.sub.currentPeriodStart.getTime(), end.getTime(), "on time: continuous from the old end");
   assert.equal(state.sub.currentPeriodEnd.getTime(), addDays(end, 30).getTime());
   assert.deepEqual(state.sub.addons.map((a) => a.code), ["TABLE_QR"]);
-  assert.equal((await billing.statusFor(RID, end)).features.website, false);
 
   // Nothing is due again until the new end, however often it runs.
   await billing.renewDue(new Date(end.getTime() + 2 * MIN));
@@ -638,7 +779,7 @@ test("short at renewal: EXPIRED, locked after the grace period, and the next top
   const result = await billing.renewDue(new Date(end.getTime() + MIN));
   assert.equal(result.failed, 1);
   assert.equal(state.sub.status, "EXPIRED");
-  assert.equal(state.sub.lastRenewalError, "Top up the wallet: you need ₹370.82 more.");
+  assert.equal(state.sub.lastRenewalError, "Top up the wallet: you need ₹488.82 more.");
   assert.equal(state.balance, 10000, "all or nothing: nothing taken");
   assert.equal(state.invoices.length, 1);
 
@@ -648,7 +789,7 @@ test("short at renewal: EXPIRED, locked after the grace period, and the next top
   const status = await billing.statusFor(RID, new Date(end.getTime() + HOUR));
   assert.equal(status.inGrace, true);
   assert.equal(status.active, false);
-  assert.equal(status.lastRenewalError, "Top up the wallet: you need ₹370.82 more.");
+  assert.equal(status.lastRenewalError, "Top up the wallet: you need ₹488.82 more.");
   await rejects(billing.quote({ restaurantId: RID, item: "ADDON:GMB", on: new Date(end.getTime() + HOUR) }), 409, "PLAN_NOT_ACTIVE");
 
   await lock.evaluateLock(RID, new Date(end.getTime() + 25 * HOUR));
@@ -659,7 +800,7 @@ test("short at renewal: EXPIRED, locked after the grace period, and the next top
   assert.equal(state.sub.status, "ACTIVE", "renewed at once");
   assert.equal(state.sub.lastRenewalError, "");
   assert.equal(state.sub.currentPeriodStart.getTime(), startOfIstDay(new Date()).getTime(), "late: from the day it was paid");
-  assert.equal(state.balance, 10000 + 50000 - 47082);
+  assert.equal(state.balance, 10000 + 50000 - 58882);
   assert.equal(state.balanceDoc.lockedAt, null, "and unlocked");
 });
 
@@ -667,26 +808,18 @@ test("short at renewal: EXPIRED, locked after the grace period, and the next top
 // Review fixes
 // ---------------------------------------------------------------------------
 
-test("REGRESSION: after a returned tablet lapses, the next top-up still rents a new one", async () => {
-  // Removing ended tablets reused their number, and the payment key built
-  // from it: the store paid its ₹4,000 top-up and could never rent again.
+test("a rented tablet CSD ended stops renewing, and stays listed so its number never repeats", async () => {
   reset();
   await topUp(10000);
-  await topUp(4000);
   const on = addDays(state.sub.currentPeriodStart, 15);
-  await billing.rentTablet({ restaurantId: RID, acceptance: YES, on });
+  state.sub.tablets.push({ serial: 1, pricePaise: 60000, rentedAt: on, endsAt: null });
   await billing.endTablet({ restaurantId: RID, serial: 1, on });
   const end = state.sub.currentPeriodEnd;
   await billing.renewDue(new Date(end.getTime() + MIN));
   assert.equal(state.sub.status, "ACTIVE");
-
-  await topUp(4000);
-  const again = await billing.rentTablet({ restaurantId: RID, acceptance: YES, on: addDays(end, 15) });
-  assert.equal(again.already, false);
-  assert.ok(again.charged > 0, "charged for the new tablet");
-  assert.equal(state.sub.tabletRechargeCredits, 0);
-  const live = (await billing.statusFor(RID, addDays(end, 15))).tablets;
-  assert.deepEqual(live.filter((t) => t.active).map((t) => t.serial), [2], "a new number; the returned one stays, ended");
+  assert.ok(!state.invoices.at(-1).lines.some((l) => /Tablet/.test(l.description)));
+  const tablets = (await billing.statusFor(RID, addDays(end, 15))).tablets;
+  assert.deepEqual(tablets.map((t) => [t.serial, t.active]), [[1, false]]);
 });
 
 test("REGRESSION: a purchase whose save failed after the debit is completed by the retry, charged once", async () => {
@@ -703,21 +836,6 @@ test("REGRESSION: a purchase whose save failed after the debit is completed by t
   assert.equal(retry.charged, 0, "not charged again");
   assert.equal(debits("SUBSCRIPTION").length, 2);
   assert.equal((await billing.statusFor(RID, on)).features.website, true);
-});
-
-test("REGRESSION: two rentals at once use one credit and add one tablet, even when it is free", async () => {
-  reset();
-  state.override = { billingExempt: false, planPrices: [{ code: "TABLET_FIRST", price: 0 }] };
-  await topUp(10000);
-  await topUp(4000);
-  const on = addDays(state.sub.currentPeriodStart, 15);
-  const results = await Promise.all([
-    billing.rentTablet({ restaurantId: RID, acceptance: YES, on }),
-    billing.rentTablet({ restaurantId: RID, acceptance: YES, on }),
-  ]);
-  assert.deepEqual(results.map((r) => r.already).sort(), [false, true]);
-  assert.equal(state.sub.tablets.length, 1);
-  assert.equal(state.sub.tabletRechargeCredits, 0, "never negative");
 });
 
 test("REGRESSION: backdated renewal never sells a period that has already ended", async () => {
@@ -799,7 +917,7 @@ test("a demo store gets every feature and is never charged", async () => {
   await topUp(100);
   for (const attempt of [
     () => billing.addAddon({ restaurantId: RID, code: "WEBSITE", acceptance: YES }),
-    () => billing.rentTablet({ restaurantId: RID, acceptance: YES }),
+    () => billing.preparePrinterPayment({ restaurantId: RID, code: "TABLET", acceptance: YES }),
     () => billing.preparePrinterPayment({ restaurantId: RID, code: "PRINTER_2IN", acceptance: YES }),
     () => billing.quote({ restaurantId: RID, item: "TABLET" }),
   ]) {
@@ -824,8 +942,8 @@ test("activation records the plan taken, once, under the current agreement, and 
   const rows = state.schedules.filter((s) => s.reason === "SUBSCRIPTION");
   assert.equal(rows.length, 1);
   assert.equal(rows[0].agreementVersion, "v3.0");
-  assert.deepEqual(rows[0].values.item, { plan: "POS", name: "POS", pricePaise: 39900, periodDays: 30, acceptedVia: "ACTIVATION_TOP_UP" });
-  assert.equal(rows[0].values.totalPaise, 47082);
+  assert.deepEqual(rows[0].values.item, { plan: "POS", name: "POS", pricePaise: 49900, periodDays: 30, acceptedVia: "ACTIVATION_TOP_UP" });
+  assert.equal(rows[0].values.totalPaise, 58882);
   // A retried activation (the save lost after the debit) does not record it twice.
   state.sub.activatedAt = null;
   await billing.activate({ restaurantId: RID });
@@ -864,12 +982,12 @@ test("before GST registration a printer costs its price with no GST, and its inv
   state.config.gst = { registered: false, percent: 0 };
   await topUp(2500);
   const opened = await recharge.createPrinterPayment({ restaurantId: RID, code: "PRINTER_3IN", acceptance: YES });
-  assert.equal(opened.amountPaise, 425000);
-  state.paid[opened.gatewayOrderId] = 4250;
+  assert.equal(opened.amountPaise, 430000);
+  state.paid[opened.gatewayOrderId] = 4300;
   await recharge.finalizeRecharge({ gatewayOrderId: opened.gatewayOrderId });
   const inv = state.invoices.at(-1);
-  assert.deepEqual([inv.subtotalPaise, inv.totalTaxPaise, inv.totalPaise], [425000, 0, 425000]);
-  assert.equal(state.invoices[0].totalPaise, 39900, "and nothing else carries GST either");
+  assert.deepEqual([inv.subtotalPaise, inv.totalTaxPaise, inv.totalPaise], [430000, 0, 430000]);
+  assert.equal(state.invoices[0].totalPaise, 49900, "and nothing else carries GST either");
 
   const html = require("../services/invoiceDocument").renderInvoice(inv);
   assert.ok(!html.includes("TAX INVOICE"));
@@ -886,7 +1004,6 @@ const CSD = { type: "CSD", name: "Ria" };
 test("a cancelled subscription runs to its period end, sells nothing new, then is CANCELLED and the store closed", async () => {
   reset();
   await topUp(10000);
-  await topUp(4000);
   const on = addDays(state.sub.currentPeriodStart, 10);
   const end = state.sub.currentPeriodEnd;
 
@@ -901,7 +1018,7 @@ test("a cancelled subscription runs to its period end, sells nothing new, then i
   assert.equal(status.nextRenewal, null, "it will not renew");
 
   await rejects(billing.addAddon({ restaurantId: RID, code: "GMB", acceptance: YES, on }), 409, "SUBSCRIPTION_ENDING");
-  await rejects(billing.rentTablet({ restaurantId: RID, acceptance: YES, on }), 409, "SUBSCRIPTION_ENDING");
+  await rejects(billing.addAddon({ restaurantId: RID, code: "WEBSITE", acceptance: YES, on }), 409, "SUBSCRIPTION_ENDING");
   assert.equal((await billing.cancelSubscription({ restaurantId: RID, by: OWNER, on })).already, true, "asking twice changes nothing");
 
   // A top-up opened while it was still running, and paid only after it closed.
@@ -1023,8 +1140,8 @@ test("SOURCE: every charge carries its idempotency key", () => {
   for (const key of [
     "idempotencyKey: `activation-${restaurantId}`",
     "idempotencyKey: `renewal-${subscription._id}-${iso(subscription.currentPeriodEnd)}`",
-    "idempotencyKey: `addon-${subscription._id}-${p.addon.code}-${iso(subscription.currentPeriodEnd)}`",
-    "idempotencyKey: `tablet-${subscription._id}-${p.serial}`",
+    "idempotencyKey: `addon-${subscription._id}-${p.addon.code}-${iso(p.period.end)}`",
+    "idempotencyKey: `addon-renewal-${subscription._id}-${a.code}-${iso(a.paidUntil)}`",
     "const key = `printer-pay-${intent.gatewayOrderId}`",
   ]) {
     assert.ok(src.includes(key), key);
@@ -1033,9 +1150,11 @@ test("SOURCE: every charge carries its idempotency key", () => {
 
 test("SOURCE: buying needs the Owner or the Store PIN; reading is scoped to the caller's own store", () => {
   const route = SRC("routes/subscriptionRoute.js");
-  for (const r of ['router.post("/addons"', 'router.delete("/addons/:code"', 'router.post("/tablets"', 'router.post("/printers"', 'router.post("/renew"']) {
+  for (const r of ['router.post("/addons"', 'router.delete("/addons/:code"', 'router.post("/printers"', 'router.post("/renew"']) {
     assert.ok(route.includes(`${r}, isVerifiedUser, requireProtectedAction,`), r);
   }
+  // A manual renewal reports the add-ons on their own clock too.
+  assert.match(route, /addonsRenewed: result\.addonsRenewed,\s*addonErrors: result\.addonErrors,/);
   assert.ok(!/\/plans|\/purchase|\/installation|\/terms/.test(route), "the plan, installation and terms routes are gone");
   assert.match(route, /accepted: req\.body\?\.accepted === true/, "only a literal true accepts the terms");
 });

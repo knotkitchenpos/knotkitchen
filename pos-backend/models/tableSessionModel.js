@@ -91,6 +91,9 @@ const tableSessionSchema = new mongoose.Schema(
       serviceChargeWaived: { type: Boolean, default: false },
       tip: { type: Number, default: 0 },
       totalWithTax: { type: Number, default: 0 },
+      // KnotKitchen's platform fee (incl. GST) the diner paid online with the
+      // bill. Outside totalWithTax, like tip: not the restaurant's sale.
+      platformFee: { type: Number, default: 0 },
     },
     // B2B bill details, when a company asks for a GST bill.
     customerCompany: { type: String, default: "" },
@@ -113,6 +116,15 @@ const tableSessionSchema = new mongoose.Schema(
       // to compare against.
       gatewayProvider: { type: String, default: "" },
       gatewayOrderId: { type: String, default: "" },
+      // The platform fee quoted when that gateway order was opened (paise).
+      // Verify and the webhook expect bill + this, and the wallet is debited
+      // exactly this: never a rate looked up again after the diner paid.
+      platformFee: {
+        amountPaise: { type: Number, default: 0 },
+        taxPaise: { type: Number, default: 0 },
+        totalPaise: { type: Number, default: 0 },
+        taxPercent: { type: Number, default: 0 },
+      },
     },
 
     paymentHistory: [

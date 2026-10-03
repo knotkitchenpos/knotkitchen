@@ -1,16 +1,19 @@
 const mongoose = require("mongoose");
 
 /**
- * A printer or tablet a store asked for from POS Billing, and its way to the
- * counter: REQUESTED (paid) -> ACCEPTED -> DISPATCHED -> DELIVERED, or
- * CANCELLED with a refund to the wallet. services/hardwareRequests.js owns
+ * A device (printer or tablet) a store asked for from POS Billing, and its
+ * way to the counter: REQUESTED (paid) -> ACCEPTED -> DISPATCHED -> DELIVERED,
+ * or CANCELLED with a refund to the wallet. services/hardwareRequests.js owns
  * every change; CSD works the queue.
  *
- * The money is not here. The payment is the printer's Cashfree order or the
- * tablet's wallet debit, and the printer/tablet row on the PlatformSubscription
- * is the entitlement. `key` is that payment's key (`printer-pay-<order>` /
- * `tablet-<subscription>-<serial>`), unique, so a payment opens one request
- * however often it is retried.
+ * The money is not here. The payment is the device's Cashfree order
+ * (payment.method GATEWAY, a purchase; its hardware row on the
+ * PlatformSubscription is the entitlement) or, for a tablet rented before
+ * tablets were sold, its wallet debit (payment.method WALLET, a rental; its
+ * tablets row). `key` is that payment's key (`printer-pay-<order>` for any
+ * device bought / `tablet-<subscription>-<serial>` for a rental), unique, so a
+ * payment opens one request however often it is retried. `type` says what it
+ * is, `payment.method` how it was had -- a TABLET may be either.
  */
 const STATUSES = ["REQUESTED", "ACCEPTED", "DISPATCHED", "DELIVERED", "CANCELLED"];
 const ACTORS = ["STORE", "CSD", "SYSTEM"];

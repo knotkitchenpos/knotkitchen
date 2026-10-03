@@ -31,6 +31,9 @@ const { buildStorefrontUrl } = require("../services/websiteProvisioningService")
 /** pay.<base>: the single payment host Cashfree needs whitelisted. "" in dev. */
 const payBaseUrl = () => String(process.env.PAYMENT_PUBLIC_URL || "").replace(/\/+$/, "");
 const { generateOrderNumberSafe } = require("../services/orderNumberService");
+const { round2, toRupees } = require("../services/money");
+// Lazy: the billing services load models that the storefront tests mock.
+const orderCharge = () => require("../services/orderCharge");
 
 
 /**
@@ -162,7 +165,24 @@ const popularItemIds = async (restaurantId, limit = 3) => {
   return rows.map((r) => String(r._id));
 };
 
+/**
+ * The platform fee the cart shows (rupees incl. GST). A failed lookup shows 0
+ * rather than taking the menu down: checkout quotes it again on the server
+ * and the pay page shows the real breakdown before any money moves.
+ */
+const cartPlatformFee = async (restaurantId) => {
+  if (!restaurantId) return 0;
+  try {
+    return toRupees((await orderCharge().quotePlatformFee({ restaurantId, source: "WEBSITE" }))?.totalPaise);
+  } catch (err) {
+    console.warn("[storefront] platform fee unavailable:", err.message);
+    return 0;
+  }
+};
+
 const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezone, restaurant, preview = false }) => {
+  // Started now, read below: it needs nothing from the menu work in between.
+  const platformFee = cartPlatformFee(restaurantId);
   // Hard tenant filter: only this restaurant's menus, then the PUBLISHED
   // copy of each (dishes, Display Status, visibility, schedule, dispatch),
   // minus the ones hidden on the website. One rule, from services/menuCache,
@@ -293,6 +313,9 @@ const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezon
       pickupWindowHours: Number(settings.ordering?.pickupWindowHours) || 5,
       acceptPreOrders: settings.ordering?.acceptPreOrders !== false,
       specialInstructionsEnabled: settings.ordering?.specialInstructionsEnabled !== false,
+      // KnotKitchen's platform fee (rupees incl. GST, 0 when none), so the
+      // cart shows it before payment. Checkout quotes it again on the server.
+      platformFee: await platformFee,
     },
     // Blank Contact fields fall back to the POS (Store Properties).
     contact: mergedContact(settings, restaurant),
@@ -693,8 +716,8 @@ const createStorefrontOrder = buildStorefrontOrder(saveAndAnnounce);
  */
 const openCheckout = async ({ res, next, ctx, order, idempotencyKey, name, phone, priced }) => {
   const { restaurantId, storeId } = ctx;
-  const amount = Number(priced.bills?.totalWithTax) || 0;
-  if (amount <= 0) return next(createHttpError(400, "Your order total must be more than zero."));
+  const billAmount = Number(priced.bills?.totalWithTax) || 0;
+  if (billAmount <= 0) return next(createHttpError(400, "Your order total must be more than zero."));
 
   const gw = await resolveGateway({ restaurantId, storeId });
   if (!gw.enabled) {
@@ -702,6 +725,18 @@ const openCheckout = async ({ res, next, ctx, order, idempotencyKey, name, phone
       createHttpError(409, "This restaurant has not set up online payment yet, so orders cannot be placed on the website."),
     );
   }
+
+  // KnotKitchen's platform fee, quoted here on the server and nowhere else,
+  // goes on top of the bill. The snapshot rides with the order so the wallet
+  // is later debited exactly what the diner paid. On the in-memory order only:
+  // nothing is saved until the gateway says it was paid.
+  const fee = await orderCharge().quotePlatformFee({ restaurantId, source: "WEBSITE" });
+  const platformFee = fee ? toRupees(fee.totalPaise) : 0;
+  if (fee) {
+    order.bills.platformFee = platformFee;
+    order.platformCharge = fee;
+  }
+  const amount = round2(billAmount + platformFee);
 
   const payBase = payBaseUrl();
   const checkout = new WebsiteCheckout({
@@ -742,7 +777,10 @@ const openCheckout = async ({ res, next, ctx, order, idempotencyKey, name, phone
     success: true,
     data: {
       checkoutId: String(checkout._id),
+      // What the gateway charges: the bill plus the platform fee.
       amount,
+      billAmount,
+      platformFee,
       currency: "INR",
       // Where to send the customer to pay. Checkout never opens on the
       // store's own host, so Cashfree only needs this one domain whitelisted.
@@ -808,13 +846,18 @@ const placePaidCheckout = async ({ checkout, paid, restaurantId, outletId, store
 
   await WebsiteCheckout.updateOne({ _id: claimed._id }, { $set: { status: "PLACED", orderId: placed._id } });
 
+  // The diner has paid the platform fee, so the wallet is debited it now, from
+  // the snapshot on the order. Idempotent; completing the order retries it.
+  orderCharge().fireOrderCharge(placed._id);
+
   try {
     await upsertCustomer({
       restaurantId,
       outletId,
       name: placed.customerDetails?.name,
       phone: placed.customerDetails?.phone,
-      total: claimed.amount,
+      // The restaurant's sale, not the platform fee on top of it.
+      total: placed.bills?.totalWithTax,
     });
   } catch (err) {
     console.warn("Customer upsert failed for website order:", err.message);
@@ -911,6 +954,8 @@ const publicOrderView = (order) => ({
     note: i.note || "",
   })),
   bills: order.bills,
+  // What the diner was charged: the bill plus any platform fee (bills.platformFee).
+  totalPaid: round2((Number(order.bills?.totalWithTax) || 0) + (Number(order.bills?.platformFee) || 0)),
   customer: { name: order.customerDetails?.name, phone: order.customerDetails?.phone },
 });
 

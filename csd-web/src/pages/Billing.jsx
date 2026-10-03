@@ -6,8 +6,9 @@ import { billingConfig, errorMessage } from "../api";
  * KnotKitchen's own pricing — the only place it can be set.
  *
  * Everything a restaurant is ever charged originates on this screen: the POS
- * plan, add-ons, tablet rental, printers, the first top-up, GST, the per-order
- * website charge, and the renewal and lock policies. No restaurant-facing
+ * plan, add-ons (on the POS period or yearly), devices (tablets and printers),
+ * existing tablet rentals, the first top-up, GST, the platform fees and the
+ * e-bill charge, and the renewal and lock policies. No restaurant-facing
  * screen can change any of it.
  *
  * Money is typed and shown in RUPEES. The server converts to paise and is the
@@ -23,7 +24,7 @@ const Warn = ({ children }) => (
 );
 
 const PRICE_NOTICE =
-  "Price rises need 30 days' notice to stores before they apply (agreement 2.8). Change the price only after notice has gone out.";
+  "Price rises need 30 days' notice to stores before they apply (agreement 3.3). Change the price only after notice has gone out.";
 
 // priceNotice: the card holds prices stores are charged.
 const Card = ({ title, subtitle, children, warn, priceNotice }) => (
@@ -106,13 +107,40 @@ const RemoveButton = ({ onClick }) => (
   </button>
 );
 
-// Only online-gateway orders from these two channels are ever charged: the
-// store's own website and table-QR ordering. Values are Order.source.
-const ORDER_SOURCES = [
-  { value: "WEBSITE", label: "Website" },
-  { value: "QR", label: "Table QR" },
+const PLATFORM_FEE =
+  "Added to the customer's bill as a Platform fee (+GST) only when they pay online; the same amount is then deducted from the store's wallet. Not shown in the POS app.";
+const PLATFORM_FEE_HINT =
+  " Cash, counter and pay-at-pickup payments never carry it, and a cancelled order's fee goes back to the wallet. Nothing is charged before the start date; a store can be given a later start or its own amount on its own page.";
+
+// The usage charges. All three have the same shape and are set only here:
+// none of them is ever shown in the POS app.
+const USAGE_CHARGES = [
+  {
+    key: "websiteOrderCharge",
+    title: "Website platform fee",
+    subtitle: PLATFORM_FEE,
+    label: "Charge on website orders paid online",
+    hint: `One fee per order.${PLATFORM_FEE_HINT}`,
+    defaultAmount: "₹3",
+  },
+  {
+    key: "qrOrderCharge",
+    title: "Table QR platform fee",
+    subtitle: PLATFORM_FEE,
+    label: "Charge on table-QR bills paid online",
+    hint: `One fee per bill paid online, however many rounds were ordered.${PLATFORM_FEE_HINT}`,
+    defaultAmount: "₹1",
+  },
+  {
+    key: "ebillCharge",
+    title: "E-bill charge",
+    subtitle:
+      "Deducted from the store's wallet, + GST where applicable, once per bill. Not shown in the POS app.",
+    label: "Charge per e-bill",
+    hint: "Charged when the first e-bill for an order or table session is delivered; re-sends and refused sends are free. Nothing is charged before the start date.",
+    defaultAmount: "₹0.25",
+  },
 ];
-const SOURCE_VALUES = ORDER_SOURCES.map((o) => o.value);
 
 const Billing = () => {
   const [config, setConfig] = useState(null);
@@ -164,11 +192,10 @@ const Billing = () => {
     setFieldErrors({});
     // A charge switched on with no start date would never start; say so here.
     const missing = {};
-    if (config.websiteOrderCharge.enabled && !config.websiteOrderCharge.effectiveFrom) {
-      missing["websiteOrderCharge.effectiveFrom"] = "Pick the date charging starts.";
-    }
-    if (config.ebillCharge.enabled && !config.ebillCharge.effectiveFrom) {
-      missing["ebillCharge.effectiveFrom"] = "Pick the date charging starts.";
+    for (const { key } of USAGE_CHARGES) {
+      if (config[key].enabled && !config[key].effectiveFrom) {
+        missing[`${key}.effectiveFrom`] = "Pick the date charging starts.";
+      }
     }
     if (Object.keys(missing).length) {
       setFieldErrors(missing);
@@ -180,18 +207,12 @@ const Billing = () => {
       const fresh = await billingConfig.save({
         ...config,
         // Fixed by policy, no longer settable here: lines are taxed on top
-        // (printers aside) and a late renewal starts on the payment day.
+        // (devices aside) and a late renewal starts on the payment day.
         renewalPolicy: "FROM_PAYMENT",
         gst: {
           ...config.gst,
           mode: "exclusive",
           addressLines: (config.gst.addressLines || []).map((l) => l.trim()).filter(Boolean),
-        },
-        websiteOrderCharge: {
-          ...config.websiteOrderCharge,
-          chargeableSources: config.websiteOrderCharge.chargeableSources.filter((s) =>
-            SOURCE_VALUES.includes(s),
-          ),
         },
       });
       setConfig(fresh);
@@ -257,10 +278,11 @@ const Billing = () => {
       <Card
         title="Add-ons"
         priceNotice
-        subtitle={`Every ${config.subscriptionDays} days, from the store's wallet, + GST where applicable. Added mid-period, the first charge covers only the days left. Stopped, it runs to the end of the paid period with no refund.`}
+        subtitle={`From the store's wallet, + GST where applicable. On the POS period (every ${config.subscriptionDays} days) an add-on bought mid-period is first charged only for the days left. A yearly one is charged in full for 365 days from the day it is bought and renews on its own date. Stopped, either runs to the end of its paid period with no refund.`}
       >
         {config.addons.map((a, i) => {
           const isSaved = i < savedCount.addons;
+          const per = a.periodDays === 365 ? "year" : `${a.periodDays || config.subscriptionDays} days`;
           return (
             <div key={i} className="rounded-xl border border-navy-200 p-4">
               <div className="grid gap-3 sm:grid-cols-4">
@@ -285,7 +307,7 @@ const Billing = () => {
                     placeholder="Loyalty programme"
                   />
                 </Field>
-                <Field label={`Price (₹ / ${config.subscriptionDays} days)`} error={fieldErrors[`addons.${i}.price`]}>
+                <Field label={`Price (₹ / ${per})`} error={fieldErrors[`addons.${i}.price`]}>
                   <Money value={a.price} onChange={(v) => setItem("addons", i, { price: v })} />
                 </Field>
                 <Field
@@ -305,13 +327,35 @@ const Billing = () => {
                 </Field>
               </div>
               <div className="mt-3 grid gap-3 sm:grid-cols-4">
-                <Field label="Description" className="sm:col-span-3">
+                <Field label="Description" className="sm:col-span-2">
                   <input
                     className={input}
                     value={a.description}
                     onChange={(e) => setItem("addons", i, { description: e.target.value })}
                     placeholder="Shown to the restaurant next to the price."
                   />
+                </Field>
+                <Field
+                  label="Billed"
+                  hint={isSaved ? "Fixed once saved." : undefined}
+                  error={fieldErrors[`addons.${i}.periodDays`]}
+                >
+                  <select
+                    className={input}
+                    value={a.periodDays || ""}
+                    disabled={isSaved}
+                    onChange={(e) =>
+                      setItem("addons", i, { periodDays: e.target.value ? Number(e.target.value) : null })
+                    }
+                  >
+                    {/* null on the server: rides the POS plan's period and renews with it. */}
+                    <option value="">POS period ({config.subscriptionDays} days)</option>
+                    <option value="365">Yearly (own 365 days)</option>
+                    {/* A period set some other way stays visible, so a save does not drop it. */}
+                    {a.periodDays && a.periodDays !== 365 && (
+                      <option value={a.periodDays}>Every {a.periodDays} days</option>
+                    )}
+                  </select>
                 </Field>
                 <Field label="Order" hint="Display order">
                   <input
@@ -343,6 +387,7 @@ const Billing = () => {
               name: "",
               description: "",
               price: 0,
+              periodDays: null,
               feature: "",
               isActive: true,
               sortOrder: config.addons.length + 1,
@@ -353,11 +398,11 @@ const Billing = () => {
 
       {/* ---------------------------------------------------------------- */}
       <Card
-        title="Tablets"
+        title="Tablet rentals (existing rentals only)"
         priceNotice
-        subtitle={`A rental every ${config.subscriptionDays} days, + GST where applicable. Before each tablet the store makes one top-up of at least the amount below; that money stays in its wallet and pays its charges.`}
+        subtitle={`No new rentals: tablets are now sold once, under Devices. Tablets already rented keep renewing at these prices, + GST where applicable, every ${config.subscriptionDays} days until the rental is ended.`}
       >
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-2">
           <Field label={`First tablet (₹ / ${config.subscriptionDays} days)`} error={fieldErrors["tablet.firstPrice"]}>
             <Money
               value={config.tablet.firstPrice}
@@ -370,24 +415,14 @@ const Billing = () => {
               onChange={(v) => set({ tablet: { ...config.tablet, extraPrice: v } })}
             />
           </Field>
-          <Field
-            label="Top-up per tablet (₹)"
-            hint="The first top-up, which starts the POS plan, never counts."
-            error={fieldErrors["tablet.rechargeRequired"]}
-          >
-            <Money
-              value={config.tablet.rechargeRequired}
-              onChange={(v) => set({ tablet: { ...config.tablet, rechargeRequired: v } })}
-            />
-          </Field>
         </div>
       </Card>
 
       {/* ---------------------------------------------------------------- */}
       <Card
-        title="Printers"
+        title="Devices"
         priceNotice
-        subtitle="Price includes GST. Paid once online (UPI, card or netbanking), not from the wallet. No monthly fee."
+        subtitle="Tablets and printers. Price includes GST. Paid once online (UPI, card or netbanking), not from the wallet. No monthly fee."
       >
         {config.printers.map((p, i) => {
           const isSaved = i < savedCount.printers;
@@ -404,7 +439,7 @@ const Billing = () => {
                     value={p.code}
                     disabled={isSaved}
                     onChange={(e) => setItem("printers", i, { code: e.target.value.toUpperCase() })}
-                    placeholder="PRINTER_4IN"
+                    placeholder="PRINTER_4IN_LAN"
                   />
                 </Field>
                 <Field label="Name" error={fieldErrors[`printers.${i}.name`]}>
@@ -412,7 +447,7 @@ const Billing = () => {
                     className={input}
                     value={p.name}
                     onChange={(e) => setItem("printers", i, { name: e.target.value })}
-                    placeholder="4-inch receipt printer"
+                    placeholder="4-inch LAN printer"
                   />
                 </Field>
                 <Field label="Price (₹, incl. GST)" error={fieldErrors[`printers.${i}.price`]}>
@@ -432,7 +467,7 @@ const Billing = () => {
         })}
 
         <AddButton
-          label="Add printer"
+          label="Add device"
           onClick={() => addItem("printers", { code: "", name: "", price: 0, isActive: true })}
         />
         <p className="text-xs text-navy-500">
@@ -443,7 +478,7 @@ const Billing = () => {
       {/* ---------------------------------------------------------------- */}
       <Card
         title="GST"
-        subtitle="Nothing is taxed before the Applies from date, even with Registered switched on. GST applies to the POS plan, add-ons, tablet rentals, e-bill charges and per-order charges. It is never added on top of printer prices, which already include it."
+        subtitle="Nothing is taxed before the Applies from date, even with Registered switched on. GST applies to the POS plan, add-ons, existing tablet rentals, platform fees and e-bill charges. It is never added on top of device prices (tablets and printers), which already include it."
         warn={
           config.gst.registered && !config.gst.effectiveFrom
             ? "Registered is on but no start date is set, so nothing would be taxed. Set a date or switch Registered off."
@@ -458,9 +493,9 @@ const Billing = () => {
         />
         {config.gst.registered && (
           <Warn>
-            Before enabling GST: KnotKitchen must issue GST invoices for per-order and e-bill charges. That consolidated
-            usage invoice is not built yet (see remaining.md). Plan, add-on, tablet and printer invoices already carry
-            GST.
+            Before enabling GST: KnotKitchen must issue GST invoices for platform fees and e-bill charges. That
+            consolidated usage invoice is not built yet (see remaining.md). Plan, add-on, tablet rental and device
+            invoices already carry GST.
           </Warn>
         )}
         <div className="grid gap-3 sm:grid-cols-3">
@@ -526,181 +561,63 @@ const Billing = () => {
       </Card>
 
       {/* ---------------------------------------------------------------- */}
-      <Card
-        title="Per-order charge"
-        priceNotice
-        subtitle="Deducted from the store's wallet, + GST where applicable, for each qualifying paid order. Only orders paid online through the gateway are charged."
-        warn={
-          config.websiteOrderCharge.enabled && config.websiteOrderCharge.chargeableSources.length === 0
-            ? "The charge is on but no order source is selected, so nothing will be charged."
-            : null
-        }
-      >
-        <Toggle
-          checked={config.websiteOrderCharge.enabled}
-          onChange={(v) =>
-            set({ websiteOrderCharge: { ...config.websiteOrderCharge, enabled: v } })
-          }
-          label="Charge per paid online order"
-          hint="Nothing is charged before the start date. A store can be given a later start on its own page."
-        />
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Field label="Amount (₹)" hint="Default ₹9" error={fieldErrors["websiteOrderCharge.amount"]}>
-            <input
-              className={input}
-              type="number"
-              min="0"
-              step="0.01"
-              value={config.websiteOrderCharge.amount}
-              onChange={(e) =>
-                set({ websiteOrderCharge: { ...config.websiteOrderCharge, amount: e.target.value } })
-              }
-            />
-          </Field>
-          <Field
-            label="Starts on"
-            hint="Required when the charge is on."
-            error={fieldErrors["websiteOrderCharge.effectiveFrom"]}
+      {USAGE_CHARGES.map(({ key, title, subtitle, label, hint, defaultAmount }) => {
+        const c = config[key];
+        const patch = (p) => set({ [key]: { ...c, ...p } });
+        return (
+          <Card
+            key={key}
+            title={title}
+            priceNotice
+            subtitle={subtitle}
+            warn={c.enabled && !Number(c.amount) ? "The charge is on but set to zero, so nothing is charged." : null}
           >
-            <input
-              className={input}
-              type="date"
-              value={asInputDate(config.websiteOrderCharge.effectiveFrom)}
-              onChange={(e) =>
-                set({
-                  websiteOrderCharge: {
-                    ...config.websiteOrderCharge,
-                    effectiveFrom: e.target.value || null,
-                  },
-                })
-              }
-            />
-          </Field>
-          <Field label="GST on this charge">
-            <select
-              className={input}
-              value={config.websiteOrderCharge.taxable ? "yes" : "no"}
-              onChange={(e) =>
-                set({
-                  websiteOrderCharge: {
-                    ...config.websiteOrderCharge,
-                    taxable: e.target.value === "yes",
-                  },
-                })
-              }
-            >
-              <option value="yes">Taxable</option>
-              <option value="no">Not taxable</option>
-            </select>
-          </Field>
-        </div>
-
-        <div>
-          <span className="text-xs font-semibold text-navy-700">Chargeable order sources</span>
-          <p className="mt-0.5 text-xs text-navy-500">
-            Only orders paid online through the gateway are charged. Cash, card at the counter and
-            pay-at-pickup orders never are, and neither are cancelled, refunded or unpaid ones.
-          </p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {ORDER_SOURCES.map(({ value: source, label }) => {
-              const on = config.websiteOrderCharge.chargeableSources.includes(source);
-              return (
-                <button
-                  key={source}
-                  type="button"
-                  aria-pressed={on}
-                  onClick={() =>
-                    set({
-                      websiteOrderCharge: {
-                        ...config.websiteOrderCharge,
-                        chargeableSources: on
-                          ? config.websiteOrderCharge.chargeableSources.filter((s) => s !== source)
-                          : [...config.websiteOrderCharge.chargeableSources, source],
-                      },
-                    })
-                  }
-                  className={`rounded-lg border px-3 py-1.5 text-xs font-semibold ${
-                    on
-                      ? "border-navy-700 bg-navy-700 text-white"
-                      : "border-navy-200 text-navy-600 hover:bg-navy-50"
-                  }`}
+            <Toggle checked={c.enabled} onChange={(v) => patch({ enabled: v })} label={label} hint={hint} />
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Field label="Amount (₹)" hint={`Default ${defaultAmount}`} error={fieldErrors[`${key}.amount`]}>
+                <input
+                  className={input}
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={c.amount}
+                  onChange={(e) => patch({ amount: e.target.value })}
+                />
+              </Field>
+              <Field
+                label="Starts on"
+                hint="Required when the charge is on."
+                error={fieldErrors[`${key}.effectiveFrom`]}
+              >
+                <input
+                  className={input}
+                  type="date"
+                  value={asInputDate(c.effectiveFrom)}
+                  onChange={(e) => patch({ effectiveFrom: e.target.value || null })}
+                />
+              </Field>
+              <Field label="GST on this charge">
+                <select
+                  className={input}
+                  value={c.taxable ? "yes" : "no"}
+                  onChange={(e) => patch({ taxable: e.target.value === "yes" })}
                 >
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      </Card>
-
-      {/* ---------------------------------------------------------------- */}
-      <Card
-        title="Per e-bill charge"
-        priceNotice
-        subtitle="Deducted from the store's wallet, + GST where applicable, per e-bill accepted for sending — never for a send that is refused."
-        warn={
-          config.ebillCharge.enabled && !Number(config.ebillCharge.amount)
-            ? "The charge is on but set to zero, so e-bills cost nothing."
-            : null
-        }
-      >
-        <Toggle
-          checked={config.ebillCharge.enabled}
-          onChange={(v) => set({ ebillCharge: { ...config.ebillCharge, enabled: v } })}
-          label="Charge per e-bill sent"
-          hint="Each e-bill accepted for sending is charged, including a deliberate re-send. Nothing is charged before the start date."
-        />
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Field label="Amount (₹)" hint="Default ₹0.25" error={fieldErrors["ebillCharge.amount"]}>
-            <input
-              className={input}
-              type="number"
-              min="0"
-              step="0.01"
-              value={config.ebillCharge.amount}
-              onChange={(e) => set({ ebillCharge: { ...config.ebillCharge, amount: e.target.value } })}
-            />
-          </Field>
-          <Field
-            label="Starts on"
-            hint="Required when the charge is on."
-            error={fieldErrors["ebillCharge.effectiveFrom"]}
-          >
-            <input
-              className={input}
-              type="date"
-              value={asInputDate(config.ebillCharge.effectiveFrom)}
-              onChange={(e) =>
-                set({
-                  ebillCharge: { ...config.ebillCharge, effectiveFrom: e.target.value || null },
-                })
-              }
-            />
-          </Field>
-          <Field label="GST on this charge">
-            <select
-              className={input}
-              value={config.ebillCharge.taxable ? "yes" : "no"}
-              onChange={(e) =>
-                set({
-                  ebillCharge: { ...config.ebillCharge, taxable: e.target.value === "yes" },
-                })
-              }
-            >
-              <option value="yes">Taxable</option>
-              <option value="no">Not taxable</option>
-            </select>
-          </Field>
-        </div>
-      </Card>
+                  <option value="yes">Taxable</option>
+                  <option value="no">Not taxable</option>
+                </select>
+              </Field>
+            </div>
+          </Card>
+        );
+      })}
 
       {/* ---------------------------------------------------------------- */}
       <Card
         title="Billing rules"
-        subtitle="How periods, late payment and locks behave. The wallet renews the plan, add-ons and tablets automatically at the end of each period."
+        subtitle="How periods, late payment and locks behave. The wallet renews the plan, its add-ons and existing tablet rentals automatically at the end of each POS period; a yearly add-on renews on its own date."
       >
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Subscription length (days)" error={fieldErrors.subscriptionDays}>
+          <Field label="POS plan period (days)" error={fieldErrors.subscriptionDays}>
             <input
               className={input}
               type="number"
@@ -727,7 +644,7 @@ const Billing = () => {
           <div>
             <span className="text-xs font-semibold text-navy-700">Late renewal</span>
             <p className="mt-1 text-sm text-navy-800">
-              Late renewals start on the payment day. A renewal is never backdated (agreement 6.4).
+              Late renewals start on the payment day. A renewal is never backdated (agreement 4.4).
             </p>
           </div>
           <div>

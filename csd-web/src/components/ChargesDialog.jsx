@@ -31,17 +31,21 @@ const Field = ({ label, name, prefix, suffix, hint, placeholder, type = "number"
 
 /**
  * Everything a negotiated price can be for, from the live catalogue: the POS
- * plan, each add-on, the first and each extra tablet, each printer. The codes
- * are the ones services/pricing priceFor matches.
+ * plan, each add-on (on its own period), the first and each extra rented
+ * tablet, each device. The codes are the ones services/pricing priceFor matches.
  */
 const catalogItems = (c) => {
   const per = `/ ${c.subscriptionDays} days`;
   return [
     { code: c.basePlan.code, label: `${c.basePlan.name} plan ${per}`, price: c.basePlan.price },
-    ...c.addons.map((a) => ({ code: a.code, label: `${a.name} ${per}`, price: a.price })),
-    { code: "TABLET_FIRST", label: `First tablet ${per}`, price: c.tablet.firstPrice },
-    { code: "TABLET_EXTRA", label: `Each extra tablet ${per}`, price: c.tablet.extraPrice },
-    // Printer prices already include GST; nothing is added on top.
+    ...c.addons.map((a) => ({
+      code: a.code,
+      label: `${a.name} ${a.periodDays === 365 ? "/ year" : a.periodDays ? `/ ${a.periodDays} days` : per}`,
+      price: a.price,
+    })),
+    { code: "TABLET_FIRST", label: `First rented tablet ${per} (existing rentals only)`, price: c.tablet.firstPrice },
+    { code: "TABLET_EXTRA", label: `Each extra rented tablet ${per} (existing rentals only)`, price: c.tablet.extraPrice },
+    // Device prices (tablets and printers) already include GST; nothing is added on top.
     ...c.printers.map((p) => ({ code: p.code, label: `${p.name} (one-time)`, price: p.price, gstIncluded: true })),
   ];
 };
@@ -57,22 +61,32 @@ const box = "rounded-xl border px-3 py-2 text-sm text-navy-900 outline-none focu
 
 /** §29 — admin-only. The route is guarded server-side regardless. */
 const ChargesDialog = ({ storeId, charges, onClose, onSaved }) => {
+  // Blank = the platform rate (null on the server), never a copy of it.
+  const blankIfNull = (v) => (v == null ? "" : String(v));
   const [form, setForm] = useState({
-    // Blank = the platform rate (null on the server), never a stored ₹9.
-    onlinePaidOrderCharge: charges.onlinePaidOrderCharge == null ? "" : String(charges.onlinePaidOrderCharge),
+    onlinePaidOrderCharge: blankIfNull(charges.onlinePaidOrderCharge),
+    qrPaidOrderCharge: blankIfNull(charges.qrPaidOrderCharge),
     orderChargeFrom: asInputDate(charges.orderChargeFrom),
   });
   const [prices, setPrices] = useState(() =>
     (charges.planPrices || []).map((p) => ({ code: String(p.code).toUpperCase(), price: String(p.price) })),
   );
   const [catalog, setCatalog] = useState(null);
+  // The platform fee rates, to say what a blank override means.
+  const [rates, setRates] = useState(null);
   const [exempt, setExempt] = useState(Boolean(charges.billingExempt));
   const [errors, setErrors] = useState({});
   const [banner, setBanner] = useState("");
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    billingConfig.get().then((c) => setCatalog(catalogItems(c))).catch(() => setCatalog([]));
+    billingConfig
+      .get()
+      .then((c) => {
+        setCatalog(catalogItems(c));
+        setRates({ website: c.websiteOrderCharge?.amount, qr: c.qrOrderCharge?.amount });
+      })
+      .catch(() => setCatalog([]));
   }, []);
 
   const set = (e) => {
@@ -103,9 +117,10 @@ const ChargesDialog = ({ storeId, charges, onClose, onSaved }) => {
     setBanner("");
     setErrors({});
     try {
+      const orNull = (v) => (String(v).trim() === "" ? null : Number(v));
       await api.updateCharges(storeId, {
-        onlinePaidOrderCharge:
-          String(form.onlinePaidOrderCharge).trim() === "" ? null : Number(form.onlinePaidOrderCharge),
+        onlinePaidOrderCharge: orNull(form.onlinePaidOrderCharge),
+        qrPaidOrderCharge: orNull(form.qrPaidOrderCharge),
         orderChargeFrom: form.orderChargeFrom || null,
         billingExempt: exempt,
         // The whole list, so removing a row puts the store back on the standard price.
@@ -141,16 +156,22 @@ const ChargesDialog = ({ storeId, charges, onClose, onSaved }) => {
         {banner && <p className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{banner}</p>}
 
         <form onSubmit={submit} className="space-y-4">
-          <Field label="Online paid order charge" name="onlinePaidOrderCharge" prefix="₹" suffix="/ order"
-            placeholder="Platform rate" hint="Blank = platform rate, ₹9. + GST where applicable." {...fieldProps} />
-          <Field label="Charge this store from" name="orderChargeFrom" type="date"
-            hint="Blank = the platform start date. A date here can only delay charging, never bring it forward."
+          {[
+            ["onlinePaidOrderCharge", "Website platform fee", "/ order", rates?.website],
+            ["qrPaidOrderCharge", "Table QR platform fee", "/ bill", rates?.qr],
+          ].map(([name, label, suffix, rate]) => (
+            <Field key={name} label={label} name={name} prefix="₹" suffix={suffix} placeholder="Platform rate"
+              hint={`Blank = platform rate${rate == null ? "" : `, ${inr(rate)}`}. + GST, paid by the customer only when they pay online.`}
+              {...fieldProps} />
+          ))}
+          <Field label="Platform fees from" name="orderChargeFrom" type="date"
+            hint="Blank = the platform start dates. A date here can only delay the platform fees, never bring them forward."
             {...fieldProps} />
 
           <div>
             <span className="block text-xs font-semibold uppercase tracking-wider text-navy-600">Negotiated prices</span>
             <span className="mt-0.5 block text-xs text-navy-400">
-              Rupees, before GST (printers: including GST). Anything not listed is charged at the standard price.
+              Rupees, before GST (tablets and printers: including GST). Anything not listed is charged at the standard price.
             </span>
             {errors.planPrices && <span className="mt-1 block text-xs text-red-600">{errors.planPrices}</span>}
 
@@ -208,7 +229,8 @@ const ChargesDialog = ({ storeId, charges, onClose, onSaved }) => {
             <span>
               <span className="block text-sm font-semibold text-navy-900">Demo store — never billed</span>
               <span className="block text-xs text-navy-500">
-                Every add-on without buying it, no per-order or e-bill charges, and the POS never locks. For demo and testing stores only.
+                Every add-on without buying it, no platform fee on its customers&rsquo; online payments, no e-bill
+                charges, and the POS never locks. For demo and testing stores only.
               </span>
             </span>
           </label>

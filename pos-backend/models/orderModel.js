@@ -109,8 +109,14 @@ const orderSchema = new mongoose.Schema({
   eBillSentAt: { type: Date, default: null },
 
   /**
-   * What KnotKitchen charged the RESTAURANT for this order -- the platform's
-   * per-order website fee, not anything the diner paid.
+   * KnotKitchen's platform fee on this order: what the diner paid online on
+   * top of the bill (bills.platformFee), and its debit from the restaurant's
+   * wallet.
+   *
+   * The amounts are a snapshot taken when the fee was quoted at checkout, and
+   * the wallet is debited exactly that -- never a rate looked up again later,
+   * so a CSD price change can never make the two differ. status null means
+   * collected from the diner but not yet debited.
    *
    * Lives on the order because the order is the thing being charged: "was
    * this one billed, and if not why not" is answered in the same document,
@@ -118,7 +124,8 @@ const orderSchema = new mongoose.Schema({
    *
    * PENDING means the fee was owed but the Business Balance was short. The
    * customer's order still went through -- KnotKitchen's billing must never
-   * be able to block a restaurant from taking money.
+   * be able to block a restaurant from taking money. WAIVED: the order was
+   * cancelled, so a debited fee went back to the wallet.
    */
   platformCharge: {
     status: {
@@ -170,6 +177,10 @@ const orderSchema = new mongoose.Schema({
     serviceCharge: { type: Number, default: 0 },
     // A tip left at settle. NOT inside totalWithTax: it is not sales.
     tip: { type: Number, default: 0 },
+    // KnotKitchen's platform fee (incl. its GST) the diner paid online. NOT
+    // inside totalWithTax, like tip: it is not the restaurant's sale, so
+    // revenue, reports and the restaurant's GST never see it.
+    platformFee: { type: Number, default: 0 },
   },
   items: [orderItemSchema],
   table: { type: mongoose.Schema.Types.ObjectId, ref: "Table" },

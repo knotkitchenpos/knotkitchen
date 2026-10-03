@@ -280,8 +280,8 @@ const None = () => <p className="text-sm text-navy-400">None</p>;
 
 /**
  * The store's POS plan (GET /api/subscription, via the restaurant payload):
- * status, add-ons, rented tablets and top-up credits, hardware bought, and
- * what the next renewal will take from the wallet. Amounts arrive as
+ * status, add-ons, tablets still rented from before tablets were sold,
+ * hardware bought, and what the next renewals will take from the wallet. Amounts arrive as
  * { paise, rupees, label }; only the label is shown.
  */
 /** "Name (KnotKitchen)" / "Name (Restaurant)" from { type, name }. */
@@ -317,6 +317,9 @@ const PosPlanCard = ({ sub, storeClosed: storeStatusClosed, isAdmin, onEndTablet
     return sub.status === "EXPIRED" ? "Expired" : sub.status;
   })();
   const addons = sub.addons.filter((a) => a.owned);
+  // A yearly add-on renews on its own date, outside the POS period's renewal.
+  const yearly = addons.filter((a) => a.yearly && a.renewsAt && !a.endsAt);
+  const tablets = sub.tablets || [];
 
   // Admin only; the server checks too.
   const action = !isAdmin ? null : cancelled ? (
@@ -360,9 +363,6 @@ const PosPlanCard = ({ sub, storeClosed: storeStatusClosed, isAdmin, onEndTablet
             </button>
           )}
         </Row>
-        <Row label="Tablet credits">
-          {`${sub.tablet.credits} · one per top-up of ${sub.tablet.rechargeRequired.label}`}
-        </Row>
         {sub.lastRenewalError && <Row label="Last renewal">{sub.lastRenewalError}</Row>}
       </dl>
 
@@ -370,20 +370,25 @@ const PosPlanCard = ({ sub, storeClosed: storeStatusClosed, isAdmin, onEndTablet
       {addons.length === 0 ? <None /> : (
         <ul className="text-sm">
           {addons.map((a) => (
-            <li key={a.code} className="flex justify-between gap-3 border-b border-navy-100 py-1.5 last:border-b-0">
-              <span className="text-navy-800">{a.name}</span>
-              <span className="text-right text-navy-900">
-                {a.price.label} {per}{a.endsAt ? ` · stops ${dOnly(a.endsAt)}` : ""}
-              </span>
+            <li key={a.code} className="border-b border-navy-100 py-1.5 last:border-b-0">
+              <div className="flex justify-between gap-3">
+                <span className="text-navy-800">{a.name}</span>
+                <span className="text-right text-navy-900">
+                  {a.price.label} {a.yearly ? "/ year" : `/ ${a.periodDays || sub.periodDays} days`}
+                  {a.endsAt ? ` · stops ${dOnly(a.endsAt)}` : a.yearly && a.renewsAt ? ` · renews ${dOnly(a.renewsAt)}` : ""}
+                </span>
+              </div>
+              {a.lastRenewalError && <p className="mt-0.5 text-xs text-red-600">{a.lastRenewalError}</p>}
             </li>
           ))}
         </ul>
       )}
 
-      <SubHead>Tablets</SubHead>
-      {sub.tablets.length === 0 ? <None /> : (
+      {/* No new rentals: tablets are now bought, and show under Hardware. */}
+      {tablets.length > 0 && <SubHead>Rented tablets (existing rentals)</SubHead>}
+      {tablets.length > 0 && (
         <ul className="text-sm">
-          {sub.tablets.map((t) => (
+          {tablets.map((t) => (
             <li key={t.serial} className="flex items-center justify-between gap-3 border-b border-navy-100 py-1.5 last:border-b-0">
               <span className="text-navy-800">
                 Tablet #{t.serial}
@@ -420,7 +425,8 @@ const PosPlanCard = ({ sub, storeClosed: storeStatusClosed, isAdmin, onEndTablet
       </Link>
 
       <SubHead>Next renewal</SubHead>
-      {!sub.nextRenewal ? <None /> : (
+      {!sub.nextRenewal && yearly.length === 0 && <None />}
+      {sub.nextRenewal && (
         <ul className="text-sm">
           {[
             ...sub.nextRenewal.lines.map((l) => [l.description, l.amount.label]),
@@ -432,6 +438,16 @@ const PosPlanCard = ({ sub, storeClosed: storeStatusClosed, isAdmin, onEndTablet
             }`}>
               <span className="text-navy-800">{label}</span>
               <span className="shrink-0 text-right text-navy-900">{amount}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+      {yearly.length > 0 && (
+        <ul className="mt-1 text-sm">
+          {yearly.map((a) => (
+            <li key={a.code} className="flex justify-between gap-3 border-b border-navy-100 py-1.5 last:border-b-0">
+              <span className="text-navy-800">{`${a.name} (yearly) on ${dOnly(a.renewsAt)}`}</span>
+              <span className="shrink-0 text-right text-navy-900">{a.price.label} + GST where applicable</span>
             </li>
           ))}
         </ul>
@@ -633,6 +649,10 @@ const RestaurantDetail = () => {
   if (!data) return <p className="text-sm text-navy-500">Loading restaurant…</p>;
 
   const { header, basic, owner, sales, contact, googleBusiness, websiteSettings, storeProperties, charges } = data;
+  // Device prices (tablets and printers) already include GST.
+  const deviceCodes = new Set(
+    [...(charges.subscription?.printers || []), ...(charges.subscription?.hardware || [])].map((d) => d.code),
+  );
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -917,17 +937,23 @@ const RestaurantDetail = () => {
             ) : null
           }>
           <dl>
-            <Row label="Online paid orders">
-              {charges.onlinePaidOrderCharge == null
-                ? "Platform rate"
-                : `${inr(charges.onlinePaidOrderCharge)} + GST where applicable / order`}
-            </Row>
-            <Row label="Charged from">
+            {/* Paid by the customer on an online payment, then taken from the wallet. */}
+            {[
+              ["Website platform fee", charges.onlinePaidOrderCharge, "order"],
+              ["Table QR platform fee", charges.qrPaidOrderCharge, "bill"],
+            ].map(([label, amount, per]) => (
+              <Row key={label} label={label}>
+                {amount == null ? "Platform rate" : `${inr(amount)} + GST / ${per}, paid by the customer online`}
+              </Row>
+            ))}
+            <Row label="Platform fees from">
               {charges.orderChargeFrom ? dOnly(charges.orderChargeFrom) : "Platform start date"}
             </Row>
             {charges.billingExempt && <Row label="Billing">Demo store — never billed</Row>}
             {(charges.planPrices || []).map((p) => (
-              <Row key={p.code} label={`Price: ${p.code}`}>{inr(p.price)} + GST where applicable</Row>
+              <Row key={p.code} label={`Price: ${p.code}`}>
+                {inr(p.price)} {deviceCodes.has(p.code) ? "incl. GST" : "+ GST where applicable"}
+              </Row>
             ))}
           </dl>
           {charges.usingDefaults && (
@@ -1103,8 +1129,8 @@ const RestaurantDetail = () => {
           <form onSubmit={adjustWallet} className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
             <h2 className="mb-2 text-lg font-bold text-navy-900">Adjust wallet</h2>
             <p className="mb-3 text-sm text-navy-600">
-              Balance now: {charges.subscription?.balance?.label ?? "—"}. Debit for tablet loss or damage at
-              actual cost, erroneous charges, or to record a permitted bank refund (reference = UTR). The
+              Balance now: {charges.subscription?.balance?.label ?? "—"}. Debit for a rented tablet&rsquo;s loss or
+              damage at actual cost, erroneous charges, or to record a permitted bank refund (reference = UTR). The
               wallet is not otherwise refundable.
             </p>
             <div className="mb-3 flex gap-2" role="radiogroup" aria-label="Direction">

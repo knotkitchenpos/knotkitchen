@@ -6,15 +6,15 @@
  * a message the customer never received is the kind of charge that ends up in
  * a support conversation.
  *
- * Each delivered message is charged, including a deliberate re-send: a second
- * message is a second WhatsApp message and a second cost. The idempotency key
- * is therefore the provider's own request id for that message, not the order
- * -- keying on the order would make every re-send free.
+ * It is priced per BILL: the first delivered e-bill for an order (or a table
+ * session, whose orders share one bill) is charged, and a re-send of the same
+ * bill -- the settle modal and the auto-send both firing, or the operator
+ * pressing the button again -- costs nothing more.
  *
  * A shortfall never blocks the message. It has already been delivered by the
  * time this runs; refusing to record the charge would only lose the money
  * twice over. The debit is simply skipped and logged, and the account will
- * lock on its unpaid ORDER charges long before 25 paise a message matters.
+ * lock on its unpaid platform fees long before 25 paise a message matters.
  */
 
 const Restaurant = require("../models/restaurantModel");
@@ -23,15 +23,13 @@ const { computeTax } = require("./tax");
 const { debit, InsufficientBalanceError } = require("./ledger");
 
 /**
- * One key per delivered message.
- *
- * `messageId` is what the provider returned for THIS send. Two sends of the
- * same bill produce two ids and two charges, which is correct -- they are two
- * messages.
+ * One key per bill: `billRef` is the table session, or the order when it has
+ * none. A send with no bill to point at falls back to the provider's id for
+ * that one message.
  */
-const idempotencyKeyFor = (messageId) => `ebill-${messageId}`;
+const idempotencyKeyFor = ({ billRef, messageId }) => (billRef ? `ebill-bill-${billRef}` : `ebill-${messageId}`);
 
-const chargeForEBill = async ({ restaurantId, messageId, refType = "", refId = null, orderNumber = "" }) => {
+const chargeForEBill = async ({ restaurantId, messageId, billRef = null, refType = "", refId = null, orderNumber = "" }) => {
   if (!restaurantId || !messageId) return { charged: false, reason: "Nothing to charge against." };
 
   const config = await getPlatformConfig();
@@ -57,8 +55,8 @@ const chargeForEBill = async ({ restaurantId, messageId, refType = "", refId = n
       restaurantId,
       kind: "EBILL_CHARGE",
       amountPaise: tax.totalPaise,
-      description: orderNumber ? `E-bill sent — #${orderNumber}` : "E-bill sent",
-      idempotencyKey: idempotencyKeyFor(messageId),
+      description: orderNumber ? `E-bill — #${orderNumber}` : "E-bill",
+      idempotencyKey: idempotencyKeyFor({ billRef, messageId }),
       refType,
       refId,
       meta: { messageId, orderNumber },

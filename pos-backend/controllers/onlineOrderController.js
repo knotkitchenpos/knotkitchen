@@ -15,6 +15,7 @@ const {
   REFUNDED_STATUSES,
 } = require("../constants/orderStatus");
 const { clocksOnAccept, prepDuePayload } = require("../services/autoReadyService");
+const { fireOrderChargeReversal } = require("../services/orderCharge");
 const { emitToRestaurant } = require("../services/socket");
 
 /**
@@ -183,6 +184,8 @@ const updateOnlineOrderStatus = async (req, res, next) => {
     // Cancelling a table's order must free the table. Without this the Orders
     // screen said "Cancelled" while Manage Tables kept the table occupied.
     if (action === "reject" || action === "cancel") {
+      // A website order's platform fee is debited at payment: give it back.
+      fireOrderChargeReversal(order._id);
       try {
         const { releaseSessionForCancelledOrder } = require("./tableSessionController");
         await releaseSessionForCancelledOrder(order, req.user?.name || "POS");
@@ -472,6 +475,9 @@ const resolveAddedItems = async (req, res, next) => {
     }
 
     await order.save();
+
+    // Nothing left on the order: any platform fee it holds goes back.
+    if (order.orderStatus === CANCELLED) fireOrderChargeReversal(order._id);
 
     // Voiding the whole ticket must free the table, like every other cancel
     // route. Without this Manage Tables kept the table occupied.

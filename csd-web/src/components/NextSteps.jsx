@@ -8,12 +8,12 @@ const NextSteps = ({ storeId }) => (
       creates a password using the owner phone.
     </li>
     <li>
-      Recharges at least ₹2,500 in one payment, so the POS Plan (₹399 + GST where applicable, 30 days)
+      Recharges at least ₹2,500 in one payment, so the POS Plan (₹499 + GST where applicable, 30 days)
       starts and the rest stays in the wallet.
     </li>
     <li>
-      Adds add-ons (QR Table Ordering for tables and dine-in), tablets or printers from Billing if
-      wanted.
+      Adds add-ons (QR Table Ordering for tables and dine-in, Website yearly) and buys tablets or
+      printers from Billing if wanted.
     </li>
   </ol>
 );
