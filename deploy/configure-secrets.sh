@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Install Cashfree / Fast2SMS credentials into the deploy env file.
+# Install Cashfree / Fast2SMS / Google Maps credentials into the deploy env file.
 #
 # Run this ON THE SERVER. It prompts for each value and reads it silently, so
 # the secrets go from your keyboard into the env file and nowhere else -- not
@@ -169,6 +169,24 @@ echo
 ask PUBLIC_API_URL "Public API origin for /r/<token> links" "" "https://api.knotkitchen.com"
 
 echo "=============================================="
+echo " Knot Eats: Google Maps (optional)"
+echo "=============================================="
+echo
+echo "  Leave both keys blank to run on straight-line distances, with"
+echo "  diners setting their location by GPS or area chips."
+echo "  Server key: Routes API only, restricted to this VPS's IP."
+echo "  Browser key: Maps JavaScript, Places API (New) and Geocoding only,"
+echo "  restricted to the https://eats.<base>/* and https://business.<base>/*"
+echo "  referrers. Browsers receive it, so that restriction is its protection."
+echo
+ask GOOGLE_MAPS_SERVER_KEY  "Server key (Routes API)" secret
+ask GOOGLE_MAPS_BROWSER_KEY "Browser key (Maps JavaScript, Places, Geocoding)"
+echo "  Paid Routes elements per IST day; past it, distances fall back to"
+echo "  straight-line until the next day. 300 is sized for the free tier --"
+echo "  check current Google pricing before raising it."
+ask GOOGLE_ROUTES_DAILY_ELEMENTS "Routes API daily element cap" "" "300"
+
+echo "=============================================="
 echo " Restarting the API"
 echo "=============================================="
 cd "$REPO_DIR"
@@ -195,6 +213,7 @@ const names = [
   "FAST2SMS_ORDER_READY_TEMPLATE_ID","FAST2SMS_PAYMENT_LINK_TEMPLATE_ID","FAST2SMS_OTP_ID",
   "FAST2SMS_WHATSAPP_PHONE_NUMBER_ID","FAST2SMS_EBILL_WHATSAPP_MESSAGE_ID",
   "PUBLIC_API_URL","RECEIPT_LINK_SECRET","CREDENTIALS_SECRET",
+  "GOOGLE_MAPS_SERVER_KEY","GOOGLE_MAPS_BROWSER_KEY",
 ];
 for (const n of names) {
   const v = process.env[n];

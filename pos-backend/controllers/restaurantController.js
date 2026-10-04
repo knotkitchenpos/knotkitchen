@@ -2,6 +2,17 @@ const createHttpError = require("http-errors");
 const Restaurant = require("../models/restaurantModel");
 const User = require("../models/userModel");
 const { logActivity } = require("../services/auditService");
+// Lazy: services/knotEats loads the listing's models, which these tests stub.
+const knotEats = () => require("../services/knotEats");
+// The Knot Eats listing copies the pin, order types, hours, holidays and
+// Closed for Today. Never fails the save: the listing expires in 5 min anyway.
+const invalidateKnotEats = () => {
+  try {
+    knotEats().invalidateListing();
+  } catch (err) {
+    console.warn("[knot-eats] listing invalidation failed:", err.message);
+  }
+};
 
 const getMyRestaurant = async (req, res, next) => {
   try {
@@ -238,8 +249,18 @@ const updateStoreProperties = async (req, res, next) => {
     if (props.postalCode !== undefined) restaurant.address.postalCode = String(props.postalCode).trim();
     if (props.latitude !== undefined) restaurant.address.lat = Number(props.latitude) || null;
     if (props.longitude !== undefined) restaurant.address.lng = Number(props.longitude) || null;
+    // Knot Eats finds and measures to the store by this pin, so a swapped or
+    // mistyped pair would put it in the sea. Blank clears it; anything else
+    // has to land in India.
+    if (props.latitude !== undefined || props.longitude !== undefined) {
+      const { lat, lng } = restaurant.address;
+      if ((lat != null || lng != null) && !knotEats().isIndiaPoint(lat, lng)) {
+        return next(createHttpError(400, "That map pin is outside India. Check the latitude and longitude."));
+      }
+    }
 
     await restaurant.save();
+    invalidateKnotEats();
 
     if (props.restaurantLogo !== undefined) {
       const logo = restaurant.branding.logo;
@@ -337,6 +358,7 @@ const updateOrderToggles = async (req, res, next) => {
         },
       }
     );
+    invalidateKnotEats();
 
     res.status(200).json({ success: true, message: "Order Type Toggles updated!", data: restaurant.orderTypeToggles });
   } catch (error) {
@@ -362,6 +384,7 @@ const updateChannelTimings = async (req, res, next) => {
       { $set: update },
       { new: true, upsert: false }
     );
+    invalidateKnotEats();
 
     res.status(200).json({ success: true, message: "Store Timings updated!", data: settings?.channelHours });
   } catch (error) {
@@ -386,6 +409,7 @@ const updateHolidays = async (req, res, next) => {
       { $set: { holidays: cleanHolidays } },
       { new: true }
     );
+    invalidateKnotEats();
 
     res.status(200).json({ success: true, message: "Holidays updated!", data: settings?.holidays });
   } catch (error) {
@@ -419,6 +443,7 @@ const toggleClosedForToday = async (req, res, next) => {
       { $set: updateData },
       { new: true }
     );
+    invalidateKnotEats();
 
     res.status(200).json({
       success: true,

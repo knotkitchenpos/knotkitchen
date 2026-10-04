@@ -66,6 +66,7 @@ const ChargesDialog = ({ storeId, charges, onClose, onSaved }) => {
   const [form, setForm] = useState({
     onlinePaidOrderCharge: blankIfNull(charges.onlinePaidOrderCharge),
     qrPaidOrderCharge: blankIfNull(charges.qrPaidOrderCharge),
+    knotEatsPaidOrderCharge: blankIfNull(charges.knotEatsPaidOrderCharge),
     orderChargeFrom: asInputDate(charges.orderChargeFrom),
   });
   const [prices, setPrices] = useState(() =>
@@ -84,7 +85,11 @@ const ChargesDialog = ({ storeId, charges, onClose, onSaved }) => {
       .get()
       .then((c) => {
         setCatalog(catalogItems(c));
-        setRates({ website: c.websiteOrderCharge?.amount, qr: c.qrOrderCharge?.amount });
+        setRates({
+          website: c.websiteOrderCharge?.amount,
+          qr: c.qrOrderCharge?.amount,
+          knotEats: c.knotEatsOrderCharge?.amount,
+        });
       })
       .catch(() => setCatalog([]));
   }, []);
@@ -121,6 +126,7 @@ const ChargesDialog = ({ storeId, charges, onClose, onSaved }) => {
       await api.updateCharges(storeId, {
         onlinePaidOrderCharge: orNull(form.onlinePaidOrderCharge),
         qrPaidOrderCharge: orNull(form.qrPaidOrderCharge),
+        knotEatsPaidOrderCharge: orNull(form.knotEatsPaidOrderCharge),
         orderChargeFrom: form.orderChargeFrom || null,
         billingExempt: exempt,
         // The whole list, so removing a row puts the store back on the standard price.
@@ -159,6 +165,7 @@ const ChargesDialog = ({ storeId, charges, onClose, onSaved }) => {
           {[
             ["onlinePaidOrderCharge", "Website platform fee", "/ order", rates?.website],
             ["qrPaidOrderCharge", "Table QR platform fee", "/ bill", rates?.qr],
+            ["knotEatsPaidOrderCharge", "Knot Eats platform fee", "/ order", rates?.knotEats],
           ].map(([name, label, suffix, rate]) => (
             <Field key={name} label={label} name={name} prefix="₹" suffix={suffix} placeholder="Platform rate"
               hint={`Blank = platform rate${rate == null ? "" : `, ${inr(rate)}`}. + GST, paid by the customer only when they pay online.`}

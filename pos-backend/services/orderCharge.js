@@ -1,5 +1,5 @@
 /**
- * KnotKitchen's platform fee on orders paid online (website and table QR).
+ * KnotKitchen's platform fee on orders paid online (website, Knot Eats and table QR).
  *
  * The DINER pays it, as a visible "Platform fee" (+GST) line on top of the
  * bill, and only when paying online: a website checkout or a table-QR gateway
@@ -46,6 +46,11 @@ const debitFor = async (order) => {
 };
 
 const NO_FEE = "No platform fee was collected.";
+
+// The wallet line names the Knot Eats fee as such, so an owner reading the
+// statement can tell which orders came through Knot Eats.
+const isKnotEats = (order) => order.salesChannel === "KNOT_EATS";
+const feeLine = (order) => `${isKnotEats(order) ? "Knot Eats fee" : "Platform fee"} — #${order.orderNumber || order._id}`;
 
 /** Just the amounts of a fee snapshot, from a subdocument or a plain object. */
 const feeOf = (pc) => ({
@@ -187,11 +192,11 @@ const applyCharge = async (order) => {
       restaurantId: order.restaurantId,
       kind: "ORDER_CHARGE",
       amountPaise: stamp.totalPaise,
-      description: `Platform fee — #${order.orderNumber || order._id}`,
+      description: feeLine(order),
       idempotencyKey: idempotencyKeyFor(order._id),
       refType: "Order",
       refId: order._id,
-      meta: { orderNumber: order.orderNumber, source: order.source },
+      meta: { orderNumber: order.orderNumber, source: order.salesChannel || order.source },
     });
 
     order.platformCharge = { ...stamp, status: "PAID", reason: "", ledgerEntryId: entry._id };
@@ -343,7 +348,7 @@ const settlePendingCharges = async (restaurantId) => {
         restaurantId,
         kind: "ORDER_CHARGE",
         amountPaise: order.platformCharge.totalPaise,
-        description: `Platform fee — #${order.orderNumber || order._id}`,
+        description: feeLine(order),
         idempotencyKey: idempotencyKeyFor(order._id),
         refType: "Order",
         refId: order._id,

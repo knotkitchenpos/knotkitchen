@@ -7,7 +7,7 @@ import axios from "axios";
  * POS/admin session cookies to the backend. Every endpoint it hits is a
  * public unauthenticated one under /api/storefront/* or /api/public/*.
  */
-const client = axios.create({
+export const client = axios.create({
   baseURL: import.meta.env.VITE_BACKEND_URL || "",
   headers: { "Content-Type": "application/json", Accept: "application/json" },
   withCredentials: false,

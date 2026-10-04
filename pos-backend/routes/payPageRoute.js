@@ -1,6 +1,7 @@
 const express = require("express");
 const WebsiteCheckout = require("../models/websiteCheckoutModel");
 const { esc: escapeHtml } = require("../services/invoiceDocument");
+const { tokenForCheckout, readToken } = require("../services/receiptLink");
 
 /**
  * The one page every website payment opens on: pay.<base>/c/<checkoutId>.
@@ -18,13 +19,28 @@ const { esc: escapeHtml } = require("../services/invoiceDocument");
  */
 const router = express.Router();
 
-const findCheckout = async (id) =>
-  /^[a-f0-9]{24}$/i.test(String(id || "")) ? WebsiteCheckout.findById(id).lean() : null;
+/**
+ * A website checkout by its bare id; a Knot Eats checkout only by its signed
+ * c_ token. backToStore hands that token back, so a bare id (guessable from
+ * one's own checkouts) must never reach a Knot Eats checkout here.
+ */
+const findCheckout = async (id) => {
+  const token = readToken(id);
+  if (token?.isCheckout) return WebsiteCheckout.findById(token.id).lean();
+  if (!/^[a-f0-9]{24}$/i.test(String(id || ""))) return null;
+  const checkout = await WebsiteCheckout.findById(id).lean();
+  return checkout?.orderData?.salesChannel === "KNOT_EATS" ? null : checkout;
+};
 
-/** Back to the restaurant's own menu, carrying the checkout to confirm. */
+/**
+ * Back to the restaurant's own menu, carrying the checkout to confirm. A Knot
+ * Eats checkout carries a signed c_ token instead of the bare id: Knot Eats
+ * confirms only by token, so a guessed id can never place or reveal an order.
+ */
 const backToStore = (checkout) => {
   const url = new URL(checkout.returnUrl);
-  url.searchParams.set("checkout", String(checkout._id));
+  const knotEats = checkout.orderData?.salesChannel === "KNOT_EATS";
+  url.searchParams.set("checkout", knotEats ? tokenForCheckout(checkout._id) : String(checkout._id));
   return url.toString();
 };
 

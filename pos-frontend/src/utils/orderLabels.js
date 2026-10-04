@@ -35,10 +35,14 @@ export const tableLabel = (table, fallback = "") => {
  * and the Reports row disagreed with the Orders page about the very same
  * order. Only MARKETPLACE is outside; everything else is a channel we run.
  *
+ * A Knot Eats order keeps source WEBSITE (every website flow applies to it)
+ * and is told apart only by `salesChannel`, so callers pass that too.
+ *
  * This mirrors the backend rule in orderController.buildReportBuckets. If one
  * changes, change both.
  */
-export const sourceLabel = (src) => {
+export const sourceLabel = (src, salesChannel) => {
+  if (salesChannel === "KNOT_EATS") return "Knot Eats";
   switch (String(src || "").toUpperCase()) {
     case "MARKETPLACE":
       return "Outside";

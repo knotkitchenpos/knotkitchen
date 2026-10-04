@@ -91,6 +91,18 @@ test("SECURITY: knotkitchen.com.evil.tld is NOT recognised as a subdomain", () =
   assert.equal(r.host, "knotkitchen.com.evil.tld");
 });
 
+test("eats.<base> is the Knot Eats marketplace, in production and in dev", () => {
+  for (const h of ["eats.knotkitchen.com", "www.eats.knotkitchen.com", "eats.localhost", "eats.localhost:5176"]) {
+    const r = resolveStoreFromHostname(h, opts);
+    assert.equal(r.mode, "eats", h);
+    assert.equal(r.slug, undefined, `${h} is not a store`);
+  }
+  // A store's own 6-digit subdomain is unchanged.
+  const store = resolveStoreFromHostname("123456.knotkitchen.com", opts);
+  assert.equal(store.mode, "subdomain");
+  assert.equal(store.slug, "123456");
+});
+
 test("multi-level subdomain uses the leaf as slug", () => {
   const r = resolveStoreFromHostname("shop.burger-house.knotkitchen.com", opts);
   // Docs say we take the LAST label — that's "burger-house".

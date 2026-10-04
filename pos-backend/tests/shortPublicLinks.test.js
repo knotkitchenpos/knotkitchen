@@ -378,3 +378,21 @@ test("knotkitchen.com is gone from the proxy and the containers", () => {
   assert.ok(!/LEGACY_DOMAIN|knotkitchen\.online/.test(CADDY));
   assert.ok(!/LEGACY_DOMAIN|knotkitchen\.online/.test(DEPLOY("docker-compose.yml")));
 });
+
+test("Knot Eats: its own vhost, the only host allowed geolocation", () => {
+  // Before the wildcard, or the catch-all serves eats.<base> as a store site.
+  assert.match(CADDY, /^eats\.\{\$BASE_DOMAIN\} \{$/m);
+  assert.ok(CADDY.indexOf("eats.{$BASE_DOMAIN}") < CADDY.indexOf("*.{$BASE_DOMAIN}"), "eats vhost must precede the wildcard");
+  // GPS is for the marketplace only; every store host keeps it denied.
+  assert.equal((CADDY.match(/Permissions-Policy\s+"[^"]*geolocation=\(self\)/g) || []).length, 1);
+  const shared = CADDY.slice(CADDY.indexOf("(security_headers) {"));
+  assert.match(shared.slice(0, shared.indexOf("\n}")), /geolocation=\(\)/);
+  // c_ (checkout) and v_ (order status) tokens never open on the bill host.
+  const rx = new RegExp(CADDY.match(/@token path_regexp tok (\S+)/)[1]);
+  for (const kind of ["c", "v"]) assert.ok(!rx.test(`/${kind}_${ID}_AbC-dEf_GhIjKlMnOpQrSt`), `${kind} token must not route`);
+
+  assert.match(
+    DEPLOY("docker-compose.yml"),
+    /KNOT_EATS_PUBLIC_URL: \$\{KNOT_EATS_PUBLIC_URL:-https:\/\/eats\.\$\{BASE_DOMAIN\}\}/,
+  );
+});

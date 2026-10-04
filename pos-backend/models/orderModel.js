@@ -85,6 +85,9 @@ const orderSchema = new mongoose.Schema({
   deliveryAddress: {
     line1: String, line2: String, city: String, postalCode: String,
     instructions: String,
+    lat: Number, lng: Number,      // customer point (Places / GPS), full precision, for the rider
+    distanceKm: Number,            // server-computed store -> customer
+    distanceSource: String,        // "road" | "straight_line"
   },
   /**
    * Module 4 §2/§3/§4 — Ready state tracking.
@@ -200,6 +203,9 @@ const orderSchema = new mongoose.Schema({
     default: "POS",
     index: true,
   },
+  // "" = the source's own front door (store website, QR, till). "KNOT_EATS" = placed
+  // through eats.<base>; source stays "WEBSITE" so every website flow applies.
+  salesChannel: { type: String, enum: ["", "KNOT_EATS"], default: "" },
   // Permanent public store identifier, denormalized onto the order so the POS
   // and future analytics can filter website orders without a join.
   storeId: { type: String, default: "", index: true },

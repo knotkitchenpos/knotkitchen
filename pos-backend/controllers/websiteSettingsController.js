@@ -41,6 +41,187 @@ const assign = (target, key, value) => {
 };
 
 /**
+ * Rules & Charges (Module 8): coupons, free items, minimum orders and the
+ * delivery radius. The screen always sent these and was shown "Saved", but
+ * nothing here wrote them, so no store could have a coupon or a radius. Each
+ * reader returns the clean value and puts every problem in `errors` under the
+ * field's path; the caller refuses the save if there are any.
+ */
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+const APPLY_TO = ["system", "website", "both"];
+const CHANNELS = ["collection", "delivery", "table"];
+
+/** A number in [min, max], or undefined (left out, so the schema default applies). */
+const readNum = (value, key, errors, { min = 0, max = 1_000_000, integer = false, message } = {}) => {
+  if (value === undefined || value === null || value === "") return undefined;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < min || n > max || (integer && !Number.isInteger(n))) {
+    errors[key] = message || `Must be from ${min} to ${max}.`;
+    return undefined;
+  }
+  return n;
+};
+
+const readDate = (value, key, errors) => {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) {
+    errors[key] = "Enter a valid date, or leave it blank.";
+    return undefined;
+  }
+  return d;
+};
+
+/** The fields coupons and free-item rules share: when, where and above what. */
+const readRuleCommon = (raw, path, errors) => {
+  const out = { isActive: raw.isActive !== false };
+  const min = readNum(raw.minOrderAmount, `${path}.minOrderAmount`, errors, { message: "Minimum order must be zero or more." });
+  if (min !== undefined) out.minOrderAmount = min;
+
+  if (raw.channels !== undefined) {
+    const ch = raw.channels && typeof raw.channels === "object" ? raw.channels : {};
+    out.channels = {};
+    for (const k of CHANNELS) {
+      if (ch[k] === undefined) continue;
+      if (typeof ch[k] !== "boolean") errors[`${path}.channels.${k}`] = "Must be on or off.";
+      else out.channels[k] = ch[k];
+    }
+  }
+  if (raw.daysOfWeek !== undefined) {
+    const days = Array.isArray(raw.daysOfWeek) ? raw.daysOfWeek.map(Number) : [NaN];
+    if (!days.every((d) => Number.isInteger(d) && d >= 0 && d <= 6)) {
+      errors[`${path}.daysOfWeek`] = "Pick days from Sunday (0) to Saturday (6).";
+    } else out.daysOfWeek = [...new Set(days)].sort((a, b) => a - b);
+  }
+  for (const key of ["startTime", "endTime"]) {
+    if (raw[key] === undefined) continue;
+    if (!HHMM.test(String(raw[key]))) errors[`${path}.${key}`] = "Use a 24-hour time such as 16:00.";
+    else out[key] = raw[key];
+  }
+  const from = readDate(raw.validFrom, `${path}.validFrom`, errors);
+  const until = readDate(raw.validUntil, `${path}.validUntil`, errors);
+  if (from !== undefined) out.validFrom = from;
+  if (until !== undefined) out.validUntil = until;
+  if (from && until && from > until) errors[`${path}.validUntil`] = "The end date is before the start date.";
+  return out;
+};
+
+/**
+ * Coupons. `quantityUsed` is never taken from the request: it is kept from
+ * the saved coupon with the same code (checkout counts it), so an edit cannot
+ * hand out a fresh allowance.
+ *
+ * ponytail: the list is replaced whole, so a use counted between this load and
+ * save is lost; per-coupon atomic writes if usage caps get tight.
+ */
+const readCoupons = (list, stored, errors) => {
+  if (!Array.isArray(list) || list.length > 30) {
+    errors.couponsConfig = "Up to 30 coupons.";
+    return undefined;
+  }
+  const used = new Map((stored || []).map((c) => [c.code, Number(c.quantityUsed) || 0]));
+  const seen = new Set();
+  return list.map((item, i) => {
+    const raw = item && typeof item === "object" ? item : {};
+    const path = `couponsConfig.${i}`;
+    const code = String(raw.code ?? "").trim().toUpperCase();
+    if (!/^[A-Z0-9]{3,20}$/.test(code)) errors[`${path}.code`] = "Use 3 to 20 letters or digits.";
+    else if (seen.has(code)) errors[`${path}.code`] = `The code "${code}" is already used.`;
+    seen.add(code);
+
+    const type = raw.type === undefined ? "percent" : raw.type;
+    if (!["percent", "fixed"].includes(type)) errors[`${path}.type`] = "Choose % or ₹.";
+    const value = Number(raw.value);
+    if (!Number.isFinite(value) || value <= 0 || (type === "percent" && value > 100)) {
+      errors[`${path}.value`] = type === "percent" ? "Enter a percentage above 0, up to 100." : "Enter an amount above zero.";
+    }
+
+    const out = { code, type, value, ...readRuleCommon(raw, path, errors), quantityUsed: used.get(code) || 0 };
+    for (const key of ["quantityTotal", "usageLimitPerPhone"]) {
+      const n = readNum(raw[key], `${path}.${key}`, errors, { integer: true, message: "Use a whole number, 0 or more." });
+      if (n !== undefined) out[key] = n;
+    }
+    return out;
+  });
+};
+
+/** Free-item promotions: the same rule fields, plus the item and who it applies to. */
+const readFreeItems = (list, errors) => {
+  if (!Array.isArray(list) || list.length > 20) {
+    errors.freeItemConfig = "Up to 20 free-item rules.";
+    return undefined;
+  }
+  return list.map((item, i) => {
+    const raw = item && typeof item === "object" ? item : {};
+    const path = `freeItemConfig.${i}`;
+    const itemName = clampText(raw.itemName, 120);
+    if (!itemName) errors[`${path}.itemName`] = "Enter the free item's name.";
+    const out = { itemName, ...readRuleCommon(raw, path, errors) };
+    if (raw.menuItemId) {
+      if (!mongoose.Types.ObjectId.isValid(raw.menuItemId)) errors[`${path}.menuItemId`] = "Pick the item again.";
+      else out.menuItemId = raw.menuItemId;
+    }
+    if (raw.applyTo !== undefined) {
+      if (!APPLY_TO.includes(raw.applyTo)) errors[`${path}.applyTo`] = "Choose System, Website or Both.";
+      else out.applyTo = raw.applyTo;
+    }
+    return out;
+  });
+};
+
+/** Delivery radius and distance slabs: 0.5-30 km, at most 10 slabs, stored by distance. */
+const readDeliverySlabs = (raw, errors) => {
+  const cfg = raw && typeof raw === "object" ? raw : {};
+  const out = {};
+  const max = readNum(cfg.maxDistanceKm, "ordering.deliverySlabsConfig.maxDistanceKm", errors, {
+    min: 0.5, max: 30, message: "Max distance must be from 0.5 to 30 km.",
+  });
+  if (max !== undefined) out.maxDistanceKm = max;
+  if (cfg.slabs !== undefined) {
+    if (!Array.isArray(cfg.slabs) || cfg.slabs.length > 10) {
+      errors["ordering.deliverySlabsConfig.slabs"] = "Up to 10 distance slabs.";
+    } else {
+      out.slabs = cfg.slabs
+        .map((s, i) => {
+          const path = `ordering.deliverySlabsConfig.slabs.${i}`;
+          const minKm = Number(s?.minKm);
+          const maxKm = Number(s?.maxKm);
+          const fee = Number(s?.fee);
+          if (!(minKm >= 0 && maxKm > minKm && maxKm <= 30)) errors[path] = "Use 0 to 30 km, with the end after the start.";
+          else if (!(fee >= 0 && fee <= 1000)) errors[path] = "The fee must be from ₹0 to ₹1000.";
+          return { minKm, maxKm, fee };
+        })
+        .sort((a, b) => a.minKm - b.minKm);
+    }
+  }
+  return out;
+};
+
+/** Minimum order per channel: on/off, the amount, and which orders it applies to. */
+const readMinOrder = (raw, errors) => {
+  const cfg = raw && typeof raw === "object" ? raw : {};
+  const out = {};
+  for (const ch of CHANNELS) {
+    const c = cfg[ch];
+    if (c === undefined) continue;
+    const path = `ordering.minOrderConfig.${ch}`;
+    const o = (out[ch] = {});
+    if (c?.enabled !== undefined) {
+      if (typeof c.enabled !== "boolean") errors[`${path}.enabled`] = "Must be on or off.";
+      else o.enabled = c.enabled;
+    }
+    const amount = readNum(c?.amount, `${path}.amount`, errors, { message: "The minimum must be zero or more." });
+    if (amount !== undefined) o.amount = amount;
+    if (c?.applyTo !== undefined) {
+      if (!APPLY_TO.includes(c.applyTo)) errors[`${path}.applyTo`] = "Choose System, Website or Both.";
+      else o.applyTo = c.applyTo;
+    }
+  }
+  return out;
+};
+
+/**
  * Strips sensitive encrypted gateway secrets before sending settings to frontend (§19, §26).
  */
 const sanitizeSettings = (doc) => {
@@ -210,6 +391,12 @@ const updateWebsiteSettings = async (req, res, next) => {
     const stored = storedMediaRefs(settings);
     const prevSnapshot = sanitizeSettings(settings);
     const body = req.body || {};
+    const ruleErrors = {};
+    // Coupons, free items, slabs and the minimum order belong to Rules &
+    // Charges, which sends them on their own. A whole-document save (Manage
+    // Website echoes `version`) or a CSD website edit carries the copy loaded
+    // when that editor opened, so writing it back would undo newer rules.
+    const rulesEdit = body.version === undefined && !req.csdStaff;
 
     // ---- Master switch & display ----
     if (typeof body.enabled === "boolean") settings.enabled = body.enabled;
@@ -471,6 +658,31 @@ const updateWebsiteSettings = async (req, res, next) => {
           }
         }
       }
+
+      // Path writes: an older document may not hold these sub-objects yet.
+      if (rulesEdit && o.deliverySlabsConfig !== undefined) {
+        for (const [key, value] of Object.entries(readDeliverySlabs(o.deliverySlabsConfig, ruleErrors))) {
+          settings.set(`ordering.deliverySlabsConfig.${key}`, value);
+        }
+      }
+      if (rulesEdit && o.minOrderConfig !== undefined) {
+        for (const [ch, fields] of Object.entries(readMinOrder(o.minOrderConfig, ruleErrors))) {
+          for (const [key, value] of Object.entries(fields)) settings.set(`ordering.minOrderConfig.${ch}.${key}`, value);
+        }
+      }
+    }
+
+    // ---- Coupons & free items (Rules & Charges) ----
+    if (rulesEdit && body.couponsConfig !== undefined) {
+      const coupons = readCoupons(body.couponsConfig, settings.couponsConfig, ruleErrors);
+      if (coupons) settings.couponsConfig = coupons;
+    }
+    if (rulesEdit && body.freeItemConfig !== undefined) {
+      const rules = readFreeItems(body.freeItemConfig, ruleErrors);
+      if (rules) settings.freeItemConfig = rules;
+    }
+    if (Object.keys(ruleErrors).length) {
+      return next(createHttpError(400, "Please correct the highlighted fields.", { fieldErrors: ruleErrors }));
     }
 
     // ---- Payment Gateways (Module 4) ----
@@ -625,6 +837,13 @@ const updateWebsiteSettings = async (req, res, next) => {
     settings.version += 1;
     settings.publishedAt = new Date();
     await settings.save();
+    // Knot Eats lists hours, radius, fees and coupons from these settings.
+    // Never fails the save: the listing expires in 5 min anyway.
+    try {
+      require("../services/knotEats").invalidateListing();
+    } catch (err) {
+      console.warn("[knot-eats] listing invalidation failed:", err.message);
+    }
 
     if (domainChanged) {
       await logActivity({

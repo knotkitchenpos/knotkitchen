@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 /**
  * Later-today pickup times: every 15 minutes from 30 minutes out, up to the
@@ -21,7 +21,7 @@ function pickupTimes(windowHours, windows) {
 const clock = (d) => d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
 import { allowsFulfilment } from "../lib/dispatch";
 import useScrollLock from "../lib/useScrollLock";
-import { cartEstimate } from "../lib/orderTotals";
+import { cartEstimate, cartOrderType } from "../lib/orderTotals";
 
 /**
  * Cart / checkout drawer.
@@ -29,6 +29,9 @@ import { cartEstimate } from "../lib/orderTotals";
  * The checkout form collects only customer contact + delivery details. Every
  * total shown here is a client-side ESTIMATE — the definitive amount is
  * whatever the backend returns in the confirmation payload (§10).
+ *
+ * The props after `errorCode` are the Knot Eats store page's; the store
+ * website passes none of them and gets the cart it always had.
  */
 export default function CartDrawer({
   open,
@@ -38,12 +41,24 @@ export default function CartDrawer({
   availability,
   onPlaceOrder,
   placing,
-  error,
+  error: placeError,
+  errorCode = "",
+  defaultOrderType = "",
+  deliveryBlockedReason = "",
+  deliveryPoint = null,
+  renderOffers = null,
+  agreement = null,
+  platformFeeNote = "",
 }) {
   useScrollLock(open);
-  const [orderType, setOrderType] = useState(
-    ordering?.pickupEnabled !== false ? "pickup" : "delivery"
-  );
+  // A pickup-less store is delivery whatever this says (cartOrderType).
+  const [chosenType, setOrderType] = useState(defaultOrderType || "pickup");
+  // Whether the restaurant delivers to this customer arrives after the cart
+  // mounts (and changes with their location).
+  useEffect(() => {
+    if (defaultOrderType) setOrderType(defaultOrderType);
+  }, [defaultOrderType]);
+  const orderType = cartOrderType(chosenType, ordering, deliveryBlockedReason);
   const [customer, setCustomer] = useState({ name: "", phone: "" });
   // Collection: "now" by default, or a later time today.
   const [pickupWhen, setPickupWhen] = useState("now");
@@ -55,13 +70,32 @@ export default function CartDrawer({
     [ordering?.pickupWindowHours, availability, open]
   );
   const [address, setAddress] = useState({ line1: "", line2: "", city: "", postalCode: "", instructions: "" });
+  // The place the customer picked (Knot Eats) starts line 1; it stays
+  // editable, and a typed address is never overwritten by a later pick.
+  const prefilledRef = useRef("");
+  useEffect(() => {
+    const label = deliveryPoint?.label;
+    if (!label) return;
+    setAddress((a) => (a.line1 && a.line1 !== prefilledRef.current ? a : { ...a, line1: label }));
+    prefilledRef.current = label;
+  }, [deliveryPoint?.label]);
+
+  // Offers (Knot Eats). The row itself is the Knot Eats page's
+  // (`renderOffers`), so store sites never download it; it reports the
+  // coupon it applied, and the pick lives here so the error slot can remove it.
+  const [pickedCode, setPickedCode] = useState(null); // null: best offer · "": none
+  const [coupon, setCoupon] = useState(null); // { code, discount }
 
   const symbol = ordering?.currencySymbol || "£";
-  const { deliveryFee, packaging, taxAmount, platformFee, total } = cartEstimate({
+  const { deliveryFee, packaging, discount, taxAmount, platformFee, total } = cartEstimate({
     subtotal: cart.subtotal,
     ordering,
     orderType,
+    discount: coupon?.discount,
   });
+  // A coupon the server says this phone has used: the Remove beside the
+  // message clears both.
+  const error = errorCode === "COUPON_USED" && !coupon ? "" : placeError;
 
   const minReached = cart.subtotal >= Number(ordering?.minOrderValue || 0);
 
@@ -83,6 +117,8 @@ export default function CartDrawer({
     phoneDigits.length === 10 &&
     (!needsPickupTime || pickupAt) &&
     !channelClosed &&
+    // Delivery blocked at a pickup-less store leaves nothing to order.
+    !(orderType === "delivery" && deliveryBlockedReason) &&
     minReached &&
     conflicting.length === 0 &&
     !placing &&
@@ -112,7 +148,13 @@ export default function CartDrawer({
         phone: phoneDigits,
       },
       scheduledFor: needsPickupTime ? pickupAt : undefined,
-      deliveryAddress: orderType === "delivery" ? address : undefined,
+      deliveryAddress:
+        orderType === "delivery"
+          ? deliveryPoint
+            ? { ...address, lat: deliveryPoint.lat, lng: deliveryPoint.lng }
+            : address
+          : undefined,
+      ...(coupon ? { couponCode: coupon.code } : {}),
     });
   };
 
@@ -212,7 +254,8 @@ export default function CartDrawer({
                     key={t}
                     type="button"
                     onClick={() => setOrderType(t)}
-                    className={`flex-1 py-2 rounded-full text-sm font-medium border ${
+                    disabled={t === "delivery" && Boolean(deliveryBlockedReason)}
+                    className={`flex-1 py-2 rounded-full text-sm font-medium border disabled:opacity-40 ${
                       orderType === t
                         ? "border-brand text-brand-fg bg-brand"
                         : "border-slate-200 text-slate-700 bg-white"
@@ -222,6 +265,9 @@ export default function CartDrawer({
                   </button>
                 ))}
               </div>
+            ) : null}
+            {ordering?.deliveryEnabled && (deliveryBlockedReason || ordering.pickupEnabled === false) ? (
+              <p className="text-xs text-amber-700">{deliveryBlockedReason || "This restaurant only delivers."}</p>
             ) : null}
 
             <input
@@ -297,7 +343,7 @@ export default function CartDrawer({
                 />
                 <input
                   type="text"
-                  placeholder="Address line 2 (optional)"
+                  placeholder={deliveryPoint ? "Flat, floor, landmark" : "Address line 2 (optional)"}
                   value={address.line2}
                   onChange={(e) => setAddress((a) => ({ ...a, line2: e.target.value }))}
                   className="w-full px-3 py-2 border border-slate-200 rounded-xl text-sm"
@@ -321,8 +367,11 @@ export default function CartDrawer({
               </>
             ) : null}
 
+            {renderOffers?.({ subtotal: cart.subtotal, orderType, symbol, pickedCode, onPick: setPickedCode, onApplied: setCoupon })}
+
             <div className="text-xs text-slate-500 space-y-0.5 pt-2 border-t">
               <Row label="Subtotal" value={`${symbol}${cart.subtotal.toFixed(2)}`} />
+              {discount ? <Row label="Offer" value={`−${symbol}${discount.toFixed(2)}`} /> : null}
               {deliveryFee ? <Row label="Delivery" value={`${symbol}${deliveryFee.toFixed(2)}`} /> : null}
               {packaging ? <Row label="Packaging" value={`${symbol}${packaging.toFixed(2)}`} /> : null}
               {taxAmount ? (
@@ -330,6 +379,7 @@ export default function CartDrawer({
               ) : null}
               {/* Shown before the customer pays, never added at the gateway as a surprise. */}
               {platformFee ? <Row label="Platform fee" value={`${symbol}${platformFee.toFixed(2)}`} /> : null}
+              {platformFee && platformFeeNote ? <p className="text-[11px] text-slate-400">{platformFeeNote}</p> : null}
               <Row label="Estimated total" value={`${symbol}${total.toFixed(2)}`} bold />
             </div>
 
@@ -364,6 +414,11 @@ export default function CartDrawer({
             {error ? (
               <div role="alert" className="text-sm text-red-600">
                 {error}
+                {errorCode === "COUPON_USED" ? (
+                  <button type="button" onClick={() => setPickedCode("")} className="ml-2 font-semibold underline">
+                    Remove
+                  </button>
+                ) : null}
               </div>
             ) : null}
             {!error && reason ? (
@@ -372,6 +427,7 @@ export default function CartDrawer({
               </p>
             ) : null}
 
+            {agreement ? <p className="text-center text-[11px] text-slate-500">{agreement}</p> : null}
             <button
               type="submit"
               disabled={!canSubmit}

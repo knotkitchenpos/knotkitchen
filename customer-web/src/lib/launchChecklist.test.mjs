@@ -20,6 +20,35 @@ test("the thank-you survives a refresh and shows over any page; ?checkout goes o
   assert.match(page, /Confirming your payment… please don’t pay again\./);
 });
 
+test("REGRESSION (F8): a return from paying is verified once, not on every render until 429", () => {
+  const page = read("pages/StorePage.jsx");
+  assert.match(page, /handledRef\.current === id/);
+  assert.match(page, /handledRef\.current = id;/);
+});
+
+test("Knot Eats runs the store page in eats mode: menu first, no store analytics or theme", () => {
+  const page = read("pages/StorePage.jsx");
+  assert.match(page, /if \(!eats && !isMenu && landing\)/);
+  assert.match(page, /const analytics = eats \? null : bootstrap\?\.analytics;/);
+  assert.match(page, /useThemeVars\(eats \? null : store \|\| bootstrap\)/);
+  // The Knot Eats return carries a signed c_ token, never a bare checkout id.
+  assert.match(page, /\^c_\[a-f0-9\]\{24\}_\[A-Za-z0-9_-\]\{22\}\$/);
+  // Store sites never download the Knot Eats chunk.
+  assert.match(read("App.jsx"), /lazy\(\(\) => import\("\.\/eats\/EatsApp"\)\)/);
+});
+
+test("REGRESSION (C16): Knot Eats-only code stays out of the store site's main chunk (§10.8: +2 KB gzip)", () => {
+  // The /api/eats helpers live in the lazy Eats chunk, not the shared client.
+  assert.doesNotMatch(read("lib/api.js"), /api\/eats/);
+  assert.match(read("eats/api.js"), /import \{ client \} from "\.\.\/lib\/api";/);
+  // The back link and the seller line are slots the Eats page fills.
+  const shell = read("components/StoreShell.jsx");
+  assert.doesNotMatch(shell, /Back to Knot Eats|Sold by/);
+  assert.match(shell, /\{seller\?\.\(legal\)\}/);
+  // No modulepreload polyfill: nothing in this app preloads through it.
+  assert.match(fs.readFileSync(new URL("../../vite.config.js", import.meta.url), "utf8"), /modulePreload: \{ polyfill: false \}/);
+});
+
 test("analytics load only after the visitor accepts, and only when the store set them up", () => {
   const page = read("pages/StorePage.jsx");
   assert.match(page, /const tracking = consent === "granted" && hasAnalytics\(analytics\);/);

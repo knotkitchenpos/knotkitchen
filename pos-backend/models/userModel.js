@@ -10,6 +10,9 @@ const sessionSchema = new mongoose.Schema(
     expiresAt: { type: Date, required: true },
     isRevoked: { type: Boolean, default: false },
     lastActiveAt: { type: Date, default: Date.now },
+    // Set when CSD opened this POS session ("Open POS"): it signs in as the
+    // owner but is not them. The CsdPosSession row says which staff member.
+    supportPosSessionId: { type: mongoose.Schema.Types.ObjectId, ref: "CsdPosSession", default: null },
   },
   { _id: true, timestamps: true }
 );

@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   FiGrid, FiUserPlus, FiUsers, FiShoppingBag, FiSearch, FiMessageSquare,
   FiCheckSquare, FiBarChart2, FiSettings, FiLogOut, FiMenu, FiX, FiBell, FiFileText,
-  FiDollarSign, FiPackage,
+  FiDollarSign, FiPackage, FiMapPin,
 } from "react-icons/fi";
 import { useAuth } from "../context/AuthContext";
 import { hardwareRequests } from "../api";
@@ -21,6 +21,7 @@ const NAV = [
   { to: "/stores", label: "Store Management", icon: FiShoppingBag, adminOnly: false, group: "Stores" },
   { to: "/onboarding", label: "Store Onboarding", icon: FiUserPlus, adminOnly: true, group: "Stores" },
   { to: "/agreements", label: "Agreements", icon: FiFileText, adminOnly: true, group: "Stores" },
+  { to: "/eats", label: "Knot Eats", icon: FiMapPin, adminOnly: false, group: "Stores" },
   { to: "/search", label: "Search Console", icon: FiSearch, adminOnly: false, group: "Support" },
   { to: "/chat", label: "Chat", icon: FiMessageSquare, adminOnly: false, group: "Support" },
   { to: "/jobs", label: "Jobs", icon: FiCheckSquare, adminOnly: false, group: "Support" },

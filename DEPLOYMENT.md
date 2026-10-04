@@ -29,6 +29,7 @@ Let's Encrypt HTTP-01._
 | POS SPA | `business.knotkitchen.com` | `pos-web` |
 | POS backend API | `api.knotkitchen.com` | `pos-api` |
 | Partner onboarding / agreement portal | `agreement.knotkitchen.com` | `onboard-portal` (`onboard/` in this repo) |
+| Knot Eats marketplace | `eats.knotkitchen.com` | `customer-web` in "eats" mode (see §14) |
 | Per-store customer website | `<store_id>.knotkitchen.com` (any subdomain not listed above) | `customer-web`, resolved by hostname via `resolveStorefront()` |
 
 Only `caddy` publishes host ports 80/443. Everything else is on the internal
@@ -492,3 +493,78 @@ shows the `HEALTHCHECK` state of every service.
 * **Delete** — soft-delete via `isDeleted=true`. Records stay in Mongo for
   audit; a permanent delete from the CSD console removes the store's data
   (`pos-backend/services/storePurge.js`).
+
+---
+
+## 14. Knot Eats & Google Maps keys
+
+`eats.knotkitchen.com` is `customer-web` switched into its marketplace mode by
+hostname; the API is `/api/eats/*` on `pos-api`. Caddy gives it its own vhost
+(before the wildcard) only so that `Permissions-Policy` can allow
+`geolocation=(self)` there. No DNS change: the wildcard record already covers
+`eats`, and its cert comes over DNS-01 like every other host. Confirm with
+`dig +short eats.knotkitchen.com @8.8.8.8`.
+
+Deploy it with **no keys first**. Everything works without them: distances
+are straight-line (shown with a `~`) and diners set their location by GPS or
+area chips. Kill switch: delist stores in CSD → Knot Eats, or remove the
+`eats.` vhost from the Caddyfile.
+
+### 14a. Google Cloud (one-time)
+
+1. Create or choose a project with billing. Enable **Routes API**, **Maps
+   JavaScript API**, **Places API (New)** and **Geocoding API**.
+2. Create three keys:
+
+   | Key | Application restriction | API restriction |
+   | --- | --- | --- |
+   | Server (`GOOGLE_MAPS_SERVER_KEY`) | IP address: the VPS egress IP | Routes API |
+   | Browser (`GOOGLE_MAPS_BROWSER_KEY`) | HTTP referrers: `https://eats.knotkitchen.com/*`, `https://business.knotkitchen.com/*` | Maps JavaScript, Places API (New), Geocoding |
+   | Dev (local `pos-backend` env only) | HTTP referrers: `http://eats.localhost:5176/*`, `http://localhost:5173/*` | same as the browser key |
+
+   The POS web, Android and desktop apps all load `business.knotkitchen.com`,
+   so one referrer covers the POS map picker everywhere. The browser key is
+   sent to every visitor by `/api/eats/config`; its referrer restriction is
+   the only thing protecting it, so never relax it to "None".
+3. Cost guards: set per-API daily quotas (Places Autocomplete, Place Details,
+   Geocoding, Maps JavaScript loads, Routes) and a monthly budget alert.
+   `pos-api` also caps Routes itself: `GOOGLE_ROUTES_DAILY_ELEMENTS`
+   (default 300 per IST day, about 9k a month) is sized for the free tier.
+   Raise it deliberately, after checking current pricing; past the cap,
+   distances fall back to straight-line until the next day.
+
+### 14b. Install the keys on the VPS
+
+```bash
+bash /srv/knot/deploy/configure-secrets.sh   # prompts for both keys + the cap, restarts pos-api
+```
+
+Or put `GOOGLE_MAPS_SERVER_KEY` / `GOOGLE_MAPS_BROWSER_KEY` in `deploy/.env`
+and `docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d pos-api`.
+**Never commit either value.** `KNOT_EATS_PUBLIC_URL` defaults to
+`https://eats.${BASE_DOMAIN}`; leave it unset.
+
+### 14c. Verify
+
+```bash
+# On the VPS, from /srv/knot.
+# Caddy accepts the config (the deploy recreates caddy when the Caddyfile changes)
+docker compose -f deploy/docker-compose.yml exec caddy caddy validate --config /etc/caddy/Caddyfile
+
+# Eats allows geolocation; a store host still denies it
+curl -sI https://eats.knotkitchen.com | grep -i permissions-policy        # geolocation=(self)
+curl -sI https://<store_id>.knotkitchen.com | grep -i permissions-policy  # geolocation=()
+
+# Order pages stay out of search engines
+curl -s https://eats.knotkitchen.com/robots.txt                          # Disallow: /order/
+
+# The public config never carries the server key (prints nothing secret)
+key="$(grep '^GOOGLE_MAPS_SERVER_KEY=' deploy/.env | cut -d= -f2-)"
+[ -n "$key" ] && curl -s https://api.knotkitchen.com/api/eats/config | grep -qF "$key" \
+  && echo "SERVER KEY LEAKED" || echo "ok"
+curl -s https://api.knotkitchen.com/api/eats/config | grep -o '"roadDistance":[a-z]*'  # true once the server key is in
+```
+
+Add `https://eats.knotkitchen.com/healthz` to the uptime monitor (§11).
+Road distances and the daily cap usage show in CSD → Knot Eats ("Google road
+distances today").

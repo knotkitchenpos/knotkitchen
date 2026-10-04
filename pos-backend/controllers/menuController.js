@@ -34,6 +34,19 @@ const { userScope: menuScopeFor } = require("../services/tenantContext");
 const { AUDIENCES, projectMenu, isVisibleOnPos, snapshotOf } = require("../services/menuCache");
 
 /**
+ * Knot Eats lists dishes from the published website menu: rebuild its listing
+ * on the next read. Never fails the publish -- the listing expires in 5 min
+ * anyway. Lazy, because services/knotEats loads models these tests stub.
+ */
+const invalidateKnotEats = () => {
+  try {
+    require("../services/knotEats").invalidateListing();
+  } catch (err) {
+    console.warn("[knot-eats] listing invalidation failed:", err.message);
+  }
+};
+
+/**
  * A fingerprint of what the tills show, so a device holding a saved copy can
  * ask "has the menu changed?" without downloading it:
  * GET /api/menu?source=system&versionOnly=1. Timestamps are left out, since
@@ -922,6 +935,7 @@ const publishMenu = async (req, res, next) => {
     menu.published = true;
     menu.publishedAt = new Date();
     await menu.save();
+    invalidateKnotEats();
 
     res.status(200).json({
       success: true,
@@ -945,6 +959,7 @@ const unpublishMenu = async (req, res, next) => {
 
     menu.published = false;
     await menu.save();
+    invalidateKnotEats();
 
     res.status(200).json({ success: true, message: "Menu unpublished!", data: menu });
   } catch (error) {
@@ -1188,6 +1203,8 @@ const publishAllMenusForUser = async (user, target) => {
       await settings.save();
     }
   }
+  // Knot Eats shows the website menu and the published name, logo and cover.
+  if (target === "website") invalidateKnotEats();
 
   return { updated, now };
 };

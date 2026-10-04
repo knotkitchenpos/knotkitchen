@@ -18,7 +18,7 @@ test("the website tiles are locked without the Website add-on, and point to Bill
   assert.match(settings, /id: "website",[^\n]*feature: "website",[^\n]*openWhenLocked: "paymentGateway" \}/);
   const site = SRC("src/pages/WebsiteSettings.jsx");
   assert.match(site, /const tabs = websiteLocked \? TABS\.filter\(\(t\) => t\.key === "payments"\) : TABS;/);
-  assert.match(site, /updateWebsiteSettings\(websiteLocked \? \{ paymentGateways: settings\.paymentGateways \} : settings\)/);
+  assert.match(site, /updateWebsiteSettings\(websiteLocked \? \{ paymentGateways: settings\.paymentGateways \} : withoutRulesKeys\(settings\)\)/);
   // No payment gateway either (today it comes with the Website add-on): the page goes to Billing.
   assert.match(site, /if \(websiteLocked && gatewayLocked\) return <Navigate to="\/settings\/billing" replace \/>;/);
 });

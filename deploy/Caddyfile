@@ -18,6 +18,7 @@
 #   pay.knotkitchen.com        → pos-api       (website checkout, /c/*)
 #   order.knotkitchen.com      → pos-web       (table QR link, /t/<token>)
 #   demostore.knotkitchen.com  → static        (Food Peddler sales demo)
+#   eats.knotkitchen.com       → customer-web  (Knot Eats marketplace)
 #   <store_id>.knotkitchen.com → customer-web  (per-store storefront)
 
 {
@@ -276,6 +277,37 @@ demostore.{$BASE_DOMAIN} {
 
 	root * /srv/landing/demostore
 	file_server
+}
+
+# =============================================================================
+# eats.knotkitchen.com — Knot Eats marketplace
+# =============================================================================
+# customer-web in "eats" mode (it switches on the hostname). Declared BEFORE
+# the wildcard below, or that catch-all takes the hostname.
+#
+# The headers are (security_headers) written out because one value differs:
+# geolocation=(self). The shared snippet denies geolocation on every host, which
+# would silently break the location picker's "Use my current location" -- the
+# main way to set a delivery point while no Google key is installed. Store
+# sites keep geolocation=().
+#
+# Referrer-Policy must stay strict-origin-when-cross-origin: the Google browser
+# key is referrer-restricted to https://eats.<base>/*, and no-referrer would
+# make every Places call fail.
+eats.{$BASE_DOMAIN} {
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options    "nosniff"
+		Referrer-Policy           "strict-origin-when-cross-origin"
+		Permissions-Policy        "camera=(), microphone=(), geolocation=(self), payment=()"
+		-Server
+		-X-Powered-By
+	}
+
+	encode zstd gzip
+	reverse_proxy customer-web:80 {
+		header_up Host {host}
+	}
 }
 
 # =============================================================================

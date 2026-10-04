@@ -125,10 +125,13 @@ const gstSchema = new mongoose.Schema(
  * row that predates them, without switching anything on.
  *
  * The platform fee is one charge per order source, each with its own amount:
- * websiteOrderCharge for website orders ("WEBSITE") and qrOrderCharge for
- * table-QR orders ("QR") -- the Order.source values those channels write. It
- * is added to the customer's bill only when they pay online, and the same
- * amount is then deducted from the store's wallet. Never shown in the POS app.
+ * websiteOrderCharge for website orders ("WEBSITE"), qrOrderCharge for
+ * table-QR orders ("QR") and knotEatsOrderCharge for website orders placed
+ * through Knot Eats (source "WEBSITE", salesChannel "KNOT_EATS"; it replaces
+ * the website fee on those). It is added to the customer's bill only when
+ * they pay online, and the same amount is then deducted from the store's
+ * wallet. Never shown in the POS app, with one exception: the POS Knot Eats
+ * opt-in screen shows the Knot Eats fee, because opting in is consent to it.
  */
 const DEFAULT_ORDER_CHARGE = {
   enabled: false,
@@ -143,6 +146,8 @@ const DEFAULT_QR_ORDER_CHARGE = {
   effectiveFrom: null,
   taxable: true,
 };
+
+const DEFAULT_KNOT_EATS_ORDER_CHARGE = { enabled: false, amountPaise: 900, effectiveFrom: null, taxable: true }; // ₹9 + GST
 
 const DEFAULT_EBILL_CHARGE = {
   enabled: false,
@@ -190,9 +195,10 @@ const platformBillingConfigSchema = new mongoose.Schema(
     // one go; that top-up starts the POS plan.
     firstRechargeMinPaise: { type: Number, default: 250000, min: 0 },
     gst: { type: gstSchema, default: () => ({}) },
-    // Platform fee per online-paid website order, and per table-QR one.
+    // Platform fee per online-paid website order, per table-QR one and per Knot Eats one.
     websiteOrderCharge: { type: messageChargeSchema, default: () => ({ ...DEFAULT_ORDER_CHARGE }) },
     qrOrderCharge: { type: messageChargeSchema, default: () => ({ ...DEFAULT_QR_ORDER_CHARGE }) },
+    knotEatsOrderCharge: { type: messageChargeSchema, default: () => ({ ...DEFAULT_KNOT_EATS_ORDER_CHARGE }) },
     // Charged per e-bill actually delivered -- never per attempt.
     ebillCharge: { type: messageChargeSchema, default: () => ({ ...DEFAULT_EBILL_CHARGE }) },
     subscriptionDays: { type: Number, default: 30, min: 1 },
@@ -252,6 +258,7 @@ module.exports = {
   CATALOG_VERSION,
   DEFAULT_ORDER_CHARGE,
   DEFAULT_QR_ORDER_CHARGE,
+  DEFAULT_KNOT_EATS_ORDER_CHARGE,
   DEFAULT_EBILL_CHARGE,
   PlatformBillingConfig: mongoose.model("PlatformBillingConfig", platformBillingConfigSchema),
 };

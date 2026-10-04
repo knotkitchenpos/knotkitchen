@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
 import { changePin, getStoreProperties, updateStoreProperties, verifyPin } from "../../https";
 import { uploadMedia } from "../../https/storefrontApi";
+import MapPinPicker from "./MapPinPicker";
 
 /**
  * The store's logo: uploaded here, shown everywhere -- the POS header, the
@@ -94,6 +95,7 @@ const StorePropertiesView = () => {
   const [newPinInput, setNewPinInput] = useState("");
 
   const [formData, setFormData] = useState({});
+  const [pickerOpen, setPickerOpen] = useState(false);
 
   React.useEffect(() => {
     if (storeData.storeName) {
@@ -274,6 +276,15 @@ const StorePropertiesView = () => {
                 className="h-[38px] px-3 rounded-xl border border-[#E2E8F0] font-bold text-[#0F172A] disabled:bg-[#F8FAFC]"
               />
             </div>
+            {/* Knot Eats lists and measures delivery distance from this pin. */}
+            <button
+              type="button"
+              disabled={!pinVerified}
+              onClick={() => setPickerOpen(true)}
+              className="mt-2 h-[34px] px-3.5 rounded-xl border border-[#E2E8F0] text-[12.5px] font-bold text-[#C2410C] hover:bg-[#FFF6F0] disabled:opacity-40"
+            >
+              Pick on map
+            </button>
           </div>
           <div>
             <label className="text-[11.5px] font-bold text-[#94A3B8]">Google Maps Link</label>
@@ -343,6 +354,15 @@ const StorePropertiesView = () => {
           </div>
         )}
       </div>
+
+      {pickerOpen && (
+        <MapPinPicker
+          initial={{ lat: formData.latitude, lng: formData.longitude }}
+          mapsLink={formData.googleMapsLink}
+          onPick={({ lat, lng }) => setFormData((f) => ({ ...f, latitude: lat, longitude: lng }))}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
 
       {/* Owner PIN Management */}
       {(user?.role === "Owner" || user?.role === "owner") && (

@@ -41,6 +41,10 @@ const {
   getRestaurant, getCustomers, exportCustomers, getOrderSummary, getRestaurantStaff, getActivity,
   updateGoogleBusiness, updateCharges, createPosSession,
 } = require("../controllers/csdRestaurantController");
+const {
+  csdListStores: listKnotEatsStores, csdSetListing: setKnotEatsListing,
+  csdListReviews: listKnotEatsReviews, csdSetReviewHidden: setKnotEatsReviewHidden,
+} = require("../controllers/knotEatsController");
 
 /**
  * KnotKitchen Business — CSD + Admin panel API (csd.knotkitchen.com).
@@ -223,5 +227,15 @@ router.post("/hardware-requests/:id/dispatch", moveHardwareRequest("dispatch"));
 router.post("/hardware-requests/:id/deliver", moveHardwareRequest("deliver"));
 router.post("/hardware-requests/:id/notes", noteHardwareRequest);
 router.post("/hardware-requests/:id/cancel", requireCsdAdmin, cancelHardwareRequest);
+
+/**
+ * Knot Eats (eats.<base>). Any CSD staff sees the listing and moderates
+ * reviews; delisting takes a store off the marketplace, so it is admin-only.
+ * Nothing here can opt a store IN -- that is the owner's consent (POS).
+ */
+router.get("/knot-eats/stores", listKnotEatsStores);
+router.patch("/knot-eats/stores/:storeId", requireCsdAdmin, setKnotEatsListing);
+router.get("/knot-eats/reviews", listKnotEatsReviews);
+router.patch("/knot-eats/reviews/:id", setKnotEatsReviewHidden);
 
 module.exports = router;

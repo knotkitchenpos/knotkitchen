@@ -6,7 +6,7 @@ const Menu = require("../models/menuModel");
 const Order = require("../models/orderModel");
 const Customer = require("../models/customerModel");
 const { resolveStorefront, REASON_MESSAGES } = require("../services/storefrontResolver");
-const { AWAITING_ACCEPTANCE } = require("../constants/orderStatus");
+const { AWAITING_ACCEPTANCE, CANCELLED_STATUSES } = require("../constants/orderStatus");
 const { isItemAvailableNow, getEffectivePrice } = require("../services/businessHours");
 const { calculateOrderTotals, PricingError } = require("../services/orderPricingService");
 const {
@@ -16,6 +16,7 @@ const {
   projectMenus,
   allowsOrderType,
   dispatchLabel,
+  effectiveVeg,
 } = require("../services/menuCache");
 const { getTheme } = require("../services/themeRegistry");
 const { buildLandingPayload } = require("../services/landingPayload");
@@ -34,6 +35,13 @@ const { generateOrderNumberSafe } = require("../services/orderNumberService");
 const { round2, toRupees } = require("../services/money");
 // Lazy: the billing services load models that the storefront tests mock.
 const orderCharge = () => require("../services/orderCharge");
+// Lazy, for the same reason: the Knot Eats listing and road distances.
+const knotEats = () => require("../services/knotEats");
+const { readToken, tokenForCheckout, tokenForEatsOrder } = require("../services/receiptLink");
+
+const KNOT_EATS = "KNOT_EATS";
+const knotEatsUnavailable = () =>
+  createHttpError(404, "This restaurant isn't on Knot Eats right now.", { code: "KNOT_EATS_UNAVAILABLE" });
 
 
 /**
@@ -86,7 +94,8 @@ const toPublicProduct = (item, menu, timezone) => {
     image: item.imageUrl || item.image || "",
     thumbnail: item.imageThumbnailUrl || item.imageUrl || item.image || "",
     imageAlt: item.imageAlt || item.name,
-    isVegetarian: Boolean(item.isVegetarian),
+    // Effective veg: a "Chicken Biryani" left on the default flag is not veg.
+    isVegetarian: effectiveVeg(item, item.category || menu.name),
     // Which order types this product can actually be bought through.
     //
     // It is the CATEGORY's dispatch type -- that is what the order-time check
@@ -395,11 +404,16 @@ const getStorefront = async (req, res, next) => {
  */
 const buildStorefrontOrder = (finalize) => async (req, res, next) => {
   try {
+    // Knot Eats is a front door onto the same checkout. Set by its route only
+    // (routes/knotEatsRoute viaKnotEats), never read from the body.
+    const via = req.knotEats === true ? KNOT_EATS : "";
     const ctx = await requireStorefront(req, next);
     if (!ctx) return;
 
     const { settings, restaurantId, storeId, timezone, outletId } = ctx;
     const body = req.body || {};
+
+    if (via && !(await knotEats().getListedStore(storeId))) return next(knotEatsUnavailable());
 
     if (!restaurantId) {
       return next(createHttpError(503, "This restaurant is not accepting online orders yet."));
@@ -435,7 +449,15 @@ const buildStorefrontOrder = (finalize) => async (req, res, next) => {
     const email = String(body.customer?.email || "").trim().slice(0, 160);
 
     let deliveryAddress;
+    let distance = null;
     if (requestedType === "delivery") {
+      // Knot Eats delivers to a point, not to words: without one the radius
+      // could not be enforced (an address-only distance is a guess).
+      const lat = Number(body.deliveryAddress?.lat);
+      const lng = Number(body.deliveryAddress?.lng);
+      if (via && !knotEats().isIndiaPoint(lat, lng)) {
+        return next(createHttpError(400, "Set your delivery location to order delivery.", { code: "LOCATION_REQUIRED" }));
+      }
       const line1 = String(body.deliveryAddress?.line1 || "").trim().slice(0, 200);
       if (!line1) return next(createHttpError(400, "Please enter your delivery address."));
       deliveryAddress = {
@@ -445,6 +467,21 @@ const buildStorefrontOrder = (finalize) => async (req, res, next) => {
         postalCode: String(body.deliveryAddress?.postalCode || "").trim().slice(0, 20),
         instructions: String(body.deliveryAddress?.instructions || "").trim().slice(0, 300),
       };
+      if (via) {
+        // The same rounded origin and cache as the store page, so the
+        // distance quoted there is the one charged here.
+        const pin = ctx.restaurant?.address || {};
+        distance = (
+          await require("../services/distanceService").roadDistances({
+            origin: { lat, lng },
+            stores: [{ key: storeId, lat: pin.lat, lng: pin.lng }],
+          })
+        ).get(storeId);
+        if (!Number.isFinite(distance?.km)) {
+          return next(createHttpError(409, "This restaurant can't deliver right now. Please choose pickup."));
+        }
+        Object.assign(deliveryAddress, { lat, lng, distanceKm: distance.km, distanceSource: distance.source });
+      }
     }
 
     // ---- Idempotency (§32) ----
@@ -528,10 +565,31 @@ const buildStorefrontOrder = (finalize) => async (req, res, next) => {
         storeAddress: ctx.restaurant?.address,
         couponCode: body.couponCode,
         timezone,
+        distanceKm: distance?.km,
       });
     } catch (err) {
       if (err instanceof PricingError) return next(createHttpError(err.status || 400, err.message));
       throw err;
+    }
+
+    // ---- Coupon: one per phone, and recorded on the order ----
+    // Pricing has already checked the code is valid for this order. Paid orders
+    // only reach this collection, so an abandoned payment never uses it up.
+    const couponCode = body.couponCode ? String(body.couponCode).trim().toUpperCase() : "";
+    if (couponCode) {
+      const rule = (settings.couponsConfig || []).find((c) => c.code === couponCode);
+      const limit = Number(rule?.usageLimitPerPhone) || 0;
+      if (limit > 0) {
+        const used = await Order.countDocuments({
+          restaurantId,
+          couponCode,
+          "customerDetails.phone": phone,
+          orderStatus: { $nin: CANCELLED_STATUSES },
+        });
+        if (used >= limit) {
+          return next(createHttpError(409, "You've already used this coupon.", { code: "COUPON_USED" }));
+        }
+      }
     }
 
 
@@ -616,6 +674,8 @@ const buildStorefrontOrder = (finalize) => async (req, res, next) => {
       outletId: outletId || undefined,
       storeId,
       source: "WEBSITE",
+      salesChannel: via,
+      couponCode,
       orderNumber,
       idempotencyKey,
       scheduledFor,
@@ -719,6 +779,13 @@ const openCheckout = async ({ res, next, ctx, order, idempotencyKey, name, phone
   const billAmount = Number(priced.bills?.totalWithTax) || 0;
   if (billAmount <= 0) return next(createHttpError(400, "Your order total must be more than zero."));
 
+  // A Knot Eats customer returns to Knot Eats. The return address is ours to
+  // build, never the browser's, so without it configured there is no checkout.
+  const knotEatsOrder = order.salesChannel === KNOT_EATS;
+  if (knotEatsOrder && !config.knotEatsPublicUrl) {
+    return next(createHttpError(503, "Knot Eats checkout is not available right now.", { code: "KNOT_EATS_NOT_CONFIGURED" }));
+  }
+
   const gw = await resolveGateway({ restaurantId, storeId });
   if (!gw.enabled) {
     return next(
@@ -730,7 +797,8 @@ const openCheckout = async ({ res, next, ctx, order, idempotencyKey, name, phone
   // goes on top of the bill. The snapshot rides with the order so the wallet
   // is later debited exactly what the diner paid. On the in-memory order only:
   // nothing is saved until the gateway says it was paid.
-  const fee = await orderCharge().quotePlatformFee({ restaurantId, source: "WEBSITE" });
+  // The Knot Eats fee replaces the website fee on a Knot Eats order.
+  const fee = await orderCharge().quotePlatformFee({ restaurantId, source: knotEatsOrder ? KNOT_EATS : "WEBSITE" });
   const platformFee = fee ? toRupees(fee.totalPaise) : 0;
   if (fee) {
     order.bills.platformFee = platformFee;
@@ -747,6 +815,11 @@ const openCheckout = async ({ res, next, ctx, order, idempotencyKey, name, phone
     currency: "INR",
     returnUrl: `${buildStorefrontUrl(ctx.settings)}/menu`,
   });
+  // A Knot Eats customer goes back to the store's Knot Eats page instead.
+  if (knotEatsOrder) checkout.returnUrl = `${config.knotEatsPublicUrl}/store/${storeId}`;
+  // The pay page hands back the signed c_ token for a Knot Eats checkout, so
+  // it is keyed by that token too: a bare id there is refused (payPageRoute).
+  const payKey = knotEatsOrder ? tokenForCheckout(checkout._id) : String(checkout._id);
 
   let gatewayOrder;
   try {
@@ -760,8 +833,12 @@ const openCheckout = async ({ res, next, ctx, order, idempotencyKey, name, phone
       orderId: `web_${checkout._id}`,
       customer: { id: `web_${phone}`, phone, name },
       notifyUrl: config.cashfreeNotifyUrl,
-      ...(payBase ? { returnUrl: `${payBase}/c/${checkout._id}/done` } : {}),
-      tags: { websiteCheckoutId: String(checkout._id), restaurantId: String(restaurantId) },
+      ...(payBase ? { returnUrl: `${payBase}/c/${payKey}/done` } : {}),
+      tags: {
+        websiteCheckoutId: String(checkout._id),
+        restaurantId: String(restaurantId),
+        ...(knotEatsOrder ? { salesChannel: KNOT_EATS } : {}),
+      },
     });
   } catch (err) {
     console.warn("[storefront] gateway order failed:", err?.message || err);
@@ -777,6 +854,8 @@ const openCheckout = async ({ res, next, ctx, order, idempotencyKey, name, phone
     success: true,
     data: {
       checkoutId: String(checkout._id),
+      // Knot Eats confirms with this signed token, never the bare id.
+      ...(knotEatsOrder ? { checkoutToken: payKey } : {}),
       // What the gateway charges: the bill plus the platform fee.
       amount,
       billAmount,
@@ -784,7 +863,7 @@ const openCheckout = async ({ res, next, ctx, order, idempotencyKey, name, phone
       currency: "INR",
       // Where to send the customer to pay. Checkout never opens on the
       // store's own host, so Cashfree only needs this one domain whitelisted.
-      payUrl: payBase ? `${payBase}/c/${checkout._id}` : "",
+      payUrl: payBase ? `${payBase}/c/${payKey}` : "",
       checkout: {
         provider: "cashfree",
         paymentSessionId: gatewayOrder.paymentSessionId,
@@ -834,8 +913,9 @@ const placePaidCheckout = async ({ checkout, paid, restaurantId, outletId, store
   // The same find-or-create as an unpaid order: a retry that already
   // placed this checkout's order adopts it instead of writing a second.
   let placed;
+  let duplicate;
   try {
-    ({ doc: placed } = await findOrCreate({
+    ({ doc: placed, duplicate } = await findOrCreate({
       find: () => findPlacedOrder(restaurantId, data.idempotencyKey),
       create: () => saveWithFreshNumber(order, restaurantId),
     }));
@@ -845,6 +925,9 @@ const placePaidCheckout = async ({ checkout, paid, restaurantId, outletId, store
   }
 
   await WebsiteCheckout.updateOne({ _id: claimed._id }, { $set: { status: "PLACED", orderId: placed._id } });
+
+  // Count the coupon once, for the request that wrote the order.
+  if (!duplicate) countCouponUse(storeId, placed.couponCode);
 
   // The diner has paid the platform fee, so the wallet is debited it now, from
   // the snapshot on the order. Idempotent; completing the order retries it.
@@ -873,14 +956,38 @@ const placePaidCheckout = async ({ checkout, paid, restaurantId, outletId, store
 };
 
 /**
+ * One use of a coupon, counted once its order is paid and placed. Fire and
+ * forget: nothing here may undo a paid order.
+ *
+ * ponytail: a concurrent last use can overshoot quantityTotal by the race
+ * width; a paid order is always honoured.
+ */
+const countCouponUse = (storeId, code) => {
+  if (!code) return;
+  Promise.resolve()
+    .then(() =>
+      require("../models/websiteSettingsModel").updateOne(
+        { storeId, "couponsConfig.code": code },
+        { $inc: { "couponsConfig.$.quantityUsed": 1 } },
+      ),
+    )
+    .catch((err) => console.warn("[storefront] coupon use not counted:", err?.message || err));
+};
+
+/**
  * POST /api/storefront/:slug/checkout/:checkoutId/verify
  *
  * The browser only says "I came back from the payment page". Whether the
  * order is placed is decided by asking the gateway about the order WE opened,
  * never by anything in the request. A store locked or closed since the
  * checkout opened still gets the order (honourPaid): the money is taken.
+ *
+ * A Knot Eats checkout is refused here: its answer carries a signed order
+ * token, so only its own signed c_ token may ask (verifyKnotEatsCheckout).
  */
-const verifyStorefrontCheckout = async (req, res, next) => {
+const verifyStorefrontCheckout = (req, res, next) => verifyCheckout(req, res, next, { knotEats: false });
+
+const verifyCheckout = async (req, res, next, { knotEats: viaKnotEats }) => {
   try {
     const ctx = await requireStorefront(req, next, { honourPaid: true });
     if (!ctx) return;
@@ -890,6 +997,9 @@ const verifyStorefrontCheckout = async (req, res, next) => {
     if (!/^[a-f0-9]{24}$/i.test(id)) return next(createHttpError(404, "Checkout not found."));
     const checkout = await WebsiteCheckout.findOne({ _id: id, storeId });
     if (!checkout) return next(createHttpError(404, "Checkout not found."));
+    if ((checkout.orderData?.salesChannel === KNOT_EATS) !== viaKnotEats) {
+      return next(createHttpError(404, "Checkout not found."));
+    }
 
     const placedView = async (c) => {
       const placed = c.orderId ? await Order.findById(c.orderId) : null;
@@ -935,6 +1045,27 @@ const verifyStorefrontCheckout = async (req, res, next) => {
   }
 };
 
+/**
+ * POST /api/eats/checkout/:token/verify
+ *
+ * Knot Eats' return from the payment page, keyed by the signed c_ token the
+ * checkout answered with. Everything after the token is the storefront's own
+ * verify: the gateway's word, the amount check, honourPaid.
+ */
+const verifyKnotEatsCheckout = async (req, res, next) => {
+  try {
+    const parsed = readToken(req.params.token);
+    if (!parsed?.isCheckout) return next(createHttpError(404, "Checkout not found."));
+    const checkout = await WebsiteCheckout.findById(parsed.id);
+    if (checkout?.orderData?.salesChannel !== KNOT_EATS) return next(createHttpError(404, "Checkout not found."));
+    req.params.slug = checkout.storeId;
+    req.params.checkoutId = parsed.id;
+    return verifyCheckout(req, res, next, { knotEats: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
 /** Customer-facing projection of an order — no internal ids or POS fields. */
 const publicOrderView = (order) => ({
   orderId: order._id,
@@ -956,7 +1087,12 @@ const publicOrderView = (order) => ({
   bills: order.bills,
   // What the diner was charged: the bill plus any platform fee (bills.platformFee).
   totalPaid: round2((Number(order.bills?.totalWithTax) || 0) + (Number(order.bills?.platformFee) || 0)),
-  customer: { name: order.customerDetails?.name, phone: order.customerDetails?.phone },
+  // Knot Eats only (a website order's view is unchanged): no name or phone,
+  // which the Eats client never shows, and the signed token for its status
+  // page and review form.
+  ...(order.salesChannel === KNOT_EATS
+    ? { salesChannel: KNOT_EATS, orderToken: tokenForEatsOrder(order._id) }
+    : { customer: { name: order.customerDetails?.name, phone: order.customerDetails?.phone } }),
 });
 
 /** Create or update the Customer CRM record for this phone number. */
@@ -995,6 +1131,7 @@ module.exports = {
   createStorefrontOrder,
   startStorefrontCheckout,
   verifyStorefrontCheckout,
+  verifyKnotEatsCheckout,
   placePaidCheckout,
   buildStorefrontPayload,
   toPublicProduct,

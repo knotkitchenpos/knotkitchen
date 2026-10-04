@@ -30,6 +30,7 @@ const {
   CATALOG_VERSION,
   DEFAULT_ORDER_CHARGE,
   DEFAULT_QR_ORDER_CHARGE,
+  DEFAULT_KNOT_EATS_ORDER_CHARGE,
   DEFAULT_EBILL_CHARGE,
 } = require("../models/platformBillingModel");
 const CsdStoreCharges = require("../models/csdStoreChargesModel");
@@ -89,6 +90,7 @@ const backfillCharges = (config) => {
   for (const [key, shipped] of [
     ["websiteOrderCharge", DEFAULT_ORDER_CHARGE],
     ["qrOrderCharge", DEFAULT_QR_ORDER_CHARGE],
+    ["knotEatsOrderCharge", DEFAULT_KNOT_EATS_ORDER_CHARGE],
     ["ebillCharge", DEFAULT_EBILL_CHARGE],
   ]) {
     if (!unset(config[key])) continue;
@@ -248,10 +250,13 @@ const priceFor = async ({ restaurantId, code, config, override } = {}) => {
 const ORDER_CHARGES = {
   WEBSITE: ["websiteOrderCharge", "onlinePaidOrderCharge"],
   QR: ["qrOrderCharge", "qrPaidOrderCharge"],
+  // Not an Order.source: a website order placed through Knot Eats is quoted
+  // under this key instead of WEBSITE (Order.salesChannel "KNOT_EATS").
+  KNOT_EATS: ["knotEatsOrderCharge", "knotEatsPaidOrderCharge"],
 };
 
 /**
- * The platform fee on an order from `source` ("WEBSITE" or "QR") at a
+ * The platform fee on an order from `source` ("WEBSITE", "QR" or "KNOT_EATS") at a
  * restaurant, for an order placed `on` that day. Any other source has none.
  *
  * `enabled` is answered independently of the amount, because a restaurant set
@@ -260,7 +265,7 @@ const ORDER_CHARGES = {
  *
  * Two start dates, both chosen in CSD: the platform's effectiveFrom, and an
  * optional per-store orderChargeFrom that can only delay it further for that
- * store (both sources). Without a platform date nothing is charged anywhere.
+ * store (every source). Without a platform date nothing is charged anywhere.
  */
 const resolveOrderCharge = async ({ restaurantId, source, on = new Date(), config, override } = {}) => {
   const [chargeKey, overrideKey] = ORDER_CHARGES[source] || [];

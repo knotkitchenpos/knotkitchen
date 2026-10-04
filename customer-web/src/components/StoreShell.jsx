@@ -26,6 +26,10 @@ const hideBroken = (e) => {
  *
  * No blur anywhere on this page: older Android WebViews ghost the list while
  * scrolling under a frosted bar (lib/scrollPerf.test.mjs).
+ *
+ * The Knot Eats store page (eats/pages/EatsStorePage.jsx) is this same page;
+ * the props after `errorCode` are its additions, and leaving them out is the
+ * store website as it always was.
  */
 const HEADER_OFFSET = 132; // header + search bar, so a section lands below them
 
@@ -39,13 +43,24 @@ export default function StoreShell({
   placeError,
   onPlaceOrder,
   notice,
+  errorCode = "",
+  back = null,
+  headerActions = null,
+  orderingOverride = null,
+  offers: offersOverride = null,
+  cartProps = null,
+  belowInfo = null,
+  openDishId = "",
+  openCart = false,
+  initialVegOnly = false,
+  seller = null,
 }) {
   const [selected, setSelected] = useState(null);
-  const [cartOpen, setCartOpen] = useState(false);
+  const [cartOpen, setCartOpen] = useState(Boolean(openCart));
   const [menuOpen, setMenuOpen] = useState(false);
   const [added, setAdded] = useState("");
   const [query, setQuery] = useState("");
-  const [vegOnly, setVegOnly] = useState(false);
+  const [vegOnly, setVegOnly] = useState(Boolean(initialVegOnly));
   const [activeCat, setActiveCat] = useState("");
   const addedTimer = useRef(0);
   const { pathname } = useLocation();
@@ -58,12 +73,17 @@ export default function StoreShell({
     logo: b.logoUrl,
     coverImage: b.coverImageUrl,
   };
-  const ordering = s.ordering || {
-    currencySymbol: b.currencySymbol,
-    currency: b.currency,
-    pickupEnabled: b.pickupEnabled,
-    deliveryEnabled: b.deliveryEnabled,
+  const ordering = {
+    ...(s.ordering || {
+      currencySymbol: b.currencySymbol,
+      currency: b.currency,
+      pickupEnabled: b.pickupEnabled,
+      deliveryEnabled: b.deliveryEnabled,
+    }),
+    // Knot Eats: its own platform fee and the delivery fee for this customer's distance.
+    ...orderingOverride,
   };
+  const offers = offersOverride || s.offers;
   const symbol = ordering.currencySymbol || "£";
   const title = branding.siteTitle || b.name || "Restaurant";
   const websiteEnabled =
@@ -101,6 +121,16 @@ export default function StoreShell({
       : bestsellers.has(String(p.id))
         ? "Bestseller"
         : "";
+
+  // A dish link (Knot Eats: /store/<id>?dish=<itemId>) opens that dish once,
+  // as soon as the menu is in.
+  const dishOpened = useRef(false);
+  useEffect(() => {
+    if (!openDishId || dishOpened.current || !s.categories) return;
+    dishOpened.current = true;
+    const dish = s.categories.flatMap((c) => c.products).find((p) => String(p.id) === String(openDishId));
+    if (dish) setSelected(dish);
+  }, [openDishId, s.categories]);
 
   // The category being read lights up in the list as the page scrolls.
   useEffect(() => {
@@ -151,6 +181,8 @@ export default function StoreShell({
         logo={branding.logo}
         cartCount={cart.count}
         onOpenCart={() => setCartOpen(true)}
+        back={back}
+        actions={headerActions}
       />
 
       <div className="mx-auto max-w-6xl px-4">
@@ -166,6 +198,7 @@ export default function StoreShell({
           ordering={s.ordering ? ordering : null}
           symbol={symbol}
         />
+        {belowInfo}
 
         <nav
           className="mt-2 flex gap-8 border-b border-slate-200 text-[15px]"
@@ -187,7 +220,7 @@ export default function StoreShell({
           </span>
         </nav>
 
-        {s.offers?.length ? <Offers offers={s.offers} /> : null}
+        {offers?.length ? <Offers offers={offers} /> : null}
 
         {notice ? <Notice tone="warn">{notice}</Notice> : null}
         {!websiteEnabled ? (
@@ -337,6 +370,7 @@ export default function StoreShell({
             openingHours={s.openingHours}
             hours={s.hours}
             legal={s.legal}
+            seller={seller}
           />
         ) : null}
       </div>
@@ -411,6 +445,8 @@ export default function StoreShell({
         onPlaceOrder={onPlaceOrder}
         placing={placing}
         error={placeError}
+        errorCode={errorCode}
+        {...cartProps}
       />
     </div>
   );
@@ -625,24 +661,30 @@ function MenuSheet({ categories, activeCat, onPick, onClose }) {
   );
 }
 
-function Header({ homePath, title, logo, cartCount, onOpenCart }) {
+function Header({ homePath, title, logo, cartCount, onOpenCart, back, actions }) {
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200 bg-white">
-      <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-        {/* The masthead is the way back to the landing page. */}
-        <Link to={homePath || "/"} className="flex min-w-0 items-center gap-3">
-          {logo ? (
-            <img src={thumbUrl(logo, 160)} alt="" onError={hideBroken} className="h-9 w-9 rounded-full object-cover" />
-          ) : null}
-          <span className="truncate font-semibold text-slate-900">{title}</span>
-        </Link>
-        <button
-          type="button"
-          onClick={onOpenCart}
-          className="relative rounded-full bg-brand px-4 py-2 text-sm font-semibold text-brand-fg"
-        >
-          Cart{cartCount ? ` · ${cartCount}` : ""}
-        </button>
+      <div className="mx-auto flex max-w-6xl items-center justify-between gap-2 px-4 py-3">
+        <div className="flex min-w-0 items-center gap-1">
+          {back}
+          {/* The masthead is the way back to the landing page. */}
+          <Link to={homePath || "/"} className="flex min-w-0 items-center gap-3">
+            {logo ? (
+              <img src={thumbUrl(logo, 160)} alt="" onError={hideBroken} className="h-9 w-9 rounded-full object-cover" />
+            ) : null}
+            <span className="truncate font-semibold text-slate-900">{title}</span>
+          </Link>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          {actions}
+          <button
+            type="button"
+            onClick={onOpenCart}
+            className="relative rounded-full bg-brand px-4 py-2 text-sm font-semibold text-brand-fg"
+          >
+            Cart{cartCount ? ` · ${cartCount}` : ""}
+          </button>
+        </div>
       </div>
     </header>
   );
@@ -660,7 +702,7 @@ function Notice({ tone = "info", children }) {
   );
 }
 
-function Footer({ contact, openingHours, hours, legal }) {
+function Footer({ contact, openingHours, hours, legal, seller }) {
   const groups = weekGroups(hours);
   return (
     <footer className="mt-12 grid gap-6 border-t pb-10 pt-6 text-sm text-slate-600 sm:grid-cols-2">
@@ -745,6 +787,7 @@ function Footer({ contact, openingHours, hours, legal }) {
       ) : null}
       <div className="border-t pt-4 text-xs text-slate-500 sm:col-span-2">
         <LegalLinks fssai={legal?.fssaiNumber || ""} />
+        {seller?.(legal)}
         <p className="mt-2">
           Website designed, hosted &amp; secured by{" "}
           <a

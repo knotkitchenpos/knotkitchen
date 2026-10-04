@@ -112,8 +112,9 @@ const PLATFORM_FEE =
 const PLATFORM_FEE_HINT =
   " Cash, counter and pay-at-pickup payments never carry it, and a cancelled order's fee goes back to the wallet. Nothing is charged before the start date; a store can be given a later start or its own amount on its own page.";
 
-// The usage charges. All three have the same shape and are set only here:
-// none of them is ever shown in the POS app.
+// The usage charges. All four have the same shape and are set only here. Only
+// the Knot Eats fee is shown in the POS app, on its opt-in screen, because
+// listing there is the owner's consent to it.
 const USAGE_CHARGES = [
   {
     key: "websiteOrderCharge",
@@ -139,6 +140,15 @@ const USAGE_CHARGES = [
     label: "Charge per e-bill",
     hint: "Charged when the first e-bill for an order or table session is delivered; re-sends and refused sends are free. Nothing is charged before the start date.",
     defaultAmount: "₹0.25",
+  },
+  {
+    key: "knotEatsOrderCharge",
+    title: "Knot Eats platform fee",
+    subtitle:
+      "Added to the customer's bill on every Knot Eats order as a Platform fee (+GST); the same amount is deducted from the store's wallet when the customer pays, and returned if the order is cancelled. Shown to the owner on the POS Knot Eats screen.",
+    label: "Charge on Knot Eats orders",
+    hint: "One fee per order, in place of the website platform fee; Knot Eats orders are always paid online. Nothing is charged before the start date; a store can be given a later start or its own amount on its own page.",
+    defaultAmount: "₹9",
   },
 ];
 
@@ -193,7 +203,7 @@ const Billing = () => {
     // A charge switched on with no start date would never start; say so here.
     const missing = {};
     for (const { key } of USAGE_CHARGES) {
-      if (config[key].enabled && !config[key].effectiveFrom) {
+      if (config[key]?.enabled && !config[key].effectiveFrom) {
         missing[`${key}.effectiveFrom`] = "Pick the date charging starts.";
       }
     }
@@ -561,7 +571,8 @@ const Billing = () => {
       </Card>
 
       {/* ---------------------------------------------------------------- */}
-      {USAGE_CHARGES.map(({ key, title, subtitle, label, hint, defaultAmount }) => {
+      {/* A charge the server does not send yet (an older API) is skipped, not crashed on. */}
+      {USAGE_CHARGES.filter(({ key }) => config[key]).map(({ key, title, subtitle, label, hint, defaultAmount }) => {
         const c = config[key];
         const patch = (p) => set({ [key]: { ...c, ...p } });
         return (

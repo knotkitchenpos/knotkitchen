@@ -16,6 +16,7 @@ import OrderTypesAutoReadyView from "../components/settings/OrderTypesAutoReadyV
 import TimingsHolidaysView from "../components/settings/TimingsHolidaysView";
 import ManageStaffView from "../components/settings/ManageStaffView";
 import RulesChargesView from "../components/settings/RulesChargesView";
+import KnotEatsView from "../components/settings/KnotEatsView";
 
 const SHOW_LATER_FEATURES = false;
 
@@ -44,13 +45,14 @@ export const MENU_ITEMS = [
   { id: "billing", title: "11. Billing & Subscription", desc: "Wallet, POS plan, add-ons, tablets, printers, their delivery and invoices.", Icon: I.fileText, path: "/settings/billing" },
 
   { id: "website", title: "12. Manage Website", desc: "Landing page, branding, colours, domain and payments.", Icon: I.globe, path: "/website", feature: "website", lockedDesc: "Payment gateway only. The website is an add-on.", openWhenLocked: "paymentGateway" },
+  { id: "eats", title: "13. Knot Eats", desc: "List your restaurant on eats.knotkitchen.com.", Icon: I.store, mode: "view", feature: "website" },
 
   // Activity Log stays CSD-only: it is the audit trail of who did what,
   // including support's own actions, and has no POS route at all (CSD reads
   // it through /api/csd).
   // Also in the side panel; listed here so it is one tap away on a phone.
-  { id: "support", title: "13. Help & Support", desc: "Call or message KnotKitchen support.", Icon: I.headset, path: "/support" },
-  { id: "logout", title: "14. Logout", desc: "Securely sign out of the POS system.", Icon: I.logout, action: "logout" },
+  { id: "support", title: "14. Help & Support", desc: "Call or message KnotKitchen support.", Icon: I.headset, path: "/support" },
+  { id: "logout", title: "15. Logout", desc: "Securely sign out of the POS system.", Icon: I.logout, action: "logout" },
 ];
 
 /** Which add-on unlocks a locked option (services/planFeatures on the server). */
@@ -195,6 +197,8 @@ const Settings = () => {
           <ManageStaffView />
         ) : activeSubView === "rules" ? (
           <RulesChargesView />
+        ) : activeSubView === "eats" ? (
+          <KnotEatsView />
         ) : activeSubView === "shift" ? (
           <ShiftView />
         ) : activeSubView === "inventory" ? (

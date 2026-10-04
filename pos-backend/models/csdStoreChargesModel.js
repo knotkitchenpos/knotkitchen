@@ -18,6 +18,7 @@ const mongoose = require("mongoose");
 const DEFAULTS = {
   onlinePaidOrderCharge: null,
   qrPaidOrderCharge: null,
+  knotEatsPaidOrderCharge: null,
   orderChargeFrom: null,
 };
 
@@ -44,7 +45,8 @@ const csdStoreChargesSchema = new mongoose.Schema(
     // means "this restaurant's customers pay none", which is a real setting.
     onlinePaidOrderCharge: { type: Number, default: DEFAULTS.onlinePaidOrderCharge, min: 0 },
     qrPaidOrderCharge: { type: Number, default: DEFAULTS.qrPaidOrderCharge, min: 0 },
-    // Delays the platform fee (both sources) for this store only: it applies
+    knotEatsPaidOrderCharge: { type: Number, default: DEFAULTS.knotEatsPaidOrderCharge, min: 0 }, // ₹ before GST; null = platform; 0 = none
+    // Delays the platform fee (all three sources) for this store only: it applies
     // to orders placed on or after max(platform effectiveFrom, orderChargeFrom).
     // null = the platform start date alone.
     orderChargeFrom: { type: Date, default: DEFAULTS.orderChargeFrom },

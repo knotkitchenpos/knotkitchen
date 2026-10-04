@@ -5,7 +5,7 @@ import {
   FiUsers, FiClock, FiAlertTriangle, FiCheck, FiX,
 } from "react-icons/fi";
 import {
-  restaurants as api, stores as storesApi, billingConfig as billingApi, errorMessage, fieldErrors,
+  restaurants as api, stores as storesApi, billingConfig as billingApi, knotEats as eatsApi, errorMessage, fieldErrors,
 } from "../api";
 import StatusBadge from "../components/StatusBadge";
 import { useAuth } from "../context/AuthContext";
@@ -474,6 +474,7 @@ const RestaurantDetail = () => {
   const [customerCount, setCustomerCount] = useState(null);
   const [staff, setStaff] = useState([]);
   const [activity, setActivity] = useState([]);
+  const [eats, setEats] = useState(null); // this store's Knot Eats row, {} when it has none
   const [dialog, setDialog] = useState(null); // 'charges' | 'customers' | 'gbp' | 'website' | 'cancel' | 'adjust'
   // One key per opened dialog, so a double submit or a retry is applied once.
   const [adjust, setAdjust] = useState(null); // { direction, amount, reason, reference, key }
@@ -522,6 +523,11 @@ const RestaurantDetail = () => {
   useEffect(() => {
     api.customers(storeId, { limit: 1 }).then((d) => setCustomerCount(d.total)).catch(() => setCustomerCount(null));
     api.staff(storeId).then((d) => setStaff(d.staff)).catch(() => setStaff([]));
+    // From the Knot Eats page's own list; on an error the row is simply not drawn.
+    eatsApi
+      .stores({ state: "all", q: storeId })
+      .then(({ rows }) => setEats(rows.find((r) => r.storeId === storeId) || {}))
+      .catch(() => setEats(null));
     // Activity is admin-only both server-side and here — skip the fetch
     // for staff so the network tab doesn't 403 on every store open.
     if (isAdmin) {
@@ -887,6 +893,14 @@ const RestaurantDetail = () => {
           <Toggle on={websiteSettings.collection} label="Collection" />
           <Toggle on={websiteSettings.tableOrders} label="Table orders" />
           <Toggle on={websiteSettings.websiteEnabled} label="Website published" />
+          {eats && (
+            <div className="flex items-center justify-between gap-3 py-1.5">
+              <span className="text-sm text-navy-800">Knot Eats</span>
+              <Link to={`/eats?q=${storeId}`} className="text-sm font-medium text-brand-600 hover:text-brand-700">
+                {eats.delisted ? "Delisted" : eats.listed ? "Live" : eats.enabled ? "Opted in, not live" : "Not opted in"}
+              </Link>
+            </div>
+          )}
         </Card>
 
         <Card title="Store properties">
@@ -941,6 +955,7 @@ const RestaurantDetail = () => {
             {[
               ["Website platform fee", charges.onlinePaidOrderCharge, "order"],
               ["Table QR platform fee", charges.qrPaidOrderCharge, "bill"],
+              ["Knot Eats platform fee", charges.knotEatsPaidOrderCharge, "order"],
             ].map(([label, amount, per]) => (
               <Row key={label} label={label}>
                 {amount == null ? "Platform rate" : `${inr(amount)} + GST / ${per}, paid by the customer online`}

@@ -145,6 +145,24 @@ const config = Object.freeze({
     storefrontReadRateMax: parseInt(process.env.STOREFRONT_READ_RATE_MAX) || 300,
     storefrontReadRateWindowMs: parseInt(process.env.STOREFRONT_READ_RATE_WINDOW_MS) || 60 * 1000,
 
+    // ===== Knot Eats (eats.<base>) =====
+    // Public origin of the marketplace; checkout return URLs and e-bill review
+    // links are built from it, so it stays server-owned. Empty = Knot Eats
+    // checkout answers 503 rather than inventing a host.
+    knotEatsPublicUrl: (process.env.KNOT_EATS_PUBLIC_URL || "").replace(/\/+$/, ""),
+    // Google Maps. Both optional: without the server key distances are
+    // straight-line; without the browser key the picker offers GPS and areas.
+    // The server key never leaves this process (services/distanceService.js).
+    googleMapsServerKey: process.env.GOOGLE_MAPS_SERVER_KEY || "",
+    googleMapsBrowserKey: process.env.GOOGLE_MAPS_BROWSER_KEY || "",
+    // Daily cap on Routes API elements (IST day), sized for the free tier.
+    // 0 is a real cap (no paid Routes calls, straight-line only); only a
+    // missing or junk value falls back to 300.
+    googleRoutesDailyElements: (() => {
+      const n = parseInt(process.env.GOOGLE_ROUTES_DAILY_ELEMENTS, 10);
+      return Number.isFinite(n) && n >= 0 ? n : 300;
+    })(),
+
     // Table QR rate limits.
     //
     // Every write endpoint on the QR router is unauthenticated and gated only

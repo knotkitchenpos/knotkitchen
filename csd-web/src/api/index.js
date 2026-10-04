@@ -219,6 +219,32 @@ export const hardwareRequests = {
   cancel: (id, payload) => api.post(`/hardware-requests/${id}/cancel`, payload).then((r) => r.data.data),
 };
 
+// §9.1 fixes each list's rows and meta but not where they sit in the envelope,
+// so read both { data: { rows | stores | reviews, meta } } and { data: [...], meta }.
+const pageOf = (key) => (r) => {
+  const d = r.data.data;
+  return Array.isArray(d)
+    ? { rows: d, meta: r.data.meta || {} }
+    : { rows: d?.rows || d?.[key] || [], meta: d?.meta || {} };
+};
+
+/**
+ * Knot Eats (eats.knotkitchen.com). CSD can delist and relist a store (admin
+ * only on the server) and hide or unhide a review (any staff), each with a
+ * reason that is audited. It can never opt a store in: that is the owner's
+ * consent to the fee, given in the POS.
+ */
+export const knotEats = {
+  stores: (params) => api.get("/knot-eats/stores", { params }).then(pageOf("stores")),
+  // { delisted: boolean, reason }
+  setListing: (storeId, payload) =>
+    api.patch(`/knot-eats/stores/${storeId}`, payload).then((r) => r.data.data),
+  reviews: (params) => api.get("/knot-eats/reviews", { params }).then(pageOf("reviews")),
+  // { hidden: boolean, reason }
+  setReviewHidden: (id, payload) =>
+    api.patch(`/knot-eats/reviews/${id}`, payload).then((r) => r.data.data),
+};
+
 export const jobs = {
   list: (params) => api.get("/jobs", { params }).then((r) => r.data.data),
   get: (id) => api.get(`/jobs/${id}`).then((r) => r.data.data),

@@ -61,8 +61,9 @@ const isVerifiedUser = async (req, res, next) => {
     // Session/jti binding: token is only valid while the session that issued
     // it is still active. Legacy tokens (issued before this fix) have no jti
     // and remain valid until they expire (15 min), which limits blast radius.
+    let session = null;
     if (decodeToken.jti) {
-      const session = (user.sessions || []).find((s) => String(s._id) === String(decodeToken.jti));
+      session = (user.sessions || []).find((s) => String(s._id) === String(decodeToken.jti));
       if (!session || session.isRevoked || (session.expiresAt && session.expiresAt < new Date())) {
         return next(createHttpError(401, "Session has ended. Please sign in again."));
       }
@@ -82,6 +83,9 @@ const isVerifiedUser = async (req, res, next) => {
 
     req.user = user;
     req.user.jti = decodeToken.jti || null;
+    // A CSD "Open POS" session acts as the owner but is not them.
+    req.user.supportPosSessionId = session?.supportPosSessionId || null;
+    req.user.sessionCreatedAt = session?.createdAt || null;
 
     // Non-payment gate, here rather than at every call site. This is the one
     // function every staff route already goes through, so one guard covers

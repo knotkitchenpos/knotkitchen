@@ -99,3 +99,29 @@ test("a second pass is safe to run", () => {
   // And it still refuses to run unscoped, which a re-run must not weaken.
   assert.match(purge, /throw new Error\("purgeStoreData needs a restaurantId or a storeId\."\);/);
 });
+
+test("Knot Eats reviews go with the store, and their model is registered at boot", async () => {
+  // The sweep only sees models that have been required. The review model is
+  // pulled in by app.js -> knotEatsRoute -> knotEatsController.
+  const mongoose = require("mongoose");
+  const KnotEatsReview = require("../models/knotEatsReviewModel");
+  const { purgeStoreData } = require("../services/storePurge");
+  const calls = [];
+  const real = mongoose.models;
+  Object.defineProperty(mongoose, "models", {
+    value: { KnotEatsReview: { schema: KnotEatsReview.schema, deleteMany: async (f) => (calls.push(f), { deletedCount: 2 }) } },
+    configurable: true,
+  });
+  try {
+    const restaurantId = new mongoose.Types.ObjectId().toString();
+    const out = await purgeStoreData({ restaurantId, storeId: "231146" });
+    assert.deepEqual(calls, [{ $or: [{ restaurantId }, { storeId: "231146" }] }]);
+    assert.equal(out.deleted.KnotEatsReview, 2);
+  } finally {
+    Object.defineProperty(mongoose, "models", { value: real, configurable: true });
+  }
+
+  assert.match(SRC("app.js"), /app\.use\("\/api\/eats", require\("\.\/routes\/knotEatsRoute"\)\)/);
+  assert.match(SRC("routes", "knotEatsRoute.js"), /require\("\.\.\/controllers\/knotEatsController"\)/);
+  assert.match(SRC("controllers", "knotEatsController.js"), /require\("\.\.\/models\/knotEatsReviewModel"\)/);
+});

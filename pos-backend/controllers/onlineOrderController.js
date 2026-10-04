@@ -52,6 +52,8 @@ const toPosOrderView = (order) => ({
   _id: order._id,
   orderNumber: order.orderNumber,
   source: order.source,
+  // "KNOT_EATS" when placed through Knot Eats; source stays "WEBSITE".
+  salesChannel: order.salesChannel || "",
   storeId: order.storeId,
   orderType: order.orderType,
   // Deliberately NOT canonicalised. canonicalStatus folds "Pending" and

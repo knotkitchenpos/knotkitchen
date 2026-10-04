@@ -338,7 +338,7 @@ const OrderDetailsModal = ({ order, onClose }) => {
         </div>
 
         <div className="px-5 pb-5 grid grid-cols-2 gap-3 border-t border-[#E2E8F0] pt-3">
-          <DetailRow label="Source" value={sourceLabel(order.source)} />
+          <DetailRow label="Source" value={sourceLabel(order.source, order.salesChannel)} />
           <DetailRow label="Order Type" value={orderTypeLabel(order.orderType)} />
           {order.table ? <DetailRow label="Table" value={tableLabel(order.table, "—")} /> : null}
           {/* No default of "Cash". An order that has not been paid has no
@@ -484,6 +484,7 @@ const REPORT_CARDS = [
   { key: "total", label: "Total Orders", tint: "#FD5302" },
   { key: "system", label: "System Orders" },
   { key: "website", label: "Website Orders" },
+  { key: "knotEats", label: "Knot Eats Orders" },
   { key: "tableQr", label: "Table QR Orders" },
   { key: "outside", label: "Outside Orders" },
   { key: "cash", label: "Cash Orders", tint: "#EA580C" },
@@ -932,7 +933,7 @@ const Reports = () => {
                     {orderTypeLabel(o.orderType)}
                   </span>
                   <span className="text-[11.5px] font-bold px-2 py-[3px] rounded-md bg-[#FFF1E8] text-[#C2410C] shrink-0">
-                    {sourceLabel(o.source)}
+                    {sourceLabel(o.source, o.salesChannel)}
                   </span>
                   <span className="text-[11.5px] text-[#64748B] basis-full sm:basis-auto order-last sm:order-none flex-1 truncate">
                     {o.customerDetails?.name || "Walk-in"}

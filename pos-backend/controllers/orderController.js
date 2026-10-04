@@ -1056,6 +1056,7 @@ const buildReportBuckets = (orders) => {
     total: bucket(),
     system: bucket(),
     website: bucket(),
+    knotEats: bucket(),
     tableQr: bucket(),
     outside: bucket(),
     cash: bucket(),
@@ -1081,7 +1082,9 @@ const buildReportBuckets = (orders) => {
 
     const source = String(o.source || "").toUpperCase();
     if (source === "MARKETPLACE") inc(summary.outside, amount);
-    else if (source === "WEBSITE") inc(summary.website, amount);
+    // Knot Eats orders are website orders by source; their own card keeps the
+    // source cards summing to the total.
+    else if (source === "WEBSITE") inc(o.salesChannel === "KNOT_EATS" ? summary.knotEats : summary.website, amount);
     else if (source === "QR") inc(summary.tableQr, amount);
     else inc(summary.system, amount);
 

@@ -313,7 +313,7 @@ test("SOURCE: every catalogue setting is editable, validated and audited", () =>
     assert.match(src, new RegExp(`body\\.${key} !== undefined`), key);
   }
   assert.ok(!/rechargeRequired|chargeableSources/.test(src), "the tablet top-up and the order-charge sources are gone");
-  assert.match(src, /const USAGE_CHARGES = \["websiteOrderCharge", "qrOrderCharge", "ebillCharge"\];/, "one validator for every usage charge");
+  assert.match(src, /const USAGE_CHARGES = \["websiteOrderCharge", "qrOrderCharge", "knotEatsOrderCharge", "ebillCharge"\];/, "one validator for every usage charge");
   assert.ok(!/upgradePolicy|readPlans/.test(src), "the plan editor is gone");
 });
 

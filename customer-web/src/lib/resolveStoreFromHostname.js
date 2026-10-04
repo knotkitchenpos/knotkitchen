@@ -98,6 +98,9 @@ export function resolveStoreFromHostname(hostname, { bases = [], fallbackSlug = 
           ? { slug: fallbackSlug, mode: "apex", base, raw }
           : { mode: "apex", base, raw };
       }
+      // eats.<base> is the Knot Eats marketplace, not a store named "eats".
+      // Only the bare label: x.eats.<base> keeps the leaf rule below.
+      if (slug === "eats" && parts.length === 1) return { mode: "eats", base, raw };
       if (PLATFORM_SUBDOMAINS.has(slug)) {
         return { mode: "platform", base, slug, raw };
       }

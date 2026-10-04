@@ -36,5 +36,9 @@ export default defineConfig({
     // internal file paths out of the client.
     sourcemap: false,
     outDir: "dist",
+    // index.html has no modulepreload links and the one lazy chunk (Knot
+    // Eats) preloads nothing, so the polyfill was dead weight on every store
+    // site (contract §10.8 main-chunk budget).
+    modulePreload: { polyfill: false },
   },
 });

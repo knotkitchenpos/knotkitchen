@@ -519,6 +519,25 @@ const holidaySchema = new mongoose.Schema(
   { _id: false }
 );
 
+/**
+ * Knot Eats (eats.<base>) listing state. Live as soon as written: not a
+ * published field, and never written by the Manage Website save -- only by
+ * dotted $set from controllers/knotEatsController.js, so the owner's consent
+ * and CSD's delisting can't be clobbered by a whole-settings save.
+ */
+const knotEatsSchema = new mongoose.Schema(
+  {
+    enabled: { type: Boolean, default: false }, // owner opt-in = consent to the fee
+    enabledAt: { type: Date, default: null },
+    enabledBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
+    delisted: { type: Boolean, default: false }, // CSD; the owner cannot override it
+    delistedReason: { type: String, default: "", maxlength: 300 },
+    delistedAt: { type: Date, default: null },
+    delistedBy: { type: String, default: "" }, // CsdStaff.staffId
+  },
+  { _id: false }
+);
+
 const websiteSettingsSchema = new mongoose.Schema(
   {
     storeId: { type: String, required: true, unique: true, index: true },
@@ -575,6 +594,7 @@ const websiteSettingsSchema = new mongoose.Schema(
     // Module 8 §6 — Free Item promotions
     freeItemConfig: { type: [freeItemRuleSchema], default: [] },
 
+    knotEats: { type: knotEatsSchema, default: () => ({}) },
 
     status: { type: String, enum: ["draft", "published"], default: "published" },
     draft: { type: mongoose.Schema.Types.Mixed, default: null },
@@ -604,6 +624,11 @@ websiteSettingsSchema.pre("save", function seedPublishedSnapshot(next) {
 websiteSettingsSchema.index({ customDomain: 1 }, { sparse: true });
 websiteSettingsSchema.index({ subdomain: 1 }, { sparse: true });
 websiteSettingsSchema.index({ restaurantId: 1, isDeleted: 1 });
+// The Knot Eats snapshot build reads only opted-in stores; few opt in.
+websiteSettingsSchema.index(
+  { "knotEats.enabled": 1 },
+  { partialFilterExpression: { "knotEats.enabled": true } }
+);
 
 module.exports = mongoose.model("WebsiteSettings", websiteSettingsSchema);
 module.exports.SAFE_FONTS = SAFE_FONTS;

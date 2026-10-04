@@ -185,9 +185,10 @@ const getRestaurant = async (req, res, next) => {
 
         charges: {
           // null = the platform amount and start date (CSD → Billing). The
-          // platform fee: website orders, then table-QR orders.
+          // platform fee: website orders, then table-QR orders, then Knot Eats.
           onlinePaidOrderCharge: charges.onlinePaidOrderCharge ?? null,
           qrPaidOrderCharge: charges.qrPaidOrderCharge ?? null,
+          knotEatsPaidOrderCharge: charges.knotEatsPaidOrderCharge ?? null,
           orderChargeFrom: charges.orderChargeFrom || null,
           ebillCharge: charges.ebillCharge ?? null,
           billingExempt: Boolean(charges.billingExempt),
@@ -591,6 +592,7 @@ const updateCharges = async (req, res, next) => {
     for (const [key, label, max] of [
       ["onlinePaidOrderCharge", "Website platform fee", 10000],
       ["qrPaidOrderCharge", "Table QR platform fee", 10000],
+      ["knotEatsPaidOrderCharge", "Knot Eats platform fee", 10000],
       ["ebillCharge", "E-bill charge", 1000],
     ]) {
       if (b[key] === undefined) continue;
@@ -603,7 +605,7 @@ const updateCharges = async (req, res, next) => {
       else if (n > max) fieldErrors[key] = `${label} looks too large.`;
       else patch[key] = n;
     }
-    // Delays the platform fee (both sources) for this store beyond the platform start.
+    // Delays the platform fee (every source) for this store beyond the platform start.
     if (b.orderChargeFrom !== undefined) {
       if (b.orderChargeFrom === null || b.orderChargeFrom === "") {
         patch.orderChargeFrom = null;
@@ -670,6 +672,7 @@ const updateCharges = async (req, res, next) => {
     const previous = {
       onlinePaidOrderCharge: existing.onlinePaidOrderCharge ?? null,
       qrPaidOrderCharge: existing.qrPaidOrderCharge ?? null,
+      knotEatsPaidOrderCharge: existing.knotEatsPaidOrderCharge ?? null,
       orderChargeFrom: existing.orderChargeFrom || null,
       ebillCharge: existing.ebillCharge ?? null,
       billingExempt: Boolean(existing.billingExempt),
@@ -716,6 +719,7 @@ const updateCharges = async (req, res, next) => {
       data: {
         onlinePaidOrderCharge: existing.onlinePaidOrderCharge ?? null,
         qrPaidOrderCharge: existing.qrPaidOrderCharge ?? null,
+        knotEatsPaidOrderCharge: existing.knotEatsPaidOrderCharge ?? null,
         orderChargeFrom: existing.orderChargeFrom || null,
         ebillCharge: existing.ebillCharge ?? null,
         billingExempt: Boolean(existing.billingExempt),

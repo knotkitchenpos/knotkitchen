@@ -161,4 +161,4 @@ const REASON_MESSAGES = {
   WEBSITE_DISABLED: "Online ordering is currently unavailable. Please try again later.",
 };
 
-module.exports = { resolveStorefront, findSettingsByIdentifier, findSettingsByHost, REASON_MESSAGES };
+module.exports = { resolveStorefront, findSettingsByIdentifier, findSettingsByHost, unavailableReason, REASON_MESSAGES };

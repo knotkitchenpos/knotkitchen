@@ -16,7 +16,9 @@ const Bill = require("../models/billModel");
 const TableSession = require("../models/tableSessionModel");
 const Restaurant = require("../models/restaurantModel");
 const { buildReceipt } = require("../services/receiptService");
-const { readToken } = require("../services/receiptLink");
+const { readToken, tokenForEatsOrder } = require("../services/receiptLink");
+const { isSettled } = require("../constants/orderStatus");
+const config = require("../config/config");
 const { orderForSession } = require("../services/eBillService");
 const { orderItemExtras, itemDisplayName } = require("../services/orderItemExtras");
 const { esc } = require("../services/invoiceDocument");
@@ -67,6 +69,8 @@ const page = (title, body) => `<!doctype html>
   .foot { text-align:center; padding:16px 20px 20px; font-size:11.5px; color:#94A3B8; }
   .empty { max-width:440px; margin:60px auto; text-align:center; color:#64748B; }
   .empty h1 { font-size:18px; color:#0F172A; }
+  .cta { display:block; margin:0 20px 4px; padding:12px; border-radius:12px; text-align:center;
+         background:#C2410C; color:#fff; font-weight:800; text-decoration:none; }
 </style>
 </head><body>${body}</body></html>`;
 
@@ -78,7 +82,7 @@ const notFound = () =>
      Please ask the restaurant to send it again.</p></div>`,
   );
 
-const render = (receipt) => {
+const render = (receipt, { reviewUrl = "" } = {}) => {
   const r = receipt;
   const paid = r.paymentStatus === "PAID";
 
@@ -141,6 +145,7 @@ const render = (receipt) => {
           ? `<div class="grand"><span>Total paid</span><span>${money(r.totalPaid)}</span></div>`
           : `<div class="grand"><span>Total</span><span>${money(r.total)}</span></div>`}
       </div>
+      ${reviewUrl ? `<a class="cta" href="${esc(reviewUrl)}">Rate this order on Knot Eats</a>` : ""}
       <div class="foot">${Number(r.quantities)} item(s) · Powered by KnotKitchen</div>
     </div>`,
   );
@@ -178,7 +183,7 @@ const viewPublicReceipt = async (req, res) => {
       if (!order) return res.status(404).type("html").send(notFound());
       bill = await Bill.findOne({ orderId: order._id, isDeleted: { $ne: true } });
       restaurantId = order.restaurantId;
-    } else {
+    } else if (parsed.isSession) {
       tableSession = await TableSession.findOne({ _id: parsed.id, isDeleted: { $ne: true } })
         .populate("tableId");
       if (!tableSession) return res.status(404).type("html").send(notFound());
@@ -186,15 +191,27 @@ const viewPublicReceipt = async (req, res) => {
       // Same number as the POS shows for this table's order.
       order = await orderForSession(tableSession._id);
       restaurantId = tableSession.restaurantId;
+    } else {
+      // A Knot Eats checkout (c_) or order-status (v_) token is signed for its
+      // own page, never for a bill. Falling through to the session branch
+      // would have looked its id up as a table session.
+      return res.status(404).type("html").send(notFound());
     }
 
     const restaurant = restaurantId ? await Restaurant.findById(restaurantId) : null;
     const receipt = buildReceipt({ order, tableSession, bill, restaurant });
 
+    // A finished Knot Eats order invites a review there. The v_ token opens
+    // that one order's status page and review form, nothing else.
+    const base = config.knotEatsPublicUrl;
+    const reviewUrl = parsed.isOrder && base && order.salesChannel === "KNOT_EATS" && isSettled(order.orderStatus)
+      ? `${base}/order/${tokenForEatsOrder(order._id)}#review`
+      : "";
+
     // A bill is not a public document to be indexed or cached at the edge.
     res.set("Cache-Control", "no-store, private");
     res.set("X-Robots-Tag", "noindex, nofollow");
-    return res.status(200).type("html").send(render(receipt));
+    return res.status(200).type("html").send(render(receipt, { reviewUrl }));
   } catch (err) {
     console.error("[PublicReceipt] render failed:", err && err.message);
     return res.status(404).type("html").send(notFound());

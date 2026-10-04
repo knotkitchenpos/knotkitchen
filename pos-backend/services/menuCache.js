@@ -244,6 +244,18 @@ const dispatchLabel = (dispatchType) => {
   return `${joined} Only`;
 };
 
+/**
+ * Is this dish vegetarian as far as a customer is told?
+ *
+ * `isVegetarian` defaults to true on the Menu model, so a "Chicken Biryani"
+ * nobody ticked carried the veg mark. A meat, fish or egg word in the name or
+ * category overrides the flag; it can only ever take the mark away. Whole
+ * words, so "Eggless Cake" stays veg.
+ */
+const NON_VEG_RE = /\b(chicken|mutton|lamb|fish|prawns?|shrimps?|crab|eggs?|omelette|keema|beef|pork|bacon|ham|meat|tuna|salmon)\b/i;
+const effectiveVeg = (item, category) =>
+  item.isVegetarian !== false && !NON_VEG_RE.test(`${item.name || ""} ${category || ""}`);
+
 module.exports = {
   AUDIENCES,
   SNAPSHOT_FIELDS,
@@ -255,6 +267,7 @@ module.exports = {
   WEBSITE_VISIBLE_QUERY,
   allowsOrderType,
   dispatchLabel,
+  effectiveVeg,
   menuViewFor,
   projectMenu,
   projectMenus,

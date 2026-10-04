@@ -19,6 +19,13 @@
  *
  *     o_<24-hex order id>_<22-char signature>
  *     s_<24-hex session id>_<22-char signature>
+ *
+ * Knot Eats has two more kinds, signed the same way. Each only opens its own
+ * thing: a c_ token cannot show a receipt, and an o_ receipt link cannot
+ * place or review an order.
+ *
+ *     c_<24-hex WebsiteCheckout id>_<sig>   the return from the payment page
+ *     v_<24-hex order id>_<sig>             order status and the review form
  */
 
 const crypto = require("crypto");
@@ -30,6 +37,8 @@ const KIND_SESSION = "s";
 // new tab cannot send, so an authenticated URL would only work when exactly
 // one store happens to be signed in.
 const KIND_INVOICE = "i";
+const KIND_CHECKOUT = "c";
+const KIND_EATS_ORDER = "v";
 
 /**
  * Read the key per call so a rotation only needs a container restart.
@@ -68,6 +77,8 @@ const mintToken = (kind, id) => {
 const tokenForOrder = (orderId) => mintToken(KIND_ORDER, orderId);
 const tokenForSession = (sessionId) => mintToken(KIND_SESSION, sessionId);
 const tokenForInvoice = (invoiceId) => mintToken(KIND_INVOICE, invoiceId);
+const tokenForCheckout = (checkoutId) => mintToken(KIND_CHECKOUT, checkoutId);
+const tokenForEatsOrder = (orderId) => mintToken(KIND_EATS_ORDER, orderId);
 
 /**
  * Verify and unpack a token.
@@ -86,7 +97,7 @@ const readToken = (token) => {
   if (!match) return null;
 
   const [, kind, id, sig] = match;
-  if (![KIND_ORDER, KIND_SESSION, KIND_INVOICE].includes(kind)) return null;
+  if (![KIND_ORDER, KIND_SESSION, KIND_INVOICE, KIND_CHECKOUT, KIND_EATS_ORDER].includes(kind)) return null;
 
   let expected;
   try {
@@ -106,6 +117,8 @@ const readToken = (token) => {
     isOrder: kind === KIND_ORDER,
     isSession: kind === KIND_SESSION,
     isInvoice: kind === KIND_INVOICE,
+    isCheckout: kind === KIND_CHECKOUT,
+    isEatsOrder: kind === KIND_EATS_ORDER,
   };
 };
 
@@ -161,9 +174,13 @@ module.exports = {
   KIND_ORDER,
   KIND_SESSION,
   KIND_INVOICE,
+  KIND_CHECKOUT,
+  KIND_EATS_ORDER,
   tokenForOrder,
   tokenForSession,
   tokenForInvoice,
+  tokenForCheckout,
+  tokenForEatsOrder,
   urlForInvoice,
   readToken,
   receiptUrl,

@@ -238,6 +238,9 @@ app.use("/api/csd", require("./routes/csdRoute"));
 // ===== Multi-tenant storefront (customer website) =====
 // Public, unauthenticated customer website API
 app.use("/api/storefront", require("./routes/storefrontRoute"));
+// Knot Eats marketplace (eats.<base>): public listing, store page, reviews,
+// and a front door onto the same website checkout.
+app.use("/api/eats", require("./routes/knotEatsRoute"));
 // Authenticated POS/admin website configuration + media library
 app.use("/api/website", require("./routes/websiteRoute"));
 app.use("/api/media", require("./routes/mediaRoute"));

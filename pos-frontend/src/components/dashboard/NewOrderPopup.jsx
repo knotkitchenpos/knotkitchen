@@ -101,7 +101,9 @@ const NewOrderPopup = () => {
       add(payload);
       try {
         enqueueSnackbar(
-          source === "WEBSITE" ? "New website order" : "New table order",
+          payload?.salesChannel === "KNOT_EATS"
+            ? "New Knot Eats order"
+            : source === "WEBSITE" ? "New website order" : "New table order",
           { variant: "info" },
         );
       } catch {
@@ -183,8 +185,10 @@ const NewOrderPopup = () => {
   };
 
   const source = String(current.source || "").toUpperCase();
+  // A Knot Eats order is a website order (source WEBSITE) from another front
+  // door, so it keeps the website card and only the heading changes.
   const isWebsite = source === "WEBSITE";
-  const heading = SOURCE_LABEL[source] || "New Order";
+  const heading = current.salesChannel === "KNOT_EATS" ? "New Knot Eats Order" : SOURCE_LABEL[source] || "New Order";
 
   const where = isWebsite
     ? current.orderType === "delivery"

@@ -6,6 +6,7 @@ import MediaLibrary from "../components/media/MediaLibrary";
 import SecurityPinModal from "../components/common/SecurityPinModal";
 import { isOwner, checkActionAuthorization } from "../utils/security";
 import { getWebsiteSettings, updateWebsiteSettings, validateGatewayCredentials } from "../https/storefrontApi";
+import { withoutRulesKeys } from "../utils/rulesCharges";
 import { getMenus, getSubscriptionStatus, publishWebsiteCache } from "../https";
 
 /**
@@ -191,7 +192,8 @@ const WebsiteSettings = () => {
   /** Write the editor's current state to the server. Throws on failure. */
   const persist = async () => {
     // Gateway only without the Website add-on: the rest of the page is not theirs to save.
-    const res = await updateWebsiteSettings(websiteLocked ? { paymentGateways: settings.paymentGateways } : settings);
+    // Never the Rules & Charges lists: this copy may be older than the ones saved there.
+    const res = await updateWebsiteSettings(websiteLocked ? { paymentGateways: settings.paymentGateways } : withoutRulesKeys(settings));
     setSettings(res.data.data.settings);
     setStorefrontUrl(res.data.data.storefrontUrl);
     setDirty(false);

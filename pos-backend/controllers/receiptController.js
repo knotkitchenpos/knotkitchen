@@ -24,7 +24,11 @@ const sendEBill = async (req, res, next) => {
       throw createHttpError(404, tableSessionId ? "Table session not found." : "Order not found.");
     }
 
-    const { receipt, billUrl, result } = await deliverEBill({ ...subject, phone });
+    // A finished Knot Eats bill carries the diner's one-time review link, so
+    // the store may only send it to the diner's own phone and never sees the
+    // link itself; otherwise staff could post reviews as their customers.
+    const eats = subject.order?.salesChannel === "KNOT_EATS";
+    const { receipt, billUrl, result } = await deliverEBill({ ...subject, phone: eats ? undefined : phone });
 
     // A missing phone is the operator's problem to fix, not a server error.
     if (result.deliveryStatus === "SKIPPED") {
@@ -47,8 +51,8 @@ const sendEBill = async (req, res, next) => {
       message: result.sent ? "E-bill sent successfully." : result.error || "E-bill delivery failed.",
       data: {
         receipt,
-        billUrl,
-        messagingDetails: result,
+        billUrl: eats ? null : billUrl,
+        messagingDetails: eats ? { ...result, devMessage: undefined } : result,
       },
     });
   } catch (err) {

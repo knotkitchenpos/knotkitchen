@@ -160,6 +160,9 @@ const orderCreatedPayload = (order, storeId = "") => {
   const payload = {
     type: "ORDER_CREATED",
     source: order.source || "WEBSITE",
+    // "KNOT_EATS" for a website order placed through Knot Eats, so the POS can
+    // say so; the alert itself still keys off source.
+    salesChannel: order.salesChannel || "",
     storeId: storeId || order.storeId || "",
     orderId: String(order._id),
     orderNumber: order.orderNumber || "",

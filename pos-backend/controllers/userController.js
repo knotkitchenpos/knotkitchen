@@ -81,7 +81,7 @@ const generateRefreshToken = (user, jti) =>
 const SESSION_LIFETIME_DAYS = 365;
 const SESSION_LIFETIME_MS = SESSION_LIFETIME_DAYS * 24 * 60 * 60 * 1000;
 
-const signTokensAndSetCookies = async (user, req, res) => {
+const signTokensAndSetCookies = async (user, req, res, { supportPosSessionId = null } = {}) => {
   const sessionExpiry = new Date(Date.now() + SESSION_LIFETIME_MS);
 
   user.sessions = user.sessions || [];
@@ -94,6 +94,7 @@ const signTokensAndSetCookies = async (user, req, res) => {
     userAgent: (req.get("user-agent") || "").slice(0, 300),
     expiresAt: sessionExpiry,
     lastActiveAt: new Date(),
+    supportPosSessionId,
   }) - 1];
 
   // Reload after push so we get a real ObjectId for jti.
@@ -878,7 +879,8 @@ const impersonateWithSupportToken = async (req, res, next) => {
       }
     }
 
-    await signTokensAndSetCookies(user, req, res);
+    // Marked, so owner-only consent (Knot Eats) can tell CSD from the owner.
+    await signTokensAndSetCookies(user, req, res, { supportPosSessionId: support._id });
 
     res.status(200).json({
       success: true,

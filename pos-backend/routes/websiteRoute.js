@@ -8,6 +8,7 @@ const {
   updateWebsiteSettings,
   validateGatewayCredentials,
 } = require("../controllers/websiteSettingsController");
+const { getKnotEats, setKnotEats } = require("../controllers/knotEatsController");
 
 /**
  * Authenticated website configuration routes.
@@ -27,5 +28,11 @@ router.route("/settings")
 router
   .route("/validate-gateway")
   .post(isVerifiedUser, requireOwnerOnly, requirePaymentGatewayPlan, validateGatewayCredentials);
+
+// Knot Eats opt-in. Anyone signed in may see the status and blockers; only
+// the owner may switch it, because switching it on agrees to the fee.
+router.route("/knot-eats")
+  .get(isVerifiedUser, getKnotEats)
+  .put(isVerifiedUser, requireOwnerOnly, setKnotEats);
 
 module.exports = router;

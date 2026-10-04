@@ -592,7 +592,7 @@ const Orders = () => {
                       </div>
                       <p className="text-[11.5px] text-[#94A3B8] mt-0.5 truncate">
                         <span className="sm:hidden">#{orderDisplayId(o)} · {timeOf(o.createdAt)} · </span>
-                        {sourceLabel(o.source)} · {o.items?.length || 0} Items
+                        {sourceLabel(o.source, o.salesChannel)} · {o.items?.length || 0} Items
                       </p>
                     </div>
 
@@ -742,6 +742,17 @@ const Orders = () => {
                     <p className="text-[11.5px] italic text-[#C2410C] leading-snug">
                       Note: {selected.customerDetails?.deliveryNote || selected.deliveryAddress?.instructions}
                     </p>
+                  )}
+                  {/* Knot Eats delivery orders carry the customer's map point. */}
+                  {Number.isFinite(selected.deliveryAddress?.lat) && Number.isFinite(selected.deliveryAddress?.lng) && (
+                    <a
+                      href={`https://www.google.com/maps/dir/?api=1&destination=${selected.deliveryAddress.lat},${selected.deliveryAddress.lng}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-block text-[12.5px] font-bold text-[#C2410C] underline underline-offset-2"
+                    >
+                      Navigate
+                    </a>
                   )}
                 </div>
               </div>
@@ -916,7 +927,7 @@ const Orders = () => {
                   <div>
                     <p className="text-[#94A3B8]">Source</p>
                     <p className="font-bold text-[#0F172A] mt-0.5">
-                      {sourceLabel(selected.source)}
+                      {sourceLabel(selected.source, selected.salesChannel)}
                     </p>
                   </div>
                   <div>

@@ -109,6 +109,19 @@ services:
       PAYMENT_PUBLIC_URL: ${PAYMENT_PUBLIC_URL:-https://pay.${BASE_DOMAIN}}
       QR_PUBLIC_URL: ${QR_PUBLIC_URL:-https://order.${BASE_DOMAIN}}
 
+      # === Knot Eats (eats.${BASE_DOMAIN}) ===
+      # Where a paid Knot Eats checkout returns to. pos-api owns this URL so a
+      # request body can never redirect a diner; empty = Eats checkout is 503.
+      KNOT_EATS_PUBLIC_URL: ${KNOT_EATS_PUBLIC_URL:-https://eats.${BASE_DOMAIN}}
+      # Google Maps, optional: unset = straight-line distances and GPS/area
+      # location, nothing breaks. The server key (Routes API, VPS-IP
+      # restricted) never leaves pos-api; the browser key (referrer
+      # restricted) is handed to pages by /api/eats/config. The cap is paid
+      # Routes elements per IST day, past which distances go straight-line.
+      GOOGLE_MAPS_SERVER_KEY: ${GOOGLE_MAPS_SERVER_KEY:-}
+      GOOGLE_MAPS_BROWSER_KEY: ${GOOGLE_MAPS_BROWSER_KEY:-}
+      GOOGLE_ROUTES_DAILY_ELEMENTS: ${GOOGLE_ROUTES_DAILY_ELEMENTS:-300}
+
       # === Media (object storage) ===
       # Default = local (files stored in the backend_uploads Docker volume and
       # served via https://api.${BASE_DOMAIN}/uploads). Switch to s3 /
@@ -238,7 +251,7 @@ services:
     networks: [knot]
 
   # ---------------------------------------------------------------------------
-  # Customer website  →  ${BASE_DOMAIN} + csd.${BASE_DOMAIN}
+  # Customer website  →  ${BASE_DOMAIN} + csd.${BASE_DOMAIN} + eats.${BASE_DOMAIN} (Knot Eats)
   # ---------------------------------------------------------------------------
   customer-web:
     build:

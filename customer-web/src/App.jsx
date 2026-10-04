@@ -1,8 +1,12 @@
-import React, { useMemo } from "react";
+import React, { Suspense, lazy, useMemo } from "react";
 import { BrowserRouter, Route, Routes, useParams } from "react-router-dom";
 import { resolveStoreFromWindow } from "./lib/resolveStoreFromHostname";
 import StorePage from "./pages/StorePage";
 import Message from "./components/Message";
+import LoadingSkeleton from "./components/LoadingSkeleton";
+
+// Knot Eats (eats.<base>) is its own chunk: a store website never downloads it.
+const EatsApp = lazy(() => import("./eats/EatsApp"));
 
 /**
  * Customer website router.
@@ -14,11 +18,23 @@ import Message from "./components/Message";
  *     `knotkitchen.com` host without DNS/TLS setup. Also works for shared
  *     preview links.
  *
+ * The Knot Eats marketplace host (eats.<base>) gets its own app instead.
+ *
  * All routing decisions are made once at mount time; a customer navigating
  * within the site never leaves this SPA.
  */
 export default function App() {
   const resolution = useMemo(() => resolveStoreFromWindow(), []);
+
+  if (resolution.mode === "eats") {
+    return (
+      <BrowserRouter>
+        <Suspense fallback={<LoadingSkeleton />}>
+          <EatsApp />
+        </Suspense>
+      </BrowserRouter>
+    );
+  }
 
   return (
     <BrowserRouter>

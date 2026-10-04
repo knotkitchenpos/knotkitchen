@@ -67,5 +67,5 @@ test("unknown or malformed ids are a 404, and nothing from the request is echoed
 test("the return address comes from the store's settings, never the request", () => {
   const src = require("node:fs").readFileSync(require.resolve("../controllers/storefrontController"), "utf8");
   assert.match(src, /returnUrl: `\$\{buildStorefrontUrl\(ctx\.settings\)\}\/menu`/);
-  assert.match(src, /returnUrl: `\$\{payBase\}\/c\/\$\{checkout\._id\}\/done`/);
+  assert.match(src, /returnUrl: `\$\{payBase\}\/c\/\$\{payKey\}\/done`/);
 });

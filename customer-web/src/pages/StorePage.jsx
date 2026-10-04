@@ -60,8 +60,13 @@ const writePending = (slug, id) => {
  * on purpose: the landing page and the menu share the storefront payload and
  * the cart, and routing them as two <Route> elements would remount the page on
  * every click, refetch the menu and empty the basket.
+ *
+ * `eats` runs the same page as a Knot Eats store page (eats.<base>/store/<id>):
+ * its own checkout and verify, no store theme, analytics or landing page, and
+ * the thank-you replaced by the Knot Eats order page. Without it the store
+ * website behaves as before.
  */
-export default function StorePage({ slug, host }) {
+export default function StorePage({ slug, host, eats = null }) {
   const identity = useMemo(() => ({ slug, host }), [slug, host]);
   const { bootstrap, store, error, loading } = useStorefront(identity);
   const { pathname } = useLocation();
@@ -71,14 +76,20 @@ export default function StorePage({ slug, host }) {
   // Bootstrap arrives first, so apply meta/theme from whichever is available.
   // A legal page names itself; the store's own title would overwrite it. The
   // menu is "Menu | <store>", as the server-side head says (storeHead.js).
-  useDocumentMeta(route.legalKey ? null : store || bootstrap, isMenu ? "Menu" : "");
-  useThemeVars(store || bootstrap);
+  // On Knot Eats the marketplace owns the title and the colours.
+  useDocumentMeta(eats || route.legalKey ? null : store || bootstrap, isMenu ? "Menu" : "");
+  useThemeVars(eats ? null : store || bootstrap);
 
-  const effectiveSlug = store?.store?.slug || bootstrap?.slug || slug || "";
-  const cart = useCart(effectiveSlug);
+  // On Knot Eats `slug` is the 6-digit storeId, so the basket key is the same
+  // the moment the page opens, before either payload lands.
+  const effectiveSlug = eats ? slug : store?.store?.slug || bootstrap?.slug || slug || "";
+  const baseCart = useCart(effectiveSlug);
+  const cart = eats ? eats.wrapCart(baseCart) : baseCart;
 
   const [placing, setPlacing] = useState(false);
   const [placeError, setPlaceError] = useState("");
+  // The server's error code, for the cart to act on (COUPON_USED: offer Remove).
+  const [placeErrorCode, setPlaceErrorCode] = useState("");
   const [confirmedOrder, setConfirmedOrder] = useState(null);
   // Back from paying, while the server checks the payment.
   const [confirming, setConfirming] = useState(false);
@@ -90,17 +101,23 @@ export default function StorePage({ slug, host }) {
    */
   const idempotencyKeyRef = useRef(null);
   if (!idempotencyKeyRef.current) idempotencyKeyRef.current = makeIdempotencyKey();
+  // The checkout this page has already confirmed (or is confirming) itself.
+  const handledRef = useRef("");
 
-  /** Ask the server whether the checkout was paid; it places the order if so. */
+  /**
+   * Ask the server whether the checkout was paid; it places the order if so.
+   * Knot Eats confirms by its signed `c_` token, the website by checkout id.
+   */
   const confirmCheckout = useCallback(
     async (checkoutId) => {
-      const res = await verifyCheckout(effectiveSlug, checkoutId);
+      const res = eats ? await eats.verifyCheckout(checkoutId) : await verifyCheckout(effectiveSlug, checkoutId);
       writePending(effectiveSlug, "");
-      setConfirmedOrder(res.data.data);
       cart.clear();
       idempotencyKeyRef.current = makeIdempotencyKey();
+      if (eats) eats.onConfirmed(res.data.data);
+      else setConfirmedOrder(res.data.data);
     },
-    [effectiveSlug, cart]
+    [effectiveSlug, cart, eats]
   );
 
   /**
@@ -113,14 +130,20 @@ export default function StorePage({ slug, host }) {
       if (!effectiveSlug) return;
       setPlacing(true);
       setPlaceError("");
+      setPlaceErrorCode("");
       try {
-        const res = await startCheckout(effectiveSlug, {
+        const res = await (eats?.startCheckout || startCheckout)(effectiveSlug, {
           ...checkout,
           items: cart.toOrderItems(),
           idempotencyKey: idempotencyKeyRef.current,
         });
-        const { checkoutId, payUrl, checkout: gateway } = res.data.data;
-        writePending(effectiveSlug, checkoutId);
+        const { checkoutId, checkoutToken, payUrl, checkout: gateway } = res.data.data;
+        // Knot Eats confirms by the signed token; the website by the raw id.
+        const pendingId = checkoutToken || checkoutId;
+        // This tab confirms it below; the return effect must not verify it too
+        // while the payment modal is still open.
+        handledRef.current = pendingId;
+        writePending(effectiveSlug, pendingId);
 
         // Pay on the shared payment host; it brings the customer back here
         // with ?checkout=<id>, and the effect below confirms the order.
@@ -139,24 +162,31 @@ export default function StorePage({ slug, host }) {
           paymentSessionId: gateway.paymentSessionId,
           redirectTarget: "_modal",
         });
-        await confirmCheckout(checkoutId);
+        await confirmCheckout(pendingId);
       } catch (err) {
         setPlaceError(err.response?.data?.message || "We couldn't place your order. Please try again.");
+        setPlaceErrorCode(err.response?.data?.code || "");
       } finally {
         setPlacing(false);
       }
     },
-    [effectiveSlug, cart, confirmCheckout]
+    [effectiveSlug, cart, confirmCheckout, eats]
   );
 
-  // Back from the payment page (?checkout=<id>), or returning after a tab
-  // closed before the payment could be confirmed.
+  // Back from the payment page (?checkout=<id>, or ?checkout=c_<token> on Knot
+  // Eats), or returning after a tab closed before the payment was confirmed.
+  const isEats = Boolean(eats);
   useEffect(() => {
     if (!effectiveSlug) return;
     const params = new URLSearchParams(window.location.search);
-    const returned = /^[a-f0-9]{24}$/i.test(params.get("checkout") || "") ? params.get("checkout") : "";
+    const returnRe = isEats ? /^c_[a-f0-9]{24}_[A-Za-z0-9_-]{22}$/ : /^[a-f0-9]{24}$/i;
+    const returned = returnRe.test(params.get("checkout") || "") ? params.get("checkout") : "";
     const id = returned || readPending(effectiveSlug);
-    if (!id) return;
+    // Once per checkout. useCart returns a new object every render, so
+    // confirmCheckout (and this effect) change after every state change; with
+    // ?checkout= still in the address that re-verified until the API said 429.
+    if (!id || handledRef.current === id) return;
+    handledRef.current = id;
     // ?checkout stays in the address until the customer closes the
     // confirmation: a refresh shows the thank-you again (the server answers a
     // settled checkout with the same order), and it can be bookmarked.
@@ -169,7 +199,7 @@ export default function StorePage({ slug, host }) {
         setPlaceError(err.response?.data?.message || "We could not confirm your payment. Please try again.");
       }
     }).finally(() => setConfirming(false));
-  }, [effectiveSlug, confirmCheckout]);
+  }, [effectiveSlug, confirmCheckout, isEats]);
 
   const dismissOrder = () => {
     setConfirmedOrder(null);
@@ -181,7 +211,8 @@ export default function StorePage({ slug, host }) {
     }
   };
   // The store's own analytics (Manage Website), only once the visitor accepts.
-  const analytics = bootstrap?.analytics;
+  // Never on Knot Eats: a store's GA or pixel does not follow its customers there.
+  const analytics = eats ? null : bootstrap?.analytics;
   const [choice, setChoice] = useState("");
   const consent = choice || readConsent(effectiveSlug);
   const tracking = consent === "granted" && hasAnalytics(analytics);
@@ -276,8 +307,9 @@ export default function StorePage({ slug, host }) {
   }
 
   // Only the home page, /menu and the legal pages exist, at the root or under
-  // the /s/<slug> preview mount. nginx already answers anything else 404.
-  const mount = (pathname.match(/^\/s\/[a-z0-9-]+/i) || [""])[0];
+  // the /s/<slug> preview mount (Knot Eats: /store/<id>). nginx already
+  // answers anything else 404.
+  const mount = eats ? eats.basePath : (pathname.match(/^\/s\/[a-z0-9-]+/i) || [""])[0];
   if (route.base !== mount) {
     return (
       <Message icon="🔍" iconSize="text-5xl" title="Page not found">
@@ -289,8 +321,9 @@ export default function StorePage({ slug, host }) {
     );
   }
 
+  // Knot Eats always opens on the menu; the landing page is the store website's.
   const landing = newerLanding(store?.landing, bootstrap?.landing);
-  if (!isMenu && landing) {
+  if (!eats && !isMenu && landing) {
     return (
       <>
         <LandingTemplate landing={landing} store={store} menuPath={menuPath} slug={effectiveSlug} />
@@ -310,8 +343,10 @@ export default function StorePage({ slug, host }) {
       cart={cart}
       placing={placing}
       placeError={placeError}
+      errorCode={placeErrorCode}
       notice={placeError || (confirming ? "Confirming your payment… please don’t pay again." : "")}
       onPlaceOrder={handlePlaceOrder}
+      {...eats?.shellProps}
     />
     {confirmation}
     {banner}

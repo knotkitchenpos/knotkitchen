@@ -2,6 +2,8 @@ const { isItemAvailableNow, getEffectivePrice } = require("./businessHours");
 const { calculateDistanceKm, computeDeliveryFeeFromSlabs } = require("./distanceService");
 const { capFor } = require("./modifierGroups");
 const { resolveGst } = require("./gst");
+const { localClock } = require("./websiteAvailability");
+const { localDate } = require("./tableBookings");
 
 
 /**
@@ -230,8 +232,11 @@ const buildItemIndex = (menus) => {
  */
 /**
  * Helper to check if a promotion rule is active for current channel, environment, time & day
+ *
+ * Dates, days and times are read on the store's own clock: the server runs in
+ * UTC, so the process clock made a "4-7 PM" coupon run 9:30 PM-12:30 AM IST.
  */
-const isRuleEligible = ({ rule, channel, environment, date = new Date(), subtotal = 0 }) => {
+const isRuleEligible = ({ rule, channel, environment, date = new Date(), subtotal = 0, timezone }) => {
   if (!rule || rule.isActive === false) return false;
 
   // Environment match: "system", "website", "both"
@@ -250,28 +255,29 @@ const isRuleEligible = ({ rule, channel, environment, date = new Date(), subtota
     return false;
   }
 
-  // Date range
-  if (rule.validFrom && new Date(rule.validFrom) > date) return false;
-  if (rule.validUntil) {
-    const until = new Date(rule.validUntil);
-    until.setHours(23, 59, 59, 999);
-    if (until < date) return false;
-  }
+  // "" or null would make Intl throw; undefined takes the default zone.
+  const tz = timezone || undefined;
+  const { ymd, day, minutes } = localClock(date, tz);
+
+  // Date range: whole store-local days, both ends inclusive.
+  if (rule.validFrom && localDate(new Date(rule.validFrom), tz) > ymd) return false;
+  if (rule.validUntil && localDate(new Date(rule.validUntil), tz) < ymd) return false;
 
   // Day of week (0 = Sunday)
   if (Array.isArray(rule.daysOfWeek) && rule.daysOfWeek.length > 0) {
-    const currentDay = date.getDay();
-    if (!rule.daysOfWeek.includes(currentDay)) return false;
+    if (!rule.daysOfWeek.includes(day)) return false;
   }
 
   // Time range HH:mm
   if (rule.startTime && rule.endTime) {
-    const curMinutes = date.getHours() * 60 + date.getMinutes();
-    const [sh, sm] = (rule.startTime || "00:00").split(":").map(Number);
-    const [eh, em] = (rule.endTime || "23:59").split(":").map(Number);
+    const [sh, sm] = rule.startTime.split(":").map(Number);
+    const [eh, em] = rule.endTime.split(":").map(Number);
     const startMinutes = (sh || 0) * 60 + (sm || 0);
-    const endMinutes = (eh || 23) * 60 + (em || 59);
-    if (curMinutes < startMinutes || curMinutes > endMinutes) return false;
+    // "19:00" ends at 19:00 (`em || 59` read it as 19:59); "00:00" or
+    // unreadable means the end of the day.
+    const end = eh * 60 + em;
+    const endMinutes = end > 0 ? end : 24 * 60;
+    if (minutes < startMinutes || minutes > endMinutes) return false;
   }
 
   return true;
@@ -291,6 +297,9 @@ const calculateOrderTotals = ({
   couponCode,
   manualDiscount,
   timezone,
+  // Server-computed store -> customer km (Knot Eats: from the customer's pin).
+  // Absent, it is estimated from the two addresses as before.
+  distanceKm,
 }) => {
   if (!Array.isArray(items) || items.length === 0) {
     throw new PricingError("Your cart is empty.");
@@ -326,7 +335,7 @@ const calculateOrderTotals = ({
   // ---- Module 8 §6: Free Item Auto-Injection ----
   const freeRules = settings?.freeItemConfig || [];
   const eligibleFreeRule = freeRules.find((rule) =>
-    isRuleEligible({ rule, channel, environment, subtotal })
+    isRuleEligible({ rule, channel, environment, subtotal, timezone })
   );
   if (eligibleFreeRule && eligibleFreeRule.itemName) {
     pricedItems.push({
@@ -365,7 +374,7 @@ const calculateOrderTotals = ({
     if (!couponRule) {
       throw new PricingError(`Invalid coupon code "${cleanCode}".`);
     }
-    if (!isRuleEligible({ rule: couponRule, channel, environment, subtotal })) {
+    if (!isRuleEligible({ rule: couponRule, channel, environment, subtotal, timezone })) {
       throw new PricingError(`Coupon "${cleanCode}" is not applicable to this order.`);
     }
     if (couponRule.quantityTotal > 0 && couponRule.quantityUsed >= couponRule.quantityTotal) {
@@ -382,7 +391,7 @@ const calculateOrderTotals = ({
   else {
     const discountRules = settings?.discountsConfig || [];
     const activeRule = discountRules.find((rule) =>
-      isRuleEligible({ rule, channel, environment, subtotal })
+      isRuleEligible({ rule, channel, environment, subtotal, timezone })
     );
     if (activeRule) {
       if (activeRule.type === "percent") {
@@ -406,10 +415,10 @@ const calculateOrderTotals = ({
   // ---- Module 8 §2: Delivery Distance Slabs & Maximum Distance ----
   let deliveryFee = 0;
   if (isDelivery) {
-    const distanceKm = calculateDistanceKm({ storeAddress, customerAddress });
+    const km = Number.isFinite(distanceKm) ? distanceKm : calculateDistanceKm({ storeAddress, customerAddress });
     try {
       deliveryFee = computeDeliveryFeeFromSlabs({
-        distanceKm,
+        distanceKm: km,
         slabsConfig: ordering.deliverySlabsConfig,
         defaultFee: Number(ordering.deliveryFee) || 0,
       });
@@ -462,6 +471,7 @@ module.exports = {
   calculateOrderTotals,
   buildItemIndex,
   priceLine,
+  isRuleEligible,
   PricingError,
   round2,
   MAX_LINE_ITEMS,

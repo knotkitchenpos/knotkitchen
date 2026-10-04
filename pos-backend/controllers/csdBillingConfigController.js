@@ -37,8 +37,9 @@ const asDate = (v) => {
   return Number.isNaN(d.getTime()) ? null : d;
 };
 
-// The usage charges, all one shape: the platform fee per order source, and the e-bill.
-const USAGE_CHARGES = ["websiteOrderCharge", "qrOrderCharge", "ebillCharge"];
+// The usage charges, all one shape: the platform fee per order source (website,
+// table QR, Knot Eats), and the e-bill.
+const USAGE_CHARGES = ["websiteOrderCharge", "qrOrderCharge", "knotEatsOrderCharge", "ebillCharge"];
 
 /** Config as the admin edits it: money in rupees, everything else verbatim. */
 const present = (config) => ({
@@ -258,7 +259,7 @@ const updateBillingConfig = async (req, res, next) => {
       };
     }
 
-    // The platform fee (website, table QR) and the e-bill charge: an amount
+    // The platform fee (website, table QR, Knot Eats) and the e-bill charge: an amount
     // (left out keeps the saved one), a start date it needs to be on, and GST.
     for (const key of USAGE_CHARGES) {
       if (body[key] === undefined) continue;

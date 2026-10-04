@@ -19,6 +19,7 @@ import Settings from "./pages/Settings";
 import Billing from "./pages/Billing";
 import HardwareRequests from "./pages/HardwareRequests";
 import HardwareRequestDetail from "./pages/HardwareRequestDetail";
+import KnotEats from "./pages/KnotEats";
 
 const Splash = () => (
   <div className="flex min-h-screen items-center justify-center bg-navy-950 text-navy-300">
@@ -72,6 +73,8 @@ const App = () => (
           <Route path="/jobs/:jobId" element={<JobDetail />} />
           <Route path="/hardware" element={<HardwareRequests />} />
           <Route path="/hardware/:requestId" element={<HardwareRequestDetail />} />
+          {/* Staff moderate reviews; delist/relist is admin-only on the server. */}
+          <Route path="/eats" element={<KnotEats />} />
 
           {/* Admin only */}
           <Route
