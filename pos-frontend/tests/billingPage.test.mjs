@@ -96,7 +96,17 @@ test("the POS never shows the platform-fee or e-bill charges, only unpaid dues t
   const billing = SRC("src/pages/Billing.jsx");
   assert.doesNotMatch(billing, /per-order|e-bill|per order|order charge/i);
   assert.match(billing, /\{balance\.dues\.count\} unpaid platform fee\(s\) — \{money\(balance\.dues\)\}/);
-  assert.match(billing, /is never charged for the plan\s+and is never locked\./);
+});
+
+test("Billing carries no explanatory texts the owner asked to remove", () => {
+  const billing = SRC("src/pages/Billing.jsx");
+  for (const gone of [
+    /Your Business Balance, prepaid/,
+    /Paid securely through Cashfree/,
+    /set this store up as a demo store/,
+    /add-ons renew with the POS plan/,
+    /Opens in a new tab\. Use your browser/,
+  ]) assert.doesNotMatch(billing, gone);
 });
 
 test("no plan picker, installation or commitment is left in the POS", () => {

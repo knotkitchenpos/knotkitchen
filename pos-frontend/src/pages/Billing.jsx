@@ -681,7 +681,7 @@ const Billing = () => {
 
       <div className="grid gap-5 lg:grid-cols-2">
         {/* ---------------------------------------------------------- */}
-        <Card title="Wallet" subtitle="Your Business Balance, prepaid for KnotKitchen charges such as the POS plan and add-ons. It is not refundable.">
+        <Card title="Wallet">
           <p className="text-[32px] font-extrabold leading-none text-[#0F172A]">{money(balance?.balance)}</p>
 
           {/* Unpaid dues still lock the account, so they stay explained here -- by count and total, never a rate. */}
@@ -741,9 +741,6 @@ const Billing = () => {
                 {paying ? "Opening…" : "Add"}
               </button>
             </div>
-            <p className="mt-2 text-[11.5px] text-[#94A3B8]">
-              Paid securely through Cashfree. Your balance updates once the payment is confirmed.
-            </p>
           </div>
           </>
           )}
@@ -755,12 +752,7 @@ const Billing = () => {
           subtitle={`${money(sub?.basePlan?.price)} + GST every ${periodDays} days, from your wallet`}
           right={<Tag tone={tone}>{badge}</Tag>}
         >
-          {sub?.exempt ? (
-            <p className="text-[13px] text-[#64748B]">
-              KnotKitchen has set this store up as a demo store. It has every add-on, is never charged for the plan
-              and is never locked.
-            </p>
-          ) : cancelled ? (
+          {sub?.exempt ? null : cancelled ? (
             <p className="text-[13px] text-[#64748B]">
               Cancelled on {dateOf(sub.cancelledAt || sub.cancelAt)}. Your store is marked Closed and the plan does not
               renew. To reopen it, contact KnotKitchen support.
@@ -826,7 +818,6 @@ const Billing = () => {
       {/* ------------------------------------------------------------ */}
       <Card
         title="Add-ons"
-        subtitle={`From your wallet. ${periodDays}-day add-ons renew with the POS plan; added mid-period, you pay only for the days left. Yearly add-ons are paid a year at a time and renew on their own date.`}
       >
         {(sub?.addons || []).length === 0 ? (
           <p className="text-[13px] text-[#94A3B8]">No add-ons are available at the moment.</p>
@@ -962,7 +953,7 @@ const Billing = () => {
       )}
 
       {/* ------------------------------------------------------------ */}
-      <Card title="Invoices" subtitle="Opens in a new tab. Use your browser's Print to save a PDF.">
+      <Card title="Invoices">
         {invoices.length === 0 ? (
           <p className="text-[13px] text-[#94A3B8]">No invoices yet.</p>
         ) : (
