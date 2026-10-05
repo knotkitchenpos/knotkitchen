@@ -245,8 +245,11 @@ export const layoutReceipt = ({ order = {}, store = {}, settings = {}, images = 
       ops.push({ type: "text", text: line, x: xItem, y, font: font(cols.size, true), align: "left" });
       y += lineH;
     }
+    // Rate, Qty and Price sit on the dish's first line only, so the add-ons
+    // below it can run the full width: "+ Club Sandwich - Two Layer Filling
+    // (3 Slices Of Bread)" took three lines squeezed into the Item column.
     for (const extra of row.extras) {
-      for (const line of wrap(extra, font(extraSize), cols.itemW - 10, measure)) {
+      for (const line of wrap(extra, font(extraSize), inner - 10, measure)) {
         ops.push({ type: "text", text: line, x: xItem + 10, y, font: font(extraSize), align: "left" });
         y += Math.round(extraSize * 1.3);
       }

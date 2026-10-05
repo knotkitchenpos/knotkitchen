@@ -409,3 +409,28 @@ test("REGRESSION: receipts print in the font the POS ships, not the device's", (
   assert.match(print, /await ensureReceiptFont\(\);\n  const canvas = renderKotCanvas/, "KOTs");
   assert.match(print, /await ensureReceiptFont\(\);\n  const canvas = paintLayout\(\(measure\) => layoutReport/, "reports");
 });
+
+test("REGRESSION: an add-on uses the full width below the dish, not just the Item column", () => {
+  const order = {
+    ...ORDER,
+    items: [
+      {
+        name: "Chicken Mushroom Sandwich",
+        quantity: 1,
+        price: 198,
+        total: 198,
+        modifiers: [{ name: "Club Sandwich - Two Layer Filling (3 Slices Of Bread)", price: 0 }],
+      },
+    ],
+    bills: { subtotal: 198, total: 198, tax: 0, totalWithTax: 198 },
+  };
+  const layout = layoutReceipt({ order, store: { name: "S" }, paper: 80, measure });
+  const ops = textOps(layout);
+  const extra = ops.find((o) => o.text.startsWith("+ Club Sandwich"));
+  // It reaches past where the Rate column starts: the Item column alone
+  // could never hold it.
+  const rateLeft = span(ops.find((o) => o.text === "Rate"))[0];
+  assert.ok(span(extra)[1] > rateLeft, `"${extra.text}" stops inside the Item column`);
+  // Still never on the dish's first line, where the numbers are.
+  assert.ok(extra.y > ops.find((o) => o.text === "198.00").y);
+});
