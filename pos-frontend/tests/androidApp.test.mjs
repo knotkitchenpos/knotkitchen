@@ -107,6 +107,18 @@ test("REGRESSION: a printer that forgot its pairing and asks for the PIN is answ
   assert.match(config, /pin: samePrinter \? device\.pin : "",/);
 });
 
+test("REGRESSION: a BLE receipt printer prints in seconds, not minutes", () => {
+  const java = JAVA("ThermalPrinterPlugin.java");
+  const ble = java.slice(java.indexOf("private void printBle("), java.indexOf("private BluetoothAdapter adapter()"));
+  // Fast link while the job runs, asked before the MTU so both apply.
+  assert.ok(
+    ble.indexOf("gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH)") > 0 &&
+      ble.indexOf("gatt.requestConnectionPriority(") < ble.indexOf("gatt.requestMtu(512)"),
+  );
+  // No pause between a receipt printer's writes; mini printers keep theirs.
+  assert.match(SRC("src/utils/printerDevice.js"), /pace: cat \? 20 : 0,/);
+});
+
 test("Cashfree checkout in the app can list and open UPI apps", () => {
   // Without a JS bridge named "Android" (getAppList/openApp, Cashfree's WebView
   // contract) the checkout offered only "UPI ID / QR", and operators paid by

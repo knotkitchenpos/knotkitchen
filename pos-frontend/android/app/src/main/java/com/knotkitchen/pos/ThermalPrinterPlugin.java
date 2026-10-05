@@ -360,6 +360,11 @@ public class ThermalPrinterPlugin extends Plugin {
             @Override
             public void onConnectionStateChange(BluetoothGatt gatt, int status, int newState) {
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
+                    // A receipt is a thousand or more acknowledged writes. At
+                    // the default (balanced) interval each one costs ~45 ms;
+                    // HIGH asks for ~11-15 ms while this job runs. An EZO
+                    // printer took 3-5 minutes per receipt without it.
+                    gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH);
                     // Bigger writes; onMtuChanged continues. Some stacks refuse
                     // the request outright, then discover at the default size.
                     if (!gatt.requestMtu(512)) gatt.discoverServices();

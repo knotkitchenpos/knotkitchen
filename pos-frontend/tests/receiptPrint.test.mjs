@@ -120,13 +120,59 @@ test("ESC/POS job: init, GS v 0 bands of the right size, feed and cut", () => {
   const bits = toMonochrome(rgba, width, height);
   assert.equal(bits[0], 0x80);
   const job = rasterJob(bits, width, height);
-  assert.deepEqual([...job.slice(0, 2)], [0x1b, 0x40]);
-  assert.deepEqual([...job.slice(2, 10)], [0x1d, 0x76, 0x30, 0, 2, 0, 120, 0]);
-  const bands = Math.ceil(height / 120);
-  // A printer with a cutter: only GS V B 0, which feeds to the cutter itself.
-  assert.equal(job.length, 2 + bands * 8 + 2 * height + 4);
-  assert.deepEqual([...job.slice(-4)], [0x1d, 0x56, 0x42, 0]);
-  assert.notDeepEqual([...job.slice(-7, -4)], [0x1b, 0x64, 0x04], "REGRESSION: no 4-line feed before the cut (a long blank tail)");
+  // Init, one 1-byte-wide row of ink, then straight to the cut: the 249 white
+  // rows under it are never sent.
+  assert.deepEqual([...job], [0x1b, 0x40, 0x1d, 0x76, 0x30, 0, 1, 0, 1, 0, 0x80, 0x1d, 0x56, 0x42, 0]);
+});
+
+/** Plays a job back into rows of bits, the way the printer lays them on paper. */
+const playBack = (job, rowBytes) => {
+  const rows = [];
+  for (let i = 2; i < job.length; ) {
+    if (job[i] === 0x1b && job[i + 1] === 0x4a) {
+      for (let n = 0; n < job[i + 2]; n += 1) rows.push(new Uint8Array(rowBytes));
+      i += 3;
+    } else if (job[i] === 0x1d && job[i + 1] === 0x76) {
+      const w = job[i + 4] + job[i + 5] * 256;
+      const h = job[i + 6] + job[i + 7] * 256;
+      for (let r = 0; r < h; r += 1) {
+        const row = new Uint8Array(rowBytes);
+        row.set(job.subarray(i + 8 + r * w, i + 8 + (r + 1) * w));
+        rows.push(row);
+      }
+      i += 8 + w * h;
+    } else if (job[i] === 0x1d && job[i + 1] === 0x56) {
+      break;
+    } else {
+      throw new Error(`unexpected byte ${job[i]} at ${i}`);
+    }
+  }
+  return rows;
+};
+
+test("REGRESSION: only the ink is sent, and the paper comes out the same", () => {
+  // A receipt-like page: 576 dots wide, lines of text with gaps between them,
+  // most of them ending well before the right edge, and a long gap (> 255 dots).
+  const width = 576;
+  const rowBytes = width / 8;
+  const height = 900;
+  const bits = new Uint8Array(rowBytes * height);
+  for (let y = 0; y < height; y += 1) {
+    const line = Math.floor(y / 27);
+    if (y % 27 >= 21 || (y >= 300 && y < 600)) continue; // gaps between lines, and one long gap
+    const ink = line % 3 === 0 ? rowBytes : 20 + (line % 7) * 5; // right-aligned prices on some lines
+    for (let b = 0; b < ink; b += 3) bits[y * rowBytes + b] = 0b10110001;
+  }
+  const job = rasterJob(bits, width, height);
+  assert.ok(job.length < bits.length * 0.6, `sent ${job.length} of ${bits.length} bytes`);
+  const rows = playBack(job, rowBytes);
+  let lastInk = height - 1;
+  while (bits.subarray(lastInk * rowBytes, (lastInk + 1) * rowBytes).every((v) => v === 0)) lastInk -= 1;
+  assert.equal(rows.length, lastInk + 1, "same height down to the last line of ink");
+  for (let y = 0; y < rows.length; y += 1) {
+    assert.deepEqual([...rows[y]], [...bits.subarray(y * rowBytes, (y + 1) * rowBytes)], `row ${y}`);
+  }
+  assert.ok(job.every((v, i) => !(v === 0x1b && job[i + 1] === 0x4a) || job[i + 2] <= 255));
 });
 
 test("Device Configuration has no Printer type or Paper end choice: a receipt printer that cuts", () => {

@@ -273,9 +273,11 @@ export const sendToPrinter = async (config, bytes) => {
       vendorId: config.usb?.vendorId,
       productId: config.usb?.productId,
       // The mini printers are BLE only, whatever the pairing says, and pace
-      // at about 20 ms per write.
+      // at about 20 ms per write. A receipt printer needs no pause: each
+      // write already waits for the printer's acknowledgement, and the 5 ms
+      // added ~17 s to a 3-inch receipt over 20-byte BLE writes.
       ble: cat,
-      pace: cat ? 20 : 5,
+      pace: cat ? 20 : 0,
     });
     return;
   }
