@@ -164,12 +164,7 @@ const Settings = () => {
             <h1 className="text-[22px] sm:text-[28px] font-extrabold text-[#0F172A] tracking-tight">
               {activeMeta ? activeMeta.title : "Settings"}
             </h1>
-            <p className="text-[13.5px] text-[#94A3B8] mt-0.5">
-              {activeMeta ? activeMeta.desc : "Configure store properties, device printers, order toggles, staff and cache."}
-            </p>
-            {!activeMeta && (
-              <p className="text-[12px] text-[#94A3B8] mt-1">Tip: long-press an option to add it to the side panel as a Quick Shortcut.</p>
-            )}
+            {activeMeta && <p className="text-[13.5px] text-[#94A3B8] mt-0.5">{activeMeta.desc}</p>}
           </div>
         </div>
 
