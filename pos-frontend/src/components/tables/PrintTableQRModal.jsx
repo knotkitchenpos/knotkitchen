@@ -4,6 +4,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { enqueueSnackbar } from "notistack";
 import { getStoreProperties, regenerateTableQr } from "../../https";
 import { CARD, drawTableQrCard, qrFromSvg } from "../../utils/tableQrCard";
+import { loadBitmap } from "../../utils/printReceipt";
 
 /**
  * Print-Ready Table QR Card (§Manage Tables Module 2).
@@ -64,7 +65,9 @@ const PrintTableQRModal = ({ isOpen, onClose, table }) => {
 
   const storeProps = propsRes?.data?.data || {};
   const restaurantName = storeProps.storeName || storeProps.name || "";
-  const restaurantLogo = storeProps.logo || storeProps.branding?.logo || "";
+  // Store Properties sends it as restaurantLogo, the field receipts print; the
+  // card read `logo` and so never had one.
+  const restaurantLogo = storeProps.restaurantLogo || storeProps.logo || "";
   const tableDisplay = table ? table.displayId || table.tableName || `Table ${table.tableNumber}` : "";
   // The server's URL, not one built from this browser's address bar: the
   // short QR host is deployment configuration and the till is served from a
@@ -84,16 +87,10 @@ const PrintTableQRModal = ({ isOpen, onClose, table }) => {
     let alive = true;
     setCard("");
     (async () => {
-      // Loaded with CORS so a remote logo cannot taint the canvas; a logo that
-      // will not load is left off rather than failing the card.
-      const logo = await new Promise((resolve) => {
-        if (!restaurantLogo) return resolve(null);
-        const img = new Image();
-        img.crossOrigin = "anonymous";
-        img.onload = () => resolve(img);
-        img.onerror = () => resolve(null);
-        img.src = restaurantLogo;
-      });
+      // Fetched like the receipt logo: an /uploads path resolves against the
+      // API host, and a logo that will not load is left off rather than
+      // failing the card.
+      const logo = await loadBitmap(restaurantLogo);
       const canvas = drawTableQrCard({
         canvas: document.createElement("canvas"),
         logo,

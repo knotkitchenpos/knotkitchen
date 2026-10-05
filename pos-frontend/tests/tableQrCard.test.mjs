@@ -44,3 +44,10 @@ test("a long restaurant name splits into two balanced lines, or reports that it 
   assert.deepEqual(fitLines("The Coffee Flavours Kitchen & Bar", 200, measure), ["The Coffee Flavours", "Kitchen & Bar"]);
   assert.equal(fitLines("Supercalifragilistic Expialidocious Restaurant", 100, measure), null);
 });
+
+test("REGRESSION: the card prints the store's logo, read from restaurantLogo like receipts", () => {
+  const modal = SRC("src/components/tables/PrintTableQRModal.jsx");
+  assert.match(modal, /const restaurantLogo = storeProps\.restaurantLogo \|\|/);
+  assert.match(modal, /const logo = await loadBitmap\(restaurantLogo\);/);
+  assert.match(SRC("src/utils/printReceipt.js"), /export const loadBitmap = async \(url\) =>/);
+});

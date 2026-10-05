@@ -56,7 +56,7 @@ export const loadReceiptContext = async () => {
 };
 
 /** An image as a bitmap the canvas can read back. A missing or blocked image is left off the receipt. */
-const loadBitmap = async (url) => {
+export const loadBitmap = async (url) => {
   if (!url) return null;
   try {
     const res = await fetch(absolute(url), { mode: "cors" });
