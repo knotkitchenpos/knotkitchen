@@ -40,7 +40,7 @@ test("the QR image renders the URL the server returned", () => {
   const modal = SRC("src/components/tables/PrintTableQRModal.jsx");
   // Whitespace-tolerant: the declaration wraps once the fallback is spelled
   // out, and the point of the test is the precedence, not the line breaks.
-  assert.match(modal, /const qrUrl =\s+table\.qrCode \|\|/);
+  assert.match(modal, /const qrUrl =\s+table\??\.qrCode \|\|/);
   assert.match(modal, /value=\{qrUrl\}/);
 });
 

@@ -1,8 +1,9 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { QRCodeCanvas } from "qrcode.react";
+import { QRCodeSVG } from "qrcode.react";
 import { enqueueSnackbar } from "notistack";
 import { getStoreProperties, regenerateTableQr } from "../../https";
+import { CARD, drawTableQrCard, qrFromSvg } from "../../utils/tableQrCard";
 
 /**
  * Print-Ready Table QR Card (§Manage Tables Module 2).
@@ -20,13 +21,11 @@ import { getStoreProperties, regenerateTableQr } from "../../https";
  *     print stylesheet — the rest of the page came along, layout collapsed,
  *     and the QR canvas frequently came out blank.
  *
- *     Printing now builds a standalone document containing ONLY the card,
- *     with its own inline CSS and the QR exported from the canvas as a PNG,
- *     and prints that from a hidden iframe. What you see in the preview is
- *     what comes out, independent of the app's styles.
+ *     The card is now one image drawn at print size (utils/tableQrCard):
+ *     the preview shows it, Download saves it and Print sends only it, from
+ *     a hidden iframe, so what you see is what comes out.
  */
 const PrintTableQRModal = ({ isOpen, onClose, table }) => {
-  const cardRef = useRef(null);
   const queryClient = useQueryClient();
   const [confirmingReplace, setConfirmingReplace] = useState(false);
 
@@ -63,20 +62,55 @@ const PrintTableQRModal = ({ isOpen, onClose, table }) => {
     enabled: isOpen,
   });
 
-  if (!isOpen || !table) return null;
-
   const storeProps = propsRes?.data?.data || {};
   const restaurantName = storeProps.storeName || storeProps.name || "";
   const restaurantLogo = storeProps.logo || storeProps.branding?.logo || "";
-  const tableDisplay = table.displayId || table.tableName || `Table ${table.tableNumber}`;
-  const areaName = table.area || table.floor || "Main Hall";
+  const tableDisplay = table ? table.displayId || table.tableName || `Table ${table.tableNumber}` : "";
   // The server's URL, not one built from this browser's address bar: the
   // short QR host is deployment configuration and the till is served from a
   // different hostname. Composing it here printed the POS's own hostname onto
   // the card. The origin remains the fallback for a deployment with no short
   // host configured.
   const qrUrl =
-    table.qrCode || (table.qrToken ? `${window.location.origin}/t/${table.qrToken}` : "");
+    table?.qrCode || (table?.qrToken ? `${window.location.origin}/t/${table.qrToken}` : "");
+
+  // The card is drawn once, at print size (utils/tableQrCard), and that one
+  // image is the preview, the PNG and what Print sends.
+  const qrRef = useRef(null);
+  const cardCanvas = useRef(null);
+  const [card, setCard] = useState("");
+  useEffect(() => {
+    if (!isOpen || !table) return undefined;
+    let alive = true;
+    setCard("");
+    (async () => {
+      // Loaded with CORS so a remote logo cannot taint the canvas; a logo that
+      // will not load is left off rather than failing the card.
+      const logo = await new Promise((resolve) => {
+        if (!restaurantLogo) return resolve(null);
+        const img = new Image();
+        img.crossOrigin = "anonymous";
+        img.onload = () => resolve(img);
+        img.onerror = () => resolve(null);
+        img.src = restaurantLogo;
+      });
+      const canvas = drawTableQrCard({
+        canvas: document.createElement("canvas"),
+        logo,
+        restaurantName,
+        tableName: tableDisplay,
+        qr: qrUrl ? qrFromSvg(qrRef.current) : null,
+      });
+      if (!alive) return;
+      cardCanvas.current = canvas;
+      setCard(canvas.toDataURL("image/png"));
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [isOpen, table, restaurantLogo, restaurantName, tableDisplay, qrUrl]);
+
+  if (!isOpen || !table) return null;
 
   const esc = (v) =>
     String(v ?? "").replace(/[&<>"']/g, (c) =>
@@ -84,208 +118,41 @@ const PrintTableQRModal = ({ isOpen, onClose, table }) => {
     );
 
   /**
-   * Print exactly the card, and nothing else.
-   *
-   * The QR is a <canvas>; canvases do not survive being copied as HTML, so it
-   * is exported to a data URL and embedded as an <img>.
+   * Save the card as a PNG, at print resolution (A6, 300 dpi). PNG, not JPEG:
+   * JPEG softens the edges between QR modules, and a QR that scans on screen
+   * can fail once printed small.
    */
-
-  /**
-   * Save the card as an image file.
-   *
-   * "Print QR Card" hands the card to the browser's print dialog, where the
-   * only way to keep a copy is "Save as PDF" -- a PDF is what you got. This
-   * draws the same card onto a canvas and downloads it directly.
-   *
-   * PNG rather than JPEG deliberately: JPEG's compression softens the hard
-   * edges between QR modules, and a QR that scans on screen can fail once it
-   * has been printed small. Drawn at 3x so it stays sharp on paper.
-   */
-  const handleDownloadImage = async () => {
-    const qrCanvas = cardRef.current?.querySelector("canvas");
-
-    const S = 3;                 // export scale
-    const W = 360;               // card width in CSS px
-    const PAD = 26;
-    const cx = W / 2;            // horizontal centre
-
-    // Optional logo. Loaded separately with CORS so a remote image cannot
-    // taint the canvas and make toDataURL throw -- if it will not load we
-    // simply fall back to the plate mark, rather than failing the download.
-    const logo = await new Promise((resolve) => {
-      if (!restaurantLogo) return resolve(null);
-      const img = new Image();
-      img.crossOrigin = "anonymous";
-      img.onload = () => resolve(img);
-      img.onerror = () => resolve(null);
-      img.src = restaurantLogo;
-    });
-
-    // Measure first so the card is exactly as tall as its content.
-    const logoH = logo ? 46 : 30;
-    const nameH = restaurantName ? 26 : 0;
-    const qrBox = 214;
-    const H = PAD + logoH + nameH + 18 + 34 + 16 + qrBox + 30 + 26 + PAD;
-
-    const c = document.createElement("canvas");
-    c.width = W * S;
-    c.height = H * S;
-    const g = c.getContext("2d");
-    g.scale(S, S);
-    g.textAlign = "center";
-    g.textBaseline = "middle";
-
-    const roundRect = (x, y, w, h, r) => {
-      g.beginPath();
-      g.moveTo(x + r, y);
-      g.arcTo(x + w, y, x + w, y + h, r);
-      g.arcTo(x + w, y + h, x, y + h, r);
-      g.arcTo(x, y + h, x, y, r);
-      g.arcTo(x, y, x + w, y, r);
-      g.closePath();
-    };
-
-    // Card ground + border, matching the preview.
-    g.fillStyle = "#FFFFFF";
-    g.fillRect(0, 0, W, H);
-    g.fillStyle = "#FAFAFA";
-    roundRect(1, 1, W - 2, H - 2, 16);
-    g.fill();
-    g.strokeStyle = "#0F172A";
-    g.lineWidth = 2;
-    g.stroke();
-
-    let y = PAD;
-
-    if (logo) {
-      const h = 40;
-      const w = Math.min(140, (logo.width / logo.height) * h || h);
-      g.drawImage(logo, cx - w / 2, y, w, h);
-      y += logoH;
-    } else {
-      g.font = "24px system-ui, sans-serif";
-      g.fillText("\u{1F37D}\uFE0F", cx, y + 14);
-      y += logoH;
-    }
-
-    if (restaurantName) {
-      g.fillStyle = "#0F172A";
-      g.font = "800 19px system-ui, -apple-system, Segoe UI, sans-serif";
-      g.fillText(String(restaurantName).toUpperCase(), cx, y + 10);
-      y += nameH;
-    }
-
-    g.fillStyle = "#64748B";
-    g.font = "800 11px system-ui, sans-serif";
-    g.fillText(String(areaName).toUpperCase(), cx, y + 8);
-    y += 18;
-
-    // Table pill.
-    const pillText = String(tableDisplay).toUpperCase();
-    g.font = "900 14px system-ui, sans-serif";
-    const pillW = Math.min(W - 2 * PAD, g.measureText(pillText).width + 34);
-    g.fillStyle = "#0F172A";
-    roundRect(cx - pillW / 2, y, pillW, 30, 10);
-    g.fill();
-    g.fillStyle = "#FFFFFF";
-    g.fillText(pillText, cx, y + 16);
-    y += 34 + 16;
-
-    // QR, in its white surround.
-    g.fillStyle = "#FFFFFF";
-    roundRect(cx - qrBox / 2, y, qrBox, qrBox, 14);
-    g.fill();
-    g.strokeStyle = "#E2E8F0";
-    g.lineWidth = 2;
-    g.stroke();
-    if (qrCanvas) {
-      const q = qrBox - 24;
-      g.drawImage(qrCanvas, cx - q / 2, y + 12, q, q);
-    } else {
-      g.fillStyle = "#94A3B8";
-      g.font = "700 11px system-ui, sans-serif";
-      g.fillText("QR unavailable", cx, y + qrBox / 2);
-    }
-    y += qrBox + 22;
-
-    g.fillStyle = "#C2410C";
-    g.font = "900 11px system-ui, sans-serif";
-    g.fillText("SCAN CODE TO VIEW MENU & ORDER", cx, y);
-    y += 24;
-
-    g.fillStyle = "#94A3B8";
-    g.font = "700 10px system-ui, sans-serif";
-    g.fillText("Powered by KnotKitchen", cx, y);
-
-    const safe = String(tableDisplay).replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    const link = document.createElement("a");
-    link.download = `knotkitchen-qr-${safe || "table"}.png`;
-    link.href = c.toDataURL("image/png");
-    link.click();
+  const handleDownloadImage = () => {
+    const canvas = cardCanvas.current;
+    if (!canvas) return;
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const safe = String(tableDisplay).replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.download = `knotkitchen-qr-${safe || "table"}.png`;
+      link.href = url;
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    }, "image/png");
   };
 
+  /** Print exactly the card, at its real A6 size, and nothing else. */
   const handlePrint = () => {
-    const canvas = cardRef.current?.querySelector("canvas");
-    const qrImage = canvas ? canvas.toDataURL("image/png") : "";
-
+    if (!card) return;
     const html = `<!doctype html>
 <html>
   <head>
     <meta charset="utf-8" />
     <title>${esc(tableDisplay)} — QR Card</title>
     <style>
-      @page { margin: 12mm; }
-      * { box-sizing: border-box; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-      body {
-        margin: 0;
-        font-family: "Plus Jakarta Sans", Inter, system-ui, -apple-system, sans-serif;
-        display: flex; align-items: center; justify-content: center;
-      }
-      .card {
-        width: 320px; border: 3px solid #0F172A; border-radius: 18px;
-        padding: 26px 22px; text-align: center; background: #FAFAFA;
-      }
-      .logo { height: 46px; width: auto; object-fit: contain; margin-bottom: 6px; }
-      .brand {
-        margin: 0 0 4px; font-size: 19px; font-weight: 800; letter-spacing: -0.01em;
-        color: #0F172A; text-transform: uppercase;
-      }
-      .area {
-        margin: 0; font-size: 10px; font-weight: 800; color: #64748B;
-        text-transform: uppercase; letter-spacing: 0.09em;
-      }
-      .table-pill {
-        display: inline-block; margin: 16px 0 4px; padding: 8px 18px; border-radius: 11px;
-        background: #0F172A; color: #fff; font-size: 13px; font-weight: 800;
-        letter-spacing: 0.04em; text-transform: uppercase;
-      }
-      .qr-frame {
-        margin: 14px auto 0; padding: 12px; width: max-content;
-        background: #fff; border: 2px solid #E2E8F0; border-radius: 16px;
-      }
-      .qr-frame img { display: block; width: 176px; height: 176px; }
-      .scan {
-        margin: 14px 0 0; font-size: 11px; font-weight: 800; color: #FD5302;
-        text-transform: uppercase; letter-spacing: 0.14em;
-      }
-      .footer { margin: 18px 0 0; font-size: 9px; font-weight: 700; color: #94A3B8; }
+      @page { margin: 10mm; }
+      * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+      body { margin: 0; display: flex; align-items: flex-start; justify-content: center; }
+      img { width: 105mm; height: 148.5mm; display: block; }
     </style>
   </head>
-  <body>
-    <div class="card">
-      ${restaurantLogo ? `<img class="logo" src="${esc(restaurantLogo)}" alt="" />` : `<div style="font-size:26px">🍽️</div>`}
-      ${restaurantName ? `<h2 class="brand">${esc(restaurantName)}</h2>` : ""}
-      <p class="area">${esc(areaName)}</p>
-      <div class="table-pill">${esc(tableDisplay)}</div>
-      ${
-        qrImage
-          ? `<div class="qr-frame"><img src="${qrImage}" alt="QR code for ${esc(tableDisplay)}" /></div>`
-          : `<p style="margin:20px 0;font-size:11px;color:#94A3B8;font-weight:700">QR unavailable — generate a QR token for this table first.</p>`
-      }
-      <p class="scan">Scan Code To View Menu &amp; Order</p>
-      <p class="footer">Powered by KnotKitchen</p>
-    </div>
-  </body>
+  <body><img src="${card}" alt="QR card for ${esc(tableDisplay)}" /></body>
 </html>`;
 
     // A hidden same-origin iframe, rather than window.open, so pop-up blockers
@@ -339,53 +206,20 @@ const PrintTableQRModal = ({ isOpen, onClose, table }) => {
           </button>
         </div>
 
-        {/* Preview — this is what handlePrint reproduces */}
-        <div
-          ref={cardRef}
-          className="rounded-2xl border-2 border-[#0F172A] p-6 text-center space-y-4 bg-[#FAFAFA]"
-        >
-          <div className="flex flex-col items-center gap-1.5">
-            {restaurantLogo ? (
-              <img src={restaurantLogo} alt="" className="h-12 w-auto object-contain mb-1" />
-            ) : (
-              <span className="text-2xl">🍽️</span>
-            )}
-            {restaurantName ? (
-              <h2 className="text-lg font-black tracking-tight text-[#0F172A] uppercase">
-                {restaurantName}
-              </h2>
-            ) : null}
-            <p className="text-[11px] font-extrabold text-[#64748B] uppercase tracking-wider">
-              {areaName}
-            </p>
-          </div>
-
-          <div className="py-2 px-4 rounded-xl bg-[#0F172A] text-white inline-block">
-            <span className="text-sm font-black tracking-wide uppercase">{tableDisplay}</span>
-          </div>
-
-          <div className="flex flex-col items-center justify-center py-3">
-            <div className="p-3 bg-white rounded-2xl border-2 border-[#E2E8F0] shadow-sm">
-              {qrUrl ? (
-                <QRCodeCanvas
-                  value={qrUrl}
-                  size={176}
-                  level="H"
-                  includeMargin
-                  aria-label={`QR code for ${tableDisplay}`}
-                />
-              ) : (
-                <div className="w-44 h-44 flex items-center justify-center text-[11px] text-[#94A3B8] font-bold text-center">
-                  QR unavailable — generate a QR token for this table first.
-                </div>
-              )}
+        {/* Preview: the very image Download and Print use. */}
+        <div className="rounded-2xl border border-[#E2E8F0] bg-[#F8F4EA] overflow-hidden">
+          {card ? (
+            <img src={card} alt={`QR card for ${tableDisplay}`} className="block w-full h-auto" />
+          ) : (
+            <div
+              className="flex items-center justify-center text-[12px] font-bold text-[#94A3B8]"
+              style={{ aspectRatio: `${CARD.width} / ${CARD.height}` }}
+            >
+              Preparing the card…
             </div>
-            <p className="mt-3 text-xs font-black text-[#C2410C] uppercase tracking-widest">
-              Scan Code To View Menu &amp; Order
-            </p>
-          </div>
-
-          <p className="text-[10px] text-[#94A3B8] font-bold">Powered by KnotKitchen</p>
+          )}
+          {/* The QR's outline, off screen: the card draws it from this at print size. */}
+          {qrUrl ? <QRCodeSVG ref={qrRef} value={qrUrl} level="H" marginSize={4} style={{ display: "none" }} /> : null}
         </div>
 
         {/* Replace the code. Destructive to every printed copy, so it asks. */}
@@ -439,14 +273,16 @@ const PrintTableQRModal = ({ isOpen, onClose, table }) => {
           <button
             type="button"
             onClick={handleDownloadImage}
-            className="flex-1 py-2.5 rounded-xl border border-[#FD5302] text-[#C2410C] text-xs font-bold hover:bg-[#FFF1E8]"
+            disabled={!card}
+            className="flex-1 disabled:opacity-50 py-2.5 rounded-xl border border-[#FD5302] text-[#C2410C] text-xs font-bold hover:bg-[#FFF1E8]"
           >
             ⬇ Download PNG
           </button>
           <button
             type="button"
             onClick={handlePrint}
-            className="flex-1 py-2.5 rounded-xl bg-[#FD5302] text-white text-xs font-bold hover:bg-[#D64502]"
+            disabled={!card}
+            className="flex-1 disabled:opacity-50 py-2.5 rounded-xl bg-[#FD5302] text-white text-xs font-bold hover:bg-[#D64502]"
           >
             🖨️ Print
           </button>
