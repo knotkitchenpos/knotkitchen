@@ -1002,7 +1002,10 @@ const recordSessionPayment = async (req, res, next) => {
         recordedBy: req.user?._id,
         paidAt: paid ? new Date() : null,
       })),
-      { session: mongoSession }
+      // A split writes one entry per part. Mongoose refuses several documents
+      // in one transaction unless they are inserted in order, which made every
+      // split settle fail with "Internal server error".
+      { session: mongoSession, ordered: true }
     );
 
     // Keep canonical Bill in sync — create lazily if POS session never requested one
