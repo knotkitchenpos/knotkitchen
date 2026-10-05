@@ -334,16 +334,20 @@ export const layoutReport = ({ title = "Report", store = {}, period = "", genera
     }
   };
 
-  text(title, { size: P.title + 2, bold: true, align: "center" });
+  // Every part is optional: a report can be just its rows.
+  if (title) text(title, { size: P.title + 2, bold: true, align: "center" });
   if (store.name) text(store.name, { size: P.body, bold: true, align: "center" });
   if (store.address) text(store.address, { size: P.small, align: "center" });
   if (period) text(period, { size: P.small, align: "center" });
   if (generated) text(generated, { size: P.small, align: "center" });
+  const top = y;
   for (const section of sections) {
     if (!section.rows?.length) continue;
-    rule(false, 6);
-    text(section.title, { bold: true });
-    y += 4;
+    if (y > top || title || store.name || period || generated) rule(false, 6);
+    if (section.title) {
+      text(section.title, { bold: true });
+      y += 4;
+    }
     for (const [label, value] of section.rows) pair(label, value);
   }
   rule(true);

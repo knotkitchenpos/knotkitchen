@@ -444,6 +444,20 @@ test("reports print on the receipt roll, and never as a page inside the Android 
   assert.match(SRC("src/utils/printDocument.js"), /if \(Capacitor\.isNativePlatform\(\)\) \{\s*throw new Error\(/);
 });
 
+test("a printed report is the summary cards only: no heading, no breakdowns", () => {
+  const reports = SRC("src/pages/Reports.jsx");
+  assert.match(reports, /const buildReceiptReport = \(\{ summary \}\) => \(\{ title: "", sections: \[\{ title: "", rows: summaryRows\(summary\) \}\] \}\);/);
+  // The A4 page too: one table of the same rows.
+  const page = reports.slice(reports.indexOf("const buildPrintHtml"), reports.indexOf("/** One of the four breakdown tables on screen. */"));
+  assert.match(page, /<table>\$\{summaryRows\(summary\)\.map\(row\)\.join\(""\)\}<\/table>/);
+  assert.doesNotMatch(page, /BREAKDOWN_TABLES|Period|Generated|<h1>/);
+
+  const slip = layoutReport({ title: "", sections: [{ title: "", rows: [["Total Orders", "3 · ₹1904.00"], ["Cash Orders", "3 · ₹1904.00"]] }], paper: 80, measure });
+  const ops = slip.ops;
+  assert.equal(ops[0].type, "text", "starts at the first card, with no heading or rule above it");
+  assert.deepEqual(textOps(slip).map((o) => o.text), ["3 · ₹1904.00", "Total Orders", "3 · ₹1904.00", "Cash Orders"]);
+});
+
 test("the order receipt closes itself after 6 seconds, or on a tap outside it", () => {
   const src = SRC("src/components/invoice/Invoice.jsx");
   assert.match(src, /autoClose\.current = setTimeout\(close, 6000\);/);

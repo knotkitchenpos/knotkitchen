@@ -375,65 +375,31 @@ const BREAKDOWN_TABLES = [
 const esc = (v) =>
   String(v ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 
-/** The same report for the receipt printer (utils/receiptLayout layoutReport). */
-const buildReceiptReport = ({ header, summary, breakdown, windowLabel }) => ({
-  title: "Sales Report",
-  store: { name: header.name || "", address: header.address || "" },
-  period: windowLabel,
-  generated: `Printed ${new Date().toLocaleString("en-GB")}`,
-  sections: [
-    { title: "Summary", rows: REPORT_CARDS.map((c) => [c.label, `${summary[c.key]?.count || 0} · ${money(summary[c.key]?.amount)}`]) },
-    ...BREAKDOWN_TABLES.map((t) => ({
-      title: t.title,
-      rows: (breakdown?.[t.key] || []).map((r) => {
-        const [name, n, amount] = t.cells(r);
-        return [name, `${n} · ${amount}`];
-      }),
-    })),
-  ],
-});
+/** The summary cards, one line each: what a count and amount are printed as. */
+const summaryRows = (summary) => REPORT_CARDS.map((c) => [c.label, `${summary[c.key]?.count || 0} · ${money(summary[c.key]?.amount)}`]);
 
-const buildPrintHtml = ({ header, summary, breakdown, windowLabel }) => {
-  const row = (label, value) => `
+/**
+ * A printed report is the summary cards and nothing else: no heading, no
+ * breakdown tables. The receipt printer gets them as a slip
+ * (utils/receiptLayout layoutReport).
+ */
+const buildReceiptReport = ({ summary }) => ({ title: "", sections: [{ title: "", rows: summaryRows(summary) }] });
+
+const buildPrintHtml = ({ header, summary }) => {
+  const row = ([label, value]) => `
     <tr>
       <td style="padding:4px 8px;border-bottom:1px solid #E2E8F0;font-weight:600;">${label}</td>
       <td style="padding:4px 8px;border-bottom:1px solid #E2E8F0;text-align:right;font-weight:700;">${value}</td>
     </tr>`;
-  const bkt = (b) => `${b?.count || 0} · ${money(b?.amount)}`;
 
   return `<!doctype html>
 <html><head><meta charset="utf-8"><title>Report — ${esc(header.name)}</title>
 <style>
   body { font-family: Arial, sans-serif; color:#0F172A; margin:24px; }
-  h1 { font-size:20px; margin:0 0 4px; }
-  .muted { color:#64748B; font-size:12px; }
-  .section { margin-top:20px; }
-  .section h2 { font-size:14px; margin:0 0 8px; border-bottom:2px solid #0F172A; padding-bottom:4px; }
-  table { width:100%; border-collapse:collapse; font-size:12px; }
-  .kv td { font-size:12.5px; }
+  table { width:100%; border-collapse:collapse; font-size:12.5px; }
 </style></head>
 <body>
-  <div>
-    <h1>${esc(header.name || "Restaurant")}</h1>
-    <div class="muted">${esc(header.address || "")}</div>
-    <div class="muted" style="margin-top:6px;"><strong>Period:</strong> ${windowLabel}</div>
-    <div class="muted">Generated: ${new Date().toLocaleString("en-GB")}</div>
-  </div>
-
-  <div class="section">
-    <h2>Summary</h2>
-    <table class="kv">
-      ${REPORT_CARDS.map((c) => row(c.label, bkt(summary[c.key]))).join("")}
-    </table>
-  </div>
-  ${BREAKDOWN_TABLES.map((t) => {
-    const rows = breakdown?.[t.key] || [];
-    if (!rows.length) return "";
-    return `<div class="section"><h2>${t.title}</h2><table>
-      <tr>${t.cols.map((c, i) => `<th style="text-align:${i ? "right" : "left"};padding:4px 8px;border-bottom:2px solid #0F172A;">${c}</th>`).join("")}</tr>
-      ${rows.map((r) => `<tr>${t.cells(r).map((v, i) => `<td style="padding:4px 8px;border-bottom:1px solid #E2E8F0;text-align:${i ? "right" : "left"};">${esc(v)}</td>`).join("")}</tr>`).join("")}
-    </table></div>`;
-  }).join("")}
+  <table>${summaryRows(summary).map(row).join("")}</table>
 </body></html>`;
 };
 
