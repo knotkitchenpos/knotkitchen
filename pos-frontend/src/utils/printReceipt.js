@@ -3,7 +3,7 @@ import { billableItems } from "./orderItems.js";
 import { printHtmlDocument } from "./printDocument";
 import { formatAddress } from "./address";
 import { layoutKot, layoutReceipt, layoutReport, paperOf } from "./receiptLayout.js";
-import { ditherInPlace, rasterJob, toMonochrome } from "./escpos.js";
+import { ditherInPlace, rasterJob, TEAR_FEED_DOTS, toMonochrome } from "./escpos.js";
 import { catJob } from "./catprinter.js";
 import { loadPrinterConfig, sendToPrinter } from "./printerDevice.js";
 import { ensureReceiptFont } from "./receiptFont.js";
@@ -216,7 +216,9 @@ const sendCanvas = async (canvas, { printer, paper, auto }) => {
     const pixels = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
     const bits = toMonochrome(pixels.data, canvas.width, canvas.height);
     const encode = printer.protocol === "cat" ? catJob : rasterJob;
-    await sendToPrinter(printer, encode(bits, canvas.width, canvas.height));
+    // A 2-inch printer has no cutter: feed the receipt out past its tear bar.
+    // A 3-inch one cuts, and the cut feeds it out.
+    await sendToPrinter(printer, encode(bits, canvas.width, canvas.height, { tearFeed: paper === "58" ? TEAR_FEED_DOTS : 0 }));
     return { printed: true, via: printer.type };
   }
   if (auto && printer.type !== "system") return { printed: false, via: "none" };

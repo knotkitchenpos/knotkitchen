@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { layoutKot, layoutReceipt, layoutReport, billLines, wrap, PAPER } from "../src/utils/receiptLayout.js";
 import { itemDisplayName } from "../src/utils/orderItems.js";
-import { rasterJob, toMonochrome } from "../src/utils/escpos.js";
+import { rasterJob, TEAR_FEED_DOTS, toMonochrome } from "../src/utils/escpos.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SRC = (rel) => fs.readFileSync(path.join(__dirname, "..", rel), "utf8");
@@ -180,7 +180,26 @@ test("Device Configuration has no Printer type or Paper end choice: a receipt pr
   assert.doesNotMatch(screen, /Printer type|Paper end|Tear-off|Auto-cutter/);
   // Reconnecting puts a receipt printer back on ESC/POS; only a mini printer's name switches it.
   assert.match(screen, /\.\.\.\(cat \? \{ protocol: "cat", paper: "58" \} : \{ protocol: "escpos" \}\),/);
-  assert.match(SRC("src/utils/printReceipt.js"), /encode\(bits, canvas\.width, canvas\.height\)\);/);
+  assert.match(
+    SRC("src/utils/printReceipt.js"),
+    /encode\(bits, canvas\.width, canvas\.height, \{ tearFeed: paper === "58" \? TEAR_FEED_DOTS : 0 \}\)/,
+  );
+});
+
+test("REGRESSION: a 2-inch receipt feeds out past the tear bar; a 3-inch one only cuts", () => {
+  const width = 16;
+  const bits = new Uint8Array(2 * 10);
+  bits[0] = 0x80; // ink on the first row, nine blank rows under it
+  const cut = [0x1d, 0x56, 0x42, 0];
+  const threeInch = rasterJob(bits, width, 10);
+  assert.deepEqual([...threeInch.slice(-4)], cut);
+  // The cut follows the last band of ink directly.
+  assert.deepEqual([...threeInch.slice(-5, -4)], [0x80]);
+  assert.ok(!threeInch.some((v, i) => v === 0x1b && threeInch[i + 1] === 0x4a), "no feed before a cutter's cut");
+  // The receipt in the photo ended at "Paid by / Cash", the rest still inside.
+  const twoInch = rasterJob(bits, width, 10, { tearFeed: TEAR_FEED_DOTS });
+  assert.deepEqual([...twoInch.slice(-7)], [0x1b, 0x4a, TEAR_FEED_DOTS, ...cut]);
+  assert.ok(TEAR_FEED_DOTS >= 80 && TEAR_FEED_DOTS <= 160, "10-20 mm: past the tear bar, not a long blank strip");
 });
 
 test("every receipt print goes through the one renderer", () => {

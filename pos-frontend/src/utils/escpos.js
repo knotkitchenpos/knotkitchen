@@ -63,6 +63,10 @@ export const ditherInPlace = (rgba, width, height) => {
 // Bands keep each command inside the smallest printer buffers.
 const BAND_ROWS = 120;
 
+// Calibration knob: how far a printer with no cutter feeds after a print so
+// the last line clears its tear bar (8 dots = 1 mm at 203 dpi).
+export const TEAR_FEED_DOTS = 104; // 13 mm
+
 const blankRow = (bits, rowBytes, y) => {
   for (let i = y * rowBytes, end = i + rowBytes; i < end; i += 1) if (bits[i]) return false;
   return true;
@@ -79,8 +83,12 @@ const blankRow = (bits, rowBytes, y) => {
  * for it. Blank rows (the gaps between lines) become an ESC J paper feed of
  * that many dots, and each band is cut at its right-most inked byte, the rest
  * of the row being white.
+ *
+ * `tearFeed`: dots to feed after the last line on a printer with no cutter
+ * (the 2-inch portables), which ignores the cut and would leave the end of
+ * the receipt inside, behind its tear bar.
  */
-export const rasterJob = (bits, width, height) => {
+export const rasterJob = (bits, width, height, { tearFeed = 0 } = {}) => {
   const rowBytes = Math.ceil(width / 8);
   const chunks = [Uint8Array.of(0x1b, 0x40)]; // ESC @
   let blank = 0;
@@ -108,7 +116,9 @@ export const rasterJob = (bits, width, height) => {
     chunks.push(Uint8Array.of(0x1d, 0x76, 0x30, 0x00, used & 0xff, used >> 8, rows & 0xff, rows >> 8), band); // GS v 0
     top += rows;
   }
-  // Blank rows left at the bottom are dropped: the cut feeds the paper out.
+  // Blank rows left at the bottom are dropped: the cut feeds the paper out,
+  // and a printer with no cutter gets its tear feed instead.
+  for (let feed = tearFeed; feed > 0; feed -= Math.min(feed, 255)) chunks.push(Uint8Array.of(0x1b, 0x4a, Math.min(feed, 255)));
   chunks.push(Uint8Array.of(0x1d, 0x56, 0x42, 0x00)); // GS V B 0: feed to the cutter, partial cut
   const out = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
   let at = 0;
