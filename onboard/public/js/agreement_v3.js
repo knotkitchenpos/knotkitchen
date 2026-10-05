@@ -15,7 +15,7 @@ window.KK_PARTY = {
   legalDescription: "",
   address: "J/183 Baishnabghata Patuli, Kolkata – 700094",
   supportEmail: "support@knotkitchen.com",
-  supportPhone: "+91 8062181049",
+  supportPhone: "+91 8062177510",
 };
 
 window.AGREEMENT_TEMPLATE_V3 = `## KNOTKITCHEN RESTAURANT SERVICE AGREEMENT

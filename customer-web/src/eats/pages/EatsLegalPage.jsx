@@ -18,12 +18,12 @@ const EATS_LEGAL = {
   entityName: "KnotKitchen",
   address: "", // §15: registered address, from the owner
   email: "support@knotkitchen.com",
-  phone: "+91 8062181049",
+  phone: "+91 8062177510",
   grievanceOfficer: {
     name: "", // §15: from the owner
     designation: "Grievance Officer",
     email: "support@knotkitchen.com",
-    phone: "+91 8062181049",
+    phone: "+91 8062177510",
   },
 };
 
