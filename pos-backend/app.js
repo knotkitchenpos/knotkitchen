@@ -254,6 +254,7 @@ app.use("/api/table-bookings", require("./routes/tableBookingRoute"));
 app.use("/api/table-qr", require("./routes/tableQRRoute"));
 app.use("/api/payment-link", require("./routes/paymentLinkRoute"));
 app.use("/api/receipts", require("./routes/receiptRoute"));
+app.use("/api/support", require("./routes/supportRoute"));
 
 // Public, unauthenticated, and deliberately NOT under /api: this is the link a
 // customer taps in their e-bill, so it is kept short and human-sized. The

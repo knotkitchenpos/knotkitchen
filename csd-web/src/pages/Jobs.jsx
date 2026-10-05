@@ -133,6 +133,9 @@ const Jobs = () => {
                       <Link to={`/jobs/${j.id}`} className="font-medium text-navy-900 hover:text-brand-700">
                         {j.title}
                       </Link>
+                      {j.source === "store" && (
+                        <span className="ml-2 rounded-full bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">From store</span>
+                      )}
                       {j.commentCount > 0 && (
                         <span className="ml-2 text-xs text-navy-400">{j.commentCount} comment{j.commentCount > 1 ? "s" : ""}</span>
                       )}

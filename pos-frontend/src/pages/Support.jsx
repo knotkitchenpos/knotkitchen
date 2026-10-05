@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { enqueueSnackbar } from "notistack";
 import { FiPrinter, FiGlobe, FiBell, FiHeadphones, FiX, FiPhoneCall } from "react-icons/fi";
 import { SUPPORT_PHONE, SUPPORT_TEL } from "../constants/support";
+import { createSupportRequest } from "../https";
 
 /* SVG Support Agent Illustration matching reference image */
 const SupportIllustration = () => (
@@ -108,6 +109,7 @@ const Support = () => {
   // Selected issue modal state
   const [selectedIssue, setSelectedIssue] = useState(null);
   const [issueDetails, setIssueDetails] = useState("");
+  const [sending, setSending] = useState(false);
 
   const SUPPORT_OPTIONS = [
     {
@@ -145,26 +147,47 @@ const Support = () => {
     setIssueDetails("");
   };
 
-  const handleSubmitIssueRequest = () => {
-    if (!selectedIssue) return;
-    enqueueSnackbar(`Support request submitted for "${selectedIssue.title}". Our team will contact you shortly!`, {
-      variant: "success",
-    });
-    setSelectedIssue(null);
-    setIssueDetails("");
+  // Every request becomes a job in KnotKitchen's support desk (CSD), with
+  // its number, so the owner can quote it when they call.
+  const send = async (body) => {
+    setSending(true);
+    try {
+      const { data } = await createSupportRequest(body);
+      const { jobId, existing } = data?.data || {};
+      enqueueSnackbar(
+        existing
+          ? `Request ${jobId} is already with our team. They will contact you shortly.`
+          : `Request ${jobId} sent. Our team will contact you shortly.`,
+        { variant: "success" },
+      );
+      return true;
+    } catch (err) {
+      enqueueSnackbar(err?.response?.data?.message || `Could not send the request. Please call ${SUPPORT_PHONE}.`, { variant: "error" });
+      return false;
+    } finally {
+      setSending(false);
+    }
   };
 
-  const handleRequestCallback = () => {
-    if (!phoneInput || phoneInput.trim().length < 10) {
+  const handleSubmitIssueRequest = async () => {
+    if (!selectedIssue || sending) return;
+    if (await send({ type: selectedIssue.id, details: issueDetails })) {
+      setSelectedIssue(null);
+      setIssueDetails("");
+    }
+  };
+
+  const handleRequestCallback = async () => {
+    if (sending) return;
+    if (!phoneInput || phoneInput.replace(/\D/g, "").length < 10) {
       enqueueSnackbar("Please enter a valid 10-digit phone number for callback.", { variant: "warning" });
       return;
     }
-    enqueueSnackbar("Callback requested successfully! Our support representative will call you shortly.", {
-      variant: "success",
-    });
-    setShowCallbackModal(false);
-    setPhoneInput("");
-    setNotesInput("");
+    if (await send({ type: "callback", phone: phoneInput, preferredTime, details: notesInput })) {
+      setShowCallbackModal(false);
+      setPhoneInput("");
+      setNotesInput("");
+    }
   };
 
   return (
@@ -314,9 +337,10 @@ const Support = () => {
               <button
                 type="button"
                 onClick={handleRequestCallback}
-                className="flex-1 h-[42px] rounded-xl bg-[#1C2029] text-white font-extrabold shadow-md hover:bg-[#2A303C]"
+                disabled={sending}
+                className="flex-1 h-[42px] rounded-xl bg-[#1C2029] text-white font-extrabold shadow-md hover:bg-[#2A303C] disabled:opacity-60"
               >
-                Submit Request
+                {sending ? "Sending…" : "Submit Request"}
               </button>
             </div>
           </div>
@@ -374,9 +398,10 @@ const Support = () => {
               <button
                 type="button"
                 onClick={handleSubmitIssueRequest}
-                className="flex-1 h-[42px] rounded-xl bg-[#1C2029] text-white font-extrabold shadow-md hover:bg-[#2A303C]"
+                disabled={sending}
+                className="flex-1 h-[42px] rounded-xl bg-[#1C2029] text-white font-extrabold shadow-md hover:bg-[#2A303C] disabled:opacity-60"
               >
-                Submit Ticket
+                {sending ? "Sending…" : "Submit Ticket"}
               </button>
             </div>
           </div>

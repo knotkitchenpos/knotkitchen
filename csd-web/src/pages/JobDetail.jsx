@@ -86,6 +86,9 @@ const JobDetail = () => {
             <span className="font-mono text-sm font-semibold text-brand-600">{job.jobId}</span>
             <StatusBadge status={job.status} />
             <PriorityBadge priority={job.priority} />
+            {job.source === "store" && (
+              <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">From store</span>
+            )}
           </div>
           <h1 className="mt-1.5 text-2xl font-bold text-navy-900">{job.title}</h1>
         </div>

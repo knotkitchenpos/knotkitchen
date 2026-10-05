@@ -38,7 +38,9 @@ const shape = (j) => ({
   status: j.status,
   priority: j.priority,
   deadline: j.deadline,
-  createdBy: { staffId: j.createdByStaffId, name: j.createdByName, id: String(j.createdById) },
+  // "store": raised from POS > Help & Support; no CSD staff created it.
+  source: j.source || "csd",
+  createdBy: { staffId: j.createdByStaffId, name: j.createdByName, id: j.createdById ? String(j.createdById) : "" },
   assignedTo: j.assignedToId
     ? { staffId: j.assignedToStaffId, name: j.assignedToName, id: String(j.assignedToId) }
     : null,

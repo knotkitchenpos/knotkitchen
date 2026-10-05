@@ -80,7 +80,16 @@ const csdJobSchema = new mongoose.Schema(
     priority: { type: String, enum: JOB_PRIORITIES, default: "normal", index: true },
     deadline: { type: Date, default: null },
 
-    createdById: { type: mongoose.Schema.Types.ObjectId, ref: "CsdStaff", required: true },
+    // "store": raised by the restaurant from POS > Help & Support, so there is
+    // no CSD staff member behind it; createdByName names the POS user.
+    source: { type: String, enum: ["csd", "store"], default: "csd", index: true },
+    createdById: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "CsdStaff",
+      required: function () {
+        return this.source !== "store";
+      },
+    },
     createdByStaffId: { type: String, default: "" },
     createdByName: { type: String, default: "" },
 

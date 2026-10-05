@@ -3,6 +3,8 @@ import { axiosWrapper } from "./axiosWrapper";
 // Auth Endpoints
 export const getUserData = () => axiosWrapper.get("/api/user");
 export const logout = () => axiosWrapper.post("/api/user/logout");
+// Help & Support: becomes a job in the CSD queue.
+export const createSupportRequest = (data) => axiosWrapper.post("/api/support/requests", data);
 
 // Store Auth Endpoints — password-based, 2026-08-31 migration off Fast2SMS.
 // The old sendStoreOtp/verifyStoreOtp/completeStoreSignup/sendLoginOtp
