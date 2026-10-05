@@ -282,7 +282,6 @@ const DeviceConfiguration = () => {
         {/* ---------- Thermal printer ---------- */}
         <Card
           title="Thermal Printer"
-          subtitle="Set up the receipt printer connected to this device."
           right={
             device.type ? (
               <span className="text-[11.5px] font-bold px-2.5 py-1 rounded-full bg-[#DCFCE7] text-[#15803D] max-w-[50%] truncate" title={device.name}>
@@ -380,15 +379,10 @@ const DeviceConfiguration = () => {
 
           {tab === "bluetooth" && (
             <div className="mt-4 space-y-3 text-[13px]">
-              {nativePrinting ? (
+              {nativePrinting && (
                 <p className="text-[#64748B]">
                   Pair the printer once in the phone&apos;s <strong>Settings › Bluetooth</strong> (the PIN is usually 0000
                   or 1234). Then press <strong>Search &amp; connect</strong> and pick it.
-                </p>
-              ) : (
-                <p className="text-[#64748B]">
-                  Turn on the printer and put it in pairing mode. Make sure Bluetooth is on for this device, then press{" "}
-                  <strong>Search &amp; connect</strong> and pick the printer.
                 </p>
               )}
               {!supports.bluetooth() ? (
@@ -460,26 +454,23 @@ const DeviceConfiguration = () => {
         <Card title="Automation">
           <ToggleRow
             title="Auto Receipt Print"
-            note="Print a receipt on this device's printer the moment any new order arrives: POS, website or table QR. No need to accept it first."
             checked={Boolean(device.autoPrint)}
             onChange={(v) => patchDevice({ autoPrint: v })}
           />
           <ToggleRow
             title="Auto KOT Print"
-            note="Print a kitchen order ticket on this device's printer for every new order, and for every round of items added to a table. No prices, big quantities, the cook's notes. Turn this on for the printer that sits in the kitchen."
             checked={Boolean(device.kotPrint)}
             onChange={(v) => patchDevice({ kotPrint: v })}
           />
           <ToggleRow
             title="Auto E-Bill"
-            note="When an order is Completed, send the e-bill to the customer's phone number, if they gave one. POS, website and table QR orders."
             checked={Boolean(form.autoEBill)}
             onChange={(v) => patch({ autoEBill: v })}
           />
         </Card>
 
         {/* ---------- Receipt customisation ---------- */}
-        <Card title="Receipt Customization" subtitle="What is printed on every receipt from this restaurant.">
+        <Card title="Receipt Customization">
           <div className="pb-3">
             <label htmlFor="receipt-advert" className="text-[13.5px] font-bold text-[#0F172A]">Advertisement</label>
             <p className="text-[11.5px] text-[#94A3B8]">Printed at the bottom of the receipt.</p>
