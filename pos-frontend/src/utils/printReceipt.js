@@ -210,16 +210,13 @@ export const printReport = async (report, { config } = {}) => {
 /** A mini printer is always 57 mm and speaks its own language, not ESC/POS. */
 const paperFor = (printer) => (printer.protocol === "cat" || printer.paper === "58" ? "58" : "80");
 
-/** Device Configuration > Paper end; unset, a 3-inch printer is taken to have a cutter and a 2-inch one not. */
-export const hasCutter = (printer) => (typeof printer.cutter === "boolean" ? printer.cutter : paperFor(printer) === "80");
-
 /** Hand a rendered ticket to whatever this device prints with. */
 const sendCanvas = async (canvas, { printer, paper, auto }) => {
   if (printer.type === "usb" || printer.type === "bluetooth") {
     const pixels = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
     const bits = toMonochrome(pixels.data, canvas.width, canvas.height);
     const encode = printer.protocol === "cat" ? catJob : rasterJob;
-    await sendToPrinter(printer, encode(bits, canvas.width, canvas.height, { cutter: hasCutter(printer) }));
+    await sendToPrinter(printer, encode(bits, canvas.width, canvas.height));
     return { printed: true, via: printer.type };
   }
   if (auto && printer.type !== "system") return { printed: false, via: "none" };

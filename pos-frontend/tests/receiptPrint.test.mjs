@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { layoutKot, layoutReceipt, layoutReport, billLines, wrap, PAPER } from "../src/utils/receiptLayout.js";
 import { itemDisplayName } from "../src/utils/orderItems.js";
-import { rasterJob, toMonochrome, TEAR_FEED_DOTS } from "../src/utils/escpos.js";
+import { rasterJob, toMonochrome } from "../src/utils/escpos.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SRC = (rel) => fs.readFileSync(path.join(__dirname, "..", rel), "utf8");
@@ -127,17 +127,14 @@ test("ESC/POS job: init, GS v 0 bands of the right size, feed and cut", () => {
   assert.equal(job.length, 2 + bands * 8 + 2 * height + 4);
   assert.deepEqual([...job.slice(-4)], [0x1d, 0x56, 0x42, 0]);
   assert.notDeepEqual([...job.slice(-7, -4)], [0x1b, 0x64, 0x04], "REGRESSION: no 4-line feed before the cut (a long blank tail)");
-  // Tear-off: a short feed past the tear bar and no cut.
-  const tear = rasterJob(bits, width, height, { cutter: false });
-  assert.deepEqual([...tear.slice(-3)], [0x1b, 0x4a, TEAR_FEED_DOTS]);
-  assert.ok(TEAR_FEED_DOTS <= 120, "about 13 mm, not 4 lines");
 });
 
-test("the paper end follows Device Configuration, else the paper size", async () => {
-  const print = SRC("src/utils/printReceipt.js");
-  assert.match(print, /encode\(bits, canvas\.width, canvas\.height, \{ cutter: hasCutter\(printer\) \}\)/);
-  assert.match(print, /typeof printer\.cutter === "boolean" \? printer\.cutter : paperFor\(printer\) === "80"/);
-  assert.match(SRC("src/components/settings/DeviceConfiguration.jsx"), /onClick=\{\(\) => patchDevice\(\{ cutter: p\.cutter \}\)\}/);
+test("Device Configuration has no Printer type or Paper end choice: a receipt printer that cuts", () => {
+  const screen = SRC("src/components/settings/DeviceConfiguration.jsx");
+  assert.doesNotMatch(screen, /Printer type|Paper end|Tear-off|Auto-cutter/);
+  // Reconnecting puts a receipt printer back on ESC/POS; only a mini printer's name switches it.
+  assert.match(screen, /\.\.\.\(cat \? \{ protocol: "cat", paper: "58" \} : \{ protocol: "escpos" \}\),/);
+  assert.match(SRC("src/utils/printReceipt.js"), /encode\(bits, canvas\.width, canvas\.height\)\);/);
 });
 
 test("every receipt print goes through the one renderer", () => {

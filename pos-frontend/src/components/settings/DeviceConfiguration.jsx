@@ -19,7 +19,6 @@ import {
 import {
   desktopPrinting,
   printOrderReceipt,
-  hasCutter,
   receiptContextFrom,
   renderReceiptCanvas,
   SAMPLE_ORDER,
@@ -103,16 +102,6 @@ const PAPERS = [
   { key: "58", label: "58 mm", sub: "2 inch" },
 ];
 
-const PAPER_ENDS = [
-  { key: "cutter", cutter: true, label: "Auto-cutter", sub: "The printer cuts the receipt" },
-  { key: "tear", cutter: false, label: "Tear-off", sub: "You tear it against the edge" },
-];
-
-const PROTOCOLS = [
-  { key: "escpos", label: "Receipt printer", sub: "ESC/POS · billing / KOT printers" },
-  { key: "cat", label: "Mini printer", sub: "iPrint · Fun Print · Tiny Print · 57 mm" },
-];
-
 const btnPrimary =
   "h-[40px] px-4 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold hover:bg-[#D64502] disabled:opacity-50";
 const btnGhost =
@@ -163,7 +152,9 @@ const DeviceConfiguration = () => {
       bluetooth: undefined,
       ...picked,
       pin: samePrinter ? device.pin : "",
-      ...(cat ? { protocol: "cat", paper: "58" } : {}),
+      // A receipt printer that cuts its own paper unless the name says it is
+      // a 57 mm mini printer; there is no choice to make in the screen.
+      ...(cat ? { protocol: "cat", paper: "58" } : { protocol: "escpos" }),
     });
     enqueueSnackbar(`${picked.name} connected. Choose the paper size, then Test Print.`, { variant: "success" });
   };
@@ -437,32 +428,6 @@ const DeviceConfiguration = () => {
             </div>
           )}
 
-          {(isThis("usb") || isThis("bluetooth")) && (
-            <div className="mt-5 pt-4 border-t border-[#E2E8F0]">
-              <p className="text-[13px] font-bold text-[#0F172A]">Printer type</p>
-              <p className="text-[11.5px] text-[#94A3B8] mt-0.5">
-                A mini sticker printer speaks its own language. If the printer says it is connected but nothing comes
-                out, choose Mini printer.
-              </p>
-              <div className="mt-2 grid grid-cols-2 gap-2 max-w-[360px]">
-                {PROTOCOLS.map((p) => (
-                  <button
-                    key={p.key}
-                    type="button"
-                    aria-pressed={(device.protocol || "escpos") === p.key}
-                    onClick={() => patchDevice({ protocol: p.key, ...(p.key === "cat" ? { paper: "58" } : {}) })}
-                    className={`h-[56px] rounded-xl border text-left px-3 ${
-                      (device.protocol || "escpos") === p.key ? "border-[#FD5302] bg-[#FFF6F0] ring-1 ring-[#FD5302]" : "border-[#E2E8F0] bg-white"
-                    }`}
-                  >
-                    <span className="block text-[14px] font-extrabold text-[#0F172A]">{p.label}</span>
-                    <span className="block text-[11.5px] text-[#64748B]">{p.sub}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
           <div className="mt-5 pt-4 border-t border-[#E2E8F0]">
             <p className="text-[13px] font-bold text-[#0F172A]">Paper size</p>
             <div className="mt-2 grid grid-cols-2 gap-2 max-w-[360px]">
@@ -483,31 +448,6 @@ const DeviceConfiguration = () => {
               ))}
             </div>
           </div>
-
-          {device.protocol !== "cat" && (
-            <div className="mt-4">
-              <p className="text-[13px] font-bold text-[#0F172A]">Paper end</p>
-              <p className="text-[11.5px] text-[#94A3B8] mt-0.5">
-                How the receipt comes off. The right choice leaves no long blank strip after each print.
-              </p>
-              <div className="mt-2 grid grid-cols-2 gap-2 max-w-[360px]">
-                {PAPER_ENDS.map((p) => (
-                  <button
-                    key={p.key}
-                    type="button"
-                    aria-pressed={hasCutter(device) === p.cutter}
-                    onClick={() => patchDevice({ cutter: p.cutter })}
-                    className={`h-[56px] rounded-xl border text-left px-3 ${
-                      hasCutter(device) === p.cutter ? "border-[#FD5302] bg-[#FFF6F0] ring-1 ring-[#FD5302]" : "border-[#E2E8F0] bg-white"
-                    }`}
-                  >
-                    <span className="block text-[14px] font-extrabold text-[#0F172A]">{p.label}</span>
-                    <span className="block text-[11.5px] text-[#64748B]">{p.sub}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
 
           <div className="mt-4 flex flex-wrap gap-2">
             <button type="button" className={btnGhost} onClick={testPrint} disabled={!device.type}>
