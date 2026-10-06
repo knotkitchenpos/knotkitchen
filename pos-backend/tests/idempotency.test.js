@@ -49,7 +49,7 @@ test("SOURCE: every keyed once-only path goes through findOrCreate", () => {
     [["services", "ledger.js"], 1],
     [["controllers", "storefrontController.js"], 3],
     [["routes", "offlineRoute.js"], 1],
-    [["controllers", "qrController.js"], 2],
+    [["controllers", "qrController.js"], 1],
   ]) {
     const src = read(...file);
     assert.equal((src.match(/findOrCreate\(\{/g) || []).length, count, file.join("/"));

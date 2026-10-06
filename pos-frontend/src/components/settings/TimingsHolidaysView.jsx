@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
 import { updateChannelTimings, updateHolidays, toggleClosedForToday } from "../../https";
 import { getWebsiteSettings } from "../../https/storefrontApi";
+import { STORE_TZ } from "../../utils";
 
 /* ---------- Store Timings UI Redesign & Holidays Calendar ---------- */
 const TimingsHolidaysView = () => {
@@ -544,7 +545,7 @@ const TimingsHolidaysView = () => {
                   <div>
                     <p className="font-bold text-[#0F172A]">{h.reason || "Holiday"}</p>
                     <p className="text-[11.5px] text-[#64748B]">
-                      {new Date(h.startDate).toLocaleDateString("en-GB")} → {new Date(h.endDate).toLocaleDateString("en-GB")}
+                      {new Date(h.startDate).toLocaleDateString("en-GB", { timeZone: STORE_TZ })} → {new Date(h.endDate).toLocaleDateString("en-GB", { timeZone: STORE_TZ })}
                     </p>
                   </div>
                   <button

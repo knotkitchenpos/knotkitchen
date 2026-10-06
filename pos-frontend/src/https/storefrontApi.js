@@ -38,6 +38,8 @@ export const updateOnlineOrderStatus = (id, action, reason) =>
 export const listPrepDueOrders = () => axiosWrapper.get("/api/online-orders/prep-due");
 // Customer orders nobody has accepted or cancelled yet, for the "New order" card.
 export const listAwaitingOrders = () => axiosWrapper.get("/api/online-orders/awaiting");
+// Tables whose diners added items nobody has reviewed, for the "Added Items" card.
+export const listPendingAdditions = () => axiosWrapper.get("/api/online-orders/added-items");
 export const startPreparingOrder = (id) => axiosWrapper.post(`/api/online-orders/${id}/start-preparing`);
 
 // Accept or reject the items a diner added to a table already mid-meal. These

@@ -9,11 +9,10 @@
  *            Website add-on brings it back).
  *   tableQr  Table QR ordering: diners scanning a table QR to order and pay,
  *            and minting those QRs in Manage Tables.
- *   paymentGateway  the store's own online payments: setting up its
- *            Cashfree / PhonePe keys, and new payment links. Comes with the
- *            Website add-on. Money already in flight (link verify, webhooks,
- *            refunds) is never gated, so a lapsed add-on cannot strand a
- *            payment.
+ *   paymentGateway  new payment links (comes with the Website add-on).
+ *            Setting up the store's own gateway keys is open to every store.
+ *            Money already in flight (link verify, webhooks, refunds) is never
+ *            gated, so a lapsed add-on cannot strand a payment.
  * An add-on counts while it is on the subscription, not past its endsAt (a
  * stopped add-on keeps working until the period it was paid for ends) and,
  * when it has its own period (the yearly Website), not past its paidUntil: a
@@ -93,7 +92,7 @@ const addonRequired = async (res, feature, what) => {
 
 const WEBSITE_MSG = "The website is an add-on";
 const ONLINE_MSG = "Order toggles, rules, charges and promotions come with the Website or QR Table Ordering add-on";
-const GATEWAY_MSG = "Online payments come with the Website add-on";
+const GATEWAY_MSG = "Payment links come with the Website add-on";
 
 // Order Toggles and Rules & Charges write these through /api/website/settings;
 // they run the POS, not the website, so every store keeps them.
@@ -101,8 +100,8 @@ const POS_KEYS = new Set(["ordering", "couponsConfig", "freeItemConfig"]);
 
 /**
  * PUT /api/website/settings serves several screens. POS keys always pass; a
- * gateway-only save needs the paymentGateway feature; anything else is
- * Manage Website and needs the website.
+ * gateway-only save always passes (owner-only in the controller); anything
+ * else is Manage Website and needs the website.
  */
 const requireWebsitePlan = async (req, res, next) => {
   const keys = Object.keys(req.body || {});
@@ -110,15 +109,15 @@ const requireWebsitePlan = async (req, res, next) => {
   if (keys.length && !rest.length) {
     return (await hasFeature(req.user?.restaurantId, "onlineOrdering")) ? next() : addonRequired(res, "onlineOrdering", ONLINE_MSG);
   }
-  const gatewayOnly = rest.length > 0 && rest.every((k) => k === "paymentGateways");
-  if (gatewayOnly) {
-    return (await hasFeature(req.user?.restaurantId, "paymentGateway")) ? next() : addonRequired(res, "paymentGateway", GATEWAY_MSG);
-  }
+  // Every key, not just the non-POS ones: { ordering, paymentGateways } is not
+  // a gateway save and must not skip the ordering add-on check.
+  const gatewayOnly = keys.length > 0 && keys.every((k) => k === "paymentGateways");
+  if (gatewayOnly) return next();
   if (await hasWebsite(req.user?.restaurantId)) return next();
   return addonRequired(res, "website", WEBSITE_MSG);
 };
 
-/** Saving gateway keys, and opening new payment links. */
+/** Opening new payment links. */
 const requirePaymentGatewayPlan = async (req, res, next) =>
   (await hasFeature(req.user?.restaurantId, "paymentGateway")) ? next() : addonRequired(res, "paymentGateway", GATEWAY_MSG);
 

@@ -36,15 +36,14 @@ test("REGRESSION: opening a table requires a name", () => {
   assert.match(creationBlock, /Please enter your name/, "name must be enforced server-side");
 });
 
-test("REGRESSION: opening a table requires a valid 10-digit phone", () => {
-  // Substring rather than regex: the pattern being asserted on is itself a
-  // regex, and escaping one inside another reads terribly.
+test("REGRESSION: opening a table requires a valid 10-digit mobile", () => {
+  // The shared helper (services/otpService indianMobile) does the checking.
   assert.ok(
-    creationBlock.includes("{10}"),
-    "the phone must be length-checked, not merely accepted",
+    creationBlock.includes("indianMobile(customerPhone)"),
+    "the phone must be validated, not merely accepted",
   );
-  assert.ok(creationBlock.includes(".test(phone)"), "and the check must actually run");
-  assert.match(creationBlock, /10-digit phone number/);
+  assert.ok(creationBlock.includes("if (!phone)"), "and the check must actually run");
+  assert.match(creationBlock, /10-digit mobile number/);
 });
 
 test("REGRESSION: the details are enforced ONLY when the session is created", () => {
@@ -67,8 +66,9 @@ test("REGRESSION: joining an open session never demands details", () => {
 
 test("joining an open session still accepts details if they are sent", () => {
   // The till may fill in a walk-in's details later; that path stays open.
-  assert.match(reuseBlock, /session\.customerName = customerName/);
-  assert.match(reuseBlock, /session\.customerPhone = customerPhone/);
+  assert.match(reuseBlock, /session\.customerName = String\(customerName\)/);
+  // ...but only a valid mobile overwrites the one the table was opened with.
+  assert.match(reuseBlock, /session\.customerPhone = joinPhone/);
 });
 
 // ---- guest count ------------------------------------------------------

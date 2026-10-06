@@ -2,7 +2,7 @@
 
 The public marketing site (landing + legal pages) is plain static HTML/CSS in
 `deploy/landing/`, served directly by Caddy on the apex hostname. No build step,
-no container. `home.js` only adds motion: with JavaScript off, or with reduced motion requested, the page reads the same, just still.
+no container. `home.js` only adds motion: with JavaScript off, with reduced motion requested, or on paper, the page reads the same, just still. `<html class="no-js">` keeps every scroll-reveal visible until `home.js` runs and removes the class, so a blocked or failed script never hides a section.
 
 ## Files
 
@@ -61,10 +61,13 @@ If an official reversed/white lockup ever exists, dark mode can be reinstated �
 but derive nothing.
 
 The site palette (`style.css` `:root`) is sampled from the logo: orange
-`#f4620a`, navy `#0a1b45`.
+`#f4620a`, navy `#0a1b45`. The logo orange is for art, focus rings and large
+numbers only. Text and buttons use the darker `--accent` `#b84204` and the
+`.btn` gradient `#c2410c`→`#b84204`, so they pass WCAG AA (4.5:1) on every
+background; the logo orange is 3.2:1 under white text.
 
-All policies carry the effective date **1st September, 2026** and point at
-`support@knotkitchen.com`.
+Each policy shows its own effective date at the top; change it whenever that
+policy's text changes. All of them point at `support@knotkitchen.com`.
 
 ## How it is wired
 
@@ -94,8 +97,12 @@ read-only:
 - ./landing:/srv/landing:ro
 ```
 
-`csd.`, `business.`, `onboard.`, `api.`, `admin-api.`, `agreement.` and the
-`*.knotkitchen.com` wildcard are untouched.
+`www.{$BASE_DOMAIN}` has its own vhost that 301-redirects to the apex. It must
+stay above the `*.knotkitchen.com` wildcard: without it the wildcard takes
+`www`, customer-web strips the `www.` and shows diners its apex page.
+
+`csd.`, `business.`, `api.`, `agreement.` and the `*.knotkitchen.com` wildcard
+are untouched.
 
 ## Responsive behaviour
 
@@ -120,15 +127,15 @@ Media queries are now reserved for things `clamp()` cannot express:
 
 | Query | Why |
 | --- | --- |
-| `min-width:861px` | Nav switches between disclosure menu and desktop bar |
+| `min-width:1080px` | Nav switches between disclosure menu and desktop bar (the bar, with "Sign in to POS", needs about 1030px) |
 | `max-width:700px` | Hero CTAs go full-width; footer lockup slims |
 | `max-width:360px` | Folded/small phones — CTAs stack, logo and chips shrink |
-| `max-height:560px` + landscape | Header un-sticks, hero padding cut — a sticky bar eats a short screen |
+| `max-height:560px` + landscape | Header un-sticks (`position:relative`, so the phone menu still opens under it), hero padding cut — a sticky bar eats a short screen |
 | `min-width:1600 / 2200px` | `--max` grows to 1240/1360px so content is not stranded on a large monitor |
-| `prefers-reduced-motion` | Transitions and smooth scroll disabled |
+| `prefers-reduced-motion`, `print` | Transitions and smooth scroll disabled, every reveal shown; print keeps the dark fills |
 
 The nav is one piece of markup for both layouts. `<details class="menu">` gives a
-working disclosure menu with **no JavaScript**; at `min-width:861px` the
+working disclosure menu with **no JavaScript**; at `min-width:1080px` the
 `<details>` and its UA `::details-content` box are both flattened with
 `display:contents`. Two gotchas if you touch it:
 
@@ -149,7 +156,8 @@ zero horizontal overflow — plus landscape 812x375.
 ## Deploy
 
 DNS already points `knotkitchen.com` (and `www`) at the VPS `93.127.194.80`,
-so nothing to change there. On the VPS:
+so nothing to change there. A Caddyfile change recreates caddy on deploy
+(`deploy.yml`), and the deploy smoke test reports whether `www` redirects. On the VPS:
 
 ```bash
 cd /srv/knot && git pull && docker compose -f deploy/docker-compose.yml exec caddy caddy validate --config /etc/caddy/Caddyfile && docker compose -f deploy/docker-compose.yml up -d caddy
@@ -162,7 +170,9 @@ Caddyfile is the only change, `docker compose exec caddy caddy reload --config
 ## Updating copy later
 
 Edit the HTML in `deploy/landing/`, commit, `git pull` on the VPS. The mount is
-read straight off disk — no container rebuild, no cache purge. `docker compose
+read straight off disk — no container rebuild, no cache purge. When `style.css`,
+`home.css` or `home.js` changes, bump its `?v=` on every page that loads it, or
+browsers keep the old copy. `docker compose
 restart caddy` only if a file does not appear.
 
 ## Local preview

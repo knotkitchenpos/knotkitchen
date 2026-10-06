@@ -37,6 +37,15 @@ test("Knot Eats runs the store page in eats mode: menu first, no store analytics
   assert.match(read("App.jsx"), /lazy\(\(\) => import\("\.\/eats\/EatsApp"\)\)/);
 });
 
+test("Knot Eats loads its own storefront, not the website's", () => {
+  // A store without the Website add-on still sells on Knot Eats (no website bootstrap).
+  assert.match(read("pages/StorePage.jsx"), /useStorefront\(identity, eats\?\.loadStorefront\)/);
+  assert.match(read("eats/api.js"), /\/stores\/\$\{id\(storeId\)\}\/storefront/);
+  assert.match(read("eats/pages/EatsStorePage.jsx"), /loadStorefront: getEatsStorefront/);
+  assert.match(read("hooks/useStorefront.js"), /\(loadStorefront \|\| getStorefront\)\(effectiveSlug\)/);
+  assert.doesNotMatch(read("lib/api.js"), /api\/eats/);
+});
+
 test("REGRESSION (C16): Knot Eats-only code stays out of the store site's main chunk (§10.8: +2 KB gzip)", () => {
   // The /api/eats helpers live in the lazy Eats chunk, not the shared client.
   assert.doesNotMatch(read("lib/api.js"), /api\/eats/);

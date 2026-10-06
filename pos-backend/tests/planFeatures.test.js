@@ -176,26 +176,37 @@ test("REGRESSION: a database hiccup never takes a paying store's website down", 
 
 test("SOURCE: the gate is on every website write, the storefront, and the POS status", () => {
   const routes = SRC("routes", "restaurantRoute.js");
+  // REGRESSION: the table QR obeys "Restaurant Time", so a QR-only store must
+  // be able to set it; requireWebsitePlan held it to the 4 PM default.
   for (const r of ["timings", "holidays", "closed-for-today"]) {
-    assert.match(routes, new RegExp(`"/${r}"\\)\\.put\\(isVerifiedUser, requireProtectedAction, requireWebsitePlan,`), r);
+    assert.match(routes, new RegExp(`"/${r}"\\)\\.put\\(isVerifiedUser, requireProtectedAction, requireOnlineOrderingPlan,`), r);
   }
   assert.match(SRC("routes", "websiteRoute.js"), /requireProtectedAction, requireWebsitePlan, updateWebsiteSettings/);
   assert.match(SRC("services", "storefrontResolver.js"), /if \(!\(await hasWebsite\(restaurantId, settings\.storeId\)\)\) return \{ reason: "WEBSITE_DISABLED" \};/);
   assert.match(SRC("services", "subscription.js"), /features: featuresFor\(\{ subscription, exempt, on \}\),/);
 });
 
-test("the payment gateway comes with the Website add-on", async () => {
+test("the gateway set-up is open to every store; payment links stay with the Website add-on", async () => {
   const gatewayBody = { paymentGateways: { activeGateway: "cashfree" } };
-  const without = load({ addons: [TABLE_QR] });
-  assert.deepEqual(await outcome(without.requireWebsitePlan, gatewayBody), { status: 403, passed: false });
-  const refused = await call(without.requirePaymentGatewayPlan, {});
-  assert.equal(refused.status, 403);
-  assert.match(refused.json.message, /Online payments come with the Website add-on \(₹3,600\.00 \+ GST \/ year\)/);
+  for (const addons of [[TABLE_QR], []]) {
+    const without = load({ addons });
+    assert.deepEqual(await outcome(without.requireWebsitePlan, gatewayBody), { status: null, passed: true }, "gateway-only save");
+    // Anything beyond the gateway is still Manage Website.
+    assert.deepEqual(await outcome(without.requireWebsitePlan, { branding: {} }), { status: 403, passed: false });
+    assert.deepEqual(await outcome(without.requireWebsitePlan, { ...gatewayBody, branding: {} }), { status: 403, passed: false });
+    // REGRESSION: a gateway key riding along with POS keys skipped the add-on check.
+    assert.deepEqual(await outcome(without.requireWebsitePlan, { ordering: { taxPercent: 5 }, paymentGateways: {} }), { status: 403, passed: false });
+    const refused = await call(without.requirePaymentGatewayPlan, {});
+    assert.equal(refused.status, 403);
+    assert.match(refused.json.message, /Payment links come with the Website add-on \(₹3,600\.00 \+ GST \/ year\)/);
+  }
   const withSite = load({ addons: [WEBSITE] });
   assert.deepEqual(await outcome(withSite.requireWebsitePlan, gatewayBody), { status: null, passed: true }, "gateway-only save");
   assert.deepEqual(await outcome(withSite.requirePaymentGatewayPlan, {}), { status: null, passed: true });
 
-  assert.match(SRC("routes", "websiteRoute.js"), /requireOwnerOnly, requirePaymentGatewayPlan, validateGatewayCredentials/);
+  const websiteRoute = SRC("routes", "websiteRoute.js");
+  assert.match(websiteRoute, /requireOwnerOnly, validateGatewayCredentials\)/);
+  assert.doesNotMatch(websiteRoute, /requirePaymentGatewayPlan/);
   assert.match(SRC("routes", "paymentLinkRoute.js"), /requirePermission\("PAYMENT_CREATE"\), requirePaymentGatewayPlan, createPaymentLink/);
   // Money already in flight is never gated.
   assert.ok(!/requirePaymentGatewayPlan, verifyAndCaptureLinkPayment/.test(SRC("routes", "paymentLinkRoute.js")));

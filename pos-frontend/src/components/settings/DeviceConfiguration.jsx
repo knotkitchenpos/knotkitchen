@@ -94,7 +94,8 @@ const PrinterChoices = ({ choices, kind, onPick }) =>
 const CONNECTIONS = [
   { key: "usb", label: "USB" },
   { key: "bluetooth", label: "Bluetooth" },
-  { key: "lan", label: "LAN / Network", disabled: true },
+  // Not a transport of its own: a network printer is reached through Windows or its USB cable (tab text below).
+  { key: "lan", label: "LAN / Network" },
 ];
 
 const PAPERS = [
@@ -299,16 +300,14 @@ const DeviceConfiguration = () => {
                 type="button"
                 role="tab"
                 aria-selected={tab === c.key}
-                disabled={c.disabled}
                 onClick={() => setTab(c.key)}
                 className={`h-[38px] px-4 rounded-xl text-[13px] font-bold border ${
                   tab === c.key
                     ? "bg-[#FD5302] text-white border-[#FD5302]"
                     : "bg-white text-[#334155] border-[#E2E8F0] hover:border-[#CBD5E1]"
-                } disabled:opacity-50 disabled:cursor-not-allowed`}
+                }`}
               >
                 {c.label}
-                {c.disabled ? <span className="ml-1.5 text-[10.5px] font-semibold">(coming soon)</span> : null}
               </button>
             ))}
           </div>
@@ -374,6 +373,18 @@ const DeviceConfiguration = () => {
                 </button>
               </div>
               )}
+            </div>
+          )}
+
+          {tab === "lan" && (
+            <div className="mt-4 space-y-2 text-[13px] text-[#64748B]">
+              <p>
+                <strong>Windows app:</strong> add the printer in Windows (Settings › Printers, by its IP address), then pick it
+                under <strong>USB › Printer installed on this computer</strong>.
+              </p>
+              <p>
+                <strong>Tablet or browser:</strong> connect the printer&apos;s USB cable and set it up under <strong>USB</strong>.
+              </p>
             </div>
           )}
 

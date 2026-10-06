@@ -323,6 +323,11 @@ test("the view a screen gets says how it was paid and where the refund stands", 
   });
   assert.equal(svc.refundView(order(upiPaid)).paymentKindLabel, "UPI / Offline Payment");
   assert.equal(svc.refundView(order(gatewayPaid)).paymentKindLabel, "Gateway Payment");
+  // REGRESSION: a counter card read "UPI / Offline Payment", a split read as its first part.
+  assert.equal(svc.refundView({ orderStatus: "Completed", payments: [{ method: "card", amount: 500, status: "paid" }] }).paymentKindLabel, "Card");
+  const split = { orderStatus: "Completed", isSplit: true, payments: [{ method: "cash", amount: 500, status: "paid" }, { method: "upi", amount: 300, status: "paid" }] };
+  assert.equal(svc.refundView(split).paymentKindLabel, "Split");
+  assert.equal(svc.refundView(split).paymentKind, "cash", "the refund rule still reads the payment kind");
   assert.equal(svc.refundView(order(gatewayPaid)).refundableAmount, 850);
   assert.equal(svc.refundView(order({ orderStatus: "Preparing" })).paid, false);
 });
@@ -332,7 +337,7 @@ test("the view a screen gets says how it was paid and where the refund stands", 
 // ---------------------------------------------------------------------------
 
 test("SOURCE: the controller takes only a reason and an amount from the browser, and the service caps the amount", () => {
-  // Partial refunds (owner only): the owner may ask for less than what is
+  // Partial refunds (owner or manager): they may ask for less than what is
   // left. The service checks it against what was paid less what already went
   // back (the partial-refund test above sends 551 of 550 and is refused).
   const ctrl = read("controllers", "orderController.js");
@@ -343,7 +348,7 @@ test("SOURCE: the controller takes only a reason and an amount from the browser,
   assert.match(svc, /n > check\.amount \+ 0\.005/, "never more than what is left");
   assert.match(ctrl, /const voidingPaid = Boolean\(req\.voidWithReason\)/, "a paid order is voided only through the reasoned route");
   const routes = read("routes", "orderRoute.js");
-  assert.match(routes, /"\/:id\/refund"\)\.post\(isVerifiedUser, requireOwnerOnly, refundOrder\)/);
+  assert.match(routes, /"\/:id\/refund"\)\.post\(isVerifiedUser, requireManager, requireProtectedAction, refundOrder\)/);
   assert.match(routes, /"\/:id\/refund\/sync"\)\.post\(isVerifiedUser, requireManager, syncOrderRefund\)/);
   assert.match(routes, /"\/:id\/cancel"\)\.put\(isVerifiedUser, requireProtectedAction, cancelOrder\)/);
 });

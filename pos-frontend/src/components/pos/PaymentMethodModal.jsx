@@ -1,16 +1,17 @@
-import React from "react";
+import React, { useState } from "react";
 import { ModalShell } from "./ModalShell";
 import { money } from "../../utils";
+import { mobileDigits } from "../../redux/slices/customerSlice";
 
 /**
  * Finish Order → Payment Method chooser (Module 2 §5).
  *
- * Shown after the biller taps "Finish Order". Presents two ways to
- * collect payment:
+ * Shown after the biller taps "Finish Order" (for Delivery, after the address).
+ * Every method is money taken at the counter, so the order is created paid:
  *
- *   - Cash       → order is created + immediately closed as paid-in-cash.
- *   - QR / Online→ order is created + immediately closed as paid via
- *                  in-store QR/online rail (existing behaviour).
+ *   - Cash / UPI / Card → onSelect("cash" | "upi" | "card").
+ *   - Split             → onSelect("split", [{ method: "CASH", amount }, ...]),
+ *                         parts adding up to the total, as at table settle.
  *
  * The bill breakdown (subtotal, discount, tax, packaging, delivery, total)
  * is shown here as a final review — this is the operator's last chance to
@@ -32,6 +33,20 @@ const IconQR = () => (
         <path d="M14 14h3v3h-3zM20 14v3M14 20h3M20 20h1" />
     </svg>
 );
+const IconCard = () => (
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="2" y="5" width="20" height="14" rx="2" />
+        <path d="M2 10h20M6 15h4" />
+    </svg>
+);
+
+const METHODS = [
+    { id: "cash", title: "Cash", subtitle: "Collect physical cash at the counter.", Icon: IconCash, tint: { bg: "#DCFCE7", fg: "#15803D" } },
+    { id: "upi", title: "UPI", subtitle: "Customer scans the in-store QR or pays by UPI.", Icon: IconQR, tint: { bg: "#FFF1E8", fg: "#FD5302" } },
+    { id: "card", title: "Card", subtitle: "Debit or credit card machine.", Icon: IconCard, tint: { bg: "#E0F2FE", fg: "#0369A1" } },
+];
+
+const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 const Row = ({ label, value, strong = false, muted = false, positive = false, negative = false }) => (
     <div className="flex items-center justify-between text-[13.5px]">
@@ -107,6 +122,25 @@ const PaymentMethodModal = ({
         totalWithTax = 0,
     } = bills;
 
+    // Split: the server takes CASH / UPI / CARD parts that add up to the total
+    // (services/splitPayment). Editing a part leaves the last one as "the rest".
+    const [split, setSplit] = useState(false);
+    const [parts, setParts] = useState([
+        { method: "CASH", amount: "" },
+        { method: "UPI", amount: "" },
+    ]);
+    const partsSum = round2(parts.reduce((t, p) => t + (Number(p.amount) || 0), 0));
+    const splitOk = parts.every((p) => Number(p.amount) > 0) && Math.abs(partsSum - totalWithTax) < 0.01;
+    const setPart = (i, patch) =>
+        setParts((prev) => {
+            const next = prev.map((p, k) => (k === i ? { ...p, ...patch } : p));
+            if (patch.amount !== undefined && i < next.length - 1) {
+                const others = next.slice(0, -1).reduce((t, p) => t + (Number(p.amount) || 0), 0);
+                next[next.length - 1] = { ...next[next.length - 1], amount: String(Math.max(0, round2(totalWithTax - others))) };
+            }
+            return next;
+        });
+
     return (
         <ModalShell
             title="Finish Order"
@@ -127,10 +161,10 @@ const PaymentMethodModal = ({
                     />
                     <input
                         type="tel"
+                        inputMode="numeric"
                         value={customer.phone}
-                        onChange={(e) => onCustomerChange?.({ name: customer.name, phone: e.target.value })}
-                        placeholder="Phone (+91…, optional)"
-                        maxLength={20}
+                        onChange={(e) => onCustomerChange?.({ name: customer.name, phone: mobileDigits(e.target.value) })}
+                        placeholder="Mobile (optional)"
                         className={INPUT}
                     />
                 </div>
@@ -156,24 +190,81 @@ const PaymentMethodModal = ({
             </div>
 
             {/* ===== Payment methods ===== */}
-            <div className="mt-4 space-y-2.5">
-                <MethodTile
-                    Icon={IconCash}
-                    title="Cash"
-                    subtitle="Collect physical cash at the counter."
-                    tint={{ bg: "#DCFCE7", fg: "#15803D" }}
-                    disabled={busy}
-                    onClick={() => onSelect("cash")}
-                />
-                <MethodTile
-                    Icon={IconQR}
-                    title="QR / Online"
-                    subtitle="Customer scans the in-store QR or pays via UPI."
-                    tint={{ bg: "#FFF1E8", fg: "#FD5302" }}
-                    disabled={busy}
-                    onClick={() => onSelect("qr")}
-                />
-            </div>
+            {!split ? (
+                <div className="mt-4 space-y-2.5">
+                    {METHODS.map((m) => (
+                        <MethodTile key={m.id} {...m} disabled={busy} onClick={() => onSelect(m.id)} />
+                    ))}
+                </div>
+            ) : (
+                <div className="mt-4 space-y-2 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3">
+                    {parts.map((p, i) => (
+                        <div key={i} className="flex items-center gap-2">
+                            <select
+                                value={p.method}
+                                onChange={(e) => setPart(i, { method: e.target.value })}
+                                className="h-[40px] rounded-lg border border-[#E2E8F0] bg-white px-2 text-[12.5px] font-bold"
+                            >
+                                {METHODS.map((m) => (
+                                    <option key={m.id} value={m.id.toUpperCase()}>
+                                        {m.title}
+                                    </option>
+                                ))}
+                            </select>
+                            <input
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                inputMode="decimal"
+                                value={p.amount}
+                                placeholder="0.00"
+                                onChange={(e) => setPart(i, { amount: e.target.value })}
+                                className="h-[40px] flex-1 min-w-0 rounded-lg border border-[#E2E8F0] bg-white px-3 text-[13px] font-bold tabular-nums"
+                            />
+                            {parts.length > 2 && (
+                                <button
+                                    type="button"
+                                    aria-label="Remove part"
+                                    onClick={() => setParts((prev) => prev.filter((_, k) => k !== i))}
+                                    className="h-[40px] w-[36px] rounded-lg border border-[#E2E8F0] bg-white text-[#94A3B8] hover:text-[#DC2626]"
+                                >
+                                    &times;
+                                </button>
+                            )}
+                        </div>
+                    ))}
+                    <div className="flex items-center justify-between text-[12px]">
+                        <button
+                            type="button"
+                            disabled={parts.length >= 6}
+                            onClick={() => setParts((prev) => [...prev, { method: "CARD", amount: "" }])}
+                            className="font-bold text-[#C2410C] hover:underline disabled:opacity-40"
+                        >
+                            + Add a part
+                        </button>
+                        <span className={`font-bold tabular-nums ${splitOk ? "text-[#16A34A]" : "text-[#DC2626]"}`}>
+                            {money(partsSum)} of {money(totalWithTax)}
+                        </span>
+                    </div>
+                    <button
+                        type="button"
+                        disabled={busy || !splitOk}
+                        onClick={() => onSelect("split", parts.map((p) => ({ method: p.method, amount: round2(p.amount) })))}
+                        className="h-[44px] w-full rounded-xl bg-[#FD5302] text-white text-[14px] font-bold hover:bg-[#D64502] disabled:opacity-50"
+                    >
+                        Complete with split payment
+                    </button>
+                </div>
+            )}
+            <button
+                type="button"
+                onClick={() => setSplit((v) => !v)}
+                className={`mt-2.5 h-[36px] w-full rounded-xl border text-[12.5px] font-bold ${
+                    split ? "border-[#FD5302] bg-[#FFF1E8] text-[#C2410C]" : "border-[#E2E8F0] text-[#334155] hover:bg-[#F8FAFC]"
+                }`}
+            >
+                {split ? "Pay with one method instead" : "Split between methods"}
+            </button>
 
             {busy && (
                 <p className="mt-3 text-center text-[12px] text-[#94A3B8]">

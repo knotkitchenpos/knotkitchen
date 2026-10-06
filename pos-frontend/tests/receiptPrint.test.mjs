@@ -207,7 +207,11 @@ test("every receipt print goes through the one renderer", () => {
   assert.match(SRC("src/pages/Orders.jsx"), /printOrderReceipt\(selected\)/);
   assert.match(SRC("src/hooks/useAutoReceiptPrint.js"), /onlineOrder:created/);
   assert.match(SRC("src/App.jsx"), /useAutoReceiptPrint\(\);/);
-  assert.match(SRC("src/components/settings/DeviceConfiguration.jsx"), /key: "lan", label: "LAN \/ Network", disabled: true/);
+  // LAN is not a transport of its own: the tab says how to reach a network
+  // printer through Windows or its USB cable (csd-billing/B7).
+  const device = SRC("src/components/settings/DeviceConfiguration.jsx");
+  assert.doesNotMatch(device, /key: "lan", label: "LAN \/ Network", disabled: true/);
+  assert.match(device, /tab === "lan"/);
 });
 
 test("GST bill: CGST/SGST split for a registered store, buyer and SAC printed", () => {
@@ -509,4 +513,78 @@ test("REGRESSION: an add-on uses the full width below the dish, not just the Ite
   assert.ok(span(extra)[1] > rateLeft, `"${extra.text}" stops inside the Item column`);
   // Still never on the dish's first line, where the numbers are.
   assert.ok(extra.y > ops.find((o) => o.text === "198.00").y);
+});
+
+test("REGRESSION: a delivery receipt prints where it goes, and stays on the paper", () => {
+  for (const paper of [58, 80]) {
+    const order = {
+      ...ORDER,
+      orderType: "delivery",
+      deliveryAddress: { line1: "12 MG Road, Near the Very Long Landmark Opposite the Park", city: "Kolkata", postalCode: "700001", instructions: "Ring twice" },
+    };
+    const layout = layoutReceipt({ order, store: { name: "S" }, paper, measure });
+    const texts = textOps(layout).map((o) => o.text).join(" | ");
+    assert.match(texts, /MG Road/);
+    assert.match(texts, /700001/);
+    assert.match(texts, /Note: Ring twice/);
+    for (const op of textOps(layout)) {
+      const [l, r] = span(op);
+      assert.ok(l >= -0.5 && r <= layout.width + 0.5, `"${op.text}" runs off the paper`);
+    }
+  }
+  // An older order kept the address flat on customerDetails.
+  const flat = { ...ORDER, orderType: "delivery", customerDetails: { name: "A", phone: "9876543210", address: "5 Park St", pinCode: "700016" } };
+  const flatText = textOps(layoutReceipt({ order: flat, store: { name: "S" }, paper: 80, measure })).map((o) => o.text).join(" ");
+  assert.match(flatText, /5 Park St.*700016/);
+  // Not on a counter order.
+  const counter = { ...ORDER, deliveryAddress: { line1: "12 MG Road" } };
+  assert.ok(!textOps(layoutReceipt({ order: counter, store: { name: "S" }, paper: 80, measure })).some((o) => /MG Road/.test(o.text)));
+});
+
+test("REGRESSION: the KOT prints the note a saved order keeps", () => {
+  const website = { ...ORDER, deliveryAddress: { line1: "x", instructions: "Less spicy" } };
+  assert.ok(textOps(layoutKot({ order: website, paper: 80, measure })).some((o) => o.text.includes("Less spicy")));
+  const till = { ...ORDER, customerDetails: { name: "A", deliveryNote: "No onion" } };
+  assert.ok(textOps(layoutKot({ order: till, paper: 80, measure })).some((o) => o.text.includes("No onion")));
+});
+
+test("REGRESSION: included GST is labelled, so it does not read as an extra charge", () => {
+  const bills = { subtotal: 100, tax: 4.76, taxPercent: 5, taxInclusive: true, totalWithTax: 100 };
+  assert.deepEqual(billLines(bills).map((l) => l.label), ["Subtotal", "GST @ 5% (incl.)"]);
+  assert.deepEqual(billLines(bills, 0, { gstSplit: true }).map((l) => l.label), ["Subtotal", "CGST @ 2.5% (incl.)", "SGST @ 2.5% (incl.)"]);
+  assert.deepEqual(billLines({ ...bills, taxInclusive: false, totalWithTax: 104.76 }).map((l) => l.label), ["Subtotal", "GST @ 5%", "Total"]);
+  assert.match(SRC("src/components/invoice/Invoice.jsx"), /safeBills\.taxInclusive \? " \(incl\.\)" : ""/);
+});
+
+test("REGRESSION: receipt and KOT times are the store's clock, not the device's", () => {
+  const saved = process.env.TZ;
+  process.env.TZ = "Europe/London";
+  try {
+    // 12:30 UTC is 6:00 pm in India and 1:30 pm in London.
+    const bill = textOps(layoutReceipt({ order: ORDER, store: { name: "S" }, paper: 80, measure })).map((o) => o.text).join(" ");
+    assert.match(bill, /06:00\s?pm/i);
+    const kot = textOps(layoutKot({ order: ORDER, paper: 80, measure })).map((o) => o.text).join(" ");
+    assert.match(kot, /06:00\s?pm/i);
+  } finally {
+    if (saved === undefined) delete process.env.TZ;
+    else process.env.TZ = saved;
+  }
+});
+
+test("REGRESSION: Print and KOT say they are sending, and whether it went", () => {
+  const print = SRC("src/utils/printReceipt.js");
+  assert.match(print, /export const printWithFeedback = async \(what, run\) =>/);
+  // The notice goes up before the print is awaited, not after it fails.
+  assert.match(print, /persist: true \}\);\s+try \{\s+const result = await run\(\);/);
+  assert.match(SRC("src/components/invoice/Invoice.jsx"), /printWithFeedback\("receipt", \(\) => printOrderReceipt\(safeOrder\)\)/);
+  const orders = SRC("src/pages/Orders.jsx");
+  assert.match(orders, /printWithFeedback\("receipt", \(\) => printOrderReceipt\(selected\)\)/);
+  assert.match(orders, /printWithFeedback\("KOT", \(\) => printKot\(selected\)\)/);
+});
+
+test("REGRESSION: no E-Bill for an offline order or a phone that is not a mobile", () => {
+  const src = SRC("src/components/invoice/Invoice.jsx");
+  const guard = src.slice(src.indexOf("const canSendEBill"), src.indexOf("const [emailedTo"));
+  assert.ok(guard.includes("/^[6-9]\\d{9}$/"), guard);
+  assert.match(guard, /!safeOrder\.offline/);
 });

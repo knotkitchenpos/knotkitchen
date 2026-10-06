@@ -366,12 +366,23 @@ const syncRefund = async (order, { refundId } = {}) => {
   return { order, entry: target, changed: before !== `${target.status}|${target.gateway.status}` };
 };
 
+/**
+ * How the Orders screen names the payment. The kind decides refunds; the
+ * label names what was taken, so a counter card or a split is not read as
+ * "UPI" or as its first part.
+ */
+const paymentKindLabelOf = (order, kind = paymentKindOf(order)) => {
+  if (kind !== PAYMENT_KIND.GATEWAY && order?.isSplit) return "Split";
+  if (kind === PAYMENT_KIND.OFFLINE && methodOf(order) === "card") return "Card";
+  return PAYMENT_KIND_LABELS[kind];
+};
+
 /** What a screen needs alongside the order: the kind of payment and where the refund stands. */
 const refundView = (order) => {
   const kind = paymentKindOf(order);
   return {
     paymentKind: kind,
-    paymentKindLabel: PAYMENT_KIND_LABELS[kind],
+    paymentKindLabel: paymentKindLabelOf(order, kind),
     paid: wasPaid(order),
     refundStatus: refundStatusOf(order),
     refundableAmount: refundableAmount(order),

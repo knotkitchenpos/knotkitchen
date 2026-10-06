@@ -297,11 +297,12 @@ test("REGRESSION: an appended kitchen line is linked from the right end", () => 
   // Both indexes count back from the end of their own list. Using items[idx]
   // on an APPEND linked every session item to a dish from an earlier round,
   // so cancelling one struck the wrong dish off the ticket.
-  const src = SRC("controllers", "qrController.js");
-  assert.match(src, /const kitchenStartIdx = kitchenOrderDoc\.items\.length - validatedItems\.length;/);
-  assert.match(src, /kitchenOrderDoc\.items\[kitchenStartIdx \+ idx\]\?\._id/);
-  assert.ok(
-    !/si\.kdsItemId = kitchenOrderDoc\.items\[idx\]/.test(src),
-    "the un-offset form is the bug",
-  );
+  // The till and the QR route both add a round through addRoundToKitchenOrder
+  // (live-orders/N3), so the linking lives there once.
+  const src = SRC("controllers", "tableSessionController.js");
+  const helper = src.slice(src.indexOf("const addRoundToKitchenOrder"), src.indexOf("return { order, appended };"));
+  assert.match(helper, /const kitchenStartIdx = order\.items\.length - validatedItems\.length;/);
+  assert.match(helper, /order\.items\[kitchenStartIdx \+ idx\]\?\._id/);
+  assert.ok(!/order\.items\[idx\]/.test(helper), "the un-offset form is the bug");
+  assert.match(SRC("controllers", "qrController.js"), /await addRoundToKitchenOrder\(/);
 });

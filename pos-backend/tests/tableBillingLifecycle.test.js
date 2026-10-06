@@ -171,6 +171,11 @@ const TableMock = {
     return makeThenable(result ? toLiveTable(result) : null);
   },
 
+  findById(id) {
+    const t = store.tables.find((x) => x._id === id);
+    return { select: () => makeThenable(t ? toLiveTable(t) : null) };
+  },
+
   findOneAndUpdate(query, update, opts) {
     const t = store.tables.find((x) => x._id === query._id);
     if (!t) return makeThenable(null);
@@ -181,7 +186,31 @@ const TableMock = {
   async save() {},
 };
 
-/** Order.mock — also tracks updateMany so we can verify orders survive payment */
+/** Writes `{ "bills.totalWithTax": 5 }` the way Mongo does: into the nested path. */
+const setPaths = (doc, set) => {
+  for (const [key, value] of Object.entries(set)) {
+    const parts = key.split(".");
+    let at = doc;
+    for (const p of parts.slice(0, -1)) at = at[p] = at[p] || {};
+    at[parts.at(-1)] = value;
+  }
+};
+
+/** A query that can be chained (.sort/.session) or awaited straight away. */
+const query = (list) => {
+  const q = {
+    sort() { return q; },
+    session() { return q; },
+    then(resolve, reject) { return Promise.resolve(list).then(resolve, reject); },
+  };
+  return q;
+};
+
+/**
+ * Order.mock — also tracks updateMany so we can verify orders survive payment.
+ * findOne finds no open order, so every round starts its own order: the same
+ * shape as a merged table, or a round after the first order was finished.
+ */
 const OrderMock = {
   async create(docs) {
     const arr = Array.isArray(docs) ? docs : [docs];
@@ -203,17 +232,38 @@ const OrderMock = {
   async findOne() {
     return null;
   },
-  async updateMany(query, update) {
-    const { tableSessionId } = query || {};
+  find(q = {}) {
+    const list = store.orders.filter(
+      (o) => (!q.tableSessionId || o.tableSessionId === q.tableSessionId) && o.isDeleted !== true,
+    );
+    list.forEach((o) => { o.save = async () => o; });
+    return query(list);
+  },
+  async updateOne(q, update) {
+    const o = store.orders.find((x) => x._id === q._id);
+    if (!o) return { modifiedCount: 0 };
+    for (const [key, value] of Object.entries(update.$push || {})) o[key] = [...(o[key] || []), ...(value.$each || [value])];
+    setPaths(o, update.$set || {});
+    return { modifiedCount: 1 };
+  },
+  async updateMany(q, update) {
+    const ids = q?._id?.$in;
     let modified = 0;
     store.orders.forEach((o) => {
-      if (tableSessionId && o.tableSessionId === tableSessionId) {
-        Object.assign(o, update.$set || update);
+      if (ids ? ids.includes(o._id) : q?.tableSessionId && o.tableSessionId === q.tableSessionId) {
+        setPaths(o, update.$set || update);
         modified++;
       }
     });
     return { modifiedCount: modified };
   },
+};
+
+const emits = [];
+const socketMock = {
+  emitOrderCreated() {},
+  emitOrderStatusChanged() {},
+  emitTableSessionUpdated(p) { emits.push(p.reason); },
 };
 
 /** AuditLog.mock */
@@ -285,13 +335,14 @@ const priceMock = {
   },
   calculateBill({ items, discount = 0, additionalCharges = 0 }) {
     const subtotal = Math.round(items.reduce((s, i) => s + i.price * i.quantity, 0) * 100) / 100;
-    const tax = Math.round(subtotal * 0.05 * 100) / 100;
+    const off = Math.min(subtotal, discount);
+    const tax = Math.round((subtotal - off) * 0.05 * 100) / 100;
     return {
       subtotal,
       tax,
-      discount,
+      discount: off,
       charges: additionalCharges,
-      totalWithTax: Math.round((subtotal + tax + additionalCharges) * 100) / 100,
+      totalWithTax: Math.round((subtotal - off + tax + additionalCharges) * 100) / 100,
     };
   },
 };
@@ -320,6 +371,7 @@ function loadControllerWithMocks() {
     if (r === "../models/paymentTransactionModel") return PaymentTransactionMock;
     if (r === "../models/billModel") return BillMock;
     if (r === "../services/price") return priceMock;
+    if (r === "../services/socket") return socketMock;
     if (r === "mongoose") return mongooseMock;
     return orig.apply(this, arguments);
   };
@@ -439,7 +491,7 @@ test("full lifecycle: OPEN → OCCUPIED → PROCESSING → BILL_REQUESTED → PA
   // First order (Biryani) — OPEN session becomes OCCUPIED
   const req = {
     user,
-    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2 },
+    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2, customerPhone: "9876543210" },
     ip: "1.2.3.4",
     get: () => "test-agent",
   };
@@ -454,7 +506,7 @@ test("full lifecycle: OPEN → OCCUPIED → PROCESSING → BILL_REQUESTED → PA
   // Later: Water — still same session, still OCCUPIED
   const req2 = {
     user,
-    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2 },
+    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2, customerPhone: "9876543210" },
     ip: "1.2.3.4",
     get: () => "test-agent",
   };
@@ -555,7 +607,7 @@ test("direct lifecycle: OCCUPIED → BILL_REQUESTED → PAYMENT_PENDING → PAID
   // Open + occupy via first order
   const req = {
     user,
-    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2 },
+    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2, customerPhone: "9876543210" },
     ip: "1.2.3.4",
     get: () => "test-agent",
   };
@@ -607,6 +659,7 @@ test("bill display returns all items, quantities, subtotal, taxes, charges, tota
       tableId: table._id,
       items: [{ menuItemId: "menu_biryani", quantity: 2 }],
       customerCount: 2,
+      customerPhone: "9876543210",
     },
     ip: "1.2.3.4",
     get: () => "test-agent",
@@ -679,7 +732,7 @@ test("invalid transition: CLOSED session rejects adding items", async () => {
 
   const req = {
     user,
-    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2 },
+    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2, customerPhone: "9876543210" },
     ip: "1.2.3.4",
     get: () => "test-agent",
   };
@@ -758,7 +811,7 @@ test("invalid transition: CLOSED session rejects paying again", async () => {
 
   const req = {
     user,
-    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2 },
+    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2, customerPhone: "9876543210" },
     ip: "1.2.3.4",
     get: () => "test-agent",
   };
@@ -838,7 +891,7 @@ test("historical order and bill remain available after payment (never deleted)",
 
   const req = {
     user,
-    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2 },
+    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2, customerPhone: "9876543210" },
     ip: "1.2.3.4",
     get: () => "test-agent",
   };
@@ -885,4 +938,199 @@ test("historical order and bill remain available after payment (never deleted)",
   const ledger = store.paymentTransactions.find((pt) => pt.tableSessionId === sessionId && pt.status === "PAID");
   assert.ok(ledger, "PAID transaction in ledger");
   assert.equal(ledger.amount, session.bills.totalWithTax);
+});
+// ============================================================
+// 9. Batch 6: what a settle books, and on which order
+// ============================================================
+
+/** One addItemsToSession call per round; each round starts its own order here. */
+async function placeRounds(ctrl, table, user, rounds) {
+  let sessionId;
+  for (const items of rounds) {
+    const res = makeResponse();
+    const err = await callController(
+      ctrl.addItemsToSession,
+      { user, body: { tableId: table._id, items, customerCount: 2, customerPhone: "9876543210" }, ip: "1.2.3.4", get: () => "t" },
+      res,
+    );
+    assert.equal(err, undefined, err && err.message);
+    sessionId = res.body.data._id;
+  }
+  return sessionId;
+}
+
+const pay = (ctrl, user, sessionId, body) =>
+  callController(
+    ctrl.recordSessionPayment,
+    { params: { id: sessionId }, user, body: { paymentStatus: "success", ...body }, ip: "1.2.3.4", get: () => "t" },
+    makeResponse(),
+  );
+
+const ordersOf = (sessionId) => store.orders.filter((o) => o.tableSessionId === sessionId);
+
+test("REGRESSION: settling never charges a cancelled order", async () => {
+  // Every order of the session was overwritten to "paid" with the whole bill,
+  // a cancelled one included.
+  resetStore();
+  const ctrl = loadControllerWithMocks();
+  const table = makeTable();
+  const user = makeUser();
+  const sessionId = await placeRounds(ctrl, table, user, [
+    [{ menuItemId: "menu_biryani", quantity: 1 }],
+    [{ menuItemId: "menu_water", quantity: 1 }],
+  ]);
+  const [cancelled, live] = ordersOf(sessionId);
+  const session = store.sessions.find((s) => s._id === sessionId);
+  cancelled.orderStatus = "Cancelled";
+  session.items.forEach((si) => {
+    if (si.orderId === cancelled._id) si.status = "cancelled";
+  });
+  await ctrl.recalculateSessionBill(session);
+
+  const err = await pay(ctrl, user, sessionId, { method: "CASH", amount: session.bills.totalWithTax });
+
+  assert.equal(err, undefined, err && err.message);
+  assert.equal(cancelled.orderStatus, "Cancelled", "a cancelled order stays cancelled");
+  assert.equal(cancelled.payments, undefined, "and carries no payment");
+  assert.equal(live.orderStatus, "paid");
+  assert.equal(live.bills.totalWithTax, 21, "Water 20 + 5%");
+});
+
+test("REGRESSION: a table whose only order was cancelled is refused, not charged", async () => {
+  resetStore();
+  const ctrl = loadControllerWithMocks();
+  const table = makeTable();
+  const user = makeUser();
+  const sessionId = await placeRounds(ctrl, table, user, [[{ menuItemId: "menu_biryani", quantity: 1 }]]);
+  const [order] = ordersOf(sessionId);
+  order.orderStatus = "Cancelled";
+  const session = store.sessions.find((s) => s._id === sessionId);
+
+  const err = await pay(ctrl, user, sessionId, { method: "CASH", amount: session.bills.totalWithTax });
+
+  assert.equal(err?.status, 409);
+  assert.equal(order.orderStatus, "Cancelled");
+  assert.notEqual(session.status, "CLOSED");
+});
+
+test("REGRESSION: settling a table with two orders books the bill once", async () => {
+  // A merged table, or a round after the first order was finished. The full
+  // bill and tip were written onto EVERY order, so Reports and the shift
+  // drawer counted them twice.
+  resetStore();
+  emits.length = 0;
+  const ctrl = loadControllerWithMocks();
+  const table = makeTable();
+  const user = makeUser();
+  const sessionId = await placeRounds(ctrl, table, user, [
+    [{ menuItemId: "menu_biryani", quantity: 1 }],
+    [{ menuItemId: "menu_water", quantity: 1 }],
+  ]);
+  const session = store.sessions.find((s) => s._id === sessionId);
+  const bill = session.bills.totalWithTax;
+
+  const err = await pay(ctrl, user, sessionId, { method: "CASH", amount: bill + 22, tip: 22 });
+  assert.equal(err, undefined, err && err.message);
+
+  const kept = ordersOf(sessionId).filter((o) => o.isDeleted !== true);
+  assert.equal(kept.length, 1, "one paid table, one order");
+  assert.equal(kept[0].bills.totalWithTax, bill);
+  assert.equal(kept[0].tips, 22);
+  assert.deepEqual(kept[0].items.map((i) => i.name), ["Biryani", "Water"], "its lines match its total");
+  assert.ok(session.items.every((si) => si.orderId === kept[0]._id), "the session points at the order that holds its lines");
+  // Other tills and the diner's page hear about it.
+  assert.ok(emits.includes("paid"));
+});
+
+test("REGRESSION: a cash settle after an abandoned online checkout is not a gateway payment", async () => {
+  resetStore();
+  const ctrl = loadControllerWithMocks();
+  const table = makeTable();
+  const user = makeUser();
+  const sessionId = await placeRounds(ctrl, table, user, [[{ menuItemId: "menu_biryani", quantity: 1 }]]);
+  const session = store.sessions.find((s) => s._id === sessionId);
+  session.payment.gatewayOrderId = "cf_abandoned";
+
+  const err = await pay(ctrl, user, sessionId, { method: "CASH", amount: session.bills.totalWithTax });
+
+  assert.equal(err, undefined, err && err.message);
+  const [order] = ordersOf(sessionId);
+  assert.equal(order.paymentData?.gatewayOrderId, undefined, "else it reads 'Gateway Payment' and refunds through Cashfree");
+  assert.equal(session.payment.gatewayOrderId, "cf_abandoned", "the session keeps the handle");
+});
+
+test("REGRESSION: a split settle keeps each part's own method", async () => {
+  // Every part was written as method "split", so the drawer never saw the cash.
+  resetStore();
+  const ctrl = loadControllerWithMocks();
+  const table = makeTable();
+  const user = makeUser();
+  const sessionId = await placeRounds(ctrl, table, user, [[{ menuItemId: "menu_biryani", quantity: 1 }]]);
+  const total = store.sessions.find((s) => s._id === sessionId).bills.totalWithTax; // 262.5
+
+  const err = await pay(ctrl, user, sessionId, {
+    method: "SPLIT",
+    amount: total,
+    splits: [{ method: "CASH", amount: 200 }, { method: "QR_CODE", amount: total - 200 }],
+  });
+
+  assert.equal(err, undefined, err && err.message);
+  const [order] = ordersOf(sessionId);
+  assert.equal(order.isSplit, true);
+  assert.deepEqual(order.payments.map((p) => [p.method, p.amount]), [["cash", 200], ["upi", 62.5]]);
+});
+
+test("a discount can be put on a table's bill before it is paid, and not after", async () => {
+  resetStore();
+  const ctrl = loadControllerWithMocks();
+  const table = makeTable();
+  const user = makeUser();
+  const sessionId = await placeRounds(ctrl, table, user, [
+    [{ menuItemId: "menu_biryani", quantity: 1 }, { menuItemId: "menu_kebab", quantity: 1 }],
+  ]);
+  const session = store.sessions.find((s) => s._id === sessionId);
+  const discount = async (body) => {
+    const res = makeResponse();
+    const err = await callController(ctrl.setDiscount, { params: { id: sessionId }, user, body }, res);
+    return { err, res };
+  };
+
+  // 10% of 550 is 55; GST (5% in this harness) on the 495 left.
+  let { err, res } = await discount({ mode: "percent", value: 10 });
+  assert.equal(err, undefined, err && err.message);
+  assert.equal(res.body.data.bills.discount, 55);
+  assert.equal(session.bills.totalWithTax, 519.75);
+  assert.equal(ordersOf(sessionId)[0].bills.discount, 55, "the kitchen order carries the running bill");
+
+  // REGRESSION: a discount that took the bill to ₹0 left the table stuck:
+  // nothing to mark paid, and Release refuses while dishes are on it.
+  for (const body of [{ mode: "fixed", value: 9999 }, { mode: "fixed", value: 550 }, { mode: "percent", value: 100 }]) {
+    ({ err } = await discount(body));
+    assert.equal(err?.status, 400, JSON.stringify(body));
+    assert.equal(session.bills.discount, 55, "the earlier discount stands");
+  }
+  await discount({ mode: "none" });
+  assert.equal(session.bills.discount, 0);
+  ({ err } = await discount({ mode: "percent", value: 120 }));
+  assert.equal(err?.status, 400);
+
+  await pay(ctrl, user, sessionId, { method: "CASH", amount: session.bills.totalWithTax });
+  ({ err } = await discount({ mode: "fixed", value: 10 }));
+  assert.equal(err?.status, 409, "a settled bill is not re-struck");
+});
+
+test("REGRESSION: merging a discounted table carries its discount onto the merged bill", async () => {
+  resetStore();
+  const ctrl = loadControllerWithMocks();
+  const user = makeUser();
+  const from = await placeRounds(ctrl, makeTable({ tableNumber: 2 }), user, [[{ menuItemId: "menu_biryani", quantity: 1 }]]);
+  const into = await placeRounds(ctrl, makeTable({ tableNumber: 3 }), user, [[{ menuItemId: "menu_kebab", quantity: 1 }]]);
+  let err = await callController(ctrl.setDiscount, { params: { id: from }, user, body: { mode: "fixed", value: 100 } }, makeResponse());
+  assert.equal(err, undefined, err && err.message);
+
+  err = await callController(ctrl.mergeSessions, { params: { id: into }, user, body: { fromSessionId: from } }, makeResponse());
+  assert.equal(err, undefined, err && err.message);
+  const target = store.sessions.find((s) => s._id === into);
+  assert.equal(target.bills.discount, 100, "the discount agreed on table 2 still applies");
+  assert.match(target.timeline.find((t) => t.event === "TABLES_MERGED").note, /with its ₹100 discount/);
 });

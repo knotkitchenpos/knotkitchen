@@ -221,8 +221,9 @@ const RulesChargesForm = ({ settings }) => {
           <li>Discount / Coupon (clamped so total ≥ 0)</li>
           <li>Packing Charge</li>
           <li>GST / Tax</li>
+          <li>Service charge (table bills only, on the bill after tax)</li>
           <li>Delivery Fee (distance slabs / max distance)</li>
-          <li>Total = max(0, Subtotal − Discount + Packing + Delivery + Tax)</li>
+          <li>Total = max(0, Subtotal − Discount + Packing + GST (only when prices exclude it) + Service charge + Delivery)</li>
         </ol>
       </div>
     </div>

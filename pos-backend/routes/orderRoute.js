@@ -12,7 +12,7 @@ const {
   getOrdersReport,
 } = require("../controllers/orderController");
 const { isVerifiedUser } = require("../middlewares/tokenVerification");
-const { requireProtectedAction, requireManager, requireOwnerOnly } = require("../middlewares/requirePermission");
+const { requireProtectedAction, requireManager } = require("../middlewares/requirePermission");
 const router = express.Router();
 
 
@@ -30,14 +30,15 @@ router.route("/:id").get(isVerifiedUser, getOrderById);
 router.route("/:id").put(isVerifiedUser, updateOrder);
 // Module 4 §2 — dedicated "mark ready" action. Declared as a sub-path
 // (:id/ready) so the existing PUT /:id endpoint keeps its generic
-// status-update behaviour for KDS / Cancel flows.
+// status-update behaviour for the Orders screen.
 router.route("/:id/ready").put(isVerifiedUser, markOrderReady);
 // A void needs a reason and, for staff, the Security PIN. A refund moves
 // money (through Cashfree when the order was paid online) and is for the
-// store owner or a manager only: no PIN lets other staff do it. The generic PUT /:id can
-// still cancel (KDS / reject flows) but records no money movement.
+// store owner or a manager only: no PIN lets other staff do it, and a manager
+// still needs the Security PIN (the owner never does). The generic
+// PUT /:id can still cancel an unpaid order but records no money movement.
 router.route("/:id/cancel").put(isVerifiedUser, requireProtectedAction, cancelOrder);
-router.route("/:id/refund").post(isVerifiedUser, requireOwnerOnly, refundOrder);
+router.route("/:id/refund").post(isVerifiedUser, requireManager, requireProtectedAction, refundOrder);
 router.route("/:id/refund/sync").post(isVerifiedUser, requireManager, syncOrderRefund);
 
 module.exports = router;

@@ -1,3 +1,4 @@
+import { closeSnackbar, enqueueSnackbar } from "notistack";
 import { getStoreProperties } from "../https";
 import { billableItems } from "./orderItems.js";
 import { printHtmlDocument } from "./printDocument";
@@ -229,6 +230,32 @@ const sendCanvas = async (canvas, { printer, paper, auto }) => {
   }
   printCanvasWithDialog(canvas, paper);
   return { printed: true, via: "dialog" };
+};
+
+/**
+ * A pressed Print or KOT button: say it is sending, then whether it went.
+ * Some transports take a minute to give up (an Android Bluetooth printer that
+ * is off) or never fail at all (the Windows spooler takes a job for an
+ * unplugged printer), and the buttons used to stay silent until then.
+ *
+ * ponytail: Windows cannot be asked whether a USB printer is attached, so the
+ * desktop app says "sent to the print queue", not "printed".
+ */
+export const printWithFeedback = async (what, run) => {
+  const key = enqueueSnackbar(`Sending the ${what} to the printer…`, { variant: "info", persist: true });
+  try {
+    const result = await run();
+    closeSnackbar(key);
+    // The browser's own dialog is its feedback.
+    if (result && result.via !== "dialog") {
+      const What = what.charAt(0).toUpperCase() + what.slice(1);
+      enqueueSnackbar(result.via === "desktop" ? `${What} sent to the Windows print queue.` : `${What} printed.`, { variant: "success" });
+    }
+    return result;
+  } catch (err) {
+    closeSnackbar(key);
+    enqueueSnackbar(err?.message || `Could not print the ${what}.`, { variant: "error" });
+  }
 };
 
 /** A sample order for Test Print. */

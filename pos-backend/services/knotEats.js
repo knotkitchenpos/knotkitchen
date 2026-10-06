@@ -72,13 +72,12 @@ const COLLECTIONS = Object.freeze([Object.freeze({ key: "under-250", title: "Mea
 const BLOCKER_MESSAGES = Object.freeze({
   NOT_OPTED_IN: "Turn on Knot Eats to list your restaurant.",
   DELISTED: "KnotKitchen has delisted your restaurant from Knot Eats. Contact support.",
-  WEBSITE_OFF: "Turn on your website in Manage Website.",
-  NO_WEBSITE_ADDON: "Knot Eats needs the Website add-on.",
   ACCOUNT_LOCKED: "Your account is locked. Recharge to list on Knot Eats.",
   STORE_STATUS: "Your store is closed or suspended.",
-  NO_GATEWAY: "Set up online payment (Cashfree) in Manage Website.",
+  NO_FSSAI: "Add your 14-digit FSSAI licence number in Settings > Store Properties.",
+  NO_GATEWAY: "Set up online payment (Cashfree) in Settings > Store Properties.",
   NO_PIN: "Set your store's map pin in Store Properties.",
-  NO_MENU: "Publish your menu to the website (Manage Website > Publish Website).",
+  NO_MENU: "Publish your menu: Settings > Manage Cache > Update Website Cache.",
   NO_ORDER_TYPE: "Turn on pickup or delivery in Order Toggles.",
 });
 
@@ -115,22 +114,22 @@ const eligibility = async ({ settings, store, restaurant, restaurantId, dishCoun
   const codes = [];
   if (!ke.enabled) codes.push("NOT_OPTED_IN");
   if (ke.delisted) codes.push("DELISTED");
-  if (!settings?.enabled) codes.push("WEBSITE_OFF");
 
-  // Asked as if the website switch were on, so an owner with the site off
-  // still learns about the add-on and the lock instead of fixing one at a time.
+  // Knot Eats does not need the website: only the store's status and the
+  // account lock are asked.
   const refusal = store
     ? await unavailableReason({
         settings: { enabled: true, storeId: settings?.storeId },
         store,
         restaurant,
         restaurantId,
+        knotEats: true,
       })
     : { reason: "STORE_UNAVAILABLE" };
   if (refusal?.locked) codes.push("ACCOUNT_LOCKED");
-  else if (refusal?.reason === "WEBSITE_DISABLED") codes.push("NO_WEBSITE_ADDON");
   else if (refusal) codes.push("STORE_STATUS");
 
+  if (!/^\d{14}$/.test(String(restaurant?.fssaiNumber || "").trim())) codes.push("NO_FSSAI");
   if (!(await isOnlinePaymentEnabled({ restaurantId, storeId: settings?.storeId }))) codes.push("NO_GATEWAY");
   if (!isIndiaPoint(restaurant?.address?.lat, restaurant?.address?.lng)) codes.push("NO_PIN");
   if (dishCount === 0) codes.push("NO_MENU");

@@ -9,6 +9,7 @@ const { resolveStorefront, REASON_MESSAGES } = require("../services/storefrontRe
 const { AWAITING_ACCEPTANCE, CANCELLED_STATUSES } = require("../constants/orderStatus");
 const { isItemAvailableNow, getEffectivePrice } = require("../services/businessHours");
 const { calculateOrderTotals, PricingError } = require("../services/orderPricingService");
+const { resolveGst } = require("../services/gst");
 const {
   AUDIENCES,
   ORDER_TYPES,
@@ -261,6 +262,10 @@ const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezon
 
   const theme = getTheme(settings.theme?.themeKey) || getTheme("default-restaurant");
 
+  // The cart's GST estimate must be what checkout charges: no GST number, or
+  // GST set to System only, charges none (orderPricingService uses the same resolver).
+  const gst = resolveGst({ restaurant, ordering: settings.ordering, environment: "website" });
+
   // Popular items: the operator's pick, else the best sellers that are on the
   // website right now. Ids only; the browser resolves them against the menu.
   const landing = buildLandingPayload(settings, restaurant, null);
@@ -314,8 +319,8 @@ const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezon
       deliveryFee: Number(settings.ordering?.deliveryFee) || 0,
       freeDeliveryAbove: Number(settings.ordering?.freeDeliveryAbove) || 0,
       packagingFee: Number(settings.ordering?.packagingFee) || 0,
-      taxPercent: Number(settings.ordering?.taxPercent) || 0,
-      taxInclusive: Boolean(settings.ordering?.taxInclusive),
+      taxPercent: gst.percent,
+      taxInclusive: gst.inclusive,
       currency: settings.ordering?.currency || "INR",
       currencySymbol: settings.ordering?.currencySymbol || "₹",
       prepTimeMinutes: Number(settings.ordering?.prepTimeMinutes) || 30,
@@ -353,6 +358,7 @@ const requireStorefront = async (req, next, { honourPaid = false } = {}) => {
     identifier: req.params.slug,
     host: req.headers.host,
     honourPaid,
+    knotEats: req.knotEats === true,
   });
 
   if (!result.ok) {
@@ -375,8 +381,11 @@ const getStorefront = async (req, res, next) => {
   try {
     const ctx = await requireStorefront(req, next);
     if (!ctx) return;
+    // Knot Eats front door: only a listed store, and its policy pages name Knot Eats, not the (maybe disabled) subdomain.
+    if (req.knotEats && !(await knotEats().getListedStore(ctx.storeId))) return next(knotEatsUnavailable());
 
     const payload = await buildStorefrontPayload(ctx);
+    if (req.knotEats) payload.legal.websiteUrl = config.knotEatsPublicUrl ? `${config.knotEatsPublicUrl}/store/${ctx.storeId}` : "";
 
     // Short, and without stale-while-revalidate: this response carries both
     // the live menu and the landing page design, and both are edited by
@@ -460,11 +469,16 @@ const buildStorefrontOrder = (finalize) => async (req, res, next) => {
       }
       const line1 = String(body.deliveryAddress?.line1 || "").trim().slice(0, 200);
       if (!line1) return next(createHttpError(400, "Please enter your delivery address."));
+      // Optional, but when given it must be an Indian pincode: the rider and the receipt read it.
+      const postalCode = String(body.deliveryAddress?.postalCode || "").replace(/\s/g, "");
+      if (postalCode && !/^[1-9]\d{5}$/.test(postalCode)) {
+        return next(createHttpError(400, "Please enter a valid 6-digit pincode."));
+      }
       deliveryAddress = {
         line1,
         line2: String(body.deliveryAddress?.line2 || "").trim().slice(0, 200),
         city: String(body.deliveryAddress?.city || "").trim().slice(0, 100),
-        postalCode: String(body.deliveryAddress?.postalCode || "").trim().slice(0, 20),
+        postalCode,
         instructions: String(body.deliveryAddress?.instructions || "").trim().slice(0, 300),
       };
       if (via) {

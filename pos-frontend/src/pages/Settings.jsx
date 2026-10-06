@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { Navigate, useNavigate, useSearchParams } from "react-router-dom";
 import { toggleShortcut, useShortcuts } from "../utils/shortcuts";
 import { clearActiveStoreId } from "../utils/storeSession";
 import { useDispatch } from "react-redux";
@@ -21,15 +21,16 @@ import KnotEatsView from "../components/settings/KnotEatsView";
 const SHOW_LATER_FEATURES = false;
 
 export const MENU_ITEMS = [
-  { id: "cache", title: "1. Manage Cache", desc: "Publish menu changes to the POS tills.", Icon: I.database, mode: "view" },
+  { id: "cache", title: "1. Manage Cache", desc: "Publish menu changes to the POS tills, website and Knot Eats.", Icon: I.database, mode: "view" },
   { id: "device", title: "2. Device Configuration", desc: "Printer paper sizes, auto-print & e-bill settings.", Icon: I.printer, mode: "view" },
-  { id: "properties", title: "3. Store Properties", desc: "Store details & protection PIN.", Icon: I.store, mode: "view" },
+  { id: "properties", title: "3. Store Properties", desc: "Store details, payment gateway & protection PIN.", Icon: I.store, mode: "view" },
   { id: "menu", title: "4. Manage Menu", desc: "Categories, dishes, variants and add-ons.", Icon: I.utensils, path: "/manage-menu" },
   // Moved here from the side panel; pin it back with a long-press (Quick Shortcuts).
   { id: "tables", title: "5. Manage Tables", desc: "Tables, areas and table QR codes.", Icon: I.tables, path: "/tables", feature: "tableQr" },
   { id: "staff", title: "6. Manage Staff", desc: "Add/delete staff and PIN privileges.", Icon: I.users, mode: "view" },
   { id: "toggles", title: "7. Order Toggles & Auto-Ready", desc: "Channel ON/OFF & auto-ready durations.", Icon: I.toggle, mode: "view", feature: "onlineOrdering" },
-  { id: "timings", title: "8. Website Timing & Holidays", desc: "Collection, delivery and table booking hours, Close for Today and holidays for the website.", Icon: I.calendar, mode: "view", feature: "website" },
+  // Also the table QR's hours (Restaurant Time), so QR Table Ordering opens it too.
+  { id: "timings", title: "8. Website Timing & Holidays", desc: "Collection, delivery and table hours, Close for Today and holidays for the website and table QR.", Icon: I.calendar, mode: "view", feature: "onlineOrdering" },
   { id: "rules", title: "9. Rules, Charges & Promotions", desc: "Min orders, delivery slabs, GST, coupons, free items.", Icon: I.fileText, mode: "view", feature: "onlineOrdering" },
   { id: "reports", title: "10. Reports", desc: "Sales, revenue and order breakdowns.", Icon: I.chart, path: "/reports" },
   // Shift & Day End and Inventory are built (ShiftView, InventoryView) but
@@ -44,8 +45,8 @@ export const MENU_ITEMS = [
   // can clear a lock, so it must never be gated. See middlewares/accountLock.js.
   { id: "billing", title: "11. Billing & Subscription", desc: "Wallet, POS plan, add-ons, tablets, printers, their delivery and invoices.", Icon: I.fileText, path: "/settings/billing" },
 
-  { id: "website", title: "12. Manage Website", desc: "Landing page, branding, colours, domain and payments.", Icon: I.globe, path: "/website", feature: "website", lockedDesc: "Payment gateway only. The website is an add-on.", openWhenLocked: "paymentGateway" },
-  { id: "eats", title: "13. Knot Eats", desc: "List your restaurant on eats.knotkitchen.com.", Icon: I.store, mode: "view", feature: "website" },
+  { id: "website", title: "12. Manage Website", desc: "Landing page, branding, colours and domain.", Icon: I.globe, path: "/website", feature: "website" },
+  { id: "eats", title: "13. Knot Eats", desc: "List your restaurant on eats.knotkitchen.com.", Icon: I.store, mode: "view" },
 
   // Activity Log stays CSD-only: it is the audit trail of who did what,
   // including support's own actions, and has no POS route at all (CSD reads
@@ -114,10 +115,8 @@ const Settings = () => {
   const { data: subRes } = useQuery({ queryKey: ["subscription"], queryFn: getSubscriptionStatus });
   const features = subRes?.data?.data?.features;
   const lockedByPlan = (item) => Boolean(item.feature && features && features[item.feature] === false);
-  // Manage Website still opens as the payment gateway only when a store has
-  // online payments without the website; today both come with the Website add-on.
-  const blockedByPlan = (item) =>
-    lockedByPlan(item) && !(item.openWhenLocked && features?.[item.openWhenLocked] !== false);
+  // Locked tiles open Billing.
+  const blockedByPlan = lockedByPlan;
   const lockedNote = (item) =>
     `Needs the ${ADDON_FOR[item.feature] || "Website"} add-on. Tap to add it in Billing.`;
 
@@ -144,7 +143,13 @@ const Settings = () => {
     }
   };
 
-  const activeMeta = MENU_ITEMS.find((m) => m.id === activeSubView);
+  // ?view= draws a sub-view here, or the lock of a locked option. An option with a
+  // page of its own (?view=tables) opens that page; an unknown or hidden id
+  // (shift/inventory while SHOW_LATER_FEATURES is off) is the plain list.
+  const linked = MENU_ITEMS.find((m) => m.id === activeSubView);
+  const activeMeta = linked && (linked.mode === "view" || blockedByPlan(linked)) ? linked : null;
+  const view = activeMeta?.id;
+  if (linked?.path && !activeMeta) return <Navigate to={linked.path} replace />;
 
   return (
     <div className="h-full w-full overflow-y-auto bg-[#F8FAFC]">
@@ -152,7 +157,7 @@ const Settings = () => {
 
         {/* Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 mb-5 sm:mb-6">
-          {activeSubView && (
+          {activeMeta && (
             <button
               onClick={() => setActiveSubView(null)}
               className="h-[36px] px-3 shrink-0 whitespace-nowrap rounded-xl border border-[#E2E8F0] bg-white text-[#334155] text-[13px] font-bold hover:border-[#CBD5E1]"
@@ -178,25 +183,25 @@ const Settings = () => {
             <span className="text-[#94A3B8]"><I.lock /></span>
             <span className="text-[13.5px] font-bold text-[#334155]">{lockedNote(activeMeta)}</span>
           </button>
-        ) : activeSubView === "cache" ? (
+        ) : view === "cache" ? (
           <ManageCacheView />
-        ) : activeSubView === "device" ? (
+        ) : view === "device" ? (
           <DeviceConfiguration />
-        ) : activeSubView === "properties" ? (
+        ) : view === "properties" ? (
           <StorePropertiesView />
-        ) : activeSubView === "toggles" ? (
+        ) : view === "toggles" ? (
           <OrderTypesAutoReadyView />
-        ) : activeSubView === "timings" ? (
+        ) : view === "timings" ? (
           <TimingsHolidaysView />
-        ) : activeSubView === "staff" ? (
+        ) : view === "staff" ? (
           <ManageStaffView />
-        ) : activeSubView === "rules" ? (
+        ) : view === "rules" ? (
           <RulesChargesView />
-        ) : activeSubView === "eats" ? (
+        ) : view === "eats" ? (
           <KnotEatsView />
-        ) : activeSubView === "shift" ? (
+        ) : view === "shift" ? (
           <ShiftView />
-        ) : activeSubView === "inventory" ? (
+        ) : view === "inventory" ? (
           <InventoryView />
         ) : (
 
@@ -242,7 +247,7 @@ const Settings = () => {
                       )}
                     </p>
                     <p className="text-[12px] text-[#94A3B8] truncate mt-0.5">
-                      {locked ? lockedNote(item) : lockedByPlan(item) ? item.lockedDesc : item.desc}
+                      {locked ? lockedNote(item) : item.desc}
                     </p>
                   </div>
                   <span className="text-[#94A3B8] shrink-0">{locked ? <I.lock /> : <I.chevron />}</span>

@@ -13,6 +13,13 @@ const { notifyOrderReady } = require("../services/readyNotificationService");
 const { fireAutoEBill } = require("../services/eBillService");
 const { fireOrderCharge, fireOrderChargeReversal } = require("../services/orderCharge");
 const { emitOrderCreated, emitOrderStatusChanged } = require("../services/socket");
+const { indianMobile } = require("../services/otpService");
+const { round2 } = require("../services/money");
+const { isDuplicateKey } = require("../services/idempotency");
+const { computeDeliveryFeeFromSlabs } = require("../services/distanceService");
+const { displayPaymentMethod } = require("../constants/paymentMethods");
+const { maskPhone } = require("../middlewares/customerPrivacy");
+const { DEFAULT_TZ, zonedInstant, localDate } = require("../services/tableBookings");
 
 
 /**
@@ -64,6 +71,7 @@ const {
   READY,
   CANCELLED,
   REFUNDED,
+  OUT_FOR_DELIVERY,
   isSettled,
   ALLOWED_INITIAL_STATUS,
   ALLOWED_STATUS_TRANSITIONS,
@@ -211,8 +219,15 @@ const sanitizeDeliveryAddress = (raw = {}) => {
   };
   // If every field is empty, treat as absent so we don't persist a noisy object.
   const hasAny = Object.values(cleaned).some((v) => v && v.length > 0);
-  return hasAny ? cleaned : undefined;
+  if (!hasAny) return undefined;
+  // The distance staff typed at the till, which prices delivery by slab.
+  const km = raw.distanceKm === "" || raw.distanceKm == null ? NaN : Number(raw.distanceKm);
+  if (km >= 0 && km <= 100) Object.assign(cleaned, { distanceKm: round2(km), distanceSource: "staff" });
+  return cleaned;
 };
+
+/** Split parts (services/splitPayment, upper case) as Order.payments[].method. */
+const SPLIT_PART_METHOD = { CASH: "cash", UPI: "upi", QR_CODE: "upi", CARD: "card" };
 
 const addOrder = async (req, res, next) => {
   try {
@@ -225,6 +240,22 @@ const addOrder = async (req, res, next) => {
       paymentMethod: rawPaymentMethod,
     } = req.body || {};
 
+    // Set by the offline sync (routes/offlineRoute.js) and only there. Read
+    // before the header below can set a key: a live request must not earn the
+    // offline exemptions (GST re-pricing, discount PIN) by sending a header.
+    const offlineSync = Boolean(req.idempotencyKey);
+
+    // A live till sends its local id as Idempotency-Key, the same id it queues
+    // the order under if the answer is lost. When the first attempt did get
+    // through, the retry and the offline sync both find it here instead of
+    // creating the sale twice.
+    const headerKey = String(req.get?.("Idempotency-Key") || "").trim().slice(0, 80);
+    if (headerKey && !offlineSync && req.user?.restaurantId) {
+      req.idempotencyKey = `offline:${headerKey}`;
+      const existing = await Order.findOne({ restaurantId: req.user.restaurantId, idempotencyKey: req.idempotencyKey });
+      if (existing) return res.status(200).json({ success: true, message: "Order already created", data: existing });
+    }
+
     // Backend capacity enforcement for dine-in table orders
     if (table || customerDetails?.guests) {
       await validateTableCapacityForOrder({
@@ -236,27 +267,225 @@ const addOrder = async (req, res, next) => {
 
 
     const name = customerDetails?.name ? String(customerDetails.name).trim().slice(0, 200) : "";
-    const phone = customerDetails?.phone ? String(customerDetails.phone).trim().slice(0, 20) : "";
+    // The same rule as every other channel: a 10-digit Indian mobile, +91 / 0
+    // stripped. Any string used to be saved, become a CRM customer and get an
+    // e-bill. Blank is still fine for a walk-in.
+    const rawPhone = customerDetails?.phone ? String(customerDetails.phone).trim() : "";
+    const phone = rawPhone ? indianMobile(rawPhone) : "";
+    if (rawPhone && !phone) {
+      return next(createHttpError(400, "Enter a valid 10-digit mobile number, or leave the phone blank."));
+    }
     const guests = Math.max(1, Math.min(1000, Math.floor(safeNumber(customerDetails?.guests, 1))));
     // Module 4 §5 — structured customer address fields.
     // These are stored on customerDetails so they render alongside name/phone
     // in the Order Details view without needing a deliveryAddress object.
     const custAddress = customerDetails?.address ? String(customerDetails.address).trim().slice(0, 300) : "";
     const custCity = customerDetails?.city ? String(customerDetails.city).trim().slice(0, 120) : "";
-    const custPin = customerDetails?.pinCode ? String(customerDetails.pinCode).trim().slice(0, 20) : "";
+    let custPin = customerDetails?.pinCode ? String(customerDetails.pinCode).trim().slice(0, 20) : "";
     // B2B bill: company + GSTIN, validated so a typo is refused at the till.
     const buyer = require("../services/gst").buyerFrom(customerDetails || {});
     const custDeliveryNote = customerDetails?.deliveryNote
       ? String(customerDetails.deliveryNote).trim().slice(0, 400)
       : "";
 
+    // Normalise + allow-list order type. Anything else → dine-in.
+    let normalizedOrderType = String(orderType || "dine-in").toLowerCase();
+    if (normalizedOrderType === "table service") normalizedOrderType = "dine-in";
+    if (!ALLOWED_ORDER_TYPES.has(normalizedOrderType)) normalizedOrderType = "dine-in";
 
+    // Module 7 §4 — Order Type Toggles enforcement
+    if (req.user?.restaurantId && mongoose.connection.readyState === 1) {
+      try {
+        const restaurant = await Restaurant.findById(req.user.restaurantId);
+        const toggles = restaurant?.orderTypeToggles || { collection: true, delivery: true, table: true };
+        const key = normalizedOrderType === "dine-in" ? "table" : normalizedOrderType === "takeaway" ? "collection" : normalizedOrderType;
+        if (toggles[key] === false) {
+          return next(createHttpError(400, `${key.charAt(0).toUpperCase() + key.slice(1)} orders are currently disabled in Store Settings.`));
+        }
+      } catch (e) {
+        // Safe fallback in test environments where Restaurant model is un-mocked
+      }
+    }
+
+
+
+    // Client-supplied orderStatus is deliberately IGNORED — the POS never
+    // sets "Completed" straight away, and allowing arbitrary status via the
+    // create path would let a caller mark a takeaway order paid without
+    // payment. Module 4 §1 renamed "Pending" → "Preparing" so every new POS
+    // order enters the queue as Preparing.
+    //
+    // EXCEPTION (§Finish Order — Cash / UPI / Card / Split): when the biller
+    // has already collected the money at the till, the order is by definition
+    // fully paid the moment it's created. We accept an allow-listed
+    // `paymentMethod` from the request body and, for the "paid-at-till"
+    // channels only, record matching payments[] entries so downstream code
+    // (invoice, reports, receipts, online orders view) can render the correct
+    // payment status instead of showing "pending" / "Pay on collection" for an
+    // order that has already been paid. Pay-by-Link still stays Preparing +
+    // pending — that transition is owned by verifyAndCaptureLinkPayment.
+    const normalizedPaymentMethod = (() => {
+      const raw = String(rawPaymentMethod || "").trim().toLowerCase();
+      if (raw === "cash") return "Cash";
+      if (raw === "upi" || raw === "qr" || raw === "qr/online" || raw === "online") return "UPI";
+      if (raw === "card") return "Card";
+      if (raw === "split") return "Split";
+      if (raw === "paymentlink" || raw === "payment_link" || raw === "link") return "PaymentLink";
+      return "";
+    })();
+    const isPaidAtTill = ["Cash", "UPI", "Card", "Split"].includes(normalizedPaymentMethod);
+    // A paid delivery still has to be cooked and driven over: it goes through
+    // the kitchen and out for delivery, and finishes at Delivered. Created
+    // "Completed", it could never be marked out for delivery at all.
+    const initialStatus = isPaidAtTill && normalizedOrderType !== "delivery" ? "Completed" : "Preparing";
+
+
+    // EXPLICIT ALLOW-LIST — no spreading `...req.body` (mass-assignment).
+    // Fields NOT taken from req.body: restaurantId, outletId, storeId,
+    // createdBy, orderStatus, source, orderNumber, idempotencyKey (the
+    // offline sync sets it on the request, never the client), paymentMethod,
+    // payments, timeline, isDeleted, etc.
+    const items = Array.isArray(req.body?.items) ? req.body.items.slice(0, 200).map(sanitizeItem) : [];
+    const sanitizedBills = sanitizeBills(bills || {});
+
+    let cleanDeliveryAddress = sanitizeDeliveryAddress(deliveryAddress);
+    if (!cleanDeliveryAddress && (custAddress || custPin)) {
+      cleanDeliveryAddress = sanitizeDeliveryAddress({
+        line1: custAddress,
+        city: custCity,
+        postalCode: custPin,
+        instructions: custDeliveryNote,
+      });
+    }
+
+    if (normalizedOrderType === "delivery") {
+      if (!name) return next(createHttpError(400, "Customer name is required for delivery orders."));
+      if (!phone) return next(createHttpError(400, "Customer phone is required for delivery orders."));
+      if (!cleanDeliveryAddress || !cleanDeliveryAddress.line1) {
+        return next(createHttpError(400, "Delivery address is required for delivery orders."));
+      }
+      if (!cleanDeliveryAddress.postalCode && custPin) {
+        cleanDeliveryAddress.postalCode = custPin;
+      }
+      // An Indian PIN code. Any 20 characters used to be saved ("SA4 8DE").
+      const pin = cleanDeliveryAddress.postalCode.replace(/\s/g, "");
+      if (!/^[1-9]\d{5}$/.test(pin)) return next(createHttpError(400, "Enter a valid 6-digit pincode."));
+      cleanDeliveryAddress.postalCode = pin;
+      custPin = pin;
+    }
+
+    // GST is the store's to decide, not the till's: a GST number AND a rate,
+    // for the system channel (services/gst, the rule table, QR and website
+    // orders already use). The till used to send whatever its copy of the
+    // settings said, and that was stored. A live till that priced with stale
+    // or missing settings is sent back (409) rather than saving a total the
+    // customer was never shown; an order synced from offline was already paid
+    // for, so it is re-priced instead of refused.
+    // What the till charged, before any re-pricing below. An order synced
+    // from offline was paid at this figure: its payment lines (and a split's
+    // parts) record it, or a split rung up on old settings was refused at sync.
+    const tillTotal = Number(sanitizedBills?.totalWithTax ?? sanitizedBills?.total ?? 0) || 0;
+    const gst = await require("../services/gst").resolveGstForRestaurant(req.user?.restaurantId, "system");
+    const priced = require("../services/price").computeTotals({
+      subtotal: sanitizedBills.subtotal,
+      discount: sanitizedBills.discount,
+      packagingFee: sanitizedBills.packagingFee,
+      deliveryFee: sanitizedBills.deliveryFee,
+      taxRate: gst.rate,
+      taxInclusive: gst.inclusive,
+    });
+    if (!offlineSync && Math.abs(priced.totalWithTax - sanitizedBills.totalWithTax) > 0.05) {
+      return next(createHttpError(409, "GST or charges changed since this till loaded them. Check the new total and finish again."));
+    }
+    Object.assign(sanitizedBills, {
+      tax: priced.tax,
+      taxPercent: priced.taxPercent,
+      taxInclusive: priced.taxInclusive,
+      totalWithTax: priced.totalWithTax,
+    });
+
+    // Delivery is priced here too: by the distance staff typed when the store
+    // charges by distance slab (Rules & Charges), else the flat fee, waived
+    // above freeDeliveryAbove -- the website's rule (orderPricingService).
+    // Outside the tax base, so the GST above is unchanged. Same 409 / re-price
+    // split as GST.
+    if (normalizedOrderType === "delivery") {
+      const settings = req.user?.restaurantId
+        ? await require("../models/websiteSettingsModel").findOne({ restaurantId: req.user.restaurantId }).select("ordering").lean()
+        : null;
+      const ordering = settings?.ordering || {};
+      const slabs = ordering.deliverySlabsConfig?.slabs || [];
+      const km = cleanDeliveryAddress.distanceKm;
+      const clientFee = sanitizedBills.deliveryFee;
+      let fee = Number(ordering.deliveryFee) || 0;
+      let problem = slabs.length && km === undefined ? "Enter the delivery distance (km)." : "";
+      if (!problem && (slabs.length || km !== undefined)) {
+        try {
+          fee = computeDeliveryFeeFromSlabs({ distanceKm: km, slabsConfig: ordering.deliverySlabsConfig, defaultFee: fee });
+        } catch (err) {
+          problem = err.message;
+        }
+      }
+      const freeAbove = Number(ordering.freeDeliveryAbove) || 0;
+      if (freeAbove > 0 && sanitizedBills.subtotal >= freeAbove) fee = 0;
+
+      if (problem) {
+        // A delivery taken offline was already made; keep what the till charged.
+        if (!offlineSync) return next(createHttpError(400, problem));
+      } else if (Math.abs(fee - clientFee) > 0.05) {
+        if (!offlineSync) {
+          return next(createHttpError(409, `Delivery here is ₹${round2(fee).toFixed(2)}, not ₹${clientFee.toFixed(2)}. Check the new total and finish again.`));
+        }
+        sanitizedBills.deliveryFee = round2(fee);
+        sanitizedBills.totalWithTax = round2(sanitizedBills.totalWithTax - clientFee + fee);
+      }
+    }
+
+    // Build a canonical payments[] array for immediate-pay (Cash/UPI/Card/
+    // Split) so paymentStatus rendering ("paid" vs "pending") is correct from
+    // creation. For Pay-by-Link we omit payments — the payment link
+    // controller pushes a "paid" entry once the customer actually pays.
+    const paidAmount = offlineSync ? tillTotal : Number(sanitizedBills?.totalWithTax ?? sanitizedBills?.total ?? 0) || 0;
+    let paymentsForOrder = [];
+    let paymentLabel = normalizedPaymentMethod;
+    if (normalizedPaymentMethod === "Split") {
+      // One bill, several counter methods: the same rule as a table settle.
+      // Each part keeps its own method, so the cash part reaches the drawer.
+      const { validateSplits, splitLabel } = require("../services/splitPayment");
+      const check = validateSplits(req.body?.splits, paidAmount);
+      if (!check.ok) return next(createHttpError(400, check.message));
+      paymentsForOrder = check.parts.map((p) => ({ method: SPLIT_PART_METHOD[p.method], amount: p.amount, status: "paid", transactionId: "" }));
+      paymentLabel = splitLabel(check.parts, displayPaymentMethod);
+    } else if (isPaidAtTill) {
+      paymentsForOrder = [
+        {
+          method: normalizedPaymentMethod.toLowerCase(),
+          amount: paidAmount,
+          status: "paid",
+          transactionId: "",
+        },
+      ];
+    }
+
+    // A discount is money off a sale, so it needs the Security PIN, as a void
+    // does, unless the owner gives it. The till asks for the PIN when the
+    // discount is applied; this is the enforcement. Offline-synced orders are
+    // exempt: the sale already happened, a PIN token has long expired by sync
+    // time, and refusing would lose it.
+    // ponytail: a hand-crafted offline-sync request skips the PIN; audit-log offline discounts if that matters.
+    if (sanitizedBills.discount > 0 && !offlineSync) {
+      const { isOwnerUser, hasPinAuthorization, pinRequired } = require("../middlewares/requirePermission");
+      if (!isOwnerUser(req.user) && !(await hasPinAuthorization(req))) return next(pinRequired());
+    }
+
+    // The CRM record is written only once every check above has passed, so a
+    // refused order never counts as a visit.
     let customerId = null;
 
     if (name || phone) {
       const restaurantId = req.user?.restaurantId || req.user?._id;
       const outletId = req.user?.outletId;
-      const totalAmount = safeNumber(bills?.totalWithTax || bills?.total, 0, { min: 0, max: 1e9 });
+      const totalAmount = sanitizedBills.totalWithTax;
 
       if (phone) {
         let customer = await Customer.findOne({
@@ -332,84 +561,6 @@ const addOrder = async (req, res, next) => {
       }
     }
 
-    // Normalise + allow-list order type. Anything else → dine-in.
-    let normalizedOrderType = String(orderType || "dine-in").toLowerCase();
-    if (normalizedOrderType === "table service") normalizedOrderType = "dine-in";
-    if (!ALLOWED_ORDER_TYPES.has(normalizedOrderType)) normalizedOrderType = "dine-in";
-
-    // Module 7 §4 — Order Type Toggles enforcement
-    if (req.user?.restaurantId && mongoose.connection.readyState === 1) {
-      try {
-        const restaurant = await Restaurant.findById(req.user.restaurantId);
-        const toggles = restaurant?.orderTypeToggles || { collection: true, delivery: true, table: true };
-        const key = normalizedOrderType === "dine-in" ? "table" : normalizedOrderType === "takeaway" ? "collection" : normalizedOrderType;
-        if (toggles[key] === false) {
-          return next(createHttpError(400, `${key.charAt(0).toUpperCase() + key.slice(1)} orders are currently disabled in Store Settings.`));
-        }
-      } catch (e) {
-        // Safe fallback in test environments where Restaurant model is un-mocked
-      }
-    }
-
-
-
-    // Client-supplied orderStatus is deliberately IGNORED — the POS never
-    // sets "Completed" straight away, and allowing arbitrary status via the
-    // create path would let a caller mark a takeaway order paid without
-    // payment. Module 4 §1 renamed "Pending" → "Preparing" so every new POS
-    // order enters the queue as Preparing.
-    //
-    // EXCEPTION (§Finish Order — Cash / QR): when the biller has already
-    // collected physical cash or accepted a UPI/QR payment at the till, the
-    // order is by definition fully paid the moment it's created. We accept
-    // an allow-listed `paymentMethod` from the request body and, for the
-    // "paid-at-till" channels only, mark the order Completed and record a
-    // matching payments[0] entry so downstream code (invoice, reports,
-    // receipts, online orders view) can render the correct payment status
-    // instead of showing "pending" / "Pay on collection" for an order that
-    // has already been paid. Pay-by-Link still stays Preparing + pending —
-    // that transition is owned by verifyAndCaptureLinkPayment.
-    const normalizedPaymentMethod = (() => {
-      const raw = String(rawPaymentMethod || "").trim().toLowerCase();
-      if (raw === "cash") return "Cash";
-      if (raw === "upi" || raw === "qr" || raw === "qr/online" || raw === "online") return "UPI";
-      if (raw === "paymentlink" || raw === "payment_link" || raw === "link") return "PaymentLink";
-      return "";
-    })();
-    const isPaidAtTill =
-      normalizedPaymentMethod === "Cash" || normalizedPaymentMethod === "UPI";
-    const initialStatus = isPaidAtTill ? "Completed" : "Preparing";
-
-
-    // EXPLICIT ALLOW-LIST — no spreading `...req.body` (mass-assignment).
-    // Fields NOT taken from req.body: restaurantId, outletId, storeId,
-    // createdBy, orderStatus, source, orderNumber, idempotencyKey (the
-    // offline sync sets it on the request, never the client), paymentMethod,
-    // payments, timeline, isDeleted, etc.
-    const items = Array.isArray(req.body?.items) ? req.body.items.slice(0, 200).map(sanitizeItem) : [];
-    const sanitizedBills = sanitizeBills(bills || {});
-
-    let cleanDeliveryAddress = sanitizeDeliveryAddress(deliveryAddress);
-    if (!cleanDeliveryAddress && (custAddress || custPin)) {
-      cleanDeliveryAddress = sanitizeDeliveryAddress({
-        line1: custAddress,
-        city: custCity,
-        postalCode: custPin,
-        instructions: custDeliveryNote,
-      });
-    }
-
-    if (normalizedOrderType === "delivery") {
-      if (!name) return next(createHttpError(400, "Customer name is required for delivery orders."));
-      if (!phone) return next(createHttpError(400, "Customer phone is required for delivery orders."));
-      if (!cleanDeliveryAddress || !cleanDeliveryAddress.line1) {
-        return next(createHttpError(400, "Delivery address is required for delivery orders."));
-      }
-      if (!cleanDeliveryAddress.postalCode && custPin) {
-        cleanDeliveryAddress.postalCode = custPin;
-      }
-    }
-
 
     // Allocate a globally-unique, human-friendly order number BEFORE saving
     // (Module 3 §4). The generator is atomic per (restaurantId, source,
@@ -437,22 +588,6 @@ const addOrder = async (req, res, next) => {
       orderType: normalizedOrderType,
     });
 
-    // Build a canonical payments[] array for immediate-pay (Cash/UPI) so
-    // paymentStatus rendering ("paid" vs "pending") is correct from
-    // creation. For Pay-by-Link we omit payments — the payment link
-    // controller pushes a "paid" entry once the customer actually pays.
-    const paidAmount = Number(sanitizedBills?.totalWithTax ?? sanitizedBills?.total ?? 0) || 0;
-    const paymentsForOrder = isPaidAtTill
-      ? [
-          {
-            method: normalizedPaymentMethod === "Cash" ? "cash" : "upi",
-            amount: paidAmount,
-            status: "paid",
-            transactionId: "",
-          },
-        ]
-      : [];
-
     const orderData = {
       customerDetails: {
         name,
@@ -478,8 +613,9 @@ const addOrder = async (req, res, next) => {
       orderNumber,
       ...(readyDueAt ? { readyDueAt } : {}),
       ...(completeDueAt ? { completeDueAt } : {}),
-      ...(normalizedPaymentMethod ? { paymentMethod: normalizedPaymentMethod } : {}),
+      ...(paymentLabel ? { paymentMethod: paymentLabel } : {}),
       ...(paymentsForOrder.length ? { payments: paymentsForOrder } : {}),
+      ...(normalizedPaymentMethod === "Split" ? { isSplit: true } : {}),
       timeline: [{ status: initialStatus, timestamp: new Date(), user: req.user?.name || "POS" }],
       ...(req.idempotencyKey ? { idempotencyKey: req.idempotencyKey } : {}),
     };
@@ -498,6 +634,12 @@ const addOrder = async (req, res, next) => {
           restaurantId: req.user?.restaurantId || null,
         });
         await order.save();
+      } else if (isDuplicateKey(err) && err?.keyPattern?.idempotencyKey && !offlineSync) {
+        // A retry raced the first attempt (or its offline sync) and lost: the
+        // unique index kept one order, so answer with it.
+        const winner = await Order.findOne({ restaurantId: req.user?.restaurantId, idempotencyKey: req.idempotencyKey });
+        if (!winner) throw err;
+        return res.status(200).json({ success: true, message: "Order already created", data: winner });
       } else {
         throw err;
       }
@@ -524,7 +666,9 @@ const addOrder = async (req, res, next) => {
     // initialStatus above), so it never passes through updateOrderStatus and
     // would never have fired the automatic e-bill -- silently missing the most
     // common order in the whole system. One that is not paid yet is
-    // "Preparing", and fires later when it is completed or swept.
+    // "Preparing", and fires later when it is completed or swept. A paid
+    // delivery fires now (it is paid) and again at Delivered, which the
+    // e-bill and the charge both ignore as already done.
     //
     // Fire-and-forget, and a no-op unless posSettings.autoEBill is on and the
     // order carries a phone number.
@@ -587,24 +731,32 @@ const getOrderById = async (req, res, next) => {
  *   - from / to   YYYY-MM-DD                inclusive date range
  *   - status      "Preparing" | "Ready" | ...  (comma-separated for multiple)
  *
- * Default when NO date/from/to is supplied: today's orders only, in the
- * server's local timezone. Historical orders are never returned by
- * default — the spec explicitly forbids showing them on Orders open.
+ * Default when NO date/from/to is supplied: today's orders only.
+ * Historical orders are never returned by default — the spec explicitly
+ * forbids showing them on Orders open.
+ *
+ * Every day is the STORE's day (Asia/Kolkata), not the server's: the server
+ * runs in UTC, so "today" used to start at 05:30 and an order at 02:00
+ * landed in yesterday's report.
  *
  * All results also get `orderStatus` mapped to the canonical Module 4
  * vocabulary ("Preparing" instead of legacy "Pending"/"In Progress") so
  * the UI can render a single tab set without knowing about aliases.
  */
-const buildDateWindow = (query) => {
+const buildDateWindow = (query, timeZone = DEFAULT_TZ) => {
   const parseDay = (s, endOfDay = false) => {
     if (!s || typeof s !== "string") return null;
     // Accept ISO date or YYYY-MM-DD. Anything else is silently ignored so
     // a bad query string does not surface as an internal error.
-    const d = new Date(s.length === 10 ? `${s}T00:00:00` : s);
-    if (Number.isNaN(d.getTime())) return null;
-    if (endOfDay) d.setHours(23, 59, 59, 999);
-    else d.setHours(0, 0, 0, 0);
-    return d;
+    let ymd = s;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+      const d = new Date(s);
+      if (Number.isNaN(d.getTime())) return null;
+      ymd = localDate(d, timeZone);
+    }
+    if (!endOfDay) return zonedInstant(ymd, "00:00", timeZone);
+    const lastMinute = zonedInstant(ymd, "23:59", timeZone);
+    return lastMinute && new Date(lastMinute.getTime() + 59999);
   };
 
   const { date, from, to } = query || {};
@@ -621,12 +773,9 @@ const buildDateWindow = (query) => {
     if (start && end && start <= end) return { start, end, source: "range" };
   }
 
-  // Default: today (00:00 → 23:59:59) in the server's local timezone.
-  const start = new Date();
-  start.setHours(0, 0, 0, 0);
-  const end = new Date();
-  end.setHours(23, 59, 59, 999);
-  return { start, end, source: "today" };
+  // Default: the store's today (00:00 → 23:59:59.999).
+  const today = localDate(new Date(), timeZone);
+  return { start: parseDay(today, false), end: parseDay(today, true), source: "today" };
 };
 
 const getOrders = async (req, res, next) => {
@@ -695,6 +844,10 @@ const updateOrder = async (req, res, next) => {
     });
     if (!order) return next(createHttpError(404, "Order not found!"));
 
+    if (canonicalStatus(orderStatus) === OUT_FOR_DELIVERY && order.orderType !== "delivery") {
+      return next(createHttpError(400, "Only delivery orders can go out for delivery."));
+    }
+
     // Reject transitions out of terminal states — you cannot un-cancel or
     // un-complete an order via this endpoint (§17 business logic).
     // isFinished, not TERMINAL_STATUSES.has: the latter holds only the three
@@ -705,16 +858,31 @@ const updateOrder = async (req, res, next) => {
     // PIN-guarded cancel route. Cancelling and refunding are separate: a
     // gateway payment is refunded afterwards through refundOrder, cash is
     // handed back at the counter, and the order records which.
-    const voidingPaid = Boolean(req.voidWithReason) && canonicalStatus(orderStatus) === CANCELLED && isSettled(order.orderStatus);
-    // A completed (paid) order is voided by the owner only; the Security PIN
-    // is not enough for undoing a sale.
-    if (voidingPaid && !require("../middlewares/requirePermission").isOwnerUser(req.user)) {
-      return next(createHttpError(403, "Only the store owner can cancel a completed order."));
+    //
+    // Paid means settled OR money already taken: a delivery paid at the till
+    // is still cooking (Preparing) but is no less a sale.
+    const paid = isSettled(order.orderStatus) || wasPaid(order);
+    const cancelling = canonicalStatus(orderStatus) === CANCELLED;
+    const voidingPaid = Boolean(req.voidWithReason) && cancelling && paid;
+    // A paid order is voided by the owner or a manager only, with a reason;
+    // the Security PIN alone is not enough for undoing a sale.
+    if (voidingPaid && !require("../middlewares/requirePermission").isManagerUser(req.user)) {
+      return next(createHttpError(403, "Only the store owner or a manager can cancel a paid order."));
+    }
+    if (cancelling && paid && !voidingPaid && !isFinished(order.orderStatus)) {
+      return next(createHttpError(409, "This order is paid. Cancel it from Orders, with a reason."));
     }
     if (isFinished(order.orderStatus) && canonicalStatus(order.orderStatus) !== canonicalStatus(orderStatus) && !voidingPaid) {
       return next(
         createHttpError(409, `Order is already ${order.orderStatus.toLowerCase()} and cannot be changed.`)
       );
+    }
+    // Cancelling a table's ticket here voids what is on the table, like
+    // voiding a dish there: staff need the Security PIN. (The reasoned cancel
+    // route has already checked it.)
+    if (cancelling && !req.voidWithReason && order.tableSessionId) {
+      const { isOwnerUser, hasPinAuthorization, pinRequired } = require("../middlewares/requirePermission");
+      if (!isOwnerUser(req.user) && !(await hasPinAuthorization(req))) return next(pinRequired());
     }
 
     // Normalise legacy input aliases to the canonical Module 4 name.
@@ -849,7 +1017,12 @@ const markOrderReady = async (req, res, next) => {
     });
     if (!order) return next(createHttpError(404, "Order not found!"));
 
-    if (isFinished(order.orderStatus)) {
+    // A takeaway paid at the till is created Completed but still has to be
+    // cooked, so the kitchen screen lists it. Its Ready stamps readyAt (and
+    // tells the customer); the sale stays Completed.
+    const paidTakeaway =
+      isSettled(order.orderStatus) && !order.readyAt && order.source === "POS" && !["dine-in", "delivery"].includes(order.orderType);
+    if (isFinished(order.orderStatus) && !paidTakeaway) {
       return next(
         createHttpError(409, `Order is already ${order.orderStatus.toLowerCase()} and cannot be changed.`)
       );
@@ -863,7 +1036,7 @@ const markOrderReady = async (req, res, next) => {
         .json({ success: true, message: "Order already ready", data: projected });
     }
 
-    order.orderStatus = READY;
+    if (!paidTakeaway) order.orderStatus = READY;
     order.readyAt = new Date();
     order.readyBy = "STAFF";
     order.timeline = order.timeline || [];
@@ -927,9 +1100,12 @@ const markOrderReady = async (req, res, next) => {
  *     Table QR = QR
  *     Outside  = MARKETPLACE (Swiggy, Zomato, ...)
  *
- *   Payment method — how it was paid. An order with no method yet counts
- *   in none of these.
- *     Cash / UPI / Gateway
+ *   Payment method — how it was paid. Every order is in exactly one, so
+ *   the cards add up to the total: an unpaid order (or one paid some other
+ *   way) is "Unpaid / Other".
+ *     Cash / UPI / Card / Gateway / Split / Other
+ *
+ *   Tips — left at a table settle. Not sales, so outside every other card.
  *
  *   Type — Delivery / Collection.
  *
@@ -947,14 +1123,38 @@ const REPORT_METHOD = {
   paymentlink: "gateway",
   payment_link: "gateway",
   link: "gateway",
+  card: "card",
+  split: "split",
 };
 
 const reportMethodOf = (o) => {
+  // Only money that went through the gateway has a gateway payment id. A paid
+  // pay-by-link order is rewritten to the instrument (upi/card), and a counter
+  // settle carries an empty one.
+  if (o.paymentData?.gatewayPaymentId) return "gateway";
+  if (o.isSplit) return "split";
   const raw = o.payments?.[0]?.method || o.paymentMethod || "";
-  return REPORT_METHOD[String(raw).trim().toLowerCase()] || null;
+  return REPORT_METHOD[String(raw).trim().toLowerCase()] || "other";
 };
 
-const { netAmount, refundCancelledOrder, syncRefund, refundView, REFUND_STATUS } = require("../services/refunds");
+const PAYMENT_LABELS = { cash: "Cash", upi: "UPI", card: "Card", gateway: "Payment Gateway" };
+
+/**
+ * One order as Reports shows it: the canonical status, the payment method
+ * named after the card it is counted in, and the customer's phone masked.
+ * Reports is a list of everyone's numbers, so it never shows one in full,
+ * not even today's (the Orders screen does, for delivery calls and e-bills).
+ */
+const reportOrderView = (o) => {
+  const obj = o.toObject ? o.toObject() : o;
+  obj.orderStatus = canonicalStatus(obj.orderStatus);
+  if (obj.customerDetails?.phone) obj.customerDetails.phone = maskPhone(obj.customerDetails.phone);
+  const method = reportMethodOf(obj);
+  obj.paymentLabel = PAYMENT_LABELS[method] || obj.paymentMethod || "—";
+  return obj;
+};
+
+const { netAmount, wasPaid, refundCancelledOrder, syncRefund, refundView, REFUND_STATUS } = require("../services/refunds");
 
 /**
  * PUT /api/order/:id/cancel  { reason }
@@ -1062,6 +1262,10 @@ const buildReportBuckets = (orders) => {
     cash: bucket(),
     upi: bucket(),
     gateway: bucket(),
+    card: bucket(),
+    split: bucket(),
+    other: bucket(),
+    tips: bucket(),
     delivery: bucket(),
     collection: bucket(),
   };
@@ -1088,8 +1292,9 @@ const buildReportBuckets = (orders) => {
     else if (source === "QR") inc(summary.tableQr, amount);
     else inc(summary.system, amount);
 
-    const method = reportMethodOf(o);
-    if (method) inc(summary[method], amount);
+    inc(summary[reportMethodOf(o)], amount);
+    const tip = Number(o.bills?.tip || o.tips) || 0;
+    if (tip > 0) inc(summary.tips, tip);
 
     const type = String(o.orderType || "").toLowerCase();
     if (type === "delivery") inc(summary.delivery, amount);
@@ -1108,19 +1313,18 @@ const getOrdersReport = async (req, res, next) => {
       createdAt: { $gte: window.start, $lte: window.end },
     };
 
+    // Every order in the period: the totals used to come from the newest
+    // 1,000 only, so a busy month silently dropped its oldest orders.
+    // ponytail: totals in memory; move them to a $group if one period ever runs to tens of thousands of orders.
     const orders = await Order.find(filter)
       .sort({ createdAt: -1 })
-      .limit(1000)
       .populate("table")
-      .populate("createdBy", "name");
+      .populate("createdBy", "name")
+      .lean();
 
     // Canonical status (Preparing instead of legacy Pending / In Progress)
     // so the frontend can drive its filters from a single vocabulary.
-    const projected = orders.map((o) => {
-      const obj = o.toObject ? o.toObject() : o;
-      obj.orderStatus = canonicalStatus(obj.orderStatus);
-      return obj;
-    });
+    const projected = orders.map(reportOrderView);
 
     const summary = buildReportBuckets(projected);
 
@@ -1137,7 +1341,7 @@ const getOrdersReport = async (req, res, next) => {
       req,
       action: "Accessed Reports",
       resource: "Reports",
-      description: `Accessed order & financial report for window: ${window.start.toISOString().slice(0, 10)} to ${window.end.toISOString().slice(0, 10)}`,
+      description: `Accessed order & financial report for window: ${localDate(window.start)} to ${localDate(window.end)}`,
     });
 
     res.status(200).json({
@@ -1150,7 +1354,9 @@ const getOrdersReport = async (req, res, next) => {
         },
         summary,
         breakdown,
-        orders: projected,
+        // The list is capped for the browser; the cards above are not.
+        orders: projected.slice(0, 1000),
+        truncated: projected.length > 1000,
       },
     });
   } catch (error) {
@@ -1310,6 +1516,8 @@ module.exports = {
   // canonicalisation (e.g. onlineOrderController projecting to the POS view).
   canonicalStatus,
   buildReportBuckets,
+  buildDateWindow,
+  reportOrderView,
 };
 
 

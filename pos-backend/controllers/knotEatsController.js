@@ -20,6 +20,8 @@ const { csdAudit } = require("../services/csdAuditService");
 const {
   AWAITING_ACCEPTANCE,
   READY_STATUSES,
+  OUT_FOR_DELIVERY,
+  canonicalStatus,
   isSettled,
   isCancelled,
   isRefunded,
@@ -113,6 +115,8 @@ const stageOf = (status) => {
   if (isCancelled(status) || isRefunded(status)) return "cancelled";
   if (isSettled(status)) return "completed";
   if (READY_STATUSES.includes(String(status || ""))) return "ready";
+  // Past Ready, not back to "accepted" (where any unknown status used to fall).
+  if (canonicalStatus(status) === OUT_FOR_DELIVERY) return "on_the_way";
   if (status === AWAITING_ACCEPTANCE) return "placed";
   return "accepted";
 };
@@ -636,5 +640,6 @@ module.exports = {
   csdListReviews,
   csdSetReviewHidden,
   maskAuthor,
+  stageOf,
   REVIEW_WINDOW_DAYS,
 };

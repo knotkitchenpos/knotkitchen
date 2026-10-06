@@ -111,7 +111,8 @@ test("the catch-up list is the same shape as the live event", () => {
   // One builder for both, so a late card renders exactly like a live one.
   const socket = BE("services/socket.js");
   assert.match(socket, /const orderCreatedPayload = \(order, storeId = ""\) =>/);
-  assert.match(socket, /const payload = orderCreatedPayload\(order, storeId\);/);
+  // live-orders/X-4 adds `placedVia` on top; the base is still the shared builder.
+  assert.match(socket, /const payload = \{ \.\.\.orderCreatedPayload\(order, storeId\),/);
   const ctrl = BE("controllers/onlineOrderController.js");
   assert.match(ctrl, /orders\.map\(\(o\) => orderCreatedPayload\(o, o\.storeId\)\)/);
   // Undecided per channel: website orders start Pending, QR orders Preparing.
@@ -130,4 +131,47 @@ test("a decision on one till drops the card on the others", () => {
   assert.match(POPUP, /prev\.filter\(\(p\) => String\(p\.orderId\) !== id\)/);
   // Accepting emits the status change the other tills listen for.
   assert.match(BE("controllers/onlineOrderController.js"), /emitEvent\("onlineOrder:status"|emitOrderStatusChanged\(\{/);
+});
+
+// ---------------------------------------------------------------------------
+// One decision removes one card
+// ---------------------------------------------------------------------------
+
+const ADDED = SRC("src/components/dashboard/AddedItemsPopup.jsx");
+
+test("REGRESSION: a decision removes that card by id, never the head of the queue", () => {
+  // Accepting emits `onlineOrder:status` before the HTTP reply, so the card
+  // is usually gone already when decide() resumes. `prev.slice(1)` then
+  // removed the NEXT waiting order: two waiting, one Accept cleared both.
+  for (const [name, src] of [["NewOrderPopup", POPUP], ["AddedItemsPopup", ADDED]]) {
+    assert.ok(!/prev\.slice\(1\)/.test(src), `${name} must not drop by position`);
+    assert.match(src, /prev\.filter\(\(p\) => String\(p\.orderId\) !== String\(id\)\)/, `${name} drops by orderId`);
+    const decide = src.slice(src.indexOf("const decide = async"), src.indexOf("} catch (e) {", src.indexOf("const decide = async")));
+    assert.match(decide, /drop\(current\.orderId\);/, `${name} drops the card it decided`);
+    assert.ok(!/drop\(\);/.test(src), `${name} has no positional drop() call left`);
+  }
+});
+
+test("a QR-placed order on a till-opened table still alerts", () => {
+  // Such an order keeps source "POS" (the table's origin) and carries
+  // placedVia "QR". Filtering on source alone let it reach the till silently.
+  assert.match(POPUP, /const channelOf = \(o\) => \(o\?\.placedVia === "QR" \? "QR" : String\(o\?\.source \|\| ""\)\.toUpperCase\(\)\);/);
+  const onCreated = POPUP.slice(POPUP.indexOf("const onCreated"), POPUP.indexOf("const onStatus"));
+  assert.match(onCreated, /const source = channelOf\(payload\);/);
+  assert.match(POPUP, /const source = channelOf\(current\);/, "and the card reads as a table order");
+});
+
+test("REGRESSION: a till that reloads still gets the Added Items card", () => {
+  // The card existed only as the live `tableOrder:itemsAdded` emit. A till that
+  // was closed or asleep never saw it, and the lines sat on the bill unreviewed.
+  const api = SRC("src/https/storefrontApi.js");
+  assert.match(api, /listPendingAdditions = \(\) => axiosWrapper\.get\("\/api\/online-orders\/added-items"\)/);
+  assert.match(ADDED, /await listPendingAdditions\(\)/);
+  assert.match(ADDED, /socket\.on\("connect", catchUp\)/);
+  assert.match(ADDED, /if \(socket\.connected\) catchUp\(\);/, "and on mount, not only on a later reconnect");
+  assert.match(ADDED, /document\.visibilityState === "visible"\) catchUp\(\);/);
+  // The server list wins: cards it no longer lists go, but a live card that
+  // landed while the list was in flight is kept.
+  assert.match(ADDED, /else if \(!before\.has\(id\)\) kept\.push\(p\);/);
+  assert.ok(!/getOrderById/.test(ADDED), "one list call, not one order fetch per card");
 });

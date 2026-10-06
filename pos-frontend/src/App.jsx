@@ -97,7 +97,7 @@ function Layout() {
       {/* Below lg the bottom navigation covers the last 60px (+ the home bar). */}
       <main className={`flex min-h-0 flex-1 min-w-0 flex-col overflow-hidden ${lock.locked ? "" : "pb-[calc(60px+env(safe-area-inset-bottom))] lg:pb-0"}`}>
         {!lock.locked && <MobileNav onMore={() => setMobileOpen(true)} />}
-        {isAuth && <OfflineBanner online={offline.online} queued={offline.queued} onSync={offline.flush} />}
+        {isAuth && <OfflineBanner online={offline.online} queued={offline.queued} rejected={offline.rejected} onSync={offline.flush} onDiscard={offline.discard} />}
         {isAuth && <OldWebViewBanner />}
         {isAuth && <AccountLockBanner {...lock} />}
         {isAuth && <GlobalPinPrompt />}

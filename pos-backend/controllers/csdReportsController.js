@@ -1,5 +1,6 @@
 const Store = require("../models/storeModel");
 const Order = require("../models/orderModel");
+const Restaurant = require("../models/restaurantModel");
 const CsdJob = require("../models/csdJobModel");
 const CsdStaff = require("../models/csdStaffModel");
 const AuditLog = require("../models/auditLogModel");
@@ -27,10 +28,11 @@ const getReports = async (req, res, next) => {
 
     const [topStores, byOrderType, bySource, jobStats, jobsByAssignee, staffActivity, cancelled] =
       await Promise.all([
-        // Revenue leaderboard.
+        // Revenue leaderboard, per restaurant: orders from before every channel
+        // stamped storeId (orderModel) carry a blank one and would share a row.
         Order.aggregate([
           { $match: orderMatch },
-          { $group: { _id: "$storeId", orders: { $sum: 1 }, revenue: REVENUE } },
+          { $group: { _id: "$restaurantId", orders: { $sum: 1 }, revenue: REVENUE } },
           { $sort: { revenue: -1 } },
           { $limit: 10 },
         ]),
@@ -63,10 +65,11 @@ const getReports = async (req, res, next) => {
         ]),
 
         // Volume of recorded CSD actions per person — an activity signal, not
-        // a performance metric; it counts audited actions only.
+        // a performance metric; it counts audited actions only. Keyed on the
+        // staff _id: CSD staff sign in by email and most have no phone.
         AuditLog.aggregate([
           { $match: { role: /^csd:/, timestamp: { $gte: from } } },
-          { $group: { _id: "$phone", actions: { $sum: 1 } } },
+          { $group: { _id: "$userId", actions: { $sum: 1 } } },
           { $sort: { actions: -1 } },
           { $limit: 15 },
         ]),
@@ -86,15 +89,19 @@ const getReports = async (req, res, next) => {
       ]);
 
     // Resolve store + staff names for just the rows being returned.
-    const storeIds = topStores.map((s) => s._id).filter(Boolean);
-    const [stores, staff] = await Promise.all([
-      storeIds.length
-        ? Store.find({ storeId: { $in: storeIds } }, { storeId: 1, storeName: 1, status: 1 }).lean()
-        : [],
-      CsdStaff.find({}, { phone: 1, fullName: 1, staffId: 1 }).lean(),
+    const restaurantIds = topStores.map((s) => s._id).filter(Boolean);
+    const staffIds = staffActivity.map((a) => a._id).filter(Boolean);
+    const [restaurants, staff] = await Promise.all([
+      restaurantIds.length ? Restaurant.find({ _id: { $in: restaurantIds } }, { name: 1, storeId: 1 }).lean() : [],
+      staffIds.length ? CsdStaff.find({ _id: { $in: staffIds } }, { fullName: 1, staffId: 1 }).lean() : [],
     ]);
+    const restaurantById = new Map(restaurants.map((r) => [String(r._id), r]));
+    const storeIds = restaurants.map((r) => r.storeId).filter(Boolean);
+    const stores = storeIds.length
+      ? await Store.find({ storeId: { $in: storeIds } }, { storeId: 1, storeName: 1, status: 1 }).lean()
+      : [];
     const storeById = new Map(stores.map((s) => [s.storeId, s]));
-    const staffByPhone = new Map(staff.map((s) => [s.phone, s]));
+    const staffById = new Map(staff.map((s) => [String(s._id), s]));
 
     const round = (n) => Math.round((n + Number.EPSILON) * 100) / 100;
 
@@ -102,13 +109,17 @@ const getReports = async (req, res, next) => {
       success: true,
       data: {
         period: { from, to, months, timezone: "Asia/Kolkata" },
-        topStores: topStores.map((s) => ({
-          storeId: s._id || "",
-          storeName: storeById.get(s._id)?.storeName || "",
-          status: storeById.get(s._id)?.status || "",
-          orders: s.orders,
-          revenue: round(s.revenue),
-        })),
+        topStores: topStores.map((s) => {
+          const restaurant = restaurantById.get(String(s._id));
+          const store = storeById.get(restaurant?.storeId);
+          return {
+            storeId: restaurant?.storeId || "",
+            storeName: store?.storeName || restaurant?.name || "",
+            status: store?.status || "",
+            orders: s.orders,
+            revenue: round(s.revenue),
+          };
+        }),
         byOrderType: byOrderType.map((r) => ({
           label: r._id || "unspecified",
           orders: r.orders,
@@ -134,8 +145,8 @@ const getReports = async (req, res, next) => {
           })),
         },
         staffActivity: staffActivity.map((a) => ({
-          staffId: staffByPhone.get(a._id)?.staffId || "",
-          name: staffByPhone.get(a._id)?.fullName || "Unknown",
+          staffId: staffById.get(String(a._id))?.staffId || "",
+          name: staffById.get(String(a._id))?.fullName || "Unknown",
           actions: a.actions,
         })),
       },

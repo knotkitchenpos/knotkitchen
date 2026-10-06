@@ -55,8 +55,16 @@ test("Manage Website's full save never sends the Rules & Charges lists", () => {
   assert.deepEqual(withoutRulesKeys(loaded), { theme: "classic", ordering: { pickupEnabled: true } });
   assert.equal(loaded.couponsConfig.length, 1, "the editor's own copy is untouched");
   assert.ok(loaded.ordering.deliverySlabsConfig);
-  assert.match(src("pages/WebsiteSettings.jsx"), /: withoutRulesKeys\(settings\)\);/);
+  assert.match(src("pages/WebsiteSettings.jsx"), /updateWebsiteSettings\(\{ \.\.\.withoutRulesKeys\(settings\), paymentGateways: undefined \}\);/);
   // The server writes these lists only from a body without `version` (rulesEdit in
   // websiteSettingsController), so Rules & Charges, their one owner, must never send it.
   assert.doesNotMatch(src("components/settings/RulesChargesView.jsx"), /\bversion\s*:/);
+});
+
+test("the Promotion Priority total matches services/price.computeTotals", () => {
+  // Service charge (table bills) is added after tax, and GST is added only when prices exclude it.
+  assert.match(
+    src("components/settings/RulesChargesView.jsx"),
+    /Total = max\(0, Subtotal − Discount \+ Packing \+ GST[^<]*\+ Service charge \+ Delivery\)/,
+  );
 });

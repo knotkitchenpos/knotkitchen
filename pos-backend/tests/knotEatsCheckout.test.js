@@ -98,7 +98,7 @@ const world = (over = {}) => {
   w.fakes = {
     "../services/storefrontResolver": {
       REASON_MESSAGES: {},
-      resolveStorefront: async () => ({
+      resolveStorefront: async (opts) => ((w.resolverOpts = opts), {
         ok: true, settings: w.settings, store: { storeId: STORE }, restaurantId: RID, storeId: STORE,
         restaurant: { _id: RID, address: { lat: 22.5726, lng: 88.3639 } }, timezone: "Asia/Kolkata",
       }),
@@ -177,6 +177,28 @@ test("a store that is not listed (or was delisted) cannot be checked out through
   assert.equal(error.message, "This restaurant isn't on Knot Eats right now.");
   assert.deepEqual(w.listedAsked, [STORE], "asked about the store the URL resolved to");
   assert.equal(w.gatewayCalls.length, 0);
+});
+
+test("only a Knot Eats checkout asks the resolver to skip the website checks", async () => {
+  const eats = world();
+  await eats.start(pickup());
+  assert.equal(eats.resolverOpts.knotEats, true);
+  const web = world();
+  await web.start(pickup(), { knotEats: false });
+  assert.equal(web.resolverOpts.knotEats, false);
+});
+
+test("a delivery pincode, when given, is a 6-digit Indian pincode", async () => {
+  for (const postalCode of ["SA4 8DE", "12345", "012345", "7000911"]) {
+    const { error } = await world().start(delivery({ deliveryAddress: { line1: "12 Park Street", postalCode } }), { knotEats: false });
+    assert.equal(error?.status, 400, postalCode);
+    assert.equal(error.message, "Please enter a valid 6-digit pincode.");
+  }
+  const { error, checkout } = await world().start(delivery({ deliveryAddress: { line1: "12 Park Street", postalCode: "700 091" } }), { knotEats: false });
+  assert.equal(error, undefined, error?.message);
+  assert.equal(checkout.orderData.deliveryAddress.postalCode, "700091");
+  const blank = await world().start(delivery({ deliveryAddress: { line1: "12 Park Street" } }), { knotEats: false });
+  assert.equal(blank.error, undefined, "still optional");
 });
 
 test("Knot Eats delivery needs a real point in India", async () => {

@@ -266,7 +266,7 @@ test("REGRESSION: a counter order paid at the till fires the e-bill too", () => 
 
   assert.match(
     src,
-    /const initialStatus = isPaidAtTill \? "Completed"/,
+    /const initialStatus = isPaidAtTill && normalizedOrderType !== "delivery" \? "Completed"/,
     "anchor moved; retarget this guard",
   );
   assert.match(
@@ -340,7 +340,8 @@ test("eBillSentAt exists on both schemas", () => {
 test("SOURCE: settling a table can send its e-bill", () => {
   const modal = SRC("../pos-frontend/src/components/tables/TableSettleModal.jsx");
   assert.match(modal, /customerPhone/, "the modal needs somewhere to send it");
-  assert.match(modal, /sendEBill: Boolean\(phone && alsoEBill\)/);
+  // T10: with Auto E-Bill on the server sends it, so the tick is not sent too.
+  assert.match(modal, /sendEBill: Boolean\(phone && alsoEBill && !autoEBill\)/);
 
   // Both screens that settle a table must offer it, or it depends on which
   // one the operator happened to use.
@@ -360,6 +361,3 @@ test("REGRESSION: a table's order being auto-completed does not send a partial e
   assert.equal(sent.length, 0);
 });
 
-test("a KDS 'served' completion sends the e-bill too", () => {
-  assert.match(SRC("controllers/kdsController.js"), /orderStatus: COMPLETED \}\);\s*\n\s*fireAutoEBill\(\{ orderId: kdsOrder\.orderId \}\)/);
-});

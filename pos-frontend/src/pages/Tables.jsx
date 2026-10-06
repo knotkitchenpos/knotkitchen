@@ -322,7 +322,10 @@ const Tables = () => {
     const sessionId = sessionData?._id;
     if (!sessionId || !item?._id) return;
     if (!window.confirm(`Cancel "${item.name}" from this table's order?`)) return;
-    const reason = (window.prompt("Reason (optional) — the customer will see this:", "") || "").trim();
+    const raw = window.prompt("Reason (optional) — the customer will see this:", "");
+    if (raw === null) return; // Cancel on the reason box means do not void
+    const reason = raw.trim();
+    // Staff are asked for the Security PIN by the global popup (the route is PIN-guarded).
     cancelItemMut.mutate({ sessionId, itemId: item._id, reason });
   };
 
@@ -498,15 +501,9 @@ const Tables = () => {
         const res = await getTableSessionById(sessionId);
         setSessionData(res?.data?.data || null);
       } else {
+        // GET /api/table/:id answers { table, activeSession }, the session already in full.
         const res = await getTableById(table._id);
-        const t = res?.data?.data || table;
-        const nestedSessionId = getSessionIdFromTable(t);
-        if (nestedSessionId) {
-          const sres = await getTableSessionById(nestedSessionId);
-          setSessionData(sres?.data?.data || null);
-        } else {
-          setSessionData(null);
-        }
+        setSessionData(res?.data?.data?.activeSession || null);
       }
     } catch (error) {
       enqueueSnackbar("Failed to load table session.", { variant: "error" });
@@ -544,7 +541,9 @@ const Tables = () => {
   const handleConfirmGuestCount = async (guests, table) => {
     try {
       const res = await getTableById(table._id);
-      const fullTable = res?.data?.data || table;
+      // The API answers { table, activeSession }. Reading the wrapper as the
+      // table lost its id, name and capacity (every table looked like 4 seats).
+      const { table: fullTable = table, activeSession } = res?.data?.data || {};
       const cap = Number(fullTable.capacity) || 4;
       if (Number(guests) > cap) {
         enqueueSnackbar(
@@ -553,7 +552,11 @@ const Tables = () => {
         );
         return;
       }
-      dispatch(updateTableAction({ table: { ...fullTable, tableId: fullTable._id, tableNo: fullTable.displayId || fullTable.tableNumber } }));
+      // The head count goes with the table, so the Select Table popup opens with both filled in.
+      dispatch(updateTableAction({
+        table: { ...fullTable, tableId: fullTable._id, tableNo: fullTable.tableNumber, activeSessionId: activeSession?._id },
+        guests: Number(guests),
+      }));
       dispatch(setOrderType("Table Service"));
       setGuestCountTable(null);
       navigate("/menu");
@@ -714,38 +717,43 @@ const Tables = () => {
                 {/* Table Control Overlays */}
                 {/* Hidden-until-hover ONLY where a pointer can hover. A phone or
                     tablet has no hover state, so these controls were simply
-                    invisible there -- QR, Edit and Delete were unreachable. */}
-                <div className="absolute top-2 right-2 z-20 flex gap-1.5 transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:none)]:static [@media(hover:none)]:justify-end [@media(hover:none)]:mb-1.5">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setQrModalTable(table);
-                    }}
-                    className="p-1.5 [@media(hover:none)]:p-2 rounded-lg bg-white border border-[#E2E8F0] text-[#C2410C] shadow-md hover:scale-105"
-                    title="View QR Code"
-                  >
-                    <IconQr size={13} />
-                  </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openEditModal(table);
-                    }}
-                    className="p-1.5 [@media(hover:none)]:p-2 rounded-lg bg-white border border-[#E2E8F0] text-[#0F172A] shadow-md hover:scale-105"
-                    title="Edit Table"
-                  >
-                    <FiEdit2 size={13} />
-                  </button>
+                    invisible there -- QR, Edit and Delete were unreachable.
+                    Delete sits alone in the left corner, away from QR and Edit,
+                    so a tap meant for those cannot land on it. The row spans the
+                    card, so it lets taps through except on the buttons. */}
+                <div className="absolute top-2 left-2 right-2 z-20 flex justify-between pointer-events-none transition-opacity [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:none)]:static [@media(hover:none)]:mb-1.5">
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
                       handleDeleteTable(table);
                     }}
-                    className="p-1.5 [@media(hover:none)]:p-2 rounded-lg bg-[#DC2626] text-white shadow-md hover:scale-105"
+                    className="pointer-events-auto p-1.5 [@media(hover:none)]:p-2 rounded-lg bg-[#DC2626] text-white shadow-md hover:scale-105"
                     title="Delete Table"
                   >
                     <FiTrash2 size={13} />
                   </button>
+                  <div className="flex gap-1.5 pointer-events-auto">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setQrModalTable(table);
+                      }}
+                      className="p-1.5 [@media(hover:none)]:p-2 rounded-lg bg-white border border-[#E2E8F0] text-[#C2410C] shadow-md hover:scale-105"
+                      title="View QR Code"
+                    >
+                      <IconQr size={13} />
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openEditModal(table);
+                      }}
+                      className="p-1.5 [@media(hover:none)]:p-2 rounded-lg bg-white border border-[#E2E8F0] text-[#0F172A] shadow-md hover:scale-105"
+                      title="Edit Table"
+                    >
+                      <FiEdit2 size={13} />
+                    </button>
+                  </div>
                 </div>
 
                 <TableCard

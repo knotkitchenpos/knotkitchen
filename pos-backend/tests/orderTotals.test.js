@@ -94,7 +94,6 @@ test("SOURCE: the website engine, the table bill and order edits all use compute
   assert.match(read("controllers", "onlineOrderController.js"), /computeTotals\(\{/);
   const session = read("controllers", "tableSessionController.js");
   assert.equal((session.match(/taxInclusive: (gst|billGst)\.inclusive/g) || []).length, 2, "both table bill sites pass the flag");
-  assert.match(read("controllers", "qrController.js"), /taxInclusive: qrGst\.inclusive/);
 });
 
 // ---------------------------------------------------------------------------

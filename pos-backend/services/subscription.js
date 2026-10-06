@@ -12,7 +12,8 @@
  *   1. created: status NONE, and locked ("No plan is active yet").
  *   2. one top-up of at least firstRechargeMinPaise starts the POS plan by
  *      itself (afterRecharge): the plan price + GST is debited, the period
- *      starts today, the rest stays in the wallet.
+ *      starts today, the rest stays in the wallet. Every later top-up must be
+ *      at least topUpMinPaise.
  *   3. add-ons bought mid-period pay for the days left -- except one with its
  *      own period (the yearly Website), which pays a full period from the day
  *      it is bought. A device is paid once, online.
@@ -525,15 +526,21 @@ const closedForTopUp = async (restaurantId) => {
   return subscription?.status === "CANCELLED" || (await isStoreClosed(restaurantId));
 };
 
-/** The smallest top-up this store may open now, in paise: the activation minimum until it has activated. */
+/** The smallest top-up allowed: none for a demo store, the first minimum until the plan starts, then the later one. */
+const topUpFloor = ({ config, activatedAt, exempt }) =>
+  exempt ? 0 : Number(activatedAt ? config.topUpMinPaise : config.firstRechargeMinPaise) || 0;
+
+/** The smallest top-up this store may open now, in paise, and whether it is the first (activating) one. */
 const minimumTopUpPaise = async (restaurantId) => {
   const [config, subscription, override] = await Promise.all([
     getPlatformConfig(),
     PlatformSubscription.findOne({ restaurantId }).select("activatedAt").lean(),
     getOverride(restaurantId),
   ]);
-  if (override?.billingExempt || subscription?.activatedAt) return 0;
-  return Number(config.firstRechargeMinPaise) || 0;
+  return {
+    paise: topUpFloor({ config, activatedAt: subscription?.activatedAt, exempt: override?.billingExempt }),
+    first: !subscription?.activatedAt,
+  };
 };
 
 // ---------------------------------------------------------------------------
@@ -1126,6 +1133,8 @@ const statusFor = async (restaurantId, on = new Date()) => {
     exempt,
     needsActivation: !exempt && !subscription.activatedAt,
     firstRechargeMin: asAmount(Number(config.firstRechargeMinPaise) || 0),
+    // The smallest top-up allowed right now (the POS Billing presets floor on it).
+    minTopUp: asAmount(topUpFloor({ config, activatedAt: subscription.activatedAt, exempt })),
     basePlan: { code: base.code || "POS", name: base.name || "POS", price: asAmount(await price(base.code || "POS")) },
     periodDays: config.subscriptionDays,
     activatedAt: subscription.activatedAt,

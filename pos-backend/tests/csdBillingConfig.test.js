@@ -43,7 +43,8 @@ test("the catalogue ships at the owner's prices", () => {
   assert.equal(config.tablet.firstPricePaise, money.toPaise(600));
   assert.equal(config.tablet.extraPricePaise, money.toPaise(500));
   assert.equal(PlatformBillingConfig.schema.path("tablet.rechargeRequiredPaise"), undefined);
-  assert.equal(config.firstRechargeMinPaise, money.toPaise(2500));
+  assert.equal(config.firstRechargeMinPaise, money.toPaise(3000));
+  assert.equal(config.topUpMinPaise, money.toPaise(1000), "every top-up after the plan starts");
   assert.equal(config.addons.length, 3);
   // The platform fee per source, and the e-bill: priced, all OFF.
   assert.deepEqual(
@@ -51,7 +52,7 @@ test("the catalogue ships at the owner's prices", () => {
     [[300, false], [100, false], [25, false]],
   );
   assert.equal(PlatformBillingConfig.schema.path("websiteOrderCharge.chargeableSources"), undefined);
-  assert.equal(config.catalogVersion, 2, "a new row starts on the current catalogue");
+  assert.equal(config.catalogVersion, 3, "a new row starts on the current catalogue");
   // The old plan catalogue and its upgrade maths are gone.
   assert.equal(PlatformBillingConfig.schema.path("plans"), undefined);
   assert.equal(PlatformBillingConfig.schema.path("upgradePolicy"), undefined);
@@ -120,7 +121,7 @@ test("an add-on's own period round-trips, so a CSD save never turns the yearly W
     "addons",
     moved,
     new Set(),
-    { addons: true, current: addons },
+    { addons: true, current: addons.slice(0, 2) },
   );
   assert.deepEqual(Object.keys(moved).sort(), ["addons.0.periodDays", "addons.1.periodDays"]);
 
@@ -190,7 +191,8 @@ test("a stored config row moves to the new catalogue once, keeping everything CS
 
   try {
     const got = await load([v1()]);
-    assert.equal(got.catalogVersion, 2);
+    assert.equal(got.catalogVersion, 3, "a v1 row runs both steps");
+    assert.deepEqual([got.firstRechargeMinPaise, got.topUpMinPaise], [300000, 100000]);
     assert.equal(got.basePlan.pricePaise, 49900);
     const site = got.addons.find((a) => a.code === "WEBSITE");
     assert.deepEqual([site.pricePaise, site.periodDays], [360000, 365]);
@@ -250,7 +252,7 @@ test("a stored config row moves to the new catalogue once, keeping everything CS
     assert.deepEqual([edited.websiteOrderCharge.amountPaise, edited.websiteOrderCharge.enabled], [500, true]);
     assert.equal(edited.qrOrderCharge.enabled, true);
 
-    // Once: a row already on version 2 is not touched (nor saved).
+    // Once: a row already on the current version is not touched (nor saved).
     let saves = 0;
     await load([new PlatformBillingConfig({})], async () => { saves += 1; });
     assert.equal(saves, 0);
@@ -262,6 +264,39 @@ test("a stored config row moves to the new catalogue once, keeping everything CS
       throw Object.assign(new Error("No matching document"), { name: "VersionError" });
     });
     assert.equal(lost, winner);
+
+    // A v2 row takes only the v3 step: re-running v1→v2 would reset CSD's platform fees.
+    resets.length = 0;
+    finds.length = 0;
+    const v2 = (firstRechargeMinPaise) =>
+      PlatformBillingConfig.hydrate({
+        _id: "64b0000000000000000000ab",
+        __v: 7,
+        singleton: "platform",
+        catalogVersion: 2,
+        firstRechargeMinPaise,
+        basePlan: { code: "POS", name: "POS", pricePaise: 39900 },
+        addons: [{ code: "WEBSITE", name: "Website", pricePaise: 30000, feature: "website" }],
+        printers: [{ code: "PRINTER_2IN", name: "2-inch receipt printer", pricePaise: 190000 }],
+        websiteOrderCharge: { enabled: true, amountPaise: 900, effectiveFrom: new Date("2026-10-01"), taxable: true },
+        qrOrderCharge: { enabled: true, amountPaise: 200, effectiveFrom: new Date("2026-10-02"), taxable: true },
+      });
+    const upgraded = await load([v2(250000)]);
+    assert.deepEqual(
+      [upgraded.firstRechargeMinPaise, upgraded.topUpMinPaise, upgraded.catalogVersion],
+      [300000, 100000, 3],
+    );
+    assert.deepEqual(
+      ["websiteOrderCharge", "qrOrderCharge"].map((k) => [upgraded[k].enabled, upgraded[k].effectiveFrom.toISOString(), upgraded[k].amountPaise]),
+      [[true, new Date("2026-10-01").toISOString(), 900], [true, new Date("2026-10-02").toISOString(), 200]],
+      "the platform fees CSD set are kept",
+    );
+    assert.deepEqual([upgraded.basePlan.pricePaise, upgraded.addons[0].pricePaise], [39900, 30000], "no v1 price is moved");
+    assert.deepEqual(upgraded.printers.map((p) => p.code), ["PRINTER_2IN"], "no device is re-added");
+    assert.deepEqual([resets, finds], [[], []], "store rows are not touched again");
+    assert.equal(upgraded.$__delta()?.[1]?.$inc?.__v, 1, "saved only over the version it read");
+    // A first minimum CSD edited is kept.
+    assert.equal((await load([v2(200000)])).firstRechargeMinPaise, 200000);
   } finally {
     CsdStoreCharges.updateMany = realUpdateMany;
     CsdStoreCharges.find = realFind;
@@ -309,7 +344,7 @@ test("an add-on and a printer cannot share a code: an override names one without
 
 test("SOURCE: every catalogue setting is editable, validated and audited", () => {
   const src = SRC("controllers/csdBillingConfigController.js");
-  for (const key of ["basePlan", "addons", "printers", "tablet", "firstRechargeMin"]) {
+  for (const key of ["basePlan", "addons", "printers", "tablet", "firstRechargeMin", "topUpMin"]) {
     assert.match(src, new RegExp(`body\\.${key} !== undefined`), key);
   }
   assert.ok(!/rechargeRequired|chargeableSources/.test(src), "the tablet top-up and the order-charge sources are gone");
@@ -323,6 +358,17 @@ test("SOURCE: GST cannot be switched on without a start date", () => {
   const src = SRC("controllers/csdBillingConfigController.js");
   assert.match(src, /if \(g\.registered && !asDate\(g\.effectiveFrom\)\)/);
   assert.match(src, /if \(c\.enabled && !asDate\(c\.effectiveFrom\)\)/, "same for the order charge");
+});
+
+test("SOURCE: CSD edits both top-up minimums, and its copy says ₹3,000 first", () => {
+  const web = (rel) => fs.readFileSync(path.join(__dirname, "..", "..", "csd-web", "src", rel), "utf8");
+  const billing = web("pages/Billing.jsx");
+  assert.match(billing, /label="Later top-up minimum \(₹\)"/);
+  assert.match(billing, /value=\{config\.topUpMin\} onChange=\{\(v\) => set\(\{ topUpMin: v \}\)\}/);
+  assert.match(billing, /const gstLive = config\.gst\.registered && config\.gst\.effectiveFrom && config\.gst\.gstin && Number\(config\.gst\.percent\) > 0;/);
+  const steps = web("components/NextSteps.jsx");
+  assert.match(steps, /Recharges at least ₹3,000 in one payment/);
+  assert.ok(!steps.includes("₹2,500"));
 });
 
 test("SOURCE: changing a price is admin-only and audited", () => {

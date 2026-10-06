@@ -122,8 +122,9 @@ test("SOURCE: a table opened at the till can still be paid from the QR: the dine
   // has none, the call failed quietly, and the page said "Ask for the bill".
   const ctrl = read("controllers", "qrController.js");
   const intent = ctrl.slice(ctrl.indexOf("const paymentIntent"), ctrl.indexOf("const paymentVerify"));
-  assert.match(intent, /tenDigits\(req\.body\?\.phone\)\.length === 10/);
-  assert.match(intent, /session\.customerPhone = tenDigits\(req\.body\.phone\)/);
+  // A real Indian mobile, not just any 10 digits (settings-batch5/X-qr-payphone).
+  assert.match(intent, /indianMobile\(req\.body\?\.phone\)/);
+  assert.match(intent, /session\.customerPhone = indianMobile\(req\.body\.phone\)/);
   assert.match(intent, /gw\.enabled && payable > 0 && hasPhone/, "no doomed gateway call without a phone");
   assert.match(intent, /const needsPhone = Boolean\(gw\.enabled && payable > 0 && !hasPhone\)/);
   assert.match(intent, /\n\s*needsPhone,\n/);

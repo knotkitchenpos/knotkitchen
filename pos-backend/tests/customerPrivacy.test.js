@@ -68,7 +68,7 @@ test("the middleware masks POS responses and leaves a KnotKitchen support sessio
 test("SOURCE: every POS router that returns customer data is behind it, and CSD is not", () => {
   const app = read("app.js");
   const block = app.slice(app.indexOf('["/api/order", "/api/online-orders"'), app.indexOf('app.use("/api/order", require'));
-  for (const p of ["/api/order", "/api/online-orders", "/api/table-session", "/api/table-bookings", "/api/payment-link", "/api/receipts", "/api/kds", "/api/shift"]) {
+  for (const p of ["/api/order", "/api/online-orders", "/api/table-session", "/api/table-bookings", "/api/payment-link", "/api/receipts", "/api/shift"]) {
     assert.ok(block.includes(`"${p}"`), p);
   }
   assert.ok(!block.includes("/api/csd"), "the support console sees full details");
@@ -83,4 +83,20 @@ test("SOURCE: the CSD export is admin-only, audit-logged and safe to open in a s
   assert.match(fn, /action: "CSD_CUSTOMERS_EXPORTED"/);
   assert.match(fn, /text\/csv/);
   assert.match(ctrl, /if \(\/\^\[=\+\\-@\\t\\r\]\/\.test\(text\)\) text = `'\$\{text\}`;/, "formula cells are neutralised");
+});
+
+test("REGRESSION: masking is idempotent", () => {
+  // Reports masks every number, then this middleware masks old ones again:
+  // "98******10" kept only four digits and became "******".
+  assert.equal(maskPhone(maskPhone("9876543210")), "98******10");
+});
+
+test("Reports masks every customer phone, today's included", () => {
+  const { reportOrderView } = require("../controllers/orderController");
+  const row = reportOrderView({ orderStatus: "Completed", createdAt: new Date(), customerDetails: { name: "Asha", phone: "9876543210" } });
+  assert.equal(row.customerDetails.phone, "98******10");
+  assert.equal(row.customerDetails.name, "Asha");
+  // ...and the middleware leaves it that way.
+  maskOldCustomerPhones(row, "2999-01-01");
+  assert.equal(row.customerDetails.phone, "98******10");
 });

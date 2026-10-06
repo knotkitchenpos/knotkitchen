@@ -20,38 +20,113 @@ const SESSION_CTRL = read("controllers", "tableSessionController.js");
 const ORDER_CTRL = read("controllers", "orderController.js");
 
 // ---------------------------------------------------------------------------
-// 1. Auto-Ready / Auto-Complete actually reach table orders
+// 1. Auto-Ready reaches table orders; payment, not a timer, completes them
 // ---------------------------------------------------------------------------
 
-test("REGRESSION: a QR table order is given an auto-COMPLETE deadline", () => {
-  // Collection and delivery orders got theirs from orderController; table
-  // orders were created in qrRoute and tableSessionController, and neither
-  // called computeCompleteDueAt. The "table" auto-complete duration was
-  // therefore configurable but inert.
-  assert.match(
-    QR_ROUTE,
-    /computeCompleteDueAt/,
-    "qrRoute must start the auto-complete clock on the orders it creates",
-  );
-  assert.match(
-    QR_ROUTE,
-    /\.\.\.\(completeDueAt \? \{ completeDueAt \} : \{\}\)/,
-    "and attach it to the created order",
-  );
-});
+/**
+ * The session controller with the order model replaced, so the shared round
+ * helper can run. restaurantId stays null in these orders: the auto-ready
+ * lookup then answers with the default minutes without touching a database.
+ */
+const loadSessionCtrl = (OrderMock) => {
+  const Module = require("module");
+  const orig = Module._load;
+  Module._load = function (r) {
+    if (r === "../models/orderModel") return OrderMock;
+    return orig.apply(this, arguments);
+  };
+  delete require.cache[require.resolve("../controllers/tableSessionController")];
+  try {
+    return require("../controllers/tableSessionController");
+  } finally {
+    Module._load = orig;
+    delete require.cache[require.resolve("../controllers/tableSessionController")];
+  }
+};
 
-test("REGRESSION: a POS table order is given an auto-COMPLETE deadline", () => {
-  const calls = SESSION_CTRL.match(/completeDueAt: await computeCompleteDueAt\(/g) || [];
-  // One creation site now: addRoundToKitchenOrder, which both the new-session
-  // and add-to-session paths go through.
-  assert.equal(calls.length, 1, "the table order creation site must set it");
+test("every table order is created in one place, and the QR route uses it as a guest", () => {
+  // The QR route kept its own copy of create/append. It drifted: a guest round
+  // left a Ready order Ready, and the order's clocks ran from creation.
   assert.equal((SESSION_CTRL.match(/await addRoundToKitchenOrder\(/g) || []).length, 2);
+  assert.equal((SESSION_CTRL.match(/Order\.create\(/g) || []).length, 1);
+  assert.match(QR_ROUTE, /addRoundToKitchenOrder\(\{[^}]*guest: true/, "qrController.addSessionItems goes through the helper");
 });
 
-test("both table order-creation sites still set the auto-READY deadline too", () => {
-  const ready = SESSION_CTRL.match(/readyDueAt: await computeReadyDueAt\(/g) || [];
-  assert.equal(ready.length, 1);
-  assert.match(QR_ROUTE, /computeReadyDueAt/);
+test("REGRESSION: a guest's new table order starts no clock until the till accepts it", async () => {
+  // An unaccepted QR order promoted itself to Ready, which removed its New
+  // Order alert from every till. Accept starts the clock (clocksOnAccept).
+  const created = [];
+  const ctrl = loadSessionCtrl({
+    findOne: async () => null,
+    create: async (docs) => {
+      created.push(...docs);
+      return docs.map((d) => ({ _id: "o1", ...d }));
+    },
+  });
+  const session = { _id: "s1", restaurantId: null, source: "QR", items: [{ name: "Naan" }], bills: {} };
+  const items = [{ menuItemId: "m1", name: "Naan", quantity: 1, price: 50, total: 50, status: "pending" }];
+
+  await ctrl.addRoundToKitchenOrder({ session, validatedItems: items, tableId: "t1", guest: true, requestId: "req-1" });
+  await ctrl.addRoundToKitchenOrder({ session: { ...session, source: "POS" }, validatedItems: items, tableId: "t1" });
+
+  assert.equal(created[0].readyDueAt, null, "a guest's order waits for Accept");
+  assert.equal(created[0].requestId, "req-1", "the QR double-fire guard keys on it");
+  assert.equal(created[0].source, "QR");
+  assert.ok(created[1].readyDueAt instanceof Date, "a till order is in the kitchen at once");
+  assert.ok(!("completeDueAt" in created[1]), "a table order is completed by its payment, not a timer");
+});
+
+test("REGRESSION: a till round is in the kitchen at once; only a guest's waits for review", () => {
+  // Every line was "pending", so after Accept a whole order still read
+  // pending: the diner saw PENDING forever and Cancel All could void dishes
+  // already served.
+  assert.match(SESSION_CTRL, /status: addedBy === "QR" \? "pending" : "preparing"/);
+  const helper = SESSION_CTRL.slice(SESSION_CTRL.indexOf("const addRoundToKitchenOrder"), SESSION_CTRL.indexOf("const announceKitchenOrder"));
+  assert.match(helper, /status: it\.status/);
+});
+
+test("REGRESSION: a new round reopens a Ready order, and a QR order is not made to look unaccepted", async () => {
+  const { reopenForNewRound } = require("../services/autoReadyService");
+  const now = new Date("2026-10-06T12:00:00Z");
+  const qr = { source: "QR", orderType: "dine-in", restaurantId: null, orderStatus: "Ready", readyAt: now, readyDueAt: new Date(0), completeDueAt: null };
+  const pos = { source: "POS", orderType: "dine-in", restaurantId: null, orderStatus: "ready", readyAt: now, readyDueAt: new Date(0) };
+  const unaccepted = { source: "QR", orderType: "dine-in", restaurantId: null, orderStatus: "Preparing", readyAt: null, readyDueAt: null };
+
+  await reopenForNewRound(qr, now);
+  await reopenForNewRound(pos, now);
+  await reopenForNewRound(unaccepted, now);
+
+  // The till reads a QR order in Preparing as a new, undecided order.
+  assert.equal(qr.orderStatus, "In Progress");
+  assert.equal(pos.orderStatus, "Preparing");
+  assert.equal(qr.readyAt, null, "the auto-ready sweep only looks at orders with no readyAt");
+  assert.equal(qr.readyDueAt.getTime(), now.getTime() + 20 * 60 * 1000, "the clock restarts from now");
+  assert.equal(qr.completeDueAt, null, "a clock that was off stays off");
+  assert.equal(unaccepted.orderStatus, "Preparing");
+  assert.equal(unaccepted.readyDueAt, null, "a round cannot start a clock Accept has not");
+});
+
+test("REGRESSION: the auto-complete timer never completes a table-session order", async () => {
+  // A timer-Served table order counted as revenue before it was paid, and let
+  // Release Table free a table with an unpaid bill.
+  const queries = [];
+  const Module = require("module");
+  const orig = Module._load;
+  Module._load = function (r) {
+    if (r === "../models/orderModel") {
+      return { find: (q) => { queries.push(q); return { sort: () => ({ limit: async () => [] }) }; } };
+    }
+    return orig.apply(this, arguments);
+  };
+  delete require.cache[require.resolve("../services/autoReadyService")];
+  try {
+    await require("../services/autoReadyService").runAutoCompleteTick(new Date());
+  } finally {
+    Module._load = orig;
+    delete require.cache[require.resolve("../services/autoReadyService")];
+  }
+  assert.equal(queries.length, 1);
+  assert.ok("tableSessionId" in queries[0] && queries[0].tableSessionId === null);
 });
 
 test("the POS order path keeps both clocks", () => {

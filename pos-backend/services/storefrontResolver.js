@@ -81,10 +81,13 @@ const findSettingsByHost = async (host) => {
  * website off). Money taken online is always honoured with the order; only new
  * checkouts are refused.
  *
- * @param {object} params { identifier, host, honourPaid }
+ * `knotEats` skips only the website checks (switch and Website add-on): Knot
+ * Eats sells without the website. Store status and the account lock still apply.
+ *
+ * @param {object} params { identifier, host, honourPaid, knotEats }
  * @returns {Promise<{ok:boolean, status?:number, reason?:string, settings?, store?, restaurant?, restaurantId?, storeId?, timezone?}>}
  */
-const resolveStorefront = async ({ identifier, host, honourPaid = false } = {}) => {
+const resolveStorefront = async ({ identifier, host, honourPaid = false, knotEats = false } = {}) => {
   let settings = await findSettingsByIdentifier(identifier);
 
   // Host-based resolution (future subdomain/custom domain deployments).
@@ -102,7 +105,7 @@ const resolveStorefront = async ({ identifier, host, honourPaid = false } = {}) 
 
   const restaurantId = settings.restaurantId || store.restaurantId;
   const restaurant = restaurantId ? await Restaurant.findById(restaurantId) : null;
-  const refusal = honourPaid ? null : await unavailableReason({ settings, store, restaurant, restaurantId });
+  const refusal = honourPaid ? null : await unavailableReason({ settings, store, restaurant, restaurantId, knotEats });
   if (refusal) return { ok: false, status: 403, ...refusal, settings, store };
 
   return {
@@ -118,7 +121,7 @@ const resolveStorefront = async ({ identifier, host, honourPaid = false } = {}) 
 };
 
 /** Why this store may not serve its website or take a new order, or null. */
-const unavailableReason = async ({ settings, store, restaurant, restaurantId }) => {
+const unavailableReason = async ({ settings, store, restaurant, restaurantId, knotEats = false }) => {
   // A store suspended/closed by the platform admin must not serve a storefront,
   // regardless of the restaurant's own website toggle.
   if (["suspended", "deleted", "pending", "closed"].includes(store.status)) {
@@ -129,14 +132,19 @@ const unavailableReason = async ({ settings, store, restaurant, restaurantId }) 
     return { reason: "STORE_CLOSED" };
   }
 
-  // Restaurant-controlled website switch (§20).
-  if (!settings.enabled) return { reason: "WEBSITE_DISABLED" };
+  // Knot Eats sells without the website (no Website add-on, switch off); set
+  // only by the Eats routes (routes/knotEatsRoute viaKnotEats), always with the
+  // listing check.
+  if (!knotEats) {
+    // Restaurant-controlled website switch (§20).
+    if (!settings.enabled) return { reason: "WEBSITE_DISABLED" };
 
-  // The add-ons decide too: the website is the Website add-on, so without it
-  // the site is off whatever the switch says.
-  // Required here, for the same reason as accountLock below.
-  const { hasWebsite } = require("./planFeatures");
-  if (!(await hasWebsite(restaurantId, settings.storeId))) return { reason: "WEBSITE_DISABLED" };
+    // The add-ons decide too: the website is the Website add-on, so without it
+    // the site is off whatever the switch says.
+    // Required here, for the same reason as accountLock below.
+    const { hasWebsite } = require("./planFeatures");
+    if (!(await hasWebsite(restaurantId, settings.storeId))) return { reason: "WEBSITE_DISABLED" };
+  }
 
   if (restaurant && (restaurant.isActive === false || restaurant.isDeleted)) {
     return { reason: "STORE_UNAVAILABLE" };

@@ -120,6 +120,7 @@ test("Manage Tables Module 4: Session Rotation — Closing Session A causes new 
     body: {
       tableId: TABLE_ID,
       items: [{ menuItemId: "dish-99", quantity: 1 }],
+      customerPhone: "9876543210",
     },
   };
 

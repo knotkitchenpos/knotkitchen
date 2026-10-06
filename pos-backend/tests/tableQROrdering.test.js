@@ -77,6 +77,7 @@ db.tables.push({
 const makeThenable = (value) => {
   const q = {
     session() { return q; },
+    select() { return q; },
     lean() { return q; },
     populate() { return q; },
     then(resolve) { resolve(value); return Promise.resolve(); },
@@ -178,6 +179,9 @@ const RestaurantMock = {
       isDeleted: false,
     };
     return makeThenable(doc); // supports `.lean()` chain
+  },
+  findById() {
+    return makeThenable({ _id: "rest-A", timezone: "Asia/Kolkata" });
   },
 };
 
@@ -442,7 +446,42 @@ const runWithSessionRetry = async (work) => {
   }
 };
 
+/**
+ * The REAL shared round helper (append to the table's open order, or start
+ * one), over the in-memory orders. The QR route goes through it, so a copy in
+ * here would only test itself.
+ */
+const realRoundHelper = () => {
+  const orig = Module._load;
+  Module._load = function (r) {
+    if (r === "../models/orderModel") return OrderMock;
+    return orig.apply(this, arguments);
+  };
+  try {
+    return require("../controllers/tableSessionController").addRoundToKitchenOrder;
+  } finally {
+    Module._load = orig;
+    delete require.cache[require.resolve("../controllers/tableSessionController")];
+  }
+};
+
+/**
+ * Restaurant Time open all day, so these flows do not depend on the hour the
+ * suite runs at (qrOpeningHours.test.js covers the hours). Seeded into the
+ * require cache because the QR controller loads this model lazily, after
+ * loadQrRoute has put Module._load back.
+ */
+const ALL_DAY = [0, 1, 2, 3, 4, 5, 6].map((day) => ({ day, isOpen: true, openTime: "00:00", closeTime: "00:00" }));
+const websiteSettingsPath = require.resolve("../models/websiteSettingsModel");
+const seedWebsiteSettings = () => {
+  require.cache[websiteSettingsPath] = {
+    id: websiteSettingsPath, filename: websiteSettingsPath, loaded: true,
+    exports: { findOne: () => makeThenable({ channelHours: { table: { weekly: ALL_DAY } } }) },
+  };
+};
+
 const sessionControllerMock = {
+  addRoundToKitchenOrder: realRoundHelper(),
   findActiveSessionByTable: async ({ tableId, restaurantId }) => {
     const s = db.sessions.find(
       (x) =>
@@ -517,6 +556,7 @@ function loadQrRoute() {
     if (r === "../models/billModel") return BillMock;
     if (r === "../models/restaurantModel") return RestaurantMock;
     if (r === "../models/tableQRModel") return TableQRMock;
+    if (r === "../services/planFeatures") return { requireTableQrPlan: (req, res, next) => next() };
     if (r === "../services/price") return priceMock;
     if (r === "mongoose") return mongooseMock;
     if (r === "../controllers/tableSessionController" || r === "./tableSessionController") return sessionControllerMock;
@@ -524,6 +564,7 @@ function loadQrRoute() {
   };
   const router = require("../routes/qrRoute");
   Module._load = orig;
+  seedWebsiteSettings();
   return router;
 }
 
@@ -954,6 +995,14 @@ test("REGRESSION: a second QR round appends to the SAME order, never a new one",
   // The addition waits for the till rather than going straight to the kitchen.
   const pending = order.items.filter((i) => i.status === "pending");
   assert.equal(pending.length, 2, "added items arrive as a request");
+  // Nobody has accepted it yet, so it has no clock to promote it to Ready.
+  assert.equal(order.readyDueAt, null);
+
+  // The public reply names the order, nothing more: the raw document carried
+  // the opener's phone to anyone who scanned the table's card.
+  for (const r of [first, second]) {
+    assert.deepEqual(Object.keys(r.body.data.order).sort(), ["_id", "orderStatus"]);
+  }
 });
 
 

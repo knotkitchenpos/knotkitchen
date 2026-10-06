@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getBusinessBalance, logout } from "../../https";
 import { removeUser } from "../../redux/slices/userSlice";
 import { clearActiveStoreId } from "../../utils/storeSession";
+import { STORE_TZ } from "../../utils";
 
 /**
  * Non-payment lock, on the POS side.
@@ -111,7 +112,7 @@ export const AccountLockBanner = ({ locked, locksAt, lockWarning }) => {
   }
 
   if (!locksAt) return null;
-  const at = locksAt.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  const at = locksAt.toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: STORE_TZ });
   return (
     <div role="status" className="shrink-0 flex flex-wrap items-center justify-between gap-2 bg-[#FEF3C7] border-b border-[#FDE68A] px-4 py-2.5">
       <p className="text-[13px] font-semibold text-[#92400E]">

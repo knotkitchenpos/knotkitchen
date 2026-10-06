@@ -113,3 +113,15 @@ test("REGRESSION: a round added at the till joins the table's open order", () =>
   // An appended round refreshes the tills instead of popping a "new order".
   assert.match(ctrl, /const emit = appended \? emitOrderStatusChanged : emitOrderCreated/);
 });
+
+test("REGRESSION: a till round on an occupied table prints a KOT", () => {
+  // The append endpoint called announceKitchenOrder without the round's
+  // items, and kitchen:round only fires for an appended round with items.
+  const ctrl = SRC("controllers", "tableSessionController.js");
+  const calls = ctrl.split("announceKitchenOrder({").slice(1).map((c) => c.slice(0, c.indexOf("});")));
+  assert.equal(calls.length, 2, "both add paths announce the round");
+  for (const call of calls) {
+    assert.match(call, /items: result\.validatedItems/);
+    assert.match(call, /table: result\.table/);
+  }
+});

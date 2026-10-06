@@ -121,5 +121,7 @@ module.exports = {
   requireManager,
   isOwnerUser,
   isManagerUser,
+  hasPinAuthorization,
+  pinRequired,
   STAFF_DEFAULT_PERMISSIONS,
 };

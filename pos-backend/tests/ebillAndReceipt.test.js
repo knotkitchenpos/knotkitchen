@@ -10,8 +10,8 @@ test("formatPaymentMethod correctly maps payment methods", () => {
   assert.equal(formatPaymentMethod("QR"), "Paid by QR Code");
   assert.equal(formatPaymentMethod("qr_code"), "Paid by QR Code");
   assert.equal(formatPaymentMethod("ONLINE"), "Paid Online");
-  assert.equal(formatPaymentMethod("UPI"), "Paid Online");
-  assert.equal(formatPaymentMethod("CARD"), "Paid Online");
+  assert.equal(formatPaymentMethod("UPI"), "Paid by UPI");
+  assert.equal(formatPaymentMethod("CARD"), "Paid by Card");
   assert.equal(formatPaymentMethod("PAYMENT_LINK"), "Paid by Payment Link");
 });
 

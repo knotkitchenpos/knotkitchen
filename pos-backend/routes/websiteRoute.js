@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 const { isVerifiedUser } = require("../middlewares/tokenVerification");
 const { requirePermission, requireOwnerOnly, requireProtectedAction } = require("../middlewares/requirePermission");
-const { requireWebsitePlan, requirePaymentGatewayPlan } = require("../services/planFeatures");
+const { requireWebsitePlan } = require("../services/planFeatures");
 const {
   getWebsiteSettings,
   updateWebsiteSettings,
@@ -20,14 +20,15 @@ const { getKnotEats, setKnotEats } = require("../controllers/knotEatsController"
 // Toggles and Rules & Charges all write through it. The restrictions that
 // remain are per field, in the controller -- payment gateway credentials are
 // Owner-only there -- plus requireWebsitePlan: Manage Website needs the
-// Website add-on, while the Order Toggles / Rules & Charges fields always pass.
+// Website add-on, while the Order Toggles / Rules & Charges fields and the
+// gateway keys (Store Properties) always pass.
 router.route("/settings")
   .get(isVerifiedUser, getWebsiteSettings)
   .put(isVerifiedUser, requireProtectedAction, requireWebsitePlan, updateWebsiteSettings);
 
 router
   .route("/validate-gateway")
-  .post(isVerifiedUser, requireOwnerOnly, requirePaymentGatewayPlan, validateGatewayCredentials);
+  .post(isVerifiedUser, requireOwnerOnly, validateGatewayCredentials);
 
 // Knot Eats opt-in. Anyone signed in may see the status and blockers; only
 // the owner may switch it, because switching it on agrees to the fee.

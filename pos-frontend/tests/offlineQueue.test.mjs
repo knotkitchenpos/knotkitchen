@@ -11,7 +11,7 @@ globalThis.localStorage = {
 globalThis.window = { dispatchEvent() {} };
 globalThis.CustomEvent = class {};
 
-const { enqueueOrder, readQueue, removeFromQueue, localOrderView, isNetworkError } = await import("../src/utils/offlineQueue.js");
+const { enqueueOrder, readQueue, removeFromQueue, localOrderView, isNetworkError, markRejected, newLocalId } = await import("../src/utils/offlineQueue.js");
 
 test("orders queue with a local id and number, and come off once synced", () => {
   const a = enqueueOrder({ items: [{ name: "Tea", quantity: 2 }], paymentMethod: "Cash" });
@@ -34,4 +34,39 @@ test("only a network failure is treated as offline; a 4xx is a real error", () =
   assert.equal(isNetworkError({ message: "Network Error" }), true);
   assert.equal(isNetworkError({ response: { status: 400 } }), false);
   assert.equal(isNetworkError(null), false);
+});
+
+test("offline numbers never repeat, even after earlier orders sync", () => {
+  // The first test left OFF-002 queued.
+  const c = enqueueOrder({ items: [] });
+  assert.equal(c.localNumber, "OFF-003");
+  removeFromQueue(readQueue().map((e) => e.localId));
+  assert.equal(enqueueOrder({ items: [] }).localNumber, "OFF-004");
+});
+
+test("the live attempt's id is the queued order's id, so a lost reply is not saved twice", () => {
+  const id = newLocalId();
+  assert.equal(enqueueOrder({ items: [] }, id).localId, id);
+});
+
+test("a refused order stays on the device with the reason, and warns only once", () => {
+  const a = enqueueOrder({ items: [{ name: "Tea", quantity: 1 }], paymentMethod: "Cash" });
+  const fresh = markRejected([{ localId: a.localId, error: "Collection orders are currently disabled" }]);
+  assert.deepEqual(fresh.map((e) => e.localId), [a.localId]);
+  const kept = readQueue().find((e) => e.localId === a.localId);
+  assert.equal(kept.error, "Collection orders are currently disabled");
+  assert.ok(kept.failedAt);
+  assert.deepEqual(markRejected([{ localId: a.localId, error: "still disabled" }]), []);
+  assert.equal(readQueue().find((e) => e.localId === a.localId).error, "still disabled");
+});
+
+test("the sync hook never deletes refused orders; staff discard them from the banner", async () => {
+  const fs = await import("node:fs");
+  const hook = fs.readFileSync(new URL("../src/hooks/useOfflineQueue.js", import.meta.url), "utf8");
+  assert.doesNotMatch(hook, /removeFromQueue\(rejected/);
+  assert.match(hook, /markRejected\(failedOrders\)/);
+  assert.match(hook, /window\.confirm\(/);
+  const app = fs.readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
+  assert.match(app, /rejected=\{offline\.rejected\}/);
+  assert.match(app, /onDiscard=\{offline\.discard\}/);
 });

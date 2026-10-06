@@ -76,7 +76,7 @@ const mocks = {
     },
   },
   "./storefrontResolver": {
-    unavailableReason: async ({ settings }) => ((db.resolverSaw = settings), db.unavailable[settings.storeId] || null),
+    unavailableReason: async (opts) => ((db.resolverOpts = opts), db.unavailable[opts.settings.storeId] || null),
   },
   "./paymentGateway": { isOnlinePaymentEnabled: async ({ storeId }) => !db.noGateway.has(storeId) },
   "./orderCharge": { quotePlatformFee: async () => ({ totalPaise: 1062 }) },
@@ -116,6 +116,7 @@ const addStore = (storeId, o = {}) => {
     _id: restaurantId,
     name,
     timezone: "Asia/Kolkata",
+    fssaiNumber: "12345678901234",
     address: { city: o.city ?? "Kolkata", postalCode: o.postalCode ?? "700091", lat: pos.lat, lng: pos.lng },
   });
   db.stores.push({ storeId, status: "active", restaurantId });
@@ -204,7 +205,7 @@ test("each blocker fires alone; all clear means listed", async () => {
   const good = () => ({
     settings: { storeId: "100001", enabled: true, knotEats: { enabled: true }, ordering: { pickupEnabled: true } },
     store: { storeId: "100001", status: "active" },
-    restaurant: { address: { lat: 22.57, lng: 88.36 } },
+    restaurant: { fssaiNumber: "12345678901234", address: { lat: 22.57, lng: 88.36 } },
     restaurantId: "r1",
     dishCount: 4,
   });
@@ -213,10 +214,9 @@ test("each blocker fires alone; all clear means listed", async () => {
   const cases = {
     NOT_OPTED_IN: (a) => (a.settings.knotEats.enabled = false),
     DELISTED: (a) => (a.settings.knotEats.delisted = true),
-    WEBSITE_OFF: (a) => (a.settings.enabled = false),
-    NO_WEBSITE_ADDON: () => (db.unavailable["100001"] = { reason: "WEBSITE_DISABLED" }),
     ACCOUNT_LOCKED: () => (db.unavailable["100001"] = { reason: "STORE_UNAVAILABLE", locked: true }),
     STORE_STATUS: () => (db.unavailable["100001"] = { reason: "STORE_CLOSED" }),
+    NO_FSSAI: (a) => (a.restaurant.fssaiNumber = "123"),
     NO_GATEWAY: () => db.noGateway.add("100001"),
     NO_PIN: (a) => (a.restaurant.address = { lat: 0, lng: 0 }),
     NO_MENU: (a) => (a.dishCount = 0),
@@ -234,8 +234,7 @@ test("each blocker fires alone; all clear means listed", async () => {
   }
 });
 
-test("blockers are not short-circuited: website off still reports the add-on and the gateway", async () => {
-  db.unavailable["100001"] = { reason: "WEBSITE_DISABLED" };
+test("blockers are not short-circuited, and the website is never one", async () => {
   db.noGateway.add("100001");
   const out = await ke.eligibility({
     settings: { storeId: "100001", enabled: false, knotEats: {}, ordering: {} },
@@ -244,10 +243,19 @@ test("blockers are not short-circuited: website off still reports the add-on and
     restaurantId: "r1",
     dishCount: 0,
   });
-  assert.deepEqual(out.blockers.map((b) => b.code), [
-    "NOT_OPTED_IN", "WEBSITE_OFF", "NO_WEBSITE_ADDON", "NO_GATEWAY", "NO_PIN", "NO_MENU",
-  ]);
-  assert.equal(db.resolverSaw.enabled, true, "the add-on is checked past the owner's own switch");
+  assert.deepEqual(out.blockers.map((b) => b.code), ["NOT_OPTED_IN", "NO_FSSAI", "NO_GATEWAY", "NO_PIN", "NO_MENU"]);
+  assert.equal(db.resolverOpts.knotEats, true, "the resolver skips the website checks for Knot Eats");
+});
+
+test("website switch off (or no Website add-on) is still listed", async () => {
+  const out = await ke.eligibility({
+    settings: { storeId: "100001", enabled: false, knotEats: { enabled: true }, ordering: { pickupEnabled: true } },
+    store: { storeId: "100001", status: "active" },
+    restaurant: { fssaiNumber: "12345678901234", address: { lat: 22.57, lng: 88.36 } },
+    restaurantId: "r1",
+    dishCount: 4,
+  });
+  assert.deepEqual(out, { listed: true, blockers: [] });
 });
 
 test("closed by its hours is still listed, with isOpen false and sorted last", async () => {

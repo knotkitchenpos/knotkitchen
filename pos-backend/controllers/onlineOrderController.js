@@ -3,10 +3,12 @@ const { computeTotals } = require("../services/price");
 const mongoose = require("mongoose");
 const Order = require("../models/orderModel");
 const { resolveTenantFromUser } = require("../services/tenantContext");
-const { emitOrderStatusChanged, emitTableSessionUpdated, orderCreatedPayload } = require("../services/socket");
+const { emitOrderStatusChanged, emitTableSessionUpdated, orderCreatedPayload, itemsAddedPayload, emitKitchenRound } = require("../services/socket");
 const {
   isFinished,
   AWAITING_ACCEPTANCE,
+  ACCEPTED,
+  ACTIVE_STATUSES,
   PREPARING,
   CANCELLED,
   READY_STATUSES,
@@ -14,9 +16,10 @@ const {
   CANCELLED_STATUSES,
   REFUNDED_STATUSES,
 } = require("../constants/orderStatus");
-const { clocksOnAccept, prepDuePayload } = require("../services/autoReadyService");
+const { clocksOnAccept, prepDuePayload, reopenForNewRound } = require("../services/autoReadyService");
 const { fireOrderChargeReversal } = require("../services/orderCharge");
 const { emitToRestaurant } = require("../services/socket");
+const { wasPaid } = require("../services/refunds");
 
 /**
  * POS-side online order management (§14).
@@ -29,8 +32,8 @@ const { emitToRestaurant } = require("../services/socket");
 
 // Maps the UI actions in §14 onto the statuses the POS already understands.
 const ACTION_STATUS = {
-  accept: "In Progress",
-  preparing: "In Progress",
+  accept: ACCEPTED,
+  preparing: ACCEPTED,
   ready: "Ready",
   completed: "Completed",
   cancel: "Cancelled",
@@ -150,6 +153,14 @@ const updateOnlineOrderStatus = async (req, res, next) => {
       return next(createHttpError(409, `This order is already ${order.orderStatus.toLowerCase()}.`));
     }
 
+    // A paid order the store has taken on (a delivery paid at the till is
+    // Preparing, not Completed) is a sale: it is voided from Orders, with a
+    // reason, by a manager. Only an order still waiting to be accepted may be
+    // turned down here.
+    if ((action === "reject" || action === "cancel") && order.orderStatus !== AWAITING_ACCEPTANCE && wasPaid(order)) {
+      return next(createHttpError(409, "This order is paid. Cancel it from Orders, with a reason."));
+    }
+
     order.orderStatus = nextStatus;
 
     // The auto-ready / auto-complete clocks start on ACCEPTANCE, not at
@@ -165,6 +176,14 @@ const updateOnlineOrderStatus = async (req, res, next) => {
       order.readyDueAt = clocks.readyDueAt;
       order.completeDueAt = clocks.completeDueAt;
     }
+
+    // Accepting takes the diner's dishes into the kitchen. They stayed
+    // "pending", which means "added, waiting for review": the diner's page
+    // said PENDING for ever, the next added-items card listed the whole
+    // table, and its Cancel All could void food already served.
+    const accepted =
+      action === "accept" || action === "preparing" ? order.items.filter((i) => i.status === "pending") : [];
+    accepted.forEach((i) => { i.status = "preparing"; });
 
     order.timeline.push({
       status: nextStatus,
@@ -196,6 +215,9 @@ const updateOnlineOrderStatus = async (req, res, next) => {
       }
     }
 
+    // The same on the table session, which Manage Tables and the diner's page read.
+    const session = accepted.length ? await syncSessionFromOrder(order, accepted, "accept") : null;
+
     // Push the change to any listening client (customer tracking, KDS).
     try {
       emitOrderStatusChanged({
@@ -204,6 +226,15 @@ const updateOnlineOrderStatus = async (req, res, next) => {
         storeId: order.storeId,
         order,
       });
+      if (session) {
+        emitTableSessionUpdated({
+          restaurantId: order.restaurantId,
+          outletId: order.outletId,
+          tableId: order.table,
+          session,
+          reason: action,
+        });
+      }
     } catch (err) {
       console.warn("Realtime status emit failed:", err.message);
     }
@@ -268,6 +299,38 @@ const listAwaitingOrders = async (req, res, next) => {
       .limit(50)
       .populate("table", "tableNumber displayId tableName");
     res.status(200).json({ success: true, data: orders.map((o) => orderCreatedPayload(o, o.storeId)) });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/online-orders/added-items — dishes diners added to a table that is
+ * already mid-meal and nobody has accepted or declined yet, in the shape of
+ * the live `tableOrder:itemsAdded` event.
+ *
+ * That event was the only way the Added Items card appeared, so a till that
+ * was closed or reloading when the diner ordered never saw it: no KOT, and the
+ * dishes sat on the bill as "pending". Every till now asks on (re)connect,
+ * like /awaiting. A QR order nobody has accepted is left out: all its lines
+ * are pending, and the New Order card is the one that asks about it.
+ */
+const listPendingAdditions = async (req, res, next) => {
+  try {
+    const scoped = await tenantScope(req);
+    if (!scoped) return res.status(200).json({ success: true, data: [] });
+    const orders = await Order.find({
+      ...scoped.scope,
+      tableSessionId: { $ne: null },
+      "items.status": "pending",
+      orderStatus: { $in: ACTIVE_STATUSES },
+      updatedAt: { $gte: new Date(Date.now() - 12 * 60 * 60 * 1000) },
+      $nor: [{ source: "QR", orderStatus: PREPARING }],
+    })
+      .sort({ updatedAt: 1 })
+      .limit(50)
+      .populate("table", "tableNumber displayId tableName");
+    res.status(200).json({ success: true, data: orders.map((o) => itemsAddedPayload(o)) });
   } catch (error) {
     next(error);
   }
@@ -403,6 +466,14 @@ const resolveAddedItems = async (req, res, next) => {
     const order = await Order.findOne({ _id: req.params.id, ...scoped.scope });
     if (!order) return next(createHttpError(404, "Order not found."));
 
+    // Voiding the whole ticket takes money off the table, like voiding one
+    // dish or closing it unpaid: staff need the Security PIN (the POS asks and
+    // retries on PIN_REQUIRED).
+    if (action === "cancel_order") {
+      const { isOwnerUser, hasPinAuthorization, pinRequired } = require("../middlewares/requirePermission");
+      if (!isOwnerUser(req.user) && !(await hasPinAuthorization(req))) return next(pinRequired());
+    }
+
     // Cancelling the WHOLE order takes every live line, not just the batch
     // waiting for review -- the till is voiding the table's ticket, not
     // declining an addition.
@@ -424,6 +495,9 @@ const resolveAddedItems = async (req, res, next) => {
 
     if (action === "accept") {
       targets.forEach((i) => { i.status = "preparing"; });
+      // New dishes for the kitchen: a Ready order goes back to cooking and a
+      // running ready clock restarts from now.
+      await reopenForNewRound(order);
     } else {
       // Marked cancelled, NOT spliced out. Deleting the lines threw away the
       // `_id` the table session points at with `kdsItemId`, so the session --
@@ -482,8 +556,10 @@ const resolveAddedItems = async (req, res, next) => {
     if (order.orderStatus === CANCELLED) fireOrderChargeReversal(order._id);
 
     // Voiding the whole ticket must free the table, like every other cancel
-    // route. Without this Manage Tables kept the table occupied.
-    if (action === "cancel_order") {
+    // route. Without this Manage Tables kept the table occupied. Declining the
+    // last dishes left on the order cancels it too, and used to strand the
+    // table with an empty open session.
+    if (action === "cancel_order" || order.orderStatus === CANCELLED) {
       try {
         const { releaseSessionForCancelledOrder } = require("./tableSessionController");
         await releaseSessionForCancelledOrder(order, req.user?.name || "POS");
@@ -516,6 +592,17 @@ const resolveAddedItems = async (req, res, next) => {
           reason: action,
         });
       }
+      // The kitchen's ticket for the accepted dishes. Sent now rather than
+      // when the diner added them: the till decides first, and a till that
+      // was offline then accepts them from the catch-up list. The table is
+      // looked up, not populated: `order.table` stays the id the session
+      // event above uses as its room.
+      if (action === "accept") {
+        const table = order.table
+          ? await require("../models/tableModel").findById(order.table).select("tableNumber displayId tableName").lean()
+          : null;
+        emitKitchenRound({ restaurantId: order.restaurantId, outletId: order.outletId, order, items: targets, table });
+      }
     } catch (e) {
       console.warn("[onlineOrder] added-items emit failed:", e.message);
     }
@@ -541,6 +628,7 @@ module.exports = {
   updateOnlineOrderStatus,
   listPrepDueOrders,
   listAwaitingOrders,
+  listPendingAdditions,
   startPreparingOrder,
   toPosOrderView,
   ACTION_STATUS,

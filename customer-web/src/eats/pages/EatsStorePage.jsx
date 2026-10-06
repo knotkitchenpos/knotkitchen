@@ -6,7 +6,7 @@ import SaveButton from "../components/SaveButton";
 import LocationStrip from "../components/LocationStrip";
 import StoreReviews from "../components/StoreReviews";
 import ReplaceCartDialog from "../components/ReplaceCartDialog";
-import { getEatsStore, startEatsCheckout, verifyEatsCheckout } from "../api";
+import { getEatsStore, getEatsStorefront, startEatsCheckout, verifyEatsCheckout } from "../api";
 import { useEatsLocation, useEatsPrefs } from "../../lib/eatsLocation";
 import { deliveryBlockReason } from "../../lib/eatsFormat";
 import { clearCartFor, guardCart } from "../../lib/eatsCart";
@@ -81,6 +81,8 @@ function EatsStore({ storeId }) {
 
   const eats = {
     basePath: `/store/${storeId}`,
+    // The menu from Knot Eats' own route, not the website's: no add-on needed.
+    loadStorefront: getEatsStorefront,
     startCheckout: startEatsCheckout,
     verifyCheckout: verifyEatsCheckout,
     onConfirmed: (order) => {

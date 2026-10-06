@@ -365,6 +365,7 @@ test("first order creates a session", async () => {
       tableId: table._id,
       items: [itemPayload(newId())],
       customerCount: 2,
+      customerPhone: "9876543210",
     },
     ip: "1.2.3.4",
     get: () => "test-agent",
@@ -396,7 +397,7 @@ test("second item uses the same session", async () => {
   // First order — creates session
   const req1 = {
     user,
-    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2 },
+    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2, customerPhone: "9876543210" },
     ip: "1.2.3.4",
     get: () => "test-agent",
   };
@@ -407,7 +408,7 @@ test("second item uses the same session", async () => {
   // Second order — must reuse same session
   const req2 = {
     user,
-    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 3 },
+    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 3, customerPhone: "9876543210" },
     ip: "1.2.3.4",
     get: () => "test-agent",
   };
@@ -432,7 +433,7 @@ test("third item uses the same session", async () => {
   for (let i = 0; i < 3; i++) {
     const req = {
       user,
-      body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2 },
+      body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2, customerPhone: "9876543210" },
       ip: "1.2.3.4",
       get: () => "test-agent",
     };
@@ -462,7 +463,7 @@ test("only one active session ever exists for a table", async () => {
   for (let i = 0; i < 5; i++) {
     const req = {
       user,
-      body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2 },
+      body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2, customerPhone: "9876543210" },
       ip: "1.2.3.4",
       get: () => "test-agent",
     };
@@ -505,7 +506,7 @@ test("simultaneous session creation does not create duplicates", async () => {
     const callPairs = [0, 1].map(() => {
       const req = {
         user,
-        body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2 },
+        body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2, customerPhone: "9876543210" },
         ip: "1.2.3.4",
         get: () => "test-agent",
       };
@@ -534,7 +535,7 @@ test("closed table can later create a new session", async () => {
   // Open session with first order
   const req1 = {
     user,
-    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2 },
+    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2, customerPhone: "9876543210" },
     ip: "1.2.3.4",
     get: () => "test-agent",
   };
@@ -557,7 +558,7 @@ test("closed table can later create a new session", async () => {
   // New order — must create a NEW session (different id)
   const req2 = {
     user,
-    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2 },
+    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2, customerPhone: "9876543210" },
     ip: "1.2.3.4",
     get: () => "test-agent",
   };
@@ -588,7 +589,7 @@ test("addItemsToExistingSession attaches items to the same session", async () =>
   // First order creates session
   const req1 = {
     user,
-    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2 },
+    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2, customerPhone: "9876543210" },
     ip: "1.2.3.4",
     get: () => "test-agent",
   };
@@ -622,7 +623,7 @@ test("POS can open a table and view session details", async () => {
   // First order creates a session with item + customer count
   const req = {
     user,
-    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2 },
+    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2, customerPhone: "9876543210" },
     ip: "1.2.3.4",
     get: () => "test-agent",
   };
@@ -657,7 +658,7 @@ test("Table 4 Biryani then Water uses the same active session", async () => {
   // First order: Biryani
   const req1 = {
     user,
-    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2 },
+    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2, customerPhone: "9876543210" },
     ip: "1.2.3.4",
     get: () => "test-agent",
   };
@@ -668,7 +669,7 @@ test("Table 4 Biryani then Water uses the same active session", async () => {
   // Later, biller adds Water to the same table — must reuse the open session
   const req2 = {
     user,
-    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2 },
+    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2, customerPhone: "9876543210" },
     ip: "1.2.3.4",
     get: () => "test-agent",
   };
@@ -699,7 +700,7 @@ test("placing a table order leaves session active and bill open (no auto-close)"
 
   const req = {
     user,
-    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2 },
+    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2, customerPhone: "9876543210" },
     ip: "1.2.3.4",
     get: () => "test-agent",
   };
@@ -724,7 +725,7 @@ test("Flow 2: items-first order attaches to table session", async () => {
   // Biller selected items, chose Table Service, selected Table 4, entered 3 guests
   const req = {
     user,
-    body: { tableId: table._id, items: [itemPayload(newId()), itemPayload(newId())], customerCount: 3 },
+    body: { tableId: table._id, items: [itemPayload(newId()), itemPayload(newId())], customerCount: 3, customerPhone: "9876543210" },
     ip: "1.2.3.4",
     get: () => "test-agent",
   };
@@ -750,7 +751,7 @@ test("Flow 2: capacity validation rejects over-capacity guest count on existing 
   // Open a session first
   const req1 = {
     user,
-    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2 },
+    body: { tableId: table._id, items: [itemPayload(newId())], customerCount: 2, customerPhone: "9876543210" },
     ip: "1.2.3.4",
     get: () => "test-agent",
   };

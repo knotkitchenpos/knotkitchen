@@ -139,7 +139,7 @@ const render = (receipt, { reviewUrl = "" } = {}) => {
       <div class="totals">
         ${line("Subtotal", money(r.subtotal))}
         ${Number(r.charges) ? line("Charges", money(r.charges)) : ""}
-        ${Number(r.taxes) ? line("Tax", money(r.taxes)) : ""}
+        ${Number(r.taxes) ? line(r.taxInclusive ? "Tax (included)" : "Tax", money(r.taxes)) : ""}
         ${Number(r.platformFee) > 0 ? line("Platform fee", money(r.platformFee)) : ""}
         ${Number(r.platformFee) > 0
           ? `<div class="grand"><span>Total paid</span><span>${money(r.totalPaid)}</span></div>`

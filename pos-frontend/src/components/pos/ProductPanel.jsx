@@ -5,7 +5,7 @@ import { useLocation } from "react-router-dom";
 import { enqueueSnackbar } from "notistack";
 import { capOf } from "../../utils/modifierGroups";
 import { getPopularItems } from "../../https";
-import { thumbUrl } from "../../utils";
+import { thumbUrl, storeClock } from "../../utils";
 import { loadSystemMenu, readSavedMenu, systemMenuKey } from "../../utils/systemMenu";
 import { addItems } from "../../redux/slices/cartSlice";
 import { ModalShell } from "./ModalShell";
@@ -19,10 +19,8 @@ const TILE_COLORS = [
 ];
 
 /* ---------- Schedule + pricing helpers (business logic preserved) ---------- */
-const nowMins = () => {
-  const d = new Date();
-  return d.getHours() * 60 + d.getMinutes();
-};
+// Schedules and timed prices run on the store's clock, not the device's: a
+// till in another time zone used to show and price dishes on its own time.
 const parseT = (t) => {
   if (!t) return null;
   const [h, m] = String(t).split(":").map(Number);
@@ -30,12 +28,12 @@ const parseT = (t) => {
 };
 const inSchedule = (s) => {
   if (!s?.enabled) return true;
-  const n = nowMins();
+  const { day, minutes: n } = storeClock();
   const a = parseT(s.startTime);
   const b = parseT(s.endTime);
   if (a === null || b === null) return true;
   const days = s.daysOfWeek || [];
-  if (!days.includes(new Date().getDay())) return false;
+  if (!days.includes(day)) return false;
   return a <= b ? n >= a && n <= b : n >= a || n <= b;
 };
 /**
@@ -57,8 +55,7 @@ const channelPrice = (item, orderType) => {
 const activePrice = (item, orderType) => {
   const listPrice = channelPrice(item, orderType);
   if (!item?.priceRules?.length) return listPrice;
-  const n = nowMins();
-  const today = new Date().getDay();
+  const { day: today, minutes: n } = storeClock();
   const rule = item.priceRules.find((r) => {
     if (!r.isActive) return false;
     if (!(r.daysOfWeek || []).includes(today)) return false;
@@ -69,6 +66,11 @@ const activePrice = (item, orderType) => {
   });
   return rule ? rule.price : listPrice;
 };
+
+// Every order type's price for a line, so the cart reprices when the order
+// type changes (cartSlice listens for setOrderType).
+const channelBase = (item) =>
+  Object.fromEntries(Object.keys(CHANNEL_KEY).map((type) => [type, activePrice(item, type)]));
 
 /* ---------- Icons ---------- */
 const IconSearch = () => (
@@ -428,6 +430,8 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
             name: opt.name,
             quantity: qty,
             price: Number(opt.price || 0),
+            // The cart's ⊗ may not remove a required group's last choice.
+            required: Boolean(group.required),
           });
         }
       });
@@ -459,6 +463,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
         addons: [],
         modifiers: selectedList,
         variant: variantObj ? { name: variantObj.name, price: variantObj.price } : null,
+        channelBase: variantObj ? null : channelBase(customizingItem),
         isCombo: customizingItem.isCombo || false,
       })
     );
@@ -498,6 +503,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
         addons: [],
         modifiers: [],
         variant: variant ? { name: variant.name, price: variant.price } : null,
+        channelBase: variant ? null : channelBase(item),
         isCombo: item.isCombo || false,
       })
     );

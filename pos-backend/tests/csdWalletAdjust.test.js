@@ -217,11 +217,62 @@ test("FROM_EXPIRY is refused with 400; FROM_PAYMENT is accepted", async () => {
 test("the tax mode is no longer editable or shown", async () => {
   reset();
   const r = await call(ctrl.updateBillingConfig, {
-    body: { gst: { registered: true, percent: 18, mode: "inclusive", effectiveFrom: "2026-10-01" } },
+    body: { gst: { registered: true, percent: 18, mode: "inclusive", effectiveFrom: "2026-10-01", gstin: "19ABCDE1234F1Z5" } },
   });
   assert.equal(r.status, 200);
   assert.equal(state.config.gst.mode, "exclusive");
   assert.equal("mode" in r.body.data.gst, false);
+});
+
+test("GST registered needs a valid GSTIN and a rate above 0", async () => {
+  // The invoice reads "registered" from the GSTIN: without one it would charge
+  // GST and print that none was charged.
+  reset();
+  const gst = { registered: true, effectiveFrom: "2026-10-01", percent: 18, gstin: "" };
+  const noGstin = await call(ctrl.updateBillingConfig, { body: { gst } });
+  assert.equal(noGstin.status, 400);
+  assert.match(noGstin.error.fieldErrors["gst.gstin"], /15-character GSTIN/);
+  const zeroRate = await call(ctrl.updateBillingConfig, { body: { gst: { ...gst, gstin: "19ABCDE1234F1Z5", percent: 0 } } });
+  assert.equal(zeroRate.status, 400);
+  assert.match(zeroRate.error.fieldErrors["gst.percent"], /GST rate/);
+  assert.equal(state.saved, 0);
+
+  // Not registered: neither is needed.
+  const off = await call(ctrl.updateBillingConfig, { body: { gst: { registered: false, gstin: "", percent: 0 } } });
+  assert.equal(off.status, 200);
+});
+
+test("a saved add-on or device can go off sale but never leave the list", async () => {
+  // A dropped add-on keeps renewing for the stores on it, out of their sight.
+  reset();
+  state.config.addons = [
+    { code: "TABLE_QR", name: "QR", pricePaise: 20000, feature: "tableQr" },
+    { code: "WEBSITE", name: "Website", pricePaise: 360000, periodDays: 365, feature: "website" },
+  ];
+  state.config.printers = [{ code: "PRINTER_2IN", name: "2-inch", pricePaise: 170000 }];
+  const website = { code: "WEBSITE", name: "Website", price: 3600, periodDays: 365, feature: "website" };
+  const dropped = await call(ctrl.updateBillingConfig, { body: { addons: [website] } });
+  assert.equal(dropped.status, 400);
+  assert.match(dropped.error.fieldErrors.addons, /"TABLE_QR" is saved: take it off sale/);
+  const noDevice = await call(ctrl.updateBillingConfig, { body: { printers: [] } });
+  assert.match(noDevice.error.fieldErrors.printers, /"PRINTER_2IN" is saved/);
+  assert.equal(state.saved, 0);
+
+  const offSale = await call(ctrl.updateBillingConfig, {
+    body: { addons: [{ code: "TABLE_QR", name: "QR", price: 200, feature: "tableQr", isActive: false }, website] },
+  });
+  assert.equal(offSale.status, 200);
+  assert.equal(state.config.addons[0].isActive, false);
+});
+
+test("the later top-up minimum is shown and edited in rupees; left out it keeps the saved one", async () => {
+  reset();
+  state.config.topUpMinPaise = 100000;
+  const r = await call(ctrl.updateBillingConfig, { body: { renewalPolicy: "FROM_PAYMENT" } });
+  assert.equal(r.body.data.topUpMin, 1000);
+  const set = await call(ctrl.updateBillingConfig, { body: { topUpMin: 1500 } });
+  assert.equal(set.status, 200);
+  assert.equal(state.config.topUpMinPaise, 150000);
 });
 
 // ---------------------------------------------------------------------------

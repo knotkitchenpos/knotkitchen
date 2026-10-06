@@ -26,6 +26,9 @@ const dayOf = (value, timeZone = STORE_TIMEZONE) => {
 /** 9876543210 -> 98******10. Anything too short to keep four digits of is fully masked. */
 const maskPhone = (phone) => {
   const raw = String(phone || "");
+  // Already masked (Reports masks every number before this middleware runs):
+  // masking "98******10" again would leave four digits and give "******".
+  if (raw.includes("*")) return raw;
   const digits = raw.replace(/\D/g, "");
   if (!digits) return raw;
   if (digits.length < 6) return "******";

@@ -1,8 +1,9 @@
 import React, { useState } from "react";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
 import { money } from "../../utils";
-import { setTableServiceCharge } from "../../https";
+import { getStoreProperties, getTableSessionById, setTableDiscount, setTableServiceCharge } from "../../https";
+import DiscountModal from "../pos/DiscountModal";
 
 /**
  * Complete Order → how was this table paid?
@@ -60,23 +61,43 @@ const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
 const TableSettleModal = ({ table, session, busy, onClose, onConfirm }) => {
   const [method, setMethod] = useState("CASH");
-  // The bill as the server last struck it. Removing the service charge
-  // re-strikes it, so the modal keeps its own copy rather than the prop.
   const qc = useQueryClient();
-  const [bills, setBills] = useState(session?.bills || {});
-  const [chargeBusy, setChargeBusy] = useState(false);
+  // The session live, not the snapshot the caller fetched once. The key starts
+  // with "tables", so a payment, a new round or a pulled dish on any device
+  // (socket) or on this one (mutations) refetches it: a table paid elsewhere
+  // shows as paid here instead of offering to take the money again.
+  const liveKey = ["tables", "session", session?._id];
+  const { data: liveRes } = useQuery({
+    queryKey: liveKey,
+    queryFn: () => getTableSessionById(session._id),
+    enabled: Boolean(session?._id),
+  });
+  const live = liveRes?.data?.data || session || {};
+  const bills = live.bills || {};
+  const settled = live.status === "CLOSED" || live.status === "PAID" || live.payment?.status === "PAID";
   const payable = Number(bills.totalWithTax || 0);
-  const toggleServiceCharge = async () => {
+
+  // Service charge and discount are struck by the server; its answer is the new session.
+  const [chargeBusy, setChargeBusy] = useState(false);
+  const restrike = async (call, failMsg) => {
     setChargeBusy(true);
     try {
-      const { data } = await setTableServiceCharge(session._id, !bills.serviceChargeWaived);
-      setBills(data?.data?.bills || {});
+      qc.setQueryData(liveKey, await call());
       ["tables", "table-sessions", "orders"].forEach((k) => qc.invalidateQueries({ queryKey: [k] }));
+      return true;
     } catch (e) {
-      enqueueSnackbar(e.response?.data?.message || "Could not change the service charge.", { variant: "error" });
+      enqueueSnackbar(e.response?.data?.message || failMsg, { variant: "error" });
+      return false;
     } finally {
       setChargeBusy(false);
     }
+  };
+  const toggleServiceCharge = () =>
+    restrike(() => setTableServiceCharge(session._id, !bills.serviceChargeWaived), "Could not change the service charge.");
+  // Staff are asked for the Security PIN by the global popup (the route is PIN-guarded).
+  const [showDiscount, setShowDiscount] = useState(false);
+  const applyDiscount = async (d) => {
+    if (await restrike(() => setTableDiscount(session._id, d), "Could not change the discount.")) setShowDiscount(false);
   };
 
   // Split: several counter methods adding up to the bill. Editing one part
@@ -89,7 +110,7 @@ const TableSettleModal = ({ table, session, busy, onClose, onConfirm }) => {
   // A tip is on top of the bill; the buyer turns the receipt into a GST bill.
   const [tip, setTip] = useState("");
   const tipAmt = Math.max(0, round2(tip));
-  const guests = Math.max(1, Number(session?.customerCount) || 1);
+  const guests = Math.max(1, Number(live.customerCount) || 1);
   const perHead = round2(payable / guests);
   const grand = round2(payable + tipAmt);
   const partsSum = round2(parts.reduce((t, p) => t + (Number(p.amount) || 0), 0));
@@ -109,8 +130,12 @@ const TableSettleModal = ({ table, session, busy, onClose, onConfirm }) => {
   // in the counter invoice, which is never rendered for a table session -- so
   // every QR order, which is exactly where a phone number IS on file, could
   // never be sent one.
-  const phone = String(session?.customerPhone || "").trim();
-  const [alsoEBill, setAlsoEBill] = useState(true);
+  const phone = String(live.customerPhone || "").trim();
+  // With the store's Auto E-Bill on, the server sends it after payment; a
+  // manual send as well reached the diner twice. Off, it is opt-in (unticked).
+  const { data: propsRes } = useQuery({ queryKey: ["store-properties"], queryFn: getStoreProperties, staleTime: 5 * 60_000 });
+  const autoEBill = Boolean(propsRes?.data?.data?.posSettings?.autoEBill);
+  const [alsoEBill, setAlsoEBill] = useState(false);
 
   const label = table?.displayId || table?.tableName || `Table ${table?.tableNumber ?? "?"}`;
   const chosen = METHODS.find((m) => m.id === method);
@@ -142,12 +167,24 @@ const TableSettleModal = ({ table, session, busy, onClose, onConfirm }) => {
               <span>Subtotal</span>
               <span className="font-bold tabular-nums">{money(bills.subtotal)}</span>
             </div>
-            {Number(bills.discount) > 0 && (
-              <div className="flex justify-between text-[#475569]">
-                <span>Discount</span>
-                <span className="font-bold tabular-nums">−{money(bills.discount)}</span>
-              </div>
-            )}
+            <div className="flex justify-between items-center text-[#475569]">
+              <span>
+                Discount
+                {!settled && (
+                  <button
+                    type="button"
+                    onClick={() => setShowDiscount(true)}
+                    disabled={chargeBusy || busy}
+                    className="ml-2 text-[11.5px] font-bold text-[#C2410C] underline disabled:opacity-50"
+                  >
+                    {Number(bills.discount) > 0 ? "Change" : "Add"}
+                  </button>
+                )}
+              </span>
+              <span className="font-bold tabular-nums">
+                {Number(bills.discount) > 0 ? <>−{money(bills.discount)}</> : money(0)}
+              </span>
+            </div>
             <div className="flex justify-between text-[#475569]">
               <span>Tax</span>
               <span className="font-bold tabular-nums">{money(bills.tax)}</span>
@@ -295,7 +332,11 @@ const TableSettleModal = ({ table, session, busy, onClose, onConfirm }) => {
 
           {/* E-bill. Offered only when there is somewhere to send it — an
               unticked box next to "no phone on file" just reads as broken. */}
-          {phone ? (
+          {phone && autoEBill ? (
+            <p className="text-[12.5px] text-[#64748B] rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3.5 py-3">
+              The e-bill goes to {phone} on WhatsApp automatically.
+            </p>
+          ) : phone ? (
             <label className="flex items-start gap-2.5 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-3.5 py-3 cursor-pointer">
               <input
                 type="checkbox"
@@ -314,7 +355,13 @@ const TableSettleModal = ({ table, session, busy, onClose, onConfirm }) => {
             </p>
           )}
 
-          {payable <= 0 && (
+          {settled && (
+            <p className="text-[12.5px] font-bold text-[#15803D] bg-[#DCFCE7] border border-[#BBF7D0] rounded-lg px-3 py-2">
+              This table has already been paid.
+            </p>
+          )}
+
+          {!settled && payable <= 0 && (
             <p className="text-[12.5px] font-bold text-[#B45309] bg-[#FEF3C7] border border-[#FDE68A] rounded-lg px-3 py-2">
               This session has nothing to pay yet. Add items before completing it.
             </p>
@@ -338,17 +385,26 @@ const TableSettleModal = ({ table, session, busy, onClose, onConfirm }) => {
                 amount: grand,
                 tip: tipAmt || undefined,
                 splits: split ? parts.map((p) => ({ method: p.method, amount: round2(p.amount) })) : undefined,
-                sendEBill: Boolean(phone && alsoEBill),
+                sendEBill: Boolean(phone && alsoEBill && !autoEBill),
                 phone,
               })
             }
-            disabled={busy || payable <= 0 || (split && !splitOk)}
+            disabled={busy || settled || payable <= 0 || (split && !splitOk)}
             className="flex-[2] h-[44px] rounded-xl bg-[#FD5302] text-white text-[13.5px] font-extrabold hover:bg-[#D64502] disabled:opacity-60"
           >
             {busy ? "Completing…" : `Mark Paid · ${money(grand)}`}
           </button>
         </div>
       </div>
+
+      {showDiscount && (
+        <DiscountModal
+          subtotal={bills.subtotal}
+          onClose={() => setShowDiscount(false)}
+          onApply={applyDiscount}
+          onClear={() => applyDiscount({ mode: "none", value: 0 })}
+        />
+      )}
     </div>
   );
 };

@@ -355,7 +355,7 @@ test("REGRESSION: the till prints the server's QR URL, not its own hostname", ()
   assert.equal(composed.length, 1, "one fallback, inside qrLinkFor");
 
   const print = FE("src", "components", "tables", "PrintTableQRModal.jsx");
-  assert.match(print, /table\.qrCode \|\|/, "the printed card prefers the stored server URL");
+  assert.match(print, /table\??\.qrCode \|\|/, "the printed card prefers the stored server URL");
 });
 
 test("opening a table heals a QR URL the host moved under", () => {

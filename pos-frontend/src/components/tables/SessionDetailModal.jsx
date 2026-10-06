@@ -181,8 +181,11 @@ const SessionDetailModal = ({
           )}
           {/* The way out when there is nothing to take payment for. A party
               that cancelled everything leaves a zero total, which disables
-              the button above and used to strand the table for good. */}
-          {onRelease && (
+              the button above and used to strand the table for good.
+              Shown only when no dish is left on the bill, the same rule the
+              server applies: otherwise the operator confirms a release the
+              server was always going to refuse. */}
+          {onRelease && !(session?.items || []).some((i) => i.status !== "cancelled") && (
             <button
               onClick={onRelease}
               disabled={releaseBusy}

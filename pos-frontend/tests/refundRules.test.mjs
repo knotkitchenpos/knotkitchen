@@ -23,11 +23,12 @@ test("the Refund button exists only on a cancelled order, and only in the states
 
 test("a paid order can be cancelled; the money is handled afterwards, not by the cancel", () => {
   const page = SRC("src/pages/Orders.jsx");
-  // ... by the owner only once it is completed (the server refuses anyone else).
-  assert.match(page, /disabled=\{isRefunded\(selected\.orderStatus\) \|\| voidMutation\.isPending \|\| \(isSettled\(selected\.orderStatus\) && !isOwner\(user\)\)\}/);
+  // ... by the owner or a manager once it is paid (the server refuses anyone else).
+  // Paid includes a till delivery paid in cash and still cooking (selected.paid).
+  assert.match(page, /disabled=\{isRefunded\(selected\.orderStatus\) \|\| voidMutation\.isPending \|\| \(\(isSettled\(selected\.orderStatus\) \|\| selected\.paid\) && !isManager\(user\)\)\}/);
 });
 
-test("the owner sends an amount (all or part of what is left); no reason on a refund", () => {
+test("the owner or a manager sends an amount (all or part of what is left); no reason on a refund", () => {
   const api = SRC("src/https/index.js");
   assert.match(api, /export const refundOrder = \(\{ orderId, amount \}\) => axiosWrapper\.post\(`\/api\/order\/\$\{orderId\}\/refund`, \{ amount \}\)/);
   assert.match(api, /export const syncRefund = \(orderId\) => axiosWrapper\.post\(`\/api\/order\/\$\{orderId\}\/refund\/sync`\)/);
@@ -37,7 +38,8 @@ test("the owner sends an amount (all or part of what is left); no reason on a re
   assert.match(modal, /onConfirm\(refund \? \{ amount \} : \{ reason \}\)/);
   assert.match(modal, /order\?\.refundableAmount/);
   const page = SRC("src/pages/Orders.jsx");
-  assert.match(page, /disabled=\{voidMutation\.isPending \|\| !isOwner\(user\)\}/, "owner only");
+  assert.match(page, /disabled=\{voidMutation\.isPending \|\| !isManager\(user\)\}/, "owner or manager");
+  assert.doesNotMatch(page, /isOwner\(user\)/, "a manager can cancel paid orders and refund");
   assert.match(modal, /through Cashfree/);
 });
 
@@ -68,9 +70,11 @@ test("REGRESSION: the Added Items card follows what another till decided", () =>
   // copy of the diner's request and listened for nothing else.
   const src = fs.readFileSync(new URL("../src/components/dashboard/AddedItemsPopup.jsx", import.meta.url), "utf8");
   assert.match(src, /socket\.on\("onlineOrder:status", onOrderChanged\)/);
-  assert.match(src, /\.filter\(\(i\) => i\.status === "pending"\)/);
-  assert.match(src, /prev\.filter\(\(p\) => p\.orderId !== orderId\)/, "nothing left pending: the card goes");
-  assert.match(src, /socket\.on\("connect", resyncAll\)/);
+  // The server says what is still pending (GET /api/online-orders/added-items):
+  // a card keeps only those lines, and a card it no longer lists goes.
+  assert.match(src, /await listPendingAdditions\(\)/);
+  assert.match(src, /if \(fresh\.has\(id\)\) kept\.push\(\{ \.\.\.p, pendingItems: fresh\.get\(id\)\.pendingItems \}\)/);
+  assert.match(src, /socket\.on\("connect", catchUp\)/);
   const page = fs.readFileSync(new URL("../src/pages/OrderOnline.jsx", import.meta.url), "utf8");
   assert.match(page, /paymentInfo\.needsPhone \?/);
 });

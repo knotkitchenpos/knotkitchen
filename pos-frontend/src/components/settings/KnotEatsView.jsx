@@ -5,18 +5,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
 import { getKnotEats, setKnotEatsEnabled } from "../../https/eatsApi";
 import { isOwner } from "../../utils/security";
+import { STORE_TZ } from "../../utils";
 
 /**
  * Where each blocker is fixed. The message comes from the server
  * (knotEats.BLOCKER_MESSAGES); an unknown code shows its message with no link.
- * NO_MENU points at Manage Website because "Publish Website" there is what
- * puts the menu on the website, which is what Knot Eats lists.
+ * NO_MENU points at Manage Cache > Update Website Cache, which publishes the menu Knot Eats lists.
  */
 const FIX_PATH = {
-  WEBSITE_OFF: "/website",
-  NO_GATEWAY: "/website",
-  NO_MENU: "/website",
-  NO_WEBSITE_ADDON: "/settings/billing",
+  NO_FSSAI: "/settings?view=properties",
+  NO_GATEWAY: "/settings?view=properties",
+  NO_MENU: "/settings?view=cache",
   ACCOUNT_LOCKED: "/settings/billing",
   NO_PIN: "/settings?view=properties",
   NO_ORDER_TYPE: "/settings?view=toggles",
@@ -94,7 +93,7 @@ const KnotEatsView = () => {
         <p className="text-[12.5px] text-[#334155] rounded-xl bg-[#FFF7ED] border border-[#FED7AA] p-3">
           {fee
             ? `Each Knot Eats order adds a ₹${fee.amount}${fee.taxable === false ? "" : " + GST"} Platform fee to the customer's bill. The same amount is deducted from your wallet when they pay, and returned if the order is cancelled.${
-                feeFrom ? ` From ${feeFrom.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}.` : ""
+                feeFrom ? ` From ${feeFrom.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric", timeZone: STORE_TZ })}.` : ""
               }`
             : "No Knot Eats fee is charged yet."}
         </p>
@@ -140,7 +139,7 @@ const KnotEatsView = () => {
 
       <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-3">
         <h4 className="text-[15px] font-extrabold text-[#0F172A]">Location & delivery</h4>
-        <p className="text-[12px] text-[#94A3B8]">Shared with your website. Knot Eats shows your restaurant to customers within your delivery radius.</p>
+        <p className="text-[12px] text-[#94A3B8]">Knot Eats shows your restaurant to customers within your delivery radius.</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Row label="Map pin" value={k.pin ? `${k.pin.lat}, ${k.pin.lng}` : "Not set"} to="/settings?view=properties" />
           <Row label="Delivery radius (Max Distance)" value={`${k.radiusKm ?? 7} km`} to="/settings?view=rules" />

@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useSelector } from "react-redux";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
-import { publishSystemCache } from "../../https";
+import { publishSystemCache, publishWebsiteCache } from "../../https";
 import SecurityPinModal from "../common/SecurityPinModal";
 import { checkActionAuthorization } from "../../utils/security";
 import { checkMenuNow, readSavedMenu } from "../../utils/systemMenu";
@@ -72,6 +72,7 @@ const DeviceMenuCard = () => {
 /* ---------- Manage Cache ---------- */
 const ManageCacheView = () => {
   const user = useSelector((state) => state.user);
+  const queryClient = useQueryClient();
   const [pinModalOpen, setPinModalOpen] = useState(false);
   const [pendingAction, setPendingAction] = useState(null);
 
@@ -92,6 +93,16 @@ const ManageCacheView = () => {
     onSuccess: (res) => enqueueSnackbar(res.data?.message || "System cache updated", { variant: "success" }),
     onError: (err) => enqueueSnackbar(err.response?.data?.message || "Failed to publish system cache", { variant: "error" }),
   });
+  // The website and Knot Eats menu. Open to every store: Knot Eats lists this copy even without the Website add-on.
+  const webMutation = useMutation({
+    mutationFn: publishWebsiteCache,
+    onSuccess: (res) => {
+      enqueueSnackbar(res.data?.message || "Website cache updated", { variant: "success" });
+      queryClient.invalidateQueries({ queryKey: ["knot-eats"] });
+    },
+    onError: (err) => enqueueSnackbar(err.response?.data?.message || "Failed to publish website cache", { variant: "error" }),
+  });
+  const publishing = sysMutation.isPending || webMutation.isPending;
 
   return (
     <div className="space-y-4">
@@ -107,10 +118,28 @@ const ManageCacheView = () => {
           </div>
           <button
             onClick={() => executeProtected(() => sysMutation.mutate())}
-            disabled={sysMutation.isPending}
+            disabled={publishing}
             className="h-[40px] px-4 rounded-xl border border-[#FD5302] text-[#C2410C] text-[13px] font-bold shrink-0 hover:bg-[#FFF1E8] disabled:opacity-50"
           >
             {sysMutation.isPending ? "Publishing…" : "Publish POS"}
+          </button>
+        </div>
+      </div>
+
+      <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
+        <div className="flex items-start justify-between gap-4 pt-1">
+          <div>
+            <h4 className="text-[15px] font-extrabold text-[#0F172A]">Update Website Cache</h4>
+            <p className="text-[12.5px] text-[#64748B] mt-0.5">
+              Publish menu and saved Manage Website changes to your website and Knot Eats
+            </p>
+          </div>
+          <button
+            onClick={() => executeProtected(() => webMutation.mutate())}
+            disabled={publishing}
+            className="h-[40px] px-4 rounded-xl border border-[#FD5302] text-[#C2410C] text-[13px] font-bold shrink-0 hover:bg-[#FFF1E8] disabled:opacity-50"
+          >
+            {webMutation.isPending ? "Publishing…" : "Publish Website"}
           </button>
         </div>
       </div>

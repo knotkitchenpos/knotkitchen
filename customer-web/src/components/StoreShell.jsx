@@ -84,7 +84,7 @@ export default function StoreShell({
     ...orderingOverride,
   };
   const offers = offersOverride || s.offers;
-  const symbol = ordering.currencySymbol || "£";
+  const symbol = ordering.currencySymbol || "₹";
   const title = branding.siteTitle || b.name || "Restaurant";
   const websiteEnabled =
     b.websiteEnabled !== false && s.store?.acceptingOrders !== false;

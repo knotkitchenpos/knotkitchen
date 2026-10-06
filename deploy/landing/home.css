@@ -246,6 +246,7 @@
 .lines em small{display:block;margin-top:3px;font:500 .78rem var(--display);letter-spacing:0;color:var(--muted)}
 .plan-notes{margin-top:clamp(28px,4vw,44px);display:grid;gap:8px 48px;grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr))}
 .plan-notes h3{margin:0 0 .4em}
+.plan-notes summary{cursor:pointer;margin:0 0 .4em}.plan-notes summary h3{display:inline}
 .plan-notes ul{margin:0;padding-left:1.2em;color:var(--muted)}
 .plan-notes li{margin:0 0 6px}
 .plan-notes p{margin:0;color:var(--muted)}
@@ -280,11 +281,18 @@
   .chip.k{left:4px}.chip.p{right:4px}
 }
 
-/* ---------- no motion, on request ---------- */
-@media(prefers-reduced-motion:reduce){
+/* ---------- no motion, on request, and on paper ---------- */
+@media(prefers-reduced-motion:reduce),print{
   *,*::before,*::after{animation:none!important;transition:none!important}
+  /* the hero and closing card are white text on a dark fill: print the fill */
+  body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .reveal,.rows li,.kk-hero .fade{opacity:1;transform:none}
   .kk-hero h1 .line>span,.bars-art i{transform:none}
   .pay circle,.pay path{stroke-dashoffset:0}
   .till{transform:none}
 }
+
+/* No script (off, blocked or failed to load): nothing waits for home.js to appear. */
+.no-js .reveal,.no-js .rows li{opacity:1;transform:none}
+.no-js .bars-art i{transform:none}
+.no-js .pay circle,.no-js .pay path{stroke-dashoffset:0}

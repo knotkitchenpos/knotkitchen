@@ -79,8 +79,23 @@ const PAID = "paid";
  */
 const AWAITING_ACCEPTANCE = "Pending";
 
+/**
+ * Accepted by the restaurant and being cooked, in the same online-order and
+ * QR flows. Written instead of Preparing on a customer order so the till does
+ * not take an accepted order for a new, undecided one (listAwaitingOrders
+ * reads a QR order in Preparing as undecided).
+ */
+const ACCEPTED = "In Progress";
+
 const SERVED = "Served";
 const DELIVERED = "Delivered";
+
+/**
+ * A delivery order that has left with the rider: Ready -> Out for delivery ->
+ * Delivered. Delivery orders only; still live, so it can be cancelled or
+ * completed.
+ */
+const OUT_FOR_DELIVERY = "Out for delivery";
 
 // --- Historical spellings, for QUERIES only ---------------------------------
 // Every variant that exists in the database. Adding a spelling here makes old
@@ -93,6 +108,8 @@ const PREPARING_STATUSES = [
 ];
 
 const READY_STATUSES = [READY, "ready"];
+
+const OUT_FOR_DELIVERY_STATUSES = [OUT_FOR_DELIVERY, "out for delivery", "Dispatched", "dispatched"];
 
 /**
  * Finished with revenue realised — what "how much did we take?" should count.
@@ -113,7 +130,7 @@ const CANCELLED_STATUSES = [CANCELLED, "cancelled", "canceled", "Canceled"];
 const REFUNDED_STATUSES = [REFUNDED, "refunded"];
 
 /** Still live on the floor — neither settled nor cancelled. */
-const ACTIVE_STATUSES = [...PREPARING_STATUSES, ...READY_STATUSES];
+const ACTIVE_STATUSES = [...PREPARING_STATUSES, ...READY_STATUSES, ...OUT_FOR_DELIVERY_STATUSES];
 
 /** No further transitions allowed. */
 const TERMINAL_STATUSES = new Set([COMPLETED, CANCELLED, REFUNDED]);
@@ -125,6 +142,8 @@ const ALIASES = new Map([
   ["in progress", PREPARING],
   ["preparing", PREPARING],
   ["ready", READY],
+  ["out for delivery", OUT_FOR_DELIVERY],
+  ["dispatched", OUT_FOR_DELIVERY],
   ["completed", COMPLETED],
   // "served" / "delivered" are deliberately absent: they are distinct display
   // states, not misspellings of Completed. See SERVED / DELIVERED above.
@@ -168,7 +187,7 @@ const isFinished = (status) =>
 
 /** Statuses a client is permitted to request via the update endpoint. */
 const ALLOWED_STATUS_TRANSITIONS = new Set([
-  PREPARING, "Pending", "In Progress", READY, COMPLETED, CANCELLED,
+  PREPARING, "Pending", "In Progress", READY, OUT_FOR_DELIVERY, DELIVERED, COMPLETED, CANCELLED,
 ]);
 
 /** Statuses an order may be created with. */
@@ -176,8 +195,8 @@ const ALLOWED_INITIAL_STATUS = new Set([PREPARING, "Pending", "In Progress", REA
 
 module.exports = {
   PREPARING, READY, COMPLETED, CANCELLED, REFUNDED, PAID, SERVED, DELIVERED,
-  AWAITING_ACCEPTANCE,
-  PREPARING_STATUSES, READY_STATUSES, SETTLED_STATUSES,
+  AWAITING_ACCEPTANCE, ACCEPTED, OUT_FOR_DELIVERY,
+  PREPARING_STATUSES, READY_STATUSES, OUT_FOR_DELIVERY_STATUSES, SETTLED_STATUSES,
   CANCELLED_STATUSES, REFUNDED_STATUSES, ACTIVE_STATUSES,
   TERMINAL_STATUSES, ALLOWED_STATUS_TRANSITIONS, ALLOWED_INITIAL_STATUS,
   canonicalStatus, isPreparing, isSettled, isCancelled, isTerminal, isRefunded, isFinished,

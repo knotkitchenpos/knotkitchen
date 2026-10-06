@@ -6,6 +6,7 @@ const {
   updateOnlineOrderStatus,
   listPrepDueOrders,
   listAwaitingOrders,
+  listPendingAdditions,
   startPreparingOrder,
   resolveAddedItems,
 } = require("../controllers/onlineOrderController");
@@ -19,6 +20,8 @@ const {
 router.get("/", isVerifiedUser, listOnlineOrders);
 router.get("/prep-due", isVerifiedUser, listPrepDueOrders);
 router.get("/awaiting", isVerifiedUser, listAwaitingOrders);
+// Diner additions nobody has reviewed yet: the Added Items card catches up from it.
+router.get("/added-items", isVerifiedUser, listPendingAdditions);
 router.post("/:id/start-preparing", isVerifiedUser, startPreparingOrder);
 router.put("/:id/status", isVerifiedUser, updateOnlineOrderStatus);
 

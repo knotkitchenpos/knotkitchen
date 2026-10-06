@@ -18,6 +18,7 @@ const { csdAudit } = require("../services/csdAuditService");
 const config = require("../config/config");
 const { formatAddress } = require("../services/address");
 const { statusFor } = require("../services/subscription");
+const { hasWebsite } = require("../services/planFeatures");
 
 const str = (v) => String(v ?? "").trim();
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
@@ -149,7 +150,8 @@ const getRestaurant = async (req, res, next) => {
           delivery: !!(settings?.ordering?.deliveryEnabled ?? restaurant?.orderTypeToggles?.delivery),
           collection: !!(settings?.ordering?.pickupEnabled ?? restaurant?.orderTypeToggles?.collection),
           tableOrders: !!restaurant?.orderTypeToggles?.table,
-          websiteEnabled: settings?.enabled !== false,
+          // Live only with the Website add-on too (the resolver refuses the site without it).
+          websiteEnabled: settings?.enabled !== false && (await hasWebsite(restaurant?._id, storeId)),
           currency: settings?.ordering?.currency || restaurant?.currency || "INR",
         },
 

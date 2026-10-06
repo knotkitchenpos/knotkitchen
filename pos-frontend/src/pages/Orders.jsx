@@ -17,14 +17,14 @@ import {
 import TableSettleModal from "../components/tables/TableSettleModal";
 import ReasonModal from "../components/orders/ReasonModal";
 import SecurityPinModal from "../components/common/SecurityPinModal";
-import { checkActionAuthorization, isOwner } from "../utils/security";
+import { checkActionAuthorization, isManager } from "../utils/security";
 import { getMyRestaurant } from "../https";
-import { printKot, printOrderReceipt } from "../utils/printReceipt";
+import { printKot, printOrderReceipt, printWithFeedback } from "../utils/printReceipt";
 import { billableItems, itemDisplayName, itemExtras } from "../utils/orderItems";
-import { isPreparing, isReady, isSettled, isCancelled, isRefunded, statusLabel, COMPLETED, REFUND_STATUS, REFUND_STATUS_LABELS } from "../constants/orderStatus";
+import { isPreparing, isReady, isSettled, isCancelled, isRefunded, isFinished, isOutForDelivery, statusLabel, COMPLETED, DELIVERED, OUT_FOR_DELIVERY, REFUND_STATUS, REFUND_STATUS_LABELS } from "../constants/orderStatus";
 import { sourceLabel, tableLabel, orderDisplayId } from "../utils/orderLabels";
 import { sendTableEBill } from "../utils/sendTableEBill";
-import { money, time12 as timeOf, time12, dateGB, dateTimeIN, localDay } from "../utils";
+import { money, time12 as timeOf, time12, dateGB, dateTimeIN, localDay, STORE_TZ } from "../utils";
 
 /* ---------- Icons ---------- */
 const I = {
@@ -86,7 +86,8 @@ const I = {
 };
 
 /* ---------- Helpers ---------- */
-const minsAgo = (d) => Math.max(0, Math.round((Date.now() - new Date(d).getTime()) / 60000));
+// `end` stops the count: a finished order shows how long it took, not how long ago it was placed.
+const minsAgo = (d, end = Date.now()) => Math.max(0, Math.round((new Date(end).getTime() - new Date(d).getTime()) / 60000));
 
 const typeMeta = (t) => {
   const k = String(t || "").toLowerCase();
@@ -109,6 +110,7 @@ const TABS = [
   { key: "All", statuses: null },
   { key: "Preparing", statuses: ["Preparing", "Pending", "In Progress"] },
   { key: "Ready", statuses: ["Ready"] },
+  { key: "Out for delivery", statuses: [OUT_FOR_DELIVERY] },
   // "paid" is what a settled table session writes onto its kitchen orders.
   // Without it a table the operator had just completed vanished from the
   // one tab they would look in for it.
@@ -530,11 +532,15 @@ const Orders = () => {
               {list.map((o) => {
                 const meta = typeMeta(o.orderType);
                 const on = selected?._id === o._id;
-                const mins = minsAgo(o.createdAt);
-                const ring = mins < 10 ? "#16A34A" : mins < 20 ? "#F59E0B" : "#EF4444";
+                // A finished order's timer stops at its completion and goes grey;
+                // it kept counting and turned red on every paid order.
+                const done = isFinished(o.orderStatus);
+                const mins = minsAgo(o.createdAt, done ? (o.completedAt || o.cancelledAt || o.updatedAt) : undefined);
+                const ring = done ? "#94A3B8" : mins < 10 ? "#16A34A" : mins < 20 ? "#F59E0B" : "#EF4444";
                 const cancelled = isCancelled(o.orderStatus);
                 const preparingBadge = isPreparing(o.orderStatus);
                 const readyBadge = isReady(o.orderStatus);
+                const outBadge = isOutForDelivery(o.orderStatus);
                 return (
                   <div
                     key={o._id}
@@ -606,6 +612,8 @@ const Orders = () => {
                           ? "bg-[#DCFCE7] text-[#15803D]"
                           : preparingBadge
                           ? "bg-[#FFEDD5] text-[#C2410C]"
+                          : outBadge
+                          ? "bg-[#DBEAFE] text-[#1D4ED8]"
                           : "bg-[#F0FDF4] text-[#15803D]"
                       }`}
                     >
@@ -911,6 +919,25 @@ const Orders = () => {
                       {money(selected.bills?.totalWithTax || selected.bills?.total)}
                     </span>
                   </div>
+                  {/* A tip taken at settle is not part of the bill, but it was
+                      paid: without these rows the counted cash looked over. */}
+                  {Number(selected.bills?.tip || selected.tips) > 0 && (
+                    <>
+                      <div className="flex justify-between">
+                        <span className="text-[#475569]">Tip</span>
+                        <span className="font-bold text-[#0F172A]">{money(selected.bills?.tip || selected.tips)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="font-bold text-[#0F172A]">Paid</span>
+                        <span className="font-extrabold text-[#0F172A]">
+                          {money(
+                            Number(selected.bills?.totalWithTax || selected.bills?.total || 0) +
+                              Number(selected.bills?.tip || selected.tips),
+                          )}
+                        </span>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -968,7 +995,7 @@ const Orders = () => {
                     <p className="font-bold text-[#0F172A] mt-0.5">
                       {new Date(selected.createdAt).toLocaleString("en-GB", {
                         day: "numeric", month: "short", year: "numeric",
-                        hour: "2-digit", minute: "2-digit",
+                        hour: "2-digit", minute: "2-digit", timeZone: STORE_TZ,
                       })}
                     </p>
                   </div>
@@ -978,7 +1005,7 @@ const Orders = () => {
                       <p className="font-bold text-[#0F172A] mt-0.5">
                         {new Date(selected.readyAt).toLocaleString("en-GB", {
                           day: "numeric", month: "short",
-                          hour: "2-digit", minute: "2-digit",
+                          hour: "2-digit", minute: "2-digit", timeZone: STORE_TZ,
                         })}
                         {selected.readyBy ? ` · by ${selected.readyBy}` : ""}
                       </p>
@@ -990,7 +1017,7 @@ const Orders = () => {
                       <p className="font-bold text-[#0F172A] mt-0.5">
                         {new Date(selected.readyDueAt).toLocaleString("en-GB", {
                           day: "numeric", month: "short",
-                          hour: "2-digit", minute: "2-digit",
+                          hour: "2-digit", minute: "2-digit", timeZone: STORE_TZ,
                         })}
                       </p>
                     </div>
@@ -1004,12 +1031,11 @@ const Orders = () => {
                 Cancel / Refund below. Four across squeezed "Mark Ready" onto
                 two lines beside single-line neighbours. */}
             <div className="px-4 py-3.5 border-t border-[#E2E8F0] shrink-0 grid grid-cols-2 gap-2 [&>button]:whitespace-nowrap">
+              {/* printWithFeedback says it is sending and then whether it went:
+                  a Bluetooth printer that is off took up to a minute to fail
+                  with nothing on screen. */}
               <button
-                onClick={() =>
-                  printOrderReceipt(selected).catch((err) =>
-                    enqueueSnackbar(err?.message || "Could not print the receipt.", { variant: "error" }),
-                  )
-                }
+                onClick={() => printWithFeedback("receipt", () => printOrderReceipt(selected))}
                 className="h-[46px] rounded-xl border border-[#E2E8F0] text-[#334155] text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#F8FAFC]"
               >
                 <I.print /> Print
@@ -1018,11 +1044,7 @@ const Orders = () => {
                 // A cancelled order, or one whose every dish was struck off,
                 // has nothing for the kitchen: no ticket.
                 disabled={isCancelled(selected.orderStatus) || billableItems(selected.items).length === 0}
-                onClick={() =>
-                  printKot(selected).catch((err) =>
-                    enqueueSnackbar(err?.message || "Could not print the KOT.", { variant: "error" }),
-                  )
-                }
+                onClick={() => printWithFeedback("KOT", () => printKot(selected))}
                 title={
                   isCancelled(selected.orderStatus) || billableItems(selected.items).length === 0
                     ? "Nothing to send to the kitchen: this order is cancelled"
@@ -1044,6 +1066,25 @@ const Orders = () => {
                 >
                   <I.check s={16} />
                   Mark Ready
+                </button>
+              ) : isReady(selected.orderStatus) && String(selected.orderType).toLowerCase() === "delivery" ? (
+                // A delivery leaves with the rider before it is done.
+                <button
+                  disabled={statusMutation.isPending}
+                  onClick={() => statusMutation.mutate({ orderId: selected._id, orderStatus: OUT_FOR_DELIVERY })}
+                  className="h-[46px] rounded-xl bg-[#2563EB] text-white text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#1D4ED8] disabled:opacity-40"
+                >
+                  <I.scooter s={16} />
+                  Out for delivery
+                </button>
+              ) : isOutForDelivery(selected.orderStatus) ? (
+                <button
+                  disabled={statusMutation.isPending}
+                  onClick={() => statusMutation.mutate({ orderId: selected._id, orderStatus: DELIVERED })}
+                  className="h-[46px] rounded-xl bg-[#16A34A] text-white text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#15803D] disabled:opacity-40"
+                >
+                  <I.check s={16} />
+                  Delivered
                 </button>
               ) : isReady(selected.orderStatus) ? (
                 <button
@@ -1111,9 +1152,9 @@ const Orders = () => {
                     </button>
                   ) : (
                     <button
-                      disabled={voidMutation.isPending || !isOwner(user)}
+                      disabled={voidMutation.isPending || !isManager(user)}
                       onClick={() => askReason("refund", selected)}
-                      title={isOwner(user) ? "Send all or part of the amount back to the customer through Cashfree." : "Only the store owner can refund"}
+                      title={isManager(user) ? "Send all or part of the amount back to the customer through Cashfree." : "Only the store owner or a manager can refund"}
                       className="h-[46px] rounded-xl border border-[#FCA5A5] text-[#DC2626] text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#FEF2F2] disabled:opacity-40"
                     >
                       {selected.refundStatus === REFUND_STATUS.REFUND_FAILED
@@ -1126,13 +1167,15 @@ const Orders = () => {
                 ) : null
               ) : (
                 <button
-                  disabled={isRefunded(selected.orderStatus) || voidMutation.isPending || (isSettled(selected.orderStatus) && !isOwner(user))}
+                  disabled={isRefunded(selected.orderStatus) || voidMutation.isPending || ((isSettled(selected.orderStatus) || selected.paid) && !isManager(user))}
                   onClick={() => askReason("cancel", selected)}
                   title={
-                    isSettled(selected.orderStatus)
-                      ? isOwner(user)
+                    // Paid as the server counts it: settled, or money taken
+                    // on an order still cooking (a delivery paid at the till).
+                    isSettled(selected.orderStatus) || selected.paid
+                      ? isManager(user)
                         ? "Void this paid order. A gateway payment can be refunded afterwards; cash is handed back at the counter."
-                        : "Only the store owner can cancel a completed order"
+                        : "Only the store owner or a manager can cancel a paid order"
                       : "Cancel this order"
                   }
                   className="h-[46px] rounded-xl border border-[#FCA5A5] text-[#DC2626] text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#FEF2F2] disabled:opacity-40"

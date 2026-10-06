@@ -5,7 +5,7 @@ import { motion } from "framer-motion";
 import { FaCheck } from "react-icons/fa6";
 import { useMutation } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
-import { printOrderReceipt } from "../../utils/printReceipt";
+import { printOrderReceipt, printWithFeedback } from "../../utils/printReceipt";
 import { sendEBill } from "../../https";
 import { billableItems, itemDisplayName, itemExtras, resolveItemAmounts } from "../../utils/orderItems";
 import { money } from "../../utils";
@@ -82,7 +82,13 @@ const Invoice = ({
         paymentMethod === "paymentlink" || paymentMethod === "payment_link" || paymentMethod === "link";
 
     const customerPhone = safeCustomer.phone || "";
-    const canSendEBill = Boolean(customerPhone && safeOrder._id);
+    // A valid Indian mobile, and an order the server has: one queued offline
+    // carries its local id, which the E-Bill endpoint cannot find.
+    const canSendEBill = Boolean(
+        /^[6-9]\d{9}$/.test(String(customerPhone).replace(/\D/g, "").slice(-10)) &&
+            safeOrder._id &&
+            !safeOrder.offline,
+    );
 
     const [emailedTo, setEmailedTo] = useState("");
 
@@ -121,14 +127,9 @@ const Invoice = ({
     });
 
     // One receipt for every screen: see utils/printReceipt.js. It prints on
-    // this device's configured printer, or opens the print dialog if none.
-    const handlePrint = async () => {
-        try {
-            await printOrderReceipt(safeOrder);
-        } catch (err) {
-            enqueueSnackbar(err?.message || "Could not print the receipt.", { variant: "error" });
-        }
-    };
+    // this device's configured printer, or opens the print dialog if none,
+    // and says it is sending and whether it went.
+    const handlePrint = () => printWithFeedback("receipt", () => printOrderReceipt(safeOrder));
 
     return (
         // Module 3 §6 — darker, more opaque overlay + card so the receipt
@@ -275,6 +276,7 @@ const Invoice = ({
                             <p className="flex justify-between">
                                 <span className="text-white/50">
                                     GST{Number(safeBills.taxPercent) > 0 ? ` @ ${safeBills.taxPercent}%` : ""}
+                                    {safeBills.taxInclusive ? " (incl.)" : ""}
                                 </span>
                                 <span>{money(safeBills.tax)}</span>
                             </p>

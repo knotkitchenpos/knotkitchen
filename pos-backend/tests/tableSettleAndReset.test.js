@@ -118,3 +118,53 @@ test("REGRESSION: a split settle writes its several ledger entries in order, ins
   const src = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "controllers", "tableSessionController.js"), "utf8");
   assert.match(src, /PaymentTransaction\.create\(\s*parts\.map\([\s\S]*?\{ session: mongoSession, ordered: true \}\s*\);/);
 });
+
+// ---- money taken off a table needs the Security PIN ------------------
+
+test("REGRESSION: voiding a dish, closing unpaid and discounting a table all ask staff for the PIN", () => {
+  // Cancelling a whole order was PIN-guarded, so voiding it one dish at a
+  // time got around the rule; /close freed an unpaid table for any token.
+  const route = fs.readFileSync(path.join(__dirname, "..", "routes", "tableSessionRoute.js"), "utf8");
+  assert.match(route, /\/items\/:itemId\/cancel"\)\.post\(isVerifiedUser, requireProtectedAction, cancelSessionItem\)/);
+  assert.match(route, /"\/:id\/close"\)\.post\(isVerifiedUser, requireProtectedAction, closeSessionWithoutPayment\)/);
+  assert.match(route, /"\/:id\/discount"\)\.post\(isVerifiedUser, requireProtectedAction, setDiscount\)/);
+  assert.match(route, /const \{ requireProtectedAction \} = require\("\.\.\/middlewares\/requirePermission"\)/);
+});
+
+// ---- Release Table never frees an unpaid bill -------------------------
+
+test("REGRESSION: Release Table refuses while a dish is still on the session", async () => {
+  // The order read Served (the old auto-complete timer), so the live-order
+  // check passed and the table was freed with its bill unpaid.
+  const Module = require("module");
+  const orig = Module._load;
+  const tableUpdates = [];
+  const session = { status: "OCCUPIED", items: [{ status: "preparing" }], timeline: [], async save() {} };
+  Module._load = function (r) {
+    if (r === "../models/tableModel") {
+      return {
+        findOne: async () => ({ _id: "t1", restaurantId: "r1", status: "occupied" }),
+        findOneAndUpdate: async (f, u) => { tableUpdates.push(u); return u; },
+      };
+    }
+    if (r === "../models/tableSessionModel") return { findOne: async () => session };
+    if (r === "../models/orderModel") return { find: () => ({ select: async () => [{ _id: "o1", orderStatus: "Served", items: [] }] }) };
+    return orig.apply(this, arguments);
+  };
+  delete require.cache[require.resolve("../controllers/tableController")];
+  let failure = null;
+  try {
+    const { releaseTable } = require("../controllers/tableController");
+    await releaseTable(
+      { params: { id: "507f1f77bcf86cd799439011" }, user: { restaurantId: "r1", _id: "u1" } },
+      { status() { return this; }, json() {} },
+      (err) => { failure = err; },
+    );
+  } finally {
+    Module._load = orig;
+    delete require.cache[require.resolve("../controllers/tableController")];
+  }
+  assert.equal(failure?.status, 409);
+  assert.equal(session.status, "OCCUPIED");
+  assert.deepEqual(tableUpdates, []);
+});

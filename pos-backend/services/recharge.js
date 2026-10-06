@@ -85,15 +85,18 @@ const createRecharge = async ({ restaurantId, amountPaise, createdBy = null, ret
   // crediting more than was charged is the wrong way to round.
   if (amount % 1 !== 0) throw new RechargeError("Amount must be a whole number of paise.");
 
-  // Until the POS plan has started, one top-up has to cover the minimum: that
-  // top-up is what starts it (services/subscription afterRecharge).
-  const minimum = await minimumTopUpPaise(restaurantId);
+  // Until the POS plan has started, one top-up has to cover the first minimum:
+  // that top-up is what starts it (services/subscription afterRecharge). Every
+  // later top-up has its own, smaller minimum.
+  const { paise: minimum, first } = await minimumTopUpPaise(restaurantId);
   if (amount < minimum) {
-    throw new RechargeError(
-      `The first top-up must be at least ${formatINR(minimum)}. Your POS plan starts automatically when it arrives, and the rest stays in your wallet.`,
-      400,
-      "FIRST_TOPUP_MINIMUM",
-    );
+    throw first
+      ? new RechargeError(
+        `The first top-up must be at least ${formatINR(minimum)}. Your POS plan starts automatically when it arrives, and the rest stays in your wallet.`,
+        400,
+        "FIRST_TOPUP_MINIMUM",
+      )
+      : new RechargeError(`A top-up must be at least ${formatINR(minimum)}.`, 400, "TOPUP_MINIMUM");
   }
 
   return openPayment({ restaurantId, amountPaise: amount, createdBy, returnUrl });

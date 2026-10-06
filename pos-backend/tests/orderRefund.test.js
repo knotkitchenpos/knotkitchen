@@ -60,7 +60,7 @@ test("reports count takings net of refunds; a cancelled order counts nothing", (
   assert.equal(refundedTotal(paid({ refunds: [{ amount: 1, status: "SUCCESS" }, { amount: 2, status: "PENDING" }, { amount: 4, status: "FAILED" }] })), 1);
 });
 
-test("cancel needs the PIN guard; refund is for the owner only", () => {
+test("cancel needs the PIN guard; refund is for the owner or a manager", () => {
   const { isManagerUser } = require("../middlewares/requirePermission");
   assert.equal(isManagerUser({ role: "Owner" }), true);
   assert.equal(isManagerUser({ role: "Manager" }), true);
@@ -70,13 +70,15 @@ test("cancel needs the PIN guard; refund is for the owner only", () => {
   assert.equal(isManagerUser(null), false);
   const routes = fs.readFileSync(path.join(__dirname, "..", "routes", "orderRoute.js"), "utf8");
   assert.match(routes, /"\/:id\/cancel"\)\.put\(isVerifiedUser, requireProtectedAction, cancelOrder\)/);
-  assert.match(routes, /"\/:id\/refund"\)\.post\(isVerifiedUser, requireOwnerOnly, refundOrder\)/);
+  assert.match(routes, /"\/:id\/refund"\)\.post\(isVerifiedUser, requireManager, requireProtectedAction, refundOrder\)/, "a manager's refund still needs the PIN");
   const ctrl = fs.readFileSync(path.join(__dirname, "..", "controllers", "orderController.js"), "utf8");
   assert.match(ctrl, /A reason is required to cancel an order/);
   assert.match(ctrl, /const amount = netAmount\(o\)/, "report buckets are net of refunds");
 });
 
-test("REGRESSION: a completed order is cancelled by the owner only", () => {
+test("REGRESSION: a completed order is cancelled by the owner or a manager", () => {
+  // The owner asked for managers to cancel and refund too; other staff still
+  // cannot, PIN or not.
   const ctrl = fs.readFileSync(path.join(__dirname, "..", "controllers", "orderController.js"), "utf8");
-  assert.match(ctrl, /if \(voidingPaid && !require\("\.\.\/middlewares\/requirePermission"\)\.isOwnerUser\(req\.user\)\) \{\s*return next\(createHttpError\(403, "Only the store owner can cancel a completed order\."\)\);/);
+  assert.match(ctrl, /if \(voidingPaid && !require\("\.\.\/middlewares\/requirePermission"\)\.isManagerUser\(req\.user\)\) \{\s*return next\(createHttpError\(403, "Only the store owner or a manager can cancel a paid order."\)\);/);
 });

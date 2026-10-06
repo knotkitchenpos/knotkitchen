@@ -33,6 +33,7 @@ const getMyRestaurant = async (req, res, next) => {
 const bcrypt = require("bcrypt");
 const WebsiteSettings = require("../models/websiteSettingsModel");
 const { buildStorefrontUrl } = require("../services/websiteProvisioningService");
+const { hasWebsite } = require("../services/planFeatures");
 
 /** posSettings with every field present, including ones added after the restaurant was saved. */
 const receiptSettingsOf = (restaurant) => {
@@ -107,8 +108,9 @@ const getStoreProperties = async (req, res, next) => {
         // stores saved before they were.
         restaurantLogo: settings?.branding?.logo?.url || restaurant.branding?.logo || "",
         posSettings: receiptSettingsOf(restaurant),
-        // The website link printed on receipts when none is typed in.
-        websiteUrl: buildStorefrontUrl(settings),
+        // The website link printed on receipts when none is typed in: only while
+        // the website is on (Website add-on); receipts must not print a disabled site.
+        websiteUrl: (await hasWebsite(restaurant._id, settings?.storeId)) ? buildStorefrontUrl(settings) : "",
         orderTypeToggles: restaurant.orderTypeToggles || { collection: true, delivery: true, table: true },
         hasCustomPin: Boolean(restaurant.securityPin),
       },
@@ -226,7 +228,14 @@ const updateStoreProperties = async (req, res, next) => {
     if (props.ownerPhone !== undefined) restaurant.ownerPhone = String(props.ownerPhone).trim();
     if (props.contactPersonPhone !== undefined) restaurant.contactPersonPhone = String(props.contactPersonPhone).trim();
     if (props.ownerEmail !== undefined) restaurant.ownerEmail = String(props.ownerEmail).trim();
-    if (props.fssaiNumber !== undefined) restaurant.fssaiNumber = String(props.fssaiNumber).trim();
+    if (props.fssaiNumber !== undefined) {
+      const fssai = String(props.fssaiNumber).trim();
+      // Knot Eats lists only a 14-digit licence (services/knotEats NO_FSSAI). Checked only when changed, so an old value never blocks a save.
+      if (fssai && fssai !== (restaurant.fssaiNumber || "") && !/^\d{14}$/.test(fssai)) {
+        return next(createHttpError(400, "The FSSAI licence number has 14 digits."));
+      }
+      restaurant.fssaiNumber = fssai;
+    }
     if (props.gstNumber !== undefined) restaurant.taxId = String(props.gstNumber).trim();
     if (props.googleMapsLink !== undefined) restaurant.mapsLink = String(props.googleMapsLink).trim();
     // One logo for the whole store: the POS, receipts, the table QR page and

@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
 import KnotLogo from "../shared/KnotLogo";
 import {
+  canRemoveModifier,
   getTotalPrice,
   removeAllItems,
   removeItem,
@@ -13,6 +14,7 @@ import {
   updateItemNote,
 } from "../../redux/slices/cartSlice";
 import {
+  mobileDigits,
   removeCustomer,
   setCustomer,
   setSessionId,
@@ -40,9 +42,12 @@ import { getMyRestaurant } from "../../https";
 import { getWebsiteSettings } from "../../https/storefrontApi";
 import Invoice from "../invoice/Invoice";
 import { toOrderItems } from "../../utils/orderItems";
-import { enqueueOrder, isNetworkError, localOrderView } from "../../utils/offlineQueue";
+import { enqueueOrder, isNetworkError, localOrderView, newLocalId } from "../../utils/offlineQueue";
 import { tableLabel } from "../../utils/orderLabels";
-import CollectionModal from "./CollectionModal";
+import { deliveryFeeFor, deliveryMaxKm, hasDeliverySlabs } from "../../utils/rulesCharges";
+import { readStoreScoped, writeStoreScoped } from "../../utils/storeSession";
+import { checkActionAuthorization } from "../../utils/security";
+import { requestPin } from "../../utils/pinPrompt";
 import DeliveryModal from "./DeliveryModal";
 import DiscountModal from "./DiscountModal";
 import PaymentMethodModal from "./PaymentMethodModal";
@@ -105,6 +110,26 @@ const ORDER_TYPES = [
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
+/** The method picked at checkout, as addOrder takes it. None picked: no method, never a default. */
+const PAYMENT_METHODS = { cash: "Cash", upi: "UPI", card: "Card", split: "Split" };
+
+/**
+ * A settings fetch that keeps its last good answer on this device. A till
+ * opened offline had no GST or charges at all and billed every order at 0%.
+ * Only a network failure falls back to the copy; a server answer always wins.
+ */
+const withSavedCopy = (key, fetcher) => async () => {
+  try {
+    const res = await fetcher();
+    writeStoreScoped(key, { data: res.data });
+    return res;
+  } catch (err) {
+    const saved = readStoreScoped(key, null);
+    if (saved && !err?.response) return saved;
+    throw err;
+  }
+};
+
 /**
  * @param {boolean}  [mobileOpen]    below lg the cart is a full-screen sheet; this shows it
  * @param {Function} [onMobileClose]
@@ -125,9 +150,9 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
   const [noteText, setNoteText] = useState("");
   const [showDiscount, setShowDiscount] = useState(false);
   const [showPaymentMethod, setShowPaymentMethod] = useState(false);
-  const [pendingMethod, setPendingMethod] = useState(null); // "cash" | "qr"
-  const [showCollection, setShowCollection] = useState(false);
   const [showDelivery, setShowDelivery] = useState(false);
+  // Delivery details, taken before the payment step so it can show this address's charge.
+  const [delivery, setDelivery] = useState(null);
   const [showTable, setShowTable] = useState(false);
   const [invoice, setInvoice] = useState(null);
   const [showHeldOrders, setShowHeldOrders] = useState(false);
@@ -159,11 +184,9 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
    *      config that the server-side orderPricingService uses so the POS
    *      preview matches whatever the backend will ultimately charge.
    *
-   * If either endpoint fails we fall back to safe defaults (no tax, no
-   * charges, keep going). The BACKEND is still the source of truth: it
-   * re-sanitises `bills.*` on every addOrder call (see sanitizeBills in
-   * orderController). That means even if a bad tax rate leaks through the
-   * client, no persistence-level damage can occur.
+   * Both keep their last good copy on this device (withSavedCopy), and Finish
+   * waits until they have loaded. The server is the authority: addOrder
+   * recomputes GST and refuses (409) a till total that no longer matches.
    */
   const { data: restaurantRes } = useQuery({
     queryKey: ["restaurant", "me"],
@@ -173,13 +196,13 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
   });
   const { data: websiteRes } = useQuery({
     queryKey: ["website", "settings"],
-    queryFn: getWebsiteSettings,
+    queryFn: withSavedCopy("kk.pos.websiteSettings", getWebsiteSettings),
     staleTime: 5 * 60_000,
     retry: false,
   });
   const { data: propsRes } = useQuery({
     queryKey: ["store-properties"],
-    queryFn: getStoreProperties,
+    queryFn: withSavedCopy("kk.pos.storeProps", getStoreProperties),
     staleTime: 5 * 60_000,
     retry: false,
   });
@@ -241,28 +264,34 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
    * never asked for it is a real-world compliance risk. The old hardcoded
    * rate was OK for a demo but has to go once real merchants exist.
    */
-  const taxPercent = Math.max(0, Math.min(100, Number(ordering.taxPercent) || 0));
-  const taxInclusive = !!ordering.taxInclusive;
+  // GST only with a GST number on Store Properties and "applies to" covering
+  // the till: the server's rule (services/gst.resolveGst), so the preview matches.
+  const gstApplyTo = ordering.gstApplyTo || "both";
+  const gstOn =
+    Boolean(String(storeProps.gstNumber || "").trim()) && (gstApplyTo === "both" || gstApplyTo === "system");
+  const taxPercent = gstOn ? Math.max(0, Math.min(100, Number(ordering.taxPercent) || 0)) : 0;
+  const taxInclusive = taxPercent > 0 && !!ordering.taxInclusive;
   const serviceChargePercent = isTable
     ? Math.max(0, Math.min(25, Number(ordering.serviceChargePercent) || 0))
     : 0;
   const minOrderValue = Math.max(0, Number(ordering.minOrderValue) || 0);
   const currencySymbol = ordering.currencySymbol || "₹";
 
+  // A table bill is struck on the server and never carries the cart's
+  // discount, so it is not shown off the total here (it is given at settle).
   const discountAmount = useMemo(
-    () => computeDiscountAmount(discount, subtotal),
-    [discount, subtotal],
+    () => (isTable ? 0 : computeDiscountAmount(discount, subtotal)),
+    [isTable, discount, subtotal],
   );
 
   const postDiscount = Math.max(0, round2(subtotal - discountAmount));
 
-  const deliveryFee = useMemo(() => {
-    if (!isDelivery) return 0;
-    const fee = Math.max(0, Number(ordering.deliveryFee) || 0);
-    const freeAbove = Math.max(0, Number(ordering.freeDeliveryAbove) || 0);
-    if (freeAbove > 0 && postDiscount >= freeAbove) return 0;
-    return fee;
-  }, [isDelivery, ordering.deliveryFee, ordering.freeDeliveryAbove, postDiscount]);
+  // The server prices delivery the same way (distance slabs from the km staff
+  // entered, or the flat fee). null: priced by distance, km not entered yet.
+  const deliveryQuote = isDelivery
+    ? deliveryFeeFor({ ordering, distanceKm: delivery?.deliveryAddress?.distanceKm, subtotal })
+    : 0;
+  const deliveryFee = deliveryQuote ?? 0;
 
   const taxableBase = postDiscount;
   const tax = useMemo(() => {
@@ -270,7 +299,8 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
     if (taxInclusive) {
       return round2(taxableBase - taxableBase / (1 + taxPercent / 100));
     }
-    return round2((taxableBase * taxPercent) / 100);
+    // The server's order of operations (price.computeTotals), so the two never differ by a paisa.
+    return round2(taxableBase * (taxPercent / 100));
   }, [taxableBase, taxPercent, taxInclusive]);
 
   const serviceCharge = round2(((postDiscount + (taxInclusive ? 0 : tax)) * serviceChargePercent) / 100);
@@ -284,12 +314,13 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
       total: round2(postDiscount),
       tax,
       taxPercent,
+      taxInclusive,
       totalWithTax,
       discount: round2(discountAmount),
       deliveryFee,
       serviceCharge,
     }),
-    [subtotal, postDiscount, tax, taxPercent, totalWithTax, discountAmount, deliveryFee, serviceCharge],
+    [subtotal, postDiscount, tax, taxPercent, taxInclusive, totalWithTax, discountAmount, deliveryFee, serviceCharge],
   );
 
   // Clear stale discount when the cart empties so a fresh customer doesn't
@@ -300,6 +331,10 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
       dispatch(clearDiscount());
     }
   }, [cart.length, discount.mode, dispatch]);
+  // Nor the last delivery address (placed, held or cleared).
+  useEffect(() => {
+    if (cart.length === 0) setDelivery(null);
+  }, [cart.length]);
 
   const tableUpdate = useMutation({ mutationFn: (d) => updateTable(d) });
 
@@ -308,11 +343,14 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
    * cashier sees the same invoice and can print it. */
   const orderMutation = useMutation({
     mutationFn: async (d) => {
+      // One id for the live attempt and the offline copy: when the server saved
+      // the order but the answer was lost, the sync finds it instead of adding a second.
+      const localId = newLocalId();
       try {
-        return await addOrder(d);
+        return await addOrder(d, localId);
       } catch (err) {
         if (!isNetworkError(err)) throw err;
-        const entry = enqueueOrder(d);
+        const entry = enqueueOrder(d, localId);
         enqueueSnackbar(`No internet: order ${entry.localNumber} saved on this device, it will sync later.`, { variant: "warning" });
         return { data: { data: localOrderView(entry), offline: true } };
       }
@@ -333,15 +371,21 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
       enqueueSnackbar("Order completed!", { variant: "success" });
       setInvoice(data);
       setShowPaymentMethod(false);
-      setShowCollection(false);
       setShowDelivery(false);
       setShowTable(false);
       dispatch(removeAllItems());
       dispatch(removeCustomer());
       dispatch(clearDiscount());
     },
-    onError: (e) =>
-      enqueueSnackbar(e.response?.data?.message || "Failed to complete order.", { variant: "error" }),
+    onError: (e) => {
+      // 409: GST or charges changed since this till loaded them. Reload them so
+      // the cart shows the new total before the biller finishes again.
+      if (e.response?.status === 409) {
+        qc.invalidateQueries({ queryKey: ["website", "settings"] });
+        qc.invalidateQueries({ queryKey: ["store-properties"] });
+      }
+      enqueueSnackbar(e.response?.data?.message || "Failed to complete order.", { variant: "error" });
+    },
   });
 
   /**
@@ -403,7 +447,7 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
    * Its presence is what turns Finish from "attach to a table" into "add to
    * the order that table already has".
    */
-  const activeSessionId = customer.sessionId || customer.table?.activeSessionId || "";
+  const activeSessionId = customer.sessionId || "";
   const count = cart.reduce((n, i) => n + (i.quantity || 1), 0);
 
   /**
@@ -427,6 +471,7 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
     apiType,
     table,
     paymentMethod,
+    splits,
   }) => {
     const customerDetails = {};
     if (name) customerDetails.name = name;
@@ -455,11 +500,8 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
       // was created Completed with a paid cash payment against it, for money
       // nobody had collected. An order with no method chosen must reach the
       // server with none, and show a blank payment method until it is paid.
-      ...(paymentMethod === "cash"
-        ? { paymentMethod: "Cash" }
-        : paymentMethod === "qr"
-        ? { paymentMethod: "UPI" }
-        : {}),
+      ...(PAYMENT_METHODS[paymentMethod] ? { paymentMethod: PAYMENT_METHODS[paymentMethod] } : {}),
+      ...(paymentMethod === "split" ? { splits } : {}),
       ...(deliveryAddress ? { deliveryAddress } : {}),
       ...(table ? { table } : {}),
     };
@@ -498,6 +540,13 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
 
   const finish = () => {
     if (!guard()) return;
+    // GST and charges unknown: the total on screen could be wrong.
+    if (!websiteRes || !propsRes) {
+      enqueueSnackbar("Store settings (GST, charges) have not loaded yet. Check the connection and try again.", {
+        variant: "warning",
+      });
+      return;
+    }
     // Table Service has its own dedicated flow (session-based); it does not
     // go through the payment-method chooser because payment for a dine-in
     // table is captured later (via /pay/:token or at the till when the
@@ -508,41 +557,43 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
       if (activeSessionId) return appendToSession(activeSessionId);
       return setShowTable(true);
     }
+    // Delivery: the address (and distance) first, so the payment step can
+    // show this address's charge in the total.
+    if (isDelivery) return setShowDelivery(true);
     setShowPaymentMethod(true);
   };
 
-  // Payment method chosen inside PaymentMethodModal → route to the correct
-  // customer-details modal or directly complete collection order using the on-page fields.
-  const onPickPaymentMethod = (method) => {
-    setPendingMethod(method);
+  // Payment method chosen inside PaymentMethodModal: Delivery already has its
+  // details; Collection's optional name and phone are typed in that modal.
+  const onPickPaymentMethod = (method, splits) => {
     if (isDelivery) {
-      setShowCollection(false);
-      setShowDelivery(true);
+      setShowPaymentMethod(false);
+      doDelivery({ ...delivery, chosenMethod: method, splits });
       return;
     }
-    // Collection — Customer Name and Phone Number are captured directly on the main page.
     const name = (customer.customerName || "").trim();
-    const phone = (customer.customerPhone || "").trim();
+    const phone = mobileDigits(customer.customerPhone);
+    // Optional, but a typed number must be a real mobile: it keys the CRM
+    // customer and gets the e-bill. The modal stays open to fix it.
+    if (phone && !/^[6-9]\d{9}$/.test(phone)) {
+      enqueueSnackbar("Enter a valid 10-digit mobile number, or leave the phone blank.", { variant: "warning" });
+      return;
+    }
 
     setShowPaymentMethod(false);
-    doCollection({ name, phone, chosenMethod: method });
+    doCollection({ name, phone, chosenMethod: method, splits });
   };
 
-  const doCollection = ({ name, phone, address, city, pinCode, deliveryNote, chosenMethod }) => {
-    const payMethod = chosenMethod || pendingMethod;
+  const doCollection = ({ name, phone, chosenMethod, splits }) => {
     if (name || phone) dispatch(setCustomer({ name, phone, guests: 0 }));
     orderMutation.mutate(
       buildOrderPayload({
         name,
         phone,
-        address,
-        city,
-        pinCode,
-        deliveryNote,
         apiType: "collection",
-        paymentMethod: payMethod,
+        paymentMethod: chosenMethod,
+        splits,
       }),
-      { onSettled: () => {} },
     );
   };
 
@@ -556,6 +607,8 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
     pinCode,
     deliveryNote,
     deliveryAddress,
+    chosenMethod,
+    splits,
   }) => {
     dispatch(setCustomer({ name, phone, guests: 0 }));
     orderMutation.mutate(
@@ -568,7 +621,8 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
         deliveryNote,
         deliveryAddress,
         apiType: "delivery",
-        paymentMethod: pendingMethod,
+        paymentMethod: chosenMethod,
+        splits,
       }),
     );
   };
@@ -596,7 +650,7 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
     });
   };
 
-  const doTable = ({ table, guests }) => {
+  const doTable = ({ table, guests, name, phone }) => {
     dispatch(updateTableAction({ table }));
 
     // A table picked from the list may already be running an order -- a QR
@@ -614,8 +668,8 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
       tableId: table.tableId || table._id,
       items: sessionItems(),
       customerCount: guests,
-      customerName: customer.customerName || "",
-      customerPhone: customer.customerPhone || "",
+      customerName: name || "",
+      customerPhone: phone || "",
     });
   };
 
@@ -893,16 +947,24 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
                     const modLineTotal = Number(m.price || 0) * Number(m.quantity || 1) * lineQuantity;
                     return (
                       <div key={`${item.id}-mod-${idx}`} className="flex items-center gap-2.5 pl-6">
-                        <button
-                          className="shrink-0 text-[#EF4444] hover:text-[#DC2626] text-[16px] leading-none"
-                          title="Remove this add-on"
-                          aria-label={`Remove ${modLabel}`}
-                          onClick={() =>
-                            dispatch(removeModifier({ id: item.id, index: idx, kind: "structured" }))
-                          }
-                        >
-                          ⊗
-                        </button>
+                        {/* A required choice's only option stays: change it by
+                            removing the line and adding it again. */}
+                        {canRemoveModifier(item, idx) ? (
+                          <button
+                            className="shrink-0 text-[#EF4444] hover:text-[#DC2626] text-[16px] leading-none"
+                            title="Remove this add-on"
+                            aria-label={`Remove ${modLabel}`}
+                            onClick={() =>
+                              dispatch(removeModifier({ id: item.id, index: idx, kind: "structured" }))
+                            }
+                          >
+                            ⊗
+                          </button>
+                        ) : (
+                          <span aria-hidden="true" className="shrink-0 invisible text-[16px] leading-none">
+                            ⊗
+                          </span>
+                        )}
                         <p className="flex-1 min-w-0 text-[13.5px] text-[#475569] truncate">
                           {modLabel}
                         </p>
@@ -1019,36 +1081,39 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
         </div>
 
         {/* Discount row — CLICKABLE (Module 2 §1). Shows current label if
-            a discount is applied so the biller can see it at a glance. */}
-        <button
-          type="button"
-          onClick={() => setShowDiscount(true)}
-          className="w-full flex items-center justify-between text-[13.5px] rounded-lg -mx-1 px-1 py-1 hover:bg-[#F8FAFC] transition-colors"
-          disabled={cart.length === 0}
-        >
-          <span className="flex items-center gap-1.5 text-[#475569]">
-            <IconTag />
-            <span className="font-semibold">Discount</span>
-            {discountLabel && (
-              <span className="px-1.5 py-0.5 rounded-md bg-[#FFF1E8] text-[#C2410C] text-[11px] font-extrabold">
-                {discountLabel}
-              </span>
-            )}
-          </span>
-          <span
-            className={`font-bold ${
-              discountAmount > 0 ? "text-[#16A34A]" : "text-[#94A3B8]"
-            }`}
+            a discount is applied so the biller can see it at a glance.
+            Not on a table: its discount is given when the bill is settled. */}
+        {!isTable && (
+          <button
+            type="button"
+            onClick={() => setShowDiscount(true)}
+            className="w-full flex items-center justify-between text-[13.5px] rounded-lg -mx-1 px-1 py-1 hover:bg-[#F8FAFC] transition-colors"
+            disabled={cart.length === 0}
           >
-            {discountAmount > 0 ? `− ${money(discountAmount)}` : "Add"}
-          </span>
-        </button>
+            <span className="flex items-center gap-1.5 text-[#475569]">
+              <IconTag />
+              <span className="font-semibold">Discount</span>
+              {discountLabel && (
+                <span className="px-1.5 py-0.5 rounded-md bg-[#FFF1E8] text-[#C2410C] text-[11px] font-extrabold">
+                  {discountLabel}
+                </span>
+              )}
+            </span>
+            <span
+              className={`font-bold ${
+                discountAmount > 0 ? "text-[#16A34A]" : "text-[#94A3B8]"
+              }`}
+            >
+              {discountAmount > 0 ? `− ${money(discountAmount)}` : "Add"}
+            </span>
+          </button>
+        )}
 
         {isDelivery && (
           <div className="flex items-center justify-between text-[13.5px]">
             <span className="text-[#475569]">Delivery charge</span>
             <span className="font-bold text-[#0F172A]">
-              {deliveryFee > 0 ? money(deliveryFee) : "Free"}
+              {deliveryQuote === null ? "By distance" : deliveryFee > 0 ? money(deliveryFee) : "Free"}
             </span>
           </div>
         )}
@@ -1143,11 +1208,20 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
           initialMode={discount.mode}
           initialValue={discount.value}
           onClose={() => setShowDiscount(false)}
-          onApply={({ mode, value }) => {
+          onApply={async ({ mode, value }) => {
+            setShowDiscount(false);
+            // Money off the bill: staff need the Security PIN, as for a void
+            // (addOrder checks it too). The owner goes straight through.
+            if (mode !== "none" && Number(value) > 0 && !checkActionAuthorization(user, {}).allowed) {
+              try {
+                await requestPin();
+              } catch {
+                return;
+              }
+            }
             if (mode === "percent") dispatch(setPercentDiscount(value));
             else if (mode === "fixed") dispatch(setFixedDiscount(value));
             else dispatch(clearDiscount());
-            setShowDiscount(false);
             enqueueSnackbar("Discount updated.", { variant: "success" });
           }}
           onClear={() => {
@@ -1172,31 +1246,30 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
         />
       )}
 
-      {/* ===== Customer detail capture (routed by method) ===== */}
-      {showCollection && (
-        <CollectionModal
-          initialName={customer.customerName}
-          initialPhone={customer.customerPhone}
-          total={totalWithTax}
-          busy={busy}
-          onClose={() => setShowCollection(false)}
-          onConfirm={doCollection}
-        />
-      )}
+      {/* ===== Delivery details, before the payment step ===== */}
       {showDelivery && (
         <DeliveryModal
+          initial={delivery}
           initialName={customer.customerName}
           initialPhone={customer.customerPhone}
-          total={totalWithTax}
-          busy={busy}
+          maxKm={hasDeliverySlabs(ordering) ? deliveryMaxKm(ordering) : 0}
           onClose={() => setShowDelivery(false)}
-          onConfirm={doDelivery}
+          onConfirm={(details) => {
+            setDelivery(details);
+            setShowDelivery(false);
+            setShowPaymentMethod(true);
+          }}
         />
       )}
       {showTable && (
         <TableModal
           tables={tables}
           busy={busy}
+          // The table and head count chosen when seating from Manage Tables.
+          initialTableId={customer.table?.tableId}
+          initialGuests={customer.guests}
+          initialName={customer.customerName}
+          initialPhone={customer.customerPhone}
           onClose={() => setShowTable(false)}
           onConfirm={doTable}
         />
@@ -1247,7 +1320,9 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
               <div className="space-y-2.5">
                 {heldOrders.map((heldOrder, index) => {
                   const itemCount = (heldOrder.items || []).reduce((sum, item) => sum + Number(item.quantity || 0), 0);
-                  const heldTotal = (heldOrder.items || []).reduce((sum, item) => sum + Number(item.price || 0), 0);
+                  // After the discount saved with it, as the customer was told.
+                  const gross = (heldOrder.items || []).reduce((sum, item) => sum + Number(item.price || 0), 0);
+                  const heldTotal = round2(gross - computeDiscountAmount(heldOrder.discount || {}, gross));
                   const customerName = heldOrder.customer?.customerName || "Walk-in customer";
                   return (
                     <div key={heldOrder.id} className="flex items-center gap-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3.5">

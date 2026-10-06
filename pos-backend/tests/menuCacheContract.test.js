@@ -131,6 +131,9 @@ test("Publish Website writes the website snapshot and the Manage Website draft; 
   assert.match(block, /if \(target === "website"\) \{\s+menu\.hasPublishedToWebsite = true/, "a till publish leaves the website alone");
   assert.match(block, /if \(target === "website" && user\?\.restaurantId\)/);
   assert.match(src, /publishToTarget\(req, res, "website"\)/);
+  // Manage Cache > Update Website Cache: PIN, no plan gate (Knot Eats needs it without the website).
+  const route = fs.readFileSync(path.join(__dirname, "..", "routes", "menuRoute.js"), "utf8");
+  assert.match(route, /"\/publish\/website"\)\.post\(isVerifiedUser, requireProtectedAction, publishWebsiteCache\)/);
 });
 
 test("projected items are plain objects whichever audience asked", () => {

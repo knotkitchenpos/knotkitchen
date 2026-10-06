@@ -9,6 +9,7 @@ import {
   cancelTableBooking,
 } from "../../https";
 import useAlertBeep from "../../hooks/useAlertBeep";
+import useArmed from "../../hooks/useArmed";
 import { acquireSocket, releaseSocket } from "../../socket";
 import { localDay, timeIN } from "../../utils";
 
@@ -42,6 +43,10 @@ const TableBookingPopup = () => {
   const [busy, setBusy] = useState(false);
 
   useAlertBeep(pending.length > 0 && !picking);
+
+  // A request card, or the table picker, that just opened ignores taps meant
+  // for whatever was under it.
+  const armed = useArmed(picking ? `pick:${picking.booking._id}` : pending.map((b) => b._id).join());
 
   useEffect(() => {
     if (!restaurantId) return undefined;
@@ -97,6 +102,7 @@ const TableBookingPopup = () => {
     enqueueSnackbar(e?.response?.data?.message || fallback, { variant: "error" });
 
   const startAccept = async (booking) => {
+    if (!armed) return;
     setBusy(true);
     try {
       const { data } = await getBookingTables(booking._id);
@@ -110,6 +116,7 @@ const TableBookingPopup = () => {
   };
 
   const confirmAccept = async () => {
+    if (!armed) return;
     if (!picking || !selectedTable) return;
     setBusy(true);
     try {
@@ -125,6 +132,7 @@ const TableBookingPopup = () => {
   };
 
   const cancel = async (booking) => {
+    if (!armed) return;
     if (!window.confirm(`Cancel the booking for ${booking.name} at ${booking.timeLabel}?`)) return;
     setBusy(true);
     try {

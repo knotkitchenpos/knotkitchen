@@ -7,7 +7,7 @@ import { billingConfig, errorMessage } from "../api";
  *
  * Everything a restaurant is ever charged originates on this screen: the POS
  * plan, add-ons (on the POS period or yearly), devices (tablets and printers),
- * existing tablet rentals, the first top-up, GST, the platform fees and the
+ * existing tablet rentals, the first and later top-up minimums, GST, the platform fees and the
  * e-bill charge, and the renewal and lock policies. No restaurant-facing
  * screen can change any of it.
  *
@@ -239,7 +239,8 @@ const Billing = () => {
   if (loadError) return <p className="text-sm text-red-600">{loadError}</p>;
   if (!config) return <p className="text-sm text-navy-500">Loading billing settings…</p>;
 
-  const gstLive = config.gst.registered && config.gst.effectiveFrom;
+  // The server refuses Registered without a GSTIN or a rate; this mirrors it.
+  const gstLive = config.gst.registered && config.gst.effectiveFrom && config.gst.gstin && Number(config.gst.percent) > 0;
 
   return (
     <div className="space-y-5 pb-24">
@@ -256,7 +257,7 @@ const Billing = () => {
         priceNotice
         subtitle="The base subscription every store pays for each billing period, in rupees, + GST where applicable. Takeaway and delivery only; tables and dine-in come with the QR Table Ordering add-on."
       >
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid gap-3 sm:grid-cols-4">
           <Field label="Name" error={fieldErrors["basePlan.name"]}>
             <input
               className={input}
@@ -280,6 +281,13 @@ const Billing = () => {
             error={fieldErrors.firstRechargeMin}
           >
             <Money value={config.firstRechargeMin} onChange={(v) => set({ firstRechargeMin: v })} />
+          </Field>
+          <Field
+            label="Later top-up minimum (₹)"
+            hint="Every top-up after the POS plan has started must be at least this. 0 = no minimum."
+            error={fieldErrors.topUpMin}
+          >
+            <Money value={config.topUpMin} onChange={(v) => set({ topUpMin: v })} />
           </Field>
         </div>
       </Card>
@@ -492,7 +500,9 @@ const Billing = () => {
         warn={
           config.gst.registered && !config.gst.effectiveFrom
             ? "Registered is on but no start date is set, so nothing would be taxed. Set a date or switch Registered off."
-            : null
+            : config.gst.registered && !config.gst.gstin
+              ? "Registered is on but there is no GSTIN, so invoices would charge GST without one. Enter the GSTIN or switch Registered off."
+              : null
         }
       >
         <Toggle

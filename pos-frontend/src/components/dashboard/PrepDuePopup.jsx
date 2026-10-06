@@ -3,6 +3,7 @@ import { useSelector } from "react-redux";
 import { enqueueSnackbar } from "notistack";
 import { listPrepDueOrders, startPreparingOrder } from "../../https/storefrontApi";
 import useAlertBeep from "../../hooks/useAlertBeep";
+import useArmed from "../../hooks/useArmed";
 import { acquireSocket, releaseSocket } from "../../socket";
 import { timeIN as clock } from "../../utils";
 
@@ -54,9 +55,13 @@ const PrepDuePopup = () => {
     };
   }, [restaurantId]);
 
+  // A card that just appeared ignores taps meant for the till underneath.
+  const armed = useArmed(due.map((o) => o.orderId).join());
+
   if (!due.length) return null;
 
   const start = async (order) => {
+    if (!armed) return;
     setBusyId(order.orderId);
     try {
       await startPreparingOrder(order.orderId);

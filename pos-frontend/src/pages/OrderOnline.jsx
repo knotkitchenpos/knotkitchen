@@ -298,8 +298,8 @@ export default function OrderOnline() {
         setErr("Please enter your name.");
         return;
       }
-      if (!/^\d{10}$/.test(String(cust.phone).replace(/\D/g, "").slice(-10))) {
-        setErr("Please enter a valid 10-digit phone number.");
+      if (!/^[6-9]\d{9}$/.test(String(cust.phone).replace(/\D/g, "").slice(-10))) {
+        setErr("Please enter a valid 10-digit mobile number.");
         return;
       }
     }
@@ -753,7 +753,7 @@ export default function OrderOnline() {
                       />
                       <button
                         onClick={() => preparePayment(payPhone)}
-                        disabled={loadingPayment || payPhone.length !== 10}
+                        disabled={loadingPayment || !/^[6-9]\d{9}$/.test(payPhone)}
                         className="w-full text-sm py-2.5 rounded-xl font-bold text-white disabled:opacity-50"
                         style={{ background: primary }}
                       >

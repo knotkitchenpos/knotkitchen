@@ -213,6 +213,36 @@ const orderCreatedPayload = (order, storeId = "") => {
 };
 
 /**
+ * What the POS "Added Items" card renders: a diner's dishes on a table that is
+ * already mid-meal, waiting for the till to accept them. One builder for the
+ * live `tableOrder:itemsAdded` event and the catch-up list
+ * (GET /api/online-orders/added-items). Only "pending" lines are listed: those
+ * are the ones nobody has reviewed yet. Reads `order.table` populated.
+ */
+const itemsAddedPayload = (order) => {
+  const pendingItems = (order.items || [])
+    .filter((i) => i.status === "pending")
+    // `_id` so the till can decline ONE dish out of the batch, and `modifiers`
+    // so it can see what was actually ordered before deciding.
+    .map((i) => ({
+      _id: String(i._id),
+      name: i.name,
+      quantity: i.quantity,
+      total: i.total,
+      modifiers: i.modifiers || [],
+    }));
+  return {
+    orderId: String(order._id),
+    tableSessionId: order.tableSessionId ? String(order.tableSessionId) : "",
+    tableNumber: order.table?.tableNumber ?? null,
+    displayId: order.table?.displayId || order.table?.tableName || "",
+    pendingItems,
+    addedCount: pendingItems.length,
+    bills: order.bills,
+  };
+};
+
+/**
  * Online order created (§13, §31).
  *
  * The payload is scoped to the owning restaurant's room ONLY — private order
@@ -220,9 +250,12 @@ const orderCreatedPayload = (order, storeId = "") => {
  * the POS to render the "New Online Order" card without an extra fetch, while
  * the POS still reconciles via its REST endpoint on reconnect (§32).
  */
-const emitOrderCreated = ({ restaurantId, outletId, storeId, order }) => {
+const emitOrderCreated = ({ restaurantId, outletId, storeId, order, placedVia }) => {
   if (!io || !order) return;
-  const payload = orderCreatedPayload(order, storeId);
+  // `placedVia: "QR"`: a diner ordered from the table QR. The order keeps the
+  // table's own source (a till-opened table stays a System order in Reports),
+  // so without this the New Order card ignored it and nobody accepted it.
+  const payload = { ...orderCreatedPayload(order, storeId), ...(placedVia ? { placedVia } : {}) };
 
   const rooms = [];
   if (restaurantId) rooms.push(`restaurant:${restaurantId}`);
@@ -319,6 +352,7 @@ module.exports = {
   emitEvent,
   emitToRestaurant,
   orderCreatedPayload,
+  itemsAddedPayload,
   emitOrderCreated,
   emitOrderStatusChanged,
   emitTableSessionUpdated,

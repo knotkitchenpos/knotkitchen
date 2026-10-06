@@ -39,7 +39,10 @@ export const deleteTable = (tableId) =>
   axiosWrapper.delete(`/api/table/${tableId}`);
 
 // Order Endpoints
-export const addOrder = (data) => axiosWrapper.post("/api/order/", data);
+// `key` is the Idempotency-Key: a retried or replayed POST (offline sync, a
+// double tap on a slow line) is answered with the order it already made.
+export const addOrder = (data, key) =>
+  axiosWrapper.post("/api/order/", data, key ? { headers: { "Idempotency-Key": key } } : undefined);
 export const getOrderById = (id) => axiosWrapper.get(`/api/order/${id}`);
 // Module 4 §6 — Orders list accepts an optional filter object.
 // The backend defaults to today when no date/from/to is provided so calling
@@ -168,6 +171,11 @@ export const cancelTableSessionItem = (sessionId, itemId, data) =>
 export const setTableServiceCharge = (sessionId, waived) =>
   axiosWrapper.post(`/api/table-session/${sessionId}/service-charge`, { waived });
 
+// A discount on the table's bill, struck by the server: { mode: "percent" | "fixed" | "none", value }.
+// Staff are asked for the Security PIN by the global popup.
+export const setTableDiscount = (sessionId, data) =>
+  axiosWrapper.post(`/api/table-session/${sessionId}/discount`, data);
+
 // Menu Endpoints
 export const getMenus = (params) => axiosWrapper.get("/api/menu", params ? { params } : undefined);
 
@@ -221,9 +229,8 @@ export const unpublishMenu = (menuId) => axiosWrapper.put(`/api/menu/${menuId}/u
 /**
  * Module 6 §4 — Manage Cache.
  *
- * Bulk-publish every menu in this tenant to the tills, so new prices and
- * items reach the POS. There is no website equivalent: the customer site
- * reads the live menu (see services/menuCache.js).
+ * Bulk-publish every menu to the tills. Its website twin (publishWebsiteCache)
+ * publishes the website / Knot Eats copy; both are in Manage Cache.
  */
 export const publishSystemCache = () =>
   axiosWrapper.post("/api/menu/publish/system");
@@ -310,9 +317,7 @@ export const cancelSubscription = (data) => axiosWrapper.post("/api/subscription
 export const reinstateSubscription = () => axiosWrapper.post("/api/subscription/reinstate", {});
 export const getPlatformInvoices = () => axiosWrapper.get("/api/subscription/invoices");
 
-/* ---------- Restaurant, KDS, waiter calls ---------- */
+/* ---------- Restaurant, waiter calls ---------- */
+// The kitchen screen reads the orders themselves (getOrders); there is no separate KDS API.
 export const getMyRestaurant = () => axiosWrapper.get("/api/restaurant/me");
-export const getKDSOrders = (params) => axiosWrapper.get("/api/kds/", { params });
-export const updateKDSItemStatus = (kdsOrderId, itemId, data) => axiosWrapper.patch(`/api/kds/${kdsOrderId}/items/${itemId}`, data);
-export const updateKDSOrderStatus = (kdsOrderId, data) => axiosWrapper.patch(`/api/kds/${kdsOrderId}/status`, data);
 export const dismissWaiterCall = (tableId) => axiosWrapper.post(`/api/qr/waiter-call/${tableId}/dismiss`);

@@ -5,6 +5,7 @@ import { enqueueSnackbar } from "notistack";
 import { changePin, getStoreProperties, updateStoreProperties, verifyPin } from "../../https";
 import { uploadMedia } from "../../https/storefrontApi";
 import MapPinPicker from "./MapPinPicker";
+import PaymentGatewayCard from "./PaymentGatewayCard";
 
 /**
  * The store's logo: uploaded here, shown everywhere -- the POS header, the
@@ -323,11 +324,13 @@ const StorePropertiesView = () => {
             />
           </div>
           <div>
-            <label className="text-[11.5px] font-bold text-[#94A3B8]">FSSAI Number</label>
+            <label className="text-[11.5px] font-bold text-[#94A3B8]">FSSAI Licence Number (14 digits, needed for Knot Eats)</label>
             <input
               disabled={!pinVerified}
+              inputMode="numeric"
+              maxLength={14}
               value={formData.fssaiNumber || ""}
-              onChange={(e) => setFormData({ ...formData, fssaiNumber: e.target.value })}
+              onChange={(e) => setFormData({ ...formData, fssaiNumber: e.target.value.replace(/\D/g, "") })}
               className="w-full h-[38px] px-3 mt-1 rounded-xl border border-[#E2E8F0] font-bold text-[#0F172A] disabled:bg-[#F8FAFC]"
             />
           </div>
@@ -363,6 +366,8 @@ const StorePropertiesView = () => {
           onClose={() => setPickerOpen(false)}
         />
       )}
+
+      {(user?.role === "Owner" || user?.role === "owner" || user?.role === "superadmin") && <PaymentGatewayCard />}
 
       {/* Owner PIN Management */}
       {(user?.role === "Owner" || user?.role === "owner") && (

@@ -481,6 +481,18 @@ const releaseTable = async (req, res, next) => {
       isDeleted: { $ne: true },
     });
 
+    // A dish still on the session is an unpaid bill, even when its order no
+    // longer reads live (an order the old timer marked Served). Releasing it
+    // would free the table without the money.
+    if ((session?.items || []).some((i) => i.status !== "cancelled")) {
+      return next(
+        createHttpError(
+          409,
+          "This table still has a live order. Settle or cancel it first, which frees the table on its own.",
+        ),
+      );
+    }
+
     if (session) {
       session.status = "CLOSED";
       session.closedAt = new Date();

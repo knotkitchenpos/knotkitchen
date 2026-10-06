@@ -15,7 +15,7 @@
   --navy:#0a1b45; --navy-2:#12306b; --orange:#f4620a; --orange-deep:#d94e05;
 
   --bg:#fffdfa; --bg-2:#f6f1e9; --surface:#ffffff; --line:#e8e0d4;
-  --text:#0a1b45; --muted:#6c6257; --accent:#c9490a; --accent-2:#f0a202;
+  --text:#0a1b45; --muted:#6c6257; --accent:#b84204; --accent-2:#f0a202;
   --accent-soft:#fdf0e6; --shadow:0 1px 2px rgba(10,27,69,.05),0 8px 30px rgba(10,27,69,.07);
   --radius:14px;
   --display:"Bricolage Grotesque","Geist",ui-sans-serif,-apple-system,"Segoe UI",Roboto,sans-serif;
@@ -66,7 +66,8 @@ header{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--bg) 9
 .brand-stack{display:block;height:auto;width:190px}
 
 .btn{display:inline-block;padding:12px 22px;border-radius:999px;font-weight:600;font-size:.98rem;text-align:center;
-  background:linear-gradient(135deg,var(--orange),var(--orange-deep));color:#fff;
+  /* darker than the logo orange so white button text passes WCAG AA (5.2:1 or more) */
+  background:linear-gradient(135deg,#c2410c,#b84204);color:#fff;
   border:1px solid transparent;transition:transform .2s,filter .2s,background .2s,box-shadow .2s}
 .btn:hover{filter:brightness(1.08);text-decoration:none;transform:translateY(-1px)}
 .btn:active{transform:translateY(1px) scale(.98)}
@@ -78,7 +79,7 @@ header{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--bg) 9
 
 /* --- Navigation ----------------------------------------------------------
    One markup for both layouts. <details> gives a working disclosure menu with
-   no JavaScript; above 860px the <details> is flattened with display:contents
+   no JavaScript; from 1080px the <details> is flattened with display:contents
    and the panel is forced open, so it renders as an ordinary desktop bar. */
 .menu summary{list-style:none;cursor:pointer;display:grid;place-items:center;
   width:44px;height:44px;margin-right:-10px;border-radius:10px}
@@ -104,7 +105,7 @@ header{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--bg) 9
 .menu-panel ul a:hover{text-decoration:none;color:var(--accent)}
 .menu-panel .btn{margin-top:16px;text-align:center}
 
-@media(min-width:861px){
+@media(min-width:1080px){
   /* Chrome wraps <details> children in a UA ::details-content box, so
      display:contents on the <details> alone does not flatten all the way —
      flatten both, and let .nav's space-between do the alignment either way. */
@@ -271,7 +272,9 @@ footer ul a:hover{color:var(--text)}
    content, so only its generous vertical padding needs reining in. */
 @media(max-height:560px) and (orientation:landscape){
   .hero{padding:36px 0 40px}
-  header{position:static}          /* a sticky bar eats too much of a short screen */
+  /* a sticky bar eats too much of a short screen; relative (not static) so the
+     phone menu panel still opens right under the bar, not below the fold */
+  header{position:relative}
 }
 
 /* Large and ultra-wide displays: let the measure grow a little rather than
@@ -302,5 +305,5 @@ footer ul a:hover{color:var(--text)}
 .nav-cta{margin-left:auto;padding:8px 14px;font-size:.9rem;white-space:nowrap}
 /* ...and the logo gives way so the bar never runs wider than the screen. */
 @media(max-width:420px){.nav{gap:10px}.brand{flex:0 1 174px;min-width:0}.brand-logo{width:100%;height:auto}}
-@media(min-width:861px){.nav-cta{display:none}}
+@media(min-width:1080px){.nav-cta{display:none}}
 @media(max-width:360px){.nav-cta{padding:7px 10px;font-size:.8rem}}

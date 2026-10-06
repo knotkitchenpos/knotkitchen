@@ -12,7 +12,10 @@ const formatPaymentMethod = (method) => {
   const m = String(method || "").trim().toUpperCase();
   if (m === "CASH") return "Paid by Cash";
   if (m === "QR" || m === "QR_CODE" || m === "TABLE_QR") return "Paid by QR Code";
-  if (m === "ONLINE" || m === "CARD" || m === "UPI" || m === "NETBANKING") return "Paid Online";
+  // Card and UPI are taken at the counter (card machine, store UPI), not online.
+  if (m === "CARD") return "Paid by Card";
+  if (m === "UPI") return "Paid by UPI";
+  if (m === "ONLINE" || m === "NETBANKING") return "Paid Online";
   if (m === "PAYMENT_LINK" || m === "PAYMENTLINK") return "Paid by Payment Link";
   return method ? `Paid by ${method}` : "Paid by Cash";
 };
@@ -180,6 +183,8 @@ const buildReceipt = ({
     total,
     platformFee,
     totalPaid,
+    // GST already inside the prices: the bill says so instead of reading as extra.
+    taxInclusive: Boolean((tableSession?.bills || bill?.bills || order?.bills)?.taxInclusive),
     paymentStatus,
     paymentMethod: formatPaymentMethod(rawPaymentMethod),
   };

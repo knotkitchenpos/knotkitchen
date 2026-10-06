@@ -140,7 +140,7 @@ test("the pay page spells out the fee before money moves", async () => {
 
 test("table QR: verify and the webhook expect bill + the STORED fee, and hand that fee to the settle", () => {
   const qr = SRC("controllers/qrController.js");
-  const verify = slice(qr, "const paymentVerify = async", "const placeLegacyOrder");
+  const verify = slice(qr, "const paymentVerify = async", "// Public: call waiter.");
   assert.match(verify, /const platformFee = session\.payment\?\.platformFee;/);
   assert.match(verify, /const expected = round2\(payable \+ toRupees\(platformFee\?\.totalPaise\)\);/);
   assert.match(verify, /Math\.abs\(Number\(result\.amount\) - Number\(expected\)\) > 0\.01/);
@@ -207,7 +207,12 @@ const settleHarness = async (run) => {
     "../models/tableModel": { findOneAndUpdate: async () => ({}) },
     "../models/paymentTransactionModel": { create: async (docs) => { state.txns.push(...docs); return docs; }, updateMany: async () => {} },
     "../models/billModel": { create: async (docs) => { state.billCreate = docs[0]; return [{ _id: "b1" }]; }, findOneAndUpdate: async () => {} },
-    "../models/orderModel": { updateMany: async (q, u) => { state.orderSet = u.$set; } },
+    // The table's one live order; the settle books the bill on it with updateOne.
+    "../models/orderModel": {
+      find: () => ({ sort() { return this; }, session: async () => [{ _id: "o1", orderStatus: "Preparing", items: [] }] }),
+      updateOne: async (q, u) => { if (u.$set) state.orderSet = u.$set; },
+      updateMany: async () => {},
+    },
     "../services/eBillService": { fireAutoEBill: () => {} },
     "../services/orderCharge": { fireTableSessionCharge: (id) => state.charged.push(id) },
   };

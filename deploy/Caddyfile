@@ -10,6 +10,7 @@
 #
 # Public hostname map (BASE_DOMAIN = knotkitchen.com):
 #   knotkitchen.com            → static landing, else customer-web
+#   www.knotkitchen.com        → redirect to knotkitchen.com
 #   csd.knotkitchen.com        → csd-web       (Customer Support Desk)
 #   business.knotkitchen.com   → pos-web       (POS SPA)
 #   api.knotkitchen.com        → pos-api       (POS backend API)
@@ -308,6 +309,17 @@ eats.{$BASE_DOMAIN} {
 	reverse_proxy customer-web:80 {
 		header_up Host {host}
 	}
+}
+
+# =============================================================================
+# www.knotkitchen.com -> knotkitchen.com
+# =============================================================================
+# One canonical host for the landing site. Without this the wildcard below
+# takes www, customer-web strips the "www." and shows diners its apex page.
+# Declared BEFORE the wildcard; the cert comes from the global acme_dns.
+www.{$BASE_DOMAIN} {
+	import security_headers
+	redir https://{$BASE_DOMAIN}{uri} permanent
 }
 
 # =============================================================================

@@ -4,7 +4,9 @@ import { enqueueSnackbar } from "notistack";
 import { dismissWaiterCall } from "../../https";
 import { getTables } from "../../https";
 import useAlertBeep from "../../hooks/useAlertBeep";
+import useArmed from "../../hooks/useArmed";
 import { acquireSocket, releaseSocket } from "../../socket";
+import { timeIN } from "../../utils";
 
 
 /**
@@ -92,9 +94,14 @@ const WaiterCallPopup = () => {
     };
   }, [restaurantId]);
 
+  // Re-arms whenever the stack changes, so a card sliding under a finger
+  // is not acknowledged by a tap meant for the one that just left.
+  const armed = useArmed(calls.map((c) => c.tableId).join());
+
   if (calls.length === 0) return null;
 
   const acknowledge = async (call) => {
+    if (!armed) return;
     setBusyId(call.tableId);
     try {
       await dismissWaiterCall(call.tableId);
@@ -111,7 +118,9 @@ const WaiterCallPopup = () => {
   };
 
   return (
-    <div className="fixed top-4 right-4 z-[70] flex flex-col gap-2 w-[330px] max-w-[calc(100vw-2rem)]">
+    // Clear of the cart's order-type tabs: on desktop just left of the 380px
+    // cart column, on a phone below the cart sheet's tabs.
+    <div className="fixed top-[136px] lg:top-4 right-4 lg:right-[396px] z-[70] flex flex-col gap-2 w-[330px] max-w-[calc(100vw-2rem)]">
       {calls.map((call) => {
         const label = call.displayId || `Table ${call.tableNumber}`;
         // "GF1" reads as a table on the floor; a bare "4" does not.
@@ -134,12 +143,7 @@ const WaiterCallPopup = () => {
                 <p className="text-[11.5px] font-semibold text-[#64748B] truncate">{call.area}</p>
               ) : null}
               <p className="text-[11px] text-[#94A3B8] mt-0.5">
-                {call.requestedAt
-                  ? new Date(call.requestedAt).toLocaleTimeString("en-IN", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })
-                  : ""}
+                {timeIN(call.requestedAt)}
               </p>
             </div>
             <button

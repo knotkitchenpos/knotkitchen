@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { ModalShell } from "./ModalShell";
 import { tableLabel } from "../../utils/orderLabels";
+import { mobileDigits } from "../../redux/slices/customerSlice";
 
 /** The order a table is already running, if it has one. */
 const sessionIdOf = (t) => t?.session?._id || t?.activeSessionId || "";
@@ -25,10 +26,28 @@ const isOccupied = (t) => {
  */
 const canAddTo = (t) => Boolean(sessionIdOf(t));
 
-/** Finish Order → Table: pick a table for this store, or add to one in use. */
-const TableModal = ({ tables = [], busy, onClose, onConfirm }) => {
-  const [picked, setPicked] = useState(null);
-  const [guests, setGuests] = useState(1);
+/**
+ * Finish Order → Table: pick a table for this store, or add to one in use.
+ * Opens on the table and head count chosen when seating from Manage Tables,
+ * so the biller only adds the customer's phone.
+ */
+const TableModal = ({
+  tables = [],
+  busy,
+  onClose,
+  onConfirm,
+  initialName = "",
+  initialPhone = "",
+  initialTableId = "",
+  initialGuests = 0,
+}) => {
+  // Read from the live list, so a table a QR order took meanwhile shows "Add to order".
+  const [pickedId, setPickedId] = useState(initialTableId || null);
+  const picked = tables.find((t) => t._id === pickedId) || null;
+  const [guests, setGuests] = useState(Math.max(1, Number(initialGuests) || 1));
+  // Asked once, when the table opens (the server refuses a new table without a phone); never on an append.
+  const [name, setName] = useState(initialName || "");
+  const [phone, setPhone] = useState(mobileDigits(initialPhone));
   const [q, setQ] = useState("");
   const [err, setErr] = useState("");
   const [area, setArea] = useState("all");
@@ -68,6 +87,7 @@ const TableModal = ({ tables = [], busy, onClose, onConfirm }) => {
     const cap = Number(picked.capacity) || 4;
     const g = Math.max(1, Number(guests) || 1);
     if (g > cap) return setErr(`${tableLabel(picked)} seats a maximum of ${cap} customers.`);
+    if (!adding && !/^[6-9]\d{9}$/.test(phone)) return setErr("Enter the customer's 10-digit mobile number.");
     setErr("");
     onConfirm({
       table: {
@@ -83,6 +103,7 @@ const TableModal = ({ tables = [], busy, onClose, onConfirm }) => {
       },
       // The party is already seated, so their count is not being taken again.
       guests: adding ? 0 : g,
+      name: name.trim(), phone,
     });
   };
 
@@ -139,7 +160,7 @@ const TableModal = ({ tables = [], busy, onClose, onConfirm }) => {
                   key={t._id}
                   disabled={off}
                   onClick={() => {
-                    setPicked(t);
+                    setPickedId(t._id);
                     setErr("");
                   }}
                   className={`p-3 rounded-xl border text-left transition-all ${
@@ -216,6 +237,25 @@ const TableModal = ({ tables = [], busy, onClose, onConfirm }) => {
             <p className="text-[11.5px] text-[#94A3B8] mt-1">
               {tableLabel(picked)} seats up to {picked.capacity} customers.
             </p>
+            <label className="block text-[12px] font-bold text-[#475569] mt-3 mb-1.5 uppercase tracking-wide">
+              Customer Name (optional)
+            </label>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="w-full h-[46px] px-3.5 rounded-xl border border-[#E2E8F0] text-[14px] focus:border-[#FD5302]"
+            />
+            <label className="block text-[12px] font-bold text-[#475569] mt-3 mb-1.5 uppercase tracking-wide">
+              Customer Phone *
+            </label>
+            <input
+              type="tel"
+              inputMode="numeric"
+              value={phone}
+              onChange={(e) => setPhone(mobileDigits(e.target.value))}
+              placeholder="10-digit mobile"
+              className="w-full h-[46px] px-3.5 rounded-xl border border-[#E2E8F0] text-[14px] focus:border-[#FD5302]"
+            />
           </div>
         )}
 

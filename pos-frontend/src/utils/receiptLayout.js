@@ -1,6 +1,7 @@
 import { billableItems, itemDisplayName, itemExtras, resolveItemAmounts } from "./orderItems.js";
 import { orderDisplayId, tableLabel } from "./orderLabels.js";
-import { inr } from "./index.js";
+import { inr, STORE_TZ } from "./index.js";
+import { formatAddress } from "./address.js";
 
 /**
  * The printed receipt, laid out in printer dots for one paper width.
@@ -79,13 +80,17 @@ export const billLines = (bills = {}, itemsSubtotal = 0, { gstSplit = false } = 
   // claim credit; anyone else just "GST".
   const tax = Number(bills.tax) || 0;
   const pct = Number(bills.taxPercent) || 0;
+  // Prices that already include GST: the tax is a part of the subtotal, not
+  // added on top, and an unlabelled line read as an extra charge.
+  const incl = bills.taxInclusive === true ? " (incl.)" : "";
   if (tax > 0 && gstSplit) {
     const half = Math.round((tax / 2) * 100) / 100;
     const at = pct ? ` @ ${(pct / 2).toLocaleString("en-IN", { maximumFractionDigits: 2 })}%` : "";
-    lines.push({ label: `CGST${at}`, amount: half });
-    lines.push({ label: `SGST${at}`, amount: Math.round((tax - half) * 100) / 100 });
+    lines.push({ label: `CGST${at}${incl}`, amount: half });
+    lines.push({ label: `SGST${at}${incl}`, amount: Math.round((tax - half) * 100) / 100 });
   } else {
-    add(pct ? `GST @ ${pct.toLocaleString("en-IN", { maximumFractionDigits: 2 })}%` : "GST", tax);
+    const gst = pct ? `GST @ ${pct.toLocaleString("en-IN", { maximumFractionDigits: 2 })}%` : "GST";
+    add(`${gst}${incl}`, tax);
   }
   // After the tax: the service charge is on the taxed bill and is not taxed.
   add("Service charge", bills.serviceCharge);
@@ -167,13 +172,22 @@ export const layoutReceipt = ({ order = {}, store = {}, settings = {}, images = 
   pair("Order", `#${orderDisplayId(order)}`, { bold: true });
   pair(
     "Date",
-    placed.toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true }),
+    placed.toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", hour12: true, timeZone: STORE_TZ }),
   );
   const type = ORDER_TYPES[String(order.orderType || "").toLowerCase()];
   const table = tableLabel(order.table);
   pair("Type", [type, table].filter(Boolean).join(" · "));
   pair("Customer", order.customerDetails?.name);
   pair("Phone", order.customerDetails?.phone);
+  // Delivery: where it goes, full width so a long address wraps. The till
+  // saves deliveryAddress; older orders kept it flat on customerDetails.
+  if (String(order.orderType || "").toLowerCase() === "delivery") {
+    const cd = order.customerDetails || {};
+    const addr = formatAddress(order.deliveryAddress) || formatAddress({ line1: cd.address, city: cd.city, postalCode: cd.pinCode });
+    if (addr) text(`Deliver to: ${addr}`, { size: P.small, bold: true });
+    const note = String(order.deliveryAddress?.instructions || cd.deliveryNote || "").trim();
+    if (note) text(`Note: ${note}`, { size: P.small });
+  }
   // B2B bill: who it is made out to, and their GSTIN.
   const buyerCompany = String(order.customerDetails?.company || "").trim();
   const buyerGstin = String(order.customerDetails?.gstin || "").trim();
@@ -396,7 +410,7 @@ export const layoutKot = ({ order = {}, items, store = {}, paper = 80, round = f
   const type = ORDER_TYPES[String(order.orderType || "").toLowerCase()];
   const table = tableLabel(order.table);
   pair(table ? "Table" : "Type", table || type, { bold: true, size: big });
-  pair("Time", placed.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true }));
+  pair("Time", placed.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: STORE_TZ }));
   if (!table) pair("Customer", order.customerDetails?.name);
   rule(true);
 
@@ -419,7 +433,9 @@ export const layoutKot = ({ order = {}, items, store = {}, paper = 80, round = f
     if (note) text(`** ${note}`, { size: P.body, bold: true, x: xName + 10, width: inner - qtyW - 10 });
   });
   rule(true);
-  const orderNote = String(order.instructions || order.deliveryNote || "").trim();
+  // A saved order keeps its note on the delivery address (website, till) or
+  // on customerDetails. A top-level `instructions` is only a fallback.
+  const orderNote = String(order.deliveryAddress?.instructions || order.customerDetails?.deliveryNote || order.instructions || "").trim();
   if (orderNote) {
     text(`** ${orderNote}`, { size: P.body, bold: true });
     y += 4;

@@ -1,4 +1,5 @@
 import { createSlice } from "@reduxjs/toolkit";
+import { setOrderType } from "./orderTypeSlice.js";
 
 const initialState = [];
 
@@ -34,6 +35,19 @@ const lineFingerprint = (item) => {
         modFingerprint(item.modifiers || item.modifierSelections || []),
         String(item.note || ""),
     ].join("###");
+};
+
+/**
+ * Whether the ⊗ on a cart extra may remove it. The last choice of a required
+ * group may not: the add dialog enforces "required", but the cart could undo
+ * it and send the table a line the server then rejects or misprices. To change
+ * a required choice, remove the line and add it again.
+ */
+export const canRemoveModifier = (item, index) => {
+    const mods = Array.isArray(item?.modifiers) ? item.modifiers : [];
+    const mod = mods[index];
+    if (!mod?.required) return true;
+    return mods.some((m, i) => i !== index && m?.groupName === mod.groupName);
 };
 
 const cartSlice = createSlice({
@@ -97,9 +111,15 @@ const cartSlice = createSlice({
             if (kind === "structured") {
                 const mods = Array.isArray(item.modifiers) ? item.modifiers : [];
                 if (index < 0 || index >= mods.length) return;
+                if (!canRemoveModifier(item, index)) return;
                 const removed = mods[index];
                 const removedUnit = Number(removed?.price || 0) * Number(removed?.quantity || 1);
                 item.modifiers = mods.filter((_, i) => i !== index);
+                // modifierSelections is what the table server prices and the
+                // receipt falls back to; left alone, the removed extra was
+                // still billed and printed. ProductPanel fills both with the
+                // same list, so keep them the same.
+                if (Array.isArray(item.modifierSelections)) item.modifierSelections = item.modifiers;
 
                 // Reprice: pricePerQuantity was base + all mod unit prices.
                 // Subtract just the removed one and re-derive line total.
@@ -141,7 +161,26 @@ const cartSlice = createSlice({
                 );
             }
         },
-    }
+    },
+    // A line's price was fixed when it was added, so switching Collection /
+    // Delivery / Table kept the old channel's price while the grid showed the
+    // new one. ProductPanel stamps every channel's base price on the line
+    // (channelBase); reprice from it. Variant lines have none: a variant's
+    // price is the same on every channel.
+    extraReducers: (builder) => {
+        builder.addCase(setOrderType, (state, { payload }) => {
+            for (const line of state) {
+                const base = line.channelBase?.[payload];
+                if (base == null) continue;
+                const extras = (line.modifiers || []).reduce(
+                    (s, m) => s + Number(m?.price || 0) * Number(m?.quantity || 1),
+                    0
+                );
+                line.pricePerQuantity = Number(base) + extras;
+                line.price = line.pricePerQuantity * Number(line.quantity || 1);
+            }
+        });
+    },
 })
 
 export const getTotalPrice = (state) => state.cart.reduce((total, item) => total + item.price, 0);

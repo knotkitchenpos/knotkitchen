@@ -207,7 +207,7 @@ app.use("/api/user", require("./routes/userRoute"));
 // receipt or payment. /api/csd is deliberately not in the list.
 app.use(
   ["/api/order", "/api/online-orders", "/api/table-session", "/api/table-bookings", "/api/table",
-   "/api/payment-link", "/api/receipts", "/api/kds", "/api/shift", "/api/marketplace", "/api/offline"],
+   "/api/payment-link", "/api/receipts", "/api/shift", "/api/marketplace", "/api/offline"],
   require("./middlewares/customerPrivacy").customerPrivacy,
 );
 app.use("/api/order", require("./routes/orderRoute"));
@@ -217,7 +217,6 @@ app.use("/api/menu", require("./routes/menuRoute"));
 app.use("/api/payment", require("./routes/paymentRoute"));
 app.use("/api/marketplace", require("./routes/marketplaceRoute"));
 app.use("/api/restaurant", require("./routes/restaurantRoute"));
-app.use("/api/kds", require("./routes/kdsRoute"));
 // Inventory is back behind a tenant-scoped controller (controllers/inventoryController.js).
 app.use("/api/inventory", require("./routes/inventoryRoute"));
 // Offline sync runs every queued order through the live addOrder (routes/offlineRoute.js).

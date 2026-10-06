@@ -277,7 +277,7 @@ test("a CSD credit never activates: only a real top-up can", async () => {
   assert.equal((await billing.statusFor(RID)).needsActivation, true);
   await lock.evaluateLock(RID);
   assert.ok(state.balanceDoc.lockedAt, "a new store starts locked");
-  assert.match(state.balanceDoc.lockedReason, /No plan is active yet\. Recharge at least ₹2,500\.00 to start\. The POS plan starts automatically\./);
+  assert.match(state.balanceDoc.lockedReason, /No plan is active yet\. Recharge at least ₹3,000\.00 to start\. The POS plan starts automatically\./);
 
   await ledger.credit({ restaurantId: RID, kind: "ADJUSTMENT_CREDIT", amountPaise: 500000, description: "Goodwill" });
   const status = await billing.statusFor(RID);
@@ -291,20 +291,20 @@ test("a CSD credit never activates: only a real top-up can", async () => {
 test("activation only on a single top-up at or above the minimum, never below", async () => {
   reset();
   // Refused up front while the plan has not started...
-  await rejects(recharge.createRecharge({ restaurantId: RID, amountPaise: 249900 }), 400, "FIRST_TOPUP_MINIMUM");
-  await assert.rejects(recharge.createRecharge({ restaurantId: RID, amountPaise: 100000 }), /at least ₹2,500\.00/);
+  await rejects(recharge.createRecharge({ restaurantId: RID, amountPaise: 299900 }), 400, "FIRST_TOPUP_MINIMUM");
+  await assert.rejects(recharge.createRecharge({ restaurantId: RID, amountPaise: 100000 }), /at least ₹3,000\.00/);
   // ...and if less arrives than was opened, it is credited but starts nothing.
-  const short = await topUp(2500, { paid: 2000 });
+  const short = await topUp(3000, { paid: 2000 });
   assert.equal(short.credited, true);
   assert.equal(state.balance, 200000);
   assert.equal(state.sub.status, "NONE");
   assert.equal(state.invoices.length, 0);
 
   // Two small top-ups adding up to the minimum do not count either: one top-up must.
-  await topUp(2500, { paid: 2400 });
+  await topUp(3000, { paid: 2900 });
   assert.equal(state.sub.status, "NONE");
 
-  const ok = await topUp(2500);
+  const ok = await topUp(3000);
   assert.equal(ok.plan.activated, true);
   assert.equal(state.sub.status, "ACTIVE");
   assert.equal(state.sub.planCode, "POS");
@@ -315,22 +315,28 @@ test("activation only on a single top-up at or above the minimum, never below", 
   // The period is today's IST midnight plus 30 days; the rest stays in the wallet.
   assert.equal(state.sub.currentPeriodStart.getTime(), startOfIstDay(new Date()).getTime());
   assert.equal(state.sub.currentPeriodEnd.getTime(), addDays(state.sub.currentPeriodStart, 30).getTime());
-  assert.equal(state.balance, 200000 + 240000 + 250000 - 58882);
+  assert.equal(state.balance, 200000 + 290000 + 300000 - 58882);
   assert.equal(state.balanceDoc.lockedAt, null, "and the store unlocks in the same response");
 
   // A second qualifying top-up never activates (or charges) again.
-  await topUp(2500);
+  await topUp(3000);
   assert.equal(state.invoices.length, 1);
   assert.equal(debits().length, 1);
 });
 
-test("after activation any top-up is fine; a demo store has no minimum and is never activated", async () => {
+test("after activation a top-up needs the later minimum; a demo store has no minimum and is never activated", async () => {
   reset();
-  await topUp(2500);
-  await topUp(100);
-  assert.equal(state.balance, 250000 - 58882 + 10000);
+  // The POS Billing presets floor on minTopUp: the first minimum until the plan starts, then the later one.
+  assert.equal((await billing.statusFor(RID)).minTopUp.rupees, 3000);
+  await topUp(3000);
+  assert.deepEqual((await billing.statusFor(RID)).minTopUp, { paise: 100000, rupees: 1000, label: "₹1,000.00" });
+  await rejects(recharge.createRecharge({ restaurantId: RID, amountPaise: 99900 }), 400, "TOPUP_MINIMUM");
+  await assert.rejects(recharge.createRecharge({ restaurantId: RID, amountPaise: 99900 }), /A top-up must be at least ₹1,000\.00\./);
+  await topUp(1000);
+  assert.equal(state.balance, 300000 - 58882 + 100000);
 
   reset({ exempt: true });
+  assert.equal((await billing.statusFor(RID)).minTopUp.paise, 0);
   await topUp(100);
   assert.equal(state.balance, 10000);
   assert.equal(state.sub?.status || "NONE", "NONE");
@@ -769,8 +775,8 @@ test("at the period end the plan, add-ons and rented tablets renew from the wall
 test("short at renewal: EXPIRED, locked after the grace period, and the next top-up renews and unlocks", async () => {
   reset();
   // Activated 32 days ago, so the period has ended.
-  await ledger.credit({ restaurantId: RID, kind: "RECHARGE", amountPaise: 250000, idempotencyKey: "recharge-old" });
-  await billing.afterRecharge({ restaurantId: RID, amountPaise: 250000, on: new Date(Date.now() - 32 * 24 * HOUR) });
+  await ledger.credit({ restaurantId: RID, kind: "RECHARGE", amountPaise: 300000, idempotencyKey: "recharge-old" });
+  await billing.afterRecharge({ restaurantId: RID, amountPaise: 300000, on: new Date(Date.now() - 32 * 24 * HOUR) });
   assert.equal(state.sub.status, "ACTIVE");
   await ledger.debit({ restaurantId: RID, kind: "ADJUSTMENT_DEBIT", amountPaise: state.balance - 10000 });
   const end = state.sub.currentPeriodEnd;
@@ -796,11 +802,11 @@ test("short at renewal: EXPIRED, locked after the grace period, and the next top
   assert.ok(state.balanceDoc.lockedAt, "locked once the grace period has passed");
   assert.match(state.balanceDoc.lockedReason, /expired/);
 
-  await topUp(500);
+  await topUp(1000);
   assert.equal(state.sub.status, "ACTIVE", "renewed at once");
   assert.equal(state.sub.lastRenewalError, "");
   assert.equal(state.sub.currentPeriodStart.getTime(), startOfIstDay(new Date()).getTime(), "late: from the day it was paid");
-  assert.equal(state.balance, 10000 + 50000 - 58882);
+  assert.equal(state.balance, 10000 + 100000 - 58882);
   assert.equal(state.balanceDoc.lockedAt, null, "and unlocked");
 });
 
@@ -841,8 +847,8 @@ test("REGRESSION: a purchase whose save failed after the debit is completed by t
 test("REGRESSION: backdated renewal never sells a period that has already ended", async () => {
   reset();
   state.config.renewalPolicy = "FROM_EXPIRY";
-  await ledger.credit({ restaurantId: RID, kind: "RECHARGE", amountPaise: 250000, idempotencyKey: "recharge-old" });
-  await billing.afterRecharge({ restaurantId: RID, amountPaise: 250000, on: new Date(Date.now() - 70 * 24 * HOUR) });
+  await ledger.credit({ restaurantId: RID, kind: "RECHARGE", amountPaise: 300000, idempotencyKey: "recharge-old" });
+  await billing.afterRecharge({ restaurantId: RID, amountPaise: 300000, on: new Date(Date.now() - 70 * 24 * HOUR) });
   await ledger.debit({ restaurantId: RID, kind: "ADJUSTMENT_DEBIT", amountPaise: state.balance });
   await billing.renewDue(new Date(state.sub.currentPeriodEnd.getTime() + MIN));
   assert.equal(state.sub.status, "EXPIRED");
@@ -868,8 +874,8 @@ test("a late renewal always starts the day it is paid, whatever the config row h
   reset();
   // A row that insists on FROM_EXPIRY, even past the read normalisation.
   Object.defineProperty(state.config, "renewalPolicy", { get: () => "FROM_EXPIRY", set: () => {}, enumerable: true, configurable: true });
-  await ledger.credit({ restaurantId: RID, kind: "RECHARGE", amountPaise: 250000, idempotencyKey: "recharge-old" });
-  await billing.afterRecharge({ restaurantId: RID, amountPaise: 250000, on: new Date(Date.now() - 35 * 24 * HOUR) });
+  await ledger.credit({ restaurantId: RID, kind: "RECHARGE", amountPaise: 300000, idempotencyKey: "recharge-old" });
+  await billing.afterRecharge({ restaurantId: RID, amountPaise: 300000, on: new Date(Date.now() - 35 * 24 * HOUR) });
   const end = state.sub.currentPeriodEnd;
   assert.ok(end.getTime() < Date.now() - 4 * 24 * HOUR, "five days late, inside what FROM_EXPIRY would backdate");
   await billing.renewDue();
@@ -938,7 +944,7 @@ test("a demo store gets every feature and is never charged", async () => {
 
 test("activation records the plan taken, once, under the current agreement, and never fails for it", async () => {
   reset();
-  await topUp(2500);
+  await topUp(3000);
   const rows = state.schedules.filter((s) => s.reason === "SUBSCRIPTION");
   assert.equal(rows.length, 1);
   assert.equal(rows[0].agreementVersion, "v3.0");
@@ -951,7 +957,7 @@ test("activation records the plan taken, once, under the current agreement, and 
 
   reset();
   state.failNextSchedule = true;
-  const ok = await topUp(2500);
+  const ok = await topUp(3000);
   assert.equal(ok.plan.activated, true, "the record failing never stops the plan");
   assert.equal(state.sub.status, "ACTIVE");
 });
@@ -964,7 +970,7 @@ test("the invoice names the store by its legal name, with its GSTIN only when it
     gstRegistered: true,
     address: { line1: "12 Park St", city: "Kolkata", postalCode: "700016", state: "West Bengal" },
   });
-  await topUp(2500);
+  await topUp(3000);
   const { buyer, seller } = state.invoices[0];
   assert.deepEqual([buyer.name, buyer.gstin], ["Spice Garden Foods LLP", "19ABCDE1234F1Z5"]);
   assert.deepEqual(buyer.addressLines, ["12 Park St", "Kolkata – 700016"]);
@@ -973,14 +979,14 @@ test("the invoice names the store by its legal name, with its GSTIN only when it
 
   reset();
   Object.assign(state.restaurant, { taxId: "19ABCDE1234F1Z5", gstRegistered: false });
-  await topUp(2500);
+  await topUp(3000);
   assert.deepEqual([state.invoices[0].buyer.name, state.invoices[0].buyer.gstin], ["Spice Garden", ""]);
 });
 
 test("before GST registration a printer costs its price with no GST, and its invoice says so", async () => {
   reset();
   state.config.gst = { registered: false, percent: 0 };
-  await topUp(2500);
+  await topUp(3000);
   const opened = await recharge.createPrinterPayment({ restaurantId: RID, code: "PRINTER_3IN", acceptance: YES });
   assert.equal(opened.amountPaise, 430000);
   state.paid[opened.gatewayOrderId] = 4300;
@@ -1062,8 +1068,8 @@ test("the restaurant can undo its cancellation until it takes effect; after that
 
   // CSD's cancellation is CSD's to undo. This plan's period ended two days ago.
   reset();
-  await ledger.credit({ restaurantId: RID, kind: "RECHARGE", amountPaise: 250000, idempotencyKey: "recharge-old" });
-  await billing.afterRecharge({ restaurantId: RID, amountPaise: 250000, on: new Date(Date.now() - 32 * 24 * HOUR) });
+  await ledger.credit({ restaurantId: RID, kind: "RECHARGE", amountPaise: 300000, idempotencyKey: "recharge-old" });
+  await billing.afterRecharge({ restaurantId: RID, amountPaise: 300000, on: new Date(Date.now() - 32 * 24 * HOUR) });
   const lastEnd = state.sub.currentPeriodEnd;
   await billing.cancelSubscription({ restaurantId: RID, reason: "Closed by CSD", by: CSD, on: new Date(lastEnd.getTime() - 24 * HOUR) });
   await rejects(billing.reinstateSubscription({ restaurantId: RID, by: OWNER }), 409, "CONTACT_SUPPORT");
@@ -1077,7 +1083,7 @@ test("the restaurant can undo its cancellation until it takes effect; after that
   await billing.reinstateSubscription({ restaurantId: RID, by: CSD });
   assert.equal(state.sub.status, "EXPIRED", "the next top-up renews it");
   assert.equal(state.store.status, "active", "the store is reopened");
-  await topUp(500);
+  await topUp(1000);
   assert.equal(state.sub.status, "ACTIVE");
   assert.equal(state.balanceDoc.lockedAt, null);
 });
@@ -1087,7 +1093,7 @@ test("cancelling a store with no running period ends it at once, and a top-up ne
   await billing.cancelSubscription({ restaurantId: RID, reason: "Never opened", by: CSD });
   assert.equal(state.sub.status, "CANCELLED");
   assert.equal(state.store.status, "closed");
-  await rejects(recharge.createRecharge({ restaurantId: RID, amountPaise: 250000 }), 409, "SUBSCRIPTION_CANCELLED");
+  await rejects(recharge.createRecharge({ restaurantId: RID, amountPaise: 300000 }), 409, "SUBSCRIPTION_CANCELLED");
   assert.equal(state.sub.status, "CANCELLED");
   assert.equal(state.invoices.length, 0);
   await billing.reinstateSubscription({ restaurantId: RID, by: CSD });

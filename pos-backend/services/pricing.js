@@ -27,6 +27,7 @@ const {
   DEFAULT_ADDONS,
   DEFAULT_PRINTERS,
   DEFAULT_PLAN_PAISE,
+  DEFAULT_FIRST_RECHARGE_MIN_PAISE,
   CATALOG_VERSION,
   DEFAULT_ORDER_CHARGE,
   DEFAULT_QR_ORDER_CHARGE,
@@ -55,7 +56,14 @@ const getPlatformConfig = async () => {
     }
     if (backfillCharges(existing)) seeded = true;
     if (!(Number(existing.catalogVersion) >= CATALOG_VERSION)) {
-      await upgradeCatalog(existing);
+      // One step per version, each run once. Re-running v1→v2 on a v2 row would reset CSD's platform fees.
+      const from = Number(existing.catalogVersion) || 1;
+      if (from < 2) await upgradeCatalog(existing);
+      // A first minimum CSD never changed moves to today's; an edited one is kept.
+      if (from < 3 && Number(existing.firstRechargeMinPaise) === V2.firstRechargeMinPaise) {
+        existing.firstRechargeMinPaise = DEFAULT_FIRST_RECHARGE_MIN_PAISE;
+      }
+      existing.catalogVersion = CATALOG_VERSION;
       // Saved only if nobody else saved this row since it was read: two
       // servers upgrading at once write it once, and the other re-reads.
       existing.increment();
@@ -106,12 +114,13 @@ const backfillCharges = (config) => {
  * anything CSD did change is left exactly as it is.
  */
 const V1 = { planPaise: 39900, websitePaise: 30000, printer2inPaise: 190000, printer3inPaise: 425000, orderChargePaise: 900 };
+// What catalogVersion 2 shipped.
+const V2 = { firstRechargeMinPaise: 250000 };
 const NEW_DEVICES = ["TABLET", "PRINTER_3IN_LAN", "PRINTER_3IN_USB"];
 
 /**
- * Move a stored config row from catalogVersion 1 to 2 (the October 2026
- * prices), once. Stands in for a migration the owner would otherwise have to
- * run by hand.
+ * The v1→v2 step (the October 2026 prices); the caller sets catalogVersion.
+ * Stands in for a migration the owner would otherwise have to run by hand.
  *
  * The one order charge for website + table QR becomes one charge per source:
  * the website's keeps its switch and date only if WEBSITE was one of its
@@ -160,7 +169,6 @@ const upgradeCatalog = async (config) => {
   // Assigned whole, so the retired chargeableSources goes with the old value.
   config.websiteOrderCharge = { ...from("WEBSITE"), amountPaise, taxable };
   config.qrOrderCharge = qr;
-  config.catalogVersion = CATALOG_VERSION;
 
   await CsdStoreCharges.updateMany(
     { onlinePaidOrderCharge: 9, history: { $not: { $elemMatch: { field: "onlinePaidOrderCharge" } } } },

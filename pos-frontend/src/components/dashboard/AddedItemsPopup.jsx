@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useSelector } from "react-redux";
 import { enqueueSnackbar } from "notistack";
-import { resolveAddedItems } from "../../https/storefrontApi";
-import { getOrderById } from "../../https";
+import { listPendingAdditions, resolveAddedItems } from "../../https/storefrontApi";
 import useAlertBeep from "../../hooks/useAlertBeep";
+import useArmed from "../../hooks/useArmed";
 import { acquireSocket, releaseSocket } from "../../socket";
 
 
@@ -18,6 +18,12 @@ import { acquireSocket, releaseSocket } from "../../socket";
  * Accept sends them to the kitchen; Cancel drops them and the bill falls back.
  * The alert sounds until one or the other is chosen, because the diner is
  * sitting there waiting either way.
+ *
+ * The live event alone is not enough: a till that was closed, reloading or
+ * asleep when the diner ordered never heard it, and the lines sat on the bill
+ * unreviewed. So the server's list of tables with additions still pending is
+ * the source of truth, fetched on every (re)connect and whenever the page is
+ * looked at again.
  */
 const AddedItemsPopup = () => {
   const restaurantId = useSelector((s) => s.user?.restaurantId);
@@ -40,38 +46,38 @@ const AddedItemsPopup = () => {
 
     // The card is a copy of the moment the diner added the items. Another till
     // may since have accepted them, declined one, or cancelled a dish from
-    // Orders; this one kept ringing for lines that were already dealt with.
-    // Ask the order what is STILL pending: nothing left, the card goes;
-    // something left, the card shows only that.
-    const resync = async (orderId) => {
+    // Orders. Ask the server what is STILL pending: cards on screen keep their
+    // place with just those lines, cards it no longer lists go, new ones join
+    // the end.
+    const catchUp = async () => {
+      // A live card that lands while the list is in flight is not in the
+      // answer yet; only cards that were already showing can be dropped.
+      const before = new Set(queueRef.current.map((p) => String(p.orderId)));
       try {
-        const { data } = await getOrderById(orderId);
-        const pending = (data?.data?.items || [])
-          .filter((i) => i.status === "pending")
-          .map((i) => ({
-            _id: String(i._id),
-            name: i.name,
-            quantity: i.quantity,
-            total: i.total ?? i.price,
-            modifiers: i.modifiers || [],
-          }));
-        setQueue((prev) =>
-          pending.length
-            ? prev.map((p) => (p.orderId === orderId ? { ...p, pendingItems: pending } : p))
-            : prev.filter((p) => p.orderId !== orderId),
-        );
+        const { data } = await listPendingAdditions();
+        const fresh = new Map((data?.data || []).map((p) => [String(p.orderId), p]));
+        setQueue((prev) => {
+          const unseen = new Map(fresh); // updaters may run twice: never mutate `fresh`
+          const kept = [];
+          for (const p of prev) {
+            const id = String(p.orderId);
+            if (fresh.has(id)) kept.push({ ...p, pendingItems: fresh.get(id).pendingItems });
+            else if (!before.has(id)) kept.push(p);
+            unseen.delete(id);
+          }
+          return [...kept, ...unseen.values()];
+        });
         setPicked({});
       } catch {
         /* offline or signed out: the next event, or the next look, retries */
       }
     };
-    const resyncAll = () => queueRef.current.forEach((p) => resync(p.orderId));
     const onOrderChanged = (payload) => {
       const id = String(payload?.orderId || "");
-      if (id && queueRef.current.some((p) => p.orderId === id)) resync(id);
+      if (id && queueRef.current.some((p) => String(p.orderId) === id)) catchUp();
     };
     const onVisible = () => {
-      if (document.visibilityState === "visible") resyncAll();
+      if (document.visibilityState === "visible") catchUp();
     };
 
     const onAdded = (payload) => {
@@ -79,7 +85,7 @@ const AddedItemsPopup = () => {
       setQueue((prev) => {
         // One table, one card: a diner adding twice in quick succession should
         // replace the pending list rather than stack two alerts for one ticket.
-        const rest = prev.filter((p) => p.orderId !== payload.orderId);
+        const rest = prev.filter((p) => String(p.orderId) !== String(payload.orderId));
         return [...rest, payload];
       });
       try {
@@ -94,33 +100,40 @@ const AddedItemsPopup = () => {
 
     socket.on("tableOrder:itemsAdded", onAdded);
     socket.on("onlineOrder:status", onOrderChanged);
-    socket.on("connect", resyncAll);
+    socket.on("connect", catchUp);
+    if (socket.connected) catchUp();
     document.addEventListener("visibilitychange", onVisible);
 
     return () => {
       socket.off("tableOrder:itemsAdded", onAdded);
       socket.off("onlineOrder:status", onOrderChanged);
-      socket.off("connect", resyncAll);
+      socket.off("connect", catchUp);
       document.removeEventListener("visibilitychange", onVisible);
       releaseSocket();
     };
   }, [restaurantId]);
 
+  // Taps land nowhere until this card, at this size, has been up a moment.
+  const armed = useArmed(`${queue[0]?.orderId}:${queue[0]?.pendingItems?.length}`);
+
   if (queue.length === 0) return null;
   const current = queue[0];
-  const drop = () => {
+  // By id, never by position: a status echo can remove this card before the
+  // HTTP reply, and dropping "the first card" then threw away the next table.
+  const drop = (id) => {
     setPicked({});
-    setQueue((prev) => prev.slice(1));
+    setQueue((prev) => prev.filter((p) => String(p.orderId) !== String(id)));
   };
 
   const decide = async (action, itemIds) => {
+    if (!armed) return;
     setBusy(true);
     try {
       const res = await resolveAddedItems(current.orderId, action, itemIds);
       enqueueSnackbar(res?.data?.message || "Updated.", {
         variant: action === "accept" ? "success" : "info",
       });
-      drop();
+      drop(current.orderId);
     } catch (e) {
       enqueueSnackbar(e?.response?.data?.message || "Could not update the order.", {
         variant: "error",
@@ -131,6 +144,7 @@ const AddedItemsPopup = () => {
   };
 
   const cancelWholeOrder = () => {
+    if (!armed) return;
     // Voiding a table's whole ticket is not the same decision as declining an
     // addition, and it cannot be undone from here.
     if (!window.confirm("Cancel this table's ENTIRE order? Every item on the ticket is voided.")) {
@@ -182,9 +196,10 @@ const AddedItemsPopup = () => {
                     type="checkbox"
                     checked={!!picked[id]}
                     disabled={!id || busy}
-                    onChange={(e) =>
-                      setPicked((prev) => ({ ...prev, [id]: e.target.checked }))
-                    }
+                    onChange={(e) => {
+                      if (!armed) return;
+                      setPicked((prev) => ({ ...prev, [id]: e.target.checked }));
+                    }}
                     className="w-4 h-4 accent-[#DC2626] shrink-0"
                   />
                   <div className="min-w-0 flex-1">

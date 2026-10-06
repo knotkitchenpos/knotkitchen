@@ -35,6 +35,16 @@ test("Manage Cache has the Check for updates button", () => {
   assert.match(view, /<DeviceMenuCard \/>/);
 });
 
+test("Manage Cache has Update Website Cache", () => {
+  // Open to every store (Knot Eats lists this copy); staff are asked for the PIN.
+  const view = SRC("src/components/settings/ManageCacheView.jsx");
+  assert.match(view, /import \{ publishSystemCache, publishWebsiteCache \} from "\.\.\/\.\.\/https";/);
+  assert.match(view, /"Update Website Cache"|>Update Website Cache</);
+  assert.match(view, /executeProtected\(\(\) => webMutation\.mutate\(\)\)/);
+  assert.match(view, /invalidateQueries\(\{ queryKey: \["knot-eats"\] \}\)/);
+  assert.doesNotMatch(view, /getSubscriptionStatus|features\??\.website|updateWebsiteSettings/);
+});
+
 test("View All is a full-size button with a gap above the products", () => {
   const panel = SRC("src/components/pos/ProductPanel.jsx");
   const heading = panel.slice(panel.indexOf("Section heading"), panel.indexOf("Scrollable content"));

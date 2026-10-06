@@ -127,7 +127,7 @@ test("every way a customer orders checks it", () => {
   assert.match(SRC("controllers/tableBookingController.js"), /const ctx = await resolveStorefront\(/, "table booking");
 
   const qr = SRC("controllers/qrController.js");
-  assert.equal((qr.match(/if \(await accountLock\(\)\.isOrderingLocked\(restaurantId\)\)/g) || []).length, 2, "both QR order routes");
+  assert.equal((qr.match(/if \(await accountLock\(\)\.isOrderingLocked\(restaurantId\)\)/g) || []).length, 1, "the QR order route");
   assert.match(qr, /orderingPaused: await accountLock\(\)\.isOrderingLocked\(restaurantId\)/, "the QR page is told");
 
   // A seated party can still pay and call a waiter: those routes are not gated.

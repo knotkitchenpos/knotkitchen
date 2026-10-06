@@ -24,15 +24,15 @@ const {
   canonicalStatus,
   SETTLED_STATUSES,
   CANCELLED_STATUSES,
-  READY_STATUSES,
   isFinished,
 } = require("../constants/orderStatus");
-const { computeReadyDueAt, computeCompleteDueAt } = require("../services/autoReadyService");
+const { computeReadyDueAt, reopenForNewRound } = require("../services/autoReadyService");
 const { fireAutoEBill } = require("../services/eBillService");
 const { fireTableSessionCharge } = require("../services/orderCharge");
 
 const crypto = require("crypto");
 const { findActiveBlock, blockedError } = require("./tableBookingController");
+const { indianMobile } = require("../services/otpService");
 
 const SESSION_CODE_PREFIX = "TS";
 
@@ -48,8 +48,13 @@ const SESSION_CODE_PREFIX = "TS";
  * Links each new session item to its kitchen line by counting back from the
  * END of the order, which is right for an appended round as well as a new
  * order.
+ *
+ * `guest` is a diner ordering from the QR. Their new order waits for the
+ * till to accept it, so it gets no ready clock here: Accept starts it
+ * (clocksOnAccept). With a clock from creation an order nobody had accepted
+ * promoted itself to Ready and its New Order alert vanished.
  */
-const addRoundToKitchenOrder = async ({ session, validatedItems, tableId, createdBy, mongoSession }) => {
+const addRoundToKitchenOrder = async ({ session, validatedItems, tableId, createdBy, mongoSession, requestId, guest = false }) => {
   const lines = validatedItems.map((it) => ({
     menuItemId: it.menuItemId,
     name: it.name,
@@ -58,7 +63,8 @@ const addRoundToKitchenOrder = async ({ session, validatedItems, tableId, create
     total: it.total,
     modifiers: it.modifiers || [],
     note: it.note || "",
-    status: "pending",
+    // Till lines go straight to the kitchen; a guest's wait for review.
+    status: it.status,
   }));
 
   let order = await Order.findOne(
@@ -76,15 +82,14 @@ const addRoundToKitchenOrder = async ({ session, validatedItems, tableId, create
     order.items.push(...lines);
     order.bills = session.bills;
     // New dishes mean the table is being cooked for again.
-    if (READY_STATUSES.includes(order.orderStatus)) {
-      order.orderStatus = PREPARING;
-      order.readyDueAt = await computeReadyDueAt({ restaurantId: session.restaurantId, orderType: "dine-in" });
-    }
+    await reopenForNewRound(order);
     await order.save({ session: mongoSession });
   } else {
     [order] = await Order.create(
       [
         {
+          requestId: requestId || "",
+          orderDate: new Date(),
           customerDetails: {
             name: session.customerName || "Guest",
             phone: session.customerPhone || "",
@@ -92,10 +97,11 @@ const addRoundToKitchenOrder = async ({ session, validatedItems, tableId, create
           },
           orderType: "dine-in",
           orderStatus: PREPARING,
-          // Table orders are auto-ready and auto-complete eligible; without
-          // these dates the sweeps skip them and they sit in Preparing forever.
-          readyDueAt: await computeReadyDueAt({ restaurantId: session.restaurantId, orderType: "dine-in" }),
-          completeDueAt: await computeCompleteDueAt({ restaurantId: session.restaurantId, orderType: "dine-in" }),
+          // Table orders are auto-ready eligible; without this date the sweep
+          // skips them and they sit in Preparing forever. Not for a guest's
+          // order: its clock starts when the till accepts it. No auto-complete
+          // clock at all: a table order is completed by its payment.
+          readyDueAt: guest ? null : await computeReadyDueAt({ restaurantId: session.restaurantId, orderType: "dine-in" }),
           bills: session.bills,
           items: lines,
           table: tableId,
@@ -344,7 +350,7 @@ const validateCapacity = (table, customerCount) => {
  */
 const COUNTER_SETTLED_METHODS = ["CASH", "UPI", "CARD", "QR_CODE"];
 
-const { displayPaymentMethod } = require("../constants/paymentMethods");
+const { displayPaymentMethod, toOrderPaymentMethod } = require("../constants/paymentMethods");
 
 const isPaidOnSelection = ({ method, paymentStatus } = {}) =>
   paymentStatus === "success" ||
@@ -397,7 +403,10 @@ const enrichItems = async ({ items, restaurantId, outletId, addedBy = "SYSTEM" }
       modifiers: components,
       note: rawItem.note || "",
       addedBy,
-      status: "pending",
+      // A till round is in the kitchen at once (its KOT prints now). Only a
+      // diner's dishes wait for the till to accept them, so only they are
+      // "pending": that is what the added-items review and Cancel All act on.
+      status: addedBy === "QR" ? "pending" : "preparing",
     });
   }
   return validatedItems;
@@ -441,6 +450,10 @@ const addItemsToSession = async (req, res, next) => {
         const block = await findActiveBlock(table._id);
         if (block) throw blockedError(block, table);
 
+        // Every table order carries the customer's phone (e-bill, payment, contact). Asked once, when the table opens; appends never.
+        const phone = indianMobile(customerPhone);
+        if (!phone) throw createHttpError(400, "Customer phone number is required (10-digit mobile) to open a table.");
+
         // Create new session
         const sessionCode = generateSessionCode();
         const created = await TableSession.create(
@@ -453,8 +466,8 @@ const addItemsToSession = async (req, res, next) => {
               tableId: table._id,
               status: "OCCUPIED",
               customerCount: count,
-              customerName: customerName || "",
-              customerPhone: customerPhone || "",
+              customerName: String(customerName || "").trim().slice(0, 80),
+              customerPhone: phone,
               items: [],
               bills: { subtotal: 0, tax: 0, discount: 0, charges: 0, totalWithTax: 0 },
               payment: { method: "", status: "PENDING", transactionId: "", paidAt: null },
@@ -477,8 +490,9 @@ const addItemsToSession = async (req, res, next) => {
         session.customerCount = count || session.customerCount;
         table.currentOccupancy = session.customerCount;
         await table.save({ session: mongoSession });
-        if (customerName) session.customerName = customerName;
-        if (customerPhone) session.customerPhone = customerPhone;
+        if (customerName) session.customerName = String(customerName).trim().slice(0, 80);
+        const newPhone = indianMobile(customerPhone);
+        if (newPhone) session.customerPhone = newPhone;
 
         // OPEN → OCCUPIED: placing an order on an open session marks it occupied
         if (session.status === "OPEN") {
@@ -611,10 +625,18 @@ const addItemsToExistingSession = async (req, res, next) => {
 
       await session.save({ session: mongoSession });
 
-      return { session, kitchenOrder, appended, validatedItems };
+      return { session, kitchenOrder, appended, validatedItems, table };
     }));
 
-    announceKitchenOrder({ session: result.session, order: result.kitchenOrder, appended: result.appended });
+    // Items and table too: without them a round topped up at the till never
+    // printed a KOT (kitchen:round fires only for an appended round with items).
+    announceKitchenOrder({
+      session: result.session,
+      order: result.kitchenOrder,
+      appended: result.appended,
+      items: result.validatedItems,
+      table: result.table,
+    });
   } catch (error) {
     return next(error);
   }
@@ -920,6 +942,16 @@ const recordSessionPayment = async (req, res, next) => {
         ? parts.every((p) => isPaidOnSelection({ method: p.method, paymentStatus }))
         : isPaidOnSelection({ method: normalizedMethod, paymentStatus });
 
+    // The orders this payment is for, oldest first. A cancelled order is not
+    // one of them: it used to be overwritten to "paid" with the whole bill.
+    const tableOrders = await Order.find({ tableSessionId: session._id, isDeleted: { $ne: true } })
+      .sort({ createdAt: 1 })
+      .session(mongoSession);
+    const liveOrders = tableOrders.filter((o) => !CANCELLED_STATUSES.includes(o.orderStatus));
+    if (paid && tableOrders.length && !liveOrders.length) {
+      throw createHttpError(409, "This table's order was cancelled. There is nothing to charge.");
+    }
+
     session.paymentHistory = session.paymentHistory || [];
     parts.forEach((p, i) => {
       session.paymentHistory.push({
@@ -1057,27 +1089,58 @@ const recordSessionPayment = async (req, res, next) => {
       );
     }
 
-    // Preserve historical kitchen orders — mark them paid, never delete them.
+    // Preserve historical kitchen orders — mark them paid, never hard-delete them.
     //
     // The status alone was not enough. Payment Status on the Orders screen is
     // read from `payments[0].status` and Payment Method from `paymentMethod`,
     // and a table order carried neither — so a table the operator had just
     // settled in cash still displayed "Pending" with no method against it.
     // Both are written here, from the method that was actually taken.
-    if (paid) {
-      await Order.updateMany(
-        { tableSessionId: session._id, isDeleted: { $ne: true } },
+    //
+    // The bill is booked on ONE order. Writing it onto every order of the
+    // session counted it once per order in Reports and the shift drawer (a
+    // merged table, or a round started after the first order was finished).
+    if (paid && liveOrders.length) {
+      const [primary, ...rest] = liveOrders; // oldest first, as the e-bill picks
+      if (rest.length) {
+        // The other orders' lines join the primary, so its items and its total
+        // agree. updateOne/$push runs no save hooks, so stock is not taken
+        // twice; each line keeps its own stockDepleted flag.
+        const restIds = rest.map((o) => String(o._id));
+        await Order.updateOne(
+          { _id: primary._id },
+          { $push: { items: { $each: rest.flatMap((o) => (o.items || []).map((i) => (i.toObject ? i.toObject() : i))) } } },
+          { session: mongoSession }
+        );
+        await Order.updateMany(
+          { _id: { $in: rest.map((o) => o._id) } },
+          { $set: { isDeleted: true, completeDueAt: null } },
+          { session: mongoSession }
+        );
+        session.items.forEach((si) => {
+          if (restIds.includes(String(si.orderId))) si.orderId = primary._id;
+        });
+      }
+      // Only money that went through the gateway carries its order id. A cash
+      // settle after an abandoned QR checkout read as "Gateway Payment" and
+      // would have been refunded through Cashfree.
+      const viaGateway = gatewayOrderId && ["ONLINE", "PAYMENT_LINK"].includes(normalizedMethod);
+      await Order.updateOne(
+        { _id: primary._id },
         {
           $set: {
             orderStatus: PAID,
             "bills.totalWithTax": billAmount,
+            // The whole session's bill: a merged-in order's lines are on it now.
+            "bills.subtotal": session.bills?.subtotal || 0,
             "bills.serviceCharge": session.bills?.serviceCharge || 0,
             "bills.taxPercent": session.bills?.taxPercent || 0,
             "bills.tax": session.bills?.tax || 0,
+            "bills.discount": session.bills?.discount || 0,
             "bills.tip": tip,
             "bills.platformFee": platformFee,
             tips: tip,
-            ...(gatewayOrderId ? { "paymentData.gatewayOrderId": gatewayOrderId, "paymentData.gatewayPaymentId": transactionId || "" } : {}),
+            ...(viaGateway ? { "paymentData.gatewayOrderId": gatewayOrderId, "paymentData.gatewayPaymentId": transactionId || "" } : {}),
             ...(buyer ? { "customerDetails.company": buyer.company, "customerDetails.gstin": buyer.gstin } : {}),
             paymentMethod:
               parts.length > 1
@@ -1086,8 +1149,11 @@ const recordSessionPayment = async (req, res, next) => {
             completedAt: new Date(),
             // Nothing is left to sweep once the bill is settled.
             completeDueAt: null,
+            // Each part keeps its own method, so the shift drawer can count
+            // the cash half of a split. A counter QR scan is UPI money.
+            isSplit: parts.length > 1,
             payments: parts.map((p) => ({
-              method: parts.length > 1 ? "split" : normalizedMethod.toLowerCase(),
+              method: p.method === "QR_CODE" ? "upi" : toOrderPaymentMethod(p.method),
               amount: p.amount,
               status: "paid",
               transactionId: transactionId || "",
@@ -1108,6 +1174,21 @@ const recordSessionPayment = async (req, res, next) => {
     // round trip to a third party is how a busy till starts timing out.
     // No-op unless the restaurant has autoEBill on.
     if (paid) fireAutoEBill({ tableSessionId: session._id });
+
+    // Every other till and the diner's page: the table is paid (or the
+    // attempt failed). An open settle panel elsewhere refreshes instead of
+    // offering to take the money again. Covers the gateway settle too.
+    try {
+      emitTableSessionUpdated({
+        restaurantId: session.restaurantId,
+        outletId: session.outletId,
+        tableId: session.tableId,
+        session,
+        reason: paid ? "paid" : "payment_failed",
+      });
+    } catch (err) {
+      console.warn("emitTableSessionUpdated failed:", err.message);
+    }
 
     // The table is free the moment the bill is settled, so there is no wait
     // to report. `cooldownMinutes` stays in the response as 0 rather than
@@ -1227,7 +1308,17 @@ const mergeSessions = async (req, res, next) => {
     target.customerCount = (Number(target.customerCount) || 1) + (Number(source.customerCount) || 1);
     if (!target.customerName && source.customerName) target.customerName = source.customerName;
     if (!target.customerPhone && source.customerPhone) target.customerPhone = source.customerPhone;
-    addTimeline(target, "TABLES_MERGED", `${sourceLabel} merged in (${(source.items || []).length} item(s))`, "POS", req.user?._id);
+    // A discount agreed on the other table comes with its dishes; dropping it
+    // overcharged the party with nothing on screen to say so.
+    const carried = Number(source.bills?.discount) || 0;
+    if (carried > 0) target.bills.discount = round2((Number(target.bills?.discount) || 0) + carried);
+    addTimeline(
+      target,
+      "TABLES_MERGED",
+      `${sourceLabel} merged in (${(source.items || []).length} item(s))${carried > 0 ? `, with its ₹${carried} discount` : ""}`,
+      "POS",
+      req.user?._id,
+    );
     await recalculateSessionBill(target); // saves
 
     // The other party's kitchen orders now belong here.
@@ -1482,15 +1573,23 @@ const releaseSessionForCancelledOrder = async (order, actor = "POS") => {
   if (freed) {
     session.status = "CLOSED";
     session.closedAt = at;
-    addTimeline(session, "SESSION_CLOSED", "Order cancelled", actor);
+    // `actor` is a staff member's name; actorType only takes POS|QR|SYSTEM|ADMIN.
+    // Passing the name failed the save, so the session stayed open with the
+    // cancelled food on it and the next guest's order inherited that bill.
+    addTimeline(session, "SESSION_CLOSED", `Order cancelled by ${actor}`, "POS");
+  }
+
+  // Saves the session, and drops the cancelled lines from its bill.
+  await recalculateSessionBill(session);
+
+  // Only after the session is saved: a failed save must not leave the table
+  // free while its session is still open.
+  if (freed) {
     await Table.findOneAndUpdate(
       { _id: session.tableId },
       await buildCooldownUpdate(session.restaurantId),
     );
   }
-
-  // Saves the session, and drops the cancelled lines from its bill.
-  await recalculateSessionBill(session);
 
   try {
     emitTableSessionUpdated({
@@ -1616,11 +1715,14 @@ const cancelSessionItem = async (req, res, next) => {
     }
 
     // Pulling the last dish cancels the order, and a cancelled order must
-    // free the table like any other cancel route.
+    // free the table like any other cancel route. The release saves its own
+    // fresh copy of the session (CLOSED when the table was freed): that copy
+    // is the one to report, or the till keeps showing an open table.
+    let current = session;
     for (const order of touchedOrders) {
       if (canonicalStatus(order.orderStatus) !== CANCELLED) continue;
       try {
-        await releaseSessionForCancelledOrder(order, req.user?.name || "POS");
+        current = (await releaseSessionForCancelledOrder(order, req.user?.name || "POS")) || current;
       } catch (err) {
         console.warn("releaseSessionForCancelledOrder failed:", err.message);
       }
@@ -1631,10 +1733,10 @@ const cancelSessionItem = async (req, res, next) => {
     // pulled the dish saw it go and nobody else did.
     try {
       emitTableSessionUpdated({
-        restaurantId: session.restaurantId,
-        outletId: session.outletId,
-        tableId: session.tableId,
-        session,
+        restaurantId: current.restaurantId,
+        outletId: current.outletId,
+        tableId: current.tableId,
+        session: current,
         reason: "item_cancelled",
       });
     } catch (err) {
@@ -1644,7 +1746,7 @@ const cancelSessionItem = async (req, res, next) => {
     res.status(200).json({
       success: true,
       message: `${item.name} cancelled.`,
-      data: session,
+      data: current,
     });
   } catch (error) {
     next(error);
@@ -1713,6 +1815,88 @@ const setServiceCharge = async (req, res, next) => {
   }
 };
 
+/**
+ * Put a discount on a table's bill at settle, or take it off.
+ * POST /:id/discount { mode: "percent" | "fixed" | "none", value }
+ *
+ * The bill already honoured `bills.discount`; nothing could set it. The route
+ * asks staff for the Security PIN (the owner passes straight through), the
+ * same rule as voiding an order.
+ */
+const setDiscount = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) throw createHttpError(404, "Invalid session id!");
+
+    const mode = String(req.body?.mode || "").toLowerCase();
+    const value = mode === "none" ? 0 : Number(req.body?.value);
+    if (!["percent", "fixed", "none"].includes(mode)) {
+      throw createHttpError(400, "Discount mode must be percent, fixed or none.");
+    }
+    if (!Number.isFinite(value) || value < 0 || (mode === "percent" && value > 100)) {
+      throw createHttpError(400, mode === "percent" ? "A discount must be between 0 and 100%." : "A discount cannot be negative.");
+    }
+
+    const session = await TableSession.findOne({ _id: id, ...getScopeQuery(req), isDeleted: { $ne: true } });
+    if (!session) throw createHttpError(404, "Table session not found!");
+    if (SETTLED_SESSION_STATUSES.includes(session.status)) {
+      throw createHttpError(409, "This table has already been settled: its bill can no longer be changed.");
+    }
+
+    const sub = round2(
+      session.items.filter((i) => i.status !== "cancelled").reduce((t, i) => t + i.price * i.quantity, 0),
+    );
+    // ponytail: a percentage is stored as an amount, so dishes added after it
+    // keep the old figure. Store bills.discountPercent if that ever matters.
+    const amount = mode === "percent" ? round2((sub * value) / 100) : mode === "fixed" ? Math.min(round2(value), sub) : 0;
+    // A ₹0 bill can never be marked paid, and a table with live dishes cannot
+    // be released, so a full discount would leave the table stuck occupied.
+    if (amount > 0 && amount >= sub) {
+      throw createHttpError(400, "A discount cannot cover the whole bill. Leave something to pay, or void the dishes.");
+    }
+    session.bills.discount = amount;
+    addTimeline(
+      session,
+      amount ? "DISCOUNT_APPLIED" : "DISCOUNT_REMOVED",
+      amount ? `Discount of ₹${amount}${mode === "percent" ? ` (${value}%)` : ""} on the bill` : "Discount removed from the bill",
+      "POS",
+      req.user?._id,
+    );
+    await recalculateSessionBill(session);
+
+    // Every order of the session carries the running bill (see cancelSessionItem).
+    const sessionOrders = await Order.find({
+      restaurantId: session.restaurantId,
+      tableSessionId: session._id,
+      isDeleted: { $ne: true },
+    });
+    for (const order of sessionOrders) {
+      order.bills = session.bills;
+      await order.save();
+    }
+
+    try {
+      emitTableSessionUpdated({
+        restaurantId: session.restaurantId,
+        outletId: session.outletId,
+        tableId: session.tableId,
+        session,
+        reason: "discount",
+      });
+    } catch (err) {
+      console.warn("emitTableSessionUpdated failed:", err.message);
+    }
+
+    res.status(200).json({
+      success: true,
+      message: amount ? "Discount applied." : "Discount removed.",
+      data: session,
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const findActiveSessionByTable = async ({ tableId, restaurantId }) =>
   TableSession.findOne({
     tableId,
@@ -1734,6 +1918,8 @@ module.exports = {
   closeSessionWithoutPayment,
   cancelSessionItem,
   setServiceCharge,
+  setDiscount,
+  addRoundToKitchenOrder,
   findCancelTarget,
   releaseSessionForCancelledOrder,
   settleSessionFromGateway,

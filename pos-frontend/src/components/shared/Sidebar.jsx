@@ -25,6 +25,12 @@ const IconChart = ({ active }) => (
     <path d="M7 15v3M12 10v8M17 6v12" />
   </svg>
 );
+const IconKitchen = ({ active }) => (
+  <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.9} strokeLinecap="round" strokeLinejoin="round">
+    <path d="M4 11h16v3a6 6 0 0 1-6 6h-4a6 6 0 0 1-6-6v-3Z" />
+    <path d="M2 11h20M9 7c0-1.5 1-1.5 1-3M14 7c0-1.5 1-1.5 1-3" />
+  </svg>
+);
 const IconHeadset = ({ active }) => (
   <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.9} strokeLinecap="round" strokeLinejoin="round">
     <path d="M3 18v-6a9 9 0 0 1 18 0v6" />
@@ -48,6 +54,8 @@ const IconSettingsGear = ({ active }) => (
 const NAV = [
   { path: "/menu", label: "Product", Icon: IconBag },
   { path: "/orders", label: "Orders", Icon: IconClipboard },
+  // The kitchen screen: the orders being cooked, with a Ready button.
+  { path: "/kds", label: "Kitchen", Icon: IconKitchen },
   { path: "/reports", label: "Reports", Icon: IconChart },
   { path: "/support", label: "Help & Support", Icon: IconHeadset },
 ];
@@ -190,6 +198,7 @@ const Sidebar = ({ mobileOpen = false, onMobileClose }) => {
 const TABS = [
   { path: "/menu", label: "Product", Icon: IconBag },
   { path: "/orders", label: "Orders", Icon: IconClipboard },
+  { path: "/kds", label: "Kitchen", Icon: IconKitchen },
   { path: "/reports", label: "Reports", Icon: IconChart },
 ];
 // Pinned shortcuts beyond this many are in the "More" drawer.

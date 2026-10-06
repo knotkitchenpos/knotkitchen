@@ -206,8 +206,9 @@ const orderSchema = new mongoose.Schema({
   // "" = the source's own front door (store website, QR, till). "KNOT_EATS" = placed
   // through eats.<base>; source stays "WEBSITE" so every website flow applies.
   salesChannel: { type: String, enum: ["", "KNOT_EATS"], default: "" },
-  // Permanent public store identifier, denormalized onto the order so the POS
-  // and future analytics can filter website orders without a join.
+  // Permanent public store identifier, denormalized onto every order (stamped
+  // from the restaurant on create, below) so the POS, CSD and analytics can
+  // filter a store's orders without a join.
   storeId: { type: String, default: "", index: true },
   // Human-friendly reference shown to the customer, e.g. "W-482193-0007".
   orderNumber: { type: String, default: "" },
@@ -356,6 +357,16 @@ orderSchema.index(
   { unique: true, partialFilterExpression: { orderNumber: { $gt: "" } } }
 );
 
+
+// Only the website checkout used to set storeId, so CSD lumped every POS, QR,
+// table and marketplace order under a blank store. One stamp here covers every
+// channel, since each creates its order through save()/create(). Skipped with
+// no live connection, so DB-less unit tests never wait on a read.
+orderSchema.pre("validate", async function stampStoreId() {
+  if (!this.isNew || this.storeId || !this.restaurantId || mongoose.connection.readyState !== 1) return;
+  const restaurant = await require("./restaurantModel").findById(this.restaurantId).select("storeId").lean();
+  this.storeId = restaurant?.storeId || "";
+});
 
 // The refund lifecycle is a function of the record; keep the stored copy in step.
 orderSchema.pre("save", function syncRefundStatus(next) {

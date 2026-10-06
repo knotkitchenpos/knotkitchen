@@ -2,6 +2,7 @@ const express = require("express");
 const { isVerifiedUser, resolveTableScope } = require("../middlewares/tokenVerification");
 const { requirePermission, requireProtectedAction } = require("../middlewares/requirePermission");
 const { rateLimit, clientIp } = require("../middlewares/rateLimiter");
+const { requireTableQrPlan } = require("../services/planFeatures");
 const config = require("../config/config");
 const qr = require("../controllers/qrController");
 const router = express.Router();
@@ -47,14 +48,15 @@ const qrWaiterLimiter = rateLimit({
   message: "Your table has already called for a waiter. Someone is on their way.",
 });
 
-router.route("/tables/:tableId/generate").post(isVerifiedUser, requireProtectedAction, requirePermission("TABLE_UPDATE"), qr.generateTableQr);
+// Minting a table QR needs the QR add-on, like /api/table-qr. The diner routes
+// below stay open, so printed cards keep working if the add-on lapses mid-service.
+router.route("/tables/:tableId/generate").post(isVerifiedUser, requireProtectedAction, requirePermission("TABLE_UPDATE"), requireTableQrPlan, qr.generateTableQr);
 router.route("/table/:token").get(qrReadLimiter, resolveTableScope, qr.getTableByToken);
 router.route("/session/:token").get(qrReadLimiter, resolveTableScope, qr.getSessionByToken);
 router.route("/session/items/:token").post(qrWriteLimiter, resolveTableScope, qr.addSessionItems);
 router.route("/request-bill/:token").post(qrWriteLimiter, resolveTableScope, qr.requestBill);
 router.route("/payment-intent/:token").post(qrWriteLimiter, resolveTableScope, qr.paymentIntent);
 router.route("/payment-verify/:token").post(qrWriteLimiter, resolveTableScope, qr.paymentVerify);
-router.route("/order/:token").post(qrWriteLimiter, resolveTableScope, qr.placeLegacyOrder);
 // The write limiter guards the lookup; the waiter limiter needs the table the
 // lookup finds, so it comes after.
 router.route("/waiter-call/:token").post(qrWriteLimiter, resolveTableScope, qrWaiterLimiter, qr.callWaiter);

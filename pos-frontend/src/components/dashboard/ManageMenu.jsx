@@ -347,7 +347,7 @@ const ManageMenu = () => {
 
   // Only invalidate the draft menu query for Manage Menu UI.
   // POS (system) and Website cache are NOT automatically updated when editing products;
-  // they update only when the user clicks "Publish" (Manage Cache > Publish System).
+  // they update only when the user publishes them (Manage Cache > Publish POS / Publish Website).
   //
   // We use `refetchQueries` (not just `invalidateQueries`) so the fresh data
   // arrives BEFORE the operator's next click — the previous invalidate-only
@@ -896,7 +896,7 @@ const ManageMenu = () => {
                 }
               }}
               className="h-[36px] px-3.5 rounded-xl bg-[#0F172A] text-white text-[12.5px] font-bold hover:bg-[#1E293B]"
-              title="Publish the draft menu to the POS tills. The website is published from Manage Website."
+              title="Publish the draft menu to the POS tills. The website and Knot Eats are published from Settings > Manage Cache."
             >
               Publish POS
             </button>

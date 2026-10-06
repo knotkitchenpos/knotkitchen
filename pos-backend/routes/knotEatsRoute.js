@@ -63,6 +63,10 @@ router.get("/config", readLimiter, getConfig);
 router.get("/stores", listLimiter, listStores);
 router.get("/stores/:storeId", readLimiter, getStore);
 router.get("/stores/:storeId/reviews", readLimiter, getStoreReviews);
+// The store page's menu payload. Param MUST be `slug` (reused getStorefront); listed stores only (controller).
+router.get("/stores/:slug/storefront", readLimiter, viaKnotEats, (req, res, next) =>
+  storefront().getStorefront(req, res, next),
+);
 // Param MUST be `slug`: the reused website checkout reads req.params.slug.
 router.post("/stores/:slug/checkout", orderLimiter, viaKnotEats, (req, res, next) =>
   storefront().startStorefrontCheckout(req, res, next),

@@ -40,7 +40,8 @@ const ROWS = [
   ["refunds", "Refunds", true],
   ["cash", "Cash", true],
   ["upi", "UPI", true],
-  ["gateway", "Card / online", true],
+  ["card", "Card", true],
+  ["gateway", "Online (gateway)", true],
   ["other", "Other", true],
 ];
 
@@ -56,6 +57,12 @@ const Figures = ({ s, openingCash, closingCash }) => (
       <tr className="border-b border-[#F1F5F9]">
         <td className="py-1.5 text-[#475569]">Opening float</td>
         <td className="py-1.5 text-right font-bold">{money(openingCash)}</td>
+      </tr>
+      {/* Expected cash includes tips paid in cash; without this line the
+          drawer looked over by exactly the tips. */}
+      <tr className="border-b border-[#F1F5F9]">
+        <td className="py-1.5 text-[#475569]">Cash tips</td>
+        <td className="py-1.5 text-right font-bold">{money(s?.cashTips)}</td>
       </tr>
       <tr className="border-b border-[#F1F5F9]">
         <td className="py-1.5 font-bold text-[#0F172A]">Expected cash in drawer</td>
@@ -90,7 +97,7 @@ const zReportHtml = (shift, store) => {
 <body><h1>${store?.name || "Restaurant"}</h1><div class="muted">${closed ? "Z REPORT · shift closed" : "X REPORT · shift still open"}</div>
 <div class="muted">Opened ${when(shift.openedAt)} by ${shift.openedBy || "-"}${closed ? `<br>Closed ${when(shift.closedAt)} by ${shift.closedBy || "-"}` : ""}</div>
 <h2>Sales</h2><table>${ROWS.map(([k, l, m]) => row(l, m ? money(s[k]) : s[k] || 0)).join("")}</table>
-<h2>Cash drawer</h2><table>${row("Opening float", money(shift.openingCash))}${row("Cash sales", money(s.cash))}${row("Expected in drawer", money(s.expectedCash))}${
+<h2>Cash drawer</h2><table>${row("Opening float", money(shift.openingCash))}${row("Cash sales", money(s.cash))}${row("Cash tips", money(s.cashTips))}${row("Expected in drawer", money(s.expectedCash))}${
     closed ? row("Counted", money(shift.closingCash)) + row("Difference", `${Number(s.difference) > 0 ? "+" : ""}${money(s.difference)}`) : ""
   }</table>
 ${shift.note ? `<p class="muted">Note: ${shift.note}</p>` : ""}

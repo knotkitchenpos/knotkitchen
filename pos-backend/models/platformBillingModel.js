@@ -66,7 +66,7 @@ const DEFAULT_ADDONS = [
   {
     code: "WEBSITE",
     name: "Website",
-    description: "Your own ordering website, online payments and table booking.",
+    description: "Your own ordering website and table booking.",
     pricePaise: 360000,
     periodDays: 365,
     feature: "website",
@@ -94,10 +94,12 @@ const DEFAULT_PRINTERS = [
 ];
 
 const DEFAULT_PLAN_PAISE = 49900;
+const DEFAULT_FIRST_RECHARGE_MIN_PAISE = 300000;
 
 // Bumped when the shipped catalogue changes in a way a stored row has to be
 // moved to; services/pricing.getPlatformConfig does that once per version.
-const CATALOG_VERSION = 2;
+// v3: first top-up ₹3,000 (was ₹2,500), later top-ups ₹1,000 (topUpMinPaise).
+const CATALOG_VERSION = 3;
 
 const gstSchema = new mongoose.Schema(
   {
@@ -193,7 +195,9 @@ const platformBillingConfigSchema = new mongoose.Schema(
     printers: { type: [printerSchema], default: () => DEFAULT_PRINTERS.map((p) => ({ ...p })) },
     // A store that has not activated yet must top up at least this much in
     // one go; that top-up starts the POS plan.
-    firstRechargeMinPaise: { type: Number, default: 250000, min: 0 },
+    firstRechargeMinPaise: { type: Number, default: DEFAULT_FIRST_RECHARGE_MIN_PAISE, min: 0 },
+    // Every top-up after the POS plan has started must be at least this; 0 = none.
+    topUpMinPaise: { type: Number, default: 100000, min: 0 },
     gst: { type: gstSchema, default: () => ({}) },
     // Platform fee per online-paid website order, per table-QR one and per Knot Eats one.
     websiteOrderCharge: { type: messageChargeSchema, default: () => ({ ...DEFAULT_ORDER_CHARGE }) },
@@ -255,6 +259,7 @@ module.exports = {
   DEFAULT_ADDONS,
   DEFAULT_PRINTERS,
   DEFAULT_PLAN_PAISE,
+  DEFAULT_FIRST_RECHARGE_MIN_PAISE,
   CATALOG_VERSION,
   DEFAULT_ORDER_CHARGE,
   DEFAULT_QR_ORDER_CHARGE,

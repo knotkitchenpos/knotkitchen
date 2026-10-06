@@ -6,8 +6,8 @@ const Order = require("../models/orderModel");
 const TableSession = require("../models/tableSessionModel");
 const Bill = require("../models/billModel");
 const Restaurant = require("../models/restaurantModel");
-const { findActiveSessionByTable, recalculateSessionBill, validateCapacity, enrichItems, runWithSessionRetry, generateSessionCode, generateSessionAccessToken } = require("./tableSessionController");
-const priceService = require("../services/price");
+const { findActiveSessionByTable, recalculateSessionBill, validateCapacity, enrichItems, runWithSessionRetry, generateSessionCode, generateSessionAccessToken, addRoundToKitchenOrder } = require("./tableSessionController");
+const { indianMobile } = require("../services/otpService");
 // Lazy-require services/socket only when we actually need to emit — importing
 // it eagerly pulls in socket.io which touches mongoose internals and breaks
 // tests that mock mongoose before the models are loaded (tableQROrdering.test).
@@ -15,12 +15,8 @@ const getSocket = () => require("../services/socket");
 // Lazy for the same reason: billing services load models these tests mock.
 const accountLock = () => require("../services/accountLock");
 const crypto = require("crypto");
-const { PREPARING, SETTLED_STATUSES, CANCELLED_STATUSES, canonicalStatus } = require("../constants/orderStatus");
-// Lazy for the same reason as getSocket above: autoReadyService pulls in the
-// Order/WebsiteSettings models, and requiring them at module load breaks the
-// tests that mock mongoose before the models are loaded.
-const computeReadyDueAt = (args) => require("../services/autoReadyService").computeReadyDueAt(args);
-const computeCompleteDueAt = (args) => require("../services/autoReadyService").computeCompleteDueAt(args);
+const { CANCELLED_STATUSES, canonicalStatus } = require("../constants/orderStatus");
+const { availabilityAt } = require("../services/websiteAvailability");
 const { AUDIENCES, ORDER_TYPES, projectMenus, allowsOrderType } = require("../services/menuCache");
 const { resolveGateway, isOnlinePaymentEnabled, PROVIDERS } = require("../services/paymentGateway");
 const config = require("../config/config");
@@ -83,7 +79,6 @@ const sanitizeSession = (session, extra = {}) => {
     orderStatus: extra.orderStatus ?? null,
     customerCount: plain.customerCount,
     customerName: plain.customerName,
-    customerPhone: plain.customerPhone,
     items: (plain.items || []).map((it) => ({
       _id: it._id,
       menuItemId: it.menuItemId,
@@ -110,6 +105,31 @@ const sanitizeSession = (session, extra = {}) => {
         }
       : { status: "PENDING", method: "" },
   };
+};
+
+// The kitchen order as the public API shows it. The raw document carries the
+// diner's phone (customerDetails) and anyone holding the printed QR could read
+// it; the page reads nothing else from it.
+const publicOrder = (o) => (o ? { _id: o._id, orderStatus: o.orderStatus } : null);
+
+/**
+ * Why the table QR is not taking orders right now ("" when it is).
+ *
+ * The same hours as table bookings: the POS "Restaurant Time" tab, with
+ * Holiday and Close for Today first, and the default hours when nothing was
+ * saved. Without it a scan at 4 a.m. placed an order. Closing time is last
+ * orders, so a seated table cannot add after it either. Till orders are not
+ * restricted.
+ */
+const tableOrderingClosed = async (restaurantId, now = new Date()) => {
+  // Lazy for the same reason as resolveBrandLogo below.
+  const WebsiteSettings = require("../models/websiteSettingsModel");
+  const [settings, restaurant] = await Promise.all([
+    WebsiteSettings.findOne({ restaurantId, isDeleted: { $ne: true } }).select("channelHours holidays closedForToday").lean(),
+    Restaurant.findById(restaurantId).select("timezone").lean(),
+  ]);
+  const a = availabilityAt(settings, "table", now, restaurant?.timezone);
+  return a.open ? "" : a.reason.replace(/Table booking/g, "Ordering at the table");
 };
 
 /**
@@ -251,6 +271,7 @@ const getTableByToken = async (req, res, next) => {
     }).lean();
     const brandLogo = restaurant ? await resolveBrandLogo(restaurantId, restaurant) : "";
     const onlinePaymentEnabled = await isOnlinePaymentEnabled({ restaurantId });
+    const closed = await tableOrderingClosed(restaurantId);
 
     res.status(200).json({
       success: true,
@@ -312,10 +333,11 @@ const getTableByToken = async (req, res, next) => {
               ? toRupees((await quotePlatformFee({ restaurantId, source: "QR" }))?.totalPaise)
               : 0,
           })),
-        // Locked for non-payment: the menu still shows and a seated party can
-        // still call a waiter and pay, but no new orders go in.
-        orderingPaused: await accountLock().isOrderingLocked(restaurantId),
-        orderingPausedMessage: accountLock().CUSTOMER_PAUSED_MESSAGE,
+        // Locked for non-payment, or outside Restaurant Time: the menu still
+        // shows and a seated party can still call a waiter and pay, but no new
+        // orders go in.
+        orderingPaused: await accountLock().isOrderingLocked(restaurantId) || Boolean(closed),
+        orderingPausedMessage: closed || accountLock().CUSTOMER_PAUSED_MESSAGE,
         // Say so explicitly rather than quietly returning a different party's
         // session: the page must stop, not adopt whoever is here now.
         sessionExpired: expired,
@@ -361,6 +383,10 @@ const addSessionItems = async (req, res, next) => {
     if (await accountLock().isOrderingLocked(restaurantId)) {
       return res.status(409).json({ success: false, code: "ORDERING_PAUSED", message: accountLock().CUSTOMER_PAUSED_MESSAGE });
     }
+    // 403, not 409: the diner's page reads every 409 as "this session is
+    // over" and would drop their claim on the table.
+    const closed = await tableOrderingClosed(restaurantId);
+    if (closed) return res.status(403).json({ success: false, code: "ORDERING_CLOSED", message: closed });
     if (!items || !items.length) return res.status(400).json({ success: false, message: "items required!" });
 
     // A retried submit returns the order it already placed; the unique
@@ -417,12 +443,10 @@ const addSessionItems = async (req, res, next) => {
           // moment their details are asked for. Enforced here rather than
           // trusted from the browser, and ONLY on creation -- a later scan
           // joins the open session and must never be asked again.
-          const name = String(customerName || "").trim();
-          const phone = String(customerPhone || "").replace(/\D/g, "").slice(-10);
+          const name = String(customerName || "").trim().slice(0, 80);
+          const phone = indianMobile(customerPhone);
           if (!name) throw createHttpError(400, "Please enter your name to start the table.");
-          if (!/^\d{10}$/.test(phone)) {
-            throw createHttpError(400, "Please enter a valid 10-digit phone number to start the table.");
-          }
+          if (!phone) throw createHttpError(400, "Please enter a valid 10-digit mobile number to start the table.");
 
           session = await TableSession.create(
             [
@@ -448,8 +472,9 @@ const addSessionItems = async (req, res, next) => {
           await tableInTxn.save({ session: mongoSession });
         } else {
           if (customerCount) { validateCapacity(tableInTxn, customerCount); session.customerCount = Number(customerCount); }
-          if (customerName) session.customerName = customerName;
-          if (customerPhone) session.customerPhone = customerPhone;
+          if (customerName) session.customerName = String(customerName).trim().slice(0, 80);
+          const joinPhone = indianMobile(customerPhone);
+          if (joinPhone) session.customerPhone = joinPhone;
         }
 
         const validatedItems = await enrichItems({ items, restaurantId, outletId, addedBy: "QR" });
@@ -457,88 +482,13 @@ const addSessionItems = async (req, res, next) => {
         session.timeline.push({ event: "ITEMS_ADDED", note: `${validatedItems.length} item(s) added by QR`, actorType: "QR" });
         await recalculateSessionBill(session);
 
-        // Module 4 §4 lists Table orders as auto-ready eligible, and
-        // autoReadyService has a "table" bucket for exactly this. Without a
-        // readyDueAt the sweep's `readyDueAt: { $ne: null }` filter skips the
-        // order entirely, so a QR order would sit in Preparing forever.
-        const readyDueAt = await computeReadyDueAt({ restaurantId, orderType: "dine-in" });
-        // ...and the same for Auto-Complete. This was missing, so the "table"
-        // auto-complete duration an operator configured had no effect at all:
-        // with completeDueAt left null the sweep's `completeDueAt: { $ne: null }`
-        // filter never matched a table order. Collection and delivery orders
-        // got their clock from orderController; table orders got none.
-        const completeDueAt = await computeCompleteDueAt({ restaurantId, orderType: "dine-in" });
-
-        // A table that is already mid-meal has an open kitchen order. Extra
-        // items belong ON that order, not on a second one: the spec is
-        // explicit that additions must never create a new order, and a
-        // second order would also split the table across two kitchen
-        // tickets and two POS cards for one bill.
-        //
-        // The additions land as item.status "pending" so the till can accept
-        // or reject them; accepted items become "preparing" and only then
-        // reach the kitchen.
-        const openOrder = await Order.findOne({
-          tableSessionId: session._id,
-          isDeleted: { $ne: true },
-          orderStatus: { $nin: [...SETTLED_STATUSES, ...CANCELLED_STATUSES] },
-        }).sort({ createdAt: -1 }).session(mongoSession);
-
-        const asOrderItems = (list, status) =>
-          list.map((it) => ({
-            menuItemId: it.menuItemId, name: it.name, quantity: it.quantity,
-            price: it.price, total: it.total, modifiers: it.modifiers || [],
-            note: it.note || "", status,
-          }));
-
-        let kitchenOrderDoc;
-        let appendedToExisting = false;
-
-        if (openOrder) {
-          // Append to the order this table already has.
-          openOrder.items.push(...asOrderItems(validatedItems, "pending"));
-          openOrder.bills = session.bills;
-          await openOrder.save({ session: mongoSession });
-          kitchenOrderDoc = openOrder;
-          appendedToExisting = true;
-        } else {
-        const kitchenOrder = await Order.create(
-          [
-            {
-              requestId: requestId || "",
-              customerDetails: { name: session.customerName || "Guest", phone: session.customerPhone || "", guests: session.customerCount || 1 },
-              orderType: "dine-in", orderStatus: PREPARING, bills: session.bills, readyDueAt,
-              ...(completeDueAt ? { completeDueAt } : {}),
-              items: validatedItems.map((it) => ({ menuItemId: it.menuItemId, name: it.name, quantity: it.quantity, price: it.price, total: it.total, modifiers: it.modifiers || [], note: it.note || "", status: "pending" })),
-              table: tableInTxn._id, restaurantId, outletId, createdBy: null, tableSessionId: session._id, orderDate: new Date(),
-              // Origin tag → POS UI can distinguish QR-scan orders from
-              // walk-in POS / marketplace / phone orders, and the realtime
-              // popup can show "New QR Order — Table {n}". A table the till
-              // opened stays a System order even when the diner orders
-              // through the QR: the source is where the table was started.
-              source: session.source === "POS" ? "POS" : "QR",
-            },
-          ],
-          { session: mongoSession }
-        );
-          kitchenOrderDoc = kitchenOrder[0];
-        }
-
-        // Both indexes count back from the END of their own list. `items[idx]`
-        // was right only for a brand-new order: when the additions were
-        // APPENDED to a table's existing order, idx 0 was the order's FIRST
-        // line -- a dish from an earlier round -- so every session item was
-        // linked to the wrong kitchen line. Cancelling one then struck the
-        // wrong dish off the ticket.
-        const startIdx = session.items.length - validatedItems.length;
-        const kitchenStartIdx = kitchenOrderDoc.items.length - validatedItems.length;
-        validatedItems.forEach((it, idx) => {
-          const si = session.items[startIdx + idx];
-          if (si) {
-            si.orderId = kitchenOrderDoc._id;
-            si.kdsItemId = kitchenOrderDoc.items[kitchenStartIdx + idx]?._id;
-          }
-        });
+        // A table has ONE kitchen order while it is served: this round lands on
+        // it, or starts it. Shared with the till so the two cannot drift: the
+        // diner's lines arrive "pending" for the till to accept, a Ready order
+        // is reopened for the new round, and a guest's new order gets no ready
+        // clock until the till accepts it (it must not promote itself to Ready
+        // while nobody has seen it).
+        const { order: kitchenOrderDoc, appended } = await addRoundToKitchenOrder({ session, validatedItems, tableId: tableInTxn._id, createdBy: null, mongoSession, requestId, guest: true });
 
         if (!session.billId) {
           const bill = await Bill.create(
@@ -560,11 +510,11 @@ const addSessionItems = async (req, res, next) => {
         await tableInTxn.save({ session: mongoSession });
         await session.save({ session: mongoSession });
 
-        return { session, kitchenOrder: kitchenOrderDoc, created, appendedToExisting, addedCount: validatedItems.length };
+        return { session, kitchenOrder: kitchenOrderDoc, created, appended };
       })).result,
       });
       if (placed.duplicate) {
-        return res.status(200).json({ success: true, data: { order: placed.doc, deduplicated: true } });
+        return res.status(200).json({ success: true, data: { order: publicOrder(placed.doc), deduplicated: true } });
       }
       result = placed.doc;
     } catch (err) {
@@ -583,44 +533,20 @@ const addSessionItems = async (req, res, next) => {
       const populatedOrder = await Order.findById(result.kitchenOrder._id).populate("table");
       const order = populatedOrder || result.kitchenOrder;
 
-      if (result.appendedToExisting) {
+      if (result.appended) {
         // Additions to a table that is already mid-meal are a DIFFERENT event
         // from a brand new order: the till has already accepted this table, so
-        // it needs to review just what was added rather than the whole ticket.
-        getSocket().emitToRestaurant(result.session.restaurantId, "tableOrder:itemsAdded", {
-          orderId: String(order._id),
-          tableSessionId: String(result.session._id),
-          tableNumber: order.table?.tableNumber ?? null,
-          displayId: order.table?.displayId || order.table?.tableName || "",
-          addedCount: result.addedCount,
-          pendingItems: (order.items || [])
-            .filter((i) => i.status === "pending")
-            // `_id` so the till can decline ONE dish out of the batch, and
-            // `modifiers` so it can see what was actually ordered before
-            // deciding -- "Caesar Salad" and "Caesar Salad, no anchovies"
-            // are not the same plate to a kitchen.
-            .map((i) => ({
-              _id: String(i._id),
-              name: i.name,
-              quantity: i.quantity,
-              total: i.total,
-              modifiers: i.modifiers || [],
-            })),
-          bills: order.bills,
-        });
-        // The kitchen printer's copy of the same addition.
-        getSocket().emitKitchenRound({
-          restaurantId: result.session.restaurantId,
-          outletId: result.session.outletId,
-          order,
-          items: (order.items || []).filter((i) => i.status === "pending").slice(-(result.addedCount || 0) || undefined),
-          table: order.table,
-        });
+        // it reviews just what was added. The kitchen's KOT goes out when the
+        // till accepts them (resolveAddedItems), not before.
+        getSocket().emitToRestaurant(result.session.restaurantId, "tableOrder:itemsAdded", getSocket().itemsAddedPayload(order));
       } else {
         getSocket().emitOrderCreated({
           restaurantId: result.session.restaurantId,
           outletId: result.session.outletId,
           order,
+          // On a till-opened table the order is a "POS" one, which the New
+          // Order card would otherwise ignore: nobody would accept it.
+          placedVia: "QR",
         });
       }
       // Manage Tables watches the session, not the order, so it needs telling
@@ -642,7 +568,7 @@ const addSessionItems = async (req, res, next) => {
         session: sanitizeSession(result.session, {
           orderStatus: canonicalStatus(result.kitchenOrder?.orderStatus),
         }),
-        order: result.kitchenOrder,
+        order: publicOrder(result.kitchenOrder),
         created: result.created,
         sessionToken: result.session.accessToken || "",
       },
@@ -728,8 +654,9 @@ const paymentIntent = async (req, res, next) => {
     // page fell back to "Ask for the bill" as if the store took no online
     // payments. So the diner is asked for it (needsPhone) and sends it here.
     const tenDigits = (v) => String(v || "").replace(/\D/g, "").slice(-10);
-    if (tenDigits(session.customerPhone).length !== 10 && tenDigits(req.body?.phone).length === 10) {
-      session.customerPhone = tenDigits(req.body.phone);
+    // A real mobile only: 0000000000 must not reach the gateway as the diner's number.
+    if (tenDigits(session.customerPhone).length !== 10 && indianMobile(req.body?.phone)) {
+      session.customerPhone = indianMobile(req.body.phone);
       if (!session.customerName && req.body?.name) session.customerName = String(req.body.name).trim().slice(0, 80);
       await session.save();
     }
@@ -927,50 +854,6 @@ const paymentVerify = async (req, res, next) => {
   } catch (error) { next(error); }
 };
 
-// Legacy single-shot QR order — tenant-scoped + server-priced + idempotent
-const placeLegacyOrder = async (req, res, next) => {
-  try {
-    const { table, restaurantId, outletId } = req.scope;
-    const { items, customerName, phone, guests, requestId } = req.body;
-    if (!items || !items.length) return res.status(400).json({ success: false, message: "items required!" });
-    if (await accountLock().isOrderingLocked(restaurantId)) {
-      return res.status(409).json({ success: false, code: "ORDERING_PAUSED", message: accountLock().CUSTOMER_PAUSED_MESSAGE });
-    }
-
-    const findByRequestId = () =>
-      requestId ? Order.findOne({ restaurantId, table: table._id, requestId, isDeleted: { $ne: true } }) : null;
-    const dup = await findByRequestId();
-    if (dup) return res.status(200).json({ success: true, data: dup, deduplicated: true });
-
-    const validatedItems = await enrichItems({ items, restaurantId, outletId, addedBy: "QR" });
-    // GST only where the store is registered and has a rate configured.
-    const qrGst = await require("../services/gst").resolveGstForRestaurant(restaurantId, "system");
-    const bills = priceService.calculateBill({
-      items: validatedItems.map((i) => ({ price: i.price, quantity: i.quantity })),
-      taxRate: qrGst.rate,
-      taxInclusive: qrGst.inclusive,
-    });
-    // See the note on the other QR order-creation path above.
-    const readyDueAt = await computeReadyDueAt({ restaurantId, orderType: "dine-in" });
-    const completeDueAt = await computeCompleteDueAt({ restaurantId, orderType: "dine-in" });
-    const { doc: order, duplicate } = await findOrCreate({
-      find: findByRequestId,
-      create: () => Order.create({
-        requestId: requestId || "",
-        customerDetails: { name: customerName || "Guest", phone: phone || "", guests: guests || 1 },
-        orderType: "dine-in", orderStatus: PREPARING, bills, readyDueAt,
-        ...(completeDueAt ? { completeDueAt } : {}),
-        items: validatedItems.map((it) => ({ menuItemId: it.menuItemId, name: it.name, quantity: it.quantity, price: it.price, total: it.total, modifiers: it.modifiers || [], note: it.note || "", status: "pending" })),
-        table: table._id, restaurantId, outletId, orderDate: new Date(), createdBy: null,
-        source: "QR",
-      }),
-    });
-    if (duplicate) return res.status(200).json({ success: true, data: order, deduplicated: true });
-    await Table.findOneAndUpdate({ _id: table._id }, { status: "occupied" });
-    res.status(201).json({ success: true, data: order });
-  } catch (error) { next(error); }
-};
-
 // Public: call waiter.
 //
 // This used to set a flag on the Table and stop there — nothing was pushed to
@@ -1021,7 +904,7 @@ const payRequest = async (req, res, next) => {
         // session document -- timeline, gateway order ids, internal ids and
         // all -- to anyone holding the table's QR.
         session: sanitizeSession(session, { orderStatus: await kitchenStatusForSession(session) }),
-        order,
+        order: publicOrder(order),
         message: "Payment request sent!",
       },
     });
@@ -1053,6 +936,7 @@ const dismissWaiterCall = async (req, res, next) => {
 };
 
 module.exports = {
+  tableOrderingClosed,
   generateTableQr,
   getTableByToken,
   getSessionByToken,
@@ -1060,7 +944,6 @@ module.exports = {
   requestBill,
   paymentIntent,
   paymentVerify,
-  placeLegacyOrder,
   callWaiter,
   payRequest,
   dismissWaiterCall,

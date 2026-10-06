@@ -8,6 +8,8 @@ import { totalPaid } from "../../lib/orderTotals";
 import { thumbUrl } from "../../lib/thumbUrl";
 
 const STEPS = ["placed", "accepted", "ready", "completed"];
+// A delivery has one more stop: the restaurant has sent it out ("Out for delivery").
+const DELIVERY_STEPS = ["placed", "accepted", "ready", "on_the_way", "completed"];
 const POLL_MS = 15_000;
 const BACKOFF_MS = 60_000;
 const TERMINAL = new Set(["completed", "cancelled"]);
@@ -19,6 +21,7 @@ function stageText(stage, delivery) {
   if (stage === "placed") return "Waiting for the restaurant to accept";
   if (stage === "accepted") return "Being prepared";
   if (stage === "ready") return delivery ? "Ready; the restaurant will send it out" : "Ready for pickup";
+  if (stage === "on_the_way") return "On the way to you";
   if (stage === "completed") return delivery ? "Delivered" : "Picked up";
   if (stage === "cancelled") return "Cancelled by the restaurant";
   return "";
@@ -28,6 +31,7 @@ function stepLabel(step, delivery) {
   if (step === "placed") return "Placed";
   if (step === "accepted") return "Preparing";
   if (step === "ready") return "Ready";
+  if (step === "on_the_way") return "On the way";
   return delivery ? "Delivered" : "Picked up";
 }
 
@@ -140,7 +144,8 @@ export default function OrderStatusPage() {
   const { store = {}, review } = data;
   const delivery = isDelivery(order);
   const stage = order.stage;
-  const current = STEPS.indexOf(stage);
+  const steps = delivery ? DELIVERY_STEPS : STEPS;
+  const current = steps.indexOf(stage);
   const refund = refundText(order);
   const phone = store.phone ? String(store.phone).replace(/[^\d+]/g, "") : "";
   const b = order.bills || {};
@@ -170,8 +175,8 @@ export default function OrderStatusPage() {
           {stageText(stage, delivery)}
         </p>
         {stage !== "cancelled" ? (
-          <ol className="mt-3 grid grid-cols-4 gap-1 text-center text-[12px]">
-            {STEPS.map((s, i) => (
+          <ol className={`mt-3 grid ${delivery ? "grid-cols-5" : "grid-cols-4"} gap-1 text-center text-[12px]`}>
+            {steps.map((s, i) => (
               <li key={s} aria-current={i === current ? "step" : undefined} className={i <= current ? "font-semibold text-slate-900" : "text-slate-400"}>
                 <span className={`mb-1 block h-1.5 rounded-full ${i <= current ? "bg-[color:var(--ke-good,#15803D)]" : "bg-slate-200"}`} />
                 {stepLabel(s, delivery)}

@@ -103,6 +103,7 @@ test("Manage Tables Module 5: QR order triggers realtime socket event emission o
     body: {
       tableId: TABLE_ID,
       items: [{ menuItemId: "d1", quantity: 2 }],
+      customerPhone: "9876543210",
     },
   };
 
@@ -161,11 +162,16 @@ test("Manage Tables Module 5: Table settlement releases table to Available and p
     findOneAndUpdate: async () => {},
   };
 
+  // The table's one kitchen order. The settle books the bill on it
+  // (table-money/T4), so it is read first and then updated.
+  const kitchenOrder = { _id: "o1", orderStatus: "Preparing", items: [] };
   const OrderMock = {
     findOne: async () => null, // no open order yet: the round starts one
-    updateMany: async (q, u) => {
-      orderStatusUpdated = u.$set.orderStatus; // Marked "paid" for history
+    find: () => ({ sort: () => ({ session: async () => [kitchenOrder] }) }),
+    updateOne: async (q, u) => {
+      if (u.$set?.orderStatus) orderStatusUpdated = u.$set.orderStatus; // Marked "paid" for history
     },
+    updateMany: async () => {},
   };
 
   const mockMongoSession = {

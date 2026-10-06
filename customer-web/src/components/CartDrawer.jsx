@@ -86,7 +86,7 @@ export default function CartDrawer({
   const [pickedCode, setPickedCode] = useState(null); // null: best offer · "": none
   const [coupon, setCoupon] = useState(null); // { code, discount }
 
-  const symbol = ordering?.currencySymbol || "£";
+  const symbol = ordering?.currencySymbol || "₹";
   const { deliveryFee, packaging, discount, taxAmount, platformFee, total } = cartEstimate({
     subtotal: cart.subtotal,
     ordering,
@@ -106,6 +106,11 @@ export default function CartDrawer({
   const conflicting = cart.items.filter((l) => !allowsFulfilment(l.dispatchType, orderType));
 
   const phoneDigits = customer.phone.replace(/\D/g, "");
+  // An Indian mobile, as the POS and table QR require: 10 digits starting 6-9.
+  const phoneOk = /^[6-9]\d{9}$/.test(phoneDigits);
+  // The pincode stays optional, but one typed must be a real 6-digit Indian
+  // PIN: the server refuses anything else.
+  const pinBad = orderType === "delivery" && address.postalCode !== "" && !/^[1-9]\d{5}$/.test(address.postalCode);
   // Website Timing & Holidays, as the server reported it.
   const channelState = availability?.[orderType === "delivery" ? "delivery" : "collection"];
   const channelClosed = Boolean(channelState && !channelState.open);
@@ -114,7 +119,7 @@ export default function CartDrawer({
   const canSubmit =
     cart.items.length > 0 &&
     customer.name.trim() &&
-    phoneDigits.length === 10 &&
+    phoneOk &&
     (!needsPickupTime || pickupAt) &&
     !channelClosed &&
     // Delivery blocked at a pickup-less store leaves nothing to order.
@@ -122,6 +127,7 @@ export default function CartDrawer({
     minReached &&
     conflicting.length === 0 &&
     !placing &&
+    !pinBad &&
     (orderType === "pickup" || address.line1.trim());
 
   // Why "Place order" is greyed out, in words, next to it. (Min order and a
@@ -131,13 +137,15 @@ export default function CartDrawer({
       ? ""
       : !customer.name.trim()
         ? "Enter your name to continue."
-        : phoneDigits.length !== 10
+        : !phoneOk
           ? "Enter your 10-digit mobile number."
           : needsPickupTime && !pickupAt
             ? "Choose a pickup time."
             : orderType === "delivery" && !address.line1.trim()
               ? "Enter your delivery address."
-              : "";
+              : pinBad
+                ? "Enter a valid 6-digit pincode."
+                : "";
 
   const submit = (e) => {
     e.preventDefault();
@@ -358,9 +366,12 @@ export default function CartDrawer({
                   />
                   <input
                     type="text"
-                    placeholder="Postcode"
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="Pincode"
+                    aria-label="Pincode"
                     value={address.postalCode}
-                    onChange={(e) => setAddress((a) => ({ ...a, postalCode: e.target.value }))}
+                    onChange={(e) => setAddress((a) => ({ ...a, postalCode: e.target.value.replace(/\D/g, "").slice(0, 6) }))}
                     className="w-1/2 px-3 py-2 border border-slate-200 rounded-xl text-sm"
                   />
                 </div>

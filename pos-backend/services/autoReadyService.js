@@ -35,8 +35,8 @@ const { notifyOrderReady } = require("./readyNotificationService");
 const { fireAutoEBill } = require("./eBillService");
 const { fireOrderCharge } = require("./orderCharge");
 const {
-  READY, SERVED, DELIVERED, COMPLETED,
-  PREPARING_STATUSES, SETTLED_STATUSES, CANCELLED_STATUSES, REFUNDED_STATUSES,
+  READY, SERVED, DELIVERED, COMPLETED, PREPARING, ACCEPTED,
+  PREPARING_STATUSES, READY_STATUSES, SETTLED_STATUSES, CANCELLED_STATUSES, REFUNDED_STATUSES,
   isPreparing,
 } = require("../constants/orderStatus");
 
@@ -179,6 +179,26 @@ const clocksOnAccept = async (order, now = new Date()) => {
     readyDueAt: await computeReadyDueAt({ ...args, from: now }),
     completeDueAt: await computeCompleteDueAt({ ...args, from: now }),
   };
+};
+
+/**
+ * A new round of dishes on an order that is already in the kitchen.
+ *
+ * A Ready order goes back to cooking. An accepted customer (QR) order goes to
+ * "In Progress", not Preparing, because the till reads a QR order in
+ * Preparing as a new order nobody has accepted and would ring for it again.
+ * Clocks that are running restart from now; a clock that never started (an
+ * order nobody has accepted yet) stays off, so the round cannot start it.
+ */
+const reopenForNewRound = async (order, now = new Date()) => {
+  if (READY_STATUSES.includes(order.orderStatus)) {
+    order.orderStatus = order.source === "QR" ? ACCEPTED : PREPARING;
+  }
+  order.readyAt = null;
+  const args = { restaurantId: order.restaurantId, storeId: order.storeId, orderType: order.orderType, from: now };
+  if (order.readyDueAt) order.readyDueAt = await computeReadyDueAt(args);
+  if (order.completeDueAt) order.completeDueAt = await computeCompleteDueAt(args);
+  return order;
 };
 
 /**
@@ -343,6 +363,10 @@ const runAutoCompleteTick = async (now = new Date()) => {
       completeDueAt: { $lte: now, $ne: null },
       completedAt: null,
       isDeleted: { $ne: true },
+      // A table-session order is completed by its payment, never by the timer:
+      // a timer-Served order counted as revenue before it was paid and let
+      // Release Table free a table with an unpaid bill.
+      tableSessionId: null,
     })
       .sort({ completeDueAt: 1 })
       .limit(MAX_BATCH);
@@ -412,6 +436,7 @@ module.exports = {
   computeReadyDueAt,
   computeCompleteDueAt,
   clocksOnAccept,
+  reopenForNewRound,
   runPrepStartTick,
   prepDuePayload,
   getAutoReadyMinutes,

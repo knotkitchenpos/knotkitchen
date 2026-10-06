@@ -1,5 +1,5 @@
 const express = require("express");
-const { requireWebsitePlan, requireOnlineOrderingPlan } = require("../services/planFeatures");
+const { requireOnlineOrderingPlan } = require("../services/planFeatures");
 const {
   getMyRestaurant,
   getStoreProperties,
@@ -31,10 +31,13 @@ router.route("/change-pin").put(isVerifiedUser, requireOwnerOnly, changePin);
 router.route("/pos-settings").put(isVerifiedUser, requireProtectedAction, updatePosSettings);
 // Locked on the POS plan alone (services/planFeatures onlineOrdering).
 router.route("/order-toggles").put(isVerifiedUser, requireProtectedAction, requireOnlineOrderingPlan, updateOrderToggles);
-// Website Timing & Holidays: the website's hours, so only with the Website add-on (services/planFeatures).
-router.route("/timings").put(isVerifiedUser, requireProtectedAction, requireWebsitePlan, updateChannelTimings);
-router.route("/holidays").put(isVerifiedUser, requireProtectedAction, requireWebsitePlan, updateHolidays);
-router.route("/closed-for-today").put(isVerifiedUser, requireProtectedAction, requireWebsitePlan, toggleClosedForToday);
+// Website Timing & Holidays: the website's hours and the table QR's
+// ("Restaurant Time"), which the QR obeys, so the Website or the QR Table
+// Ordering add-on (services/planFeatures onlineOrdering). A QR-only store was
+// held to the default 4 PM opening with no way to change it.
+router.route("/timings").put(isVerifiedUser, requireProtectedAction, requireOnlineOrderingPlan, updateChannelTimings);
+router.route("/holidays").put(isVerifiedUser, requireProtectedAction, requireOnlineOrderingPlan, updateHolidays);
+router.route("/closed-for-today").put(isVerifiedUser, requireProtectedAction, requireOnlineOrderingPlan, toggleClosedForToday);
 
 // Staff Management (Owner Only)
 router.route("/staff").post(isVerifiedUser, requireOwnerOnly, addStaffMember);

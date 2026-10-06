@@ -57,7 +57,6 @@ test("the POS itself IS gated", () => {
     "/api/orders",
     "/api/menu",
     "/api/table",
-    "/api/kds",
     "/api/inventory",
     "/api/analytics",
     "/api/restaurant/settings",

@@ -22,6 +22,7 @@ import {
 } from "../https";
 import { loadCashfree } from "../utils/cashfree";
 import { isOwner } from "../utils/security";
+import { STORE_TZ } from "../utils";
 
 /**
  * Settings → Billing & Subscription.
@@ -45,9 +46,9 @@ import { isOwner } from "../utils/security";
 const PRESETS = [500, 1000, 2000, 5000, 10000];
 
 const money = (amount) => amount?.label || "₹0.00";
-const dateOf = (d) => (d ? new Date(d).toLocaleDateString("en-IN", { dateStyle: "medium" }) : "—");
+const dateOf = (d) => (d ? new Date(d).toLocaleDateString("en-IN", { dateStyle: "medium", timeZone: STORE_TZ }) : "—");
 const timeOf = (d) =>
-  d ? new Date(d).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) : "—";
+  d ? new Date(d).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", timeZone: STORE_TZ }) : "—";
 
 /** Top-up buttons. Before the POS plan starts, none may be under the first top-up minimum. */
 const presetsFrom = (minRupees) => (minRupees > 0 ? [minRupees, ...PRESETS.filter((p) => p > minRupees)] : PRESETS);
@@ -104,8 +105,11 @@ const OrderSummary = ({ summary, onClose, onConfirm, busy }) => {
         <label className="mt-4 flex items-start gap-2 text-[12.5px] text-[#0F172A]">
           <input type="checkbox" className="mt-0.5" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
           <span>
-            I have read the order summary above and accept it and the KnotKitchen Restaurant Service Agreement on
-            behalf of this restaurant. {online ? "I will pay it now online." : "It will be paid from the wallet."}
+            I have read the order summary above and accept it and the{" "}
+            <a href="https://agreement.knotkitchen.com/agreement.html" target="_blank" rel="noopener" className="underline">
+              KnotKitchen Restaurant Service Agreement
+            </a>{" "}
+            on behalf of this restaurant. {online ? "I will pay it now online." : "It will be paid from the wallet."}
           </span>
         </label>
         <div className="mt-4 grid grid-cols-2 gap-2">
@@ -410,8 +414,8 @@ const Billing = () => {
   const invoices = invRes?.data?.data || [];
   const requests = hwRes?.data?.data || [];
   const periodDays = sub?.periodDays || 30;
-  // Until the POS plan has started, one top-up must reach the minimum: that one starts it.
-  const minRupees = sub?.needsActivation ? Number(sub.firstRechargeMin?.rupees) || 0 : 0;
+  // The smallest top-up allowed now (server: subscription statusFor minTopUp): the first minimum until the plan starts, then the later one.
+  const minRupees = Number(sub?.minTopUp?.rupees) || 0;
 
   // Both prefixes: the balance, statement, plan, features and invoices.
   const refreshMoney = () => {
@@ -975,7 +979,7 @@ const Billing = () => {
                       {inv.status === "VOID" && <Tag tone="red">CANCELLED</Tag>}
                     </td>
                     <td className="py-2.5 text-[#64748B]">
-                      {new Date(inv.date).toLocaleDateString("en-IN", { dateStyle: "medium" })}
+                      {dateOf(inv.date)}
                     </td>
                     <td className="py-2.5 text-right font-bold tabular-nums text-[#0F172A]">
                       {money(inv.total)}
@@ -1018,7 +1022,7 @@ const Billing = () => {
                 {transactions.map((t) => (
                   <tr key={t.id} className="border-t border-[#F1F5F9]">
                     <td className="py-2.5 whitespace-nowrap text-[#64748B]">
-                      {new Date(t.at).toLocaleDateString("en-IN", { dateStyle: "medium" })}
+                      {dateOf(t.at)}
                     </td>
                     <td className="py-2.5 text-[#0F172A]">{t.description}</td>
                     <td className="py-2.5 text-right font-semibold tabular-nums text-[#15803D]">

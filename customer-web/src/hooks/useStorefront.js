@@ -15,8 +15,10 @@ import { bootstrapStore, getStorefront } from "../lib/api";
  * available so the UI can render progressively.
  *
  * @param {{ slug?: string, host?: string }} identity
+ * @param {(slug: string) => Promise} [loadStorefront] Knot Eats' own payload call;
+ *   skips the website bootstrap, so a store without the website still opens on Knot Eats.
  */
-export function useStorefront(identity) {
+export function useStorefront(identity, loadStorefront) {
   const [bootstrap, setBootstrap] = useState(null);
   const [store, setStore] = useState(null);
   const [error, setError] = useState(null);
@@ -34,21 +36,23 @@ export function useStorefront(identity) {
     setError(null);
 
     // Fire both requests immediately — first paint uses the bootstrap payload.
-    const bootstrapPromise = bootstrapStore(identity)
-      .then((res) => {
-        if (!cancelled) setBootstrap(res.data.data);
-        return res.data.data;
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setError({
-            status: err.response?.status || 0,
-            code: err.response?.data?.code || "",
-            message: err.response?.data?.message || "We couldn't find this restaurant.",
+    const bootstrapPromise = loadStorefront
+      ? Promise.resolve(null)
+      : bootstrapStore(identity)
+          .then((res) => {
+            if (!cancelled) setBootstrap(res.data.data);
+            return res.data.data;
+          })
+          .catch((err) => {
+            if (!cancelled) {
+              setError({
+                status: err.response?.status || 0,
+                code: err.response?.data?.code || "",
+                message: err.response?.data?.message || "We couldn't find this restaurant.",
+              });
+            }
+            return null;
           });
-        }
-        return null;
-      });
 
     // Full storefront needs the slug that came back from bootstrap (in case
     // the request was made by hostname/customDomain).
@@ -58,7 +62,7 @@ export function useStorefront(identity) {
         if (!cancelled) setLoading(false);
         return;
       }
-      getStorefront(effectiveSlug)
+      (loadStorefront || getStorefront)(effectiveSlug)
         .then((res) => {
           if (!cancelled) setStore(res.data.data);
         })

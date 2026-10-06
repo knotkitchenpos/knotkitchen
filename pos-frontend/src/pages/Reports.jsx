@@ -11,7 +11,8 @@ import { isPreparing, isReady, isCancelled, statusLabel } from "../constants/ord
 import { sourceLabel, tableLabel, orderDisplayId } from "../utils/orderLabels";
 import { receiptAddress } from "../utils/address";
 import { buildQuickDates } from "../utils/quickDates.js";
-import { money, localDay, dateGB as fmtDate, time12 as fmtTime } from "../utils";
+import { resolveItemAmounts } from "../utils/orderItems";
+import { money, localDay, cellDay, dateGB as fmtDate, time12 as fmtTime } from "../utils";
 
 /**
  * Module 5 — Reports.
@@ -64,7 +65,8 @@ const CalendarModal = ({ initialMode, initialFrom, initialTo, onClose, onProceed
   // Which month is displayed in the grid. Independent of the selection so
   // the user can scroll to April without losing a February pick.
   const [cursor, setCursor] = useState(() => {
-    const seed = new Date(initialFrom);
+    // With a time it is a local date; "YYYY-MM-DD" alone parses as UTC midnight.
+    const seed = new Date(`${initialFrom}T00:00:00`);
     seed.setDate(1);
     return seed;
   });
@@ -94,7 +96,7 @@ const CalendarModal = ({ initialMode, initialFrom, initialTo, onClose, onProceed
 
   const isSelected = (d) => {
     if (!d) return false;
-    const s = localDay(d);
+    const s = cellDay(d);
     if (mode === "single") return s === from;
     if (!from || !to) return s === from;
     return s >= from && s <= to;
@@ -102,7 +104,7 @@ const CalendarModal = ({ initialMode, initialFrom, initialTo, onClose, onProceed
 
   const onCellClick = (d) => {
     if (!d) return;
-    const s = localDay(d);
+    const s = cellDay(d);
     if (mode === "single") {
       setFrom(s);
       setTo(s);
@@ -181,7 +183,9 @@ const CalendarModal = ({ initialMode, initialFrom, initialTo, onClose, onProceed
 
         <div className="px-5 pb-4 grid grid-cols-7 gap-1">
           {cells.map((d, i) => {
-            const s = d ? localDay(d) : null;
+            // Cells are built from year/month/day on this device: cellDay, not
+            // localDay, or devices east of India would label them a day early.
+            const s = d ? cellDay(d) : null;
             const on = isSelected(d);
             const isRangeEndpoint = mode === "range" && (s === from || s === to);
             const isTodayCell = s === localDay();
@@ -310,7 +314,7 @@ const OrderDetailsModal = ({ order, onClose }) => {
                 </div>
                 <span className="text-[12px] font-bold text-[#334155] shrink-0">x {it.quantity}</span>
                 <span className="text-[12.5px] font-extrabold text-[#0F172A] w-[68px] text-right shrink-0">
-                  {money(it.total || it.price * it.quantity)}
+                  {money(resolveItemAmounts(it).lineTotal)}
                 </span>
               </div>
             ))}
@@ -341,9 +345,10 @@ const OrderDetailsModal = ({ order, onClose }) => {
           <DetailRow label="Source" value={sourceLabel(order.source, order.salesChannel)} />
           <DetailRow label="Order Type" value={orderTypeLabel(order.orderType)} />
           {order.table ? <DetailRow label="Table" value={tableLabel(order.table, "—")} /> : null}
-          {/* No default of "Cash". An order that has not been paid has no
-              method yet, and printing one made unpaid orders look settled. */}
-          <DetailRow label="Payment Method" value={(order.paymentMethod || payment?.method || "—").toString()} />
+          {/* The server names the method the same way it picks the order's
+              payment card, so the two agree. No default of "Cash": an unpaid
+              order has no method, and printing one made it look settled. */}
+          <DetailRow label="Payment Method" value={order.paymentLabel || "—"} />
           <DetailRow label="Payment Status" value={(payment?.status || "pending").toString()} />
           <DetailRow label="Payment ID" value={payment?.transactionId || order.paymentData?.gatewayPaymentId || "—"} />
           <DetailRow label="Status" value={statusLabel(order.orderStatus)} />
@@ -360,8 +365,8 @@ const OrderDetailsModal = ({ order, onClose }) => {
  * the per-order listing.
  */
 const BREAKDOWN_TABLES = [
-  { key: "byItem", title: "Top dishes", cols: ["Dish", "Qty", "Sales"], cells: (r) => [r.name, r.quantity, money(r.amount)] },
-  { key: "byCategory", title: "By category", cols: ["Category", "Qty", "Sales"], cells: (r) => [r.name, r.quantity, money(r.amount)] },
+  { key: "byItem", title: "Top dishes", cols: ["Dish", "Qty", "Sales"], cells: (r) => [r.name, r.quantity, money(r.amount)], reconciles: true },
+  { key: "byCategory", title: "By category", cols: ["Category", "Qty", "Sales"], cells: (r) => [r.name, r.quantity, money(r.amount)], reconciles: true },
   {
     key: "byHour",
     title: "By hour",
@@ -456,8 +461,14 @@ const REPORT_CARDS = [
   { key: "cash", label: "Cash Orders", tint: "#EA580C" },
   { key: "upi", label: "UPI Orders", tint: "#16A34A" },
   { key: "gateway", label: "Gateway Orders", tint: "#0891B2" },
+  { key: "card", label: "Card Orders", tint: "#7C3AED" },
+  { key: "split", label: "Split Payments" },
+  // Unpaid and marketplace orders: with these the payment cards add up to Total.
+  { key: "other", label: "Unpaid / Other" },
   { key: "delivery", label: "Delivery Orders", tint: "#2563EB" },
   { key: "collection", label: "Collection Orders" },
+  // Not sales, so outside Total and Cash: what the drawer holds on top.
+  { key: "tips", label: "Tips" },
 ];
 
 const SummaryCard = ({ label, count, amount, tint }) => (
@@ -509,6 +520,8 @@ const Reports = () => {
   const breakdown = data?.data?.data?.breakdown;
   const orders = data?.data?.data?.orders || [];
   const responseWindow = data?.data?.data?.window;
+  // The totals cover every order; the list stops at the newest 1,000.
+  const truncated = Boolean(data?.data?.data?.truncated);
 
   // Restaurant name + address are already used by other screens (Invoice,
   // OrderPanel, ...) so we reuse the same authenticated endpoints instead
@@ -557,7 +570,8 @@ const Reports = () => {
 
   // Reach back far enough to show the start of the selection.
   const stripFocus = mode === "range" ? rangeFrom : selectedDate;
-  const quickDates = useMemo(() => buildQuickDates(stripFocus), [stripFocus]);
+  // The strip ends on the STORE's today, not the device's.
+  const quickDates = useMemo(() => buildQuickDates(stripFocus, new Date(`${today}T00:00:00`)), [stripFocus, today]);
 
   // Mouse drag-to-scroll support for the quick date selector (Module 5 §3)
   const dateStripRef = useRef(null);
@@ -781,7 +795,7 @@ const Reports = () => {
             className="flex items-center gap-2 overflow-x-auto py-1 px-2 sm:px-8 select-none cursor-grab active:cursor-grabbing scrollbar-none w-full"
           >
             {quickDates.map((d) => {
-              const s = localDay(d);
+              const s = cellDay(d);
               const isSelected =
                 (mode === "single" && s === selectedDate) ||
                 (mode === "range" && s >= rangeFrom && s <= rangeTo);
@@ -860,9 +874,19 @@ const Reports = () => {
         {/* ===== Breakdown: dish, category, hour, staff ===== */}
         {breakdown && (
           <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-3">
-            {BREAKDOWN_TABLES.map((t) => (
-              <BreakdownTable key={t.key} t={t} rows={breakdown[t.key] || []} />
-            ))}
+            {BREAKDOWN_TABLES.map((t) => {
+              const rows = breakdown[t.key] || [];
+              // Dish lines are before discount, tax, charges and refunds; the
+              // server's adjustment rows bridge them to the Total Orders amount.
+              const shown = t.reconciles && rows.length
+                ? [
+                    ...rows,
+                    ...(breakdown.adjustments || []).map((a) => ({ ...a, quantity: "" })),
+                    { name: "Total", quantity: "", amount: s.total?.amount },
+                  ]
+                : rows;
+              return <BreakdownTable key={t.key} t={t} rows={shown} />;
+            })}
           </div>
         )}
 
@@ -870,7 +894,9 @@ const Reports = () => {
         <div className="mt-6 bg-white border border-[#E2E8F0] rounded-xl overflow-hidden">
           <div className="px-5 py-3.5 border-b border-[#E2E8F0] flex items-center justify-between">
             <h2 className="text-[15px] font-extrabold text-[#0F172A]">
-              Orders in this period ({orders.length})
+              {truncated
+                ? `Latest ${orders.length} orders in this period (the totals above count all of them)`
+                : `Orders in this period (${orders.length})`}
             </h2>
           </div>
           {isLoading ? (

@@ -50,7 +50,7 @@ const writePending = (slug, id) => {
  *
  * Data model:
  *  - `identity` describes how the store was found (slug or host).
- *  - `useStorefront(identity)` provides the two payloads.
+ *  - `useStorefront(identity)` provides the two payloads (on Knot Eats, only its own storefront).
  *  - `useCart(slug)` provides an isolated cart per store.
  *
  * The page is intentionally thin — it composes hooks and hands the fully
@@ -68,7 +68,7 @@ const writePending = (slug, id) => {
  */
 export default function StorePage({ slug, host, eats = null }) {
   const identity = useMemo(() => ({ slug, host }), [slug, host]);
-  const { bootstrap, store, error, loading } = useStorefront(identity);
+  const { bootstrap, store, error, loading } = useStorefront(identity, eats?.loadStorefront);
   const { pathname } = useLocation();
   const route = landingRoute(pathname);
   const { isMenu, homePath, menuPath } = route;

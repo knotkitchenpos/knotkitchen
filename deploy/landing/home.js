@@ -1,9 +1,19 @@
 /* KnotKitchen landing page motion. No libraries; everything is optional:
-   with JavaScript off the page reads the same, just still. */
+   with JavaScript off the page reads the same, just still (the "no-js" class
+   on <html> keeps every reveal visible until this file actually runs). */
 (() => {
+  document.documentElement.classList.remove("no-js");
   const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const $ = (s, el = document) => el.querySelector(s);
   const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+
+  /* ---- the phone menu closes once one of its links is chosen ---- */
+  const menu = $(".menu");
+  if (menu) menu.addEventListener("click", (e) => { if (e.target.closest("a")) menu.open = false; });
+
+  /* ---- phones: the pricing fine print starts folded (open without script, and when printing) ---- */
+  if (matchMedia("(max-width:700px)").matches) $$(".plan-notes details").forEach((d) => (d.open = false));
+  addEventListener("beforeprint", () => $$(".plan-notes details").forEach((d) => (d.open = true)));
 
   /* ---- reveal on scroll ---- */
   const io = new IntersectionObserver(

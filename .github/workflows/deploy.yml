@@ -167,4 +167,7 @@ jobs:
           curl -fsSI https://api.knotkitchen.com/health > /dev/null && echo "api       OK"
           curl -fsSI https://business.knotkitchen.com/  > /dev/null && echo "pos       OK"
           curl -fsSI https://csd.knotkitchen.com/       > /dev/null && echo "csd       OK"
+          # www must 301 to the apex (Caddyfile www vhost). Reported, never fatal:
+          # its first certificate can still be issuing right after a recreate.
+          curl -sI https://www.knotkitchen.com/ | grep -qi "^location: https://knotkitchen.com/" && echo "www       OK" || echo "www       not redirecting yet"
           curl -fsSI https://knotkitchen.com/           > /dev/null && echo "customer  OK"

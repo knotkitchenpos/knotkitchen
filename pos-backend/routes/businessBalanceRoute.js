@@ -98,7 +98,8 @@ router.get("/transactions", isVerifiedUser, async (req, res, next) => {
 
 // POST /api/business-balance/recharge — open a top-up. Credits nothing.
 // Until the POS plan has started, the amount must be at least the first
-// top-up minimum (400, code FIRST_TOPUP_MINIMUM; services/recharge). A closed
+// top-up minimum (400, code FIRST_TOPUP_MINIMUM); after that, at least the
+// later top-up minimum (400, code TOPUP_MINIMUM; services/recharge). A closed
 // store or CANCELLED subscription is refused (409, code SUBSCRIPTION_CANCELLED).
 router.post("/recharge", isVerifiedUser, async (req, res, next) => {
   try {

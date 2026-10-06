@@ -12,6 +12,7 @@ const {
   statusFor, endTablet, cancelSubscription, reinstateSubscription, SubscriptionError,
 } = require("../services/subscription");
 const { toPaise, toRupees, formatINR } = require("../services/money");
+const { isValidGstin } = require("../services/gst");
 const { csdAudit } = require("../services/csdAuditService");
 
 /**
@@ -75,6 +76,7 @@ const present = (config) => ({
     isActive: p.isActive !== false,
   })),
   firstRechargeMin: toRupees(config.firstRechargeMinPaise || 0),
+  topUpMin: toRupees(config.topUpMinPaise || 0),
   gst: {
     registered: config.gst?.registered || false,
     gstin: config.gst?.gstin || "",
@@ -130,14 +132,14 @@ const readPrice = (value, key, fieldErrors) => {
  * it. All-or-nothing on purpose: a half-applied price list is worse than a
  * rejected one, because the half that applied is now live. `seen` is shared
  * between the two lists, because a price override names a code without
- * saying which list it is in. `current` is the add-on list saved now.
+ * saying which list it is in. `current` is the list saved now.
  */
 const readCatalog = (input, field, fieldErrors, seen, { addons = false, current = [] } = {}) => {
   if (!Array.isArray(input)) {
     fieldErrors[field] = "Must be a list.";
     return null;
   }
-  return input.map((raw, i) => {
+  const items = input.map((raw, i) => {
     const code = String(raw?.code || "").trim().toUpperCase();
     if (!CODE.test(code)) {
       fieldErrors[`${field}.${i}.code`] = "Use 2 to 30 capital letters, digits or _.";
@@ -177,6 +179,15 @@ const readCatalog = (input, field, fieldErrors, seen, { addons = false, current 
       sortOrder: Number(raw?.sortOrder) || 0,
     };
   });
+  // Stores' add-ons, devices and negotiated prices point at a saved code. A
+  // dropped add-on would keep renewing where the store can no longer see it,
+  // so a saved row can go off sale but never leave the list.
+  for (const { code } of current) {
+    if (!items.some((x) => x.code === code)) {
+      fieldErrors[field] = `"${code}" is saved: take it off sale instead of removing it.`;
+    }
+  }
+  return items;
 };
 
 /** PATCH /api/csd/billing/config — admin only. */
@@ -203,7 +214,7 @@ const updateBillingConfig = async (req, res, next) => {
       : null;
     if (body.addons === undefined) (config.addons || []).forEach((x) => seen.add(x.code));
     const printers = body.printers !== undefined
-      ? readCatalog(body.printers, "printers", fieldErrors, seen)
+      ? readCatalog(body.printers, "printers", fieldErrors, seen, { current: config.printers || [] })
       : null;
     if (body.addons !== undefined && body.printers === undefined) {
       for (const x of config.printers || []) {
@@ -225,17 +236,27 @@ const updateBillingConfig = async (req, res, next) => {
     if (body.firstRechargeMin !== undefined) {
       config.firstRechargeMinPaise = readPrice(body.firstRechargeMin, "firstRechargeMin", fieldErrors);
     }
+    // Left out (a CSD page from before it existed) keeps the saved one.
+    if (body.topUpMin !== undefined) config.topUpMinPaise = readPrice(body.topUpMin, "topUpMin", fieldErrors);
 
     if (body.gst !== undefined) {
       const g = body.gst || {};
       const percent = num(g.percent);
       if (percent !== null && (Number.isNaN(percent) || percent < 0 || percent > 100)) {
         fieldErrors["gst.percent"] = "GST percentage must be between 0 and 100.";
+      } else if (g.registered && !((percent ?? config.gst?.percent) > 0)) {
+        // Registered at 0% charges nothing yet prints a tax invoice.
+        fieldErrors["gst.percent"] = "Set the GST rate, or leave Registered off.";
       }
       // Registered with no start date would tax nothing and look broken.
       if (g.registered && !asDate(g.effectiveFrom)) {
         fieldErrors["gst.effectiveFrom"] =
           "Set the date GST starts applying, or leave Registered off.";
+      }
+      // GST is charged once registered, but the invoice reads "registered"
+      // from the GSTIN: without one it charges GST and says none was charged.
+      if (g.registered && !isValidGstin(g.gstin)) {
+        fieldErrors["gst.gstin"] = "Enter KnotKitchen's 15-character GSTIN, or leave Registered off.";
       }
       config.gst = {
         registered: Boolean(g.registered),

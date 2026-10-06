@@ -44,6 +44,13 @@ export const DELIVERED = "Delivered";
 /** A settled table bill. Legacy casing, preserved deliberately. */
 export const PAID = "paid";
 
+/**
+ * A delivery order that has left with the rider: Ready → Out for delivery →
+ * Delivered. Delivery orders only (the server refuses it for anything else).
+ * Still live, not finished: it can be cancelled or marked Delivered.
+ */
+export const OUT_FOR_DELIVERY = "Out for delivery";
+
 // --- Groups (include historical spellings still on old orders) --------------
 const lower = (s) => String(s || "").toLowerCase();
 
@@ -52,6 +59,7 @@ const READY_SET = new Set(["ready"]);
 const SETTLED_SET = new Set(["completed", "served", "delivered", "paid"]);
 const CANCELLED_SET = new Set(["cancelled", "canceled"]);
 const REFUNDED_SET = new Set(["refunded"]);
+const OUT_FOR_DELIVERY_SET = new Set(["out for delivery", "dispatched"]);
 
 export const isPreparing = (s) => PREPARING_SET.has(lower(s));
 export const isReady = (s) => READY_SET.has(lower(s));
@@ -59,12 +67,13 @@ export const isReady = (s) => READY_SET.has(lower(s));
 export const isSettled = (s) => SETTLED_SET.has(lower(s));
 export const isCancelled = (s) => CANCELLED_SET.has(lower(s));
 export const isRefunded = (s) => REFUNDED_SET.has(lower(s));
+export const isOutForDelivery = (s) => OUT_FOR_DELIVERY_SET.has(lower(s));
 
 /** Over: settled, cancelled or refunded. Nothing transitions it onward. */
 export const isFinished = (s) => isSettled(s) || isCancelled(s) || isRefunded(s);
 
 /** Still live on the floor. */
-export const isActive = (s) => isPreparing(s) || isReady(s);
+export const isActive = (s) => isPreparing(s) || isReady(s) || isOutForDelivery(s);
 
 /** True only while an order is waiting for someone to accept it. */
 export const isAwaitingAcceptance = (s) => lower(s) === "pending";
@@ -82,6 +91,7 @@ export const statusLabel = (s) => {
   if (isAwaitingAcceptance(raw)) return "Pending";
   if (isPreparing(raw)) return PREPARING;
   if (isReady(raw)) return READY;
+  if (isOutForDelivery(raw)) return OUT_FOR_DELIVERY;
   if (lower(raw) === "paid") return "Paid";
   if (lower(raw) === "served") return SERVED;
   if (lower(raw) === "delivered") return DELIVERED;

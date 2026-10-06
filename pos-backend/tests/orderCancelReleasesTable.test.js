@@ -18,32 +18,44 @@ const path = require("node:path");
 
 const ORDER_ID = "o1";
 
-const makeSession = (items, status = "OCCUPIED") => ({
-  _id: "sess1",
-  sessionCode: "S-1",
-  status,
-  restaurantId: "r1",
-  outletId: null,
-  tableId: "t1",
-  items,
-  bills: { subtotal: 0, tax: 0, charges: 0, totalWithTax: 0 },
-  timeline: [],
-  async save() {
-    return this;
-  },
-});
+// The real model's enum. The fixture's save() refuses what Mongoose would: a
+// mocked save that accepted anything is how a staff NAME written as the
+// timeline's actorType went unnoticed, and every cancel left the table open.
+const ACTOR_TYPES = require("../models/tableSessionModel").schema.path("timeline").schema.path("actorType").enumValues;
+
+const makeSession = (items, status = "OCCUPIED") => {
+  const s = {
+    _id: "sess1",
+    sessionCode: "S-1",
+    status,
+    restaurantId: "r1",
+    outletId: null,
+    tableId: "t1",
+    items,
+    bills: { subtotal: 0, tax: 0, charges: 0, totalWithTax: 0 },
+    timeline: [],
+    async save() {
+      const bad = this.timeline.find((t) => !ACTOR_TYPES.includes(t.actorType));
+      if (bad) throw new Error(`TableSession validation failed: actorType \`${bad.actorType}\` is not a valid enum value`);
+      return this;
+    },
+  };
+  items.id = (id) => items.find((i) => String(i._id) === String(id)) || null;
+  return s;
+};
 
 /**
  * Loads the controller with every collaborator replaced. The interception
  * stays installed for the CALL, not only the require: the table release and
  * the bill recalculation both reach for models while running.
  */
-const load = ({ session, otherLive = 0, tableUpdates, emits }) => {
+const load = ({ session, otherLive = 0, orders = [], tableUpdates, emits }) => {
   const Module = require("module");
   const orig = Module._load;
   Module._load = function (r) {
-    if (r === "../models/tableSessionModel") return { findOne: async () => session };
-    if (r === "../models/orderModel") return { countDocuments: async () => otherLive };
+    // A function hands out a fresh copy per lookup, as the database would.
+    if (r === "../models/tableSessionModel") return { findOne: async () => (typeof session === "function" ? session() : session) };
+    if (r === "../models/orderModel") return { countDocuments: async () => otherLive, find: () => ({ sort: async () => orders }) };
     if (r === "../models/tableModel") {
       return {
         findOneAndUpdate: async (filter, update) => {
@@ -83,14 +95,84 @@ const load = ({ session, otherLive = 0, tableUpdates, emits }) => {
   };
 };
 
-const run = async (opts, order) => {
+const run = async (opts, order, actor = "POS") => {
   const { ctrl, restore } = load(opts);
   try {
-    return await ctrl.releaseSessionForCancelledOrder(order, "POS");
+    return await ctrl.releaseSessionForCancelledOrder(order, actor);
   } finally {
     restore();
   }
 };
+
+test("REGRESSION: a cancel by a named staff member closes the session", async () => {
+  // Every cancel route passes req.user.name. It went into the timeline's
+  // actorType enum, the save threw, and the session stayed open with the
+  // cancelled food on it: the next guest's order inherited that bill.
+  const session = makeSession([
+    { name: "Thali", quantity: 1, price: 356, total: 356, status: "preparing", orderId: ORDER_ID },
+  ]);
+  const tableUpdates = [];
+  const emits = [];
+
+  await run({ session, otherLive: 0, tableUpdates, emits }, { _id: ORDER_ID, tableSessionId: "sess1" }, "Asmit Ghosh");
+
+  assert.equal(session.status, "CLOSED");
+  assert.equal(session.items[0].status, "cancelled");
+  assert.ok(ACTOR_TYPES.includes(session.timeline.at(-1).actorType));
+  assert.match(session.timeline.at(-1).note, /Asmit Ghosh/, "who cancelled is still recorded");
+  assert.equal(tableUpdates.length, 1);
+  assert.deepEqual(emits, ["order_cancelled_table_freed"]);
+});
+
+test("REGRESSION: a session that fails to save does not free its table", async () => {
+  // The table used to be freed BEFORE the save, so a failed save left the
+  // table "available" under a session that was still open.
+  const session = makeSession([
+    { name: "Thali", quantity: 1, price: 356, total: 356, status: "preparing", orderId: ORDER_ID },
+  ]);
+  session.save = async () => {
+    throw new Error("write failed");
+  };
+  const tableUpdates = [];
+
+  await assert.rejects(run({ session, otherLive: 0, tableUpdates, emits: [] }, { _id: ORDER_ID, tableSessionId: "sess1" }));
+  assert.deepEqual(tableUpdates, []);
+});
+
+test("REGRESSION: pulling a table's last dish answers with the closed session", async () => {
+  // The release saves its own fresh copy of the session. The response sent
+  // the copy from before it, still OCCUPIED, so the till kept showing an open
+  // table (with a Release button) that was already free.
+  const first = makeSession([
+    { _id: "i1", name: "Juice", quantity: 1, price: 178, total: 178, status: "preparing", orderId: ORDER_ID, kdsItemId: "k1" },
+  ]);
+  let lookups = 0;
+  const fresh = () => {
+    lookups += 1;
+    return lookups === 1 ? first : makeSession(first.items.map((i) => ({ ...i })));
+  };
+  const lines = [{ _id: "k1", name: "Juice", quantity: 1, status: "preparing" }];
+  lines.id = (id) => lines.find((l) => l._id === id) || null;
+  const order = { _id: ORDER_ID, tableSessionId: "sess1", restaurantId: "r1", orderStatus: "Preparing", items: lines, async save() {} };
+
+  const { ctrl, restore } = load({ session: fresh, otherLive: 0, orders: [order], tableUpdates: [], emits: [] });
+  let body = null;
+  let failure = null;
+  const res = { status() { return res; }, json(b) { body = b; } };
+  try {
+    await ctrl.cancelSessionItem(
+      { params: { id: "507f1f77bcf86cd799439011", itemId: "i1" }, body: {}, user: { restaurantId: "r1", name: "Asha" } },
+      res,
+      (err) => { failure = err; },
+    );
+  } finally {
+    restore();
+  }
+
+  assert.equal(failure, null, failure && failure.message);
+  assert.equal(order.orderStatus, "Cancelled");
+  assert.equal(body.data.status, "CLOSED");
+});
 
 test("REGRESSION: cancelling the only order frees the table", async () => {
   const session = makeSession([

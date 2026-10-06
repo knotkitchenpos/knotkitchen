@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
-import { Link, Navigate } from "react-router-dom";
+import { Navigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import MediaLibrary from "../components/media/MediaLibrary";
 import SecurityPinModal from "../components/common/SecurityPinModal";
-import { isOwner, checkActionAuthorization } from "../utils/security";
-import { getWebsiteSettings, updateWebsiteSettings, validateGatewayCredentials } from "../https/storefrontApi";
+import { checkActionAuthorization } from "../utils/security";
+import { getWebsiteSettings, updateWebsiteSettings } from "../https/storefrontApi";
 import { withoutRulesKeys } from "../utils/rulesCharges";
 import { getMenus, getSubscriptionStatus, publishWebsiteCache } from "../https";
 
@@ -22,7 +22,6 @@ const TABS = [
   { key: "content", label: "About & Popular Items" },
   { key: "contact", label: "Contact" },
   { key: "legal", label: "Legal Pages" },
-  { key: "payments", label: "Payment Gateway" },
   { key: "media", label: "Website Images" },
 ];
 
@@ -118,15 +117,9 @@ const WebsiteSettings = () => {
   const [dishQuery, setDishQuery] = useState("");
   // Which photo slot the image picker is filling ("" = closed).
   const [pickingImage, setPickingImage] = useState("");
-  // The website is an add-on (the server enforces it too). Without it this
-  // page is the payment gateway only, if the store has that; else Billing.
+  // The website is the Website add-on (the server enforces it too); without it this page is Billing.
   const { data: subRes } = useQuery({ queryKey: ["subscription"], queryFn: getSubscriptionStatus });
   const websiteLocked = subRes?.data?.data?.features?.website === false;
-  const gatewayLocked = subRes?.data?.data?.features?.paymentGateway === false;
-  const tabs = websiteLocked ? TABS.filter((t) => t.key === "payments") : TABS;
-  useEffect(() => {
-    if (websiteLocked) setTab("payments");
-  }, [websiteLocked]);
   useEffect(() => {
     let live = true;
     getMenus({ source: "website" })
@@ -191,9 +184,9 @@ const WebsiteSettings = () => {
 
   /** Write the editor's current state to the server. Throws on failure. */
   const persist = async () => {
-    // Gateway only without the Website add-on: the rest of the page is not theirs to save.
-    // Never the Rules & Charges lists: this copy may be older than the ones saved there.
-    const res = await updateWebsiteSettings(websiteLocked ? { paymentGateways: settings.paymentGateways } : withoutRulesKeys(settings));
+    // Never the Rules & Charges lists (this copy may be older than the ones saved there), and never the gateway:
+    // that is Store Properties' (PaymentGatewayCard). undefined is dropped from the JSON.
+    const res = await updateWebsiteSettings({ ...withoutRulesKeys(settings), paymentGateways: undefined });
     setSettings(res.data.data.settings);
     setStorefrontUrl(res.data.data.storefrontUrl);
     setDirty(false);
@@ -243,7 +236,7 @@ const WebsiteSettings = () => {
     });
   };
 
-  if (websiteLocked && gatewayLocked) return <Navigate to="/settings/billing" replace />;
+  if (websiteLocked) return <Navigate to="/settings/billing" replace />;
 
   if (loading) {
     return (
@@ -264,26 +257,18 @@ const WebsiteSettings = () => {
       {/* Header */}
       <div className="flex flex-wrap items-center gap-3 mb-6">
         <div className="min-w-0">
-          <h1 className="text-2xl font-extrabold text-[#0F172A]">{websiteLocked ? "Payment Gateway" : "Website"}</h1>
-          {websiteLocked ? (
-            <p className="text-sm text-[#64748B]">
-              The website is an add-on.{" "}
-              <Link to="/settings/billing" className="font-semibold text-[#C2410C] hover:underline">Add it in Billing</Link>
-            </p>
-          ) : (
-            <a
-              href={storefrontUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="text-sm text-[#C2410C] hover:underline break-all"
-            >
-              {storefrontUrl}
-            </a>
-          )}
+          <h1 className="text-2xl font-extrabold text-[#0F172A]">Website</h1>
+          <a
+            href={storefrontUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="text-sm text-[#C2410C] hover:underline break-all"
+          >
+            {storefrontUrl}
+          </a>
         </div>
 
         <div className="ml-auto flex items-center gap-2">
-          {!websiteLocked && (
           <button
             type="button"
             onClick={publish}
@@ -292,13 +277,11 @@ const WebsiteSettings = () => {
           >
             🚀 Publish Website
           </button>
-          )}
           {/* Preview opens the REAL customer website.
               It used to open /website/preview, a second storefront living
               inside the POS that renders one fixed design and knows nothing
               about landing templates -- so every template previewed
               identically, and the landing page never appeared at all. */}
-          {!websiteLocked && (
           <a
             href={storefrontUrl}
             target="_blank"
@@ -307,7 +290,6 @@ const WebsiteSettings = () => {
           >
             👁 Preview
           </a>
-          )}
           <button
             type="button"
             onClick={save}
@@ -344,7 +326,7 @@ const WebsiteSettings = () => {
 
       {/* Tabs */}
       <div className="flex gap-1 overflow-x-auto mb-5 border-b border-[#E2E8F0] pb-px">
-        {tabs.map((t) => (
+        {TABS.map((t) => (
           <button
             key={t.key}
             type="button"
@@ -660,7 +642,7 @@ const WebsiteSettings = () => {
                 ["addressLine1", "Address Line 1"],
                 ["addressLine2", "Address Line 2"],
                 ["city", "City"],
-                ["postalCode", "Postcode"],
+                ["postalCode", "Pincode"],
                 ["mapUrl", "Google Maps link"],
               ].map(([key, label]) => (
                 <Field key={key} label={label}>
@@ -748,193 +730,6 @@ const WebsiteSettings = () => {
                 ))}
               </div>
             ) : null}
-          </div>
-        ) : null}
-
-        {/* ---------- PAYMENTS ---------- */}
-        {tab === "payments" ? (
-          <div className="space-y-6">
-            {!isOwner(user) && (
-              <div className="p-4 rounded-2xl bg-[#FEF2F2] border border-[#FECACA] text-xs font-bold text-[#DC2626]">
-                🔒 Payment Gateway Configuration is restricted to the Store Owner only. Staff members cannot view or edit secrets.
-              </div>
-            )}
-            <div>
-              <h3 className="font-bold text-[#0F172A] text-base mb-1">Payment Gateways</h3>
-              <p className="text-xs text-[#94A3B8]">
-                Configure Cashfree or PhonePe gateway credentials. Only ONE gateway can be active at a time for website and table QR payments.
-              </p>
-            </div>
-
-            {/* Active Gateway Selection */}
-            <div className="p-4 rounded-2xl bg-[#F8FAFC] border border-[#E2E8F0] space-y-3">
-              <div className="flex items-center justify-between">
-                <h4 className="font-extrabold text-sm text-[#0F172A]">Active Payment Gateway</h4>
-                <span className="px-3 py-1 rounded-full bg-[#FD5302]/10 text-[#C2410C] font-extrabold text-xs uppercase">
-                  Current: {settings.paymentGateways?.activeGateway || "cashfree"}
-                </span>
-              </div>
-              <div className="p-3 rounded-xl border border-[#FDE68A] bg-[#FFFBEB] text-xs text-[#92400E]">
-                Enter <strong>this restaurant&apos;s own</strong> payment gateway keys. Every website and table QR
-                payment settles to the account these keys belong to. Never enter KnotKitchen&apos;s keys here.
-              </div>
-              <Field label="Select Active Gateway" hint="Website and table QR payments will use this gateway.">
-                <select
-                  className={inputClass}
-                  value={settings.paymentGateways?.activeGateway || "cashfree"}
-                  onChange={(e) => patch("paymentGateways.activeGateway", e.target.value)}
-                >
-                  <option value="cashfree">Cashfree {settings.paymentGateways?.cashfree?.isConfigured ? "(Configured)" : "(Not Configured)"}</option>
-                  <option value="phonepe">PhonePe {settings.paymentGateways?.phonepe?.isConfigured ? "(Configured)" : "(Not Configured)"}</option>
-                </select>
-              </Field>
-            </div>
-
-            {/* Gateway Credentials Management */}
-            <div className="space-y-5 pt-2">
-              {/* Cashfree Gateway Card */}
-              <div className="p-4 rounded-2xl border border-[#E2E8F0] bg-white space-y-3 shadow-xs">
-                <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl">💰</span>
-                    <div>
-                      <h4 className="font-extrabold text-sm text-[#0F172A]">Cashfree</h4>
-                      <p className="text-xs text-[#94A3B8]">Accept Instant UPI, Cards & BNPL</p>
-                    </div>
-                  </div>
-                  {settings.paymentGateways?.cashfree?.isConfigured ? (
-                    <span className="px-2.5 py-1 rounded-full bg-[#DCFCE7] text-[#15803D] text-xs font-bold">Configured</span>
-                  ) : (
-                    <span className="px-2.5 py-1 rounded-full bg-[#F1F5F9] text-[#64748B] text-xs font-bold">Unconfigured</span>
-                  )}
-                </div>
-                <div className="grid sm:grid-cols-2 gap-3 text-xs">
-                  <Field label="Client ID (App ID)">
-                    <input
-                      className={inputClass}
-                      placeholder="CF_APP_..."
-                      value={settings.paymentGateways?.cashfree?.clientId || ""}
-                      onChange={(e) => patch("paymentGateways.cashfree.clientId", e.target.value)}
-                    />
-                  </Field>
-                  <Field label="Client Secret" hint={settings.paymentGateways?.cashfree?.clientSecretMasked ? `Masked: ${settings.paymentGateways.cashfree.clientSecretMasked}` : "Encrypted at rest"}>
-                    <input
-                      type="password"
-                      className={inputClass}
-                      placeholder="Enter new secret or leave unchanged"
-                      value={settings.paymentGateways?.cashfree?.clientSecret || ""}
-                      onChange={(e) => patch("paymentGateways.cashfree.clientSecret", e.target.value)}
-                    />
-                  </Field>
-                  <Field label="Environment">
-                    <select
-                      className={inputClass}
-                      value={settings.paymentGateways?.cashfree?.environment || "TEST"}
-                      onChange={(e) => patch("paymentGateways.cashfree.environment", e.target.value)}
-                    >
-                      <option value="TEST">TEST (Sandbox)</option>
-                      <option value="PROD">PROD (Live)</option>
-                    </select>
-                  </Field>
-                </div>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      const res = await validateGatewayCredentials({
-                        gateway: "cashfree",
-                        clientId: settings.paymentGateways?.cashfree?.clientId,
-                        clientSecret: settings.paymentGateways?.cashfree?.clientSecret || "existing_secret_token",
-                        environment: settings.paymentGateways?.cashfree?.environment || "TEST",
-                      });
-                      setMessage({ type: "success", text: res.data?.message || "Cashfree credentials validated!" });
-                      save();
-                    } catch (err) {
-                      setMessage({ type: "error", text: err.response?.data?.message || "Validation failed." });
-                    }
-                  }}
-                  className="px-3.5 py-1.5 rounded-xl border border-[#FD5302] text-[#C2410C] text-xs font-bold hover:bg-[#FD5302]/5"
-                >
-                  Verify & Save Cashfree Credentials
-                </button>
-              </div>
-
-              {/* PhonePe Gateway Card */}
-              <div className="p-4 rounded-2xl border border-[#E2E8F0] bg-white space-y-3 shadow-xs">
-                <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl">📱</span>
-                    <div>
-                      <h4 className="font-extrabold text-sm text-[#0F172A]">PhonePe</h4>
-                      <p className="text-xs text-[#94A3B8]">Direct PhonePe UPI & PG Integration</p>
-                    </div>
-                  </div>
-                  {settings.paymentGateways?.phonepe?.isConfigured ? (
-                    <span className="px-2.5 py-1 rounded-full bg-[#DCFCE7] text-[#15803D] text-xs font-bold">Configured</span>
-                  ) : (
-                    <span className="px-2.5 py-1 rounded-full bg-[#F1F5F9] text-[#64748B] text-xs font-bold">Unconfigured</span>
-                  )}
-                </div>
-                <div className="grid sm:grid-cols-2 gap-3 text-xs">
-                  <Field label="Merchant ID">
-                    <input
-                      className={inputClass}
-                      placeholder="MERCHANTUAT..."
-                      value={settings.paymentGateways?.phonepe?.merchantId || ""}
-                      onChange={(e) => patch("paymentGateways.phonepe.merchantId", e.target.value)}
-                    />
-                  </Field>
-                  <Field label="Salt Key" hint={settings.paymentGateways?.phonepe?.saltKeyMasked ? `Masked: ${settings.paymentGateways.phonepe.saltKeyMasked}` : "Encrypted at rest"}>
-                    <input
-                      type="password"
-                      className={inputClass}
-                      placeholder="Enter new salt key or leave unchanged"
-                      value={settings.paymentGateways?.phonepe?.saltKey || ""}
-                      onChange={(e) => patch("paymentGateways.phonepe.saltKey", e.target.value)}
-                    />
-                  </Field>
-                  <Field label="Salt Index">
-                    <input
-                      className={inputClass}
-                      placeholder="1"
-                      value={settings.paymentGateways?.phonepe?.saltIndex || "1"}
-                      onChange={(e) => patch("paymentGateways.phonepe.saltIndex", e.target.value)}
-                    />
-                  </Field>
-                  <Field label="Environment">
-                    <select
-                      className={inputClass}
-                      value={settings.paymentGateways?.phonepe?.environment || "TEST"}
-                      onChange={(e) => patch("paymentGateways.phonepe.environment", e.target.value)}
-                    >
-                      <option value="UAT">UAT (Sandbox)</option>
-                      <option value="PROD">PROD (Live)</option>
-                    </select>
-                  </Field>
-                </div>
-                <button
-                  type="button"
-                  onClick={async () => {
-                    try {
-                      const res = await validateGatewayCredentials({
-                        gateway: "phonepe",
-                        merchantId: settings.paymentGateways?.phonepe?.merchantId,
-                        saltKey: settings.paymentGateways?.phonepe?.saltKey || "existing_secret_token",
-                        saltIndex: settings.paymentGateways?.phonepe?.saltIndex || "1",
-                        environment: settings.paymentGateways?.phonepe?.environment || "UAT",
-                      });
-                      setMessage({ type: "success", text: res.data?.message || "PhonePe credentials validated!" });
-                      save();
-                    } catch (err) {
-                      setMessage({ type: "error", text: err.response?.data?.message || "Validation failed." });
-                    }
-                  }}
-                  className="px-3.5 py-1.5 rounded-xl border border-[#FD5302] text-[#C2410C] text-xs font-bold hover:bg-[#FD5302]/5"
-                >
-                  Verify & Save PhonePe Credentials
-                </button>
-              </div>
-            </div>
           </div>
         ) : null}
 

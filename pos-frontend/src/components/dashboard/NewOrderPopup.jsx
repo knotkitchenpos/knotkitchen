@@ -5,6 +5,7 @@ import { enqueueSnackbar } from "notistack";
 import { listAwaitingOrders, updateOnlineOrderStatus } from "../../https/storefrontApi";
 import { AWAITING_ACCEPTANCE, PREPARING } from "../../constants/orderStatus";
 import useAlertBeep from "../../hooks/useAlertBeep";
+import useArmed from "../../hooks/useArmed";
 import { tableLabel as labelForTable } from "../../utils/orderLabels";
 import { acquireSocket, releaseSocket } from "../../socket";
 import { timeIN } from "../../utils";
@@ -49,6 +50,13 @@ const SOURCE_LABEL = {
   WEBSITE: "New Website Order",
 };
 
+/**
+ * The channel to alert as. A guest's QR order on a till-opened table keeps the
+ * table's source ("POS", so Reports count it as a System table) and is marked
+ * `placedVia: "QR"` instead; without this it reached the till silently.
+ */
+const channelOf = (o) => (o?.placedVia === "QR" ? "QR" : String(o?.source || "").toUpperCase());
+
 const NewOrderPopup = () => {
   const navigate = useNavigate();
   const restaurantId = useSelector((s) => s.user?.restaurantId);
@@ -81,7 +89,7 @@ const NewOrderPopup = () => {
       try {
         const { data } = await listAwaitingOrders();
         (data?.data || [])
-          .filter((o) => ALERTING_SOURCES.has(String(o?.source || "").toUpperCase()))
+          .filter((o) => ALERTING_SOURCES.has(channelOf(o)))
           .forEach(add);
       } catch {
         /* the live event still works without this */
@@ -96,7 +104,7 @@ const NewOrderPopup = () => {
     };
 
     const onCreated = (payload) => {
-      const source = String(payload?.source || "").toUpperCase();
+      const source = channelOf(payload);
       if (!ALERTING_SOURCES.has(source)) return;
       add(payload);
       try {
@@ -156,16 +164,23 @@ const NewOrderPopup = () => {
     e.currentTarget.releasePointerCapture?.(e.pointerId);
   };
 
+  // Taps land nowhere until the card at the head has been up for a moment.
+  const armed = useArmed(queue[0]?.orderId);
+
   if (queue.length === 0) return null;
   const current = queue[0];
-  const drop = () => setQueue((prev) => prev.slice(1));
+  // By id, never by position: accepting emits `onlineOrder:status` before the
+  // HTTP reply, and onStatus has usually removed this card already, so
+  // dropping "the first card" threw away the next waiting order.
+  const drop = (id) => setQueue((prev) => prev.filter((p) => String(p.orderId) !== String(id)));
 
   const decide = async (action) => {
+    if (!armed) return;
     // emitOrderCreated sends `orderId`. Reading `_id` here found nothing and
     // silently dismissed the card without touching the order.
     const orderId = current?.orderId || current?._id || current?.id;
     if (!orderId) {
-      drop();
+      drop(current.orderId);
       return;
     }
     setBusy(true);
@@ -174,7 +189,7 @@ const NewOrderPopup = () => {
       enqueueSnackbar(action === "accept" ? "Order accepted." : "Order cancelled.", {
         variant: action === "accept" ? "success" : "info",
       });
-      drop();
+      drop(current.orderId);
     } catch (e) {
       enqueueSnackbar(e?.response?.data?.message || "Could not update the order.", {
         variant: "error",
@@ -184,7 +199,7 @@ const NewOrderPopup = () => {
     }
   };
 
-  const source = String(current.source || "").toUpperCase();
+  const source = channelOf(current);
   // A Knot Eats order is a website order (source WEBSITE) from another front
   // door, so it keeps the website card and only the heading changes.
   const isWebsite = source === "WEBSITE";
@@ -314,7 +329,8 @@ const NewOrderPopup = () => {
           <button
             type="button"
             onClick={() => {
-              drop();
+              if (!armed) return;
+              drop(current.orderId);
               navigate("/orders");
             }}
             className="w-full text-[12.5px] font-bold text-[#64748B] hover:text-[#0F172A]"

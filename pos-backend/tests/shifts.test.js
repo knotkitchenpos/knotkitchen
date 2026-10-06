@@ -40,11 +40,18 @@ test("closing records the difference between counted and expected cash", () => {
   assert.equal(closeFigures(s, 712.5).difference, 12.5);
 });
 
-test("payment methods map to the four drawer buckets", () => {
+test("payment methods map to the drawer buckets", () => {
   assert.equal(methodOf({ payments: [{ method: "cash" }] }), "cash");
   assert.equal(methodOf({ paymentMethod: "UPI" }), "upi");
-  assert.equal(methodOf({ paymentMethod: "card" }), "gateway");
+  assert.equal(methodOf({ paymentMethod: "card" }), "card", "a counter card machine is not Cashfree");
+  assert.equal(methodOf({ paymentMethod: "online" }), "gateway");
   assert.equal(methodOf({}), "other");
+  // REGRESSION: a pay-by-link order paid by card on Cashfree is stored as
+  // "card"; it is gateway money, not the card machine's.
+  const link = { orderStatus: "Completed", bills: { totalWithTax: 900 }, paymentData: { gatewayPaymentId: "cf_1" }, payments: [{ method: "card", amount: 900, status: "paid" }] };
+  assert.equal(methodOf(link), "gateway");
+  const s = shiftSummary([link]);
+  assert.deepEqual([s.card, s.gateway], [0, 900]);
 });
 
 test("open and close are PIN-protected and the route is mounted", () => {
@@ -53,4 +60,23 @@ test("open and close are PIN-protected and the route is mounted", () => {
   assert.match(routes, /"\/close"\)\.post\(isVerifiedUser, requireProtectedAction, closeShift\)/);
   const app = fs.readFileSync(path.join(__dirname, "..", "app.js"), "utf8");
   assert.ok(app.includes('app.use("/api/shift", require("./routes/shiftRoute"))'));
+});
+
+test("REGRESSION: a split bill counts each part in its own bucket, so its cash reaches the drawer", () => {
+  const split = {
+    orderStatus: "Completed",
+    bills: { totalWithTax: 800 },
+    paymentMethod: "Split (Cash ₹500.00 + UPI ₹300.00)",
+    isSplit: true,
+    payments: [
+      { method: "cash", amount: 500, status: "paid" },
+      { method: "upi", amount: 300, status: "paid" },
+    ],
+  };
+  const s = shiftSummary([split, order("Completed", 250, "card")], 1000);
+  assert.equal(s.cash, 500);
+  assert.equal(s.upi, 300);
+  assert.equal(s.card, 250);
+  assert.equal(s.gateway, 0);
+  assert.equal(s.expectedCash, 1500);
 });

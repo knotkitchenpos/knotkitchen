@@ -24,7 +24,7 @@ const ordersBetween = (user, from, to) =>
     isDeleted: { $ne: true },
     createdAt: { $gte: from, $lte: to || new Date() },
   })
-    .select("orderStatus bills refunds payments paymentMethod tips")
+    .select("orderStatus bills refunds payments paymentMethod paymentData.gatewayPaymentId tips")
     .lean();
 
 const money = (v) => {
