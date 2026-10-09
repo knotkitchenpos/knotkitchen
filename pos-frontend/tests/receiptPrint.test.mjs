@@ -172,7 +172,9 @@ test("REGRESSION: only the ink is sent, and the paper comes out the same", () =>
   for (let y = 0; y < rows.length; y += 1) {
     assert.deepEqual([...rows[y]], [...bits.subarray(y * rowBytes, (y + 1) * rowBytes)], `row ${y}`);
   }
-  assert.ok(job.every((v, i) => !(v === 0x1b && job[i + 1] === 0x4a) || job[i + 2] <= 255));
+  // REGRESSION (photo: lines ran together on an Epson-style printer): no ESC J.
+  // It feeds in the printer's own unit (1/180" or 1/360"), so gaps came out short.
+  assert.ok(!job.some((v, i) => v === 0x1b && job[i + 1] === 0x4a), "gaps go out as blank raster rows");
 });
 
 test("Device Configuration has no Printer type or Paper end choice: a receipt printer that cuts", () => {
@@ -198,7 +200,10 @@ test("REGRESSION: a 2-inch receipt feeds out past the tear bar; a 3-inch one onl
   assert.ok(!threeInch.some((v, i) => v === 0x1b && threeInch[i + 1] === 0x4a), "no feed before a cutter's cut");
   // The receipt in the photo ended at "Paid by / Cash", the rest still inside.
   const twoInch = rasterJob(bits, width, 10, { tearFeed: TEAR_FEED_DOTS });
-  assert.deepEqual([...twoInch.slice(-7)], [0x1b, 0x4a, TEAR_FEED_DOTS, ...cut]);
+  // Exactly TEAR_FEED_DOTS blank raster rows (dots on any printer), then the cut.
+  assert.deepEqual([...twoInch.slice(-4)], cut);
+  assert.equal(playBack(twoInch, 2).length - playBack(threeInch, 2).length, TEAR_FEED_DOTS);
+  assert.ok(!twoInch.some((v, i) => v === 0x1b && twoInch[i + 1] === 0x4a), "no ESC J: its unit varies by printer");
   assert.ok(TEAR_FEED_DOTS >= 80 && TEAR_FEED_DOTS <= 160, "10-20 mm: past the tear bar, not a long blank strip");
 });
 

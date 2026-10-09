@@ -80,9 +80,8 @@ const blankRow = (bits, rowBytes, y) => {
  *
  * Only the ink is sent. A 3-inch receipt is ~70 KB as a full bitmap, and a
  * BLE printer that takes 20 bytes per acknowledged write needed 3-5 minutes
- * for it. Blank rows (the gaps between lines) become an ESC J paper feed of
- * that many dots, and each band is cut at its right-most inked byte, the rest
- * of the row being white.
+ * for it. Blank rows (the gaps between lines) go out one byte wide, and each
+ * band is cut at its right-most inked byte, the rest of the row being white.
  *
  * `tearFeed`: dots to feed after the last line on a printer with no cutter
  * (the 2-inch portables), which ignores the cut and would leave the end of
@@ -91,6 +90,15 @@ const blankRow = (bits, rowBytes, y) => {
 export const rasterJob = (bits, width, height, { tearFeed = 0 } = {}) => {
   const rowBytes = Math.ceil(width / 8);
   const chunks = [Uint8Array.of(0x1b, 0x40)]; // ESC @
+  // Paper feed as blank raster rows one byte wide, not ESC J: printers count
+  // ESC J in their own motion unit (1/180" or 1/360" on Epson-style ones),
+  // which squeezed the gaps between lines until they ran into each other.
+  const gap = (dots) => {
+    for (let left = dots; left > 0; left -= BAND_ROWS) {
+      const n = Math.min(left, BAND_ROWS);
+      chunks.push(Uint8Array.of(0x1d, 0x76, 0x30, 0x00, 1, 0, n & 0xff, n >> 8), new Uint8Array(n)); // GS v 0
+    }
+  };
   let blank = 0;
   for (let top = 0; top < height; ) {
     if (blankRow(bits, rowBytes, top)) {
@@ -98,7 +106,8 @@ export const rasterJob = (bits, width, height, { tearFeed = 0 } = {}) => {
       top += 1;
       continue;
     }
-    for (; blank > 0; blank -= Math.min(blank, 255)) chunks.push(Uint8Array.of(0x1b, 0x4a, Math.min(blank, 255))); // ESC J n
+    gap(blank);
+    blank = 0;
     let rows = 1;
     while (rows < BAND_ROWS && top + rows < height && !blankRow(bits, rowBytes, top + rows)) rows += 1;
     let used = 1;
@@ -118,7 +127,7 @@ export const rasterJob = (bits, width, height, { tearFeed = 0 } = {}) => {
   }
   // Blank rows left at the bottom are dropped: the cut feeds the paper out,
   // and a printer with no cutter gets its tear feed instead.
-  for (let feed = tearFeed; feed > 0; feed -= Math.min(feed, 255)) chunks.push(Uint8Array.of(0x1b, 0x4a, Math.min(feed, 255)));
+  gap(tearFeed);
   chunks.push(Uint8Array.of(0x1d, 0x56, 0x42, 0x00)); // GS V B 0: feed to the cutter, partial cut
   const out = new Uint8Array(chunks.reduce((n, c) => n + c.length, 0));
   let at = 0;
