@@ -156,8 +156,8 @@ echo "  template carries a tappable bill link that SMS cannot."
 echo "  Both come from the Fast2SMS WhatsApp panel; neither is a secret."
 echo "  Leave them blank to keep e-bills on SMS."
 echo
-ask FAST2SMS_WHATSAPP_PHONE_NUMBER_ID  "WhatsApp phone_number_id (WABA number ID)" "" "1186508304555187"
-ask FAST2SMS_EBILL_WHATSAPP_MESSAGE_ID "E-bill WhatsApp Message ID" "" "31172"
+ask FAST2SMS_WHATSAPP_PHONE_NUMBER_ID  "WhatsApp phone_number_id of the sender +91 94776 23682 (Fast2SMS WhatsApp panel)"
+ask FAST2SMS_EBILL_WHATSAPP_MESSAGE_ID "E-bill WhatsApp Message ID (customer_bill_whatsapp)" "" "36774"
 
 echo "=============================================="
 echo " Public receipt links"

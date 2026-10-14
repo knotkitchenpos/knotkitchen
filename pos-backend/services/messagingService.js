@@ -61,22 +61,24 @@ const MESSAGES = {
 
   eBill: {
     /**
-     * WhatsApp template `knotkitchen_ebill` (Utility, en).
+     * WhatsApp template `customer_bill_whatsapp` (Utility, en; Fast2SMS
+     * Message ID 36774, sender +91 94776 23682).
      *
-     *   HEADER  Order E-Bill from {{1}}     -> restaurant name
-     *   BODY    Order No: {{1}}             -> order number
-     *           Total: Rs {{2}}             -> total
-     *           View Bill: {{3}}            -> public receipt link
+     *   HEADER  Order Bill                  (fixed text, no variable)
+     *   BODY    🍽️ {{1}}                    -> restaurant name
+     *           Order ID: {{2}}             -> order number
+     *           Date: {{3}}                 -> bill date, store time
+     *           Subtotal: ₹ {{4}}           -> what the diner paid
      *
-     * Flattened header-first, so: restaurant | order no | total | link.
+     * The template has no link, so the bill URL is not sent on WhatsApp.
      */
     whatsapp: {
       messageId: () => process.env.FAST2SMS_EBILL_WHATSAPP_MESSAGE_ID || "",
-      variables: ({ restaurantName, orderNumber, total, receiptUrl }) => [
+      variables: ({ restaurantName, orderNumber, billDate, total }) => [
         restaurantName || "Knot Kitchen",
         orderNumber || "",
+        billDate || "",
         total || "",
-        receiptUrl || "",
       ],
     },
 

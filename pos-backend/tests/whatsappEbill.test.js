@@ -310,23 +310,30 @@ test("e-bills use WhatsApp when it is configured, and fall back cleanly", async 
 test("the e-bill variable order matches the registered WhatsApp template", () => {
   const { MESSAGES } = require("../services/messagingService");
 
-  // knotkitchen_ebill, as approved:
-  //   HEADER  Order E-Bill from {{1}}
-  //   BODY    Order No: {{1}} / Total: Rs {{2}} / View Bill: {{3}}
-  // flattened header-first.
+  // customer_bill_whatsapp, as approved (header "Order Bill" has no variable):
+  //   BODY  🍽️ {{1}} / Order ID: {{2}} / Date: {{3}} / Subtotal: ₹ {{4}}
   const values = MESSAGES.eBill.whatsapp.variables({
     restaurantName: "Spice Garden",
     orderNumber: "A-1042",
+    billDate: "14 Oct 2026, 7:35 pm",
     total: "525.00",
     receiptUrl: "https://api.knotkitchen.com/r/o_x_y",
   });
 
   assert.deepEqual(values, [
-    "Spice Garden",                              // header {{1}}
-    "A-1042",                                    // body {{1}}
-    "525.00",                                    // body {{2}}
-    "https://api.knotkitchen.com/r/o_x_y",    // body {{3}}
+    "Spice Garden",          // {{1}}
+    "A-1042",                // {{2}}
+    "14 Oct 2026, 7:35 pm",  // {{3}}
+    "525.00",                // {{4}}
   ]);
+});
+
+test("the e-bill date is the store's time, not the server's", () => {
+  const { billDate } = require("../services/eBillService");
+  // 14:05 UTC is 7:35 pm in India; a UTC server would have said 2:05 pm.
+  assert.equal(billDate("2026-10-14T14:05:00Z", "Asia/Kolkata"), "14 Oct 2026, 7:35 pm");
+  assert.equal(billDate("2026-10-14T14:05:00Z"), "14 Oct 2026, 7:35 pm", "no zone on the store means India");
+  assert.match(SRC("services/eBillService.js"), /billDate: billDate\(receipt\.dateTime, restaurant\?\.timezone\)/);
 });
 
 test("the total is a bare amount -- the template supplies the currency symbol", () => {
@@ -336,7 +343,7 @@ test("the total is a bare amount -- the template supplies the currency symbol", 
   assert.match(
     SRC("services/eBillService.js"),
     /Number\(receipt\.totalPaid \|\| receipt\.total \|\| 0\)\.toFixed\(2\)/,
-    "'Total: Rs {{2}}' must not become 'Total: Rs Rs525'",
+    "'Subtotal: ₹ {{4}}' must not become '₹ ₹525'",
   );
 });
 

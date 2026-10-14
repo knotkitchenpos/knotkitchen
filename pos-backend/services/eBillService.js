@@ -28,6 +28,18 @@ const { sendEBillMessage } = require("./messagingService");
 const { urlForOrder, urlForSession } = require("./receiptLink");
 const { fireEBillCharge } = require("./ebillCharge");
 
+/** The bill's date as the diner reads it, in the store's time: "14 Oct 2026, 7:35 pm". */
+const billDate = (when, timeZone) =>
+  new Date(when || Date.now()).toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: timeZone || "Asia/Kolkata",
+  });
+
 /**
  * Load everything a receipt needs, for either subject.
  *
@@ -121,9 +133,10 @@ const deliverEBill = async ({ order, tableSession, bill, restaurant, phone }) =>
     phone: targetPhone,
     orderNumber: receipt.orderNumber,
     restaurantName: receipt.restaurant.name,
-    // The template renders "Total: Rs {{2}}", so the variable is the bare
-    // amount -- no symbol, always two decimals. What the diner paid, so an
-    // online payment's platform fee is included.
+    billDate: billDate(receipt.dateTime, restaurant?.timezone),
+    // The template supplies the ₹, so the variable is the bare amount, always
+    // two decimals. What the diner paid, so an online payment's platform fee
+    // is included.
     total: Number(receipt.totalPaid || receipt.total || 0).toFixed(2),
     itemsCount: receipt.quantities,
     receiptUrl: billUrl,
@@ -232,6 +245,7 @@ const fireAutoEBill = (subject) => {
 };
 
 module.exports = {
+  billDate,
   orderForSession,
   loadEBillSubject,
   deliverEBill,
