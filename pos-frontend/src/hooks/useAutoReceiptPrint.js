@@ -2,20 +2,22 @@ import { useEffect } from "react";
 import { useSelector } from "react-redux";
 import { enqueueSnackbar } from "notistack";
 import { getOrderById } from "../https";
-import { loadPrinterConfig } from "../utils/printerDevice";
+import { kitchenPrinter, loadPrinterConfig } from "../utils/printerDevice";
 import { printKot, printOrderReceipt } from "../utils/printReceipt";
 import { acquireSocket, releaseSocket } from "../socket";
 
 /**
- * Auto Receipt Print and Auto KOT: every new order prints on this device's
- * printer the moment it arrives -- till, website and table QR alike, before
- * anyone accepts it. The receipt and the kitchen ticket are separate
- * switches (Settings > Device Configuration).
+ * Auto Receipt Print and Auto KOT, two switches per device (Settings > Device
+ * Configuration). The KOT goes to the kitchen printer when the device has
+ * one, else the receipt printer; the receipt always to the receipt printer.
  *
- * All new orders announce themselves as `onlineOrder:created` (the name
- * predates the till and QR using it). A round added to a table that already
- * has an order is not a new order: no receipt, but the kitchen still needs
- * a ticket for the new lines, which arrive as `kitchen:round`.
+ * - A till order prints the moment it is rung up (`onlineOrder:created`; the
+ *   name predates the till using it).
+ * - A customer's order -- table QR, website, Knot Eats -- prints when staff
+ *   accept it (`onlineOrder:accepted`), never on arrival: a declined order
+ *   never reaches the kitchen.
+ * - Dishes added to a table the kitchen already has a ticket for are not a
+ *   new order: no receipt, a KOT for just those lines (`kitchen:round`).
  */
 
 const PRINTED_KEY = "kk.autoPrinted.v1";
@@ -48,10 +50,12 @@ const useAutoReceiptPrint = () => {
 
     const socket = acquireSocket(restaurantId);
 
-    const onCreated = async (payload) => {
+    const printNewOrder = async (payload) => {
       const config = loadPrinterConfig();
-      if (!config.type || !payload?.orderId) return;
-      if (!config.autoPrint && !config.kotPrint) return;
+      // A device with only a kitchen printer still prints its KOTs.
+      const wantReceipt = config.autoPrint && config.type;
+      const wantKot = config.kotPrint && kitchenPrinter(config).type;
+      if (!payload?.orderId || (!wantReceipt && !wantKot)) return;
       if (!claim(payload.orderId)) return;
       let order;
       try {
@@ -65,23 +69,29 @@ const useAutoReceiptPrint = () => {
         enqueueSnackbar(`Not printed: ${err?.message || "could not load the order"}`, { variant: "warning" });
         return;
       }
+      // A sale taken offline was paid and handed over then: no receipt on its sync, and no KOT
+      // when its till printed one (O1). A till without Auto KOT left the ticket to this device.
+      if (order.isOffline && (order.kotPrinted || !config.kotPrint)) return;
       // Kitchen first: the cook is waiting, the customer copy can follow.
       if (config.kotPrint) {
         await printKot(order, { auto: true, config }).catch((err) =>
           enqueueSnackbar(`KOT not printed: ${err?.message || "printer error"}`, { variant: "warning" }),
         );
       }
-      if (config.autoPrint) {
+      if (wantReceipt && !order.isOffline) {
         await printOrderReceipt(order, { auto: true, config }).catch((err) =>
           enqueueSnackbar(`Receipt not printed: ${err?.message || "printer error"}`, { variant: "warning" }),
         );
       }
     };
 
+    // D4: a customer's order (table QR, website, Knot Eats) prints when staff accept it, never on arrival.
+    const onCreated = (payload) => (payload?.placedVia === "QR" || payload?.source === "WEBSITE" ? undefined : printNewOrder(payload));
+
     // Lines added to a table mid-meal: a ticket for just those lines.
     const onRound = async (payload) => {
       const config = loadPrinterConfig();
-      if (!config.kotPrint || !config.type || !payload?.orderId || !payload.items?.length) return;
+      if (!config.kotPrint || !kitchenPrinter(config).type || !payload?.orderId || !payload.items?.length) return;
       if (!claim(`${payload.orderId}:${payload.roundId || payload.items.length}:${payload.at || ""}`)) return;
       try {
         await printKot(
@@ -94,9 +104,11 @@ const useAutoReceiptPrint = () => {
     };
 
     socket.on("onlineOrder:created", onCreated);
+    socket.on("onlineOrder:accepted", printNewOrder);
     socket.on("kitchen:round", onRound);
     return () => {
       socket.off("onlineOrder:created", onCreated);
+      socket.off("onlineOrder:accepted", printNewOrder);
       socket.off("kitchen:round", onRound);
       releaseSocket();
     };

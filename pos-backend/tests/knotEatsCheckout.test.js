@@ -600,7 +600,7 @@ test("order types, timings, holidays and Closed for Today each refresh the Knot 
   const fakes = {
     "../services/knotEats": { invalidateListing: () => { invalidations += 1; } },
     "../models/restaurantModel": { findOne: async () => doc, findById: () => ({ select: () => ({ lean: async () => doc }) }) },
-    "../models/websiteSettingsModel": { findOneAndUpdate: async (q, u) => { writes.push(u.$set); return {}; } },
+    "../models/websiteSettingsModel": { findOne: () => ({ lean: async () => null }), findOneAndUpdate: async (q, u) => { writes.push(u.$set); return {}; } },
   };
   await withFakes(fakes, "../controllers/restaurantController", async (ctrl) => {
     const user = { restaurantId: RID, role: "Owner" };

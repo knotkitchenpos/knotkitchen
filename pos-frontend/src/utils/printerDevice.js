@@ -1,5 +1,7 @@
 /**
- * The receipt printer attached to THIS device.
+ * The printers attached to THIS device: a receipt printer (bills and
+ * reports) and, optionally, a kitchen printer for KOTs (the `kitchen` slot of
+ * the same record; unset, KOTs print on the receipt printer).
  *
  * Kept on the device, not the restaurant: the printer is physically plugged
  * into (or paired with) one laptop or tablet, and two tills each with their
@@ -36,6 +38,9 @@ const KEY = "kk.receiptPrinter.v1";
  * autoPrint: a receipt for every new order. kotPrint: a kitchen ticket for every new order and table round.
  */
 export const DEFAULT_CONFIG = { type: "", name: "", paper: "80", autoPrint: false, kotPrint: false, protocol: "escpos" };
+
+/** Where KOTs print: the kitchen slot when one is set up, else the receipt printer. */
+export const kitchenPrinter = (config) => (config?.kitchen?.type ? { ...DEFAULT_CONFIG, ...config.kitchen } : config);
 
 /** The printer another takeaway set up on this device, if any. */
 const anyTakeawayConfig = () => {
@@ -184,7 +189,8 @@ const PRINTER_SERVICES = [
   "0000af30-0000-1000-8000-00805f9b34fb",
 ];
 
-let bt = null; // { device, characteristic }
+// device.id -> { device, characteristic }: a receipt and a kitchen printer stay connected together.
+const bts = new Map();
 
 /** Services every BLE device has and none prints through (Generic Access/Attribute, Device Info, Battery). */
 const STANDARD_SERVICE = /^0000(1800|1801|180a|180f)-/;
@@ -206,8 +212,9 @@ const connectBluetooth = async (device) => {
   }
   found.sort((a, b) => b.score - a.score);
   if (!found.length) throw new Error("This Bluetooth device does not accept print data.");
-  bt = { device, characteristic: found[0].ch };
-  return bt;
+  const link = { device, characteristic: found[0].ch };
+  bts.set(device.id, link);
+  return link;
 };
 
 export const bluetoothAvailable = async () => {
@@ -238,10 +245,8 @@ export const chooseBluetoothPrinter = async () => {
 };
 
 const bluetoothFor = async (config) => {
-  if (bt && bt.device.id === config.bluetooth?.id) {
-    if (!bt.device.gatt.connected) await connectBluetooth(bt.device);
-    return bt;
-  }
+  const cached = bts.get(config.bluetooth?.id);
+  if (cached) return cached.device.gatt.connected ? cached : connectBluetooth(cached.device);
   // Chrome only hands back a previously chosen device where getDevices is
   // enabled; elsewhere the printer has to be chosen again after a reload.
   if (navigator.bluetooth.getDevices) {

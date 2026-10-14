@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SRC = (rel) => fs.readFileSync(path.join(__dirname, "..", rel), "utf8");
+// The option list (MENU_ITEMS) lives in its own module; the screen logic stays in Settings.jsx.
+const MENU = () => SRC("src/constants/settingsMenu.js");
 
 test("the website tiles are locked without the Website add-on, and point to Billing", () => {
   // Manage Website needs the Website add-on. Website Timing & Holidays also
@@ -13,14 +15,14 @@ test("the website tiles are locked without the Website add-on, and point to Bill
   // a QR-only store was held to the 4 PM default). The server enforces both
   // (services/planFeatures).
   const settings = SRC("src/pages/Settings.jsx");
-  assert.match(settings, /id: "timings",[^\n]*feature: "onlineOrdering" \}/);
+  assert.match(MENU(), /id: "timings",[^\n]*feature: "onlineOrdering" \}/);
   assert.match(settings, /if \(blockedByPlan\(item\)\) \{\s*navigate\("\/settings\/billing"\);/);
   assert.match(settings, /\{locked \? <I\.lock \/> : <I\.chevron \/>\}/);
   // Manage Website is the Website add-on, nothing else: no gateway-only way in.
-  assert.match(settings, /id: "website",[^\n]*feature: "website" \}/);
+  assert.match(MENU(), /id: "website",[^\n]*feature: "website" \}/);
   assert.doesNotMatch(settings, /openWhenLocked/);
   // Knot Eats works without the website.
-  assert.match(settings, /id: "eats",[^\n]*mode: "view" \}/);
+  assert.match(MENU(), /id: "eats",[^\n]*mode: "view" \}/);
   const site = SRC("src/pages/WebsiteSettings.jsx");
   assert.doesNotMatch(site, /key: "payments"/);
   assert.match(site, /if \(websiteLocked\) return <Navigate to="\/settings\/billing" replace \/>;/);
@@ -51,9 +53,9 @@ test("the payment gateway lives in Store Properties, and Knot Eats blockers poin
 
 test("POS plan alone: Manage Tables, Order Toggles and Rules & Charges are locked, and cannot be pinned or deep-linked", () => {
   const settings = SRC("src/pages/Settings.jsx");
-  assert.match(settings, /id: "tables",[^\n]*feature: "tableQr" \}/);
-  assert.match(settings, /id: "toggles",[^\n]*feature: "onlineOrdering" \}/);
-  assert.match(settings, /id: "rules",[^\n]*feature: "onlineOrdering" \}/);
+  assert.match(MENU(), /id: "tables",[^\n]*feature: "tableQr" \}/);
+  assert.match(MENU(), /id: "toggles",[^\n]*feature: "onlineOrdering" \}/);
+  assert.match(MENU(), /id: "rules",[^\n]*feature: "onlineOrdering" \}/);
   assert.match(settings, /if \(!canPin\(item\) \|\| blockedByPlan\(item\)\) return;/);
   assert.match(settings, /\{activeMeta && blockedByPlan\(activeMeta\) \? \(/, "a ?view= link to a locked screen shows the lock");
 });

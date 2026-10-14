@@ -11,6 +11,7 @@ const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const Module = require("module");
 const mongoose = require("mongoose");
+const sift = require("sift").default;
 
 const { itemsAddedPayload } = require("../services/socket");
 
@@ -110,8 +111,11 @@ test("REGRESSION: a till that reloads still gets the Added Items card", async ()
     assert.equal(String(seen.filter.restaurantId), RID, "tenant scoped");
     assert.equal(seen.filter["items.status"], "pending");
     assert.deepEqual(seen.filter.tableSessionId, { $ne: null });
-    // An undecided QR order belongs to the New Order card, not this one.
-    assert.deepEqual(seen.filter.$nor, [{ source: "QR", orderStatus: "Preparing" }]);
+    // An undecided guest order belongs to the New Order card, not this one,
+    // whatever the table's source (a till-opened table's order is "POS").
+    const listed = sift({ $nor: seen.filter.$nor });
+    assert.equal(listed(order), true, "an accepted order with a dish under review");
+    assert.equal(listed(tableOrder([{ _id: "b1", status: "pending" }], { source: "POS", orderStatus: "Preparing" })), false);
 
     const [card] = body.data;
     assert.equal(card.orderId, ORDER_ID);
@@ -155,7 +159,8 @@ test("accepting added dishes sends the kitchen a ticket for just those dishes, w
     { _id: "a2", name: "Kebab", quantity: 1, total: 300, status: "pending" },
   ]);
 
-  await withController({ order }, async ({ resolveAddedItems }, seen) => {
+  // A table still being served: a settled one has nothing left to cook (kotOnAccept.test.js).
+  await withController({ order, session: { status: "OCCUPIED", items: [] } }, async ({ resolveAddedItems }, seen) => {
     const { err } = await call(resolveAddedItems, { user, params: { id: ORDER_ID }, body: { action: "accept" } });
     assert.equal(err, null, err && err.message);
     assert.equal(seen.kitchenRounds.length, 1);

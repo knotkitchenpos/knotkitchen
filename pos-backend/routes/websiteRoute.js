@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { isVerifiedUser } = require("../middlewares/tokenVerification");
-const { requirePermission, requireOwnerOnly, requireProtectedAction } = require("../middlewares/requirePermission");
+const { requirePermission, requireOwnerOnly, requireTypedPin } = require("../middlewares/requirePermission");
 const { requireWebsitePlan } = require("../services/planFeatures");
 const {
   getWebsiteSettings,
@@ -24,7 +24,7 @@ const { getKnotEats, setKnotEats } = require("../controllers/knotEatsController"
 // gateway keys (Store Properties) always pass.
 router.route("/settings")
   .get(isVerifiedUser, getWebsiteSettings)
-  .put(isVerifiedUser, requireProtectedAction, requireWebsitePlan, updateWebsiteSettings);
+  .put(isVerifiedUser, requireTypedPin(), requireWebsitePlan, updateWebsiteSettings); // N034: PIN typed for this save
 
 router
   .route("/validate-gateway")

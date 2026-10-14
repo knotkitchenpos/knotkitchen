@@ -21,9 +21,9 @@ const haversineKm = (lat1, lon1, lat2, lon2) => {
 };
 
 /**
- * Estimate distance from store to customer address.
- * If customer address has lat/lng, uses haversine.
- * Otherwise, estimates based on address text length / hash or default 2.5 km for testing.
+ * Straight-line km from the store's pin to the customer's, or NaN when either
+ * has no coordinates (a store website sends none): the caller then charges the
+ * flat fee, never a guess from the address words (PS2, D7).
  */
 const calculateDistanceKm = ({ storeAddress, customerAddress }) => {
   const storeLat = Number(storeAddress?.lat);
@@ -40,15 +40,7 @@ const calculateDistanceKm = ({ storeAddress, customerAddress }) => {
   ) {
     return haversineKm(storeLat, storeLng, custLat, custLng);
   }
-
-  // Fallback: estimate from address string or distance hint in instructions / address
-  const addrText = String(customerAddress?.line1 || customerAddress || "");
-  const distMatch = addrText.match(/(\d+(?:\.\d+)?)\s*(?:km|kilometer)/i);
-  if (distMatch) {
-    return parseFloat(distMatch[1]);
-  }
-
-  return 2.5; // Default reasonable 2.5km distance
+  return NaN;
 };
 
 /**

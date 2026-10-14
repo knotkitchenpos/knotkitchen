@@ -84,7 +84,6 @@ const CategoryDrawer = ({
           name: catName,
           description: catDesc,
           dispatchType,
-          published: catPublished,
           textColor,
         });
       } else {
@@ -171,7 +170,8 @@ const CategoryDrawer = ({
               />
             </div>
   
-            {/* Display ON/OFF Toggle (Module 3) */}
+            {/* Display ON/OFF Toggle (Module 3). N038: categories only; a subcategory never stored one. */}
+            {!showCreateSubcategory && (
             <div className="flex items-center justify-between pt-2 border-t border-[#E2E8F0]">
               <div>
                 <span className="font-extrabold text-[13px] text-[#0F172A] block">Display Status</span>
@@ -194,9 +194,10 @@ const CategoryDrawer = ({
               </button>
             </div>
   
+            )}
             {/* With Display Status OFF the category is hidden everywhere by
                 default; these let it back onto one surface only. */}
-            {!catPublished && (
+            {!catPublished && !showCreateSubcategory && (
               <div className="space-y-2 pl-1">
                 {[
                   { label: "POS Visibility", hint: "Show on the POS tills only", on: catShowOnPos, set: setCatShowOnPos },

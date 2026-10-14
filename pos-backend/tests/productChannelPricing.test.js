@@ -3,21 +3,27 @@
  *
  * Both features were stored on the model and read by NOTHING:
  *
- *   - "Same price for all channels" OFF wrote six figures onto the product
- *     (posCollection/posDelivery/posTable + the website trio) and every
- *     surface, and every bill, still used `item.price`.
+ *   - "Same price for all channels" OFF wrote per-channel figures onto the
+ *     product and every surface, and every bill, still used `item.price`.
  *   - Display Status OFF removed a product from both surfaces with no way to
  *     keep it live on one.
+ *
+ * One price source now (D1): the three POS channel prices bill on the till,
+ * the table QR, the website and Knot Eats alike. The website* figures still
+ * stored on old products are ignored.
  */
 
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 
-const { getChannelPrice, getEffectivePrice, isItemAvailableNow } = require("../services/businessHours");
+const { getChannelPrice, unitPriceNow, isItemAvailableNow } = require("../services/businessHours");
+const { toPublicProduct } = require("../controllers/storefrontController");
 
 const TZ = "Asia/Kolkata";
+const menu = { _id: "m1", name: "Burgers" };
 
 const channelPriced = () => ({
+  _id: "i1",
   name: "Burger",
   price: 100,
   samePrice: false,
@@ -33,44 +39,37 @@ const channelPriced = () => ({
 
 test("each POS channel bills its own price", () => {
   const item = channelPriced();
-  assert.equal(getChannelPrice(item, "system", "collection"), 90);
-  assert.equal(getChannelPrice(item, "system", "delivery"), 110);
-  assert.equal(getChannelPrice(item, "system", "table"), 95);
+  assert.equal(getChannelPrice(item, "collection"), 90);
+  assert.equal(getChannelPrice(item, "delivery"), 110);
+  assert.equal(getChannelPrice(item, "table"), 95);
 });
 
-test("each website channel bills its own price", () => {
-  const item = channelPriced();
-  assert.equal(getChannelPrice(item, "website", "collection"), 120);
-  assert.equal(getChannelPrice(item, "website", "delivery"), 150);
-  assert.equal(getChannelPrice(item, "website", "table"), 130);
+test("website and Knot Eats bill the POS channel prices; stored website* figures are ignored", () => {
+  assert.deepEqual(toPublicProduct(channelPriced(), menu, TZ).prices, { collection: 90, delivery: 110 });
 });
 
-test("POS and website prices for the same channel are independent", () => {
+test("the till and the website charge the same figure for the same channel", () => {
   const item = channelPriced();
-  assert.notEqual(
-    getChannelPrice(item, "system", "delivery"),
-    getChannelPrice(item, "website", "delivery"),
-  );
+  assert.equal(getChannelPrice(item, "delivery"), 110);
+  assert.equal(getChannelPrice(item, "delivery"), toPublicProduct(item, menu, TZ).prices.delivery);
 });
 
 test("'Same price for all channels' ON ignores the stored channel figures", () => {
   const item = { ...channelPriced(), samePrice: true };
-  for (const env of ["system", "website"]) {
-    for (const ch of ["collection", "delivery", "table"]) {
-      assert.equal(getChannelPrice(item, env, ch), 100);
-    }
+  for (const ch of ["collection", "delivery", "table"]) {
+    assert.equal(getChannelPrice(item, ch), 100);
   }
 });
 
 test("a missing or zero channel figure falls back to the base price", () => {
   const partial = { price: 100, samePrice: false, channelPrices: { posCollection: 0 } };
-  assert.equal(getChannelPrice(partial, "system", "collection"), 100, "0 means unset, not free");
-  assert.equal(getChannelPrice(partial, "website", "delivery"), 100);
+  assert.equal(getChannelPrice(partial, "collection"), 100, "0 means unset, not free");
+  assert.equal(getChannelPrice(partial, "delivery"), 100);
 });
 
 test("BACKWARD COMPAT: a product with no channelPrices is unaffected", () => {
-  assert.equal(getChannelPrice({ price: 250 }, "website", "delivery"), 250);
-  assert.equal(getEffectivePrice({ price: 250 }, TZ), 250);
+  assert.equal(getChannelPrice({ price: 250 }, "delivery"), 250);
+  assert.equal(unitPriceNow({ price: 250 }, "collection", TZ), 250);
 });
 
 test("an active price rule still overrides the channel price", () => {
@@ -79,11 +78,13 @@ test("an active price rule still overrides the channel price", () => {
     ...channelPriced(),
     priceRules: [{ isActive: true, price: 55, daysOfWeek: [0, 1, 2, 3, 4, 5, 6], startTime: "00:00", endTime: "23:59" }],
   };
-  assert.equal(getEffectivePrice(item, TZ, { environment: "website", channel: "delivery" }), 55);
+  assert.equal(unitPriceNow(item, "delivery", TZ), 55);
 });
 
-test("getEffectivePrice without a channel keeps its old meaning", () => {
-  assert.equal(getEffectivePrice(channelPriced(), TZ), 100);
+test("an unknown channel prices as collection, never item.price", () => {
+  // Pricing a channel-priced product at item.price is the exact trap behind
+  // "the menu shows ₹4, the bill charges ₹6".
+  assert.equal(unitPriceNow(channelPriced(), undefined, TZ), 90);
 });
 
 // --- per-surface availability -----------------------------------------------

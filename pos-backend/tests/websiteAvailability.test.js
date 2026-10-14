@@ -1,6 +1,6 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { availabilityAt, hoursOnLabel, publicHours } = require("../services/websiteAvailability");
+const { availabilityAt, hoursOnLabel, publicHours, websiteAvailability, orderingOpen, businessDate } = require("../services/websiteAvailability");
 
 const TZ = "Asia/Kolkata";
 // 2026-09-14 is a Monday. IST = UTC+5:30.
@@ -157,4 +157,37 @@ test("SOURCE: the CSD store page shows Website Timing & Holidays, not the unused
   const page = fs.readFileSync(path.join(__dirname, "..", "..", "csd-web", "src", "pages", "RestaurantDetail.jsx"), "utf8");
   assert.match(page, /<WebsiteHours hours=\{storeProperties\.websiteHours\}/);
   assert.match(page, /addEventListener\("visibilitychange", refresh\)/, "refetched when the tab comes back");
+});
+
+test("H1: Open now counts only the order types the store offers", () => {
+  // Pickup only, pickup hours 11-3; delivery has no hours saved, so it runs on the default 4 PM - 11:50 PM.
+  const s = { ordering: { pickupEnabled: true, deliveryEnabled: false }, channelHours: { collection: { weekly: allWeek("11:00", "15:00") } } };
+  const at5pm = orderingOpen(s, websiteAvailability(s, TZ, ist("2026-09-14", "17:00")));
+  assert.equal(at5pm.open, false, "default delivery hours must not open a pickup-only store");
+  assert.equal(at5pm.reason, "Pickup is available 11:00 AM – 3:00 PM today.");
+  assert.deepEqual(orderingOpen(s, websiteAvailability(s, TZ, ist("2026-09-14", "12:00"))), { open: true, reason: "" });
+  // Delivery only: the delivery reason, not pickup's.
+  const d = { ordering: { pickupEnabled: false, deliveryEnabled: true }, channelHours: { delivery: { weekly: allWeek("11:00", "15:00") } } };
+  assert.match(orderingOpen(d, websiteAvailability(d, TZ, ist("2026-09-14", "17:00"))).reason, /^Delivery is available/);
+  const none = { ordering: { pickupEnabled: false } };
+  assert.deepEqual(orderingOpen(none, websiteAvailability(none, TZ, ist("2026-09-14", "17:00"))), { open: false, reason: "This store is not taking online orders." });
+});
+
+test("H2: a holiday or Close for Today also shuts that night's shift after midnight", () => {
+  const night = { channelHours: { collection: { weekly: allWeek("18:00", "02:00") } } };
+  const closed = { ...night, closedForToday: { enabled: true, date: "2026-09-14" } };
+  const tail = availabilityAt(closed, "collection", ist("2026-09-15", "00:30"), TZ);
+  assert.deepEqual([tail.open, tail.kind], [false, "closedToday"]);
+  assert.equal(availabilityAt(closed, "collection", ist("2026-09-15", "19:00"), TZ).open, true, "the next evening opens");
+  const holiday = { ...night, holidays: [{ startDate: new Date("2026-09-14T00:00:00Z"), endDate: new Date("2026-09-14T00:00:00Z") }] };
+  assert.equal(availabilityAt(holiday, "collection", ist("2026-09-15", "01:00"), TZ).kind, "holiday");
+  assert.equal(availabilityAt(night, "collection", ist("2026-09-15", "00:30"), TZ).open, true, "an ordinary night still runs past midnight");
+});
+
+test("H3: the business date of a moment in an overnight shift is the day the shift opened", () => {
+  const night = { channelHours: { delivery: { weekly: allWeek("18:00", "02:00") } } };
+  assert.equal(businessDate(night, ist("2026-09-15", "00:30"), TZ), "2026-09-14");
+  assert.equal(businessDate(night, ist("2026-09-15", "12:00"), TZ), "2026-09-15");
+  assert.equal(businessDate(night, ist("2026-09-15", "02:00"), TZ), "2026-09-15", "the shift has closed");
+  assert.equal(businessDate({}, ist("2026-09-15", "00:30"), TZ), "2026-09-15", "default hours end before midnight");
 });

@@ -196,7 +196,7 @@ const ProductOptionsSheet = ({ item, currency = "₹", primary = "#FD5302", onCl
                 <div className="flex items-center justify-between mb-2">
                   <h4 className="font-extrabold text-slate-900 text-[13px]">{g.name}</h4>
                   <span
-                    className={`text-[11px] font-bold ${g.required ? "text-rose-500" : "text-slate-400"}`}
+                    className={`text-[11px] font-bold ${g.required ? "text-rose-500" : "text-slate-500"}`}
                   >
                     {g.required ? "Required" : "Optional"} · {capLabel}
                   </span>
@@ -231,13 +231,13 @@ const ProductOptionsSheet = ({ item, currency = "₹", primary = "#FD5302", onCl
                         {Number(o.price) > 0 ? (
                           <span className="font-extrabold text-slate-900 shrink-0">+{money(o.price)}</span>
                         ) : (
-                          <span className="text-[11px] font-bold text-slate-400 shrink-0">Free</span>
+                          <span className="text-[11px] font-bold text-slate-500 shrink-0">Free</span>
                         )}
                       </label>
                     );
                   })}
                   {(g.options || []).length === 0 && (
-                    <p className="text-[12px] text-slate-400">No options in this group.</p>
+                    <p className="text-[12px] text-slate-500">No options in this group.</p>
                   )}
                 </div>
               </section>
@@ -251,7 +251,7 @@ const ProductOptionsSheet = ({ item, currency = "₹", primary = "#FD5302", onCl
             <div className="flex items-center gap-3">
               <button
                 onClick={() => setQty((q) => Math.max(1, q - 1))}
-                className="w-9 h-9 rounded-full bg-slate-100 text-slate-700 font-bold text-lg"
+                className="w-10 h-10 rounded-full bg-slate-100 text-slate-700 font-bold text-lg"
                 aria-label="Reduce quantity"
               >
                 −
@@ -259,7 +259,7 @@ const ProductOptionsSheet = ({ item, currency = "₹", primary = "#FD5302", onCl
               <span className="min-w-[20px] text-center font-extrabold text-slate-900">{qty}</span>
               <button
                 onClick={() => setQty((q) => q + 1)}
-                className="w-9 h-9 rounded-full text-white font-bold text-lg"
+                className="w-10 h-10 rounded-full text-white font-bold text-lg"
                 style={{ background: primary }}
                 aria-label="Increase quantity"
               >

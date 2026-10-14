@@ -5,6 +5,7 @@ import ProductCard from "./ProductCard";
 import ProductModal from "./ProductModal";
 import CartDrawer from "./CartDrawer";
 import { thumbUrl } from "../lib/thumbUrl";
+import { priceFor } from "../lib/cartLine";
 import { DAYS, holidayText, time12, todayLines, weekGroups } from "../lib/hoursText";
 
 // A logo or cover whose file is gone hides instead of showing a broken image.
@@ -90,23 +91,26 @@ export default function StoreShell({
     b.websiteEnabled !== false && s.store?.acceptingOrders !== false;
 
   // Search and "Veg only" narrow every category; one left empty is not drawn.
+  // Each dish shows the price billed for the cart's channel (pickup/delivery).
   const q = query.trim().toLowerCase();
   const categories = useMemo(
     () =>
       (s.categories || [])
         .map((c) => ({
           ...c,
-          products: c.products.filter(
-            (p) =>
-              (!vegOnly || p.isVegetarian) &&
-              (!q ||
-                `${p.name} ${p.description || ""} ${c.name}`
-                  .toLowerCase()
-                  .includes(q)),
-          ),
+          products: c.products
+            .filter(
+              (p) =>
+                (!vegOnly || p.isVegetarian) &&
+                (!q ||
+                  `${p.name} ${p.description || ""} ${c.name}`
+                    .toLowerCase()
+                    .includes(q)),
+            )
+            .map((p) => ({ ...p, price: priceFor(p, cart.channel) })),
         }))
         .filter((c) => c.products.length > 0),
-    [s.categories, vegOnly, q],
+    [s.categories, vegOnly, q, cart.channel],
   );
 
   // "Bestseller": the landing page's popular dishes (the operator's pick or
@@ -400,7 +404,7 @@ export default function StoreShell({
 
       {selected ? (
         <ProductModal
-          product={selected}
+          product={{ ...selected, price: priceFor(selected, cart.channel) }}
           symbol={symbol}
           allowNotes={ordering.specialInstructionsEnabled !== false}
           onClose={() => setSelected(null)}

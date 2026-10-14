@@ -59,6 +59,12 @@ export default function CartDrawer({
     if (defaultOrderType) setOrderType(defaultOrderType);
   }, [defaultOrderType]);
   const orderType = cartOrderType(chosenType, ordering, deliveryBlockedReason);
+  // The cart prices every line at this channel's price (useCart), as the server bills it.
+  const channel = orderType === "delivery" ? "delivery" : "collection";
+  useEffect(() => {
+    cart.setChannel?.(channel);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [channel]);
   const [customer, setCustomer] = useState({ name: "", phone: "" });
   // Collection: "now" by default, or a later time today.
   const [pickupWhen, setPickupWhen] = useState("now");
@@ -69,6 +75,12 @@ export default function CartDrawer({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [ordering?.pickupWindowHours, availability, open]
   );
+  // The menu refreshes every 30 s (useStorefront), rebuilding the slots from now: a
+  // choice that dropped out is cleared, never sent while the select shows none.
+  useEffect(() => {
+    if (pickupAt && !pickupSlots.some((t) => t.toISOString() === pickupAt)) setPickupAt("");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pickupSlots]);
   const [address, setAddress] = useState({ line1: "", line2: "", city: "", postalCode: "", instructions: "" });
   // The place the customer picked (Knot Eats) starts line 1; it stays
   // editable, and a typed address is never overwritten by a later pick.
@@ -231,7 +243,7 @@ export default function CartDrawer({
                   <div className="flex items-center rounded-full border border-slate-200 overflow-hidden">
                     <button
                       type="button"
-                      className="px-2 py-1"
+                      className="px-2 py-1 min-w-[40px] min-h-[40px]"
                       onClick={() => cart.updateQuantity(sig, line.quantity - 1)}
                       aria-label="Decrease"
                     >
@@ -240,7 +252,7 @@ export default function CartDrawer({
                     <span className="px-2 min-w-[1.5rem] text-center text-sm">{line.quantity}</span>
                     <button
                       type="button"
-                      className="px-2 py-1"
+                      className="px-2 py-1 min-w-[40px] min-h-[40px]"
                       onClick={() => cart.updateQuantity(sig, line.quantity + 1)}
                       aria-label="Increase"
                     >

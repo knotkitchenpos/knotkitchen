@@ -124,6 +124,10 @@ const projectMenu = (menu, audience) => {
   // spread items (`{ ...item }`) behave differently for the two. One shape
   // keeps every downstream consumer honest.
   plain.items = (view.items || []).map(toPlainItem);
+  // PF1: every publish pushes a full copy here; no reader of a projected menu needs it.
+  delete plain.versionHistory;
+  // N038: a "Website Only" product is not served to the tills or the table QR.
+  if (audience === AUDIENCES.SYSTEM) plain.items = plain.items.filter((i) => i.displayTarget !== "website");
   // The category's own settings come from the published copy as well. A
   // snapshot written before these were captured leaves the live value in
   // place until the next publish.
@@ -201,9 +205,7 @@ const WEBSITE_VISIBLE_QUERY = { $or: [{ published: { $ne: false } }, { showOnWeb
  */
 const ORDER_TYPES = Object.freeze({ COLLECTION: "collection", DELIVERY: "delivery", TABLE: "table" });
 
-const allowsOrderType = (menu, orderType) => {
-  if (!menu || !orderType) return true;
-  const dt = menu.dispatchType;
+const flagsAllow = (dt, orderType) => {
   if (!dt) return true;
   const flags = typeof dt.toObject === "function" ? dt.toObject() : dt;
   const { collection, delivery, table } = flags || {};
@@ -215,6 +217,10 @@ const allowsOrderType = (menu, orderType) => {
   if (orderType === ORDER_TYPES.TABLE) return table !== false;
   return true;
 };
+
+// N037: a product's own Dispatch Type (its drawer, or cascaded from its category or subcategory) narrows its category's.
+const allowsOrderType = (menu, orderType, item) =>
+  !menu || !orderType || (flagsAllow(menu.dispatchType, orderType) && flagsAllow(item?.dispatchType, orderType));
 
 /**
  * How to say a category's dispatch restriction to a customer.

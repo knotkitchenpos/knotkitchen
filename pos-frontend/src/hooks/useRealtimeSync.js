@@ -28,16 +28,16 @@ import { acquireSocket, releaseSocket } from "../socket";
  * of this file is that they should never have to wonder.
  */
 const INVALIDATE_ON = {
-  newOrder: ["orders", "tables", "kds-orders", "popular-items"],
-  "onlineOrder:created": ["orders", "kds-orders"],
-  "onlineOrder:status": ["orders", "kds-orders", "tables"],
+  newOrder: ["orders", "tables", "popular-items"],
+  "onlineOrder:created": ["orders"],
+  "onlineOrder:status": ["orders", "tables"],
   "menu:updated": ["menus", "menu-groups", "popular-items", "store-properties"],
   tableSessionUpdated: ["tables", "orders"],
   waiterCall: ["tables"],
   "tableBooking:created": ["table-bookings"],
   "tableBooking:updated": ["tables", "table-bookings"],
-  "order:prepDue": ["orders", "kds-orders"],
-  "order:prepStarted": ["orders", "kds-orders"],
+  "order:prepDue": ["orders"],
+  "order:prepStarted": ["orders"],
   // KnotKitchen accepted, shipped, delivered or cancelled a printer/tablet (a refund moves the wallet).
   "hardwareRequest:updated": ["subscription", "business-balance"],
 };
@@ -64,7 +64,7 @@ const useRealtimeSync = () => {
     // Catch up on whatever was missed while disconnected (the shared socket
     // re-joins its room on every connect).
     const onConnect = () => {
-      invalidate(["orders", "tables", "kds-orders", "menus", "subscription", "business-balance"]);
+      invalidate(["orders", "tables", "menus", "subscription", "business-balance"]);
     };
     socket.on("connect", onConnect);
     if (socket.connected) onConnect();

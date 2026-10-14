@@ -20,11 +20,12 @@ const { computeDeliveryFeeFromSlabs } = require("../services/distanceService");
 const { displayPaymentMethod } = require("../constants/paymentMethods");
 const { maskPhone } = require("../middlewares/customerPrivacy");
 const { DEFAULT_TZ, zonedInstant, localDate } = require("../services/tableBookings");
+const { capFor } = require("../services/modifierGroups");
 
 
 /**
  * Menu is lazy-loaded because it is only needed by the popular-items
- * aggregation endpoint. The existing controller unit tests replace only the
+ * aggregation endpoint and the till's group-cap check (overCapLine). The existing controller unit tests replace only the
  * order/table/customer models via Module._load — loading Menu unconditionally
  * would force every test to mock Menu too. Keeping it lazy preserves those
  * tests exactly as they are today.
@@ -79,6 +80,9 @@ const {
   canonicalStatus,
   isFinished,
   isCancelled,
+  ACTIVE_STATUSES,
+  AWAITING_ACCEPTANCE,
+  PAID_TAKEAWAY_READY_MS,
 } = require("../constants/orderStatus");
 
 
@@ -175,6 +179,37 @@ const sanitizeItem = (raw = {}) => {
       }))
     : [],
   };
+};
+
+/**
+ * The first till line holding more picks in a group than the group allows, as
+ * an error message, or "". The till's screen enforces the cap; this is the
+ * server's check against the published menu the tills sell from, so an older
+ * app build or a crafted request cannot ring up 2 breads in a choose-one
+ * group. Prices stay the till's (sanitizeItem); a line with no menuItemId, or
+ * a dish no longer published, is left to the till.
+ */
+const overCapLine = async (rawItems, user) => {
+  const lines = rawItems.filter((i) => i?.menuItemId && Array.isArray(i.modifierSelections) && i.modifierSelections.length);
+  if (!lines.length) return "";
+  const menus = await getMenuModel().find({
+    ...(user?.restaurantId ? { restaurantId: user.restaurantId } : { createdBy: user?._id }),
+    isDeleted: { $ne: true },
+  }).lean();
+  const dishes = new Map(
+    projectMenus(menus, AUDIENCES.SYSTEM).flatMap((m) => m.items || []).map((i) => [String(i._id), i]),
+  );
+  for (const line of lines) {
+    const dish = dishes.get(String(line.menuItemId));
+    for (const g of dish?.modifierGroups || []) {
+      const units = line.modifierSelections
+        .filter((m) => (m?.groupId && String(m.groupId) === String(g._id)) || (m?.groupName && m.groupName === g.name))
+        .reduce((n, m) => n + Math.max(1, Math.floor(Number(m.quantity) || 1)), 0);
+      const cap = capFor(g);
+      if (units > cap) return `Maximum ${cap} selection(s) for "${g.name}" on ${dish.name}.`;
+    }
+  }
+  return "";
 };
 
 // Validate table capacity on the server.
@@ -345,7 +380,12 @@ const addOrder = async (req, res, next) => {
     // createdBy, orderStatus, source, orderNumber, idempotencyKey (the
     // offline sync sets it on the request, never the client), paymentMethod,
     // payments, timeline, isDeleted, etc.
-    const items = Array.isArray(req.body?.items) ? req.body.items.slice(0, 200).map(sanitizeItem) : [];
+    const rawItems = Array.isArray(req.body?.items) ? req.body.items.slice(0, 200) : [];
+    const overCap = await overCapLine(rawItems, req.user);
+    // An order synced from offline was already sold and paid: kept, and logged.
+    if (overCap && !offlineSync) return next(createHttpError(400, overCap));
+    if (overCap) console.warn(`[order] offline sync over a group cap: ${overCap}`);
+    const items = rawItems.map(sanitizeItem);
     const sanitizedBills = sanitizeBills(bills || {});
 
     let cleanDeliveryAddress = sanitizeDeliveryAddress(deliveryAddress);
@@ -618,6 +658,9 @@ const addOrder = async (req, res, next) => {
       ...(normalizedPaymentMethod === "Split" ? { isSplit: true } : {}),
       timeline: [{ status: initialStatus, timestamp: new Date(), user: req.user?.name || "POS" }],
       ...(req.idempotencyKey ? { idempotencyKey: req.idempotencyKey } : {}),
+      // S13: set at birth so the emit below already says it; the auto-print devices skip a sale served hours ago.
+      isOffline: offlineSync,
+      ...(offlineSync && req.body?.kotPrinted === true ? { kotPrinted: true } : {}),
     };
 
 
@@ -678,7 +721,7 @@ const addOrder = async (req, res, next) => {
     // one, so it is only stamped "No platform fee was collected."
     if (isPaidAtTill) fireOrderCharge(order._id);
 
-    // A POS order emitted nothing at all, so a second till, the KDS and the
+    // A POS order emitted nothing at all, so a second till and the
     // Orders screen only learned about it on their next manual refresh.
     try {
       emitOrderCreated({
@@ -781,10 +824,14 @@ const buildDateWindow = (query, timeZone = DEFAULT_TZ) => {
 const getOrders = async (req, res, next) => {
   try {
     const window = buildDateWindow(req.query);
+    const placed = { $gte: window.start, $lte: window.end };
     const filter = {
       ...tenantScopeFor(req.user),
       isDeleted: { $ne: true },
-      createdAt: { $gte: window.start, $lte: window.end },
+      // N019: Today also keeps yesterday's orders still on the floor; they vanished at the store's midnight.
+      ...(window.source === "today"
+        ? { $or: [{ createdAt: placed }, { createdAt: { $gte: new Date(window.start - 864e5), $lt: window.start }, orderStatus: { $in: ACTIVE_STATUSES } }] }
+        : { createdAt: placed }),
     };
 
     if (req.query.status) {
@@ -801,8 +848,8 @@ const getOrders = async (req, res, next) => {
       .populate("table");
 
     // Present the canonical Module 4 status name to the UI. We do NOT
-    // rewrite the underlying document — the KDS + KDS-driven workflows
-    // still write "In Progress" and we want them to keep working — this
+    // rewrite the underlying document — older orders and the online-order
+    // flow still carry "In Progress" and we want them to keep working — this
     // is purely a read-time projection.
     const projected = orders.map((o) => {
       const obj = o.toObject ? o.toObject() : o;
@@ -929,6 +976,8 @@ const updateOrder = async (req, res, next) => {
     }
 
     await order.save();
+    // N012: a paid order cancelled is a refund on record, never a sale that vanished.
+    if (cancelling && paid) await refundOnCancel(order, { user: req.user, reason: order.cancelReason });
 
     // EVERY transition is broadcast, not only the one to Ready.
     //
@@ -999,7 +1048,7 @@ const updateOrder = async (req, res, next) => {
  *   - emits the realtime status event
  *   - triggers the customer notification (idempotent, phone-required)
  *
- * We keep updateOrder as the generic status endpoint so KDS + Cancel
+ * We keep updateOrder as the generic status endpoint so Cancel
  * flows continue to work, but expose this dedicated one so the POS
  * "Mark Ready" button reads clearly server-side too.
  */
@@ -1016,12 +1065,20 @@ const markOrderReady = async (req, res, next) => {
       isDeleted: { $ne: true },
     });
     if (!order) return next(createHttpError(404, "Order not found!"));
+    // N020: a customer order nobody accepted yet (S12). Ready skipped Accept, so it never printed and its dishes stayed "pending".
+    const liveLines = (order.items || []).filter((i) => i.status !== "cancelled" && i.status !== "refunded");
+    const undecided =
+      (order.source === "WEBSITE" && order.orderStatus === AWAITING_ACCEPTANCE) ||
+      (Boolean(order.tableSessionId) && liveLines.length > 0 && liveLines.every((i) => i.status === "pending"));
+    if (undecided) return next(createHttpError(409, "Accept this order first."));
 
     // A takeaway paid at the till is created Completed but still has to be
-    // cooked, so the kitchen screen lists it. Its Ready stamps readyAt (and
+    // cooked, so Orders offers Mark Ready for it. Its Ready stamps readyAt (and
     // tells the customer); the sale stays Completed.
+    // Only for 12 hours: an older one was handed over long ago, and its Ready would text the customer now.
     const paidTakeaway =
-      isSettled(order.orderStatus) && !order.readyAt && order.source === "POS" && !["dine-in", "delivery"].includes(order.orderType);
+      isSettled(order.orderStatus) && !order.readyAt && order.source === "POS" && !["dine-in", "delivery"].includes(order.orderType) &&
+      Date.now() - new Date(order.createdAt).getTime() < PAID_TAKEAWAY_READY_MS;
     if (isFinished(order.orderStatus) && !paidTakeaway) {
       return next(
         createHttpError(409, `Order is already ${order.orderStatus.toLowerCase()} and cannot be changed.`)
@@ -1132,6 +1189,8 @@ const reportMethodOf = (o) => {
   // pay-by-link order is rewritten to the instrument (upi/card), and a counter
   // settle carries an empty one.
   if (o.paymentData?.gatewayPaymentId) return "gateway";
+  // R1: money not taken yet (cash on collection, an unpaid link) is no method's takings.
+  if (!wasPaid(o)) return "other";
   if (o.isSplit) return "split";
   const raw = o.payments?.[0]?.method || o.paymentMethod || "";
   return REPORT_METHOD[String(raw).trim().toLowerCase()] || "other";
@@ -1148,13 +1207,16 @@ const PAYMENT_LABELS = { cash: "Cash", upi: "UPI", card: "Card", gateway: "Payme
 const reportOrderView = (o) => {
   const obj = o.toObject ? o.toObject() : o;
   obj.orderStatus = canonicalStatus(obj.orderStatus);
+  // N014: a lean read skips orderModel's dropNamelessLines hook.
+  obj.items = (obj.items || []).filter((i) => i?.name);
   if (obj.customerDetails?.phone) obj.customerDetails.phone = maskPhone(obj.customerDetails.phone);
   const method = reportMethodOf(obj);
   obj.paymentLabel = PAYMENT_LABELS[method] || obj.paymentMethod || "—";
+  obj.paymentStatus = wasPaid(obj) ? "paid" : "pending";
   return obj;
 };
 
-const { netAmount, wasPaid, refundCancelledOrder, syncRefund, refundView, REFUND_STATUS } = require("../services/refunds");
+const { netAmount, orderTotal, refundedTotal, wasPaid, refundCancelledOrder, refundOnCancel, syncRefund, refundView, REFUND_STATUS } = require("../services/refunds");
 
 /**
  * PUT /api/order/:id/cancel  { reason }
@@ -1265,6 +1327,7 @@ const buildReportBuckets = (orders) => {
     card: bucket(),
     split: bucket(),
     other: bucket(),
+    cancelled: bucket(),
     tips: bucket(),
     delivery: bucket(),
     collection: bucket(),
@@ -1276,9 +1339,14 @@ const buildReportBuckets = (orders) => {
   };
 
   for (const o of orders) {
-    // A cancelled order was never a sale: it is in no card, count or value
+    // A cancelled order was never a sale: it is in no sales card, count or value
     // (as in the dish, category, hour and staff breakdowns).
-    if (canonicalStatus(o.orderStatus) === CANCELLED) continue;
+    // N012: unless money was taken and given back: then it counts, as a refund.
+    // R2: the rest go on their own card, so Total + Cancelled is every order in the list.
+    if (canonicalStatus(o.orderStatus) === CANCELLED && !refundedTotal(o)) {
+      inc(summary.cancelled, orderTotal(o));
+      continue;
+    }
     // Takings after refunds; a fully refunded order counts but adds nothing.
     const amount = netAmount(o);
 
@@ -1294,7 +1362,8 @@ const buildReportBuckets = (orders) => {
 
     inc(summary[reportMethodOf(o)], amount);
     const tip = Number(o.bills?.tip || o.tips) || 0;
-    if (tip > 0) inc(summary.tips, tip);
+    // N012: a cancelled order's tip went back with its refund (as in services/shifts.js).
+    if (tip > 0 && canonicalStatus(o.orderStatus) !== CANCELLED) inc(summary.tips, tip);
 
     const type = String(o.orderType || "").toLowerCase();
     if (type === "delivery") inc(summary.delivery, amount);

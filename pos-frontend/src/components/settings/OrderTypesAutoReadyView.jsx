@@ -4,6 +4,16 @@ import { enqueueSnackbar } from "notistack";
 import { getStoreProperties, updateOrderToggles } from "../../https";
 import { getWebsiteSettings, updateWebsiteSettings } from "../../https/storefrontApi";
 
+// V2: a refused minute comes back in fieldErrors; nothing on this screen is highlighted, so name it.
+const LABELS = { autoReadyMinutes: "Auto-ready", autoCompleteMinutes: "Auto-complete" };
+const saveError = (e) => {
+  const lines = Object.entries(e.response?.data?.fieldErrors || {}).map(([key, msg]) => {
+    const [, field, channel = ""] = key.split(".");
+    return `${LABELS[field] || field} ${channel}: ${msg}`;
+  });
+  enqueueSnackbar(lines.join(" ") || e.response?.data?.message || "Failed", { variant: "error" });
+};
+
 /* ---------- Module 7 §4: Order Type Toggles & §5 Auto-Ready ---------- */
 const OrderTypesAutoReadyView = () => {
   const qc = useQueryClient();
@@ -20,6 +30,8 @@ const OrderTypesAutoReadyView = () => {
   const [colAuto, setColAuto] = useState(autoReady.collection ?? 20);
   const [delAuto, setDelAuto] = useState(autoReady.delivery ?? 45);
   const [tblAuto, setTblAuto] = useState(autoReady.table ?? 20);
+  // N008: off unless the owner turns it on; otherwise only the kitchen marks Ready.
+  const [autoOn, setAutoOn] = useState(false);
 
   // Auto-Complete Duration state
   const getPresetAndCustom = (val) => {
@@ -53,6 +65,7 @@ const OrderTypesAutoReadyView = () => {
       setColAuto(arm.collection ?? 20);
       setDelAuto(arm.delivery ?? 45);
       setTblAuto(arm.table ?? 20);
+      setAutoOn(webRes.data.data.settings.ordering.autoReadyEnabled === true);
     }
 
     if (webRes?.data?.data?.settings?.ordering?.autoCompleteMinutes) {
@@ -81,12 +94,12 @@ const OrderTypesAutoReadyView = () => {
   });
 
   const autoReadyMutation = useMutation({
-    mutationFn: (minutes) => updateWebsiteSettings({ ordering: { autoReadyMinutes: minutes } }),
+    mutationFn: (ordering) => updateWebsiteSettings({ ordering }),
     onSuccess: () => {
       enqueueSnackbar("Auto-ready durations updated!", { variant: "success" });
       qc.invalidateQueries({ queryKey: ["website", "settings"] });
     },
-    onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed", { variant: "error" }),
+    onError: saveError,
   });
 
   const autoCompleteMutation = useMutation({
@@ -95,7 +108,7 @@ const OrderTypesAutoReadyView = () => {
       enqueueSnackbar("Auto-complete durations updated!", { variant: "success" });
       qc.invalidateQueries({ queryKey: ["website", "settings"] });
     },
-    onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed", { variant: "error" }),
+    onError: saveError,
   });
 
   const saveToggles = () => {
@@ -104,9 +117,12 @@ const OrderTypesAutoReadyView = () => {
 
   const saveAutoReady = () => {
     autoReadyMutation.mutate({
-      collection: Number(colAuto) || 0,
-      delivery: Number(delAuto) || 0,
-      table: Number(tblAuto) || 0,
+      autoReadyEnabled: autoOn,
+      autoReadyMinutes: {
+        collection: Number(colAuto) || 0,
+        delivery: Number(delAuto) || 0,
+        table: Number(tblAuto) || 0,
+      },
     });
   };
 
@@ -186,6 +202,13 @@ const OrderTypesAutoReadyView = () => {
       {/* Module 7 §5: Auto-Ready Settings */}
       <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
         <h4 className="text-[15px] font-extrabold text-[#0F172A]">Auto-Ready Durations</h4>
+        <label className="flex items-center justify-between p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] text-[13px]">
+          <span>
+            <span className="block font-bold text-[#0F172A]">Mark orders Ready automatically</span>
+            <span className="block text-[11.5px] text-[#64748B]">Off: only the kitchen marks an order Ready. The minutes still time the prep alert for scheduled pickups.</span>
+          </span>
+          <input type="checkbox" checked={autoOn} onChange={(e) => setAutoOn(e.target.checked)} className="w-5 h-5 accent-[#FD5302]" />
+        </label>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[13px]">
           <div>

@@ -98,6 +98,8 @@ const queryClient = new QueryClient({
       refetchOnWindowFocus: true,
       refetchOnReconnect: true,
     },
+    // N005: the default "online" mode paused an offline sale on "Processing..." instead of letting it queue.
+    mutations: { networkMode: "always" },
   },
 });
 

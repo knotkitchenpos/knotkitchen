@@ -98,11 +98,10 @@ const initSocket = (server, { corsOrigin = ["http://localhost:5173"] } = {}) => 
     if (storeId) socket.join(`store:${storeId}`);
 
     /**
-     * The POS/KDS clients emit `joinRestaurant` after connecting (see
-     * useKDSRealtime / useOnlineOrders). Previously there was no server-side
-     * handler, so clients that relied on it never received events. Rooms are
-     * per-tenant, which is what keeps one restaurant from receiving another's
-     * order payloads (§31).
+     * The POS clients emit `joinRestaurant` after connecting. Previously there
+     * was no server-side handler, so clients that relied on it never received
+     * events. Rooms are per-tenant, which is what keeps one restaurant from
+     * receiving another's order payloads (§31).
      */
     socket.on("joinRestaurant", () => {
       // Re-join only the rooms already authorized from the session. A client
@@ -123,12 +122,11 @@ const initSocket = (server, { corsOrigin = ["http://localhost:5173"] } = {}) => 
 };
 
 /**
- * Broadcast realtime events to POS + KDS clients.
+ * Broadcast realtime events to POS clients.
  * - table:<tableId>        — item added / status change for a specific table
  * - restaurant:<id>        — session open/close, bill requested, payment completed
  * - outlet:<id>            — same as above but outlet-scoped
  * - store:<storeId>        — storefront/online order events
- * - kds:<restaurantId>     — new kitchen order / item status
  */
 const emitEvent = (event, payload, rooms = []) => {
   if (!io) return;
@@ -265,8 +263,26 @@ const emitOrderCreated = ({ restaurantId, outletId, storeId, order, placedVia })
 
   // Dedicated event for the online-order UI...
   emitEvent("onlineOrder:created", payload, rooms);
-  // ...plus the generic name existing KDS/POS listeners already use.
+  // ...plus the generic name existing POS listeners already use.
   emitEvent("newOrder", payload, rooms);
+};
+
+/**
+ * Staff accepted a customer's order (table QR, website, Knot Eats). The tills
+ * print its KOT and Auto Receipt now, never on arrival, so a declined order
+ * never reaches the kitchen (pos-frontend/src/hooks/useAutoReceiptPrint.js).
+ * Same payload as `onlineOrder:created`, with the table populated.
+ */
+const emitOrderAccepted = ({ restaurantId, outletId, storeId, order, table }) => {
+  if (!io || !order) return;
+  const plain = typeof order.toObject === "function" ? order.toObject() : order;
+  const payload = orderCreatedPayload(table ? { ...plain, table } : plain, storeId);
+  const rooms = [];
+  if (restaurantId) rooms.push(`restaurant:${restaurantId}`);
+  if (outletId) rooms.push(`outlet:${outletId}`);
+  if (storeId) rooms.push(`store:${storeId}`);
+  if (!rooms.length) return; // never fall back to a global broadcast
+  emitEvent("onlineOrder:accepted", payload, rooms);
 };
 
 /** Order status changed in the POS — lets customer tracking update live. */
@@ -354,6 +370,7 @@ module.exports = {
   orderCreatedPayload,
   itemsAddedPayload,
   emitOrderCreated,
+  emitOrderAccepted,
   emitOrderStatusChanged,
   emitTableSessionUpdated,
 };

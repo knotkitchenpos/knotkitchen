@@ -36,6 +36,9 @@ const inSchedule = (s) => {
   if (!days.includes(day)) return false;
   return a <= b ? n >= a && n <= b : n >= a || n <= b;
 };
+// N039: Display OFF + "POS Visibility: keep selling on the POS" is on sale here, not greyed out.
+const offOnPos = (i) => i?.isAvailable === false && i?.visibleOnPosWhenOff !== true;
+
 /**
  * The product's list price for the till's current order type.
  *
@@ -182,11 +185,25 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
   const dispatchKeyFor = (type) =>
     type === "Delivery" ? "delivery" : type === "Table Service" ? "table" : "collection";
 
+  // N036: product schedules are re-checked as the store clock moves, not only when the menu changes.
+  const [clockTick, setClockTick] = useState(0);
+  useEffect(() => {
+    const t = setInterval(() => setClockTick((n) => n + 1), 60_000);
+    const stop = () => clearInterval(t);
+    return stop;
+  }, []);
+
   const allowsOrderType = (menu, type) => {
     const dt = menu?.dispatchType;
     if (!dt) return true;
     if (!dt.collection && !dt.delivery && !dt.table) return true;
     return dt[dispatchKeyFor(type)] !== false;
+  };
+
+  // N037: the order types a line may be sold through (its category's and its own Dispatch Type).
+  const orderTypesOf = (item) => {
+    const cat = (menusRes?.data?.data || []).find((m) => String(m._id) === String(item.categoryId));
+    return Object.keys(CHANNEL_KEY).filter((t) => allowsOrderType(cat, t) && allowsOrderType(item, t));
   };
 
   const menus = useMemo(() => {
@@ -199,7 +216,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
         inSchedule(m.schedule),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [menusRes, orderType]);
+  }, [menusRes, orderType, clockTick]);
 
   useEffect(() => {
     const id = location.state?.selectedCategoryId;
@@ -216,9 +233,11 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
     if (!category?.items) return [];
     return category.items
       // Hide out-of-stock items on POS (Module: Availability §Hide OOS)
-      .filter((i) => i && (i.isAvailable !== false || i.visibleOnPosWhenOff === true) && inSchedule(i.schedule))
+      // N037: the product's own Dispatch Type too (subcategory edits cascade onto it).
+      .filter((i) => i && !offOnPos(i) && inSchedule(i.schedule) && allowsOrderType(i, orderType))
       .map((i) => ({ ...i, categoryId: category._id, categoryName: category.name }));
-  }, [category]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [category, orderType, clockTick]);
 
   const subcats = useMemo(() => {
     const seen = new Set();
@@ -246,10 +265,11 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
       menus.flatMap((m) =>
         (m.items || [])
           // Hide out-of-stock items across search + all lists
-          .filter((i) => i && (i.isAvailable !== false || i.visibleOnPosWhenOff === true) && inSchedule(i.schedule))
+          .filter((i) => i && !offOnPos(i) && inSchedule(i.schedule) && allowsOrderType(i, orderType))
           .map((i) => ({ ...i, categoryId: m._id, categoryName: m.name }))
       ),
-    [menus]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [menus, orderType]
   );
 
   const searching = q.trim().length > 0;
@@ -273,10 +293,14 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
   });
   const popular = useMemo(
     () =>
+      // N037: only dishes whose category this order type lists (visibility, Dispatch Type, schedule).
       (popRes?.data?.data || []).filter(
-        (i) => i && (i.isAvailable !== false || i.visibleOnPosWhenOff === true) && inSchedule(i.schedule),
+        (i) =>
+          i && !offOnPos(i) && inSchedule(i.schedule) && allowsOrderType(i, orderType) &&
+          menus.some((m) => String(m._id) === String(i.categoryId)),
       ),
-    [popRes]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [popRes, menus, orderType]
   );
 
   const catProducts = useMemo(() => {
@@ -464,6 +488,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
         modifiers: selectedList,
         variant: variantObj ? { name: variantObj.name, price: variantObj.price } : null,
         channelBase: variantObj ? null : channelBase(customizingItem),
+        orderTypes: orderTypesOf(customizingItem),
         isCombo: customizingItem.isCombo || false,
       })
     );
@@ -472,12 +497,14 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
   };
 
   const add = (item) => {
-    if (item.isAvailable === false) {
+    if (offOnPos(item)) {
       enqueueSnackbar(`${item.name} is out of stock`, { variant: "error" });
       return;
     }
-    if ((item.modifierGroups || []).length > 0 || (item.variants || []).length > 1) {
-      openCustomization(item);
+    // A group switched off is not sold, as on the QR sheet and the website.
+    const modifierGroups = (item.modifierGroups || []).filter((g) => g?.isActive !== false);
+    if (modifierGroups.length > 0 || (item.variants || []).length > 1) {
+      openCustomization({ ...item, modifierGroups });
       return;
     }
 
@@ -504,6 +531,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
         modifiers: [],
         variant: variant ? { name: variant.name, price: variant.price } : null,
         channelBase: variant ? null : channelBase(item),
+        orderTypes: orderTypesOf(item),
         isCombo: item.isCombo || false,
       })
     );
@@ -741,7 +769,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
                 ? item.variants[0].price
                 : activePrice(item, orderType);
               const inCart = cart.find((c) => c.menuItemId === item._id);
-              const off = item.isAvailable === false;
+              const off = offOnPos(item);
               return (
                 <button
                   key={item._id}
@@ -795,7 +823,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
             {products.map((item) => {
               const img = item.imageThumbnailUrl || item.imageUrl || item.image;
               const price = item.variants?.length ? item.variants[0].price : activePrice(item, orderType);
-              const off = item.isAvailable === false;
+              const off = offOnPos(item);
               const inCart = cart.find((c) => c.menuItemId === item._id);
               return (
                 <button

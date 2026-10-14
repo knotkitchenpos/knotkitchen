@@ -81,7 +81,8 @@ const NewOrderPopup = () => {
     const add = (payload) =>
       setQueue((prev) => {
         const id = String(payload?.orderId || "");
-        if (id && prev.some((p) => String(p.orderId) === id)) return prev;
+        // N020: the same order again (a dish added while it waits) replaces its card.
+        if (id && prev.some((p) => String(p.orderId) === id)) return prev.map((p) => (String(p.orderId) === id ? payload : p));
         return [...prev, payload];
       });
 
@@ -165,7 +166,7 @@ const NewOrderPopup = () => {
   };
 
   // Taps land nowhere until the card at the head has been up for a moment.
-  const armed = useArmed(queue[0]?.orderId);
+  const armed = useArmed(`${queue[0]?.orderId}:${queue[0]?.items?.length}`);
 
   if (queue.length === 0) return null;
   const current = queue[0];

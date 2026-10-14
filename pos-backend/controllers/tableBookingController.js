@@ -108,19 +108,24 @@ const getPublicBookingSlots = async (req, res, next) => {
     const timeZone = ctx.timezone || DEFAULT_TZ;
     const dates = bookableDates(new Date(), timeZone);
     const date = dates.includes(req.query.date) ? req.query.date : dates[0];
-    // Closed for Today or a holiday closes the whole website, bookings included.
-    const now = availabilityAt(ctx.settings, "table", new Date(), timeZone);
-    const websiteClosed = now.kind === "holiday" || now.kind === "closedToday" || ctx.orderingLocked;
+    // B1: a holiday or Close for Today closes its own date (openSlots checks
+    // each slot), not every later day; the reason is the chosen date's.
+    const day = availabilityAt(ctx.settings, "table", zonedInstant(date, "12:00", timeZone), timeZone);
+    const bookable = config.enabled && !ctx.orderingLocked;
 
     res.status(200).json({
       success: true,
       data: {
-        enabled: config.enabled && !websiteClosed,
-        closedReason: ctx.orderingLocked ? CUSTOMER_PAUSED_MESSAGE : websiteClosed ? now.reason : "",
+        enabled: bookable,
+        closedReason: ctx.orderingLocked
+          ? CUSTOMER_PAUSED_MESSAGE
+          : day.kind === "holiday" || day.kind === "closedToday"
+            ? day.reason
+            : "",
         hoursLabel: hoursOnLabel(ctx.settings, "table", date),
         dates,
         date,
-        slots: config.enabled && !websiteClosed ? openSlots(ctx.settings, config, date, timeZone) : [],
+        slots: bookable ? openSlots(ctx.settings, config, date, timeZone) : [],
       },
     });
   } catch (error) {
@@ -142,8 +147,6 @@ const createPublicTableBooking = async (req, res, next) => {
 
     if (!config.enabled) throw createHttpError(409, "Table booking is not available for this restaurant.");
     if (ctx.orderingLocked) throw createHttpError(409, CUSTOMER_PAUSED_MESSAGE);
-    const rightNow = availabilityAt(settings, "table", new Date(), timeZone);
-    if (rightNow.kind === "holiday" || rightNow.kind === "closedToday") throw createHttpError(409, rightNow.reason);
 
     const name = String(body.name || "").trim().slice(0, 120);
     const phone = String(body.phone || "").replace(/\D/g, "").slice(-10);
@@ -155,6 +158,16 @@ const createPublicTableBooking = async (req, res, next) => {
     if (!/^[6-9]\d{9}$/.test(phone)) throw createHttpError(400, "Please enter a valid 10-digit phone number.");
     if (!Number.isFinite(guestCount) || guestCount < 1 || guestCount > 100) {
       throw createHttpError(400, "Please choose the number of guests.");
+    }
+    // B2: staff confirm a booking onto one table that seats the whole party.
+    // Restaurant-wide (not per outlet): an upper bound, so never a false refusal.
+    const biggest = await Table.findOne({ restaurantId, isDeleted: { $ne: true }, isEnabled: { $ne: false } })
+      .sort({ capacity: -1 })
+      .select("capacity")
+      .lean();
+    if (!biggest) throw createHttpError(409, "Table booking is not available at this restaurant.");
+    if (guestCount > Number(biggest.capacity)) {
+      throw createHttpError(400, `Our largest table seats ${biggest.capacity}. For a bigger group, please call the restaurant.`);
     }
     if (!bookableDates(new Date(), timeZone).includes(date)) {
       throw createHttpError(400, "Please choose a date within the next 7 days.");

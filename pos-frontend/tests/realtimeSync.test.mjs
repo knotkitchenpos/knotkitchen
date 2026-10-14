@@ -42,8 +42,8 @@ test("REGRESSION: every status change is broadcast, not only 'Ready'", () => {
 });
 
 test("REGRESSION: a POS order announces itself", () => {
-  // It emitted nothing at all, so a second till, the KDS and the Orders
-  // screen only learned about it on their next manual refresh.
+  // It emitted nothing at all, so a second till and the Orders screen
+  // only learned about it on their next manual refresh.
   const src = BE("controllers/orderController.js");
   assert.match(src, /emitOrderCreated\(\{/);
   assert.match(src, /const \{ emitOrderCreated, emitOrderStatusChanged \}/);
@@ -60,7 +60,7 @@ test("each event invalidates the caches that event can change", () => {
   const hook = SRC("src/hooks/useRealtimeSync.js");
   for (const [event, key] of [
     ["newOrder", "orders"],
-    ["onlineOrder:created", "kds-orders"],
+    ["onlineOrder:created", "orders"],
     ["onlineOrder:status", "tables"],
     ["menu:updated", "menus"],
   ]) {

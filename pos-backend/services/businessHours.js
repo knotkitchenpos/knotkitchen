@@ -193,74 +193,72 @@ const isItemAvailableNow = (item, timezone, surface) => {
   return isWithinWindow(minutes, schedule.startTime, schedule.endTime);
 };
 
-/**
- * Resolve the effective unit price for an item, applying any active time-based
- * price rule (Happy Hour etc). This is used by BOTH the public menu response
- * and the authoritative order pricing, so a customer is always charged exactly
- * what the storefront displayed.
- */
-/**
- * The item's list price for one selling channel.
- *
- * "Same price for all channels" OFF stores six figures on the product —
- * posCollection / posDelivery / posTable and the three website equivalents —
- * and until now NOTHING read them: every surface, and every bill, used
- * `item.price`. Turning the toggle off therefore appeared to do nothing.
- *
- * `environment` is "system" (POS) or "website"; `channel` is one of
- * collection | delivery | table. Falls back to `item.price` when the product
- * uses one price everywhere, when the channel figure is missing, or when it
- * is zero — a channel priced at 0 is far more likely to be an unset field
- * than a genuinely free product.
- */
-const CHANNEL_PRICE_KEYS = {
-  system: { collection: "posCollection", delivery: "posDelivery", table: "posTable" },
-  website: { collection: "websiteCollection", delivery: "websiteDelivery", table: "websiteTable" },
-};
+// One price for every surface (POS, table QR, website, Knot Eats): the POS
+// channel prices. The website* figures still stored on old products are not read.
+const CHANNEL_PRICE_KEYS = { collection: "posCollection", delivery: "posDelivery", table: "posTable" };
 
-const getChannelPrice = (item, environment, channel) => {
+/**
+ * A product's list price for a channel: collection | delivery | table (an
+ * unknown channel prices as collection). item.price when the product uses one
+ * price everywhere, or when the channel figure is missing or 0 (0 = unset).
+ */
+const getChannelPrice = (item, channel) => {
   const base = Number(item?.price) || 0;
-  if (!item || item.samePrice !== false) return base;
-
-  const keys = CHANNEL_PRICE_KEYS[environment === "system" ? "system" : "website"];
-  const key = keys[channel] || keys.collection;
-  const raw = item.channelPrices ? item.channelPrices[key] : undefined;
-  const value = Number(raw);
+  if (!item || item.samePrice !== false || !item.channelPrices) return base;
+  const value = Number(item.channelPrices[CHANNEL_PRICE_KEYS[channel] || "posCollection"]);
   return Number.isFinite(value) && value > 0 ? value : base;
 };
 
+// Same parse as the till (pos-frontend ProductPanel.jsx parseT): null = missing/unparsable.
+const parseRuleTime = (t) => {
+  if (!t) return null;
+  const [h, m] = String(t).split(":").map(Number);
+  return Number.isNaN(h) || Number.isNaN(m) ? null : h * 60 + m;
+};
+
 /**
- * Effective unit price: the channel list price, then any active time-based
- * price rule (Happy Hour etc), which overrides it.
+ * The unit price the server charges for `channel` right now: the channel list
+ * price, replaced by the first active price rule whose day and window match
+ * the STORE clock (never the server's). A copy of the till's activePrice
+ * (pos-frontend/src/components/pos/ProductPanel.jsx); tests/pricingParity
+ * keeps the two identical. Variants, add-ons and modifiers are the caller's.
  */
-const getEffectivePrice = (item, timezone, { environment, channel } = {}) => {
-  const base = environment || channel
-    ? getChannelPrice(item, environment, channel)
-    : Number(item?.price) || 0;
+const unitPriceNow = (item, channel, timezone) => {
+  const listPrice = getChannelPrice(item, channel);
   const rules = Array.isArray(item?.priceRules) ? item.priceRules : [];
-  if (!rules.length) return base;
+  if (!rules.length) return listPrice;
+  const { day, minutes: n } = nowInTimezone(timezone || "Asia/Kolkata");
+  const rule = rules.find((r) => {
+    if (!r?.isActive) return false;
+    // A rule with no usable price is skipped rather than billing NaN (the schema requires one).
+    if (!Number.isFinite(Number(r.price))) return false;
+    if (!(r.daysOfWeek || []).includes(day)) return false;
+    const a = parseRuleTime(r.startTime);
+    const b = parseRuleTime(r.endTime);
+    if (a === null || b === null) return true;
+    return a <= b ? n >= a && n <= b : n >= a || n <= b;
+  });
+  return rule ? Number(rule.price) : listPrice;
+};
 
-  const { day, minutes } = nowInTimezone(timezone);
-
-  for (const rule of rules) {
-    if (!rule || rule.isActive === false) continue;
-    const days = Array.isArray(rule.daysOfWeek) ? rule.daysOfWeek : [0, 1, 2, 3, 4, 5, 6];
-    if (!days.includes(day)) continue;
-    if (isWithinWindow(minutes, rule.startTime, rule.endTime)) {
-      return Number(rule.price) || base;
-    }
-  }
-
-  return base;
+/**
+ * The figure a menu card shows for `channel` now. A product with variants is
+ * always billed a variant's own price (it replaces the channel price), so its
+ * card shows the cheapest variant on sale, never a price no order can reach.
+ */
+const menuPriceNow = (item, channel, timezone) => {
+  const v = (item?.variants || []).filter((x) => x.isAvailable !== false).map((x) => Number(x.price) || 0);
+  return v.length ? Math.min(...v) : unitPriceNow(item, channel, timezone);
 };
 
 module.exports = {
+  menuPriceNow,
   getChannelPrice,
   isStoreOpen,
   isClosedForToday,
   isItemAvailableNow,
-  getEffectivePrice,
   isWithinWindow,
   nowInTimezone,
   toMinutes,
+  unitPriceNow,
 };

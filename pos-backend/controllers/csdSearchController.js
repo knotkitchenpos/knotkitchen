@@ -194,6 +194,13 @@ const searchOrders = async (req, res, next) => {
     const page = Math.max(parseInt(q.page, 10) || 1, 1);
     const limit = Math.min(Math.max(parseInt(q.limit, 10) || 25, 1), 100);
 
+    // N122: match the store's restaurants, since storeId is blank on pre-batch-6 orders.
+    if (filters.storeId) {
+      const rs = await Restaurant.find({ storeId: filters.storeId }, { _id: 1 }).lean();
+      filters.restaurantId = { $in: rs.map((r) => r._id) };
+      delete filters.storeId;
+    }
+
     const [total, orders] = await Promise.all([
       Order.countDocuments(filters),
       Order.find(filters)
@@ -203,8 +210,12 @@ const searchOrders = async (req, res, next) => {
         .lean(),
     ]);
 
-    // Resolve store names for just this page, not the whole result set.
-    const ids = [...new Set(orders.map((o) => o.storeId).filter(Boolean))];
+    // Resolve store IDs (blank on old orders) and names for just this page, not the whole result set.
+    const rids = [...new Set(orders.filter((o) => !o.storeId && o.restaurantId).map((o) => String(o.restaurantId)))];
+    const owners = rids.length ? await Restaurant.find({ _id: { $in: rids } }, { storeId: 1 }).lean() : [];
+    const sidByRid = new Map(owners.map((r) => [String(r._id), r.storeId]));
+    const sidOf = (o) => o.storeId || sidByRid.get(String(o.restaurantId)) || "";
+    const ids = [...new Set(orders.map(sidOf).filter(Boolean))];
     const stores = ids.length
       ? await Store.find({ storeId: { $in: ids } }, { storeId: 1, storeName: 1 }).lean()
       : [];
@@ -216,8 +227,8 @@ const searchOrders = async (req, res, next) => {
         results: orders.map((o) => ({
           id: String(o._id),
           orderNumber: o.orderNumber || "",
-          storeId: o.storeId || "",
-          storeName: nameById.get(o.storeId) || "",
+          storeId: sidOf(o),
+          storeName: nameById.get(sidOf(o)) || "",
           customerName: o.customerDetails?.name || "",
           customerPhone: o.customerDetails?.phone || "",
           customerAddress: customerAddressOf(o),
@@ -249,14 +260,15 @@ const getOrder = async (req, res, next) => {
     const o = await Order.findOne({ _id: id, isDeleted: { $ne: true } }).lean();
     if (!o) return next(createHttpError(404, "Order not found."));
 
-    const store = o.storeId ? await Store.findOne({ storeId: o.storeId }).lean() : null;
+    const sid = o.storeId || (o.restaurantId ? (await Restaurant.findById(o.restaurantId, { storeId: 1 }).lean())?.storeId : "") || "";
+    const store = sid ? await Store.findOne({ storeId: sid }).lean() : null;
 
     res.status(200).json({
       success: true,
       data: {
         id: String(o._id),
         orderNumber: o.orderNumber || "",
-        storeId: o.storeId || "",
+        storeId: sid,
         storeName: store?.storeName || "",
         orderDate: o.orderDate || o.createdAt,
         orderStatus: o.orderStatus || "",
@@ -271,7 +283,8 @@ const getOrder = async (req, res, next) => {
           note: o.customerDetails?.deliveryNote || "",
         },
         bills: o.bills || {},
-        items: (o.items || []).map((i) => ({
+        // N014: a nameless line is a failed add, not a sale.
+        items: (o.items || []).filter((i) => i?.name).map((i) => ({
           name: i.name || "",
           quantity: i.quantity ?? i.qty ?? 1,
           price: i.price ?? 0,

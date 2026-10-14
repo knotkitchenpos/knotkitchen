@@ -11,7 +11,7 @@ globalThis.localStorage = {
 globalThis.window = { dispatchEvent() {} };
 globalThis.CustomEvent = class {};
 
-const { enqueueOrder, readQueue, removeFromQueue, localOrderView, isNetworkError, markRejected, newLocalId } = await import("../src/utils/offlineQueue.js");
+const { enqueueOrder, readQueue, removeFromQueue, localOrderView, isNetworkError, markRejected, markKotPrinted, newLocalId } = await import("../src/utils/offlineQueue.js");
 
 test("orders queue with a local id and number, and come off once synced", () => {
   const a = enqueueOrder({ items: [{ name: "Tea", quantity: 2 }], paymentMethod: "Cash" });
@@ -32,6 +32,8 @@ test("orders queue with a local id and number, and come off once synced", () => 
 test("only a network failure is treated as offline; a 4xx is a real error", () => {
   assert.equal(isNetworkError({ code: "ERR_NETWORK" }), true);
   assert.equal(isNetworkError({ message: "Network Error" }), true);
+  // N005: a 15 s timeout on a dead line queues the sale; the shared key stops a duplicate.
+  assert.equal(isNetworkError({ code: "ECONNABORTED" }), true);
   assert.equal(isNetworkError({ response: { status: 400 } }), false);
   assert.equal(isNetworkError(null), false);
 });
@@ -69,4 +71,13 @@ test("the sync hook never deletes refused orders; staff discard them from the ba
   const app = fs.readFileSync(new URL("../src/App.jsx", import.meta.url), "utf8");
   assert.match(app, /rejected=\{offline\.rejected\}/);
   assert.match(app, /onDiscard=\{offline\.discard\}/);
+});
+
+test("O1: a KOT printed on this device is flagged on that queued sale only, so its sync does not print another", () => {
+  const a = enqueueOrder({ items: [{ name: "Tea", quantity: 1 }] });
+  const b = enqueueOrder({ items: [{ name: "Coffee", quantity: 1 }] });
+  markKotPrinted(a.localId);
+  const q = readQueue();
+  assert.equal(q.find((e) => e.localId === a.localId).order.kotPrinted, true);
+  assert.equal(q.find((e) => e.localId === b.localId).order.kotPrinted, undefined);
 });

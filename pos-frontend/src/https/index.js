@@ -42,7 +42,7 @@ export const deleteTable = (tableId) =>
 // `key` is the Idempotency-Key: a retried or replayed POST (offline sync, a
 // double tap on a slow line) is answered with the order it already made.
 export const addOrder = (data, key) =>
-  axiosWrapper.post("/api/order/", data, key ? { headers: { "Idempotency-Key": key } } : undefined);
+  axiosWrapper.post("/api/order/", data, { timeout: 15000, ...(key ? { headers: { "Idempotency-Key": key } } : {}) });
 export const getOrderById = (id) => axiosWrapper.get(`/api/order/${id}`);
 // Module 4 §6 — Orders list accepts an optional filter object.
 // The backend defaults to today when no date/from/to is provided so calling
@@ -318,6 +318,5 @@ export const reinstateSubscription = () => axiosWrapper.post("/api/subscription/
 export const getPlatformInvoices = () => axiosWrapper.get("/api/subscription/invoices");
 
 /* ---------- Restaurant, waiter calls ---------- */
-// The kitchen screen reads the orders themselves (getOrders); there is no separate KDS API.
 export const getMyRestaurant = () => axiosWrapper.get("/api/restaurant/me");
 export const dismissWaiterCall = (tableId) => axiosWrapper.post(`/api/qr/waiter-call/${tableId}/dismiss`);

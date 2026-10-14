@@ -126,6 +126,24 @@ const windowsOn = (settings, channel, ymd) => {
   return windows.sort((a, b) => a.from - b.from);
 };
 
+const dayBefore = (ymd) => new Date(Date.parse(`${ymd}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
+
+/** Is minute-of-day `minutes` inside the after-midnight tail of a slot that opened on `prevYmd`? */
+const inTailOf = (settings, channel, prevYmd, minutes) =>
+  slotsOf(entryFor(weeklyFor(settings, channel), new Date(`${prevYmd}T00:00:00Z`).getUTCDay())).some(
+    (s) => toMinutes(s.closeTime) < toMinutes(s.openTime) && minutes < toMinutes(s.closeTime),
+  );
+
+const shut = (kind, label) => ({
+  open: false,
+  kind,
+  reason:
+    kind === "holiday"
+      ? `The restaurant is closed for a holiday. ${label} is unavailable.`
+      : `The restaurant is closed for today. ${label} is unavailable.`,
+  windows: [],
+});
+
 /**
  * @returns {{ open: boolean, kind: ""|"holiday"|"closedToday"|"hours", reason: string, windows: {from,to}[]|null }}
  */
@@ -133,13 +151,12 @@ const availabilityAt = (settings, channel, at = new Date(), timeZone = DEFAULT_T
   const { ymd, minutes } = localClock(at, timeZone || DEFAULT_TZ);
   const label = LABELS[channel] || "Ordering";
 
-  const holiday = holidayOn(settings, ymd);
-  if (holiday) {
-    return { open: false, kind: "holiday", reason: `The restaurant is closed for a holiday. ${label} is unavailable.`, windows: [] };
-  }
-  if (closedForTodayOn(settings, ymd)) {
-    return { open: false, kind: "closedToday", reason: `The restaurant is closed for today. ${label} is unavailable.`, windows: [] };
-  }
+  if (holidayOn(settings, ymd)) return shut("holiday", label);
+  if (closedForTodayOn(settings, ymd)) return shut("closedToday", label);
+  // H2: after midnight, last night's shift is still yesterday's, so yesterday's holiday or Close for Today shuts its tail too.
+  const prev = dayBefore(ymd);
+  const prevKind = holidayOn(settings, prev) ? "holiday" : closedForTodayOn(settings, prev) ? "closedToday" : "";
+  if (prevKind && inTailOf(settings, channel, prev, minutes)) return shut(prevKind, label);
 
   const windows = windowsOn(settings, channel, ymd);
   if (windows.some((w) => minutes >= w.from && minutes < w.to)) {
@@ -226,9 +243,37 @@ const websiteAvailability = (settings, timeZone = DEFAULT_TZ, at = new Date()) =
   table: availabilityAt(settings, "table", at, timeZone),
 });
 
+/**
+ * H1: open for online orders when a channel the store offers is open. An
+ * unoffered channel still has (default) hours, so it must not count.
+ * `a` is websiteAvailability()'s answer.
+ */
+const orderingOpen = (settings, a) => {
+  const offered = [
+    settings?.ordering?.pickupEnabled !== false && a.collection,
+    settings?.ordering?.deliveryEnabled === true && a.delivery,
+  ].filter(Boolean);
+  if (!offered.length) return { open: false, reason: "This store is not taking online orders." };
+  const open = offered.some((c) => c.open);
+  return { open, reason: open ? "" : offered[0].reason };
+};
+
+/**
+ * The trading day a moment belongs to, "YYYY-MM-DD": yesterday's local date
+ * while a shift that opened yesterday (any channel) runs past midnight, else
+ * today's. Close for Today stores this (D14).
+ */
+const businessDate = (settings, at = new Date(), timeZone = DEFAULT_TZ) => {
+  const { ymd, minutes } = localClock(at, timeZone || DEFAULT_TZ);
+  const prev = dayBefore(ymd);
+  return ["collection", "delivery", "table"].some((c) => inTailOf(settings, c, prev, minutes)) ? prev : ymd;
+};
+
 module.exports = {
   availabilityAt,
   websiteAvailability,
+  orderingOpen,
+  businessDate,
   publicHours,
   hoursOnLabel,
   windowsOn,

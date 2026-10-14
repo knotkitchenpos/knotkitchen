@@ -312,6 +312,37 @@ test("a link opened against an unintegrated gateway is refused, not guessed at",
   assert.equal(writes.transactions.length, 0);
 });
 
+test("REGRESSION N021b: a payment link closing a table keeps the table's own QR checkout on record", async () => {
+  // Replacing session.payment wholesale erased the open QR order: a diner who
+  // then paid it was neither applied nor refunded (the webhook found nothing).
+  resetState();
+  cashfreeStub.paid = true;
+  const session = {
+    status: "BILL_REQUESTED",
+    payment: { status: "PENDING", gatewayProvider: "cashfree", gatewayOrderId: "tbl_X", gatewayOrderIds: ["tbl_W", "tbl_X"], refundedOrderIds: ["tbl_V"] },
+    paymentHistory: [],
+    save: async () => {},
+  };
+  const sessionModel = mocks["../models/tableSessionModel"];
+  const findOne = sessionModel.findOne;
+  sessionModel.findOne = () => ({ session: async () => session });
+  LINK.tableSessionId = "s1";
+  try {
+    const { res, err } = await run(linkCtrl.verifyAndCaptureLinkPayment, { params: { token: LINK.linkToken }, body: {} });
+    assert.equal(err, null, err && err.message);
+    assert.equal(res.statusCode, 200);
+  } finally {
+    sessionModel.findOne = findOne;
+    LINK.tableSessionId = null;
+  }
+  assert.equal(session.status, "CLOSED");
+  assert.equal(session.payment.method, "PAYMENT_LINK");
+  assert.equal(session.payment.gatewayProvider, "cashfree");
+  assert.equal(session.payment.gatewayOrderId, "tbl_X");
+  assert.deepEqual(session.payment.gatewayOrderIds, ["tbl_W", "tbl_X"]);
+  assert.deepEqual(session.payment.refundedOrderIds, ["tbl_V"]);
+});
+
 // ---------------------------------------------------------------------------
 // CRITICAL 2 — the public webhook
 // ---------------------------------------------------------------------------
@@ -360,10 +391,19 @@ test("CRITICAL: a forged event for an order we never opened settles nothing", as
   const req = hookReq({ body });
   req.headers["x-webhook-signature"] = signFor(raw, "1725500000", process.env.CASHFREE_SECRET_KEY);
 
-  const { res } = await run(hookCtrl.cashfreeWebhook, req);
-  assert.equal(res.statusCode, 200);
-  assert.notEqual(res.body?.settled, "link");
-  assert.equal(writes.transactions.length, 0);
+  // An order we never opened: no table session or payment link carries it.
+  const [sessionFind, linkFind] = [noopModel.findOne, PaymentLinkMock.findOne];
+  noopModel.findOne = async () => null;
+  PaymentLinkMock.findOne = async () => null;
+  try {
+    const { res } = await run(hookCtrl.cashfreeWebhook, req);
+    assert.equal(res.statusCode, 200);
+    assert.notEqual(res.body?.settled, "link");
+    assert.equal(writes.transactions.length, 0);
+  } finally {
+    noopModel.findOne = sessionFind;
+    PaymentLinkMock.findOne = linkFind;
+  }
 });
 
 test("N4: a PAID website checkout is placed by the webhook, whatever the store's state now", async () => {

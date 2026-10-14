@@ -6,13 +6,13 @@ const Module = require("module");
  * A collection order for a later pickup is accepted into the queue but not
  * started: cooking begins Auto Ready minutes before the pickup time.
  */
-const loadService = (autoReadyMinutes) => {
+const loadService = (autoReadyMinutes, autoReadyEnabled = true) => {
   const orig = Module._load;
   Module._load = function (r, ...rest) {
     if (r === "../models/websiteSettingsModel") {
       return {
         findOne: () => ({
-          select: async () => ({ ordering: { autoReadyMinutes: { collection: autoReadyMinutes }, autoCompleteMinutes: { collection: 0 } } }),
+          select: async () => ({ ordering: { autoReadyEnabled, autoReadyMinutes: { collection: autoReadyMinutes }, autoCompleteMinutes: { collection: 0 } } }),
         }),
       };
     }
@@ -76,4 +76,14 @@ test("a website order is only placed after the gateway says it was paid", () => 
   assert.ok(settle.indexOf("if (!status.paid)") < settle.indexOf("placePaidCheckout("), "the webhook asks the gateway first");
   const open = ctrl.slice(ctrl.indexOf("const openCheckout"), ctrl.indexOf("const startStorefrontCheckout"));
   assert.ok(!/order\.save\(/.test(open), "opening a payment must not save an order");
+});
+
+test("REGRESSION N008: no order is marked Ready by a timer unless the owner turned Auto Ready on", async () => {
+  const off = loadService(2, null); // a store that never set it
+  assert.equal(await off.computeReadyDueAt({ restaurantId: "r1", orderType: "takeaway", from: at("17:00") }), null);
+  const queued = await off.clocksOnAccept(order(at("19:00")), at("17:00"));
+  assert.equal(queued.prepStartAt.toISOString(), at("18:58").toISOString(), "the minutes still time the prep alert");
+  assert.equal(queued.readyDueAt, null);
+  const on = loadService(2, true);
+  assert.equal((await on.computeReadyDueAt({ restaurantId: "r1", orderType: "takeaway", from: at("17:00") })).toISOString(), at("17:02").toISOString());
 });

@@ -80,9 +80,12 @@ const generateRefreshToken = (user, jti) =>
 // instant even with a year-long cookie.
 const SESSION_LIFETIME_DAYS = 365;
 const SESSION_LIFETIME_MS = SESSION_LIFETIME_DAYS * 24 * 60 * 60 * 1000;
+// N035/D10: a CSD "Open POS" support visit ends; it never rides the owner's year-long, sliding session.
+const SUPPORT_SESSION_MS = 4 * 60 * 60 * 1000;
 
 const signTokensAndSetCookies = async (user, req, res, { supportPosSessionId = null } = {}) => {
-  const sessionExpiry = new Date(Date.now() + SESSION_LIFETIME_MS);
+  const lifetime = supportPosSessionId ? SUPPORT_SESSION_MS : SESSION_LIFETIME_MS;
+  const sessionExpiry = new Date(Date.now() + lifetime);
 
   user.sessions = user.sessions || [];
   const session = user.sessions[user.sessions.push({
@@ -122,7 +125,7 @@ const signTokensAndSetCookies = async (user, req, res, { supportPosSessionId = n
     // The token inside still expires in 15 minutes and REST still refuses it
     // then (401 -> refresh). The cookie is kept so a reconnecting socket has
     // something to show: services/socket checks the session it names.
-    maxAge: SESSION_LIFETIME_MS,
+    maxAge: lifetime,
     httpOnly: true,
     sameSite,
     secure: secureCookie,
@@ -130,7 +133,7 @@ const signTokensAndSetCookies = async (user, req, res, { supportPosSessionId = n
   });
 
   res.cookie(sessionCookies.refreshCookieName(user.storeId), refreshToken, {
-    maxAge: SESSION_LIFETIME_MS,
+    maxAge: lifetime,
     httpOnly: true,
     sameSite,
     secure: secureCookie,
@@ -256,7 +259,9 @@ const refreshToken = async (req, res, next) => {
     // stays fresh too (some browsers cap third-party cookies to shorter
     // lifetimes anyway; re-setting it is the cheapest way to keep it alive).
     session.lastActiveAt = new Date();
-    session.expiresAt = new Date(Date.now() + SESSION_LIFETIME_MS);
+    // N035: a support session keeps the expiry it was issued with.
+    if (!session.supportPosSessionId) session.expiresAt = new Date(Date.now() + SESSION_LIFETIME_MS);
+    const cookieAge = session.supportPosSessionId ? session.expiresAt - Date.now() : SESSION_LIFETIME_MS;
     await user.save();
 
     const secureCookie = config.cookieSecure;
@@ -267,14 +272,14 @@ const refreshToken = async (req, res, next) => {
       // The token inside still expires in 15 minutes and REST still refuses it
     // then (401 -> refresh). The cookie is kept so a reconnecting socket has
     // something to show: services/socket checks the session it names.
-    maxAge: SESSION_LIFETIME_MS,
+    maxAge: cookieAge,
       httpOnly: true,
       sameSite,
       secure: secureCookie,
       path: "/",
     });
     res.cookie(sessionCookies.refreshCookieName(user.storeId), token, {
-      maxAge: SESSION_LIFETIME_MS,
+      maxAge: cookieAge,
       httpOnly: true,
       sameSite,
       secure: secureCookie,

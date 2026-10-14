@@ -62,18 +62,22 @@ const logActivity = async ({
     const validRestId = mongoose.Types.ObjectId.isValid(activeUser.restaurantId) ? activeUser.restaurantId : null;
     const validUserId = mongoose.Types.ObjectId.isValid(activeUser._id) ? activeUser._id : null;
 
+    // N035: a CSD "Open POS" session signs in as the owner but is not them.
+    const support = activeUser.supportPosSessionId || null;
+
     const doc = await AuditLog.create({
       storeId: activeUser.storeId || "",
       restaurantId: validRestId,
       userId: validUserId,
       phone: activeUser.phone || "",
-      role: activeUser.role || "Staff",
+      role: support ? "csd:support" : activeUser.role || "Staff",
       action: action || "SETTINGS_UPDATE",
       resource: resource || entityType || "General",
       entityType: entityType || resource || "General",
       entityId: id,
       resourceId: id,
-      description: description || `${action} by ${activeUser.name || activeUser.phone || "User"}`,
+      description: `${support ? "[CSD support] " : ""}${description || `${action} by ${activeUser.name || activeUser.phone || "User"}`}`,
+      ...(support ? { metadata: { supportPosSessionId: support, actingAs: activeUser.role || "" } } : {}),
       previousValue: cleanPrev,
       newValue: cleanNew,
       dateFormatted,

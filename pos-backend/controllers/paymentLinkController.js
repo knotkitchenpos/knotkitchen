@@ -517,7 +517,19 @@ const verifyAndCaptureLinkPayment = async (req, res, next) => {
       if (session) {
         session.status = "CLOSED";
         session.closedAt = new Date();
-        session.payment = { method: "PAYMENT_LINK", status: "PAID", transactionId, paidAt: new Date() };
+        // The gateway handles stay: a payment on the table's own QR checkout
+        // that lands after this link closed it is then still found, and refunded.
+        const was = session.payment || {};
+        session.payment = {
+          method: "PAYMENT_LINK",
+          status: "PAID",
+          transactionId,
+          paidAt: new Date(),
+          gatewayProvider: was.gatewayProvider || "",
+          gatewayOrderId: was.gatewayOrderId || "",
+          gatewayOrderIds: [...(was.gatewayOrderIds || [])],
+          refundedOrderIds: [...(was.refundedOrderIds || [])],
+        };
         session.paymentHistory = session.paymentHistory || [];
         session.paymentHistory.push({
           method: "PAYMENT_LINK",

@@ -214,6 +214,15 @@ const Tables = () => {
 
   const tables = resData?.data?.data || [];
 
+  // N016b: the open table's detail stays live. Socket events invalidate the
+  // "tables" prefix, so a round, a cancel or a settle elsewhere shows at once.
+  const { data: detailRes } = useQuery({
+    queryKey: ["tables", "session", sessionData?._id],
+    queryFn: () => getTableSessionById(sessionData._id),
+    enabled: Boolean(sessionData?._id),
+  });
+  const liveSession = detailRes?.data?.data || sessionData;
+
   // Derive unique floor/area names from server tables + custom created areas
   const allAreas = Array.from(
     new Set([
@@ -844,8 +853,8 @@ const Tables = () => {
       {sessionTable && (
         <SessionDetailModal
           table={sessionTable}
-          session={sessionData}
-          onComplete={() => setSettleTarget({ table: sessionTable, session: sessionData })}
+          session={liveSession}
+          onComplete={() => setSettleTarget({ table: sessionTable, session: liveSession })}
           onMove={() => setPicker("move")}
           onMerge={() => setPicker("merge")}
           onCancelItem={handleCancelSessionItem}

@@ -157,7 +157,7 @@ test("the Dispatch Type cascade is deliberately kept", () => {
     MENU_CTRL.indexOf("const updateCategory"),
     MENU_CTRL.indexOf("const addSubcategory"),
   );
-  assert.match(block, /item\.dispatchType = \{/);
+  assert.match(block, /item\.dispatchType = dispatchFlags\(dispatchType\)/);
 });
 
 // ---------------------------------------------------------------------------

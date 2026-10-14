@@ -11,6 +11,7 @@ import {
 } from "../https/publicApi";
 import { loadCashfree } from "../utils/cashfree";
 import { money as formatMoney, thumbUrl } from "../utils";
+import { repriceCart } from "../utils/qrCart";
 
 /**
  * Customer-facing table-QR menu (mobile-first).
@@ -147,6 +148,15 @@ export default function OrderOnline() {
       });
   };
 
+  // D11: diners may zoom this page (WCAG 1.4.4); the till keeps index.html's no-zoom.
+  useEffect(() => {
+    const meta = document.querySelector('meta[name="viewport"]');
+    if (!meta) return undefined;
+    const before = meta.getAttribute("content");
+    meta.setAttribute("content", "width=device-width, initial-scale=1.0, viewport-fit=cover");
+    return () => meta.setAttribute("content", before);
+  }, []);
+
   useEffect(() => {
     if (!token) {
       setErr("Invalid QR code — the table link is missing its token.");
@@ -155,9 +165,18 @@ export default function OrderOnline() {
     }
     refetch().finally(() => setLoading(false));
     // Light polling so the customer sees kitchen-status updates on their
-    // items without needing to refresh.
-    const t = setInterval(refetch, 12000);
-    return () => clearInterval(t);
+    // items without needing to refresh. A background tab skips it and catches
+    // up the moment it is shown again.
+    const poll = () => {
+      if (document.hidden) return;
+      refetch();
+    };
+    const t = setInterval(poll, 12000);
+    document.addEventListener("visibilitychange", poll);
+    return () => {
+      clearInterval(t);
+      document.removeEventListener("visibilitychange", poll);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
@@ -174,8 +193,12 @@ export default function OrderOnline() {
         out.push(m);
       }
     }
-    return out.filter((i) => i && i.isAvailable !== false);
+    // N039: the server lists what the table bill accepts (POS Visibility included).
+    return out.filter((i) => i && (i.isAvailable !== false || i.visibleOnPosWhenOff === true));
   }, [menu]);
+
+  // Every poll carries the price the server bills now; held lines follow it.
+  useEffect(() => setCart((c) => repriceCart(c, flatMenu)), [flatMenu]);
 
   const cats = useMemo(
     () => Array.from(new Set(flatMenu.map((m) => m.category).filter(Boolean))),
@@ -428,7 +451,7 @@ export default function OrderOnline() {
           <p className="text-sm text-slate-600">
             {err || "This table's order has been settled. Please scan the QR code on your table to start a new order."}
           </p>
-          <p className="text-xs text-slate-400 mt-4">
+          <p className="text-xs text-slate-500 mt-4">
             Saved links stop working once a table is settled, so nobody else can see your order.
           </p>
         </div>
@@ -441,9 +464,9 @@ export default function OrderOnline() {
       <div className="min-h-screen bg-slate-50 flex items-center justify-center p-6">
         <div className="max-w-sm text-center">
           <div className="mx-auto mb-4 w-14 h-14 rounded-full bg-red-50 text-red-500 flex items-center justify-center text-2xl">!</div>
-          <h1 className="text-lg font-bold text-slate-900 mb-1">Couldn't open this table</h1>
+          <h1 className="text-lg font-bold text-slate-900 mb-1">Couldn&apos;t open this table</h1>
           <p className="text-sm text-slate-600">{err}</p>
-          <p className="text-xs text-slate-400 mt-4">Ask your server to reprint the QR code.</p>
+          <p className="text-xs text-slate-500 mt-4">Ask your server to reprint the QR code.</p>
         </div>
       </div>
     );
@@ -570,9 +593,9 @@ export default function OrderOnline() {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search dishes…"
-              className="w-full pl-9 pr-3 py-2 rounded-xl bg-white/95 text-slate-900 placeholder:text-slate-400 text-sm outline-none"
+              className="w-full pl-9 pr-3 py-2 rounded-xl bg-white/95 text-slate-900 placeholder:text-slate-500 text-sm outline-none"
             />
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400">🔍</span>
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">🔍</span>
           </div>
         </div>
 
@@ -638,10 +661,10 @@ export default function OrderOnline() {
                   <div className="min-w-0">
                     <p
                       className={`font-semibold break-words ${
-                        it.status === "cancelled" ? "text-slate-400 line-through" : "text-slate-800"
+                        it.status === "cancelled" ? "text-slate-500 line-through" : "text-slate-800"
                       }`}
                     >
-                      {it.name} <span className="text-slate-400 font-normal">× {it.quantity}</span>
+                      {it.name} <span className="text-slate-500 font-normal">× {it.quantity}</span>
                     </p>
                     <span
                       className={`inline-block mt-0.5 text-[10px] font-bold uppercase tracking-wider rounded px-1.5 py-0.5 ${
@@ -659,7 +682,7 @@ export default function OrderOnline() {
                   </div>
                   <span
                     className={`font-bold shrink-0 ${
-                      it.status === "cancelled" ? "text-slate-400 line-through" : "text-slate-900"
+                      it.status === "cancelled" ? "text-slate-500 line-through" : "text-slate-900"
                     }`}
                   >
                     {money(it.total)}
@@ -759,7 +782,7 @@ export default function OrderOnline() {
                       >
                         {loadingPayment ? "Opening payment…" : `Pay ${money(paymentInfo.amount)}`}
                       </button>
-                      <p className="text-[11px] text-slate-400 text-center">
+                      <p className="text-[11px] text-slate-500 text-center">
                         The payment gateway needs a mobile number for your receipt.
                       </p>
                     </>
@@ -773,7 +796,7 @@ export default function OrderOnline() {
                       >
                         {paying ? "Opening payment…" : `Pay ${money(paymentInfo.amount)}`}
                       </button>
-                      <p className="text-[11px] text-slate-400 text-center">
+                      <p className="text-[11px] text-slate-500 text-center">
                         Secured by Cashfree · your table is settled
                         automatically once payment succeeds.
                       </p>
@@ -791,7 +814,7 @@ export default function OrderOnline() {
                       >
                         Ask for the bill
                       </button>
-                      <p className="text-[11px] text-slate-400 text-center">
+                      <p className="text-[11px] text-slate-500 text-center">
                         This store takes payment at the counter.
                       </p>
                     </>
@@ -819,7 +842,7 @@ export default function OrderOnline() {
         className="max-w-3xl mx-auto px-4 pt-4 grid grid-cols-1 sm:grid-cols-2 gap-3"
       >
         {filtered.length === 0 ? (
-          <div className="col-span-full text-center text-slate-400 py-16">
+          <div className="col-span-full text-center text-slate-500 py-16">
             <p className="text-sm font-semibold">No dishes match your search.</p>
           </div>
         ) : (
@@ -839,7 +862,7 @@ export default function OrderOnline() {
                     loading="lazy"
                   />
                 ) : (
-                  <div className="w-20 h-20 rounded-xl bg-slate-100 shrink-0 flex items-center justify-center text-2xl text-slate-400">
+                  <div className="w-20 h-20 rounded-xl bg-slate-100 shrink-0 flex items-center justify-center text-2xl text-slate-500">
                     🍽️
                   </div>
                 )}
@@ -858,7 +881,7 @@ export default function OrderOnline() {
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => sub(String(item._id))}
-                          className="w-7 h-7 rounded-full bg-slate-100 text-slate-700 font-bold"
+                          className="w-10 h-10 rounded-full bg-slate-100 text-slate-700 font-bold"
                           aria-label={`Remove one ${item.name}`}
                         >
                           −
@@ -868,7 +891,7 @@ export default function OrderOnline() {
                         </span>
                         <button
                           onClick={() => add(item)}
-                          className="w-7 h-7 rounded-full text-white font-bold"
+                          className="w-10 h-10 rounded-full text-white font-bold"
                           style={{ background: primary }}
                           aria-label={`Add one more ${item.name}`}
                         >
@@ -878,7 +901,7 @@ export default function OrderOnline() {
                     ) : (
                       <button
                         onClick={() => add(item)}
-                        className="text-[12px] font-bold text-white rounded-full px-3 py-1"
+                        className="text-[12px] font-bold text-white rounded-full px-3 py-2"
                         style={{ background: primary }}
                       >
                         {itemHasOptions ? (qty > 0 ? `Add more · ${qty}` : "Choose") : "+ Add"}
@@ -951,7 +974,7 @@ export default function OrderOnline() {
                     <div className="flex items-center gap-2">
                       <button
                         onClick={() => sub(key)}
-                        className="w-7 h-7 rounded-full bg-slate-100 text-slate-700 font-bold"
+                        className="w-10 h-10 rounded-full bg-slate-100 text-slate-700 font-bold"
                         aria-label={`Remove one ${item.name}`}
                       >
                         −
@@ -961,7 +984,7 @@ export default function OrderOnline() {
                         onClick={() =>
                           addLine({ item, qty: 1, variant, modifiers, unitPrice })
                         }
-                        className="w-7 h-7 rounded-full text-white font-bold"
+                        className="w-10 h-10 rounded-full text-white font-bold"
                         style={{ background: primary }}
                         aria-label={`Add one more ${item.name}`}
                       >
@@ -979,7 +1002,7 @@ export default function OrderOnline() {
                   joins the running session and goes straight to ordering. */}
               {session ? (
                 <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-100">
-                  <span className="text-slate-400 text-sm">🪑</span>
+                  <span className="text-slate-500 text-sm">🪑</span>
                   <p className="text-[12.5px] text-slate-600">
                     Adding to the open order on{" "}
                     <span className="font-bold text-slate-800">
@@ -994,7 +1017,7 @@ export default function OrderOnline() {
                 <div className="space-y-2">
                   <p className="text-[12.5px] font-semibold text-slate-700">
                     Your details
-                    <span className="font-normal text-slate-400">
+                    <span className="font-normal text-slate-500">
                       {" "}· asked once, when you open the table
                     </span>
                   </p>
@@ -1049,8 +1072,8 @@ export default function OrderOnline() {
                     ? `Add to ${tableName} · ${money(cartTotal)}`
                     : `Send to Kitchen · ${money(cartTotal)}`}
               </button>
-              <p className="text-[11px] text-center text-slate-400">
-                Your order goes to the kitchen instantly. Pay at the counter when you're done.
+              <p className="text-[11px] text-center text-slate-500">
+                The staff confirm your order and send it to the kitchen. Pay when you&apos;re done.
               </p>
             </div>
           </div>

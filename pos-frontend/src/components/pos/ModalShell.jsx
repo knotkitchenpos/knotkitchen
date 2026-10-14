@@ -1,31 +1,69 @@
-import React from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
+
+const FOCUSABLE =
+  'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+
+/** Escape closes; Tab and Shift+Tab wrap inside the dialog. Bound on the panel, so a dialog opened over another only closes itself. */
+const dialogKeyDown = (e, onClose, active = globalThis.document?.activeElement) => {
+  if (e.key === "Escape") {
+    e.stopPropagation();
+    onClose?.();
+    return;
+  }
+  if (e.key !== "Tab") return;
+  const list = [...e.currentTarget.querySelectorAll(FOCUSABLE)];
+  const first = list[0];
+  const last = list[list.length - 1];
+  if (!list.length || (e.shiftKey && active === first) || (!e.shiftKey && active === last)) {
+    e.preventDefault();
+    (e.shiftKey ? last : first)?.focus();
+  }
+};
 
 /** Shared modal chrome so every POS modal looks identical to the reference. */
-export const ModalShell = ({ title, subtitle, onClose, children, width = 460 }) => (
-  <div className="fixed inset-0 z-[95] bg-[#0F172A]/40 flex items-center justify-center p-4">
-    {/* Capped to the screen: a long form (product options) scrolls inside
-        the body instead of running off a phone with its buttons unreachable. */}
-    <div
-      className="w-full max-h-[calc(100dvh-2rem)] flex flex-col bg-white rounded-2xl shadow-2xl overflow-hidden"
-      style={{ maxWidth: width }}
-    >
-      <div className="px-5 py-4 border-b border-[#E2E8F0] flex items-start justify-between gap-3 shrink-0">
-        <div>
-          <h3 className="text-[18px] font-extrabold text-[#0F172A] leading-tight">{title}</h3>
-          {subtitle && <p className="text-[12.5px] text-[#94A3B8] mt-1">{subtitle}</p>}
+export const ModalShell = ({ title, subtitle, onClose, children, width = 460 }) => {
+  const titleId = useId();
+  const panel = useRef(null);
+  // Read during the first render: by the first effect an autoFocus field already holds focus.
+  const [opener] = useState(() => document.activeElement);
+  // Focus moves into the dialog on open (unless a field autofocused) and goes back on close.
+  useEffect(() => {
+    if (panel.current && !panel.current.contains(document.activeElement)) panel.current.focus();
+    return () => opener?.focus?.();
+  }, [opener]);
+
+  return (
+    <div className="fixed inset-0 z-[95] bg-[#0F172A]/40 flex items-center justify-center p-4">
+      {/* Capped to the screen: a long form (product options) scrolls inside
+          the body instead of running off a phone with its buttons unreachable. */}
+      <div
+        ref={panel}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        onKeyDown={(e) => dialogKeyDown(e, onClose)}
+        className="w-full max-h-[calc(100dvh-2rem)] flex flex-col bg-white rounded-2xl shadow-2xl overflow-hidden outline-none"
+        style={{ maxWidth: width }}
+      >
+        <div className="px-5 py-4 border-b border-[#E2E8F0] flex items-start justify-between gap-3 shrink-0">
+          <div>
+            <h3 id={titleId} className="text-[18px] font-extrabold text-[#0F172A] leading-tight">{title}</h3>
+            {subtitle && <p className="text-[12.5px] text-[#64748B] mt-1">{subtitle}</p>}
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            className="w-10 h-10 -m-1 rounded-lg text-[#94A3B8] hover:text-[#EF4444] hover:bg-[#FEF2F2] text-[20px] leading-none flex items-center justify-center shrink-0"
+          >
+            ×
+          </button>
         </div>
-        <button
-          onClick={onClose}
-          aria-label="Close"
-          className="w-10 h-10 -m-1 rounded-lg text-[#94A3B8] hover:text-[#EF4444] hover:bg-[#FEF2F2] text-[20px] leading-none flex items-center justify-center shrink-0"
-        >
-          ×
-        </button>
+        <div className="p-5 min-h-0 overflow-y-auto">{children}</div>
       </div>
-      <div className="p-5 min-h-0 overflow-y-auto">{children}</div>
     </div>
-  </div>
-);
+  );
+};
 
 export const Field = ({ label, error, children }) => (
   <div>

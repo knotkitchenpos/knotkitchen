@@ -7,6 +7,10 @@ const crypto = require("crypto");
 const mongoose = require("mongoose");
 const { logActivity } = require("../services/auditService");
 
+// V7: "0" became 4 seats on add, and 2.5 was kept on edit.
+const SEATS_ERROR = "Seats must be a whole number from 1 to 100.";
+const validSeats = (n) => Number.isInteger(n) && n >= 1 && n <= 100;
+
 const addTable = async (req, res, next) => {
   try {
     const { tableNo, tableName, displayId, seats, capacity: capInput, area, floor, zone, isEnabled } = req.body;
@@ -29,15 +33,9 @@ const addTable = async (req, res, next) => {
       tableNumber = (maxTable?.tableNumber || 0) + 1;
     }
 
-    const capacity = Number(capInput || seats) || 4;
-    if (!Number.isInteger(capacity) || capacity < 1) {
-      const error = createHttpError(400, "Capacity must be at least 1 customer!");
-      return next(error);
-    }
-    if (capacity > 100) {
-      const error = createHttpError(400, "Capacity cannot exceed 100 customers!");
-      return next(error);
-    }
+    const rawSeats = capInput ?? seats;
+    const capacity = rawSeats === undefined ? 4 : Number(rawSeats);
+    if (!validSeats(capacity)) return next(createHttpError(400, SEATS_ERROR));
 
     const isTablePresent = await Table.findOne({
       ...scopeQuery,
@@ -125,6 +123,7 @@ const getTables = async (req, res, next) => {
           sessionCode: session.sessionCode,
           status: session.status,
           customerCount: session.customerCount,
+          capacity: session.capacity, // N007: a merged party holds every merged table's seats
           bills: session.bills,
           itemsCount: session.items.length,
           createdAt: session.createdAt,
@@ -221,9 +220,9 @@ const updateTable = async (req, res, next) => {
       updateFields.status = status;
     }
     if (orderId) updateFields.currentOrderId = orderId;
-    if (capacity) {
+    if (capacity !== undefined && capacity !== null) {
       const cap = Number(capacity);
-      if (cap < 1 || cap > 100) throw createHttpError(400, "Capacity must be between 1 and 100!");
+      if (!validSeats(cap)) throw createHttpError(400, SEATS_ERROR);
       updateFields.capacity = cap;
     }
     const chosenArea = area || floor || zone;

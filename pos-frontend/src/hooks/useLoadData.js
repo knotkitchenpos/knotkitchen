@@ -39,6 +39,8 @@ const useLoadData = () => {
 
         }
       } catch (error) {
+        // N006: only the server refusing the session signs the tab out, never a lost connection.
+        if (![401, 403].includes(error?.response?.status)) return;
         dispatch(removeUser());
         if (!isPublicPath()) navigate("/auth");
       } finally {

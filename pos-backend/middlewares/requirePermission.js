@@ -17,9 +17,9 @@ const isOwnerUser = (user) => {
  */
 const STAFF_DEFAULT_PERMISSIONS = ["TABLE_READ", "TABLE_UPDATE"];
 
-/** The Security PIN, as a short-lived token or typed in with the request. */
-const hasPinAuthorization = async (req) => {
-  const pinToken = req.headers["x-staff-pin-token"] || req.cookies?.staffPinToken;
+/** The Security PIN, as a short-lived token or typed in with the request (typedOnly: typed only). */
+const hasPinAuthorization = async (req, { typedOnly = false } = {}) => {
+  const pinToken = typedOnly ? null : req.headers["x-staff-pin-token"] || req.cookies?.staffPinToken;
   if (pinToken) {
     try {
       const decoded = jwt.verify(pinToken, config.accessTokenSecret, { algorithms: ["HS256"] });
@@ -94,6 +94,17 @@ const requireProtectedAction = async (req, res, next) => {
   }
 };
 
+// N032/N034: settings and staff changes need the PIN typed for that save, not the 15-minute token from an earlier action.
+const requireTypedPin = ({ evenOwner = false } = {}) => async (req, res, next) => {
+  try {
+    if (!req.user) return next(createHttpError(401, "Authentication required."));
+    if (!evenOwner && isOwnerUser(req.user)) return next();
+    return next((await hasPinAuthorization(req, { typedOnly: true })) ? undefined : pinRequired());
+  } catch (error) {
+    next(error);
+  }
+};
+
 /**
  * Store management only: the owner, or a user whose role is Admin or
  * Manager. Waiters, cashiers and other staff are refused, PIN or not.
@@ -118,6 +129,7 @@ module.exports = {
   requirePermission,
   requireOwnerOnly,
   requireProtectedAction,
+  requireTypedPin,
   requireManager,
   isOwnerUser,
   isManagerUser,

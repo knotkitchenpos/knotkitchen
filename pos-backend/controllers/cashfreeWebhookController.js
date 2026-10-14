@@ -19,8 +19,12 @@
  *   4. Ask Cashfree what the order status actually is. Even a correctly
  *      signed "success" event is not taken at its word about the money.
  *
- * Acknowledging with 200 is deliberate for every outcome that is not our bug:
- * a webhook that answers 4xx is retried for days.
+ * Acknowledging with 200 is deliberate for every outcome but one: a webhook
+ * that answers 4xx or 5xx is retried for days. The exception is a diner's
+ * payment we could not apply and could not refund either (or could not apply
+ * yet, or refunded but could not record on the table): that answers 500 so
+ * Cashfree retries it, and the refund id is fixed per order, so a retry can
+ * never refund twice.
  */
 
 const TableSession = require("../models/tableSessionModel");
@@ -68,8 +72,9 @@ const cashfreeWebhook = async (req, res) => {
     // Two things open Cashfree orders: a table session paying its own bill,
     // and a payment link sent to a customer. Either may be the one the
     // browser never came back from.
+    // N021a: the session's current order, or one it opened before that.
     const session = await TableSession.findOne({
-      "payment.gatewayOrderId": orderId,
+      $or: [{ "payment.gatewayOrderId": orderId }, { "payment.gatewayOrderIds": orderId }],
       "payment.gatewayProvider": PROVIDERS.CASHFREE,
       isDeleted: { $ne: true },
     });
@@ -120,10 +125,11 @@ const cashfreeWebhook = async (req, res) => {
       return res.status(401).json({ success: false, message: "Invalid signature." });
     }
 
-    // Already settled — by the browser getting back first, or by an earlier
-    // delivery of this same event. Nothing to do, and saying so is correct.
+    // Already settled by THIS order — the browser getting back first, or an
+    // earlier delivery of this same event. Nothing to do, and saying so is
+    // correct. A table settled any other way still owes this payment back.
     const settledAlready = session
-      ? ["PAID", "CLOSED"].includes(session.status)
+      ? settledBy(session, orderId)
       : link
         ? link.status === "PAID"
         : recharge.status === "PAID";
@@ -154,15 +160,12 @@ const cashfreeWebhook = async (req, res) => {
       // Opened for the bill plus the platform fee stored with the gateway order.
       const platformFee = session.payment?.platformFee;
       const expected = round2(payable + toRupees(platformFee?.totalPaise));
-      if (Math.abs(Number(status.amount) - Number(expected)) > 0.01) {
-        // The bill moved after checkout opened. Settling it here would close
-        // the table for less than it owes; leave it for staff.
-        return ack(
-          res,
-          `amount mismatch on ${orderId}: paid ${status.amount}, expected ${expected}`,
-          { mismatch: true },
-        );
-      }
+      const refund = (target, note) => refundTablePayment(res, { session: target, gw, orderId, amount: Number(status.amount), note });
+      // N021b: the till settled, closed or merged the table meanwhile.
+      if (["PAID", "CLOSED"].includes(session.status)) return refund(session, "Table already settled");
+      // N016: the bill moved after checkout opened. It cannot close the table
+      // for less than it owes, and nobody can take "the difference" online.
+      if (Math.abs(Number(status.amount) - Number(expected)) > 0.01) return refund(session, "Bill changed during payment");
 
       const { settleSessionFromGateway } = require("./tableSessionController");
       try {
@@ -176,11 +179,23 @@ const cashfreeWebhook = async (req, res) => {
           // The same key the browser path uses, so whichever arrives second is
           // a no-op rather than a second payment.
           idempotencyKey: `qr-online-${status.cfOrderId || orderId}`,
+          gatewayOrderId: orderId,
         });
       } catch (settleErr) {
-        // The browser almost certainly won the race between the two paths.
-        console.warn(`[cashfree-webhook] settle skipped for ${orderId}: ${settleErr.message}`);
-        return ack(res, null, { settled: false });
+        const fresh = (await TableSession.findById(session._id)) || session;
+        // The browser won the race between the two paths: nothing is owed.
+        if (settledBy(fresh, orderId)) {
+          console.warn(`[cashfree-webhook] settle skipped for ${orderId}: ${settleErr.message}`);
+          return ack(res, null, { settled: false });
+        }
+        // A write clash, not a refusal: the browser's settle may still be
+        // committing, and refunding now could both settle and refund. Retry.
+        if (!(settleErr.status >= 400 && settleErr.status < 500)) {
+          console.error(`[cashfree-webhook] settle failed for ${orderId}, asking for a retry: ${settleErr.message}`);
+          return res.status(500).json({ success: false });
+        }
+        console.warn(`[cashfree-webhook] settle refused for ${orderId}: ${settleErr.message}`);
+        return refund(fresh, "Could not be applied to the table");
       }
       return ack(res, null, { settled: "session" });
     }
@@ -203,6 +218,34 @@ const cashfreeWebhook = async (req, res) => {
     console.error("[cashfree-webhook] handler failed:", error?.message || error);
     return res.status(200).json({ success: true, error: "handler_error" });
   }
+};
+
+/** S4b: this gateway order is the one that settled the table. */
+const settledBy = (session, orderId) =>
+  ["PAID", "CLOSED"].includes(session.status) &&
+  session.payment?.method === "ONLINE" &&
+  session.payment?.gatewayOrderId === orderId;
+
+/**
+ * D1: a table payment we cannot apply goes back to the diner, noted on the
+ * table's timeline, and the order is dropped from the session. A refund that
+ * fails answers 500 so Cashfree retries; the refund id is fixed per order.
+ */
+const refundTablePayment = async (res, { session, gw, orderId, amount, note }) => {
+  try {
+    await cashfree.refundUnappliedPayment({ gw, orderId, amount, note });
+  } catch (err) {
+    console.error(`[cashfree-webhook] refund of ${orderId} failed: ${err?.message || err}`);
+    return res.status(500).json({ success: false });
+  }
+  try {
+    await TableSession.dropRefundedOrder(session._id, orderId, `₹${amount} online payment refunded (order ${orderId}): ${note.toLowerCase()}`);
+  } catch (err) {
+    // Refunded but still listed: verify could settle with it later. A retry is safe (the refund id is fixed).
+    console.error(`[cashfree-webhook] refund of ${orderId} made, but not recorded: ${err?.message || err}`);
+    return res.status(500).json({ success: false });
+  }
+  return ack(res, `refunded ${orderId} (₹${amount}): ${note}`, { refunded: true });
 };
 
 /**
@@ -228,13 +271,21 @@ const handleWebsiteCheckout = async (res, { websiteCheckout, orderId, rawBody, t
   }
 
   const { placePaidCheckout } = require("./storefrontController");
-  const out = await placePaidCheckout({
-    checkout: websiteCheckout,
-    paid: status,
-    restaurantId,
-    outletId: websiteCheckout.orderData?.outletId || null,
-    storeId,
-  });
+  let out;
+  try {
+    out = await placePaidCheckout({
+      checkout: websiteCheckout,
+      paid: status,
+      restaurantId,
+      outletId: websiteCheckout.orderData?.outletId || null,
+      storeId,
+    });
+  } catch (err) {
+    // The checkout is back to PENDING (e.g. N021c's refund failed): Cashfree
+    // retries, and the refund id is fixed per order, so a retry is safe.
+    console.error(`[cashfree-webhook] website checkout ${orderId} not placed: ${err?.message || err}`);
+    return res.status(500).json({ success: false });
+  }
   return ack(res, null, { settled: out.placed ? "website" : false });
 };
 
@@ -248,6 +299,7 @@ const handleRefundEvent = async (req, res, { rawBody, timestamp, signature }) =>
   const orderId = String(refund.order_id || "");
   const refundId = String(refund.refund_id || "");
   if (!orderId || !refundId) return ack(res, "refund event without order_id / refund_id");
+  if (refundId.startsWith("ua_")) return handleUnappliedRefundEvent(res, { orderId, refundId, rawBody, timestamp, signature });
 
   const Order = require("../models/orderModel");
   const order = await Order.findOne({
@@ -267,6 +319,38 @@ const handleRefundEvent = async (req, res, { rawBody, timestamp, signature }) =>
   const { syncRefund } = require("../services/refunds");
   const { entry, changed } = await syncRefund(order, { refundId });
   return ack(res, null, { refund: entry ? entry.status : null, changed: Boolean(changed) });
+};
+
+/**
+ * A refund of a payment we could not apply (D1, "ua_"). No Order carries it:
+ * the table it was refunded from (refundedOrderIds) or the website checkout
+ * names the tenant. Only a CANCELLED one needs anyone: the diner was told the
+ * money is coming back, so it is logged and noted on the table, never silent.
+ */
+const handleUnappliedRefundEvent = async (res, { orderId, refundId, rawBody, timestamp, signature }) => {
+  const session = await TableSession.findOne({ "payment.refundedOrderIds": orderId, isDeleted: { $ne: true } });
+  const checkout = session ? null : await WebsiteCheckout.findOne({ gatewayOrderId: orderId });
+  const owner = session || checkout;
+  if (!owner) return ack(res, `no refund ${refundId} on gateway order ${orderId}`);
+
+  const gw = await resolveGateway({ restaurantId: owner.restaurantId, ...(checkout ? { storeId: checkout.storeId } : {}) });
+  if (gw.provider !== PROVIDERS.CASHFREE || !gw.webhookSecret) return ack(res, "no Cashfree secret for this tenant");
+  if (!cashfree.verifyWebhook({ rawBody, timestamp, signature, secretKey: gw.webhookSecret })) {
+    console.warn(`[cashfree-webhook] signature rejected for refund ${refundId}`);
+    return res.status(401).json({ success: false, message: "Invalid signature." });
+  }
+
+  const status = await cashfree.getRefund({ appId: gw.keyId, secretKey: gw.secret, environment: gw.environment, orderId, refundId });
+  if (status.status === "CANCELLED") {
+    console.error(`[cashfree-webhook] refund ${refundId} of ₹${status.amount} on order ${orderId} was CANCELLED: the customer has not been paid back`);
+    if (session) {
+      await TableSession.updateOne(
+        { _id: session._id },
+        { $push: { timeline: { event: "ONLINE_REFUND_CANCELLED", note: `₹${status.amount} refund of order ${orderId} was cancelled by Cashfree: pay the diner back`, actorType: "SYSTEM", at: new Date() } } },
+      );
+    }
+  }
+  return ack(res, null, { refund: status.status });
 };
 
 module.exports = { cashfreeWebhook };

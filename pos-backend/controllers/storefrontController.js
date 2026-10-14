@@ -7,7 +7,7 @@ const Order = require("../models/orderModel");
 const Customer = require("../models/customerModel");
 const { resolveStorefront, REASON_MESSAGES } = require("../services/storefrontResolver");
 const { AWAITING_ACCEPTANCE, CANCELLED_STATUSES } = require("../constants/orderStatus");
-const { isItemAvailableNow, getEffectivePrice } = require("../services/businessHours");
+const { isItemAvailableNow, menuPriceNow } = require("../services/businessHours");
 const { calculateOrderTotals, PricingError } = require("../services/orderPricingService");
 const { resolveGst } = require("../services/gst");
 const {
@@ -26,7 +26,7 @@ const { emitOrderCreated } = require("../services/socket");
 const WebsiteCheckout = require("../models/websiteCheckoutModel");
 const { resolveGateway } = require("../services/paymentGateway");
 const { localDate } = require("../services/tableBookings");
-const { availabilityAt, websiteAvailability, publicHours } = require("../services/websiteAvailability");
+const { availabilityAt, websiteAvailability, publicHours, orderingOpen } = require("../services/websiteAvailability");
 const config = require("../config/config");
 const { buildStorefrontUrl } = require("../services/websiteProvisioningService");
 
@@ -57,21 +57,17 @@ const knotEatsUnavailable = () =>
 
 /** Serialize a menu item for public consumption. */
 const toPublicProduct = (item, menu, timezone) => {
-  // The website's list price. A product with separate channel prices shows its
-  // WEBSITE COLLECTION figure here — the storefront asks for delivery vs
-  // pickup at checkout, so collection is the honest default to browse at, and
-  // the bill is recomputed against the chosen channel at order time.
-  // `channelPrices` also travels with the product so the cart can show the
-  // delivery figure once the customer picks delivery.
-  const effectivePrice = getEffectivePrice(item, timezone, {
-    environment: "website",
-    channel: "collection",
-  });
-  const hasDiscount =
-    item.discountPrice !== null &&
-    item.discountPrice !== undefined &&
-    Number(item.discountPrice) > 0 &&
-    Number(item.discountPrice) < effectivePrice;
+  // What checkout will bill right now on each website channel (pickup =
+  // collection, delivery = delivery): the POS channel prices plus any live
+  // price rule on the store clock, via the one helper calculateOrderTotals uses
+  // (a product with variants: its cheapest variant, which replaces it).
+  // `price` is the collection figure, the default to browse at.
+  // N037: the category's Dispatch Type narrowed by the product's own, the rule checkout enforces.
+  const dispatch = Object.fromEntries(["collection", "delivery", "table"].map((k) => [k, allowsOrderType(menu, k, item)]));
+  const prices = {
+    collection: menuPriceNow(item, "collection", timezone),
+    delivery: menuPriceNow(item, "delivery", timezone),
+  };
 
   return {
     id: item._id,
@@ -79,19 +75,8 @@ const toPublicProduct = (item, menu, timezone) => {
     name: item.name,
     description: item.description || "",
     category: item.category || menu.name,
-    // `price` is what the customer pays; `originalPrice` drives strike-through.
-    price: hasDiscount ? Number(item.discountPrice) : effectivePrice,
-    originalPrice: hasDiscount ? effectivePrice : null,
-    // Per-channel website prices, present only when the product opts out of a
-    // single price. Lets the cart re-price when the customer picks delivery.
-    channelPrices:
-      item.samePrice === false && item.channelPrices
-        ? {
-            collection: Number(item.channelPrices.websiteCollection) || effectivePrice,
-            delivery: Number(item.channelPrices.websiteDelivery) || effectivePrice,
-            table: Number(item.channelPrices.websiteTable) || effectivePrice,
-          }
-        : null,
+    price: prices.collection,
+    prices,
     image: item.imageUrl || item.image || "",
     thumbnail: item.imageThumbnailUrl || item.imageUrl || item.image || "",
     imageAlt: item.imageAlt || item.name,
@@ -103,17 +88,11 @@ const toPublicProduct = (item, menu, timezone) => {
     // enforces -- carried onto the product so the site can say "Collection
     // only" on the card, in the product sheet and in the cart. Without it the
     // customer's first news of the restriction was a refusal at checkout.
-    dispatchType: menu.dispatchType
-      ? {
-          collection: menu.dispatchType.collection !== false,
-          delivery: menu.dispatchType.delivery !== false,
-          table: menu.dispatchType.table !== false,
-        }
-      : { collection: true, delivery: true, table: true },
+    dispatchType: dispatch,
     // The words for that restriction ("Collection Only"), or null. Sent from
     // here so the label the customer reads and the refusal at checkout are
     // one rule (services/menuCache.dispatchLabel), not a copy in the site.
-    dispatchLabel: dispatchLabel(menu.dispatchType),
+    dispatchLabel: dispatchLabel(dispatch),
     isAvailable: isItemAvailableNow(item, timezone, "website"),
     isFeatured: Boolean(item.isFeatured),
     isCombo: Boolean(item.isCombo),
@@ -130,7 +109,8 @@ const toPublicProduct = (item, menu, timezone) => {
       .filter((a) => a.isAvailable !== false)
       .map((a) => ({ id: a._id, name: a.name, price: Number(a.price) || 0 })),
 
-    modifierGroups: (item.modifierGroups || []).map((g) => ({
+    // A group switched off is not sold; checkout skips it too (price.js).
+    modifierGroups: (item.modifierGroups || []).filter((g) => g.isActive !== false).map((g) => ({
       id: g._id,
       name: g.name,
       required: Boolean(g.required),
@@ -250,14 +230,11 @@ const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezon
   // (A store locked for non-payment never gets here: resolveStorefront takes
   // its whole website down.)
   const availability = websiteAvailability(settings, timezone);
-  const anyOrdering = availability.collection.open || availability.delivery.open;
+  // H1: only the order types the store offers decide "Open now" and the closed reason.
+  const online = orderingOpen(settings, availability);
   const openState = preview
     ? { isOpen: true, reason: "", nextOpen: null }
-    : {
-        isOpen: anyOrdering,
-        reason: anyOrdering ? "" : availability.collection.reason || availability.delivery.reason,
-        nextOpen: null,
-      };
+    : { isOpen: online.open, reason: online.reason, nextOpen: null };
 
 
   const theme = getTheme(settings.theme?.themeKey) || getTheme("default-restaurant");
@@ -847,6 +824,8 @@ const openCheckout = async ({ res, next, ctx, order, idempotencyKey, name, phone
       orderId: `web_${checkout._id}`,
       customer: { id: `web_${phone}`, phone, name },
       notifyUrl: config.cashfreeNotifyUrl,
+      // N021d: the Cashfree order dies an hour before our record of it (TTL), so a payment always finds its checkout.
+      expiresAt: new Date(checkout.expiresAt - 3600 * 1000),
       ...(payBase ? { returnUrl: `${payBase}/c/${payKey}/done` } : {}),
       tags: {
         websiteCheckoutId: String(checkout._id),
@@ -936,6 +915,31 @@ const placePaidCheckout = async ({ checkout, paid, restaurantId, outletId, store
   } catch (err) {
     await WebsiteCheckout.updateOne({ _id: claimed._id }, { $set: { status: "PENDING" } });
     throw err;
+  }
+
+  // N021c: this cart's order was already paid through another checkout, so
+  // this second payment cannot be applied: refund it and show the one order.
+  // A failed refund leaves the checkout PENDING; the next verify or webhook
+  // retries the same (deterministic) refund id.
+  if (duplicate && placed.paymentData?.gatewayOrderId !== checkout.gatewayOrderId) {
+    const amount = paid.amount || claimed.amount;
+    try {
+      const gw = await resolveGateway({ restaurantId, storeId });
+      const refund = await require("../services/gateways/cashfree").refundUnappliedPayment({
+        gw,
+        orderId: checkout.gatewayOrderId,
+        amount,
+        note: "Order already paid",
+      });
+      await WebsiteCheckout.updateOne({ _id: claimed._id }, { $set: { status: "PLACED", orderId: placed._id } });
+      console.log(
+        `[storefront] checkout ${claimed._id}: second payment of ₹${amount} (order ${checkout.gatewayOrderId}) refunded, ${refund?.refundId || ""}; cart already placed as ${placed._id}`,
+      );
+    } catch (err) {
+      await WebsiteCheckout.updateOne({ _id: claimed._id }, { $set: { status: "PENDING" } });
+      throw err;
+    }
+    return { placed, already: true };
   }
 
   await WebsiteCheckout.updateOne({ _id: claimed._id }, { $set: { status: "PLACED", orderId: placed._id } });

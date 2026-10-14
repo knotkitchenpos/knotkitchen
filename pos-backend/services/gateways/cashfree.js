@@ -131,6 +131,7 @@ const createOrder = async ({
   returnUrl,
   notifyUrl,
   tags,
+  expiresAt,
 }) => {
   const value = Number(amount);
   if (!Number.isFinite(value) || value <= 0) {
@@ -168,15 +169,23 @@ const createOrder = async ({
       : {}),
     ...(tags ? { order_tags: tags } : {}),
   };
+  // IST with no milliseconds, the format Cashfree's docs show.
+  const expiry = expiresAt ? new Date(expiresAt) : null;
+  if (expiry && !Number.isNaN(expiry.getTime())) {
+    body.order_expiry_time = `${new Date(expiry.getTime() + 330 * 60_000).toISOString().slice(0, 19)}+05:30`;
+  }
 
-  const res = await request({
-    path: "/orders",
-    method: "POST",
-    body,
-    appId,
-    secretKey,
-    environment,
-  });
+  const send = (b) => request({ path: "/orders", method: "POST", body: b, appId, secretKey, environment });
+  let res;
+  try {
+    res = await send(body);
+  } catch (err) {
+    if (!(body.order_expiry_time && err.status === 400)) throw err;
+    // The expiry format is unverified in the sandbox: it must never take payments down.
+    console.warn(`[cashfree] order_expiry_time refused (${err.message}); retrying without it`);
+    delete body.order_expiry_time;
+    res = await send(body);
+  }
 
   return {
     orderId: res.order_id,
@@ -265,6 +274,31 @@ const getRefund = async ({ appId, secretKey, environment, orderId, refundId }) =
 };
 
 /**
+ * Give back a whole online payment we could not apply (D1): a table already
+ * settled, a bill that changed mid-payment, a second payment for one cart.
+ * `gw` is a resolveGateway() result. The refund id is derived from the order,
+ * so a webhook retry, a second verify and a refund already made all name the
+ * same refund and the diner is refunded once.
+ */
+const refundUnappliedPayment = async ({ gw, orderId, amount, note }) => {
+  const creds = { appId: gw.keyId, secretKey: gw.secret, environment: gw.environment };
+  const refundId = `ua_${crypto.createHash("sha1").update(String(orderId)).digest("hex").slice(0, 30)}`;
+  let refund;
+  try {
+    refund = await createRefund({ ...creds, orderId, refundId, amount, note });
+  } catch (err) {
+    // A repeated refund_id may be answered with an error rather than the refund already made.
+    refund = await getRefund({ ...creds, orderId, refundId }).catch(() => null);
+    if (!refund) throw err;
+  }
+  // A cancelled refund gave nothing back: the caller keeps the payment on record and retries, never says "refunded".
+  if (refund.status === "CANCELLED") {
+    throw new CashfreeError(`Cashfree cancelled refund ${refundId} on order ${orderId}.`, { code: "REFUND_CANCELLED" });
+  }
+  return refund;
+};
+
+/**
  * Verify a webhook came from Cashfree.
  *
  * Base64(HMAC-SHA256(timestamp + rawBody, secret)) — the timestamp and the
@@ -318,6 +352,7 @@ module.exports = {
   createOrder,
   createRefund,
   getRefund,
+  refundUnappliedPayment,
   fetchOrder,
   isOrderPaid,
   verifyWebhook,

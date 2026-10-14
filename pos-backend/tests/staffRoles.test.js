@@ -55,7 +55,7 @@ test("the owner picks a role from a short list; anything else is refused", async
     assert.equal(err.status, 400, String(role));
   }
   const routes = fs.readFileSync(path.join(__dirname, "..", "routes", "restaurantRoute.js"), "utf8");
-  assert.match(routes, /router\.route\("\/staff\/:staffId"\)\.put\(isVerifiedUser, requireOwnerOnly, updateStaffRole\);/);
+  assert.match(routes, /router\.route\("\/staff\/:staffId"\)\.put\(isVerifiedUser, requireOwnerOnly, requireTypedPin\(\{ evenOwner: true \}\), updateStaffRole\);/);
 });
 
 test("REGRESSION: replacing or revoking a table QR still needs the PIN", () => {

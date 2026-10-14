@@ -37,4 +37,83 @@ const normalizeCap = ({ maxSelectionEnabled, maxSelections } = {}) => ({
   maxSelections: Math.max(1, Number(maxSelections) || 1),
 });
 
-module.exports = { isCapEnabled, capFor, normalizeCap };
+/**
+ * A group's rules from what a client sent, with anything it left out taken
+ * from `base` (the group as stored, or the store's group list). Absent means
+ * "unchanged", never "off": the product drawer, bulk add and component delete
+ * sent no `maxSelectionEnabled`, normalizeCap read that as false, and every
+ * such save turned a choose-one group into choose-any. The cap moves as a
+ * pair (flag and number), from the side that states the flag, sent first.
+ */
+const groupRules = (sent = {}, base = {}) => ({
+  required: Boolean(sent.required ?? base.required),
+  ...normalizeCap(sent.maxSelectionEnabled == null && base.maxSelectionEnabled != null ? base : sent),
+});
+
+/** Options as stored: name, price and availability. Nameless lines are dropped. */
+const cleanGroupOptions = (options) =>
+  (Array.isArray(options) ? options : [])
+    .filter((o) => o && String(o.name || "").trim())
+    .map((o) => ({
+      name: String(o.name).trim(),
+      price: Number.isFinite(Number(o.price)) ? Number(o.price) : 0,
+      isAvailable: o.isAvailable !== false,
+    }));
+
+/**
+ * A group joining a product (bulk add, a group ticked in the product drawer).
+ * No rule is being edited, so the rules and on/off come from the store's group
+ * list (`lib`, the operator's last explicit edit). Only a group the list lacks
+ * falls back to what the client sent.
+ */
+const attachedGroup = (name, sent = {}, lib = null) => {
+  const options = cleanGroupOptions(sent.options);
+  return {
+    name,
+    ...groupRules(lib || sent),
+    isActive: (lib || sent).isActive !== false,
+    options: options.length ? options : cleanGroupOptions(lib?.options),
+  };
+};
+
+/**
+ * A product's groups after a save that lists them (the product drawer). The
+ * list says which groups and in what order, nothing else: a group the product
+ * already has is kept exactly as stored (rules, options, ids, on/off) and only
+ * takes its new position. A new one is built by attachedGroup.
+ * `library` maps a group name to its row in the store's group list.
+ */
+const placeGroups = (current = [], sent = [], library = new Map()) => {
+  const have = new Map((current || []).map((g) => [g.name, g]));
+  const out = [];
+  for (const s of Array.isArray(sent) ? sent : []) {
+    const name = String(s?.name || "").trim();
+    if (!name || out.some((g) => g.name === name)) continue;
+    const g = have.get(name) || attachedGroup(name, s, library.get(name));
+    g.sortOrder = out.length;
+    out.push(g);
+  }
+  return out;
+};
+
+/**
+ * Saving a group's option list sends name and price only. Each option keeps
+ * the id and availability of its stored namesake, so a save does not switch
+ * a sold-out option back on or give every option a new id.
+ */
+const keepOptionState = (sent, stored = []) =>
+  sent.map((o) => {
+    const prev = (stored || []).find((p) => p.name === o.name);
+    return prev ? { ...o, _id: prev._id, isAvailable: o.isAvailable ?? prev.isAvailable } : o;
+  });
+
+module.exports = {
+  isCapEnabled,
+  capFor,
+  normalizeCap,
+  groupRules,
+  cleanGroupOptions,
+  attachedGroup,
+  placeGroups,
+  keepOptionState,
+};

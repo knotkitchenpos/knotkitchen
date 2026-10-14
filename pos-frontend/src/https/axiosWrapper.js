@@ -2,7 +2,7 @@ import axios from "axios";
 import { BACKEND_URL } from "../config";
 import { isPublicPath } from "../utils/publicRoutes";
 import { getActiveStoreId } from "../utils/storeSession";
-import { requestPin } from "../utils/pinPrompt";
+import { requestPin, typedPin } from "../utils/pinPrompt";
 
 const defaultHeader = {
   "Content-Type": "application/json",
@@ -32,6 +32,9 @@ axiosWrapper.interceptors.request.use(
       sessionStorage.removeItem("staffPinToken");
       sessionStorage.removeItem("staffPinTokenExpiry");
     }
+    // N034: settings and staff saves accept only a PIN typed for them.
+    const pin = typedPin();
+    if (pin) config.headers["x-staff-pin"] = pin;
     return config;
   },
   (error) => Promise.reject(error)
@@ -117,7 +120,8 @@ axiosWrapper.interceptors.response.use(
         // (a scanned table QR, a payment link) a failed refresh just means
         // "no session", which is the normal state — redirecting there would
         // replace the customer's menu with the POS login.
-        if (!isPublicPath()) {
+        // N006: only a real 401/403 signs the tab out; a network error (offline) keeps it signed in.
+        if (!isPublicPath() && [401, 403].includes(refreshError?.response?.status)) {
           window.location.href = "/auth";
         }
         return Promise.reject(refreshError);

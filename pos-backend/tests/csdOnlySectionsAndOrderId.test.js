@@ -52,7 +52,7 @@ test("no storefront field is refused for being a support-only section", () => {
   // through this same endpoint.
   assert.match(
     SRC("routes", "websiteRoute.js"),
-    /\.put\(isVerifiedUser, requireProtectedAction, requireWebsitePlan, updateWebsiteSettings\);/,
+    /\.put\(isVerifiedUser, requireTypedPin\(\), requireWebsitePlan, updateWebsiteSettings\);/,
   );
   assert.ok(
     !/csdOnly/.test(SRC("routes", "websiteRoute.js")),
@@ -79,7 +79,8 @@ test("the storefront read stays open to the till", () => {
 });
 
 test("Manage Website is reachable from the POS, the Activity Log is not", () => {
-  const settings = FE("src", "pages", "Settings.jsx");
+  // POS Settings' option list (MENU_ITEMS) lives in its own module.
+  const settings = FE("src", "constants", "settingsMenu.js");
   assert.match(settings, /title: "\d+\. Manage Website"/, "the tile is missing from POS Settings");
   assert.ok(
     !/title: "\d+\. Activity Log & Audit Trail"/.test(settings),
@@ -100,7 +101,7 @@ test("REGRESSION: no screen derives an order id by hand any more", () => {
   // The Orders header cut the last SIX characters of the id while the "Order
   // ID" field on the same panel cut the last EIGHT, so one order read #7CA1AC
   // and 657CA1AC at once.
-  for (const f of ["Orders.jsx", "Reports.jsx", "KDS.jsx"]) {
+  for (const f of ["Orders.jsx", "Reports.jsx"]) {
     const src = FE("src", "pages", f);
     assert.ok(
       !/orderNumber \|\| \w+\._id\.slice\(/.test(src),

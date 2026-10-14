@@ -99,6 +99,12 @@ export const isCancelledItem = (item = {}) => String(item?.status || "").toLower
 /** The lines that were actually sold: what a bill prints. */
 export const billableItems = (items = []) => (Array.isArray(items) ? items : []).filter((i) => !isCancelledItem(i));
 
+/** N069: when a line joined its order after the first minute (a later round), else null. A line's ObjectId starts with the second it was made. */
+export const addedAfterOpening = (item, order) => {
+  const at = parseInt(String(item?._id || "").slice(0, 8), 16) * 1000;
+  return at && order?.createdAt && at - new Date(order.createdAt).getTime() > 60_000 ? new Date(at) : null;
+};
+
 export const itemDisplayName = (item = {}) => {
   const base = String(item?.name || "").replace(/\s*\(\+\s*[^)]*\)\s*$/, "").trim();
   // Till and table lines carry the variant in the name ("Pizza (Large)");

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { enqueueSnackbar } from "notistack";
-import { selectionTypeOf } from "../../../utils/modifierGroups";
+import { groupEditorPayload, selectionTypeOf } from "../../../utils/modifierGroups";
 import { IconX } from "./icons";
 
 /**
@@ -352,55 +352,39 @@ const GroupDrawer = ({
                 // list on the server, so it appears in the Groups list and
                 // the "Bulk Add Group" picker on every device -- attach it
                 // later from Products → Select → Manage → Add Group.
-                const trimmedName = groupName.trim();
-                // "Single" is a cap of one by definition. "Multiple" only
-                // carries a cap when Maximum Selection is switched on;
-                // otherwise the customer may pick any number.
-                const capOn = selectionType === "single" || groupMaxEnabled;
-                const normalizedMax =
-                  selectionType === "single" ? 1 : Math.max(1, Number(groupMax) || 1);
-                const normalizedOptions = extrasList.map((e) => ({
-                  name: e.name.trim(),
-                  price: Number(e.price) || 0,
-                }));
-  
-                if (!assignedDishIds || assignedDishIds.size === 0) {
+                // Every rule, as the form shows it: the group's rules are its
+                // products' rules (see groupEditorPayload).
+                const payload = groupEditorPayload({
+                  name: groupName,
+                  oldName: editingGroup?.name,
+                  required: groupRequired,
+                  selectionType,
+                  maxEnabled: groupMaxEnabled,
+                  max: groupMax,
+                  options: extrasList,
+                  dishIds: assignedDishIds,
+                });
+                const trimmedName = payload.groupName;
+
+                if (!payload.dishIds) {
                   // No products yet: saved to the store's list only. A
                   // rename drops the old name (the server keeps it while
                   // products still carry it).
-                  saveStandaloneGroupMut.mutate(
-                    {
-                      groupName: trimmedName,
-                      oldGroupName: editingGroup ? editingGroup.name : undefined,
-                      required: Boolean(groupRequired),
-                      maxSelectionEnabled: capOn,
-                      maxSelections: normalizedMax,
-                      options: normalizedOptions,
+                  saveStandaloneGroupMut.mutate(payload, {
+                    onSuccess: () => {
+                      enqueueSnackbar(
+                        editingGroup
+                          ? `Group "${trimmedName}" updated. Attach it to products from the Products tab when you're ready.`
+                          : `Group "${trimmedName}" created. Attach it to products from the Products tab when you're ready.`,
+                        { variant: "success" },
+                      );
+                      onClose();
                     },
-                    {
-                      onSuccess: () => {
-                        enqueueSnackbar(
-                          editingGroup
-                            ? `Group "${trimmedName}" updated. Attach it to products from the Products tab when you're ready.`
-                            : `Group "${trimmedName}" created. Attach it to products from the Products tab when you're ready.`,
-                          { variant: "success" },
-                        );
-                        onClose();
-                      },
-                    },
-                  );
+                  });
                   return;
                 }
-  
-                saveGroupMut.mutate({
-                  groupName: trimmedName,
-                  oldGroupName: editingGroup ? editingGroup.name : undefined,
-                  required: groupRequired,
-                  maxSelectionEnabled: capOn,
-                  maxSelections: normalizedMax,
-                  options: normalizedOptions,
-                  dishIds: Array.from(assignedDishIds),
-                });
+
+                saveGroupMut.mutate(payload);
               }}
               disabled={saveGroupMut.isPending || saveStandaloneGroupMut?.isPending}
               className="w-full h-[46px] rounded-xl bg-[#0F172A] text-white text-[14px] font-extrabold shadow-lg hover:bg-[#1E293B] disabled:opacity-50"

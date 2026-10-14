@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
-import { capOf } from "../../utils/modifierGroups";
+import { capOf, groupForSave, groupLibrary } from "../../utils/modifierGroups";
 import { thumbUrl } from "../../utils";
 import {
   addCategory,
@@ -49,23 +49,20 @@ const NAV_TABS = [
  * What to print on a product row in Manage Menu.
  *
  * With "Same price for all channels" ON this is simply the price. With it OFF
- * the product has six channel figures and `price` is just the base the form
- * started from — so the row kept showing a number the operator had already
- * changed. Summarise the channel prices instead: one figure if they agree, a
- * range if they do not.
+ * the product has three channel figures (Collection, Delivery, Table, billed
+ * on every surface) and `price` is just the base the form started from — so
+ * the row kept showing a number the operator had already changed. Summarise
+ * the channel prices instead: one figure if they agree, a range if they do not.
  */
 const displayPrice = (item) => {
   const base = Number(item?.price) || 0;
   if (!item || item.samePrice !== false || !item.channelPrices) return `₹${base}`;
 
-  const values = [
-    "posCollection", "posDelivery", "posTable",
-    "websiteCollection", "websiteDelivery", "websiteTable",
-  ]
+  // A 0 or missing channel figure bills item.price, so show that.
+  const values = ["posCollection", "posDelivery", "posTable"]
     .map((k) => Number(item.channelPrices[k]))
-    .filter((n) => Number.isFinite(n) && n > 0);
+    .map((n) => (Number.isFinite(n) && n > 0 ? n : base));
 
-  if (!values.length) return `₹${base}`;
   const min = Math.min(...values);
   const max = Math.max(...values);
   return min === max ? `₹${min}` : `₹${min} – ₹${max}`;
@@ -82,7 +79,10 @@ const ManageMenu = () => {
   // Drill-down navigation state
   const [activeCategory, setActiveCategory] = useState(null);
   const [activeSubcategory, setActiveSubcategory] = useState(null);
-  const [activeGroup, setActiveGroup] = useState(null);
+  // The open group by name; the group itself is read fresh from allGroupsMap
+  // below. A copy kept from the click went stale after a save, so Edit Group
+  // and component Delete started from out-of-date rules and options.
+  const [activeGroupName, setActiveGroupName] = useState(null);
 
   // Drawers & Modals
   const [showCreateCategory, setShowCreateCategory] = useState(false);
@@ -156,9 +156,8 @@ const ManageMenu = () => {
    *
    * This effect re-syncs the drilled-in references from the freshly
    * fetched `menus` list on every render. Group view (`activeGroup`) is
-   * derived from `allGroupsMap` so it re-syncs automatically via its own
-   * useMemo dependency, but the category / subcategory drill needs to be
-   * done here explicitly.
+   * read from `allGroupsMap` by name on every render, but the category /
+   * subcategory drill needs to be done here explicitly.
    */
   useEffect(() => {
     if (!activeCategory) return;
@@ -199,76 +198,27 @@ const ManageMenu = () => {
   // every render (menusRes?.data?.data || []), which would cause the
   // overrides to be cleared before the drop was even acknowledged.
 
-  // Extract all groups across all dishes + registered custom groups (Module 4 §4)
-  const allGroupsMap = useMemo(() => {
-    const map = new Map();
+  // Every group: the store's saved list plus any found only on products.
+  const allGroupsMap = useMemo(() => groupLibrary(savedGroups, menus), [menus, savedGroups]);
+  const activeGroup = (activeGroupName && allGroupsMap.get(activeGroupName)) || null;
+  // A rename made from the open group keeps it open under its new name.
+  const followRename = (vars) => {
+    if (vars?.oldGroupName && vars.oldGroupName !== vars.groupName) {
+      setActiveGroupName((n) => (n === vars.oldGroupName ? vars.groupName : n));
+    }
+  };
 
-    // 1. Seed with the store's list so groups with no products are visible
-    savedGroups.forEach((g) => {
-      if (!g || !g.name) return;
-      map.set(g.name, {
-        name: g.name,
-        required: Boolean(g.required),
-        maxSelectionEnabled: g.maxSelectionEnabled === true,
-        maxSelections: g.maxSelections || 1,
-        isActive: g.isActive !== false,
-        sortOrder: Number(g.sortOrder) || 0,
-        options: Array.isArray(g.options) ? g.options : [],
-        dishIds: new Set(),
-      });
-    });
-
-    // 2. Merge groups from all dishes across all menus
-    const safeMenus = Array.isArray(menus) ? menus : [];
-    safeMenus.forEach((menu) => {
-      if (!menu) return;
-      (menu.items || []).forEach((item) => {
-        if (!item) return;
-        (item.modifierGroups || []).forEach((group) => {
-          if (!group || !group.name) return;
-          const options = Array.isArray(group.options) ? group.options : [];
-          if (!map.has(group.name)) {
-            map.set(group.name, {
-              name: group.name,
-              required: Boolean(group.required),
-              maxSelectionEnabled: group.maxSelectionEnabled === true,
-              maxSelections: group.maxSelections || 1,
-              // Read from the stored group. These used to live only in React
-              // state, so switching a group off survived until the next
-              // refetch — including the one after publishing a cache — and it
-              // silently came back on.
-              isActive: group.isActive !== false,
-              sortOrder: Number(group.sortOrder) || 0,
-              options: options,
-              dishIds: new Set([String(item._id)]),
-            });
-          } else {
-            const entry = map.get(group.name);
-            entry.dishIds.add(String(item._id));
-            if (options.length) entry.options = options;
-            entry.required = Boolean(group.required);
-            entry.maxSelectionEnabled = group.maxSelectionEnabled === true;
-            entry.maxSelections = group.maxSelections || entry.maxSelections;
-            // Off anywhere means off — a group is one thing to the operator.
-            if (group.isActive === false) entry.isActive = false;
-            if (Number(group.sortOrder)) entry.sortOrder = Number(group.sortOrder);
-          }
-        });
-      });
-    });
-    return map;
-  }, [menus, savedGroups]);
-
-  // Ordered by the persisted sortOrder the reorder endpoint writes. The list
-  // used to come out in Map-insertion order, so a reorder reported success and
-  // the UI rebuilt itself in the old sequence.
+  // Ordered by the saved list's sortOrder, which the reorder endpoint writes.
+  // The list used to come out in Map-insertion order, so a reorder reported
+  // success and the UI rebuilt itself in the old sequence.
   const groupsList = Array.from(allGroupsMap.values()).sort(
     (a, b) => (a.sortOrder || 0) - (b.sortOrder || 0) || a.name.localeCompare(b.name),
   );
 
   const saveGroupMut = useMutation({
     mutationFn: saveGroupToDishes,
-    onSuccess: (res) => {
+    onSuccess: (res, vars) => {
+      followRename(vars);
       enqueueSnackbar(res?.data?.message || "Group saved!", { variant: "success" });
       invalidate();
       setShowManageGroup(false);
@@ -280,7 +230,10 @@ const ManageMenu = () => {
   // A group with no products yet: saved to the store's list only.
   const saveStandaloneGroupMut = useMutation({
     mutationFn: saveMenuGroup,
-    onSuccess: () => invalidate(),
+    onSuccess: (res, vars) => {
+      followRename(vars);
+      invalidate();
+    },
     onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to save group", { variant: "error" }),
   });
 
@@ -292,7 +245,7 @@ const ManageMenu = () => {
       enqueueSnackbar(res?.data?.message || "Group deleted!", { variant: "success" });
       invalidate();
       setShowManageGroup(false);
-      setActiveGroup(null);
+      setActiveGroupName(null);
       setEditingGroup(null);
     },
     onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to delete group", { variant: "error" }),
@@ -562,19 +515,7 @@ const ManageMenu = () => {
         let payload = { groupName: name, dishIds };
         if (bulkGroupPickerMode !== "remove") {
           const src = allGroupsMap.get(name);
-          if (src) {
-            payload = {
-              ...payload,
-              required: Boolean(src.required),
-              maxSelections: Number(src.maxSelections) || 1,
-              options: Array.isArray(src.options)
-                ? src.options.map((o) => ({
-                    name: String(o?.name || "").trim(),
-                    price: Number(o?.price) || 0,
-                  }))
-                : [],
-            };
-          }
+          if (src) payload = { ...groupForSave(src), ...payload };
         }
          
         await mutation.mutateAsync(payload);
@@ -795,7 +736,7 @@ const ManageMenu = () => {
             {activeTab === "groups" && activeGroup && (
               <button
                 onClick={() => {
-                  setActiveGroup(null);
+                  setActiveGroupName(null);
                   setSelectedIds(new Set());
                 }}
                 className="h-8 px-2.5 rounded-lg border border-[#E2E8F0] text-[12.5px] font-bold text-[#475569] hover:bg-[#F8FAFC] flex items-center gap-1"
@@ -844,7 +785,7 @@ const ManageMenu = () => {
                   <span
                     className={activeGroup ? "text-[#64748B] font-semibold cursor-pointer hover:text-[#0F172A]" : ""}
                     onClick={() => {
-                      setActiveGroup(null);
+                      setActiveGroupName(null);
                       setSelectedIds(new Set());
                     }}
                   >
@@ -1114,6 +1055,12 @@ const ManageMenu = () => {
                         </>
                       )}
                     </p>
+                    {activeGroup.mixedIds?.size > 0 && (
+                      <p className="text-[12px] font-bold text-[#B45309] mt-1">
+                        Rules differ on {activeGroup.mixedIds.size} of {activeGroup.dishIds.size} products. Edit Group, then
+                        Save Changes, applies the rules above to all of them.
+                      </p>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     <button
@@ -1169,10 +1116,11 @@ const ManageMenu = () => {
                                   tone: "danger",
                                   onConfirm: () => {
                                     const updatedOpts = (activeGroup.options || []).filter((_, i) => i !== idx);
+                                    // Options only: each product keeps its own rules. Sending
+                                    // the rules without maxSelectionEnabled made the group
+                                    // choose-any on every product.
                                     saveGroupMut.mutate({
                                       groupName: activeGroup.name,
-                                      required: activeGroup.required,
-                                      maxSelections: activeGroup.maxSelections,
                                       options: updatedOpts,
                                       dishIds: Array.from(activeGroup.dishIds),
                                     });
@@ -1293,13 +1241,21 @@ const ManageMenu = () => {
                           {/* Group Name (Clicking opens Group Contents) */}
                           <span
                             onClick={() => {
-                              setActiveGroup(group);
+                              setActiveGroupName(group.name);
                               setSelectedIds(new Set());
                             }}
                             className="font-medium text-[14.5px] text-[#1E293B] cursor-pointer hover:text-[#C2410C] truncate"
                           >
                             {group.name}
                           </span>
+                          {group.mixedIds?.size > 0 && (
+                            <span
+                              className="shrink-0 text-[11px] font-bold text-[#B45309] bg-[#FEF3C7] rounded px-1.5 py-0.5"
+                              title="Some products sell this group with different rules. Open it to fix."
+                            >
+                              Rules differ
+                            </span>
+                          )}
                         </div>
 
                         {/* Right elements: Manage button & Drag handle */}

@@ -101,7 +101,7 @@ test("REGRESSION: the kitchen's Ready on a takeaway paid at the till stamps it r
   // A paid takeaway is created Completed, so Ready used to be refused (409)
   // and the kitchen screen never listed it.
   const mocks = { "../services/readyNotificationService": { notifyOrderReady: async () => ({ sent: false }) } };
-  const takeaway = { source: "POS", orderType: "collection", orderStatus: "Completed", readyAt: null };
+  const takeaway = { source: "POS", orderType: "collection", orderStatus: "Completed", readyAt: null, createdAt: new Date() };
   const out = await runUpdateOrder({ order: takeaway, handler: "markOrderReady", mocks });
   assert.equal(out.status, 200, out.error?.message);
   assert.equal(out.doc.orderStatus, "Completed");
@@ -113,4 +113,8 @@ test("REGRESSION: the kitchen's Ready on a takeaway paid at the till stamps it r
   assert.equal(again.error?.status, 409);
   const delivered = await runUpdateOrder({ order: { ...takeaway, orderType: "delivery", orderStatus: "Delivered" }, handler: "markOrderReady", mocks });
   assert.equal(delivered.error?.status, 409);
+  // REGRESSION: one from last week was handed over then; a Ready now would text the customer.
+  const old = await runUpdateOrder({ order: { ...takeaway, createdAt: new Date(Date.now() - 13 * 3600e3) }, handler: "markOrderReady", mocks });
+  assert.equal(old.error?.status, 409);
+  assert.equal(old.saves, 0);
 });

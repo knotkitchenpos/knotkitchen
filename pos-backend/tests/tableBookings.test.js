@@ -67,3 +67,81 @@ test("a new order on a pre-booked table is refused on both the POS and the QR pa
   assert.match(read("controllers", "qrController.js"), /const block = await findActiveBlock\(tableInTxn\._id\);/);
   assert.match(read("controllers", "tableController.js"), /if \(booking\.blocking && !session\) tObj\.status = "reserved"/);
 });
+
+// ---------------------------------------------------------------------------
+// Public booking (B1, B2): the real controller, its models faked in memory.
+// ---------------------------------------------------------------------------
+const Module = require("module");
+const { localDate } = require("../services/tableBookings");
+
+const allDay = { weekly: [0, 1, 2, 3, 4, 5, 6].map((day) => ({ day, isOpen: true, openTime: "00:00", closeTime: "00:00" })) };
+const today = () => localDate(new Date(), TZ);
+const tomorrow = () => localDate(new Date(Date.now() + 86400000), TZ);
+
+/** Runs `fn(ctrl, created)` with the store, its tables and the booking model faked. */
+const withBookingFakes = async ({ settings, tables = [{ capacity: 4 }] }, fn) => {
+  const created = [];
+  const query = (doc) => ({ sort: () => ({ select: () => ({ lean: async () => doc }) }) });
+  const fakes = {
+    "../services/storefrontResolver": {
+      resolveStorefront: async () => ({ ok: true, settings, restaurantId: "507f1f77bcf86cd799439011", storeId: "123456", outletId: null, timezone: TZ }),
+      REASON_MESSAGES: {},
+    },
+    "../models/tableModel": {
+      findOne: () => query(tables.length ? { capacity: Math.max(...tables.map((t) => t.capacity)) } : null),
+    },
+    "../models/tableBookingModel": { create: async (doc) => (created.push(doc), { ...doc, toObject: () => doc }) },
+    "../services/socket": { emitToRestaurant: () => {} },
+  };
+  const orig = Module._load;
+  Module._load = function (r) {
+    return Object.prototype.hasOwnProperty.call(fakes, r) ? fakes[r] : orig.apply(this, arguments);
+  };
+  const file = require.resolve("../controllers/tableBookingController");
+  delete require.cache[file];
+  try {
+    return await fn(require(file), created);
+  } finally {
+    Module._load = orig;
+    delete require.cache[file];
+  }
+};
+const call = (handler, req) =>
+  new Promise((resolve) => {
+    const res = { status(c) { this.code = c; return this; }, json(body) { resolve({ code: this.code, body }); } };
+    handler({ params: { slug: "x" }, headers: {}, query: {}, ...req }, res, (err) => resolve({ code: err?.status || 500, body: { message: err?.message } }));
+  });
+const guest = (date, guestCount = 2) => ({ body: { date, time: "19:00", guestCount, name: "Asha", phone: "9876543210" } });
+
+test("B1: a holiday today does not stop booking a table for another day", async () => {
+  const day = new Date(`${today()}T00:00:00Z`);
+  const settings = { ordering: { tableBooking: { enabled: true } }, channelHours: { table: allDay }, holidays: [{ startDate: day, endDate: day }] };
+  await withBookingFakes({ settings }, async (ctrl, created) => {
+    const next = await call(ctrl.getPublicBookingSlots, { query: { date: tomorrow() } });
+    assert.equal(next.body.data.enabled, true);
+    assert.ok(next.body.data.slots.includes("19:00"));
+    assert.equal(next.body.data.closedReason, "");
+    const now = await call(ctrl.getPublicBookingSlots, { query: { date: today() } });
+    assert.deepEqual(now.body.data.slots, [], "the holiday itself has no slots");
+    assert.match(now.body.data.closedReason, /closed for a holiday/);
+    assert.equal((await call(ctrl.createPublicTableBooking, guest(tomorrow()))).code, 201);
+    assert.equal((await call(ctrl.createPublicTableBooking, guest(today()))).code, 400, "nothing is bookable on the holiday");
+    assert.equal(created.length, 1);
+  });
+});
+
+test("B2: a party bigger than the largest table is asked to call; no tables, no bookings", async () => {
+  const settings = { ordering: { tableBooking: { enabled: true } }, channelHours: { table: allDay } };
+  await withBookingFakes({ settings, tables: [{ capacity: 4 }, { capacity: 2 }] }, async (ctrl, created) => {
+    const big = await call(ctrl.createPublicTableBooking, guest(tomorrow(), 12));
+    assert.equal(big.code, 400);
+    assert.equal(big.body.message, "Our largest table seats 4. For a bigger group, please call the restaurant.");
+    assert.equal((await call(ctrl.createPublicTableBooking, guest(tomorrow(), 4))).code, 201);
+    assert.equal(created.length, 1);
+  });
+  await withBookingFakes({ settings, tables: [] }, async (ctrl, created) => {
+    const none = await call(ctrl.createPublicTableBooking, guest(tomorrow()));
+    assert.deepEqual([none.code, none.body.message], [409, "Table booking is not available at this restaurant."]);
+    assert.equal(created.length, 0);
+  });
+});

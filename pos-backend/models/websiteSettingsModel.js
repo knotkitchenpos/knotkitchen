@@ -421,6 +421,8 @@ const orderingSchema = new mongoose.Schema(
       // ...and is let go this long after it if the party never arrives.
       releaseAfterMinutes: { type: Number, default: 60, min: 0, max: 24 * 60 },
     },
+    // N008: off until the owner turns it on; the minutes below still time the prep alert.
+    autoReadyEnabled: { type: Boolean, default: false },
     autoReadyMinutes: {
       collection: { type: Number, default: 20, min: 0, max: 24 * 60 },
       delivery: { type: Number, default: 45, min: 0, max: 24 * 60 },

@@ -43,6 +43,9 @@ const {
 const AUTO_READY_TICK_MS = 30 * 1000;   // 30 seconds
 const MAX_BATCH = 100;
 
+// N018: the sweep runs every 30 s, so a paid takeaway due longer ago than this is a pre-deploy backlog, not a late tick.
+const PAID_TAKEAWAY_SWEEP_MS = 2 * 3600 * 1000;
+
 // Defaults straight from the Module 4 §4 spec.
 const DEFAULT_MINUTES = {
   collection: 20,
@@ -120,11 +123,24 @@ const getAutoCompleteMinutes = async ({ restaurantId, storeId, orderType }) => {
   }
 };
 
+/** Has the owner turned Auto Ready on? Off for every store that never did (N008). */
+const autoReadyOn = async ({ restaurantId, storeId }) => {
+  if (!restaurantId && !storeId) return false;
+  try {
+    const s = await WebsiteSettings.findOne({ isDeleted: { $ne: true }, ...(restaurantId ? { restaurantId } : { storeId }) })
+      .select("ordering.autoReadyEnabled");
+    return s?.ordering?.autoReadyEnabled === true;
+  } catch {
+    return false;
+  }
+};
+
 /**
  * Convenience helper for controllers: compute what completeDueAt SHOULD be
  * for an order. Returns null if auto-complete is disabled (0 mins).
  */
 const computeReadyDueAt = async ({ restaurantId, storeId, orderType, from = new Date() }) => {
+  if (!(await autoReadyOn({ restaurantId, storeId }))) return null;
   const minutes = await getAutoReadyMinutes({ restaurantId, storeId, orderType });
   if (!minutes || minutes <= 0) return null;
   return new Date(from.getTime() + minutes * 60 * 1000);
@@ -168,7 +184,7 @@ const clocksOnAccept = async (order, now = new Date()) => {
     if (prepStartAt > now) {
       return {
         prepStartAt,
-        readyDueAt: minutes > 0 ? pickup : null,
+        readyDueAt: await computeReadyDueAt({ ...args, from: prepStartAt }),
         completeDueAt: await computeCompleteDueAt({ ...args, from: prepStartAt }),
       };
     }
@@ -272,17 +288,34 @@ const runAutoReadyTick = async () => {
       // Must list every historical spelling: the QR and table-session flows
       // wrote lowercase "pending", so a Title-Case-only $in silently returned
       // none of those orders and they were never auto-promoted to Ready.
-      orderStatus: { $in: PREPARING_STATUSES },
+      // N018: a takeaway paid at the till is created Completed but still cooked; its Ready only stamps readyAt.
+      // Only a recent one, and not a sale synced from the offline queue (handed over when it was taken).
+      $or: [
+        { orderStatus: { $in: PREPARING_STATUSES } },
+        {
+          orderStatus: { $in: SETTLED_STATUSES },
+          source: "POS",
+          orderType: { $nin: ["dine-in", "delivery"] },
+          isOffline: { $ne: true },
+          readyDueAt: { $gte: new Date(now.getTime() - PAID_TAKEAWAY_SWEEP_MS) },
+        },
+      ],
     })
       .sort({ readyDueAt: 1 })
       .limit(MAX_BATCH);
 
     let promoted = 0;
     for (const order of due) {
-      if (!isPreparingStatus(order.orderStatus)) continue;
+      const paidTakeaway = SETTLED_STATUSES.includes(order.orderStatus);
+      if (!paidTakeaway && !isPreparingStatus(order.orderStatus)) continue;
       try {
+        // N008: a clock stamped while Auto Ready is off (e.g. before this deploy) is dropped; the kitchen marks Ready.
+        if (!(await autoReadyOn(order))) {
+          await Order.updateOne({ _id: order._id }, { $set: { readyDueAt: null } });
+          continue;
+        }
         const previousStatus = order.orderStatus;
-        order.orderStatus = READY;
+        if (!paidTakeaway) order.orderStatus = READY;
         order.readyAt = now;
         order.readyBy = "AUTO";
         order.timeline = order.timeline || [];

@@ -42,12 +42,14 @@ import { getMyRestaurant } from "../../https";
 import { getWebsiteSettings } from "../../https/storefrontApi";
 import Invoice from "../invoice/Invoice";
 import { toOrderItems } from "../../utils/orderItems";
-import { enqueueOrder, isNetworkError, localOrderView, newLocalId } from "../../utils/offlineQueue";
+import { enqueueOrder, isNetworkError, localOrderView, markKotPrinted, newLocalId } from "../../utils/offlineQueue";
 import { tableLabel } from "../../utils/orderLabels";
 import { deliveryFeeFor, deliveryMaxKm, hasDeliverySlabs } from "../../utils/rulesCharges";
 import { readStoreScoped, writeStoreScoped } from "../../utils/storeSession";
 import { checkActionAuthorization } from "../../utils/security";
 import { requestPin } from "../../utils/pinPrompt";
+import { loadPrinterConfig } from "../../utils/printerDevice";
+import { printKot } from "../../utils/printReceipt";
 import DeliveryModal from "./DeliveryModal";
 import DiscountModal from "./DiscountModal";
 import PaymentMethodModal from "./PaymentMethodModal";
@@ -199,12 +201,14 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
     queryFn: withSavedCopy("kk.pos.websiteSettings", getWebsiteSettings),
     staleTime: 5 * 60_000,
     retry: false,
+    networkMode: "always",
   });
   const { data: propsRes } = useQuery({
     queryKey: ["store-properties"],
     queryFn: withSavedCopy("kk.pos.storeProps", getStoreProperties),
     staleTime: 5 * 60_000,
     retry: false,
+    networkMode: "always",
   });
   const storeProps = propsRes?.data?.data || {};
   const orderTypeToggles = storeProps.orderTypeToggles || { collection: true, delivery: true, table: true };
@@ -274,7 +278,6 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
   const serviceChargePercent = isTable
     ? Math.max(0, Math.min(25, Number(ordering.serviceChargePercent) || 0))
     : 0;
-  const minOrderValue = Math.max(0, Number(ordering.minOrderValue) || 0);
   const currencySymbol = ordering.currencySymbol || "₹";
 
   // A table bill is struck on the server and never carries the cart's
@@ -341,17 +344,28 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
   /* The single order-create mutation: create, then show the invoice.
    * No internet: the order is kept on this device and synced later; the
    * cashier sees the same invoice and can print it. */
+  // N013: one key per cart: a double tap or retry of the same sale/round is answered with the first.
+  const roundKey = useMemo(() => newLocalId(), [cart]);
+
   const orderMutation = useMutation({
     mutationFn: async (d) => {
       // One id for the live attempt and the offline copy: when the server saved
       // the order but the answer was lost, the sync finds it instead of adding a second.
-      const localId = newLocalId();
+      const localId = roundKey;
       try {
         return await addOrder(d, localId);
       } catch (err) {
         if (!isNetworkError(err)) throw err;
         const entry = enqueueOrder(d, localId);
         enqueueSnackbar(`No internet: order ${entry.localNumber} saved on this device, it will sync later.`, { variant: "warning" });
+        // O1: the kitchen still needs its ticket. Once it printed, the synced copy does not print again (kotPrinted);
+        // otherwise the kitchen device prints it when it syncs. Not after a timeout: the server may have the
+        // sale, and that live copy prints on the kitchen device.
+        // shortcut: an ERR_NETWORK raised after the server saved the sale still prints twice; tag the live attempt if that is seen.
+        if (loadPrinterConfig().kotPrint && err.code !== "ECONNABORTED")
+          printKot(localOrderView(entry), { auto: true })
+            .then(() => markKotPrinted(localId))
+            .catch((e) => enqueueSnackbar(`KOT not printed: ${e?.message || "printer error"}`, { variant: "warning" }));
         return { data: { data: localOrderView(entry), offline: true } };
       }
     },
@@ -400,8 +414,8 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
    * The endpoint for appending has existed all along; nothing called it.
    */
   const appendMutation = useMutation({
-    mutationFn: ({ sessionId, items, customerCount }) =>
-      addItemsToTableSession({ sessionId, items, customerCount }),
+    mutationFn: ({ sessionId, items, customerCount, idempotencyKey }) =>
+      addItemsToTableSession({ sessionId, items, customerCount, idempotencyKey }),
     onSuccess: () => {
       enqueueSnackbar("Items added to the table's order.", { variant: "success" });
       onMobileClose?.();
@@ -524,13 +538,13 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
       enqueueSnackbar("Order total must be greater than zero.", { variant: "warning" });
       return false;
     }
-    if (minOrderValue > 0 && postDiscount < minOrderValue) {
-      enqueueSnackbar(
-        `Minimum order value is ${currencySymbol}${minOrderValue.toFixed(2)}.`,
-        { variant: "warning" },
-      );
+    // N037: a line added under another order type that this one does not sell.
+    const notSold = cart.find((l) => Array.isArray(l.orderTypes) && !l.orderTypes.includes(orderType));
+    if (notSold) {
+      enqueueSnackbar(`${notSold.name} is not sold for ${orderType}. Remove it or change the order type.`, { variant: "warning" });
       return false;
     }
+    // D8: no minimum here: ordering.minOrderValue is the website's; the server never applies it to till or table orders.
     if (isDelivery && ordering.deliveryEnabled === false) {
       enqueueSnackbar("Delivery is disabled in your store settings.", { variant: "warning" });
       return false;
@@ -643,6 +657,7 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
     appendMutation.mutate({
       sessionId,
       items: sessionItems(),
+      idempotencyKey: roundKey,
       // Omitted unless the biller actually gave a new count: sending one
       // re-validates the table's capacity and overwrites the count the party
       // was seated with.
@@ -667,6 +682,7 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
     sessionMutation.mutate({
       tableId: table.tableId || table._id,
       items: sessionItems(),
+      idempotencyKey: roundKey,
       customerCount: guests,
       customerName: name || "",
       customerPhone: phone || "",
@@ -1136,11 +1152,6 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
           <span className="text-[17px] font-extrabold text-[#0F172A]">Total</span>
           <span className="text-[22px] font-extrabold text-[#C2410C]">{money(totalWithTax)}</span>
         </div>
-        {minOrderValue > 0 && postDiscount < minOrderValue && cart.length > 0 && (
-          <p className="text-[11px] font-semibold text-[#EF4444]">
-            Below minimum order value of {money(minOrderValue)}.
-          </p>
-        )}
       </div>
 
       {/* ===== Actions ===== */}

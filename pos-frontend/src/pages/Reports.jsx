@@ -349,7 +349,8 @@ const OrderDetailsModal = ({ order, onClose }) => {
               payment card, so the two agree. No default of "Cash": an unpaid
               order has no method, and printing one made it look settled. */}
           <DetailRow label="Payment Method" value={order.paymentLabel || "—"} />
-          <DetailRow label="Payment Status" value={(payment?.status || "pending").toString()} />
+          {/* R1: paid or not by the same rule as the payment cards (the server's wasPaid). */}
+          <DetailRow label="Payment Status" value={order.paymentStatus || "pending"} />
           <DetailRow label="Payment ID" value={payment?.transactionId || order.paymentData?.gatewayPaymentId || "—"} />
           <DetailRow label="Status" value={statusLabel(order.orderStatus)} />
         </div>
@@ -469,6 +470,8 @@ const REPORT_CARDS = [
   { key: "collection", label: "Collection Orders" },
   // Not sales, so outside Total and Cash: what the drawer holds on top.
   { key: "tips", label: "Tips" },
+  // R2: voids with nothing refunded. A refunded void is in Total, as a refund; together they are every order in the list.
+  { key: "cancelled", label: "Cancelled Orders", tint: "#DC2626" },
 ];
 
 const SummaryCard = ({ label, count, amount, tint }) => (

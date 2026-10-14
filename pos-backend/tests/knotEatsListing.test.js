@@ -474,6 +474,23 @@ test("the card: ETA, near-and-fast, best offer and at most 5 dishes, photos firs
   assert.deepEqual(Object.keys(card.dishes[0]).sort(), ["image", "isVeg", "itemId", "menuId", "name", "price"]);
 });
 
+test("REGRESSION: a dish chip shows the price its store page bills in that mode (pickup 5, delivery 7)", async () => {
+  const chai = { samePrice: false, channelPrices: { posCollection: 5, posDelivery: 7, posTable: 6 } };
+  addStore("100001", { km: 1, dishes: [["Chai", 4, chai]] });
+  addStore("100002", { km: 2, pickup: false, dishes: [["Chai", 4, chai]] }); // delivery only
+  const chip = (res, id) => res.stores.find((s) => s.storeId === id).dishes[0].price;
+
+  const delivery = await ke.listStores(Q());
+  assert.equal(chip(delivery, "100001"), 7);
+  assert.equal(chip(delivery, "100002"), 7);
+  assert.equal(chip(await ke.listStores(Q({ mode: "pickup" })), "100001"), 5);
+  // Saved stores list in any mode; a pickup-less one still bills delivery.
+  assert.equal(chip(await ke.listStores(Q({ mode: "pickup", ids: "100002" })), "100002"), 7);
+  // "Meals under ₹6" counts the delivery figure in delivery mode.
+  assert.deepEqual(ids(await ke.listStores(Q({ maxPrice: "6" }))), []);
+  assert.deepEqual(ids(await ke.listStores(Q({ mode: "pickup", maxPrice: "6" }))), ["100001"]);
+});
+
 /* ---------------- dish index ---------------- */
 
 test("dish index: published website dishes only, variant minimum, tags, price for two", async () => {

@@ -112,13 +112,14 @@ test("REGRESSION: every product carries the restriction that applies to it", () 
       ? STOREFRONT_CTRL.indexOf("const toPublicCategoryless")
       : STOREFRONT_CTRL.indexOf("modifierGroups:"),
   );
-  assert.match(block, /dispatchType: menu\.dispatchType/);
+  assert.match(block, /allowsOrderType\(menu, k, item\)/, "the category's rule narrowed by the product's own");
+  assert.match(block, /dispatchType: dispatch,/);
 });
 
 test("the category still carries it too, for the heading label", () => {
   assert.match(STOREFRONT_CTRL, /dispatchType: menu\.dispatchType/);
   const uses = STOREFRONT_CTRL.match(/dispatchType: menu\.dispatchType/g) || [];
-  assert.equal(uses.length, 2, "once on the product, once on the category");
+  assert.equal(uses.length, 1, "the category heading; the product carries its combined rule");
 });
 
 // ---------------------------------------------------------------------------
@@ -155,7 +156,8 @@ test("the storefront payload carries the label, and the site has no copy of the 
   // import from each other. The label now travels in the payload, on every
   // category and product, so the words the customer reads while browsing
   // and the refusal at checkout come from one function.
-  assert.equal((STOREFRONT_CTRL.match(/dispatchLabel: dispatchLabel\(menu\.dispatchType\)/g) || []).length, 2, "category and product");
+  assert.equal((STOREFRONT_CTRL.match(/dispatchLabel: dispatchLabel\(menu\.dispatchType\)/g) || []).length, 1, "category");
+  assert.equal((STOREFRONT_CTRL.match(/dispatchLabel: dispatchLabel\(dispatch\)/g) || []).length, 1, "product");
   const siteDir = path.join(__dirname, "..", "..", "customer-web", "src");
   const walk = (d) => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory() ? walk(path.join(d, e.name)) : [path.join(d, e.name)]));
   for (const file of walk(siteDir)) {

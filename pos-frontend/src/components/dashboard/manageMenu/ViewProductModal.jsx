@@ -1,5 +1,6 @@
 import React from "react";
 import { IconX } from "./icons";
+import { capOf } from "../../../utils/modifierGroups";
 import FitImage from "../../shared/FitImage";
 
 /** Read-only product card; "Edit Product" hands the item back to the page's form. */
@@ -57,7 +58,7 @@ const ViewProductModal = ({ product, onClose, onEdit }) => (
                     <div className="flex items-center justify-between font-extrabold text-[#0F172A]">
                       <span>🧩 {g?.name || "Group"}</span>
                       <span className="text-[10.5px] font-bold text-[#C2410C] bg-[#FFF1E8] px-2 py-0.5 rounded-md">
-                        {g?.required ? "Required" : "Optional"} · max {g?.maxSelections || 1}
+                        {g?.required ? "Required" : "Optional"} · {capOf(g) === Infinity ? "any number" : `max ${capOf(g)}`}
                       </span>
                     </div>
                     {Array.isArray(g?.options) && g.options.length > 0 && (
@@ -79,12 +80,9 @@ const ViewProductModal = ({ product, onClose, onEdit }) => (
             <div className="p-3 rounded-xl bg-[#F8FAFC] border space-y-1.5 text-[11.5px]">
               <p className="font-extrabold text-[#0F172A] mb-1">Channel Prices</p>
               <div className="grid grid-cols-2 gap-x-4 gap-y-1">
-                <span>POS Collection: <b>₹{product.channelPrices.posCollection}</b></span>
-                <span>POS Delivery: <b>₹{product.channelPrices.posDelivery}</b></span>
-                <span>POS Table: <b>₹{product.channelPrices.posTable}</b></span>
-                <span>Web Collection: <b>₹{product.channelPrices.websiteCollection}</b></span>
-                <span>Web Delivery: <b>₹{product.channelPrices.websiteDelivery}</b></span>
-                <span>Web Table: <b>₹{product.channelPrices.websiteTable}</b></span>
+                <span>Collection: <b>₹{Number(product.channelPrices.posCollection) || product.price}</b></span>
+                <span>Delivery: <b>₹{Number(product.channelPrices.posDelivery) || product.price}</b></span>
+                <span>Table: <b>₹{Number(product.channelPrices.posTable) || product.price}</b></span>
               </div>
             </div>
           )}

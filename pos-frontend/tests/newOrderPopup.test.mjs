@@ -48,7 +48,7 @@ test("REGRESSION: the popup is the ONLY listener for created orders", () => {
 
 test("the same order twice does not stack two cards", () => {
   // Emits are retried, and a duplicated alert beeps twice for one customer.
-  assert.match(POPUP, /if \(id && prev\.some\(\(p\) => String\(p\.orderId\) === id\)\) return prev;/);
+  assert.match(POPUP, /if \(id && prev\.some\(\(p\) => String\(p\.orderId\) === id\)\) return prev\.map\(/);
 });
 
 test("it acts on the id the payload actually carries", () => {
@@ -114,10 +114,11 @@ test("the catch-up list is the same shape as the live event", () => {
   // live-orders/X-4 adds `placedVia` on top; the base is still the shared builder.
   assert.match(socket, /const payload = \{ \.\.\.orderCreatedPayload\(order, storeId\),/);
   const ctrl = BE("controllers/onlineOrderController.js");
-  assert.match(ctrl, /orders\.map\(\(o\) => orderCreatedPayload\(o, o\.storeId\)\)/);
-  // Undecided per channel: website orders start Pending, QR orders Preparing.
-  assert.match(ctrl, /\{ source: "WEBSITE", orderStatus: AWAITING_ACCEPTANCE \}/);
-  assert.match(ctrl, /\{ source: "QR", orderStatus: PREPARING \}/);
+  // A table order there is a guest's: marked placedVia QR like the live event (a till-opened table's order is "POS").
+  assert.match(ctrl, /const card = \(o\) => \(\{ \.\.\.orderCreatedPayload\(o, o\.storeId\), \.\.\.\(o\.tableSessionId \? \{ placedVia: "QR" \} : \{\}\) \}\);/);
+  // Undecided per channel: website orders start Pending; a guest's table
+  // order has every line pending, whatever the table's source (kotOnAccept.test.js).
+  assert.match(ctrl, /\{ source: "WEBSITE", orderStatus: AWAITING_ACCEPTANCE \},\s+UNDECIDED_TABLE_ORDER,/);
   // Any GET "/:id" must be declared after it, or "awaiting" is parsed as an order id.
   const routes = BE("routes/onlineOrderRoute.js");
   const awaiting = routes.indexOf('router.get("/awaiting"');
@@ -174,4 +175,12 @@ test("REGRESSION: a till that reloads still gets the Added Items card", () => {
   // landed while the list was in flight is kept.
   assert.match(ADDED, /else if \(!before\.has\(id\)\) kept\.push\(p\);/);
   assert.ok(!/getOrderById/.test(ADDED), "one list call, not one order fetch per card");
+});
+
+test("N020: a dish a guest adds while the order waits refreshes its New Order card", () => {
+  // The repeat payload for a known order used to be dropped, so the card kept
+  // the first round and Accept took dishes nobody had seen.
+  assert.match(POPUP, /return prev\.map\(\(p\) => \(String\(p\.orderId\) === id \? payload : p\)\)/);
+  // A refreshed card re-arms, so a tap meant for the old list lands nowhere.
+  assert.match(POPUP, /useArmed\(`\$\{queue\[0\]\?\.orderId\}:\$\{queue\[0\]\?\.items\?\.length\}`\)/);
 });

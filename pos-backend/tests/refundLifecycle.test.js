@@ -32,7 +32,7 @@ class CashfreeError extends Error {
  * time, not at require time, so the mocks must still be there when a
  * scenario runs. `current` is whatever the latest load() scripted.
  */
-let current = { calls: { createRefund: [], getRefund: [], claims: [] }, store: new Map() };
+let current = { calls: { createRefund: [], getRefund: [], claims: [], updates: [] }, store: new Map(), pushed: new Set() };
 const realLoad = Module._load;
 Module._load = function (r) {
   if (r === "../models/orderModel") {
@@ -44,6 +44,13 @@ Module._load = function (r) {
         if (!filter.refundStatus.$in.includes(stored)) return null;
         current.store.set(String(filter._id), update.$set.refundStatus);
         return { _id: filter._id };
+      },
+      // The cancel refund's claim: only an order with no refund on file takes it.
+      updateOne: async (filter, update) => {
+        const modified = !current.pushed.has(String(filter._id));
+        if (modified) current.pushed.add(String(filter._id));
+        current.calls.updates.push({ filter, update, modified });
+        return { modifiedCount: modified ? 1 : 0 };
       },
     };
   }
@@ -68,9 +75,9 @@ Module._load = function (r) {
 
 /** A fresh services/refunds with scripted collaborators. */
 const load = ({ createRefund, getRefund, gateway } = {}) => {
-  const calls = { createRefund: [], getRefund: [], claims: [] };
+  const calls = { createRefund: [], getRefund: [], claims: [], updates: [] };
   const store = new Map(); // _id -> stored refundStatus, for the claim
-  current = { createRefund, getRefund, gateway, calls, store };
+  current = { createRefund, getRefund, gateway, calls, store, pushed: new Set() };
   delete require.cache[require.resolve("../services/refunds")];
   const svc = require("../services/refunds");
   const order = (extra = {}) => {
@@ -370,4 +377,40 @@ test("SOURCE: the Cashfree client can read a refund back, and refund webhooks ar
   const refundBlock = hook.slice(hook.indexOf("const handleRefundEvent"));
   assert.ok(refundBlock.indexOf("verifyWebhook") < refundBlock.indexOf("syncRefund(order"), "signature first, then ask Cashfree");
   assert.match(refundBlock, /"refunds\.gateway\.refundId": refundId/);
+});
+
+test("REGRESSION N012: cancelling a paid order records the refund, to each way it was paid", async () => {
+  const { svc, calls, order } = load();
+  const split = order({
+    _id: "64f000000000000000000abd",
+    paymentMethod: "Split",
+    isSplit: true,
+    payments: [{ method: "cash", amount: 500, status: "paid" }, { method: "upi", amount: 350, status: "paid" }],
+  });
+  const written = await svc.refundOnCancel(split, { user, reason: "Wrong table" });
+  assert.equal(calls.updates.length, 1, "one write for the whole refund");
+  const { filter, update } = calls.updates[0];
+  assert.deepEqual(filter, { _id: split._id, "refunds.0": { $exists: false } }, "claimed only while no refund is on file");
+  const entries = update.$push.refunds.$each;
+  assert.deepEqual(entries.map((r) => [r.channel, r.amount, r.status]), [["cash", 500, "SUCCESS"], ["upi", 350, "SUCCESS"]]);
+  assert.equal(entries[0].reason, "Wrong table");
+  assert.equal(entries[0].refundedByName, "Manager");
+  assert.deepEqual(written, entries);
+  assert.equal(calls.createRefund.length, 0, "counter money is handed back, not sent to Cashfree");
+  assert.equal(split.saves, 0, "no push + save of the loaded doc: racing cancels would both push");
+
+  // A racing second cancel holds the same in-memory order: the claim refuses it.
+  assert.equal(await svc.refundOnCancel(split, { user }), null);
+  assert.equal(calls.updates.filter((u) => u.modified).length, 1, "a second cancel refunds nothing more");
+
+  const online = order(gatewayPaid);
+  await svc.refundOnCancel(online, { user, reason: "Store closed" });
+  assert.equal(calls.createRefund.length, 1, "a gateway payment goes back through Cashfree");
+  assert.equal(online.refundStatus, "REFUNDED");
+
+  const before = calls.updates.length;
+  const unpaid = order({ _id: "64f000000000000000000abe", paymentMethod: "Cash" });
+  assert.equal(await svc.refundOnCancel(unpaid, { user }), null);
+  assert.equal(calls.updates.length, before, "nothing was taken, nothing goes back");
+  assert.equal(unpaid.refunds.length, 0);
 });

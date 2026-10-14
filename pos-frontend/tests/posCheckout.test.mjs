@@ -50,7 +50,7 @@ test("a required option has no remove button; a discount by staff needs the PIN"
 });
 
 test("a live order and its offline copy share one id", () => {
-  assert.match(panel, /const localId = newLocalId\(\);/);
+  assert.match(panel, /const localId = roundKey;/);
   assert.match(panel, /await addOrder\(d, localId\)/);
   assert.match(panel, /enqueueOrder\(d, localId\)/);
 });

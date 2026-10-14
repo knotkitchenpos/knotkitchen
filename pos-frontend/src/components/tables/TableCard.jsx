@@ -3,7 +3,7 @@ import { getAvatarName } from "../../utils";
 import { FaLongArrowAltRight } from "react-icons/fa";
 
 const TableCard = ({ id, name, status, initials, seats, occupancy = 0, availableAt, activeSessionId, session, onSelect, onClick }) => {
-  const capacity = Number(seats) || 4;
+  const capacity = Number(session?.capacity) || Number(seats) || 4; // N007: merged tables seat the sum
   const currentOccupancy = Number(occupancy) || 0;
   // A settled table rests for the restaurant's configured cleaning time
   // before the next party is seated. It used to fall through to "available"

@@ -246,7 +246,11 @@ test("KOT: quantities, names, extras and notes; no prices, no address", () => {
   order.items = [{ ...ORDER.items[0], note: "less spicy" }, ORDER.items[1]];
   const layout = layoutKot({ order, store: { name: "Asha's", address: "12 MG Road", gstNumber: "GST1" }, paper: 80, measure });
   const texts = textOps(layout).map((o) => o.text);
-  assert.ok(texts.includes("KOT"));
+  // Owner, 2026-10-13: the kitchen ticket says what it is, unlike the bill.
+  assert.equal(texts[0], "KITCHEN ORDER");
+  assert.ok(!texts.includes("ADDED ITEMS"), "an order's first ticket is not a round");
+  assert.equal(textOps(layout)[1].text, "Asha's", "the store name under it");
+  assert.ok(Number(/(\d+)px/.exec(textOps(layout)[1].font)[1]) < Number(/(\d+)px/.exec(textOps(layout)[0].font)[1]), "and small");
   assert.ok(texts.includes("12 x"), "quantity first");
   assert.ok(texts.some((t) => t.startsWith("Paneer Butter Masala")));
   assert.ok(texts.includes("+ Extra Cheese and Double Jalapenos on the side") || texts.some((t) => t.startsWith("+ Extra Cheese")));
@@ -261,7 +265,8 @@ test("KOT: quantities, names, extras and notes; no prices, no address", () => {
   // A round: only the given lines, labelled as such.
   const round = layoutKot({ order, items: [ORDER.items[1]], round: true, paper: 58, measure });
   const rt = textOps(round).map((o) => o.text);
-  assert.ok(rt.includes("KOT · ADDED ITEMS"));
+  // Two lines on 58 mm, not one wrapped heading.
+  assert.deepEqual(rt.slice(0, 2), ["KITCHEN ORDER", "ADDED ITEMS"]);
   assert.ok(!rt.some((t) => t.startsWith("Paneer")));
   assert.equal(round.width, PAPER[58].width);
 });
@@ -272,6 +277,75 @@ test("Auto KOT prints on new orders and on table rounds", () => {
   assert.match(hook, /if \(config\.kotPrint\) \{\s+await printKot\(order/);
   const socket = fs.readFileSync(path.join(__dirname, "..", "..", "pos-backend", "services", "socket.js"), "utf8");
   assert.match(socket, /emitEvent\("kitchen:round", payload, rooms\)/);
+});
+
+test("D4: a customer's order prints when staff accept it; a till order when it is rung up", () => {
+  // Owner, 2026-10-13: table QR, website and Knot Eats orders printed on
+  // arrival, so a declined order still reached the kitchen.
+  const hook = SRC("src/hooks/useAutoReceiptPrint.js");
+  assert.match(hook, /const onCreated = \(payload\) => \(payload\?\.placedVia === "QR" \|\| payload\?\.source === "WEBSITE" \? undefined : printNewOrder\(payload\)\);/);
+  assert.match(hook, /socket\.on\("onlineOrder:accepted", printNewOrder\)/);
+  assert.match(hook, /socket\.off\("onlineOrder:accepted", printNewOrder\)/);
+  const socket = fs.readFileSync(path.join(__dirname, "..", "..", "pos-backend", "services", "socket.js"), "utf8");
+  assert.match(socket, /emitEvent\("onlineOrder:accepted", payload, rooms\)/);
+  // A sale taken offline: never a receipt on its sync, and a KOT only when its till printed none (O1).
+  const printNew = hook.slice(hook.indexOf("const printNewOrder"), hook.indexOf("const onCreated"));
+  assert.ok(printNew.indexOf("if (order.isOffline && (order.kotPrinted || !config.kotPrint)) return;") > printNew.indexOf("getOrderById("), "checked on the fetched order");
+  // A device with only a kitchen printer still prints KOTs, new orders and rounds alike.
+  assert.match(printNew, /const wantKot = config\.kotPrint && kitchenPrinter\(config\)\.type;/);
+  const onRound = hook.slice(hook.indexOf("const onRound"), hook.indexOf("socket.on("));
+  assert.match(onRound, /!kitchenPrinter\(config\)\.type/);
+  assert.doesNotMatch(onRound, /!config\.type/);
+});
+
+test("KOTs go to the kitchen printer when one is set up, else the receipt printer", async () => {
+  const { kitchenPrinter } = await import("../src/utils/printerDevice.js");
+  const old = { type: "usb", name: "XP-80", paper: "80", protocol: "escpos", kotPrint: true };
+  assert.equal(kitchenPrinter(old), old, "a saved config from before the kitchen slot");
+  const unset = { ...old, kitchen: { type: "" } };
+  assert.equal(kitchenPrinter(unset), unset, "an empty kitchen slot");
+  const split = { ...old, kitchen: { type: "bluetooth", name: "BT-58", paper: "58", bluetooth: { address: "AA:BB" } } };
+  const k = kitchenPrinter(split);
+  assert.deepEqual([k.type, k.name, k.paper, k.protocol, k.bluetooth.address], ["bluetooth", "BT-58", "58", "escpos", "AA:BB"]);
+  assert.equal(kitchenPrinter({ ...old, kitchen: { type: "usb", name: "K" } }).paper, "80", "the defaults fill the slot");
+  // Only the KOT is routed: bills and reports stay on the receipt printer,
+  // and there is no KOT copy on the receipt printer once a kitchen one is set.
+  const print = SRC("src/utils/printReceipt.js");
+  assert.equal(print.match(/kitchenPrinter\(/g).length, 1);
+  const kot = print.slice(print.indexOf("export const printKot"), print.indexOf("export const printReport"));
+  assert.match(kot, /const printer = kitchenPrinter\(config \|\| loadPrinterConfig\(\)\);/);
+  // A receipt and a kitchen printer on Web Bluetooth stay connected together.
+  const device = SRC("src/utils/printerDevice.js");
+  assert.match(device, /const bts = new Map\(\);/);
+  assert.match(device, /bts\.set\(device\.id, link\);/);
+  assert.doesNotMatch(device, /let bt = null/);
+  // Device Configuration: one slot each, the kitchen one can be cleared.
+  const screen = SRC("src/components/settings/DeviceConfiguration.jsx");
+  assert.equal(screen.match(/<PrinterSlot\n/g).length, 2);
+  assert.match(screen, /title="Kitchen Printer \(KOT\)"/);
+  assert.match(screen, /emptyLabel="Uses receipt printer"/);
+  assert.match(screen, /onClear=\{\(\) => patchDevice\(\{ kitchen: undefined \}\)\}/);
+  assert.match(screen, /const testKot = async \(\) => \{\s+try \{\s+const \{ via \} = await printKot\(SAMPLE_ORDER, \{ config: device, context \}\);/);
+  assert.match(screen, /if \(device\.kotPrint && !device\.type && !device\.kitchen\?\.type\) \{/);
+});
+
+test("a pre-order's KOT says when it is wanted, on the store's clock", () => {
+  const saved = process.env.TZ;
+  process.env.TZ = "Europe/London";
+  try {
+    // 14:00 UTC is 7:30 pm in India.
+    const order = { ...ORDER, scheduledFor: "2026-10-14T14:00:00Z" };
+    const ops = textOps(layoutKot({ order, paper: 58, measure }));
+    const label = ops.find((o) => o.text === "For");
+    assert.ok(label, "a For line");
+    const value = ops.find((o) => o.y === label.y && o.align === "right");
+    assert.match(value.text, /14 Oct.*07:30\s?pm/i);
+    assert.match(value.font, /^bold /);
+    assert.ok(!textOps(layoutKot({ order: ORDER, paper: 58, measure })).some((o) => o.text === "For"), "not on an order for now");
+  } finally {
+    if (saved === undefined) delete process.env.TZ;
+    else process.env.TZ = saved;
+  }
 });
 
 test("Windows app: a system printer prints silently through window.knotDesktop", () => {
@@ -592,4 +666,32 @@ test("REGRESSION: no E-Bill for an offline order or a phone that is not a mobile
   const guard = src.slice(src.indexOf("const canSendEBill"), src.indexOf("const [emailedTo"));
   assert.ok(guard.includes("/^[6-9]\\d{9}$/"), guard);
   assert.match(guard, /!safeOrder\.offline/);
+});
+
+test("REGRESSION O1: a synced offline sale prints its KOT on the kitchen device unless its own till printed one; never a receipt", async () => {
+  const hook = SRC("src/hooks/useAutoReceiptPrint.js");
+  const src = hook.slice(hook.indexOf("const printNewOrder"), hook.indexOf("// D4: a customer's order"));
+  const run = async (order, config) => {
+    const out = [];
+    const printNewOrder = new Function(
+      "loadPrinterConfig", "kitchenPrinter", "claim", "getOrderById", "enqueueSnackbar", "printKot", "printOrderReceipt",
+      `${src}
+return printNewOrder;`,
+    )(
+      () => config,
+      (c) => c.kitchen?.type ? c.kitchen : c,
+      () => true,
+      async () => ({ data: { data: order } }),
+      () => {},
+      async () => out.push("kot"),
+      async () => out.push("receipt"),
+    );
+    await printNewOrder({ orderId: "o1" });
+    return out;
+  };
+  const kitchen = { type: "usb", kotPrint: true, autoPrint: true };
+  assert.deepEqual(await run({ isOffline: true }, kitchen), ["kot"], "the counter till had Auto KOT off: the kitchen still gets its ticket");
+  assert.deepEqual(await run({ isOffline: true, kotPrinted: true }, kitchen), [], "its till printed it at sale time");
+  assert.deepEqual(await run({ isOffline: true }, { ...kitchen, kotPrint: false }), [], "a receipt-only device prints nothing for it");
+  assert.deepEqual(await run({ isOffline: false }, kitchen), ["kot", "receipt"], "a live sale is unchanged");
 });

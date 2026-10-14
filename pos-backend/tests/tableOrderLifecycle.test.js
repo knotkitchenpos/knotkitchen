@@ -72,7 +72,7 @@ test("REGRESSION: a guest's new table order starts no clock until the till accep
   assert.equal(created[0].readyDueAt, null, "a guest's order waits for Accept");
   assert.equal(created[0].requestId, "req-1", "the QR double-fire guard keys on it");
   assert.equal(created[0].source, "QR");
-  assert.ok(created[1].readyDueAt instanceof Date, "a till order is in the kitchen at once");
+  assert.equal(created[1].readyDueAt, null, "no Auto Ready clock unless the owner turned it on");
   assert.ok(!("completeDueAt" in created[1]), "a table order is completed by its payment, not a timer");
 });
 
@@ -100,7 +100,7 @@ test("REGRESSION: a new round reopens a Ready order, and a QR order is not made 
   assert.equal(qr.orderStatus, "In Progress");
   assert.equal(pos.orderStatus, "Preparing");
   assert.equal(qr.readyAt, null, "the auto-ready sweep only looks at orders with no readyAt");
-  assert.equal(qr.readyDueAt.getTime(), now.getTime() + 20 * 60 * 1000, "the clock restarts from now");
+  assert.equal(qr.readyDueAt, null, "Auto Ready is off for a store that never turned it on");
   assert.equal(qr.completeDueAt, null, "a clock that was off stays off");
   assert.equal(unaccepted.orderStatus, "Preparing");
   assert.equal(unaccepted.readyDueAt, null, "a round cannot start a clock Accept has not");
@@ -342,7 +342,7 @@ test("the QR payment amount comes from the session's own bill", () => {
   assert.match(block, /await quotePlatformFee\(\{ restaurantId, source: "QR" \}\)/);
   assert.match(block, /const gatewayAmount = round2\(payable \+ platformFee\)/);
   assert.match(block, /amount: gatewayAmount/, "the gateway order is opened for the bill plus the fee");
-  assert.match(block, /session\.payment\.platformFee = fee \|\| \{\}/);
+  assert.match(block, /"payment\.platformFee": fee \|\| \{\}/);
   assert.ok(
     !/req\.body\?\.amount|req\.body\??\.platformFee/.test(block),
     "a tampered browser must not be able to name its own price",

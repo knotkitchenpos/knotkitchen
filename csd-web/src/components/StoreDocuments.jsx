@@ -228,7 +228,7 @@ const StoreDocuments = ({ storeId }) => {
 
       {confirmDelete && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <div role="dialog" aria-modal="true" className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+          <div role="dialog" aria-modal="true" className="w-full max-w-md max-h-full overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
             <div className="flex items-start gap-3">
               <FiAlertTriangle className="mt-0.5 shrink-0 text-red-600" size={22} aria-hidden="true" />
               <div>

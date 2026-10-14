@@ -1,13 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { lineUnitPrice } from "../lib/cartLine";
 
 /**
  * Cart hook.
  *
- * The cart lives entirely in the browser. Every price shown is an ESTIMATE —
- * the backend re-prices the order server-side from the same product IDs, so a
- * customer manipulating localStorage cannot change what they get charged
- * (§10 of the spec). Persisted per-store so switching between restaurants
- * doesn't cross-contaminate line items.
+ * The cart lives entirely in the browser. The backend re-prices the order
+ * server-side from the same product IDs, so a customer manipulating
+ * localStorage cannot change what they get charged (§10 of the spec).
+ * Persisted per-store so switching between restaurants doesn't
+ * cross-contaminate line items.
+ *
+ * Every line is re-priced from the latest menu (`categories`) for the chosen
+ * `channel`, so the cart shows what the server bills now, not the price
+ * stamped when the dish was added.
  */
 const storageKey = (slug) => `kk_cart_v1:${slug || "default"}`;
 
@@ -44,16 +49,26 @@ const lineSignature = (line) =>
     line.note || "",
   ].join("|");
 
-export function useCart(slug) {
-  const [items, setItems] = useState(() => readStore(slug));
+export function useCart(slug, categories) {
+  const [lines, setItems] = useState(() => readStore(slug));
+  const [channel, setChannel] = useState("collection");
 
   useEffect(() => {
     setItems(readStore(slug));
   }, [slug]);
 
   useEffect(() => {
-    writeStore(slug, items);
-  }, [slug, items]);
+    writeStore(slug, lines);
+  }, [slug, lines]);
+
+  const items = useMemo(() => {
+    const index = new Map();
+    for (const c of categories || []) for (const p of c.products || []) index.set(`${p.menuId}:${p.id}`, p);
+    return lines.map((l) => {
+      const u = lineUnitPrice(l, index.get(`${l.menuId}:${l.itemId}`), channel);
+      return { ...l, unitPrice: u, price: u };
+    });
+  }, [lines, categories, channel]);
 
   const addItem = useCallback((line) => {
     setItems((prev) => {
@@ -80,7 +95,7 @@ export function useCart(slug) {
   const clear = useCallback(() => setItems([]), []);
 
   const subtotal = useMemo(
-    () => items.reduce((sum, i) => sum + (Number(i.unitPrice) || Number(i.price) || 0) * i.quantity, 0),
+    () => items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0),
     [items]
   );
 
@@ -96,7 +111,7 @@ export function useCart(slug) {
    */
   const toOrderItems = useCallback(
     () =>
-      items.map((l) => ({
+      lines.map((l) => ({
         menuId: l.menuId,
         itemId: l.itemId,
         quantity: l.quantity,
@@ -108,11 +123,13 @@ export function useCart(slug) {
         })),
         note: l.note || "",
       })),
-    [items]
+    [lines]
   );
 
   return {
     items,
+    channel,
+    setChannel,
     addItem,
     updateQuantity,
     removeItem,

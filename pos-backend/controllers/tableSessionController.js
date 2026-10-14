@@ -177,7 +177,7 @@ const generateSessionCode = () =>
  * E11000. We abort and retry so the loser can re-find and reuse the
  * winning session — never creating a duplicate.
  */
-const runWithSessionRetry = async (work, { retries = 3 } = {}) => {
+const runWithSessionRetry = async (work, { retries = 5, retryConflicts = true } = {}) => {
   let lastError;
   for (let attempt = 1; attempt <= retries; attempt++) {
     let mongoSession = null;
@@ -224,7 +224,10 @@ const runWithSessionRetry = async (work, { retries = 3 } = {}) => {
         // Transaction may already be aborted by Mongo — ignore
       }
       lastError = error;
-      if (attempt === retries || error.code !== 11000) break;
+      // N013: rerun a clash (112) or a race to open the table (E11000); a keyed round replays, an unkeyed till tap (older app) gets the 409 so it is not added twice.
+      const conflict = error.code === 11000 || (retryConflicts && (error.code === 112 || error.hasErrorLabel?.("TransientTransactionError")));
+      if (attempt === retries || !conflict) break;
+      await new Promise((resolve) => setTimeout(resolve, 100 * attempt));
     } finally {
       if (mongoSession) mongoSession.endSession();
     }
@@ -284,6 +287,11 @@ const assertCanTransition = (session, allowedFrom, to) => {
 // Adding items is only valid while the session is still active/orderable.
 const assertActiveForItems = (session) => assertNotSettled(session);
 
+// N017: a guest's QR dish waits for the till to accept it, and is not on the bill until then.
+const isAwaitingAcceptance = (i) => i.status === "pending" && i.addedBy === "QR";
+const isBillable = (i) => i.status !== "cancelled" && !isAwaitingAcceptance(i);
+const NOT_ACCEPTED_REASON = "Not accepted before payment";
+
 const recalculateSessionBill = async (session) => {
   // A table order is on the "system" channel. GST is charged only if this
   // store has a GST number and a rate; otherwise the rate is zero.
@@ -294,7 +302,7 @@ const recalculateSessionBill = async (session) => {
   // set, and zero once the guest has asked for it to be taken off.
   const serviceChargeWaived = session.bills?.serviceChargeWaived === true;
   const pct = serviceChargeWaived ? 0 : Math.max(0, Math.min(25, Number(gst.serviceChargePercent) || 0));
-  const live = session.items.filter((i) => i.status !== "cancelled").map((i) => ({ price: i.price, quantity: i.quantity }));
+  const live = session.items.filter(isBillable).map((i) => ({ price: i.price, quantity: i.quantity }));
 
   const bills = priceService.calculateBill({
     items: live,
@@ -316,8 +324,9 @@ const getScopeQuery = (req) => userScope(req.user);
  * A table with capacity N admits at most N customers (1..N).
  * Always rejects counts > N regardless of the source.
  */
-const validateCapacity = (table, customerCount) => {
-  const capacity = Number(table.capacity) || 4;
+const validateCapacity = (table, customerCount, session = null) => {
+  // N007: a merged party holds every merged table's seats (mergeSessions).
+  const capacity = Number(session?.capacity) || Number(table.capacity) || 4;
   let count = Number(customerCount);
   if (isNaN(count) || count < 1) count = 1;
   if (count > capacity) {
@@ -364,7 +373,7 @@ const enrichItems = async ({ items, restaurantId, outletId, addedBy = "SYSTEM" }
     if (!rawItem.menuItemId) throw createHttpError(400, "Each item must have menuItemId!");
     if (!rawItem.quantity || rawItem.quantity < 1) throw createHttpError(400, "Quantity must be at least 1!");
 
-    const { item } = await priceService.resolveMenuItem({
+    const { item, timezone } = await priceService.resolveMenuItem({
       menuItemId: rawItem.menuItemId,
       restaurantId,
       outletId,
@@ -372,6 +381,7 @@ const enrichItems = async ({ items, restaurantId, outletId, addedBy = "SYSTEM" }
 
     const { unitPrice, variant, addons, modifiers } = priceService.calculateUnitPrice({
       item,
+      timezone,
       variantId: rawItem.variantId,
       addonIds: rawItem.addonIds || [],
       modifierSelections: rawItem.modifierSelections || {},
@@ -424,6 +434,7 @@ const addItemsToSession = async (req, res, next) => {
     ({ result } = await runWithSessionRetry(async (mongoSession) => {
       const { tableId, items, customerCount, customerName, customerPhone, idempotencyKey } = req.body;
 
+      const key = String(idempotencyKey || "").slice(0, 80);
       if (!tableId) throw createHttpError(400, "Table ID is required!");
       if (!items || !items.length) throw createHttpError(400, "At least one item is required!");
 
@@ -435,16 +446,17 @@ const addItemsToSession = async (req, res, next) => {
       }).session(mongoSession);
       if (!table) throw createHttpError(404, "Table not found!");
 
-      const count = validateCapacity(table, customerCount);
-
       // Find existing active session
       let session = await TableSession.findOne({
         tableId,
         status: { $in: ["OPEN", "OCCUPIED", "PROCESSING", "BILL_REQUESTED", "PAYMENT_PENDING"] },
         isDeleted: { $ne: true },
       }).session(mongoSession);
+      // N013: a double tap (or a retry) of a round already on the table: answer with it.
+      if (session && key && session.items.some((i) => i.requestId === key)) return { session, replay: true };
 
       if (!session) {
+        const count = validateCapacity(table, customerCount);
         // A table promised to a booking stops taking new parties from its
         // block start. Seating the booking (Manage Tables) releases it.
         const block = await findActiveBlock(table._id);
@@ -485,9 +497,8 @@ const addItemsToSession = async (req, res, next) => {
         table.currentOccupancy = count;
         await table.save({ session: mongoSession });
       } else {
-        // Existing session: capacity re-validate
-        validateCapacity(table, count || session.customerCount);
-        session.customerCount = count || session.customerCount;
+        // N007: a count given is checked against the seats the party holds; none keeps the seated count.
+        if (customerCount) session.customerCount = validateCapacity(table, customerCount, session);
         table.currentOccupancy = session.customerCount;
         await table.save({ session: mongoSession });
         if (customerName) session.customerName = String(customerName).trim().slice(0, 80);
@@ -507,6 +518,7 @@ const addItemsToSession = async (req, res, next) => {
         outletId: session.outletId,
         addedBy: "POS",
       });
+      validatedItems.forEach((i) => { i.requestId = key; });
 
       session.items.push(...validatedItems);
       if (!session.originalItemsCount) session.originalItemsCount = validatedItems.length;
@@ -529,8 +541,9 @@ const addItemsToSession = async (req, res, next) => {
       await session.save({ session: mongoSession });
 
       return { session, kitchenOrder, appended, validatedItems, table };
-    }));
+    }, { retryConflicts: Boolean(req.body?.idempotencyKey) }));
 
+    if (result.replay) return res.status(200).json({ success: true, message: "Items already added.", data: result.session });
     announceKitchenOrder({
       session: result.session,
       order: result.kitchenOrder,
@@ -566,7 +579,8 @@ const addItemsToExistingSession = async (req, res, next) => {
   try {
     ({ result } = await runWithSessionRetry(async (mongoSession) => {
       const { id } = req.params;
-      const { items, customerCount } = req.body;
+      const { items, customerCount, idempotencyKey } = req.body;
+      const key = String(idempotencyKey || "").slice(0, 80);
       if (!mongoose.Types.ObjectId.isValid(id)) throw createHttpError(404, "Invalid id!");
 
       const scopeQuery = getScopeQuery(req);
@@ -576,6 +590,7 @@ const addItemsToExistingSession = async (req, res, next) => {
         isDeleted: { $ne: true },
       }).session(mongoSession);
       if (!session) throw createHttpError(404, "Table session not found!");
+      if (key && session.items.some((i) => i.requestId === key)) return { session, replay: true };
       // STATE VALIDATION: reject CLOSED → add item and PAID → add item
       assertActiveForItems(session);
 
@@ -589,8 +604,7 @@ const addItemsToExistingSession = async (req, res, next) => {
       if (customerCount) {
         table = await Table.findOne({ _id: session.tableId, ...scopeQuery }).session(mongoSession);
         if (!table) throw createHttpError(404, "Table not found!");
-        validateCapacity(table, customerCount);
-        session.customerCount = Number(customerCount);
+        session.customerCount = validateCapacity(table, customerCount, session);
         table.currentOccupancy = session.customerCount;
         await table.save({ session: mongoSession });
       }
@@ -601,6 +615,7 @@ const addItemsToExistingSession = async (req, res, next) => {
         outletId: session.outletId,
         addedBy: "POS",
       });
+      validatedItems.forEach((i) => { i.requestId = key; });
 
       session.items.push(...validatedItems);
       addTimeline(session, "ITEMS_ADDED", `${validatedItems.length} item(s) added`, "POS", req.user?._id);
@@ -626,11 +641,11 @@ const addItemsToExistingSession = async (req, res, next) => {
       await session.save({ session: mongoSession });
 
       return { session, kitchenOrder, appended, validatedItems, table };
-    }));
+    }, { retryConflicts: Boolean(req.body?.idempotencyKey) }));
 
     // Items and table too: without them a round topped up at the till never
     // printed a KOT (kitchen:round fires only for an appended round with items).
-    announceKitchenOrder({
+    if (!result.replay) announceKitchenOrder({
       session: result.session,
       order: result.kitchenOrder,
       appended: result.appended,
@@ -874,6 +889,20 @@ const recordSessionPayment = async (req, res, next) => {
     const session = await TableSession.findOne({ _id: id, ...scopeQuery, isDeleted: { $ne: true } }).session(mongoSession);
     if (!session) throw createHttpError(404, "Table session not found!");
 
+    // N013: replay before the state checks, so a double tap after the first settle gets the same answer.
+    if (idempotencyKey) {
+      const existingPayment = (session.paymentHistory || []).find(
+        (p) => {
+          const k = String(p.idempotencyKey || "");
+          return (k === idempotencyKey || k.startsWith(`${idempotencyKey}-`)) && p.status === "PAID";
+        }
+      );
+      if (existingPayment) {
+        await mongoSession?.commitTransaction();
+        return res.status(200).json({ success: true, message: "Payment already recorded!", data: session });
+      }
+    }
+
     // A tip left at settle, and the buyer for a B2B (GST) bill. Both optional.
     const tip = Math.max(0, Math.min(100000, Math.round((Number(req.body.tip) || 0) * 100) / 100));
     const buyer = require("../services/gst").buyerFrom(req.body.buyer || {});
@@ -888,6 +917,21 @@ const recordSessionPayment = async (req, res, next) => {
       throw createHttpError(400, "This table session has already been paid.");
     }
 
+    // N017: a guest's dish nobody accepted is not on the bill. The till decides
+    // it first; a diner's online payment paid without it, so it is declined.
+    const awaiting = session.items.filter(isAwaitingAcceptance);
+    if (awaiting.length && !req.viaGateway) {
+      throw createHttpError(409, `${awaiting.length} dish(es) the guest added are waiting: accept or decline them first.`);
+    }
+    const declinedAt = new Date();
+    for (const i of awaiting) {
+      i.status = "cancelled";
+      i.cancelledAt = declinedAt;
+      i.cancelReason = NOT_ACCEPTED_REASON;
+      addTimeline(session, "ITEM_CANCELLED", `${i.name} × ${i.quantity} cancelled — ${NOT_ACCEPTED_REASON}`);
+    }
+    const declinedLineIds = awaiting.map((i) => i.kdsItemId).filter(Boolean);
+
     const allowedMethods = ["CASH", "QR_CODE", "ONLINE", "PAYMENT_LINK", "CARD", "UPI", "WALLET", "SPLIT"];
     const normalizedMethod = String(method || "").toUpperCase();
     if (!allowedMethods.includes(normalizedMethod)) {
@@ -899,17 +943,6 @@ const recordSessionPayment = async (req, res, next) => {
     const payableAmount = Math.round((billAmount + tip) * 100) / 100;
     if (!billAmount || billAmount <= 0) {
       throw createHttpError(400, "No payable amount on this session.");
-    }
-
-    // Idempotency: prevent duplicate payments
-    if (idempotencyKey) {
-      const existingPayment = (session.paymentHistory || []).find(
-        (p) => p.idempotencyKey === idempotencyKey && p.status === "PAID"
-      );
-      if (existingPayment) {
-        await mongoSession?.commitTransaction();
-        return res.status(200).json({ success: true, message: "Payment already recorded!", data: session });
-      }
     }
 
     if (Number(amount) !== payableAmount) {
@@ -966,8 +999,14 @@ const recordSessionPayment = async (req, res, next) => {
     });
 
     // Keep the gateway handles an online checkout opened: a refund later
-    // needs the merchant order id.
-    const gatewayOrderId = session.payment?.gatewayOrderId || "";
+    // needs the merchant order id. A gateway settle names the order that paid
+    // (S4); the one it displaces stays listed, so a late payment on it is refunded.
+    const openGatewayOrderId = session.payment?.gatewayOrderId || "";
+    const gatewayOrderId = req.gatewayOrderId || openGatewayOrderId;
+    const gatewayOrderIds = [...(session.payment?.gatewayOrderIds || [])];
+    if (openGatewayOrderId && openGatewayOrderId !== gatewayOrderId && !gatewayOrderIds.includes(openGatewayOrderId)) {
+      gatewayOrderIds.push(openGatewayOrderId);
+    }
     const gatewayProvider = session.payment?.gatewayProvider || "";
     const storedFee = session.payment?.platformFee || {};
     session.payment = {
@@ -978,6 +1017,8 @@ const recordSessionPayment = async (req, res, next) => {
       recordedBy: req.user?._id,
       gatewayProvider,
       gatewayOrderId,
+      gatewayOrderIds,
+      refundedOrderIds: [...(session.payment?.refundedOrderIds || [])],
       // Kept only for the payment that carried it; a cash settle after an
       // abandoned online attempt clears the quote that attempt stored. A
       // failed attempt keeps it: the diner's open checkout still expects it.
@@ -1124,7 +1165,7 @@ const recordSessionPayment = async (req, res, next) => {
       // Only money that went through the gateway carries its order id. A cash
       // settle after an abandoned QR checkout read as "Gateway Payment" and
       // would have been refunded through Cashfree.
-      const viaGateway = gatewayOrderId && ["ONLINE", "PAYMENT_LINK"].includes(normalizedMethod);
+      const paidByGateway = gatewayOrderId && ["ONLINE", "PAYMENT_LINK"].includes(normalizedMethod);
       await Order.updateOne(
         { _id: primary._id },
         {
@@ -1140,8 +1181,16 @@ const recordSessionPayment = async (req, res, next) => {
             "bills.tip": tip,
             "bills.platformFee": platformFee,
             tips: tip,
-            ...(viaGateway ? { "paymentData.gatewayOrderId": gatewayOrderId, "paymentData.gatewayPaymentId": transactionId || "" } : {}),
+            ...(paidByGateway ? { "paymentData.gatewayOrderId": gatewayOrderId, "paymentData.gatewayPaymentId": transactionId || "" } : {}),
+            // N015a: the bill (and its e-bill) is the table's party, not whichever merged-in order is oldest.
+            ...(session.customerPhone
+              ? { "customerDetails.name": session.customerName || "Guest", "customerDetails.phone": session.customerPhone, "customerDetails.guests": session.customerCount || 1 }
+              : {}),
             ...(buyer ? { "customerDetails.company": buyer.company, "customerDetails.gstin": buyer.gstin } : {}),
+            // N017: the declined guest lines, wherever they were merged in from (the $push above ran first).
+            ...(declinedLineIds.length
+              ? { "items.$[declined].status": "cancelled", "items.$[declined].cancelledAt": declinedAt, "items.$[declined].cancelReason": NOT_ACCEPTED_REASON }
+              : {}),
             paymentMethod:
               parts.length > 1
                 ? require("../services/splitPayment").splitLabel(parts, displayPaymentMethod)
@@ -1162,7 +1211,7 @@ const recordSessionPayment = async (req, res, next) => {
             })),
           },
         },
-        { session: mongoSession }
+        { session: mongoSession, ...(declinedLineIds.length ? { arrayFilters: [{ "declined._id": { $in: declinedLineIds } }] } : {}) }
       );
     }
 
@@ -1249,6 +1298,7 @@ const moveSession = async (req, res, next) => {
 
     const from = session.tableId;
     session.tableId = target._id;
+    session.capacity = 0; // N007: the party now holds this one table's seats
     addTimeline(session, "TABLE_MOVED", `Moved to ${target.displayId || target.tableName || `Table ${target.tableNumber}`}`, "POS", req.user?._id);
     await session.save();
 
@@ -1297,8 +1347,14 @@ const mergeSessions = async (req, res, next) => {
     assertNotSettled(target);
     assertNotSettled(source);
 
-    const sourceTable = await Table.findById(source.tableId).select("tableNumber tableName displayId");
+    const [sourceTable, targetTable] = await Promise.all([
+      Table.findById(source.tableId).select("tableNumber tableName displayId capacity"),
+      Table.findById(target.tableId).select("capacity"),
+    ]);
     const sourceLabel = sourceTable?.displayId || sourceTable?.tableName || `Table ${sourceTable?.tableNumber ?? "?"}`;
+    // N007: the party now holds both tables' seats, so 3 + 2 guests on two 4-seaters fit.
+    const seatsOf = (s, t) => Number(s.capacity) || Number(t?.capacity) || 4;
+    target.capacity = seatsOf(target, targetTable) + seatsOf(source, sourceTable);
 
     for (const it of source.items || []) {
       const plain = it.toObject ? it.toObject() : { ...it };
@@ -1400,12 +1456,17 @@ const settleSessionFromGateway = async ({
   platformFee,
   transactionId,
   idempotencyKey,
+  gatewayOrderId,
 }) => {
   const req = {
     params: { id: String(sessionId) },
     body: { method, amount, transactionId, idempotencyKey, paymentStatus: "success" },
     user: { restaurantId },
     platformFee,
+    // The Cashfree order that was paid (it may be an earlier attempt), and
+    // the flag that lets a diner's payment decline undecided guest dishes.
+    gatewayOrderId,
+    viaGateway: true,
   };
 
   let payload = null;
@@ -1844,7 +1905,7 @@ const setDiscount = async (req, res, next) => {
     }
 
     const sub = round2(
-      session.items.filter((i) => i.status !== "cancelled").reduce((t, i) => t + i.price * i.quantity, 0),
+      session.items.filter(isBillable).reduce((t, i) => t + i.price * i.quantity, 0),
     );
     // ponytail: a percentage is stored as an amount, so dishes added after it
     // keep the old figure. Store bills.discountPercent if that ever matters.
@@ -1905,7 +1966,33 @@ const findActiveSessionByTable = async ({ tableId, restaurantId }) =>
     isDeleted: { $ne: true },
   });
 
+/**
+ * S6: a GST or service-charge change re-prices the store's open tables. A
+ * table already paying (PAYMENT_PENDING) keeps the amount its checkout opened
+ * at. One bad session is logged and skipped. Resolves to the number re-priced.
+ */
+const restrikeOpenBills = async (restaurantId) => {
+  const sessions = await TableSession.find({
+    restaurantId,
+    status: { $in: ["OPEN", "OCCUPIED", "PROCESSING", "BILL_REQUESTED"] },
+    isDeleted: { $ne: true },
+  });
+  let repriced = 0;
+  for (const session of sessions) {
+    try {
+      await recalculateSessionBill(session);
+      repriced += 1;
+    } catch (err) {
+      console.warn(`restrikeOpenBills: session ${session._id} skipped:`, err.message);
+    }
+  }
+  return repriced;
+};
+
 module.exports = {
+  restrikeOpenBills,
+  isAwaitingAcceptance,
+  isBillable,
   addItemsToSession,
   addItemsToExistingSession,
   moveSession,

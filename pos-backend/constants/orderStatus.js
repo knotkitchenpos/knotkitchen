@@ -193,7 +193,12 @@ const ALLOWED_STATUS_TRANSITIONS = new Set([
 /** Statuses an order may be created with. */
 const ALLOWED_INITIAL_STATUS = new Set([PREPARING, "Pending", "In Progress", READY]);
 
+// N018: how long a takeaway paid at the till can still be marked Ready (pos-frontend's constants/orderStatus.js has the same).
+// Older ones were handed over long ago: a Ready now would text the customer for nothing.
+const PAID_TAKEAWAY_READY_MS = 12 * 3600 * 1000;
+
 module.exports = {
+  PAID_TAKEAWAY_READY_MS,
   PREPARING, READY, COMPLETED, CANCELLED, REFUNDED, PAID, SERVED, DELIVERED,
   AWAITING_ACCEPTANCE, ACCEPTED, OUT_FOR_DELIVERY,
   PREPARING_STATUSES, READY_STATUSES, OUT_FOR_DELIVERY_STATUSES, SETTLED_STATUSES,

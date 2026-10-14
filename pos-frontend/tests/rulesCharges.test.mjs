@@ -68,3 +68,16 @@ test("the Promotion Priority total matches services/price.computeTotals", () => 
     /Total = max\(0, Subtotal − Discount \+ Packing \+ GST[^<]*\+ Service charge \+ Delivery\)/,
   );
 });
+
+test("REGRESSION V2: Auto-ready and Auto-complete name the refused minute instead of 'the highlighted fields'", () => {
+  const view = src("components/settings/OrderTypesAutoReadyView.jsx");
+  const a = view.indexOf("const LABELS");
+  const b = view.indexOf("/* ---------- Module 7", a);
+  assert.ok(a > 0 && b > a);
+  const shown = [];
+  const saveError = new Function("enqueueSnackbar", `${view.slice(a, b)}\nreturn saveError;`)((msg) => shown.push(msg));
+  saveError({ response: { data: { message: "Please correct the highlighted fields.", fieldErrors: { "ordering.autoCompleteMinutes.collection": "Use 0 to 1440 minutes." } } } });
+  saveError({ response: { data: { message: "Server down" } } });
+  assert.deepEqual(shown, ["Auto-complete collection: Use 0 to 1440 minutes.", "Server down"]);
+  assert.equal((view.match(/onError: saveError,/g) || []).length, 2, "both minute saves use it");
+});

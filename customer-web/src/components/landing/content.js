@@ -1,4 +1,5 @@
 import { featuredDishes, addressLines } from "./data";
+import { priceFor } from "../../lib/cartLine";
 
 /**
  * Everything a landing design prints, resolved once.
@@ -128,6 +129,8 @@ export function landingContent(key, landing = {}, store = null) {
   const symbol = store?.ordering?.currencySymbol || "₹";
   const contact = { ...(landing.contact || {}), ...(store?.contact || {}) };
   const name = pick(landing.name, store?.store?.name || "Our Restaurant");
+  // The channel the cart will bill: a pickup-less store only delivers (lib/orderTotals cartOrderType).
+  const channel = store?.ordering?.pickupEnabled === false ? "delivery" : "collection";
 
   const dishes = featuredDishes(landing, store?.categories || [], 3).map((p, i) => ({
     id: String(p.id),
@@ -136,7 +139,7 @@ export function landingContent(key, landing = {}, store = null) {
     // Tried in order: a missing upload falls through to the design's photo.
     images: [p.image, d.images[i + 1] || d.images[1]].filter(Boolean),
     tag: p.isVegetarian ? "Veg" : p.category || "Favourite",
-    price: `${Array.isArray(p.variants) && p.variants.length > 1 ? "From " : ""}${money(symbol, p.price)}`,
+    price: `${Array.isArray(p.variants) && p.variants.length > 1 ? "From " : ""}${money(symbol, priceFor(p, channel))}`,
   }));
 
   const featureTitles = [0, 1, 2].map((i) => pick(landing.features?.[i]?.title, d.features[i]));

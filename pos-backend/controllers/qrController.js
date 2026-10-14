@@ -22,6 +22,7 @@ const { resolveGateway, isOnlinePaymentEnabled, PROVIDERS } = require("../servic
 const config = require("../config/config");
 const { findOrCreate } = require("../services/idempotency");
 const { round2, toRupees } = require("../services/money");
+const { menuPriceNow, isItemAvailableNow } = require("../services/businessHours");
 // Lazy for the same reason as accountLock above.
 const quotePlatformFee = (args) => require("../services/orderCharge").quotePlatformFee(args);
 
@@ -38,11 +39,12 @@ const quotePlatformFee = (args) => require("../services/orderCharge").quotePlatf
 /**
  * The in-restaurant menu a diner sees after scanning their table QR.
  *
- * Served from the System Published snapshot — the same catalogue the till
- * shows and the same one enrichItems bills from, so what is displayed and
- * what is charged cannot drift apart. Returning the raw documents (as this
- * used to) also handed every anonymous scanner the live draft plus both
- * snapshots; projecting strips all of that.
+ * Served from the System Published snapshot, the same catalogue the till
+ * shows and enrichItems bills from. getTableByToken then sets each item's
+ * `price` to the server-computed Table price at that moment (channel price
+ * plus any live price rule, store clock), the figure the bill charges.
+ * Returning the raw documents also handed every anonymous scanner the live
+ * draft plus both snapshots; projecting strips all of that.
  */
 const scopedMenu = async (restaurantId, outletId) => {
   const docs = await Menu.find({
@@ -162,9 +164,31 @@ const claimFrom = (req) => String(req.query?.s || req.body?.sessionToken || "").
 const claimIsStale = (session, claimed) =>
   Boolean(claimed) && claimed !== (session?.accessToken || "");
 
-const assertSessionClaim = (session, req) => {
-  if (claimIsStale(session, claimFrom(req))) {
-    throw createHttpError(409, SESSION_EXPIRED_MESSAGE);
+const MOVED_MESSAGE = "Your party was moved to another table. Please scan the QR code on your new table.";
+
+/**
+ * N015b: what a stale claim is told. A claim whose session is still live is a
+ * party the till moved to another table, not one that was settled.
+ */
+const staleClaimMessage = async (claimed, restaurantId) => {
+  try {
+    const live = await TableSession.exists({
+      accessToken: claimed,
+      restaurantId,
+      status: { $in: ["OPEN", "OCCUPIED", "PROCESSING", "BILL_REQUESTED", "PAYMENT_PENDING"] },
+      isDeleted: { $ne: true },
+    });
+    return live ? MOVED_MESSAGE : SESSION_EXPIRED_MESSAGE;
+  } catch {
+    // Only the wording depends on it; the claim is refused either way.
+    return SESSION_EXPIRED_MESSAGE;
+  }
+};
+
+const assertSessionClaim = async (session, req) => {
+  const claimed = claimFrom(req);
+  if (claimIsStale(session, claimed)) {
+    throw createHttpError(409, await staleClaimMessage(claimed, req.scope?.restaurantId));
   }
 };
 
@@ -269,6 +293,16 @@ const getTableByToken = async (req, res, next) => {
       _id: restaurantId,
       isDeleted: { $ne: true },
     }).lean();
+    // Display = bill: the diner sees the Table price enrichItems will charge
+    // (a product with variants: its cheapest variant, which replaces it).
+    // N036-N038: list only what enrichItems accepts (schedule, Display Status + POS Visibility, Dispatch Type).
+    // A category outside its own schedule ("Breakfast" after 11:00) is gone, as on the till.
+    const menuNow = menu.filter((m) => isItemAvailableNow({ isAvailable: true, schedule: m.schedule }, restaurant?.timezone));
+    for (const m of menuNow) {
+      m.items = m.items
+        .filter((i) => isItemAvailableNow(i, restaurant?.timezone, "pos") && allowsOrderType(m, ORDER_TYPES.TABLE, i))
+        .map((i) => ({ ...i, price: menuPriceNow(i, "table", restaurant?.timezone) }));
+    }
     const brandLogo = restaurant ? await resolveBrandLogo(restaurantId, restaurant) : "";
     const onlinePaymentEnabled = await isOnlinePaymentEnabled({ restaurantId });
     const closed = await tableOrderingClosed(restaurantId);
@@ -312,7 +346,7 @@ const getTableByToken = async (req, res, next) => {
               onlinePaymentEnabled,
             }
           : null,
-        menu,
+        menu: menuNow,
         activeSession: sanitizeSession(activeSession, {
           orderStatus: await kitchenStatusForSession(activeSession),
         }),
@@ -341,7 +375,7 @@ const getTableByToken = async (req, res, next) => {
         // Say so explicitly rather than quietly returning a different party's
         // session: the page must stop, not adopt whoever is here now.
         sessionExpired: expired,
-        ...(expired ? { message: SESSION_EXPIRED_MESSAGE } : {}),
+        ...(expired ? { message: await staleClaimMessage(claimFrom(req), restaurantId) } : {}),
       },
     });
   } catch (error) { next(error); }
@@ -354,7 +388,7 @@ const getSessionByToken = async (req, res, next) => {
   try {
     const { table, restaurantId } = req.scope;
     const activeSession = await findActiveSessionByTable({ tableId: table._id, restaurantId });
-    assertSessionClaim(activeSession, req);
+    await assertSessionClaim(activeSession, req);
     if (!activeSession) {
       return res.status(404).json({ success: false, message: "No active session for this table." });
     }
@@ -414,7 +448,7 @@ const addSessionItems = async (req, res, next) => {
         // spent claim must not silently open a brand new session on the table
         // either -- it is a diner from an earlier sitting, and the only right
         // answer is to send them back to the printed QR.
-        assertSessionClaim(session, req);
+        await assertSessionClaim(session, req);
 
         let created = false;
         if (!session) {
@@ -471,7 +505,7 @@ const addSessionItems = async (req, res, next) => {
           tableInTxn.status = "occupied";
           await tableInTxn.save({ session: mongoSession });
         } else {
-          if (customerCount) { validateCapacity(tableInTxn, customerCount); session.customerCount = Number(customerCount); }
+          if (customerCount) { validateCapacity(tableInTxn, customerCount, session); session.customerCount = Number(customerCount); }
           if (customerName) session.customerName = String(customerName).trim().slice(0, 80);
           const joinPhone = indianMobile(customerPhone);
           if (joinPhone) session.customerPhone = joinPhone;
@@ -511,13 +545,18 @@ const addSessionItems = async (req, res, next) => {
         await session.save({ session: mongoSession });
 
         return { session, kitchenOrder: kitchenOrderDoc, created, appended };
-      })).result,
+        // N013: each tap sends a fresh requestId, so a rerun clash would add the round twice; the loser gets the 503 below.
+      }, { retryConflicts: false })).result,
       });
       if (placed.duplicate) {
         return res.status(200).json({ success: true, data: { order: publicOrder(placed.doc), deduplicated: true } });
       }
       result = placed.doc;
     } catch (err) {
+      // N013: a write clash is not "session over" (the diner page reads every 409 that way), so it is a retryable 503.
+      if (err.code === 112 || err.name === "VersionError" || err.hasErrorLabel?.("TransientTransactionError")) {
+        return res.status(503).json({ success: false, message: "The table is busy. Please tap Send again." });
+      }
       return next(err);
     }
 
@@ -533,7 +572,11 @@ const addSessionItems = async (req, res, next) => {
       const populatedOrder = await Order.findById(result.kitchenOrder._id).populate("table");
       const order = populatedOrder || result.kitchenOrder;
 
-      if (result.appended) {
+      // N020: a dish added while the order still waits for the till joins its New Order card, not an Added Items card.
+      // Undecided (S12): every live line still pending, i.e. nobody accepted any of it yet.
+      const live = (order.items || []).filter((i) => !["cancelled", "refunded"].includes(i.status));
+      const undecided = live.length > 0 && live.every((i) => i.status === "pending");
+      if (result.appended && !undecided) {
         // Additions to a table that is already mid-meal are a DIFFERENT event
         // from a brand new order: the till has already accepted this table, so
         // it reviews just what was added. The kitchen's KOT goes out when the
@@ -584,7 +627,7 @@ const requestBill = async (req, res, next) => {
   try {
     const { table, restaurantId } = req.scope;
     const session = await findActiveSessionByTable({ tableId: table._id, restaurantId });
-    assertSessionClaim(session, req);
+    await assertSessionClaim(session, req);
     if (!session) return res.status(404).json({ success: false, message: "No active session for this table!" });
     if (session.status === "PAID" || session.status === "CLOSED") {
       return res.status(400).json({ success: false, message: "Session already settled." });
@@ -632,10 +675,15 @@ const paymentIntent = async (req, res, next) => {
   try {
     const { table, restaurantId } = req.scope;
     const session = await findActiveSessionByTable({ tableId: table._id, restaurantId });
-    assertSessionClaim(session, req);
+    await assertSessionClaim(session, req);
     if (!session) return res.status(404).json({ success: false, message: "No active session for this table!" });
     if (session.status === "PAID" || session.status === "CLOSED") {
       return res.status(400).json({ success: false, message: "Session already settled." });
+    }
+    // N017: same rule as tableSessionController.isAwaitingAcceptance. Dishes
+    // nobody accepted are not on the bill, so paying now would leave them out.
+    if ((session.items || []).some((i) => i.status === "pending" && i.addedBy === "QR")) {
+      return res.status(400).json({ success: false, message: "Your latest dishes are waiting for the staff to confirm them. Please try again in a moment." });
     }
 
     // BILL_REQUESTED → PAYMENT_PENDING (customer selected payment)
@@ -678,34 +726,60 @@ const paymentIntent = async (req, res, next) => {
     const platformFee = toRupees(fee?.totalPaise);
     const gatewayAmount = round2(payable + platformFee);
     if (gw.enabled && payable > 0 && hasPhone) {
-      try {
-        const cashfree = require("../services/gateways/cashfree");
-        const order = await cashfree.createOrder({
-          appId: gw.keyId,
-          secretKey: gw.secret,
-          environment: gw.environment,
-          amount: gatewayAmount,
-          currency: "INR",
-          // Their order_id is what we read back to decide whether the bill
-          // was paid, so it must be unique per attempt: a diner who
-          // abandons checkout and starts again must not reuse an order
-          // Cashfree has already terminated.
-          orderId: `tbl_${session.sessionCode}_${Date.now().toString(36)}`,
-          customer: {
-            id: `sess_${session._id}`,
-            phone: session.customerPhone,
-            name: session.customerName,
-          },
-          notifyUrl: config.cashfreeNotifyUrl,
-          tags: { tableSessionId: String(session._id), restaurantId: String(restaurantId) },
+      const cashfree = require("../services/gateways/cashfree");
+      // N021a: the order this table opened last time may already be paid, or
+      // still payable. A failed read counts as unknown: a new order is opened
+      // and this one remembered, so a late payment on it is not lost.
+      const previous = session.payment?.gatewayOrderId || "";
+      const prior = previous
+        ? await cashfree.fetchOrder({ appId: gw.keyId, secretKey: gw.secret, environment: gw.environment, orderId: previous }).catch(() => null)
+        : null;
+      const priorStatus = String(prior?.order_status || "").toUpperCase();
+      if (priorStatus === "PAID") {
+        const out = await settleOrRefund({ session, restaurantId, gw, id: previous, result: { amount: Number(prior.order_amount) || 0, cfOrderId: prior.cf_order_id || "" } });
+        // 400, never 409: the diner page ends its session on any 409 from this call.
+        return res.status(out.status === 502 ? 502 : 400).json({
+          success: false,
+          message: out.message || "Your earlier payment went through, so this table's bill is settled. Thank you!",
         });
-        // Remembered so payment-verify knows which order to ask about, and
-        // so a browser cannot name an order of its own choosing.
-        session.payment = session.payment || {};
-        session.payment.gatewayOrderId = order.orderId;
-        session.payment.gatewayProvider = PROVIDERS.CASHFREE;
-        session.payment.platformFee = fee || {};
-        await session.save();
+      }
+      try {
+        // shortcut: an ACTIVE order with a stale amount is left open at Cashfree (not terminated); its id is remembered, so a late payment is settled or refunded.
+        const reuse = priorStatus === "ACTIVE" && Boolean(prior.payment_session_id) && Math.abs(Number(prior.order_amount) - gatewayAmount) <= 0.01;
+        const order = reuse
+          ? { orderId: previous, paymentSessionId: prior.payment_session_id, environment: String(gw.environment || "TEST").toUpperCase() }
+          : await cashfree.createOrder({
+              appId: gw.keyId,
+              secretKey: gw.secret,
+              environment: gw.environment,
+              amount: gatewayAmount,
+              currency: "INR",
+              // Their order_id is what we read back to decide whether the bill
+              // was paid, so it must be unique per attempt: a diner who
+              // abandons checkout and starts again must not reuse an order
+              // Cashfree has already terminated.
+              orderId: `tbl_${session.sessionCode}_${Date.now().toString(36)}`,
+              customer: {
+                id: `sess_${session._id}`,
+                phone: session.customerPhone,
+                name: session.customerName,
+              },
+              notifyUrl: config.cashfreeNotifyUrl,
+              tags: { tableSessionId: String(session._id), restaurantId: String(restaurantId) },
+            });
+        if (!reuse) {
+          // Remembered so payment-verify knows which order to ask about, and
+          // so a browser cannot name an order of its own choosing. Atomic, and
+          // every id also goes into gatewayOrderIds: two phones tapping Pay at
+          // once each mint an order, and neither may erase the other's.
+          await TableSession.updateOne(
+            { _id: session._id },
+            {
+              $set: { "payment.gatewayOrderId": order.orderId, "payment.gatewayProvider": PROVIDERS.CASHFREE, "payment.platformFee": fee || {} },
+              $addToSet: { "payment.gatewayOrderIds": { $each: [previous, order.orderId].filter(Boolean) } },
+            },
+          );
+        }
 
         checkout = {
           provider: PROVIDERS.CASHFREE,
@@ -767,7 +841,7 @@ const paymentVerify = async (req, res, next) => {
     const { table, restaurantId } = req.scope;
 
     const session = await findActiveSessionByTable({ tableId: table._id, restaurantId });
-    assertSessionClaim(session, req);
+    await assertSessionClaim(session, req);
     if (!session) return res.status(404).json({ success: false, message: "No active session for this table!" });
 
     const gw = await resolveGateway({ restaurantId });
@@ -775,18 +849,13 @@ const paymentVerify = async (req, res, next) => {
       return res.status(400).json({ success: false, message: "Online payment is not available for this store." });
     }
 
-    const payable = session.bills?.totalWithTax || 0;
-    // The gateway order was opened for the bill plus the platform fee stored
-    // with it in paymentIntent -- never a fee the browser names.
-    const platformFee = session.payment?.platformFee;
-    const expected = round2(payable + toRupees(platformFee?.totalPaise));
-    let transactionId = "";
-
-    // The order id comes from OUR session, never from the request. A
+    // The order ids come from OUR session, never from the request. A
     // browser that named its own order could otherwise settle this table
     // with any paid order on the same merchant account.
+    // N021a: the current order first, then the ones it replaced, newest first.
     const orderId = session.payment?.gatewayOrderId || "";
-    if (!orderId) {
+    const ids = [...new Set([orderId, ...[...(session.payment?.gatewayOrderIds || [])].reverse()])].filter(Boolean).slice(0, 6);
+    if (!ids.length) {
       return res.status(400).json({
         success: false,
         message: "No payment was started for this table. Please try again.",
@@ -794,24 +863,33 @@ const paymentVerify = async (req, res, next) => {
     }
 
     const cashfree = require("../services/gateways/cashfree");
-    let result;
-    try {
-      result = await cashfree.isOrderPaid({
-        appId: gw.keyId,
-        secretKey: gw.secret,
-        environment: gw.environment,
-        orderId,
-      });
-    } catch (cfErr) {
-      // Could not find out. Deliberately NOT treated as unpaid-and-final:
-      // the money may well have moved, so say so and let staff settle it
-      // rather than telling the diner their payment failed.
-      console.warn("[qr] cashfree status check failed:", cfErr?.message || cfErr);
-      return res.status(502).json({
-        success: false,
-        message:
-          "We could not confirm that payment yet. Please show this screen to a member of staff before paying again.",
-      });
+    let result = { paid: false };
+    let paidId = "";
+    for (const id of ids) {
+      try {
+        result = await cashfree.isOrderPaid({
+          appId: gw.keyId,
+          secretKey: gw.secret,
+          environment: gw.environment,
+          orderId: id,
+        });
+      } catch (cfErr) {
+        // An earlier attempt we cannot read is left to the webhook.
+        if (id !== orderId) continue;
+        // Could not find out. Deliberately NOT treated as unpaid-and-final:
+        // the money may well have moved, so say so and let staff settle it
+        // rather than telling the diner their payment failed.
+        console.warn("[qr] cashfree status check failed:", cfErr?.message || cfErr);
+        return res.status(502).json({
+          success: false,
+          message:
+            "We could not confirm that payment yet. Please show this screen to a member of staff before paying again.",
+        });
+      }
+      if (result.paid) {
+        paidId = id;
+        break;
+      }
     }
 
     if (!result.paid) {
@@ -821,29 +899,8 @@ const paymentVerify = async (req, res, next) => {
       });
     }
 
-    // The gateway is authoritative on the amount too. A bill that grew
-    // after the order was opened (the diner added a round while checkout
-    // was on screen) must not be closed by the smaller payment.
-    if (Math.abs(Number(result.amount) - Number(expected)) > 0.01) {
-      return res.status(409).json({
-        success: false,
-        message:
-          "Your bill changed after payment was started. Please ask a member of staff to settle the difference.",
-      });
-    }
-
-    transactionId = result.cfOrderId || orderId;
-    const { settleSessionFromGateway } = require("../controllers/tableSessionController");
-    await settleSessionFromGateway({
-      sessionId: session._id,
-      restaurantId,
-      method: "ONLINE",
-      amount: payable,
-      platformFee,
-      transactionId,
-      // A double-submit from a flaky phone must not settle twice.
-      idempotencyKey: `qr-online-${transactionId}`,
-    });
+    const out = await settleOrRefund({ session, restaurantId, gw, id: paidId, result });
+    if (out.status) return res.status(out.status).json({ success: false, message: out.message });
 
     const settled = await TableSession.findById(session._id);
     res.status(200).json({
@@ -852,6 +909,58 @@ const paymentVerify = async (req, res, next) => {
       data: sanitizeSession(settled, { orderStatus: await kitchenStatusForSession(settled) }),
     });
   } catch (error) { next(error); }
+};
+
+/**
+ * A PAID gateway order `id` of this session, with Cashfree's `result`, from
+ * the diner's intent or verify. It settles the table when it paid the bill as
+ * it stands (the bill plus the platform fee stored with the order), and is
+ * refunded otherwise (D1). Returns {} when settled, else { status, message }
+ * for the diner.
+ */
+const settleOrRefund = async ({ session, restaurantId, gw, id, result }) => {
+  const payable = session.bills?.totalWithTax || 0;
+  // The gateway order was opened for the bill plus the platform fee stored
+  // with it in paymentIntent -- never a fee the browser names.
+  const platformFee = session.payment?.platformFee;
+  const expected = round2(payable + toRupees(platformFee?.totalPaise));
+
+  // N016: the bill changed while the diner was paying (a round added, a
+  // discount). The payment cannot close it and staff cannot take "the
+  // difference" online, so the whole payment goes back.
+  if (Math.abs(Number(result.amount) - Number(expected)) > 0.01) {
+    const amount = Number(result.amount);
+    try {
+      await require("../services/gateways/cashfree").refundUnappliedPayment({ gw, orderId: id, amount, note: "Bill changed during payment" });
+    } catch (err) {
+      // The id stays on the session: the webhook or the next verify retries the same refund.
+      console.warn(`[qr] refund of ${id} failed:`, err?.message || err);
+      return {
+        status: 502,
+        message: "We could not confirm that payment yet. Please show this screen to a member of staff before paying again.",
+      };
+    }
+    await TableSession.dropRefundedOrder(session._id, id, `₹${amount} online payment refunded (order ${id}): bill changed during payment`);
+    return {
+      status: 409,
+      message: `Your bill changed while you were paying, so that payment of ₹${amount} is being refunded. Please pay the new total.`,
+    };
+  }
+
+  const transactionId = result.cfOrderId || id;
+  const { settleSessionFromGateway } = require("./tableSessionController");
+  await settleSessionFromGateway({
+    sessionId: session._id,
+    restaurantId,
+    method: "ONLINE",
+    amount: payable,
+    platformFee,
+    transactionId,
+    // A double-submit from a flaky phone must not settle twice.
+    idempotencyKey: `qr-online-${transactionId}`,
+    gatewayOrderId: id,
+  });
+  return {};
 };
 
 // Public: call waiter.
@@ -894,7 +1003,7 @@ const payRequest = async (req, res, next) => {
   try {
     const { table, restaurantId } = req.scope;
     const session = await findActiveSessionByTable({ tableId: table._id, restaurantId });
-    assertSessionClaim(session, req);
+    await assertSessionClaim(session, req);
     const order = session ? await Order.findById(session.items[0]?.orderId) : await Order.findById(table.currentOrderId);
     if (!order && !session) return res.status(404).json({ success: false, message: "No active order for this table!" });
     res.status(200).json({

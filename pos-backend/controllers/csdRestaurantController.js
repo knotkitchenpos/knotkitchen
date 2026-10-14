@@ -12,7 +12,7 @@ const CsdStoreCharges = require("../models/csdStoreChargesModel");
 const CsdPosSession = require("../models/csdPosSessionModel");
 const CsdJob = require("../models/csdJobModel");
 
-const { websiteAvailability, publicHours } = require("../services/websiteAvailability");
+const { websiteAvailability, publicHours, orderingOpen } = require("../services/websiteAvailability");
 const { buildStorefrontUrl } = require("../services/websiteProvisioningService");
 const { csdAudit } = require("../services/csdAuditService");
 const config = require("../config/config");
@@ -65,11 +65,9 @@ const getRestaurant = async (req, res, next) => {
     // decides "Open now". The old business hours (settings.openingHours) are
     // no longer edited anywhere, so they only ever showed the defaults.
     const channels = websiteAvailability(settings, timezone);
-    const anyOpen = channels.collection.open || channels.delivery.open;
-    const openState = {
-      isOpen: anyOpen,
-      reason: anyOpen ? "" : channels.collection.reason || channels.delivery.reason,
-    };
+    // H1: only the order types the store offers count.
+    const online = orderingOpen(settings, channels);
+    const openState = { isOpen: online.open, reason: online.reason };
 
     // The POS plan as the POS sees it (GET /api/subscription): add-ons,
     // tablets and credits, hardware, the next renewal.
@@ -226,10 +224,13 @@ const getRestaurant = async (req, res, next) => {
  * One row per phone number that has ordered from this store. Shared by the
  * paged list and the CSV export so the two can never disagree.
  */
-const customerGroups = (storeId) => [
+// N122: orders by restaurantId, since storeId is blank on pre-batch-6 orders; no restaurant matches nothing.
+const ordersOf = (restaurant) => ({ restaurantId: restaurant ? restaurant._id : { $in: [] } });
+
+const customerGroups = (restaurant) => [
   {
     $match: {
-      storeId,
+      ...ordersOf(restaurant),
       isDeleted: { $ne: true },
       orderStatus: { $not: /^cancelled$/i },
       "customerDetails.phone": { $nin: [null, ""] },
@@ -264,11 +265,11 @@ const customerRow = (c) => ({
 const getCustomers = async (req, res, next) => {
   try {
     const storeId = str(req.params.storeId);
-    await loadStore(storeId);
+    const { restaurant } = await loadStore(storeId);
 
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
     const page = Math.max(parseInt(req.query.page, 10) || 1, 1);
-    const grouped = customerGroups(storeId);
+    const grouped = customerGroups(restaurant);
 
     const [countRows, rows] = await Promise.all([
       Order.aggregate([...grouped, { $count: "n" }]),
@@ -309,10 +310,10 @@ const csvCell = (value) => {
 const exportCustomers = async (req, res, next) => {
   try {
     const storeId = str(req.params.storeId);
-    await loadStore(storeId);
+    const { restaurant } = await loadStore(storeId);
 
     const rows = await Order.aggregate([
-      ...customerGroups(storeId),
+      ...customerGroups(restaurant),
       { $sort: { lastOrderDate: -1 } },
       { $limit: 50000 },
     ]);
@@ -391,7 +392,7 @@ const CHANNEL_STAGE = {
 const getOrderSummary = async (req, res, next) => {
   try {
     const storeId = str(req.params.storeId);
-    await loadStore(storeId);
+    const { restaurant } = await loadStore(storeId);
 
     const period = PERIODS.includes(str(req.query.period)) ? str(req.query.period) : "today";
     const { from, to } = periodWindow(period);
@@ -399,7 +400,7 @@ const getOrderSummary = async (req, res, next) => {
     const rows = await Order.aggregate([
       {
         $match: {
-          storeId,
+          ...ordersOf(restaurant),
           isDeleted: { $ne: true },
           orderStatus: { $not: /^cancelled$/i },
           orderDate: { $gte: from, $lt: to },

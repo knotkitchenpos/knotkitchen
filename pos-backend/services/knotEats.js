@@ -5,7 +5,7 @@ const Restaurant = require("../models/restaurantModel");
 const Menu = require("../models/menuModel");
 const KnotEatsReview = require("../models/knotEatsReviewModel");
 const { AUDIENCES, projectMenus } = require("./menuCache");
-const { availabilityAt } = require("./websiteAvailability");
+const { availabilityAt, orderingOpen } = require("./websiteAvailability");
 const { haversineKm, roadDistances, computeDeliveryFeeFromSlabs } = require("./distanceService");
 const { unavailableReason } = require("./storefrontResolver");
 const { isOnlinePaymentEnabled } = require("./paymentGateway");
@@ -166,17 +166,19 @@ const buildStoreDishes = async ({ restaurantId, timezone }) => {
     for (const item of menu.items || []) {
       if (item.showOnWebsite === false || item.displayTarget === "system") continue;
       const p = toPublicProduct(item, menu, timezone);
-      const price = p.variants.length ? Math.min(...p.variants.map((v) => v.price)) : Number(p.price) || 0;
       const text = `${p.name || ""} ${p.category || ""}`;
       dishes.push({
         menuId: String(p.menuId),
         itemId: String(p.id),
         name: p.name || "",
-        price,
+        // What the store page bills for pickup and for delivery (the cheapest variant for a sized dish).
+        price: p.prices.collection,
+        deliveryPrice: p.prices.delivery,
         isVeg: Boolean(p.isVegetarian),
         image: p.thumbnail || "",
         tags: tagsFor(text),
         hay: text.toLowerCase(),
+        available: p.isAvailable, // N039: kept for the store count, never offered on a card
       });
       if (dishes.length >= MAX_DISHES_PER_STORE) break outer;
     }
@@ -522,22 +524,28 @@ const listStores = async (query, { now = new Date() } = {}) => {
 
   // 5. Dish filters.
   const dishFilter = Boolean(f.text || f.tag || f.maxPrice != null || f.veg);
-  const byPhotoThenPrice = (a, b) => Boolean(b.image) - Boolean(a.image) || a.price - b.price;
   cands = cands.filter((c) => {
-    const dishes = c.s.dishes;
+    const dishes = c.s.dishes.filter((d) => d.available !== false);
+    // The price the store page will bill (EatsStorePage's order type, then cartOrderType):
+    // delivery in delivery mode or at a pickup-less store, else pickup.
+    const delivery = (mode === "delivery" && c.s.deliveryEnabled) || !c.s.pickupEnabled;
+    const price = (d) => (delivery ? d.deliveryPrice : d.price);
     const matched = dishFilter
       ? dishes.filter(
           (d) =>
             (!f.veg || d.isVeg) &&
             (!f.tag || d.tags.includes(f.tag)) &&
-            (f.maxPrice == null || d.price <= f.maxPrice) &&
+            (f.maxPrice == null || price(d) <= f.maxPrice) &&
             (!f.text || d.hay.includes(f.text)),
         )
       : dishes;
     const nameHit = Boolean(f.text) && c.s.name.toLowerCase().includes(f.text);
     if (dishFilter && !matched.length && !nameHit) return false;
     const pool = matched.length ? matched : dishes.filter((d) => !f.veg || d.isVeg);
-    c.dishes = [...pool].sort(byPhotoThenPrice).slice(0, CARD_DISHES).map(publicDish);
+    c.dishes = [...pool]
+      .sort((a, b) => Boolean(b.image) - Boolean(a.image) || price(a) - price(b))
+      .slice(0, CARD_DISHES)
+      .map((d) => publicDish({ ...d, price: price(d) }));
     return true;
   });
 
@@ -627,13 +635,10 @@ const storeDetail = async (storeId, { lat, lng } = {}, { now = new Date() } = {}
       .lean(),
   ]);
 
-  // The page takes both order types, so it is open when either is.
-  const pickup = openState(s, "collection", now);
-  const delivery = openState(s, "delivery", now);
-  const open = {
-    isOpen: pickup.isOpen || delivery.isOpen,
-    closedReason: pickup.isOpen || delivery.isOpen ? "" : pickup.closedReason || delivery.closedReason,
-  };
+  // H1: the page is open when an order type the store offers is.
+  const at = (channel) => availabilityAt(s.hours, channel, now, s.timezone);
+  const online = orderingOpen({ ordering: s }, { collection: at("collection"), delivery: at("delivery") });
+  const open = { isOpen: online.open, closedReason: online.reason };
   const offers = offerBadges(s.coupons, { timezone: s.timezone, now });
 
   let deliveryQuote = null;

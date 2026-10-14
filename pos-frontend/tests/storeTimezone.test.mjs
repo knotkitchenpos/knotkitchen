@@ -41,7 +41,6 @@ test("screens that format an instant directly pass the store zone", () => {
   const calls = orders.match(/toLocaleString\("en-GB", \{[^}]*\}/g) || [];
   assert.equal(calls.length, 3);
   for (const c of calls) assert.match(c, /timeZone: STORE_TZ/);
-  assert.doesNotMatch(SRC("src/pages/KDS.jsx"), /toLocaleTimeString\(\)/);
   assert.match(SRC("src/components/shared/AccountLock.jsx"), /minute: "2-digit", timeZone: STORE_TZ \}/);
   assert.match(SRC("src/components/settings/TimingsHolidaysView.jsx"), /toLocaleDateString\("en-GB", \{ timeZone: STORE_TZ \}\)/);
 });

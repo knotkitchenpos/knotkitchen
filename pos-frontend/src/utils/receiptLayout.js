@@ -306,14 +306,6 @@ export const layoutReceipt = ({ order = {}, store = {}, settings = {}, images = 
 };
 
 /**
- * The kitchen order ticket (KOT): what the kitchen needs and nothing else.
- *
- * No prices, no store address. Quantity first and big, the dish name bold,
- * the extras and the note under it, because a cook reads it at arm's length
- * on a clip. `items` defaults to the whole order; a round added to a table
- * passes just the new lines, and the ticket says so.
- */
-/**
  * A report on the receipt roll: a title block, then sections of
  * label ... value rows. `sections` = [{ title, rows: [[label, value], ...] }].
  */
@@ -369,6 +361,14 @@ export const layoutReport = ({ title = "Report", store = {}, period = "", genera
   return { width: W, height: Math.ceil(y), ops };
 };
 
+/**
+ * The kitchen order ticket (KOT): what the kitchen needs and nothing else.
+ *
+ * No prices, no store address. Quantity first and big, the dish name bold,
+ * the extras and the note under it, because a cook reads it at arm's length
+ * on a clip. `items` defaults to the whole order; a round added to a table
+ * passes just the new lines, and the ticket says so.
+ */
 export const layoutKot = ({ order = {}, items, store = {}, paper = 80, round = false, measure }) => {
   const P = paperOf(paper);
   const W = P.width;
@@ -401,7 +401,9 @@ export const layoutKot = ({ order = {}, items, store = {}, paper = 80, round = f
     }
   };
 
-  text(round ? "KOT · ADDED ITEMS" : "KOT", { size: P.title + 4, bold: true, align: "center" });
+  // Two lines, not one wrapped line on 58 mm paper.
+  text("KITCHEN ORDER", { size: P.title + 4, bold: true, align: "center" });
+  if (round) text("ADDED ITEMS", { size: P.title, bold: true, align: "center" });
   if (store.name) text(store.name, { size: P.small, align: "center" });
   rule(false, 6);
 
@@ -411,6 +413,11 @@ export const layoutKot = ({ order = {}, items, store = {}, paper = 80, round = f
   const table = tableLabel(order.table);
   pair(table ? "Table" : "Type", table || type, { bold: true, size: big });
   pair("Time", placed.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: STORE_TZ }));
+  // A pre-order's ticket prints when it is accepted, hours early: say when it is wanted.
+  if (order.scheduledFor) {
+    const due = new Date(order.scheduledFor);
+    pair("For", due.toLocaleString("en-IN", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: true, timeZone: STORE_TZ }), { bold: true });
+  }
   if (!table) pair("Customer", order.customerDetails?.name);
   rule(true);
 

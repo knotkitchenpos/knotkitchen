@@ -5,13 +5,8 @@ import {
   useLocation,
   Navigate,
 } from "react-router-dom";
-import { useState } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { useSelector } from "react-redux";
-import {
-  Auth, Orders, Tables, Menu, KDS, OrderOnline, PaymentLink,
-  Reports, Settings, ManageMenuPage, Support,
-  Impersonate, Billing, WebsiteSettings,
-} from "./pages";
 
 import Sidebar, { MobileNav } from "./components/shared/Sidebar";
 import { AccountLockBanner, LockRedirect, useAccountLock } from "./components/shared/AccountLock";
@@ -30,6 +25,29 @@ import useAutoReceiptPrint from "./hooks/useAutoReceiptPrint";
 import useOfflineQueue from "./hooks/useOfflineQueue";
 import OfflineBanner from "./components/shared/OfflineBanner";
 import OldWebViewBanner from "./components/shared/OldWebViewBanner";
+
+// One chunk per page: a guest opening the table QR or a payment link no longer
+// downloads the whole POS first.
+const PAGE_LOADERS = {
+  Auth: () => import("./pages/Auth.jsx"),
+  Orders: () => import("./pages/Orders.jsx"),
+  Tables: () => import("./pages/Tables.jsx"),
+  Menu: () => import("./pages/Menu.jsx"),
+  OrderOnline: () => import("./pages/OrderOnline.jsx"),
+  PaymentLink: () => import("./pages/PaymentLink.jsx"),
+  Reports: () => import("./pages/Reports.jsx"),
+  Settings: () => import("./pages/Settings.jsx"),
+  ManageMenuPage: () => import("./pages/ManageMenuPage.jsx"),
+  Support: () => import("./pages/Support.jsx"),
+  Impersonate: () => import("./pages/Impersonate.jsx"),
+  Billing: () => import("./pages/Billing.jsx"),
+  WebsiteSettings: () => import("./pages/WebsiteSettings.jsx"),
+};
+const {
+  Auth, Orders, Tables, Menu, OrderOnline, PaymentLink,
+  Reports, Settings, ManageMenuPage, Support,
+  Impersonate, Billing, WebsiteSettings,
+} = Object.fromEntries(Object.entries(PAGE_LOADERS).map(([name, load]) => [name, lazy(load)]));
 
 function ProtectedRoutes({ children }) {
   const { isAuth } = useSelector((state) => state.user);
@@ -58,31 +76,41 @@ function Layout() {
   // Unpaid: warn during the grace period, then only Billing stays open.
   const lock = useAccountLock(Boolean(isAuth) && !bare);
 
+  // Staff devices load every page once, soon after start: the service worker
+  // then holds them all for offline use, and a tab left open across a deploy
+  // never asks for a chunk that deploy removed. Guest pages never load the POS.
+  useEffect(() => {
+    if (!isAuth || bare) return undefined;
+    const timer = setTimeout(() => Object.values(PAGE_LOADERS).forEach((load) => load().catch(() => {})), 3000);
+    return () => clearTimeout(timer);
+  }, [isAuth, bare]);
+
   if (isLoading) return <FullScreenLoader />;
 
   const routes = (
-    <Routes>
-      <Route path="/" element={<ProtectedRoutes><Menu /></ProtectedRoutes>} />
-      <Route path="/auth" element={isAuth ? <Navigate to="/" /> : <Auth />} />
-      <Route path="/impersonate" element={<Impersonate />} />
-      <Route path="/menu" element={<ProtectedRoutes><Menu /></ProtectedRoutes>} />
-      <Route path="/orders" element={<ProtectedRoutes><Orders /></ProtectedRoutes>} />
-      <Route path="/reports" element={<ProtectedRoutes><Reports /></ProtectedRoutes>} />
-      <Route path="/tables" element={<ProtectedRoutes><Tables /></ProtectedRoutes>} />
-      <Route path="/kds" element={<ProtectedRoutes><KDS /></ProtectedRoutes>} />
-      <Route path="/settings" element={<ProtectedRoutes><Settings /></ProtectedRoutes>} />
-      {/* Reachable even when the account is locked -- see middlewares/accountLock.js */}
-      <Route path="/settings/billing" element={<ProtectedRoutes><Billing /></ProtectedRoutes>} />
-      <Route path="/support" element={<ProtectedRoutes><Support /></ProtectedRoutes>} />
-      <Route path="/manage-menu" element={<ProtectedRoutes><ManageMenuPage /></ProtectedRoutes>} />
+    <Suspense fallback={<FullScreenLoader />}>
+      <Routes>
+        <Route path="/" element={<ProtectedRoutes><Menu /></ProtectedRoutes>} />
+        <Route path="/auth" element={isAuth ? <Navigate to="/" /> : <Auth />} />
+        <Route path="/impersonate" element={<Impersonate />} />
+        <Route path="/menu" element={<ProtectedRoutes><Menu /></ProtectedRoutes>} />
+        <Route path="/orders" element={<ProtectedRoutes><Orders /></ProtectedRoutes>} />
+        <Route path="/reports" element={<ProtectedRoutes><Reports /></ProtectedRoutes>} />
+        <Route path="/tables" element={<ProtectedRoutes><Tables /></ProtectedRoutes>} />
+        <Route path="/settings" element={<ProtectedRoutes><Settings /></ProtectedRoutes>} />
+        {/* Reachable even when the account is locked -- see middlewares/accountLock.js */}
+        <Route path="/settings/billing" element={<ProtectedRoutes><Billing /></ProtectedRoutes>} />
+        <Route path="/support" element={<ProtectedRoutes><Support /></ProtectedRoutes>} />
+        <Route path="/manage-menu" element={<ProtectedRoutes><ManageMenuPage /></ProtectedRoutes>} />
 
-      <Route path="/website" element={<ProtectedRoutes><WebsiteSettings /></ProtectedRoutes>} />
+        <Route path="/website" element={<ProtectedRoutes><WebsiteSettings /></ProtectedRoutes>} />
 
-      <Route path="/order" element={<OrderOnline />} />
-      <Route path="/t/:token" element={<OrderOnline />} />
-      <Route path="/pay/:token" element={<PaymentLink />} />
-      <Route path="*" element={<div className="p-8">Not Found</div>} />
-    </Routes>
+        <Route path="/order" element={<OrderOnline />} />
+        <Route path="/t/:token" element={<OrderOnline />} />
+        <Route path="/pay/:token" element={<PaymentLink />} />
+        <Route path="*" element={<div className="p-8">Not Found</div>} />
+      </Routes>
+    </Suspense>
   );
 
   if (bare) {

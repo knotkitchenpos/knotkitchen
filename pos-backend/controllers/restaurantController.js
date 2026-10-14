@@ -2,6 +2,8 @@ const createHttpError = require("http-errors");
 const Restaurant = require("../models/restaurantModel");
 const User = require("../models/userModel");
 const { logActivity } = require("../services/auditService");
+const { indianMobile } = require("../services/otpService");
+const { isValidGstin } = require("../services/gst");
 // Lazy: services/knotEats loads the listing's models, which these tests stub.
 const knotEats = () => require("../services/knotEats");
 // The Knot Eats listing copies the pin, order types, hours, holidays and
@@ -236,7 +238,14 @@ const updateStoreProperties = async (req, res, next) => {
       }
       restaurant.fssaiNumber = fssai;
     }
-    if (props.gstNumber !== undefined) restaurant.taxId = String(props.gstNumber).trim();
+    if (props.gstNumber !== undefined) {
+      const gstin = String(props.gstNumber).trim().toUpperCase();
+      // V1: any text here switched GST on and was printed as the GSTIN.
+      if (gstin && !isValidGstin(gstin)) {
+        return next(createHttpError(400, "Enter a valid 15-character GSTIN, or leave it empty."));
+      }
+      restaurant.taxId = gstin;
+    }
     if (props.googleMapsLink !== undefined) restaurant.mapsLink = String(props.googleMapsLink).trim();
     // One logo for the whole store: the POS, receipts, the table QR page and
     // the website all show it, so it is written to both places it is read from.
@@ -408,10 +417,14 @@ const updateHolidays = async (req, res, next) => {
     const restaurantId = req.user.restaurantId || req.user._id;
 
     const cleanHolidays = (Array.isArray(holidays) ? holidays : []).map((h) => ({
-      startDate: new Date(h.startDate),
-      endDate: new Date(h.endDate),
-      reason: String(h.reason || "Store Closed for Holiday").trim(),
+      startDate: new Date(h?.startDate),
+      endDate: new Date(h?.endDate),
+      reason: String(h?.reason || "Store Closed for Holiday").trim(),
     }));
+    // V5: an empty date became Invalid Date, and a reversed range never closed the store.
+    if (cleanHolidays.some((h) => !(h.startDate.getTime() <= h.endDate.getTime()))) {
+      return next(createHttpError(400, "Enter a valid start and end date; the end cannot be before the start."));
+    }
 
     const settings = await WebsiteSettings.findOneAndUpdate(
       { restaurantId, isDeleted: false },
@@ -432,12 +445,12 @@ const toggleClosedForToday = async (req, res, next) => {
     const { enabled, date, reason } = req.body || {};
     const restaurantId = req.user.restaurantId || req.user._id;
 
-    // "Today" in the restaurant's timezone. The server runs in UTC, so its own
-    // date was a day behind for the first 5.5 hours of every Indian day and
-    // Close for Today switched on after midnight closed yesterday instead.
-    const { localDate } = require("../services/tableBookings");
+    // H3/D14: the business date, in the restaurant's timezone. Pressed at 1 AM
+    // during a shift that opened yesterday, it closes that shift, not tonight's.
+    const { businessDate } = require("../services/websiteAvailability");
     const restaurant = await Restaurant.findById(req.user.restaurantId).select("timezone").lean().catch(() => null);
-    const todayStr = localDate(new Date(), restaurant?.timezone || "Asia/Kolkata");
+    const current = await WebsiteSettings.findOne({ restaurantId, isDeleted: false }).lean();
+    const todayStr = businessDate(current, new Date(), restaurant?.timezone || "Asia/Kolkata");
 
     const updateData = {
       closedForToday: {
@@ -489,14 +502,15 @@ const addStaffMember = async (req, res, next) => {
     }
 
     const name = String(req.body.name || "").trim();
-    const phone = String(req.body.phone || "").replace(/\D/g, "");
+    // N033: a real Indian mobile, not any 10 digits (0000000000 was accepted).
+    const phone = indianMobile(req.body.phone);
     const role = req.body.role === undefined ? "Staff" : req.body.role;
     if (!STAFF_ROLES.includes(role)) {
       return next(createHttpError(400, `Role must be one of: ${STAFF_ROLES.join(", ")}.`));
     }
 
-    if (!name || phone.length !== 10) {
-      return next(createHttpError(400, "Staff name and a 10-digit phone number are required."));
+    if (!name || !phone) {
+      return next(createHttpError(400, "Staff name and a valid 10-digit mobile number are required."));
     }
 
     const restaurantId = req.user.restaurantId;

@@ -18,6 +18,7 @@ import {
 } from "../../utils/printerDevice";
 import {
   desktopPrinting,
+  printKot,
   printOrderReceipt,
   receiptContextFrom,
   renderReceiptCanvas,
@@ -29,7 +30,8 @@ import { looksLikeCatPrinter } from "../../utils/catprinter";
  * Settings > Device Configuration.
  *
  * Two kinds of setting live here and are saved together by one button:
- *   - this device: printer, paper size, Auto Receipt Print (localStorage)
+ *   - this device: a receipt printer, an optional kitchen printer for KOTs,
+ *     their paper sizes, Auto Receipt / KOT Print (localStorage)
  *   - the restaurant: Auto E-Bill and what is printed on the receipt (server)
  */
 
@@ -108,37 +110,18 @@ const btnPrimary =
 const btnGhost =
   "h-[40px] px-4 rounded-xl border border-[#E2E8F0] text-[#334155] text-[13px] font-bold hover:bg-[#F8FAFC] disabled:opacity-50";
 
-const DeviceConfiguration = () => {
-  const qc = useQueryClient();
-  const user = useSelector((s) => s.user);
-  const { data: propsRes } = useQuery({ queryKey: ["store-properties"], queryFn: getStoreProperties });
-  const props = propsRes?.data?.data;
-
-  /* ---- this device ---- */
-  const [device, setDevice] = useState(loadPrinterConfig);
+/**
+ * One printer this device prints to: the receipt printer or the kitchen
+ * printer. `device` is that slot's record; `patchDevice` saves a change to it
+ * at once. `allowDialog` offers a plain browser's print dialog, which only
+ * the receipt printer may use: both slots would land on the same printer.
+ */
+const PrinterSlot = ({ title, subtitle, emptyLabel = "Not set up", device, patchDevice, onTest, onClear, allowDialog = true, systemPrinters, btOn }) => {
   const [tab, setTab] = useState(device.type === "bluetooth" ? "bluetooth" : "usb");
   const [connecting, setConnecting] = useState(false);
   // App only: printers to pick from when more than one is found.
   const [choices, setChoices] = useState(null);
-  const [btOn, setBtOn] = useState(null);
-  // Kept the moment it changes, not on Save: this is the printer plugged into
-  // THIS device, and Orders > Print read the saved copy -- so a printer that
-  // was connected but not yet saved opened the print dialog instead.
-  const patchDevice = (patch) => setDevice((d) => savePrinterConfig({ ...d, ...patch }));
-
-  useEffect(() => {
-    bluetoothAvailable().then(setBtOn);
-  }, []);
-
-  // Windows app only: the printers the computer's driver knows about.
-  const [systemPrinters, setSystemPrinters] = useState([]);
-  useEffect(() => {
-    if (!desktopPrinting()) return;
-    window.knotDesktop
-      .listPrinters()
-      .then((list) => setSystemPrinters(Array.isArray(list) ? list : []))
-      .catch(() => setSystemPrinters([]));
-  }, []);
+  const paper = device.paper || "80";
 
   const pickPrinter = (kind, picked) => {
     setChoices(null);
@@ -186,6 +169,227 @@ const DeviceConfiguration = () => {
       setConnecting(false);
     }
   };
+
+  const isThis = (kind) => device.type === kind;
+
+  return (
+    <Card
+      title={title}
+      subtitle={subtitle}
+      right={
+        device.type ? (
+          <span className="text-[11.5px] font-bold px-2.5 py-1 rounded-full bg-[#DCFCE7] text-[#15803D] max-w-[50%] truncate" title={device.name}>
+            {device.name}
+          </span>
+        ) : (
+          <span className="text-[11.5px] font-bold px-2.5 py-1 rounded-full bg-[#F1F5F9] text-[#64748B]">{emptyLabel}</span>
+        )
+      }
+    >
+      <div className="flex flex-wrap gap-2" role="tablist">
+        {CONNECTIONS.map((c) => (
+          <button
+            key={c.key}
+            type="button"
+            role="tab"
+            aria-selected={tab === c.key}
+            onClick={() => setTab(c.key)}
+            className={`h-[38px] px-4 rounded-xl text-[13px] font-bold border ${
+              tab === c.key
+                ? "bg-[#FD5302] text-white border-[#FD5302]"
+                : "bg-white text-[#334155] border-[#E2E8F0] hover:border-[#CBD5E1]"
+            }`}
+          >
+            {c.label}
+          </button>
+        ))}
+      </div>
+
+      {tab === "usb" && (
+        <div className="mt-4 space-y-3 text-[13px]">
+          <p className="text-[#64748B]">
+            Connect the printer to this device with its USB cable, then press <strong>Find USB printer</strong> and pick it from the list.
+          </p>
+          {supports.usb() ? (
+            <button type="button" className={btnPrimary} disabled={connecting} onClick={() => connect("usb")}>
+              {connecting ? "Connecting…" : isThis("usb") ? "Choose a different USB printer" : "Find USB printer"}
+            </button>
+          ) : (
+            <p className="text-[12.5px] text-[#B45309] bg-[#FFFBEB] border border-[#FDE68A] rounded-xl p-3">
+              This browser cannot reach USB printers directly. Open the POS in Chrome or Edge
+              {allowDialog ? <>, or use the computer&apos;s printer driver below.</> : "."}
+            </p>
+          )}
+          <PrinterChoices choices={choices} kind="usb" onPick={pickPrinter} />
+          {!nativePrinting && desktopPrinting() && (
+          <div className="rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] p-3">
+            <p className="font-bold text-[#0F172A]">Printer installed on this computer</p>
+            <p className="text-[12px] text-[#64748B] mt-0.5">
+              Prints go straight to the printer you choose here, with no dialog. Install the printer&apos;s
+              Windows driver first; it then appears in this list.
+            </p>
+            <select
+              className="mt-2 h-[40px] w-full rounded-xl border border-[#E2E8F0] bg-white px-3 text-[13px] font-bold text-[#334155]"
+              value={isThis("system") ? device.systemPrinter || "" : "__none"}
+              onChange={(e) => {
+                const name = e.target.value;
+                if (name === "__none") return;
+                patchDevice({ type: "system", name: name ? `Windows: ${name}` : "Default Windows printer", systemPrinter: name });
+              }}
+            >
+              <option value="__none" disabled>
+                Choose a printer…
+              </option>
+              <option value="">Default Windows printer</option>
+              {systemPrinters.map((p) => (
+                <option key={p.name} value={p.name}>
+                  {p.name}
+                  {p.isDefault ? " (default)" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+          )}
+          {allowDialog && !nativePrinting && !desktopPrinting() && (
+          <div className="rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] p-3">
+            <p className="font-bold text-[#0F172A]">Printer installed on a Windows computer?</p>
+            <p className="text-[12px] text-[#64748B] mt-0.5">
+              Windows keeps USB printers for its own driver. Install the KnotKitchen POS Windows app to print through
+              that driver silently. In a browser, make the receipt printer the default printer; receipts then open the
+              print dialog (Chrome with <code>--kiosk-printing</code> skips it).
+            </p>
+            <button
+              type="button"
+              className={`${btnGhost} mt-2`}
+              onClick={() => patchDevice({ type: "system", name: "Computer's printer driver" })}
+            >
+              {isThis("system") ? "Using the computer's printer driver" : "Use the computer's printer driver"}
+            </button>
+          </div>
+          )}
+        </div>
+      )}
+
+      {tab === "lan" && (
+        <div className="mt-4 space-y-2 text-[13px] text-[#64748B]">
+          <p>
+            <strong>Windows app:</strong> add the printer in Windows (Settings › Printers, by its IP address), then pick it
+            under <strong>USB › Printer installed on this computer</strong>.
+          </p>
+          <p>
+            <strong>Tablet or browser:</strong> connect the printer&apos;s USB cable and set it up under <strong>USB</strong>.
+          </p>
+        </div>
+      )}
+
+      {tab === "bluetooth" && (
+        <div className="mt-4 space-y-3 text-[13px]">
+          {nativePrinting && (
+            <p className="text-[#64748B]">
+              Pair the printer once in the phone&apos;s <strong>Settings › Bluetooth</strong> (the PIN is usually 0000
+              or 1234). Then press <strong>Search &amp; connect</strong> and pick it.
+            </p>
+          )}
+          {!supports.bluetooth() ? (
+            <p className="text-[12.5px] text-[#B45309] bg-[#FFFBEB] border border-[#FDE68A] rounded-xl p-3">
+              This browser cannot use Bluetooth printers. Open the POS in Chrome or Edge.
+            </p>
+          ) : (
+            <>
+              <p className={`text-[12px] font-bold ${btOn === false ? "text-[#DC2626]" : "text-[#15803D]"}`}>
+                {btOn === false ? "Bluetooth is off on this device." : "Bluetooth is available."}
+              </p>
+              <button type="button" className={btnPrimary} disabled={connecting} onClick={() => connect("bluetooth")}>
+                {connecting ? "Connecting…" : isThis("bluetooth") ? "Reconnect / change printer" : "Search & connect"}
+              </button>
+              <PrinterChoices choices={choices} kind="bluetooth" onPick={pickPrinter} />
+              {nativePrinting && isThis("bluetooth") && device.protocol !== "cat" && (
+                <label className="block max-w-[360px]">
+                  <span className="text-[13px] font-bold text-[#0F172A]">Printer PIN</span>
+                  <span className="block text-[11.5px] text-[#94A3B8] mt-0.5">
+                    The PIN you typed when pairing (usually 0000 or 1234). If the printer forgets the pairing when
+                    switched off, the app uses it to reconnect without Android asking to pair again. A wrong PIN
+                    un-pairs the printer.
+                  </span>
+                  <input
+                    inputMode="numeric"
+                    autoComplete="off"
+                    maxLength={16}
+                    value={device.pin || ""}
+                    onChange={(e) => patchDevice({ pin: e.target.value.replace(/\D/g, "") })}
+                    placeholder="e.g. 0000"
+                    className="mt-1.5 h-[40px] w-full rounded-xl border border-[#E2E8F0] px-3 text-[14px] font-bold"
+                  />
+                </label>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      <div className="mt-5 pt-4 border-t border-[#E2E8F0]">
+        <p className="text-[13px] font-bold text-[#0F172A]">Paper size</p>
+        <div className="mt-2 grid grid-cols-2 gap-2 max-w-[360px]">
+          {PAPERS.map((p) => (
+            <button
+              key={p.key}
+              type="button"
+              aria-pressed={paper === p.key}
+              disabled={device.protocol === "cat" && p.key !== "58"}
+              onClick={() => patchDevice({ paper: p.key })}
+              className={`h-[56px] rounded-xl border text-left px-3 disabled:opacity-40 ${
+                paper === p.key ? "border-[#FD5302] bg-[#FFF6F0] ring-1 ring-[#FD5302]" : "border-[#E2E8F0] bg-white"
+              }`}
+            >
+              <span className="block text-[14px] font-extrabold text-[#0F172A]">{p.label}</span>
+              <span className="block text-[11.5px] text-[#64748B]">{p.sub}</span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <button type="button" className={btnGhost} onClick={onTest} disabled={!device.type}>
+          Test print
+        </button>
+        {onClear && device.type ? (
+          <button type="button" className={btnGhost} onClick={onClear}>
+            Use the receipt printer instead
+          </button>
+        ) : null}
+      </div>
+    </Card>
+  );
+};
+
+const DeviceConfiguration = () => {
+  const qc = useQueryClient();
+  const user = useSelector((s) => s.user);
+  const { data: propsRes } = useQuery({ queryKey: ["store-properties"], queryFn: getStoreProperties });
+  const props = propsRes?.data?.data;
+
+  /* ---- this device ---- */
+  const [device, setDevice] = useState(loadPrinterConfig);
+  const [btOn, setBtOn] = useState(null);
+  // Kept the moment it changes, not on Save: this is the printer plugged into
+  // THIS device, and Orders > Print read the saved copy -- so a printer that
+  // was connected but not yet saved opened the print dialog instead.
+  const patchDevice = (patch) => setDevice((d) => savePrinterConfig({ ...d, ...patch }));
+  const patchKitchen = (patch) => setDevice((d) => savePrinterConfig({ ...d, kitchen: { ...d.kitchen, ...patch } }));
+
+  useEffect(() => {
+    bluetoothAvailable().then(setBtOn);
+  }, []);
+
+  // Windows app only: the printers the computer's driver knows about.
+  const [systemPrinters, setSystemPrinters] = useState([]);
+  useEffect(() => {
+    if (!desktopPrinting()) return;
+    window.knotDesktop
+      .listPrinters()
+      .then((list) => setSystemPrinters(Array.isArray(list) ? list : []))
+      .catch(() => setSystemPrinters([]));
+  }, []);
 
   /* ---- the restaurant ---- */
   const [form, setForm] = useState(null);
@@ -240,6 +444,16 @@ const DeviceConfiguration = () => {
     }
   };
 
+  // printKot picks the kitchen slot out of the device's config by itself.
+  const testKot = async () => {
+    try {
+      const { via } = await printKot(SAMPLE_ORDER, { config: device, context });
+      if (via !== "dialog") enqueueSnackbar("Test KOT sent to the kitchen printer.", { variant: "success" });
+    } catch (err) {
+      enqueueSnackbar(err?.message || "Test print failed.", { variant: "error" });
+    }
+  };
+
   /* ---- save ---- */
   const [pinOpen, setPinOpen] = useState(false);
   const saveMutation = useMutation({
@@ -266,6 +480,10 @@ const DeviceConfiguration = () => {
       enqueueSnackbar("Connect a printer before turning on Auto Receipt Print.", { variant: "warning" });
       return;
     }
+    if (device.kotPrint && !device.type && !device.kitchen?.type) {
+      enqueueSnackbar("Connect a printer before turning on Auto KOT Print.", { variant: "warning" });
+      return;
+    }
     if (checkActionAuthorization(user, { isOwnerOnly: false }).status === "REQUIRE_PIN") setPinOpen(true);
     else saveMutation.mutate();
   };
@@ -274,202 +492,45 @@ const DeviceConfiguration = () => {
     return <div className="bg-white border border-[#E2E8F0] rounded-2xl p-8 text-center text-[13px] text-[#94A3B8]">Loading…</div>;
   }
 
-  const isThis = (kind) => device.type === kind;
   const logo = props?.restaurantLogo;
 
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px] items-start">
       <div className="space-y-4 min-w-0">
-        {/* ---------- Thermal printer ---------- */}
-        <Card
-          title="Thermal Printer"
-          right={
-            device.type ? (
-              <span className="text-[11.5px] font-bold px-2.5 py-1 rounded-full bg-[#DCFCE7] text-[#15803D] max-w-[50%] truncate" title={device.name}>
-                {device.name}
-              </span>
-            ) : (
-              <span className="text-[11.5px] font-bold px-2.5 py-1 rounded-full bg-[#F1F5F9] text-[#64748B]">Not set up</span>
-            )
-          }
-        >
-          <div className="flex flex-wrap gap-2" role="tablist">
-            {CONNECTIONS.map((c) => (
-              <button
-                key={c.key}
-                type="button"
-                role="tab"
-                aria-selected={tab === c.key}
-                onClick={() => setTab(c.key)}
-                className={`h-[38px] px-4 rounded-xl text-[13px] font-bold border ${
-                  tab === c.key
-                    ? "bg-[#FD5302] text-white border-[#FD5302]"
-                    : "bg-white text-[#334155] border-[#E2E8F0] hover:border-[#CBD5E1]"
-                }`}
-              >
-                {c.label}
-              </button>
-            ))}
-          </div>
-
-          {tab === "usb" && (
-            <div className="mt-4 space-y-3 text-[13px]">
-              <p className="text-[#64748B]">
-                Connect the printer to this device with its USB cable, then press <strong>Find USB printer</strong> and pick it from the list.
-              </p>
-              {supports.usb() ? (
-                <button type="button" className={btnPrimary} disabled={connecting} onClick={() => connect("usb")}>
-                  {connecting ? "Connecting…" : isThis("usb") ? "Choose a different USB printer" : "Find USB printer"}
-                </button>
-              ) : (
-                <p className="text-[12.5px] text-[#B45309] bg-[#FFFBEB] border border-[#FDE68A] rounded-xl p-3">
-                  This browser cannot reach USB printers directly. Open the POS in Chrome or Edge, or use the computer&apos;s printer driver below.
-                </p>
-              )}
-              <PrinterChoices choices={choices} kind="usb" onPick={pickPrinter} />
-              {!nativePrinting && desktopPrinting() && (
-              <div className="rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] p-3">
-                <p className="font-bold text-[#0F172A]">Printer installed on this computer</p>
-                <p className="text-[12px] text-[#64748B] mt-0.5">
-                  Receipts print straight to the printer you choose here, with no dialog. Install the printer&apos;s
-                  Windows driver first; it then appears in this list.
-                </p>
-                <select
-                  className="mt-2 h-[40px] w-full rounded-xl border border-[#E2E8F0] bg-white px-3 text-[13px] font-bold text-[#334155]"
-                  value={isThis("system") ? device.systemPrinter || "" : "__none"}
-                  onChange={(e) => {
-                    const name = e.target.value;
-                    if (name === "__none") return;
-                    patchDevice({ type: "system", name: name ? `Windows: ${name}` : "Default Windows printer", systemPrinter: name });
-                  }}
-                >
-                  <option value="__none" disabled>
-                    Choose a printer…
-                  </option>
-                  <option value="">Default Windows printer</option>
-                  {systemPrinters.map((p) => (
-                    <option key={p.name} value={p.name}>
-                      {p.name}
-                      {p.isDefault ? " (default)" : ""}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              )}
-              {!nativePrinting && !desktopPrinting() && (
-              <div className="rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] p-3">
-                <p className="font-bold text-[#0F172A]">Printer installed on a Windows computer?</p>
-                <p className="text-[12px] text-[#64748B] mt-0.5">
-                  Windows keeps USB printers for its own driver. Install the KnotKitchen POS Windows app to print through
-                  that driver silently. In a browser, make the receipt printer the default printer; receipts then open the
-                  print dialog (Chrome with <code>--kiosk-printing</code> skips it).
-                </p>
-                <button
-                  type="button"
-                  className={`${btnGhost} mt-2`}
-                  onClick={() => patchDevice({ type: "system", name: "Computer's printer driver" })}
-                >
-                  {isThis("system") ? "Using the computer's printer driver" : "Use the computer's printer driver"}
-                </button>
-              </div>
-              )}
-            </div>
-          )}
-
-          {tab === "lan" && (
-            <div className="mt-4 space-y-2 text-[13px] text-[#64748B]">
-              <p>
-                <strong>Windows app:</strong> add the printer in Windows (Settings › Printers, by its IP address), then pick it
-                under <strong>USB › Printer installed on this computer</strong>.
-              </p>
-              <p>
-                <strong>Tablet or browser:</strong> connect the printer&apos;s USB cable and set it up under <strong>USB</strong>.
-              </p>
-            </div>
-          )}
-
-          {tab === "bluetooth" && (
-            <div className="mt-4 space-y-3 text-[13px]">
-              {nativePrinting && (
-                <p className="text-[#64748B]">
-                  Pair the printer once in the phone&apos;s <strong>Settings › Bluetooth</strong> (the PIN is usually 0000
-                  or 1234). Then press <strong>Search &amp; connect</strong> and pick it.
-                </p>
-              )}
-              {!supports.bluetooth() ? (
-                <p className="text-[12.5px] text-[#B45309] bg-[#FFFBEB] border border-[#FDE68A] rounded-xl p-3">
-                  This browser cannot use Bluetooth printers. Open the POS in Chrome or Edge.
-                </p>
-              ) : (
-                <>
-                  <p className={`text-[12px] font-bold ${btOn === false ? "text-[#DC2626]" : "text-[#15803D]"}`}>
-                    {btOn === false ? "Bluetooth is off on this device." : "Bluetooth is available."}
-                  </p>
-                  <button type="button" className={btnPrimary} disabled={connecting} onClick={() => connect("bluetooth")}>
-                    {connecting ? "Connecting…" : isThis("bluetooth") ? "Reconnect / change printer" : "Search & connect"}
-                  </button>
-                  <PrinterChoices choices={choices} kind="bluetooth" onPick={pickPrinter} />
-                  {nativePrinting && isThis("bluetooth") && device.protocol !== "cat" && (
-                    <label className="block max-w-[360px]">
-                      <span className="text-[13px] font-bold text-[#0F172A]">Printer PIN</span>
-                      <span className="block text-[11.5px] text-[#94A3B8] mt-0.5">
-                        The PIN you typed when pairing (usually 0000 or 1234). If the printer forgets the pairing when
-                        switched off, the app uses it to reconnect without Android asking to pair again. A wrong PIN
-                        un-pairs the printer.
-                      </span>
-                      <input
-                        inputMode="numeric"
-                        autoComplete="off"
-                        maxLength={16}
-                        value={device.pin || ""}
-                        onChange={(e) => patchDevice({ pin: e.target.value.replace(/\D/g, "") })}
-                        placeholder="e.g. 0000"
-                        className="mt-1.5 h-[40px] w-full rounded-xl border border-[#E2E8F0] px-3 text-[14px] font-bold"
-                      />
-                    </label>
-                  )}
-                </>
-              )}
-            </div>
-          )}
-
-          <div className="mt-5 pt-4 border-t border-[#E2E8F0]">
-            <p className="text-[13px] font-bold text-[#0F172A]">Paper size</p>
-            <div className="mt-2 grid grid-cols-2 gap-2 max-w-[360px]">
-              {PAPERS.map((p) => (
-                <button
-                  key={p.key}
-                  type="button"
-                  aria-pressed={device.paper === p.key}
-                  disabled={device.protocol === "cat" && p.key !== "58"}
-                  onClick={() => patchDevice({ paper: p.key })}
-                  className={`h-[56px] rounded-xl border text-left px-3 disabled:opacity-40 ${
-                    device.paper === p.key ? "border-[#FD5302] bg-[#FFF6F0] ring-1 ring-[#FD5302]" : "border-[#E2E8F0] bg-white"
-                  }`}
-                >
-                  <span className="block text-[14px] font-extrabold text-[#0F172A]">{p.label}</span>
-                  <span className="block text-[11.5px] text-[#64748B]">{p.sub}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button type="button" className={btnGhost} onClick={testPrint} disabled={!device.type}>
-              Test print
-            </button>
-          </div>
-        </Card>
+        {/* ---------- Printers ---------- */}
+        <PrinterSlot
+          title="Receipt Printer"
+          subtitle="Bills and reports."
+          device={device}
+          patchDevice={patchDevice}
+          onTest={testPrint}
+          systemPrinters={systemPrinters}
+          btOn={btOn}
+        />
+        <PrinterSlot
+          title="Kitchen Printer (KOT)"
+          subtitle="Kitchen order tickets. Not set up: KOTs print on the receipt printer."
+          emptyLabel="Uses receipt printer"
+          device={device.kitchen || {}}
+          patchDevice={patchKitchen}
+          onTest={testKot}
+          onClear={() => patchDevice({ kitchen: undefined })}
+          allowDialog={false}
+          systemPrinters={systemPrinters}
+          btOn={btOn}
+        />
 
         {/* ---------- Automation ---------- */}
         <Card title="Automation">
           <ToggleRow
             title="Auto Receipt Print"
+            note="Prints on the receipt printer."
             checked={Boolean(device.autoPrint)}
             onChange={(v) => patchDevice({ autoPrint: v })}
           />
           <ToggleRow
             title="Auto KOT Print"
+            note="Prints on the kitchen printer, or the receipt printer if none. Turn it on for one device per kitchen printer. Customer orders (table QR, website, Knot Eats) print when someone taps Accept."
             checked={Boolean(device.kotPrint)}
             onChange={(v) => patchDevice({ kotPrint: v })}
           />

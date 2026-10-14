@@ -4,7 +4,13 @@ const MenuGroup = require("../models/menuGroupModel");
 const createHttpError = require("http-errors");
 const mongoose = require("mongoose");
 const { logActivity } = require("../services/auditService");
-const { normalizeCap } = require("../services/modifierGroups");
+const {
+  groupRules,
+  cleanGroupOptions,
+  attachedGroup,
+  placeGroups,
+  keepOptionState,
+} = require("../services/modifierGroups");
 
 /**
  * Menu tenancy scope.
@@ -191,6 +197,11 @@ const addCategory = async (req, res, next) => {
   }
 };
 
+// Dispatch Type as stored on a product: a flag is on unless it is false.
+const dispatchFlags = (d) => ({ collection: d?.collection !== false, delivery: d?.delivery !== false, table: d?.table !== false });
+// The drawers send Dispatch Type on every save, so "sent" is not "changed": compare before cascading.
+const dispatchChanged = (before, after) => after !== undefined && JSON.stringify(dispatchFlags(before)) !== JSON.stringify(dispatchFlags(after));
+
 const updateCategory = async (req, res, next) => {
   try {
     const { menuId, name, description, dispatchType, published, bgColor, textColor, showOnPos, showOnWebsite } = req.body;
@@ -203,6 +214,7 @@ const updateCategory = async (req, res, next) => {
 
     const oldName = menu.name;
     const newName = String(name).trim();
+    const cascadeDispatch = dispatchChanged(menu.dispatchType, dispatchType);
 
     menu.name = newName;
     if (description !== undefined) menu.description = String(description).trim();
@@ -217,15 +229,11 @@ const updateCategory = async (req, res, next) => {
     if (showOnWebsite !== undefined) menu.showOnWebsite = Boolean(showOnWebsite);
 
     // Category-level Dispatch Type cascades to every product in the category.
-    // Only applied when the operator actually changed the field on this
-    // request, so an unrelated rename never rewrites every product.
-    if (dispatchType !== undefined && Array.isArray(menu.items)) {
+    // Only when the flags changed on this request: a rename or a colour change
+    // must not overwrite each product's own Dispatch Type (M3 makes it binding).
+    if (cascadeDispatch && Array.isArray(menu.items)) {
       menu.items.forEach((item) => {
-        item.dispatchType = {
-          collection: dispatchType.collection !== false,
-          delivery: dispatchType.delivery !== false,
-          table: dispatchType.table !== false,
-        };
+        item.dispatchType = dispatchFlags(dispatchType);
       });
     }
 
@@ -305,6 +313,7 @@ const updateSubcategory = async (req, res, next) => {
 
     const newName = name ? String(name).trim() : (subcat ? subcat.name : oldName);
     const previousName = subcat ? subcat.name : oldName;
+    const cascadeDispatch = dispatchType && typeof dispatchType === "object" && (!subcat || dispatchChanged(subcat.dispatchType, dispatchType));
 
     if (subcat) {
       if (name) subcat.name = newName;
@@ -337,6 +346,14 @@ const updateSubcategory = async (req, res, next) => {
       });
     }
 
+    // N037: a subcategory's Dispatch Type is enforced on its products, as a category's is (only when it changed).
+    if (cascadeDispatch && Array.isArray(menu.items)) {
+      menu.items.forEach((item) => {
+        if (item.subcategory !== newName) return;
+        item.dispatchType = dispatchFlags(dispatchType);
+      });
+    }
+
     await menu.save();
     res.status(200).json({ success: true, message: "Subcategory updated!", data: menu });
   } catch (error) {
@@ -362,6 +379,7 @@ const addDish = async (req, res, next) => {
       displayTarget,
       imageUrl,
       schedule,
+      modifierGroups,
     } = req.body;
     if (!name || price === undefined || !category) {
       const error = createHttpError(400, "Dish name, price and category are required!");
@@ -378,9 +396,6 @@ const addDish = async (req, res, next) => {
       posCollection: Math.max(0, Number(channelPrices?.posCollection || numPrice)),
       posDelivery: Math.max(0, Number(channelPrices?.posDelivery || numPrice)),
       posTable: Math.max(0, Number(channelPrices?.posTable || numPrice)),
-      websiteCollection: Math.max(0, Number(channelPrices?.websiteCollection || numPrice)),
-      websiteDelivery: Math.max(0, Number(channelPrices?.websiteDelivery || numPrice)),
-      websiteTable: Math.max(0, Number(channelPrices?.websiteTable || numPrice)),
     };
 
     const menu = await Menu.findOne({ _id: menuId, ...menuScopeFor(req.user) });
@@ -409,6 +424,8 @@ const addDish = async (req, res, next) => {
       schedule: schedule || { enabled: false, startTime: "09:00", endTime: "23:00", daysOfWeek: [0,1,2,3,4,5,6] },
       visibleOnPosWhenOff: Boolean(req.body?.visibleOnPosWhenOff),
       visibleOnWebsiteWhenOff: Boolean(req.body?.visibleOnWebsiteWhenOff),
+      // Groups ticked while creating the product used to be dropped here.
+      modifierGroups: placeGroups([], modifierGroups, await libraryFor(menuScopeFor(req.user), modifierGroups)),
     });
     await menu.save();
     res.status(201).json({ success: true, message: "Dish added!", data: menu });
@@ -460,14 +477,10 @@ const updateDish = async (req, res, next) => {
     if (textColor !== undefined) item.textColor = textColor;
     if (samePrice !== undefined) item.samePrice = Boolean(samePrice);
     if (channelPrices !== undefined) {
-      item.channelPrices = {
-        posCollection: Math.max(0, Number(channelPrices?.posCollection || item.price)),
-        posDelivery: Math.max(0, Number(channelPrices?.posDelivery || item.price)),
-        posTable: Math.max(0, Number(channelPrices?.posTable || item.price)),
-        websiteCollection: Math.max(0, Number(channelPrices?.websiteCollection || item.price)),
-        websiteDelivery: Math.max(0, Number(channelPrices?.websiteDelivery || item.price)),
-        websiteTable: Math.max(0, Number(channelPrices?.websiteTable || item.price)),
-      };
+      // Per key, so the stored website* figures (no longer read anywhere) are left untouched.
+      for (const k of ["posCollection", "posDelivery", "posTable"]) {
+        item.set(`channelPrices.${k}`, Math.max(0, Number(channelPrices?.[k] || item.price)));
+      }
     }
     if (isVegetarian !== undefined) item.isVegetarian = Boolean(isVegetarian);
     if (displayTarget !== undefined && ["both", "system", "website"].includes(displayTarget)) {
@@ -482,7 +495,14 @@ const updateDish = async (req, res, next) => {
     if (visibleOnPosWhenOff !== undefined) item.visibleOnPosWhenOff = Boolean(visibleOnPosWhenOff);
     if (visibleOnWebsiteWhenOff !== undefined) item.visibleOnWebsiteWhenOff = Boolean(visibleOnWebsiteWhenOff);
     if (schedule !== undefined) item.schedule = schedule;
-    if (Array.isArray(modifierGroups)) item.modifierGroups = modifierGroups;
+    // Which groups and in what order; each group the product already has is
+    // kept as stored. Swapping in the client's copies wholesale reset every
+    // rule they left out to the schema default: choose-one became choose-any,
+    // a switched-off group came back on.
+    if (Array.isArray(modifierGroups)) {
+      const joining = modifierGroups.filter((g) => !item.modifierGroups.some((h) => h.name === String(g?.name || "").trim()));
+      item.modifierGroups = placeGroups(item.modifierGroups, modifierGroups, await libraryFor(menuScopeFor(req.user), joining));
+    }
 
     await menu.save();
     res.status(200).json({ success: true, message: "Product updated!", data: menu });
@@ -516,6 +536,55 @@ const keepGroup = async (scope, name, fields, { overwrite = true } = {}) => {
     if (err?.code !== 11000) throw err;
     if (overwrite) await MenuGroup.updateOne({ ...scope, name }, { $set: fields });
   }
+};
+
+/** The group as some product already carries it (the first found). */
+const carriedGroup = (menus, name) =>
+  menus.flatMap((m) => m.items || []).flatMap((i) => i.modifierGroups || []).find((g) => g.name === name);
+
+/**
+ * Where a group joining a product takes its rules from, by name: the store's
+ * list row, else the group as a product already carries it (groups from
+ * before the list existed have no row). Only what the client sent is left
+ * for a group the store has never had.
+ */
+const libraryFor = async (scope, sent) => {
+  const names = (Array.isArray(sent) ? sent : []).map((g) => String(g?.name || "").trim()).filter(Boolean);
+  if (names.length === 0) return new Map();
+  const rows = await MenuGroup.find({ ...scope, name: { $in: names } }).lean();
+  const found = new Map(rows.map((r) => [r.name, r]));
+  const missing = names.filter((n) => !found.has(n));
+  if (missing.length) {
+    const menus = await Menu.find(scope).lean();
+    for (const n of missing) {
+      const g = carriedGroup(menus, n);
+      if (g) found.set(n, g);
+    }
+  }
+  return found;
+};
+
+/**
+ * After a rename the list row follows the group, keeping its place in the list
+ * and its on/off: renamed in place, or, while products still carry the old
+ * name, copied (the old row stays). A new row used to be inserted at the
+ * bottom, switched on. Call it after the products are saved.
+ */
+const renameGroupRow = async (scope, old, name) => {
+  if (!old || old === name) return;
+  const row = await MenuGroup.findOne({ ...scope, name: old }).lean();
+  if (!row) return;
+  const stillUsed = await Menu.exists({ ...scope, "items.modifierGroups.name": old });
+  const taken = await MenuGroup.exists({ ...scope, name });
+  if (!stillUsed && !taken) return MenuGroup.updateOne({ ...scope, name: old }, { $set: { name } });
+  if (!taken) {
+    await MenuGroup.updateOne(
+      { ...scope, name },
+      { $setOnInsert: { sortOrder: row.sortOrder, isActive: row.isActive !== false } },
+      { upsert: true },
+    );
+  }
+  if (!stillUsed) await MenuGroup.deleteOne({ ...scope, name: old });
 };
 
 const groupView = (g) => ({
@@ -562,17 +631,15 @@ const saveMenuGroup = async (req, res, next) => {
     if (!name) return next(createHttpError(400, "Group Name is required!"));
     if (!Array.isArray(req.body?.options)) return next(createHttpError(400, "Components options array is required!"));
     const scope = menuScopeFor(req.user);
-    await keepGroup(scope, name, {
-      required: Boolean(req.body.required),
-      ...normalizeCap(req.body),
-      options: cleanOptions(req.body.options),
-    });
     const old = String(req.body?.oldGroupName || "").trim();
-    // Renamed: the old name goes, unless products still carry it.
-    if (old && old !== name) {
-      const stillUsed = await Menu.exists({ ...scope, "items.modifierGroups.name": old });
-      if (!stillUsed) await MenuGroup.deleteOne({ ...scope, name: old });
-    }
+    // A rule the editor did not send is unchanged.
+    const row = await MenuGroup.findOne({ ...scope, name: old || name }).lean();
+    const options = cleanOptions(req.body.options);
+    const rules = groupRules(req.body, row || {});
+    // V6: a required group with nothing to pick makes its dishes unorderable everywhere.
+    if (rules.required && !options.length) return next(createHttpError(400, "Add at least one option to this group."));
+    await renameGroupRow(scope, old, name);
+    await keepGroup(scope, name, { ...rules, options });
     res.status(200).json({ success: true, message: `Group "${name}" saved.` });
   } catch (error) {
     next(error);
@@ -581,27 +648,21 @@ const saveMenuGroup = async (req, res, next) => {
 
 const bulkAddGroupToDishes = async (req, res, next) => {
   try {
-    const { groupName, dishIds, required, maxSelections, options } = req.body;
+    const { groupName, dishIds } = req.body;
     if (!groupName || !Array.isArray(dishIds) || dishIds.length === 0) {
       return next(createHttpError(400, "Group name and dishIds array are required!"));
     }
 
-    // Normalize the incoming options so we can both create a fresh group
-    // AND back-fill an existing (empty) group with the full component
-    // list when the operator runs bulk-add against products that were
-    // previously attached with `options: []` (the historical bug this
-    // endpoint used to produce).
-    const hasOptions = Array.isArray(options) && options.length > 0;
-    const normalizedOptions = hasOptions
-      ? options
-          .filter((o) => o && String(o.name || "").trim())
-          .map((o) => ({
-            name: String(o.name).trim(),
-            price: Number.isFinite(Number(o.price)) ? Number(o.price) : 0,
-          }))
-      : [];
+    // Rules, on/off and options from the store's list when it has the group:
+    // the bulk payload never carried maxSelectionEnabled, so building from the
+    // body alone attached every choose-one group as choose-any.
+    const scope = menuScopeFor(req.user);
+    const name = String(groupName).trim();
+    const menus = await Menu.find(scope);
+    const lib = (await MenuGroup.findOne({ ...scope, name }).lean()) || carriedGroup(menus, name);
+    const group = attachedGroup(name, req.body, lib);
+    const hasOptions = group.options.length > 0;
 
-    const menus = await Menu.find(menuScopeFor(req.user));
     let count = 0;
 
     for (const menu of menus) {
@@ -609,14 +670,10 @@ const bulkAddGroupToDishes = async (req, res, next) => {
       for (const item of menu.items) {
         if (dishIds.includes(String(item._id))) {
           item.modifierGroups = item.modifierGroups || [];
-          const existing = item.modifierGroups.find((g) => g.name === groupName);
+          const existing = item.modifierGroups.find((g) => g.name === name);
           if (!existing) {
-            item.modifierGroups.push({
-              name: groupName,
-              required: Boolean(required),
-              ...normalizeCap(req.body),
-              options: normalizedOptions,
-            });
+            // Lands last instead of colliding with the product's first group at 0.
+            item.modifierGroups.push({ ...group, sortOrder: item.modifierGroups.length });
             count++;
             modified = true;
           } else if (hasOptions) {
@@ -624,9 +681,8 @@ const bulkAddGroupToDishes = async (req, res, next) => {
             // idempotent — no more phantom groups with zero components.
             const existingOptsEmpty = !Array.isArray(existing.options) || existing.options.length === 0;
             if (existingOptsEmpty) {
-              existing.options = normalizedOptions;
-              existing.required = Boolean(required);
-              Object.assign(existing, normalizeCap(req.body));
+              existing.options = group.options;
+              Object.assign(existing, groupRules(group));
               count++;
               modified = true;
             }
@@ -636,12 +692,7 @@ const bulkAddGroupToDishes = async (req, res, next) => {
       if (modified) await menu.save();
     }
 
-    await keepGroup(
-      menuScopeFor(req.user),
-      String(groupName).trim(),
-      { required: Boolean(required), ...normalizeCap(req.body), options: normalizedOptions },
-      { overwrite: false },
-    );
+    await keepGroup(scope, name, { ...groupRules(group), isActive: group.isActive, options: group.options }, { overwrite: false });
 
     res.status(200).json({ success: true, message: `Group "${groupName}" added to ${count} product(s)!` });
   } catch (error) {
@@ -684,7 +735,7 @@ const bulkRemoveGroupFromDishes = async (req, res, next) => {
 
 const saveModifierGroupToDishes = async (req, res, next) => {
   try {
-    const { groupName, required, maxSelections, maxSelectionEnabled, options, dishIds } = req.body;
+    const { groupName, oldGroupName, options, dishIds } = req.body;
     if (!groupName || !String(groupName).trim()) {
       return next(createHttpError(400, "Group Name is required!"));
     }
@@ -713,8 +764,19 @@ const saveModifierGroupToDishes = async (req, res, next) => {
 
     const dishIdSet = new Set(normalizedDishIds);
 
-    const menus = await Menu.find(menuScopeFor(req.user));
+    const scope = menuScopeFor(req.user);
+    const name = String(groupName).trim();
+    const old = String(oldGroupName || "").trim();
+    const menus = await Menu.find(scope);
     let updatedCount = 0;
+
+    // A rule this save does not send is unchanged: each product keeps its
+    // own, and a product newly given the group (and the store's list) takes
+    // the list's row, else the group as a product already carries it.
+    // Reading an absent maxSelectionEnabled as "off" is what made deleting
+    // one component turn the group choose-any on every product.
+    const base =
+      (await MenuGroup.findOne({ ...scope, name: old || name }).lean()) || carriedGroup(menus, old || name) || {};
 
     // NOTE: this endpoint is deliberately ADD-ONLY. Removing a group from a
     // product must go through the explicit "Remove Group from Selected"
@@ -729,23 +791,21 @@ const saveModifierGroupToDishes = async (req, res, next) => {
         if (!dishIdSet.has(itemIdStr)) continue;
 
         item.modifierGroups = item.modifierGroups || [];
-        // A cap only means anything when the operator switched it on; OFF is
-        // "as many as you like". The number is kept either way, so turning
-        // the cap back on restores the figure instead of resetting it to 1.
-        const cap = normalizeCap(req.body);
-
-        const existing = item.modifierGroups.find((g) => g.name === groupName);
+        const existing =
+          item.modifierGroups.find((g) => g.name === name) ||
+          (old && item.modifierGroups.find((g) => g.name === old));
         if (existing) {
-          existing.required = Boolean(required);
-          Object.assign(existing, cap);
-          existing.options = validatedOptions;
+          // A rename renames in place; it used to add a second copy.
+          existing.name = name;
+          Object.assign(existing, groupRules(req.body, existing));
+          existing.options = keepOptionState(validatedOptions, existing.options);
           // isActive and sortOrder are owned by their own endpoints — saving a
           // group's contents must not silently switch it back on or move it.
         } else {
           item.modifierGroups.push({
-            name: groupName,
-            required: Boolean(required),
-            ...cap,
+            name,
+            ...groupRules(req.body, base),
+            isActive: base.isActive !== false,
             options: validatedOptions,
             // Land new groups at the end of the existing order.
             sortOrder: item.modifierGroups.length,
@@ -757,9 +817,10 @@ const saveModifierGroupToDishes = async (req, res, next) => {
       if (modified) await menu.save();
     }
 
-    await keepGroup(menuScopeFor(req.user), String(groupName).trim(), {
-      required: Boolean(required),
-      ...normalizeCap(req.body),
+    await renameGroupRow(scope, old, name);
+    await keepGroup(scope, name, {
+      ...groupRules(req.body, base),
+      isActive: base.isActive !== false,
       options: validatedOptions,
     });
 
@@ -874,26 +935,30 @@ const reorderGroupsInDishes = async (req, res, next) => {
       return next(createHttpError(400, "groupOrder array is required!"));
     }
 
+    // The Groups list's own order and nothing else. It used to be stamped onto
+    // every product too, so dragging one group re-sorted the groups on all of
+    // them. A product's order is set in its own drawer.
     const orderMap = new Map(groupOrder.map((name, idx) => [String(name).trim(), idx]));
+    const scope = menuScopeFor(req.user);
 
-    const menus = await Menu.find(menuScopeFor(req.user));
-    for (const menu of menus) {
-      let modified = false;
-      for (const item of menu.items) {
-        if (item.modifierGroups && item.modifierGroups.length > 0) {
-          item.modifierGroups.forEach((g) => {
-            if (orderMap.has(g.name)) {
-              g.sortOrder = orderMap.get(g.name);
-              modified = true;
-            }
-          });
-          item.modifierGroups.sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
-        }
+    // A group from before the store's list existed has no row to order. Give
+    // it one, ruled as its products have it, or the drag would not stick.
+    const listed = await MenuGroup.find({ ...scope, name: { $in: [...orderMap.keys()] } }).lean();
+    const missing = [...orderMap.keys()].filter((n) => !listed.some((r) => r.name === n));
+    if (missing.length) {
+      const menus = await Menu.find(scope).lean();
+      for (const name of missing) {
+        const g = carriedGroup(menus, name);
+        if (!g) continue;
+        await keepGroup(
+          scope,
+          name,
+          { ...groupRules(g), isActive: g.isActive !== false, options: cleanGroupOptions(g.options) },
+          { overwrite: false },
+        );
       }
-      if (modified) await menu.save();
     }
 
-    const scope = menuScopeFor(req.user);
     const writes = [...orderMap].map(([name, sortOrder]) => ({
       updateOne: { filter: { ...scope, name }, update: { $set: { sortOrder } } },
     }));
@@ -1122,7 +1187,21 @@ const toggleDishAvailability = async (req, res, next) => {
     }
 
     item.isAvailable = !item.isAvailable;
+    // D6: sold out goes live at once (tills, QR, website, Knot Eats), no Publish needed.
+    for (const path of ["systemSnapshot", "websiteSnapshot"]) {
+      const copy = menu[path]?.items?.id?.(itemId);
+      if (!copy) continue;
+      copy.isAvailable = item.isAvailable;
+      menu.markModified(path);
+    }
     await menu.save();
+    invalidateKnotEats();
+    try {
+      const { emitToRestaurant } = require("../services/socket");
+      emitToRestaurant(req.user?.restaurantId, "menu:updated", { target: "system", count: 1, publishedAt: new Date() });
+    } catch (err) {
+      console.warn("menu:updated emit failed:", err.message);
+    }
     res.status(200).json({
       success: true,
       message: item.isAvailable ? "Dish is now available!" : "Dish is now out of stock!",

@@ -33,7 +33,7 @@ const SessionDetailModal = ({
         <div className="grid grid-cols-2 gap-3 mb-4">
           <div className="p-3 rounded-xl bg-surface-input border border-border">
             <p className="text-xs text-content-muted">Customers</p>
-            <p className="text-lg font-bold text-content">{session?.customerCount ?? 0} / {table?.capacity}</p>
+            <p className="text-lg font-bold text-content">{session?.customerCount ?? 0} / {session?.capacity || table?.capacity}</p>
           </div>
           <div className="p-3 rounded-xl bg-surface-input border border-border">
             <p className="text-xs text-content-muted">Status</p>
@@ -48,6 +48,8 @@ const SessionDetailModal = ({
           <div className="max-h-[220px] overflow-y-auto space-y-2 no-scrollbar">
             {(session?.items || []).map((item, idx) => {
               const cancelled = item.status === "cancelled";
+              // N017: a guest's dish the till has not accepted is not on the bill yet.
+              const awaiting = item.status === "pending" && item.addedBy === "QR";
               const lineQty = Math.max(1, Number(item.quantity) || 1);
               const extras = itemExtras(item);
               return (
@@ -72,13 +74,15 @@ const SessionDetailModal = ({
                         <span className="ml-1.5 text-accent-red font-semibold">
                           Cancelled{item.cancelReason ? ` — ${item.cancelReason}` : ""}
                         </span>
+                      ) : awaiting ? (
+                        <span className="ml-1.5 text-accent-amber font-semibold">Awaiting approval</span>
                       ) : null}
                     </p>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <p
                       className={`text-sm font-bold ${
-                        cancelled ? "text-content-muted line-through" : "text-content"
+                        cancelled ? "text-content-muted line-through" : awaiting ? "text-content-muted" : "text-content"
                       }`}
                     >
                       ₹{(item.total || item.price * item.quantity || 0).toFixed(2)}

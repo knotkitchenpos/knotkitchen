@@ -209,6 +209,12 @@ const TableSessionMock = {
     return db.sessions.slice().map((s) => JSON.parse(JSON.stringify(s)));
   },
 
+  // N015b: is a stale claim's session still live (at another table)?
+  async exists({ accessToken, status }) {
+    const s = db.sessions.find((x) => x.accessToken === accessToken && status.$in.includes(x.status) && !x.isDeleted);
+    return s ? { _id: s._id } : null;
+  },
+
   async create(docs) {
     const arr = Array.isArray(docs) ? docs : [docs];
     const created = arr.map((doc) => {
@@ -697,6 +703,28 @@ test("GET /table/:token returns activeSession null when table is idle", async ()
   assert.equal(body.data.activeSession, null);
 });
 
+test("REGRESSION: the QR menu shows the Table price the bill charges (₹4 vs ₹6)", async () => {
+  // The owner's case: item.price 4, "same price" OFF, Table 6. The diner saw
+  // the raw ₹4 while enrichItems billed the ₹6 Table price.
+  const chai = { _id: "menu_owner", name: "Chai", price: 4, samePrice: false, channelPrices: { posCollection: 4, posDelivery: 4, posTable: 6 }, category: "Drinks", isAvailable: true };
+  // A sized dish is billed the chosen size, so its card shows the cheapest one on sale.
+  const sized = { ...chai, _id: "menu_sized", name: "Masala Chai", variants: [{ _id: "v2", name: "Large", price: 15 }, { _id: "v1", name: "Small", price: 10 }] };
+  const items = [chai, sized];
+  const category = { ...menuCategory("menu_owner", "Chai", 4, "Drinks"), items, systemSnapshot: { name: "Chai", items }, websiteSnapshot: { name: "Chai", items } };
+  const originalFind = MenuMock.find;
+  MenuMock.find = async () => [category];
+  try {
+    const router = loadQrRoute();
+    const token = await createQrForTable(TABLES[5]._id);
+    const { statusCode, body } = await callRoute(router, "/table/:token", "get", { params: { token } });
+    assert.equal(statusCode, 200);
+    assert.equal(body.data.menu[0].items[0].price, 6);
+    assert.equal(body.data.menu[0].items[1].price, 10);
+  } finally {
+    MenuMock.find = originalFind;
+  }
+});
+
 test("POST /session/items/:token creates a session and stays OCCUPIED (Flow 2: items first)", async () => {
   const router = loadQrRoute();
   const token = await createQrForTable(TABLES[4]._id);
@@ -901,6 +929,8 @@ test("POST /payment-intent/:token moves session to PAYMENT_PENDING WITHOUT settl
     outletId: "outlet-A",
     addedBy: "QR",
   });
+  // Accepted by the till: a guest dish still awaiting acceptance blocks Pay (N017, tablePayments.test.js).
+  items.forEach((i) => { i.status = "preparing"; });
   const session = await seedSession({ tableId: TABLES[4]._id, items, customerCount: 2 });
   const before = session.bills.totalWithTax;
 
@@ -1183,4 +1213,88 @@ test("a spent claim cannot force the bill or start a payment on someone else's t
     assert.equal(err.status || err.statusCode, 409);
   }
   assert.equal(session.status, "OCCUPIED", "the party's session is untouched");
+});
+
+test("REGRESSION N020: a dish added before the till accepts refreshes the New Order card, never an Added Items card", async () => {
+  const realSocket = require("../services/socket");
+  const emits = [];
+  const socketPath = require.resolve("../services/socket");
+  const saved = require.cache[socketPath];
+  require.cache[socketPath] = { id: socketPath, filename: socketPath, loaded: true, exports: {
+    ...realSocket,
+    emitOrderCreated: (e) => emits.push(["onlineOrder:created", e.order.items.map((i) => i.name), e.placedVia]),
+    emitToRestaurant: (rid, ev, p) => emits.push([ev, (p.pendingItems || []).map((i) => i.name)]),
+    emitTableSessionUpdated: () => {},
+  } };
+  const findById = OrderMock.findById;
+  OrderMock.findById = (id) => {
+    const o = orderStore.find((x) => String(x._id) === String(id)) || null;
+    return { populate: async () => o, then: (r, j) => Promise.resolve(o).then(r, j) };
+  };
+  try {
+    const router = loadQrRoute();
+    const token = await createQrForTable(TABLES[4]._id);
+    await callRoute(router, "/session/items/:token", "post", { params: { token }, body: { items: [{ menuItemId: "menu_biryani", quantity: 1 }], customerName: "Asha", customerPhone: "9876543210" } });
+    const order = orderStore[orderStore.length - 1];
+    await callRoute(router, "/session/items/:token", "post", { params: { token }, body: { items: [{ menuItemId: "menu_water", quantity: 1 }] } });
+    assert.deepEqual(emits, [["onlineOrder:created", ["Biryani"], "QR"], ["onlineOrder:created", ["Biryani", "Water"], "QR"]]);
+    // Once accepted, a later dish is an addition again.
+    order.orderStatus = "In Progress";
+    order.items.forEach((i) => { i.status = "preparing"; });
+    await callRoute(router, "/session/items/:token", "post", { params: { token }, body: { items: [{ menuItemId: "menu_kebab", quantity: 1 }] } });
+    assert.deepEqual(emits[2], ["tableOrder:itemsAdded", ["Kebab"]]);
+  } finally {
+    OrderMock.findById = findById;
+    if (saved) require.cache[socketPath] = saved; else delete require.cache[socketPath];
+  }
+});
+
+test("REGRESSION N020: a guest's second round on a till-opened table, before anyone accepted, still refreshes the New Order card", async () => {
+  // S12: undecided means every live line is still pending, whatever the order's
+  // source. A till-opened table's order is a "POS" one, which the old check missed.
+  const emits = [];
+  const socketPath = require.resolve("../services/socket");
+  const saved = require.cache[socketPath];
+  require.cache[socketPath] = { id: socketPath, filename: socketPath, loaded: true, exports: {
+    ...require("../services/socket"),
+    emitOrderCreated: (e) => emits.push(["onlineOrder:created", e.order.items.map((i) => i.name)]),
+    emitToRestaurant: (rid, ev, p) => emits.push([ev, (p.pendingItems || []).map((i) => i.name)]),
+    emitTableSessionUpdated: () => {},
+  } };
+  const findById = OrderMock.findById;
+  OrderMock.findById = (id) => {
+    const o = orderStore.find((x) => String(x._id) === String(id)) || null;
+    return { populate: async () => o, then: (r, j) => Promise.resolve(o).then(r, j) };
+  };
+  try {
+    const router = loadQrRoute();
+    const token = await createQrForTable(TABLES[5]._id);
+    const [session] = await TableSessionMock.create([{ sessionCode: generateSessionCode(), accessToken: generateSessionAccessToken(), restaurantId: "rest-A", outletId: "outlet-A", tableId: TABLES[5]._id, source: "POS", status: "OCCUPIED" }]);
+    const claim = { sessionToken: session.accessToken };
+    await callRoute(router, "/session/items/:token", "post", { params: { token }, body: { items: [{ menuItemId: "menu_biryani", quantity: 1 }], ...claim } });
+    assert.equal(orderStore[orderStore.length - 1].source, "POS");
+    await callRoute(router, "/session/items/:token", "post", { params: { token }, body: { items: [{ menuItemId: "menu_water", quantity: 1 }], ...claim } });
+    assert.deepEqual(emits, [["onlineOrder:created", ["Biryani"]], ["onlineOrder:created", ["Biryani", "Water"]]]);
+  } finally {
+    OrderMock.findById = findById;
+    if (saved) require.cache[socketPath] = saved; else delete require.cache[socketPath];
+  }
+});
+
+test("N036: the table QR lists only what the table bill accepts", async () => {
+  // A dish outside its schedule is refused by enrichItems, so the diner must
+  // not be shown it either (it used to fail the whole round).
+  const later = { _id: "menu_breakfast", name: "Poha", price: 60, category: "Breakfast", isAvailable: true, schedule: { enabled: true, daysOfWeek: [], startTime: "07:00", endTime: "11:00" } };
+  const category = { ...menuCategory("menu_breakfast", "Poha", 60, "Breakfast"), items: [later], systemSnapshot: { name: "Breakfast", items: [later] }, websiteSnapshot: { name: "Breakfast", items: [later] } };
+  const originalFind = MenuMock.find;
+  MenuMock.find = async () => [menuCategory("menu_water", "Water", 20, "Beverages"), category];
+  try {
+    const router = loadQrRoute();
+    const token = await createQrForTable(TABLES[5]._id);
+    const { body } = await callRoute(router, "/table/:token", "get", { params: { token } });
+    const listed = body.data.menu.flatMap((m) => m.items.map((i) => i.name));
+    assert.deepEqual(listed, ["Water"]);
+  } finally {
+    MenuMock.find = originalFind;
+  }
 });

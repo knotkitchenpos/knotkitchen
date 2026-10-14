@@ -139,10 +139,11 @@ test("POS plan alone: Order Toggles, Rules & Charges and managing tables are loc
   for (const opts of [{ addons: [WEBSITE] }, { addons: [TABLE_QR] }, { addons: [], exempt: true }]) {
     assert.deepEqual(await outcome(load(opts).requireOnlineOrderingPlan, {}), { status: null, passed: true }, JSON.stringify(opts));
   }
-  assert.match(SRC("routes", "restaurantRoute.js"), /"\/order-toggles"\)\.put\(isVerifiedUser, requireProtectedAction, requireOnlineOrderingPlan, updateOrderToggles\)/);
+  assert.match(SRC("routes", "restaurantRoute.js"), /"\/order-toggles"\)\.put\(isVerifiedUser, requireTypedPin\(\), requireOnlineOrderingPlan, updateOrderToggles\)/);
   const tables = SRC("routes", "tableRoute.js");
   for (const h of ["addTable", "updateTableSettings", "updateTable", "deleteTable"]) {
-    assert.match(tables, new RegExp(`requireProtectedAction, requireTableQrPlan, ${h}\\)`), h);
+    const guard = h === "updateTableSettings" ? "requireTypedPin\\(\\)" : "requireProtectedAction";
+    assert.match(tables, new RegExp(`${guard}, requireTableQrPlan, ${h}\\)`), h);
   }
   assert.match(tables, /\.get\(isVerifiedUser, getTables\)/, "reading tables stays open");
 });
@@ -179,9 +180,9 @@ test("SOURCE: the gate is on every website write, the storefront, and the POS st
   // REGRESSION: the table QR obeys "Restaurant Time", so a QR-only store must
   // be able to set it; requireWebsitePlan held it to the 4 PM default.
   for (const r of ["timings", "holidays", "closed-for-today"]) {
-    assert.match(routes, new RegExp(`"/${r}"\\)\\.put\\(isVerifiedUser, requireProtectedAction, requireOnlineOrderingPlan,`), r);
+    assert.match(routes, new RegExp(`"/${r}"\\)\\.put\\(isVerifiedUser, requireTypedPin\\(\\), requireOnlineOrderingPlan,`), r);
   }
-  assert.match(SRC("routes", "websiteRoute.js"), /requireProtectedAction, requireWebsitePlan, updateWebsiteSettings/);
+  assert.match(SRC("routes", "websiteRoute.js"), /requireTypedPin\(\), requireWebsitePlan, updateWebsiteSettings/);
   assert.match(SRC("services", "storefrontResolver.js"), /if \(!\(await hasWebsite\(restaurantId, settings\.storeId\)\)\) return \{ reason: "WEBSITE_DISABLED" \};/);
   assert.match(SRC("services", "subscription.js"), /features: featuresFor\(\{ subscription, exempt, on \}\),/);
 });

@@ -49,6 +49,11 @@ const normalizeError = (err) => {
     );
   }
 
+  // N013: two writes to one record at once (a double tap): the other one won, a 409 not a 500.
+  if (err.code === 112 || err.name === "VersionError" || err.hasErrorLabel?.("TransientTransactionError")) {
+    return Object.assign(new Error("This was just changed on another screen. Check it and try again."), { statusCode: 409 });
+  }
+
   // Duplicate key — a unique index would reject the insert.
   if (err.code === 11000 && err.keyValue) {
     const key = Object.keys(err.keyValue)[0] || "field";

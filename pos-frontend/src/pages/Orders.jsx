@@ -19,9 +19,10 @@ import ReasonModal from "../components/orders/ReasonModal";
 import SecurityPinModal from "../components/common/SecurityPinModal";
 import { checkActionAuthorization, isManager } from "../utils/security";
 import { getMyRestaurant } from "../https";
+import { updateOnlineOrderStatus } from "../https/storefrontApi";
 import { printKot, printOrderReceipt, printWithFeedback } from "../utils/printReceipt";
-import { billableItems, itemDisplayName, itemExtras } from "../utils/orderItems";
-import { isPreparing, isReady, isSettled, isCancelled, isRefunded, isFinished, isOutForDelivery, statusLabel, COMPLETED, DELIVERED, OUT_FOR_DELIVERY, REFUND_STATUS, REFUND_STATUS_LABELS } from "../constants/orderStatus";
+import { addedAfterOpening, billableItems, itemDisplayName, itemExtras } from "../utils/orderItems";
+import { isPreparing, isReady, isSettled, isCancelled, isRefunded, isFinished, isOutForDelivery, paidTakeawayCooking, awaitingAccept, statusLabel, COMPLETED, DELIVERED, OUT_FOR_DELIVERY, REFUND_STATUS, REFUND_STATUS_LABELS } from "../constants/orderStatus";
 import { sourceLabel, tableLabel, orderDisplayId } from "../utils/orderLabels";
 import { sendTableEBill } from "../utils/sendTableEBill";
 import { money, time12 as timeOf, time12, dateGB, dateTimeIN, localDay, STORE_TZ } from "../utils";
@@ -102,13 +103,14 @@ const typeMeta = (t) => {
  * "Preparing" is the new canonical name (formerly "Pending" / "In Progress").
  * The backend now returns canonical strings, but we still include the legacy
  * aliases here as a defence-in-depth measure so orders written by pre-Module 4
- * code paths (KDS, marketplace, historical data) still show up under Preparing.
+ * code paths (marketplace, historical data) still show up under Preparing.
  *
  * Tabs order matches the lifecycle:  Preparing → Ready → Completed → Cancelled
  */
 const TABS = [
   { key: "All", statuses: null },
-  { key: "Preparing", statuses: ["Preparing", "Pending", "In Progress"] },
+  // N018: a takeaway paid at the till is a Completed sale still cooking, so the kitchen finds it here too.
+  { key: "Preparing", statuses: ["Preparing", "Pending", "In Progress"], paidTakeaways: true },
   { key: "Ready", statuses: ["Ready"] },
   { key: "Out for delivery", statuses: [OUT_FOR_DELIVERY] },
   // "paid" is what a settled table session writes onto its kitchen orders.
@@ -117,6 +119,8 @@ const TABS = [
   { key: "Completed", statuses: ["Completed", "Served", "Delivered", "paid"] },
   { key: "Cancelled", statuses: ["Cancelled"] },
 ];
+
+const inTab = (t, o) => t.statuses.includes(o.orderStatus) || (t.paidTakeaways && paidTakeawayCooking(o));
 
 /* ---------- Module 4 §6 — Date filter modes ---------- */
 const DATE_MODES = [
@@ -238,6 +242,15 @@ const Orders = () => {
       enqueueSnackbar(e.response?.data?.message || "Failed to mark ready", { variant: "error" }),
   });
 
+  const acceptMutation = useMutation({
+    mutationFn: (orderId) => updateOnlineOrderStatus(orderId, "accept"),
+    onSuccess: () => {
+      enqueueSnackbar("Order accepted.", { variant: "success" });
+      qc.invalidateQueries({ queryKey: ["orders"] });
+    },
+    onError: (e) => enqueueSnackbar(e.response?.data?.message || "Could not accept the order.", { variant: "error" }),
+  });
+
   const statusMutation = useMutation({
     mutationFn: (d) => updateOrderStatus(d),
     onSuccess: () => {
@@ -347,7 +360,7 @@ const Orders = () => {
   const counts = useMemo(() => {
     const c = { All: orders.length };
     TABS.forEach((t) => {
-      if (t.statuses) c[t.key] = orders.filter((o) => t.statuses.includes(o.orderStatus)).length;
+      if (t.statuses) c[t.key] = orders.filter((o) => inTab(t, o)).length;
     });
     return c;
   }, [orders]);
@@ -357,7 +370,7 @@ const Orders = () => {
     const s = q.trim().toLowerCase();
     const tabDef = TABS.find((t) => t.key === tab);
     return orders.filter((o) => {
-      if (tabDef?.statuses && !tabDef.statuses.includes(o.orderStatus)) return false;
+      if (tabDef?.statuses && !inTab(tabDef, o)) return false;
       if (typeFilter !== "all" && String(o.orderType).toLowerCase() !== typeFilter) return false;
       if (!s) return true;
       return (
@@ -534,11 +547,12 @@ const Orders = () => {
                 const on = selected?._id === o._id;
                 // A finished order's timer stops at its completion and goes grey;
                 // it kept counting and turned red on every paid order.
-                const done = isFinished(o.orderStatus);
+                const cooking = paidTakeawayCooking(o);
+                const done = isFinished(o.orderStatus) && !cooking;
                 const mins = minsAgo(o.createdAt, done ? (o.completedAt || o.cancelledAt || o.updatedAt) : undefined);
                 const ring = done ? "#94A3B8" : mins < 10 ? "#16A34A" : mins < 20 ? "#F59E0B" : "#EF4444";
                 const cancelled = isCancelled(o.orderStatus);
-                const preparingBadge = isPreparing(o.orderStatus);
+                const preparingBadge = isPreparing(o.orderStatus) || cooking;
                 const readyBadge = isReady(o.orderStatus);
                 const outBadge = isOutForDelivery(o.orderStatus);
                 return (
@@ -617,7 +631,7 @@ const Orders = () => {
                           : "bg-[#F0FDF4] text-[#15803D]"
                       }`}
                     >
-                      {statusLabel(o.orderStatus)}
+                      {cooking ? "Paid · Preparing" : statusLabel(o.orderStatus)}
                     </span>
                     <span className="text-[14.5px] font-extrabold text-[#0F172A] sm:w-[80px] text-right shrink-0">
                       {money(o.bills?.totalWithTax || o.bills?.total)}
@@ -792,6 +806,12 @@ const Orders = () => {
                             <p className="text-[11px] font-bold text-[#DC2626]">
                               Cancelled{it.cancelReason ? ` — ${it.cancelReason}` : ""}
                             </p>
+                          )}
+                          {!isVoided && it.status === "pending" && (selected.tableSessionId || awaitingAccept(selected)) && (
+                            <p className="text-[11px] font-bold text-[#B45309]">Awaiting acceptance</p>
+                          )}
+                          {addedAfterOpening(it, selected) && (
+                            <p className="text-[11px] font-bold text-[#2563EB]">Added {time12(addedAfterOpening(it, selected))}</p>
                           )}
                           {it.note && <p className="text-[11px] text-[#C2410C] truncate">Note: {it.note}</p>}
                         </div>
@@ -1058,7 +1078,16 @@ const Orders = () => {
               {/* Module 4 §2 — Mark Ready. Uses the dedicated endpoint so the
                   backend fires the SMS notification through the shared
                   ready-notification service. */}
-              {isPreparing(selected.orderStatus) ? (
+              {awaitingAccept(selected) ? (
+                <button
+                  disabled={acceptMutation.isPending}
+                  onClick={() => acceptMutation.mutate(selected._id)}
+                  className="h-[46px] rounded-xl bg-[#22C55E] text-white text-[12.5px] font-bold flex items-center justify-center gap-1.5 hover:bg-[#16A34A] disabled:opacity-40"
+                >
+                  <I.check s={16} />
+                  Accept
+                </button>
+              ) : isPreparing(selected.orderStatus) || paidTakeawayCooking(selected) ? (
                 <button
                   disabled={readyMutation.isPending}
                   onClick={() => readyMutation.mutate(selected._id)}
@@ -1174,7 +1203,7 @@ const Orders = () => {
                     // on an order still cooking (a delivery paid at the till).
                     isSettled(selected.orderStatus) || selected.paid
                       ? isManager(user)
-                        ? "Void this paid order. A gateway payment can be refunded afterwards; cash is handed back at the counter."
+                        ? "Void this paid order and refund it in full: a gateway payment goes back through Cashfree; hand cash, UPI or card money back at the counter."
                         : "Only the store owner or a manager can cancel a paid order"
                       : "Cancel this order"
                   }

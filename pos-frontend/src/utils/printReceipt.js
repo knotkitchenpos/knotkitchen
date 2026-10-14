@@ -6,7 +6,7 @@ import { formatAddress } from "./address";
 import { layoutKot, layoutReceipt, layoutReport, paperOf } from "./receiptLayout.js";
 import { ditherInPlace, rasterJob, TEAR_FEED_DOTS, toMonochrome } from "./escpos.js";
 import { catJob } from "./catprinter.js";
-import { loadPrinterConfig, sendToPrinter } from "./printerDevice.js";
+import { kitchenPrinter, loadPrinterConfig, sendToPrinter } from "./printerDevice.js";
 import { ensureReceiptFont } from "./receiptFont.js";
 import { readStoreScoped, writeStoreScoped } from "./storeSession.js";
 import { BACKEND_URL } from "../config";
@@ -170,13 +170,15 @@ export const printOrderReceipt = async (order, { auto = false, config, context }
 };
 
 /**
- * Print a kitchen order ticket on this device's printer.
+ * Print a kitchen order ticket on this device's kitchen printer, or on its
+ * receipt printer when no kitchen printer is set up.
  *
  * @param {object} order
  * @param {object} [options]
  * @param {Array}  [options.items]  only these lines (a round added to a table); default: every line
  * @param {boolean} [options.round] label the ticket as added items
  * @param {boolean} [options.auto]  never open a dialog nobody asked for
+ * @param {object}  [options.config] the device's printer config (default: the saved one)
  */
 export const printKot = async (order, { items, round = false, auto = false, config, context } = {}) => {
   // Cancelled dishes are not cooked. With none left there is no ticket: an
@@ -187,7 +189,7 @@ export const printKot = async (order, { items, round = false, auto = false, conf
     throw new Error("Nothing to print: every item on this order is cancelled.");
   }
   items = lines;
-  const printer = config || loadPrinterConfig();
+  const printer = kitchenPrinter(config || loadPrinterConfig());
   const { store } = context || (await loadReceiptContext());
   const paper = paperFor(printer);
   await ensureReceiptFont();

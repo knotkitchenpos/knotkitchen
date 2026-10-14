@@ -1,4 +1,5 @@
 import { verifyPin } from "../https";
+import { rememberTypedPin } from "./pinPrompt";
 
 export const isOwner = (user) => {
   if (!user || !user.role) return false;
@@ -59,6 +60,7 @@ export const verifyStaffPin = async (pinInput) => {
   const res = await verifyPin(pinInput);
   if (res.data?.success && res.data?.pinToken) {
     setPinSession(res.data.pinToken, res.data.expiresAt);
+    rememberTypedPin(pinInput);
   }
   return res.data;
 };

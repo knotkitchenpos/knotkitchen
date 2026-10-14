@@ -314,16 +314,15 @@ test("it verifies over the RAW bytes, never a re-serialised body", () => {
   assert.ok(!/JSON\.stringify\(req\.body\)/.test(src));
 });
 
-test("the webhook never answers 5xx, and 4xx only for a bad signature", () => {
-  // Anything else would be retried for days over our own bug.
+test("the webhook answers 5xx only when Cashfree must retry, and 4xx only for a bad signature", () => {
   const src = read("controllers", "cashfreeWebhookController.js");
   const statuses = [...src.matchAll(/status\((\d{3})\)/g)].map((m) => m[1]);
   assert.ok(statuses.includes("401"), "a rejected signature is worth refusing");
-  assert.ok(!statuses.includes("500"), "never 500 at a webhook");
-  assert.ok(
-    statuses.every((c) => c === "200" || c === "401"),
-    `only 200 and 401, found ${statuses.join(",")}`,
-  );
+  assert.ok(statuses.every((c) => ["200", "401", "500"].includes(c)), `only 200, 401 and 500, found ${statuses.join(",")}`);
+  // A table refund we still owe, one made but not yet recorded on the table, a
+  // settle that clashed with the browser's, and a website checkout left
+  // PENDING: each retried safely (fixed refund id).
+  assert.equal(statuses.filter((c) => c === "500").length, 4);
 });
 
 test("browser and webhook share one idempotency key, so whichever loses is a no-op", () => {

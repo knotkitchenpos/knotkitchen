@@ -29,3 +29,10 @@ export const requestPin = () => {
   }
   return pending;
 };
+
+// N034: the PIN typed in the popup, sent as x-staff-pin for 30 s so settings and staff saves (which refuse the 15-minute token) go through.
+let typed = null;
+export const rememberTypedPin = (pin) => {
+  typed = { pin, until: Date.now() + 30_000 };
+};
+export const typedPin = () => (typed && typed.until > Date.now() ? typed.pin : null);

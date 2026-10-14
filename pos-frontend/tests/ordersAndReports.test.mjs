@@ -10,7 +10,8 @@ test("REGRESSION: a finished order's timer stops and goes grey", () => {
   // Paid, served and cancelled orders kept counting from createdAt and turned red.
   const page = SRC("src/pages/Orders.jsx");
   assert.match(page, /const minsAgo = \(d, end = Date\.now\(\)\) =>/);
-  assert.match(page, /const done = isFinished\(o\.orderStatus\);/);
+  // A paid takeaway still cooking (N018) keeps a live timer.
+  assert.match(page, /const done = isFinished\(o\.orderStatus\) && !cooking;/);
   assert.match(page, /minsAgo\(o\.createdAt, done \? \(o\.completedAt \|\| o\.cancelledAt \|\| o\.updatedAt\) : undefined\)/);
   assert.match(page, /const ring = done \? "#94A3B8" :/);
 });

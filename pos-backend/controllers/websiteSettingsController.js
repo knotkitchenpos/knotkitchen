@@ -182,7 +182,7 @@ const readDeliverySlabs = (raw, errors) => {
     if (!Array.isArray(cfg.slabs) || cfg.slabs.length > 10) {
       errors["ordering.deliverySlabsConfig.slabs"] = "Up to 10 distance slabs.";
     } else {
-      out.slabs = cfg.slabs
+      const rows = cfg.slabs
         .map((s, i) => {
           const path = `ordering.deliverySlabsConfig.slabs.${i}`;
           const minKm = Number(s?.minKm);
@@ -190,9 +190,17 @@ const readDeliverySlabs = (raw, errors) => {
           const fee = Number(s?.fee);
           if (!(minKm >= 0 && maxKm > minKm && maxKm <= 30)) errors[path] = "Use 0 to 30 km, with the end after the start.";
           else if (!(fee >= 0 && fee <= 1000)) errors[path] = "The fee must be from ₹0 to ₹1000.";
-          return { minKm, maxKm, fee };
+          return { path, slab: { minKm, maxKm, fee } };
         })
-        .sort((a, b) => a.minKm - b.minKm);
+        .sort((a, b) => a.slab.minKm - b.slab.minKm);
+      // V4: a gap was charged the flat fee, an overlap by whichever slab came first.
+      rows.forEach(({ path, slab }, i) => {
+        const prev = rows[i - 1]?.slab;
+        if (prev && slab.minKm !== prev.maxKm && !errors[path]) {
+          errors[path] = `Start this slab at ${prev.maxKm} km, where the one before it ends (no gaps or overlaps).`;
+        }
+      });
+      out.slabs = rows.map((r) => r.slab);
     }
   }
   return out;
@@ -611,51 +619,54 @@ const updateWebsiteSettings = async (req, res, next) => {
     }
 
     // ---- Ordering / fees ----
-    if (body.ordering) {
+    // PS3: a whole-document save (Manage Website echoes `version`) never edits
+    // ordering; writing its copy back undid GST, charges and toggles saved since it loaded.
+    if (body.ordering && body.version === undefined) {
       const o = body.ordering;
-      for (const key of ["pickupEnabled", "deliveryEnabled", "taxInclusive", "acceptPreOrders", "specialInstructionsEnabled"]) {
+      // V2: an out-of-range value is refused with its field, not dropped while the screen says Saved.
+      const num = (value, path, ok, message) => {
+        if (value === undefined) return undefined;
+        const n = Number(value);
+        if (Number.isFinite(n) && ok(n)) return n;
+        ruleErrors[path] = message;
+        return undefined;
+      };
+      for (const key of ["pickupEnabled", "deliveryEnabled", "taxInclusive", "acceptPreOrders", "specialInstructionsEnabled", "autoReadyEnabled"]) {
         if (typeof o[key] === "boolean") settings.ordering[key] = o[key];
       }
       for (const key of ["minOrderValue", "deliveryFee", "freeDeliveryAbove", "packagingFee", "prepTimeMinutes"]) {
-        const value = Number(o[key]);
-        if (Number.isFinite(value) && value >= 0 && value < 1_000_000) settings.ordering[key] = value;
+        const value = num(o[key], `ordering.${key}`, (n) => n >= 0 && n < 1_000_000, "Enter 0 or more, below 10,00,000.");
+        if (value !== undefined) settings.ordering[key] = value;
       }
       if (o.tableBooking && typeof o.tableBooking === "object") {
         const tb = o.tableBooking;
         const target = (settings.ordering.tableBooking = settings.ordering.tableBooking || {});
         if (typeof tb.enabled === "boolean") target.enabled = tb.enabled;
         for (const key of ["openTime", "closeTime"]) {
-          if (/^([01]\d|2[0-3]):[0-5]\d$/.test(String(tb[key] || ""))) target[key] = tb[key];
+          if (tb[key] === undefined) continue;
+          if (HHMM.test(String(tb[key]))) target[key] = tb[key];
+          else ruleErrors[`ordering.tableBooking.${key}`] = "Use a 24-hour time such as 16:00.";
         }
         for (const [key, min, max] of [["slotMinutes", 5, 240], ["holdBeforeMinutes", 0, 1440], ["releaseAfterMinutes", 0, 1440]]) {
-          const value = Math.floor(Number(tb[key]));
-          if (Number.isFinite(value) && value >= min && value <= max) target[key] = value;
+          const value = num(tb[key], `ordering.tableBooking.${key}`, (n) => n >= min && n <= max, `Use ${min} to ${max} minutes.`);
+          if (value !== undefined) target[key] = Math.floor(value);
         }
       }
-      const tax = Number(o.taxPercent);
-      if (Number.isFinite(tax) && tax >= 0 && tax <= 100) settings.ordering.taxPercent = tax;
-      const svc = Number(o.serviceChargePercent);
-      if (Number.isFinite(svc) && svc >= 0 && svc <= 25) settings.ordering.serviceChargePercent = svc;
+      const tax = num(o.taxPercent, "ordering.taxPercent", (n) => n >= 0 && n <= 100, "Enter a GST rate from 0 to 100.");
+      if (tax !== undefined) settings.ordering.taxPercent = tax;
+      const svc = num(o.serviceChargePercent, "ordering.serviceChargePercent", (n) => n >= 0 && n <= 25, "Enter a service charge from 0 to 25%.");
+      if (svc !== undefined) settings.ordering.serviceChargePercent = svc;
+      // PS1: Rules & Charges sends it; it was never written, so GST always applied to both.
+      if (APPLY_TO.includes(o.gstApplyTo)) settings.ordering.gstApplyTo = o.gstApplyTo;
       assign(settings.ordering, "currency", clampText(o.currency, 8));
       assign(settings.ordering, "currencySymbol", clampText(o.currencySymbol, 4));
 
-      if (o.autoReadyMinutes && typeof o.autoReadyMinutes === "object") {
-        settings.ordering.autoReadyMinutes = settings.ordering.autoReadyMinutes || {};
+      for (const field of ["autoReadyMinutes", "autoCompleteMinutes"]) {
+        if (!o[field] || typeof o[field] !== "object") continue;
+        settings.ordering[field] = settings.ordering[field] || {};
         for (const channelKey of ["collection", "delivery", "table"]) {
-          const val = Number(o.autoReadyMinutes[channelKey]);
-          if (Number.isFinite(val) && val >= 0 && val <= 1440) {
-            settings.ordering.autoReadyMinutes[channelKey] = val;
-          }
-        }
-      }
-
-      if (o.autoCompleteMinutes && typeof o.autoCompleteMinutes === "object") {
-        settings.ordering.autoCompleteMinutes = settings.ordering.autoCompleteMinutes || {};
-        for (const channelKey of ["collection", "delivery", "table"]) {
-          const val = Number(o.autoCompleteMinutes[channelKey]);
-          if (Number.isFinite(val) && val >= 0 && val <= 1440) {
-            settings.ordering.autoCompleteMinutes[channelKey] = val;
-          }
+          const val = num(o[field][channelKey], `ordering.${field}.${channelKey}`, (n) => n >= 0 && n <= 1440, "Use 0 to 1440 minutes.");
+          if (val !== undefined) settings.ordering[field][channelKey] = val;
         }
       }
 
@@ -837,6 +848,16 @@ const updateWebsiteSettings = async (req, res, next) => {
     settings.version += 1;
     settings.publishedAt = new Date();
     await settings.save();
+    // PS5: open table bills are struck per round; a GST or service-charge
+    // change reaches them now, not at their next round. Never fails the save.
+    const charges = (s) => ["taxPercent", "taxInclusive", "serviceChargePercent", "gstApplyTo"].map((k) => s?.ordering?.[k]).join("|");
+    if (settings.restaurantId && charges(prevSnapshot) !== charges(settings)) {
+      try {
+        await require("./tableSessionController").restrikeOpenBills(settings.restaurantId);
+      } catch (err) {
+        console.warn("[tables] open bills not re-struck:", err.message);
+      }
+    }
     // Knot Eats lists hours, radius, fees and coupons from these settings.
     // Never fails the save: the listing expires in 5 min anyway.
     try {

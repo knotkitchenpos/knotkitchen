@@ -72,6 +72,26 @@ export const isOutForDelivery = (s) => OUT_FOR_DELIVERY_SET.has(lower(s));
 /** Over: settled, cancelled or refunded. Nothing transitions it onward. */
 export const isFinished = (s) => isSettled(s) || isCancelled(s) || isRefunded(s);
 
+/** How long a takeaway paid at the till can still be marked Ready (pos-backend constants/orderStatus.js has the same). */
+export const PAID_TAKEAWAY_READY_MS = 12 * 3600 * 1000;
+
+/**
+ * N018: a takeaway paid at the till is Completed as a sale but cooking until marked Ready (orderController.markOrderReady's rule).
+ * Only for 12 hours: older ones were handed over long ago and must not text the customer.
+ */
+export const paidTakeawayCooking = (o) =>
+  isSettled(o?.orderStatus) && !o?.readyAt && o?.source === "POS" && !["dine-in", "delivery"].includes(lower(o?.orderType)) &&
+  Date.now() - Date.parse(o?.createdAt) < PAID_TAKEAWAY_READY_MS;
+
+/**
+ * N020 / S12: a customer order (website, Knot Eats, table QR) nobody accepted yet: every live dish
+ * still "pending". getOrders folds the website's Pending into Preparing, so the dishes tell. Accept, never Ready.
+ */
+export const awaitingAccept = (o) => {
+  const live = (o?.items || []).filter((i) => !["cancelled", "refunded"].includes(lower(i?.status)));
+  return (o?.source === "WEBSITE" || Boolean(o?.tableSessionId)) && !isFinished(o?.orderStatus) && live.length > 0 && live.every((i) => lower(i?.status) === "pending");
+};
+
 /** Still live on the floor. */
 export const isActive = (s) => isPreparing(s) || isReady(s) || isOutForDelivery(s);
 

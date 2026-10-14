@@ -32,6 +32,7 @@ export function useStorefront(identity, loadStorefront) {
     }
 
     let cancelled = false;
+    let refresh = 0;
     setLoading(true);
     setError(null);
 
@@ -62,9 +63,22 @@ export function useStorefront(identity, loadStorefront) {
         if (!cancelled) setLoading(false);
         return;
       }
-      (loadStorefront || getStorefront)(effectiveSlug)
+      const load = () => (loadStorefront || getStorefront)(effectiveSlug);
+      load()
         .then((res) => {
-          if (!cancelled) setStore(res.data.data);
+          if (cancelled) return;
+          setStore(res.data.data);
+          // Prices follow the store clock (happy hours), so the menu refreshes
+          // while the page is in view; a failed refresh keeps what is shown.
+          // shortcut: prices can be up to 30 s stale at a price-rule boundary; the server always bills the live price.
+          refresh = setInterval(() => {
+            if (document.visibilityState !== "visible") return;
+            load()
+              .then((r) => {
+                if (!cancelled) setStore(r.data.data);
+              })
+              .catch(() => {});
+          }, 30000);
         })
         .catch((err) => {
           if (!cancelled && !error) {
@@ -83,6 +97,7 @@ export function useStorefront(identity, loadStorefront) {
 
     return () => {
       cancelled = true;
+      clearInterval(refresh);
     };
     // We intentionally exclude `error` from deps — restarting on error would loop.
     // eslint-disable-next-line react-hooks/exhaustive-deps

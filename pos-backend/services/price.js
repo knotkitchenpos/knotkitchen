@@ -1,8 +1,8 @@
 const Menu = require("../models/menuModel");
 const { round2 } = require("./money");
-const { AUDIENCES, menuViewFor } = require("./menuCache");
+const { AUDIENCES, ORDER_TYPES, projectMenu, isVisibleOnPos, allowsOrderType } = require("./menuCache");
 const { capFor } = require("./modifierGroups");
-const { getChannelPrice } = require("./businessHours");
+const { unitPriceNow, nowInTimezone, isItemAvailableNow } = require("./businessHours");
 
 // ============================================================
 // Server-side pricing engine
@@ -25,11 +25,6 @@ const { getChannelPrice } = require("./businessHours");
 const TAX_RATE = 0;
 const SERVICE_CHARGE_RATE = 0; // configurable per restaurant in future
 
-const currentTimeInMinutes = () => {
-  const now = new Date();
-  return now.getHours() * 60 + now.getMinutes();
-};
-
 const parseTime = (t) => {
   if (!t) return null;
   const [h, m] = (t || "").split(":").map(Number);
@@ -37,38 +32,19 @@ const parseTime = (t) => {
   return h * 60 + m;
 };
 
-const isInSchedule = (schedule) => {
+// On the store clock, like the till's inSchedule: the server process runs on UTC.
+const isInSchedule = (schedule, timezone) => {
   if (!schedule || !schedule.enabled) return true;
-  const now = currentTimeInMinutes();
+  const { day: today, minutes: now } = nowInTimezone(timezone || "Asia/Kolkata");
   const start = parseTime(schedule.startTime);
   const end = parseTime(schedule.endTime);
   if (start === null || end === null) return true;
 
-  const today = new Date().getDay();
   const days = schedule.daysOfWeek || [];
   if (days.length === 0 || !days.includes(today)) return false;
 
   if (start <= end) return now >= start && now <= end;
   return now >= start || now <= end;
-};
-
-const getActivePrice = (item, { environment, channel } = {}) => {
-  const listPrice =
-    environment || channel ? getChannelPrice(item, environment, channel) : item?.price;
-  if (!item?.priceRules?.length) return listPrice;
-  const now = currentTimeInMinutes();
-  const today = new Date().getDay();
-  const activeRule = item.priceRules.find((r) => {
-    if (!r.isActive) return false;
-    const days = r.daysOfWeek || [];
-    if (days.length === 0 || !days.includes(today)) return false;
-    const start = parseTime(r.startTime);
-    const end = parseTime(r.endTime);
-    if (start === null || end === null) return true;
-    if (start <= end) return now >= start && now <= end;
-    return now >= start || now <= end;
-  });
-  return activeRule ? activeRule.price : listPrice;
 };
 
 /**
@@ -91,12 +67,17 @@ const resolveMenuItem = async ({ menuItemId, restaurantId, outletId, audience = 
       ? "systemSnapshot.items"
       : "items";
 
-  const menu = await Menu.findOne({
-    restaurantId,
-    isDeleted: { $ne: true },
-    published: { $ne: false },
-    [`${snapshotPath}._id`]: menuItemId,
-  });
+  const Restaurant = require("../models/restaurantModel");
+  const [menu, restaurant] = await Promise.all([
+    Menu.findOne({
+      restaurantId,
+      isDeleted: { $ne: true },
+      [`${snapshotPath}._id`]: menuItemId,
+    }),
+    // Schedules and price rules run on the store clock.
+    Restaurant.findById(restaurantId).select("timezone").lean(),
+  ]);
+  const timezone = restaurant?.timezone || "Asia/Kolkata";
 
   if (!menu) {
     const err = new Error("This menu item is currently unavailable.");
@@ -104,20 +85,28 @@ const resolveMenuItem = async ({ menuItemId, restaurantId, outletId, audience = 
     throw err;
   }
 
-  const item = (menuViewFor(menu, audience).items || []).find(
-    (i) => i._id && i._id.toString() === menuItemId.toString(),
-  );
-  if (!item) {
+  // N036-N039: what the till and the QR show is what sells: the PUBLISHED category
+  // visibility (POS Visibility included) and Dispatch Type, the product's Display
+  // Target, Display Status (+ POS Visibility) and schedule. Not the live draft flag.
+  const view = projectMenu(menu, audience);
+  const item = (view.items || []).find((i) => i._id && i._id.toString() === menuItemId.toString());
+  if (!item || !isVisibleOnPos(view)) {
     const err = new Error("This menu item is currently unavailable.");
     err.status = 400;
     throw err;
   }
-  if (item.isAvailable === false) {
+  if (!allowsOrderType(view, ORDER_TYPES.TABLE, item)) {
+    const err = new Error(`${item.name} is not available for table orders.`);
+    err.status = 400;
+    throw err;
+  }
+  if (item.isAvailable === false && item.visibleOnPosWhenOff !== true) {
     const err = new Error(`${item.name} is currently out of stock.`);
     err.status = 400;
     throw err;
   }
-  if (!isInSchedule(item.schedule)) {
+  // The category's own schedule as well: the till hides "Breakfast" after 11:00, so nobody sells it then.
+  if (!isItemAvailableNow(item, timezone, "pos") || !isItemAvailableNow({ isAvailable: true, schedule: view.schedule }, timezone)) {
     const err = new Error(`${item.name} is not available at this time.`);
     err.status = 400;
     throw err;
@@ -129,11 +118,7 @@ const resolveMenuItem = async ({ menuItemId, restaurantId, outletId, audience = 
     throw err;
   }
 
-  return {
-    menu,
-    item,
-    basePrice: getActivePrice(item, { environment: "system", channel: "table" }),
-  };
+  return { menu, item, timezone };
 };
 
 /**
@@ -145,15 +130,14 @@ const calculateUnitPrice = ({
   variantId,
   addonIds = [],
   modifierSelections = {},
-  // Table sessions — POS tills and table QR alike — are "system" + "table".
-  // Passing them makes "Same price for all channels = off" actually bill the
-  // table price; before this every channel was charged item.price.
-  environment = "system",
+  // Table sessions (POS Table Service and table QR alike) bill the Table
+  // channel price and its price rules on the store clock, exactly as the till.
   channel = "table",
+  timezone,
 } = {}) => {
   if (!item) return 0;
 
-  let price = getActivePrice(item, { environment, channel });
+  let price = unitPriceNow(item, channel, timezone);
 
   // Variant
   let variant = null;
@@ -203,25 +187,27 @@ const calculateUnitPrice = ({
     const groupObjIdStr = group._id ? String(group._id) : "";
     const groupNameStr = group.name ? String(group.name).toLowerCase() : "";
 
-    // Extract selected option entries for this group
-    let selOptions = []; // Array of { id, name, quantity }
+    // Selected entries for this group: { id, name, quantity, named }. `named`
+    // is an entry that names this group (by id or name); an entry naming no
+    // group is tried against every group.
+    const selOptions = [];
 
     if (Array.isArray(modifierSelections)) {
       // Format: Array of objects [{ groupId, groupName, optionId, optionName, quantity, price }]
-      selOptions = modifierSelections
-        .filter((m) => {
-          if (!m) return false;
-          const gIdMatch = m.groupId && String(m.groupId) === groupObjIdStr;
-          const gNameMatch = m.groupName && String(m.groupName).toLowerCase() === groupNameStr;
-          if (gIdMatch || gNameMatch) return true;
-          if (!m.groupId && !m.groupName && (m.optionId || m.optionName)) return true;
-          return false;
-        })
-        .map((m) => ({
-          id: m.optionId ? String(m.optionId) : typeof m === "string" ? m : null,
-          name: m.optionName ? String(m.optionName) : typeof m === "string" ? m : null,
-          quantity: Number(m.quantity) || 1,
-        }));
+      for (const m of modifierSelections) {
+        if (!m) continue;
+        const named = Boolean(
+          (m.groupId && String(m.groupId) === groupObjIdStr) ||
+            (m.groupName && String(m.groupName).toLowerCase() === groupNameStr),
+        );
+        if (!named && (m.groupId || m.groupName || !(m.optionId || m.optionName))) continue;
+        selOptions.push({
+          id: m.optionId ? String(m.optionId) : null,
+          name: m.optionName ? String(m.optionName) : null,
+          quantity: m.quantity ?? 1,
+          named,
+        });
+      }
     } else if (modifierSelections && typeof modifierSelections === "object") {
       // Format: Object keyed by group._id or group.name
       const rawVal =
@@ -229,22 +215,41 @@ const calculateUnitPrice = ({
         (group.name && modifierSelections[group.name]) ||
         [];
       if (Array.isArray(rawVal)) {
-        selOptions = rawVal.map((opt) => ({
-          id: typeof opt === "object" ? String(opt._id || opt.id || opt.optionId) : String(opt),
-          name: typeof opt === "object" ? opt.name || opt.optionName : null,
-          quantity: typeof opt === "object" ? Number(opt.quantity) || 1 : 1,
-        }));
+        rawVal.forEach((opt) =>
+          selOptions.push({
+            id: typeof opt === "object" ? String(opt?._id || opt?.id || opt?.optionId) : String(opt),
+            name: typeof opt === "object" ? opt?.name || opt?.optionName || null : null,
+            quantity: typeof opt === "object" ? opt?.quantity ?? 1 : 1,
+            named: true,
+          }),
+        );
       } else if (rawVal && typeof rawVal === "object") {
         // Map of optionId -> quantity
-        selOptions = Object.entries(rawVal).map(([optId, qty]) => ({
-          id: optId,
-          name: null,
-          quantity: Number(qty) || 1,
-        }));
+        Object.entries(rawVal).forEach(([optId, qty]) => selOptions.push({ id: optId, name: null, quantity: qty, named: true }));
       }
     }
 
-    const totalSelectedQty = selOptions.reduce((s, o) => s + (Number(o.quantity) || 1), 0);
+    // Each entry is ONE option (by id, else by name) in whole units, and the
+    // cap counts those units. Matching each option against every entry by id
+    // OR name let one entry (optionId White, optionName Brown) buy two breads
+    // while counting once; a quantity of 0.5 or -1 slipped two past a cap of
+    // one, and a negative one took money off the bill.
+    const options = group.options || [];
+    const chosen = [];
+    for (const s of selOptions) {
+      const qty = Number(s.quantity);
+      const opt =
+        (s.id && options.find((o) => [o._id, o.id, o.name].some((v) => v != null && String(v) === s.id))) ||
+        (s.name && options.find((o) => String(o.name || "").toLowerCase() === s.name.toLowerCase()));
+      if (!Number.isInteger(qty) || qty < 1 || (!opt && s.named)) {
+        const err = new Error(`Invalid selection for "${group.name}".`);
+        err.status = 400;
+        throw err;
+      }
+      if (opt) chosen.push({ opt, qty });
+    }
+
+    const totalSelectedQty = chosen.reduce((s, c) => s + c.qty, 0);
 
     // Required group validation
     if (group.required && totalSelectedQty === 0) {
@@ -261,28 +266,18 @@ const calculateUnitPrice = ({
       throw err;
     }
 
-    for (const opt of group.options || []) {
-      const optIdStr = String(opt._id || opt.id || opt.name || "");
-      const optNameStr = String(opt.name || "").toLowerCase();
-
-      const matchedSel = selOptions.find((s) => {
-        if (s.id && String(s.id) === optIdStr) return true;
-        if (s.name && String(s.name).toLowerCase() === optNameStr) return true;
-        return false;
-      });
-
-      if (matchedSel) {
-        if (opt.isAvailable === false) {
-          const err = new Error(`${opt.name} is currently unavailable.`);
-          err.status = 400;
-          throw err;
-        }
-        const qty = Number(matchedSel.quantity) || 1;
-        modifierTotal += (opt.price || 0) * qty;
-        // One entry per unit, so "2x Extra Cheese" bills and prints twice.
-        for (let q = 0; q < qty; q++) {
-          selectedModifiers.push({ name: opt.name, price: opt.price || 0 });
-        }
+    for (const opt of options) {
+      const qty = chosen.filter((c) => c.opt === opt).reduce((s, c) => s + c.qty, 0);
+      if (!qty) continue;
+      if (opt.isAvailable === false) {
+        const err = new Error(`${opt.name} is currently unavailable.`);
+        err.status = 400;
+        throw err;
+      }
+      modifierTotal += (opt.price || 0) * qty;
+      // One entry per unit, so "2x Extra Cheese" bills and prints twice.
+      for (let q = 0; q < qty; q++) {
+        selectedModifiers.push({ name: opt.name, price: opt.price || 0 });
       }
     }
   }
@@ -397,5 +392,4 @@ module.exports = {
   calculateUnitPrice,
   calculateBill,
   isInSchedule,
-  getActivePrice,
 };

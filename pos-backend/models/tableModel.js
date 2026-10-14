@@ -45,14 +45,8 @@ const tableSchema = new mongoose.Schema(
       type: Number,
       default: 0,
       min: [0, "Current occupancy cannot be negative"],
-      validate: {
-        validator: function (v) {
-          if (!Number.isInteger(v)) return false;
-          // Cross-field constraint: occupancy can never exceed table capacity
-          return this.capacity == null || v <= this.capacity;
-        },
-        message: "Current occupancy cannot exceed table capacity",
-      },
+      // N007: no cap at this table's seats: a merged party holds several tables (TableSession.capacity).
+      validate: { validator: Number.isInteger, message: "Current occupancy must be a whole number" },
     },
     status: {
       type: String,

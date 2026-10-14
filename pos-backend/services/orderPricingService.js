@@ -1,6 +1,7 @@
-const { isItemAvailableNow, getEffectivePrice } = require("./businessHours");
+const { isItemAvailableNow, unitPriceNow } = require("./businessHours");
 const { calculateDistanceKm, computeDeliveryFeeFromSlabs } = require("./distanceService");
 const { capFor } = require("./modifierGroups");
+const { allowsOrderType } = require("./menuCache");
 const { resolveGst } = require("./gst");
 const { localClock } = require("./websiteAvailability");
 const { localDate } = require("./tableBookings");
@@ -67,24 +68,18 @@ const priceLine = (line, itemIndex, timezone, pricingContext = {}) => {
     throw new PricingError(`${item.name} is not available for online ordering.`);
   }
 
+  if (!allowsOrderType(entry.menu, pricingContext.channel, item)) {
+    throw new PricingError(`${item.name} is not available for ${pricingContext.channel} orders.`);
+  }
+
   if (!isItemAvailableNow(item, timezone, "website")) {
     throw new PricingError(`${item.name} is currently unavailable.`);
   }
 
-  // ---- Base price: the channel's list price, then time-aware price rules,
-  //      then optional discount price ----
-  // pricingContext carries the environment (POS vs website) and the channel
-  // (collection/delivery/table) so "Same price for all channels = off" is
-  // actually billed. Without it every channel was charged item.price.
-  let basePrice = getEffectivePrice(item, timezone, pricingContext);
-  if (
-    item.discountPrice !== null &&
-    item.discountPrice !== undefined &&
-    Number(item.discountPrice) > 0 &&
-    Number(item.discountPrice) < basePrice
-  ) {
-    basePrice = Number(item.discountPrice);
-  }
+  // ---- Base price: the POS channel price (pickup = collection, delivery =
+  //      delivery) and any live price rule on the store clock, the same
+  //      figure the till and the storefront payload show. ----
+  let basePrice = unitPriceNow(item, pricingContext.channel, timezone);
 
   // ---- Variant (size). Replaces the base price, never adds to it. ----
   let variant = null;
@@ -416,14 +411,18 @@ const calculateOrderTotals = ({
   let deliveryFee = 0;
   if (isDelivery) {
     const km = Number.isFinite(distanceKm) ? distanceKm : calculateDistanceKm({ storeAddress, customerAddress });
-    try {
-      deliveryFee = computeDeliveryFeeFromSlabs({
-        distanceKm: km,
-        slabsConfig: ordering.deliverySlabsConfig,
-        defaultFee: Number(ordering.deliveryFee) || 0,
-      });
-    } catch (err) {
-      throw new PricingError(err.message);
+    // D7: no location (a store website): the flat fee the cart showed, no radius check.
+    if (!Number.isFinite(km)) deliveryFee = Number(ordering.deliveryFee) || 0;
+    else {
+      try {
+        deliveryFee = computeDeliveryFeeFromSlabs({
+          distanceKm: km,
+          slabsConfig: ordering.deliverySlabsConfig,
+          defaultFee: Number(ordering.deliveryFee) || 0,
+        });
+      } catch (err) {
+        throw new PricingError(err.message);
+      }
     }
 
     const freeAbove = Number(ordering.freeDeliveryAbove) || 0;

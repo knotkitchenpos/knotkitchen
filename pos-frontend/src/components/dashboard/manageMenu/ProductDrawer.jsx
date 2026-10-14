@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { enqueueSnackbar } from "notistack";
 import { IconX } from "./icons";
 import { uploadMediaAsset } from "../../../https";
+import { groupForSave } from "../../../utils/modifierGroups";
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 const TARGET_BYTES = 200 * 1024;
@@ -72,9 +73,6 @@ const ProductDrawer = ({
     posCollection: "100",
     posDelivery: "100",
     posTable: "100",
-    websiteCollection: "100",
-    websiteDelivery: "100",
-    websiteTable: "100",
   });
   const [prodVeg, setProdVeg] = useState(true);
   const [prodDisplay, setProdDisplay] = useState("both");
@@ -157,9 +155,6 @@ const ProductDrawer = ({
         posCollection: String(editing.channelPrices?.posCollection ?? editing.price ?? "100"),
         posDelivery: String(editing.channelPrices?.posDelivery ?? editing.price ?? "100"),
         posTable: String(editing.channelPrices?.posTable ?? editing.price ?? "100"),
-        websiteCollection: String(editing.channelPrices?.websiteCollection ?? editing.price ?? "100"),
-        websiteDelivery: String(editing.channelPrices?.websiteDelivery ?? editing.price ?? "100"),
-        websiteTable: String(editing.channelPrices?.websiteTable ?? editing.price ?? "100"),
       });
       setProdVeg(editing.isVegetarian !== false);
       setProdDisplay(editing.displayTarget || "both");
@@ -186,9 +181,6 @@ const ProductDrawer = ({
         posCollection: "100",
         posDelivery: "100",
         posTable: "100",
-        websiteCollection: "100",
-        websiteDelivery: "100",
-        websiteTable: "100",
       });
       setProdVeg(true);
       setProdDisplay("both");
@@ -259,9 +251,6 @@ const ProductDrawer = ({
             posCollection: Number(channelPrices.posCollection) || priceNum,
             posDelivery: Number(channelPrices.posDelivery) || priceNum,
             posTable: Number(channelPrices.posTable) || priceNum,
-            websiteCollection: Number(channelPrices.websiteCollection) || priceNum,
-            websiteDelivery: Number(channelPrices.websiteDelivery) || priceNum,
-            websiteTable: Number(channelPrices.websiteTable) || priceNum,
           },
       isVegetarian: prodVeg,
       displayTarget: prodDisplay,
@@ -270,17 +259,14 @@ const ProductDrawer = ({
       imageUrl: prodImageUrl,
       isAvailable: prodAvailable,
       schedule,
-      modifierGroups: prodAssignedGroupNames
-        .map((name) => {
-          const g = allGroupsMap.get(name);
-          if (!g) return { name, required: false, maxSelections: 1, options: [] };
-          return {
-            name: g.name,
-            required: Boolean(g.required),
-            maxSelections: g.maxSelections || 1,
-            options: Array.isArray(g.options) ? g.options : [],
-          };
-        }),
+      // Which groups, in this order. One the product already has goes back as
+      // this product stores it (the server keeps it as is regardless); a new
+      // one as the store's list has it, every rule stated.
+      modifierGroups: prodAssignedGroupNames.map((name) =>
+        groupForSave(
+          editingProduct?.modifierGroups?.find((g) => g?.name === name) || allGroupsMap.get(name) || { name },
+        ),
+      ),
     };
 
     if (editingProduct) {
@@ -710,10 +696,10 @@ const ProductDrawer = ({
                 </div>
               ) : (
                 <div className="space-y-3 p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
-                  <p className="text-[11.5px] font-bold text-[#C2410C]">Separate Prices (POS vs Website)</p>
+                  <p className="text-[11.5px] font-bold text-[#C2410C]">Separate Price per Channel</p>
                   <div className="grid grid-cols-3 gap-2 text-[11px]">
                     <div>
-                      <label className="font-bold text-[#64748B]">POS Collection</label>
+                      <label className="font-bold text-[#64748B]">Collection</label>
                       <input
                         type="number"
                         min={0}
@@ -723,7 +709,7 @@ const ProductDrawer = ({
                       />
                     </div>
                     <div>
-                      <label className="font-bold text-[#64748B]">POS Delivery</label>
+                      <label className="font-bold text-[#64748B]">Delivery</label>
                       <input
                         type="number"
                         min={0}
@@ -733,43 +719,12 @@ const ProductDrawer = ({
                       />
                     </div>
                     <div>
-                      <label className="font-bold text-[#64748B]">POS Table</label>
+                      <label className="font-bold text-[#64748B]">Table</label>
                       <input
                         type="number"
                         min={0}
                         value={channelPrices.posTable}
                         onChange={(e) => setChannelPrices({ ...channelPrices, posTable: e.target.value })}
-                        className="w-full h-[32px] px-2 rounded-lg border border-[#CBD5E1] font-bold"
-                      />
-                    </div>
-  
-                    <div>
-                      <label className="font-bold text-[#64748B]">Web Collection</label>
-                      <input
-                        type="number"
-                        min={0}
-                        value={channelPrices.websiteCollection}
-                        onChange={(e) => setChannelPrices({ ...channelPrices, websiteCollection: e.target.value })}
-                        className="w-full h-[32px] px-2 rounded-lg border border-[#CBD5E1] font-bold"
-                      />
-                    </div>
-                    <div>
-                      <label className="font-bold text-[#64748B]">Web Delivery</label>
-                      <input
-                        type="number"
-                        min={0}
-                        value={channelPrices.websiteDelivery}
-                        onChange={(e) => setChannelPrices({ ...channelPrices, websiteDelivery: e.target.value })}
-                        className="w-full h-[32px] px-2 rounded-lg border border-[#CBD5E1] font-bold"
-                      />
-                    </div>
-                    <div>
-                      <label className="font-bold text-[#64748B]">Web Table</label>
-                      <input
-                        type="number"
-                        min={0}
-                        value={channelPrices.websiteTable}
-                        onChange={(e) => setChannelPrices({ ...channelPrices, websiteTable: e.target.value })}
                         className="w-full h-[32px] px-2 rounded-lg border border-[#CBD5E1] font-bold"
                       />
                     </div>

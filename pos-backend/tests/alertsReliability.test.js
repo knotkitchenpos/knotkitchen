@@ -88,7 +88,7 @@ test("an expired token that names no session is refused; a forged one always is"
 test("SOURCE: the access cookie outlives the token inside it, so the handshake has something to show", () => {
   const src = read("controllers", "userController.js");
   assert.ok(!/maxAge: 1000 \* 60 \* 15/.test(src), "a 15-minute cookie is gone before the socket needs it");
-  assert.ok((src.match(/accessCookieName\([\s\S]{0,420}?maxAge: SESSION_LIFETIME_MS/g) || []).length >= 2);
+  assert.ok((src.match(/accessCookieName\([\s\S]{0,420}?maxAge: (?:SESSION_LIFETIME_MS|lifetime|cookieAge)\b/g) || []).length >= 2);
   // REST is no laxer: it still verifies the expiry.
   assert.ok(!/ignoreExpiration/.test(read("middlewares", "tokenVerification.js")));
 });

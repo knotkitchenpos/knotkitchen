@@ -19,6 +19,8 @@ const tableSessionItemSchema = new mongoose.Schema(
     kdsItemId: { type: mongoose.Schema.Types.ObjectId }, // KDS item reference inside kitchen order
     cancelledAt: Date,
     cancelReason: String,
+    // N013: the till's key for the round this line came in on: a repeat is a replay.
+    requestId: { type: String, default: "" },
   },
   { _id: true }
 );
@@ -64,6 +66,8 @@ const tableSessionSchema = new mongoose.Schema(
     },
 
     customerCount: { type: Number, default: 1 },
+    // N007: seats this party holds when tables were merged (their sum); 0 = its table's own.
+    capacity: { type: Number, default: 0 },
     customerName: { type: String, default: "" },
     customerPhone: { type: String, default: "" },
     customerId: { type: mongoose.Schema.Types.ObjectId, ref: "Customer" },
@@ -116,6 +120,11 @@ const tableSessionSchema = new mongoose.Schema(
       // to compare against.
       gatewayProvider: { type: String, default: "" },
       gatewayOrderId: { type: String, default: "" },
+      // N021a: every gateway order this session opened before gatewayOrderId, so a late payment on one is still settled or refunded.
+      // shortcut: no index (gatewayOrderId has none either), so the webhook's lookup scans; add a multikey index if sessions grow large.
+      gatewayOrderIds: { type: [String], default: [] },
+      // D1: gateway orders refunded as unappliable ("ua_" refunds), so a later REFUND_STATUS event still finds this table.
+      refundedOrderIds: { type: [String], default: [] },
       // The platform fee quoted when that gateway order was opened (paise).
       // Verify and the webhook expect bill + this, and the wallet is debited
       // exactly this: never a rate looked up again after the diner paid.
@@ -183,5 +192,23 @@ tableSessionSchema.index(
     partialFilterExpression: { "paymentHistory.idempotencyKey": { $gt: "" }, "paymentHistory.status": "PAID" },
   }
 );
+
+/**
+ * D1: a refunded gateway order leaves the session (verify and the webhook must
+ * never settle with it again: Cashfree still calls a refunded order PAID), is
+ * kept in refundedOrderIds and noted on the timeline. Atomic, so another write
+ * on the table cannot make it fail after the money has gone back.
+ */
+tableSessionSchema.statics.dropRefundedOrder = async function (sessionId, orderId, note) {
+  await this.updateOne({ _id: sessionId, "payment.gatewayOrderId": orderId }, { $set: { "payment.gatewayOrderId": "" } });
+  await this.updateOne(
+    { _id: sessionId },
+    {
+      $pull: { "payment.gatewayOrderIds": orderId },
+      $addToSet: { "payment.refundedOrderIds": orderId },
+      $push: { timeline: { event: "ONLINE_PAYMENT_REFUNDED", note, actorType: "SYSTEM", at: new Date() } },
+    },
+  );
+};
 
 module.exports = mongoose.model("TableSession", tableSessionSchema);

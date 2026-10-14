@@ -1107,7 +1107,7 @@ const RestaurantDetail = () => {
       )}
       {dialog === "cancel" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <form onSubmit={cancelSubscription} className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+          <form onSubmit={cancelSubscription} className="w-full max-w-md max-h-full overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
             <h2 className="mb-2 text-lg font-bold text-navy-900">Cancel POS subscription</h2>
             <p className="mb-3 text-sm text-navy-600">
               Renewals stop at the end of the current period
@@ -1141,7 +1141,7 @@ const RestaurantDetail = () => {
       )}
       {dialog === "adjust" && adjust && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <form onSubmit={adjustWallet} className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+          <form onSubmit={adjustWallet} className="w-full max-w-md max-h-full overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
             <h2 className="mb-2 text-lg font-bold text-navy-900">Adjust wallet</h2>
             <p className="mb-3 text-sm text-navy-600">
               Balance now: {charges.subscription?.balance?.label ?? "—"}. Debit for a rented tablet&rsquo;s loss or
@@ -1192,7 +1192,7 @@ const RestaurantDetail = () => {
       )}
       {dialog === "gbp" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-          <form onSubmit={saveGbp} className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+          <form onSubmit={saveGbp} className="w-full max-w-md max-h-full overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
             <h2 className="mb-3 text-lg font-bold text-navy-900">Google Business URL</h2>
             <input value={gbpUrl} onChange={(e) => { setGbpUrl(e.target.value); setGbpErr(""); }}
               placeholder="https://maps.google.com/…" aria-label="Google Business URL"

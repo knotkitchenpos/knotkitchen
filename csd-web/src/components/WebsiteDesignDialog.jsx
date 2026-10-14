@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { FiX, FiExternalLink } from "react-icons/fi";
 import { restaurants as api, errorMessage } from "../api";
 
@@ -170,6 +170,16 @@ const SectionRule = ({ title, hint }) => (
   </div>
 );
 
+const setPath = (target, path, value) => {
+  const keys = path.split(".");
+  let cursor = target;
+  for (let i = 0; i < keys.length - 1; i += 1) {
+    cursor[keys[i]] = cursor[keys[i]] || {};
+    cursor = cursor[keys[i]];
+  }
+  cursor[keys[keys.length - 1]] = value;
+};
+
 const WebsiteDesignDialog = ({ storeId, onClose }) => {
   const [data, setData] = useState(null);
   const [settings, setSettings] = useState(null);
@@ -181,6 +191,8 @@ const WebsiteDesignDialog = ({ storeId, onClose }) => {
   const [banner, setBanner] = useState(null);
   const [busy, setBusy] = useState(false);
   const [dirty, setDirty] = useState(false);
+  // Paths edited since the last save (PS3).
+  const edited = useRef(new Set());
 
   useEffect(() => {
     let live = true;
@@ -204,16 +216,21 @@ const WebsiteDesignDialog = ({ storeId, onClose }) => {
   const patch = (path, value) => {
     setSettings((prev) => {
       const next = structuredClone(prev);
-      const keys = path.split(".");
-      let cursor = next;
-      for (let i = 0; i < keys.length - 1; i += 1) {
-        cursor[keys[i]] = cursor[keys[i]] || {};
-        cursor = cursor[keys[i]];
-      }
-      cursor[keys[keys.length - 1]] = value;
+      setPath(next, path, value);
       return next;
     });
+    edited.current.add(path);
     setDirty(true);
+  };
+
+  // PS3: only the ordering and hours fields edited here. The whole copy loaded
+  // when this opened undid GST, charges and toggles the POS saved since.
+  const editedOf = (section) => {
+    const out = {};
+    for (const path of edited.current) {
+      if (path.startsWith(`${section}.`)) setPath(out, path, path.split(".").reduce((o, k) => o?.[k], settings));
+    }
+    return out[section];
   };
 
   const save = async () => {
@@ -228,14 +245,16 @@ const WebsiteDesignDialog = ({ storeId, onClose }) => {
         banners: settings.banners,
         landing: settings.landing,
         theme: settings.theme,
-        ordering: settings.ordering,
-        channelHours: settings.channelHours,
+        ordering: editedOf("ordering"),
+        channelHours: editedOf("channelHours"),
       });
       if (saved?.settings) setSettings(saved.settings);
+      edited.current.clear();
       setDirty(false);
       setBanner({ type: "success", text: "Saved. The restaurant's website shows the change within a minute." });
     } catch (err) {
-      setBanner({ type: "error", text: errorMessage(err, "Could not save.") });
+      const fields = Object.values(err?.response?.data?.fieldErrors || {});
+      setBanner({ type: "error", text: [errorMessage(err, "Could not save."), ...fields].join(" ") });
     } finally {
       setBusy(false);
     }

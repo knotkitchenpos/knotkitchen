@@ -45,7 +45,7 @@ test("Release Table only shows when no dish is left on the bill", () => {
 test("the API wrappers the table and checkout screens build on", () => {
   const api = src("https/index.js");
   assert.match(api, /export const setTableDiscount = \(sessionId, data\) =>\s*axiosWrapper\.post\(`\/api\/table-session\/\$\{sessionId\}\/discount`, data\)/);
-  assert.match(api, /addOrder = \(data, key\) =>\s*axiosWrapper\.post\("\/api\/order\/", data, key \? \{ headers: \{ "Idempotency-Key": key \} \} : undefined\)/);
+  assert.match(api, /addOrder = \(data, key\) =>\s*axiosWrapper\.post\("\/api\/order\/", data, \{ timeout: 15000, \.\.\.\(key \? \{ headers: \{ "Idempotency-Key": key \} \} : \{\}\) \}\)/);
   // The KDS reads the orders themselves now (decision 3).
   assert.doesNotMatch(api, /\/api\/kds|getKDSOrders|updateKDSItemStatus|updateKDSOrderStatus/);
 });

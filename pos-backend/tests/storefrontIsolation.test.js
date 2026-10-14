@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 
 const { tenantFilter, resolveTenantFromUser } = require("../services/tenantContext");
 const { validateImage, sanitizeFileName, sniffMimeType } = require("../services/imageValidator");
-const { isStoreOpen, isItemAvailableNow, getEffectivePrice, isWithinWindow } = require("../services/businessHours");
+const { isStoreOpen, isItemAvailableNow, unitPriceNow, isWithinWindow } = require("../services/businessHours");
 const { isSelectableTheme, getDefaultTheme, listThemes } = require("../services/themeRegistry");
 
 /**
@@ -130,9 +130,9 @@ test("an item outside its schedule is unavailable", () => {
   assert.equal(isItemAvailableNow(breakfastOnly), false);
 });
 
-test("getEffectivePrice falls back to the base price without active rules", () => {
-  assert.equal(getEffectivePrice({ price: 199 }), 199);
-  assert.equal(getEffectivePrice({ price: 199, priceRules: [] }), 199);
+test("unitPriceNow falls back to the base price without active rules", () => {
+  assert.equal(unitPriceNow({ price: 199 }, "collection"), 199);
+  assert.equal(unitPriceNow({ price: 199, priceRules: [] }, "collection"), 199);
 });
 
 test("an inactive price rule is ignored", () => {
@@ -142,7 +142,7 @@ test("an inactive price rule is ignored", () => {
       { name: "Happy Hour", price: 99, isActive: false, startTime: "00:00", endTime: "23:59" },
     ],
   };
-  assert.equal(getEffectivePrice(item), 199);
+  assert.equal(unitPriceNow(item, "collection"), 199);
 });
 
 // =========================================================================

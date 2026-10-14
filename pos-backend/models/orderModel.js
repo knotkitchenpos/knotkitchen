@@ -288,6 +288,8 @@ const orderSchema = new mongoose.Schema({
     user: String,
   }],
   isOffline: { type: Boolean, default: false },
+  // O1: the till that took this sale offline printed its KOT then, so no device prints one on the sync.
+  kotPrinted: Boolean,
   syncStatus: { type: String, enum: ["synced", "pending", "failed"], default: "synced" },
   paymentMethod: { type: String, default: "" },
   // The gateway's own identifiers for this order's payment, when one went
@@ -318,11 +320,20 @@ orderSchema.index({ tableSessionId: 1 });
 // per line. Never fails the order: a stock error is logged, the sale stands.
 orderSchema.post("save", function depleteStock(doc) {
   if (!doc || doc.isDeleted) return;
-  setImmediate(() => {
+  const run = () => setImmediate(() => {
     require("../services/inventory")
       .depleteOrder(doc)
       .catch((err) => console.warn("[inventory] depletion failed for order", String(doc._id), err.message));
   });
+  // N014: in a transaction (a table round) only once it commits (isCommitted is true for an abort too).
+  const tx = doc.$session();
+  if (tx?.inTransaction()) return void tx.once("ended", () => tx.transaction.state === "TRANSACTION_COMMITTED" && run());
+  run();
+});
+
+// N014: a nameless line (a rolled-back round's leftover) is hidden on load and dropped on the next save.
+orderSchema.post("init", function dropNamelessLines() {
+  if (this.items?.some((i) => !i?.name)) this.items = this.items.filter((i) => i?.name);
 });
 
 // --- Website order indexes ---

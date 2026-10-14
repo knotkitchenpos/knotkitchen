@@ -42,7 +42,7 @@ function AddControl({ product, cart, onCustomise, onOpenCart, onAdded }) {
   const choices = isCustomisable(product);
   const qty = qtyInCart(cart.items, product.id);
   const base =
-    "h-9 w-[104px] rounded-lg text-[14px] font-extrabold shadow-[0_2px_8px_rgba(15,23,42,.14)]";
+    "h-10 w-[104px] rounded-lg text-[14px] font-extrabold shadow-[0_2px_8px_rgba(15,23,42,.14)]";
 
   if (soldOut) {
     return (
@@ -97,7 +97,7 @@ function AddControl({ product, cart, onCustomise, onOpenCart, onAdded }) {
         type="button"
         onClick={less}
         aria-label={`One less ${product.name}`}
-        className="h-full w-8 text-lg leading-none"
+        className="h-full w-8 min-w-[40px] min-h-[40px] text-lg leading-none"
       >
         −
       </button>
@@ -108,7 +108,7 @@ function AddControl({ product, cart, onCustomise, onOpenCart, onAdded }) {
         type="button"
         onClick={more}
         aria-label={`One more ${product.name}`}
-        className="h-full w-8 text-lg leading-none"
+        className="h-full w-8 min-w-[40px] min-h-[40px] text-lg leading-none"
       >
         +
       </button>
@@ -136,8 +136,6 @@ export default function ProductCard({
   // "Collection Only" and friends, from the payload. Null when the product
   // can be bought through every order type, which is the usual case.
   const dispatch = product.dispatchLabel || null;
-  const hasDiscount =
-    product.originalPrice && product.originalPrice > product.price;
   const description = product.description || "";
   const long = description.length > 90;
 
@@ -167,11 +165,6 @@ export default function ProductCard({
           <span className="font-medium text-slate-900">
             {price(symbol, product.price)}
           </span>
-          {hasDiscount ? (
-            <span className="text-[13px] text-slate-400 line-through">
-              {price(symbol, product.originalPrice)}
-            </span>
-          ) : null}
         </div>
         {dispatch ? (
           <span className="mt-2 inline-block rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[11px] font-medium text-amber-700">

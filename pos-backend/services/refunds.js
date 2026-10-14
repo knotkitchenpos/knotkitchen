@@ -339,6 +339,45 @@ const refundCancelledOrder = async (order, { user, reason, amount: asked } = {})
 };
 
 /**
+ * Cancelling a paid order gives the money back, on record, so Reports show a
+ * refund instead of a sale that vanished. Counter money (cash, UPI, card, each
+ * part of a split) is handed back now; a gateway payment goes back through
+ * Cashfree. Nothing when unpaid or when a refund is already on file.
+ */
+const refundOnCancel = async (order, { user, reason } = {}) => {
+  if (!order || !wasPaid(order) || (order.refunds || []).length) return null;
+  if (paymentKindOf(order) === PAYMENT_KIND.GATEWAY) {
+    // N012: the cancel stands either way; a failed attempt shows Retry Refund on the order.
+    return refundCancelledOrder(order, { user, reason }).catch((err) => {
+      console.warn("[refund] on cancel:", err.message);
+      return null;
+    });
+  }
+  const lines = (order.payments || []).filter((p) => isPaidPayment(p) && Number(p.amount) > 0);
+  const parts = lines.length ? lines : [{ method: methodOf(order) || "cash", amount: paidAmount(order) }];
+  const now = new Date();
+  const note = String(reason || order.cancelReason || "Order cancelled").trim().slice(0, 100);
+  const entries = parts.map((p) => ({
+    amount: round2(Number(p.amount) || 0),
+    reason: note,
+    refundedBy: user?._id,
+    refundedByName: user?.name || "POS",
+    requestedAt: now,
+    refundedAt: now,
+    completedAt: now,
+    channel: String(p.method || "cash").toLowerCase(),
+    status: "SUCCESS",
+  }));
+  // N012: a conditional claim, not push + save: two racing cancels would both push.
+  const Order = require("../models/orderModel");
+  const { modifiedCount } = await Order.updateOne(
+    { _id: order._id, "refunds.0": { $exists: false } },
+    { $push: { refunds: { $each: entries } } },
+  );
+  return modifiedCount ? entries : null;
+};
+
+/**
  * Bring an open attempt up to date from Cashfree: the pending one, or the
  * last one that could not be confirmed. Used by the operator's "check
  * status", and by the refund webhook after its signature is verified.
@@ -408,6 +447,7 @@ module.exports = {
   refundThroughGateway,
   applyGatewayResult,
   refundCancelledOrder,
+  refundOnCancel,
   syncRefund,
   refundView,
 };

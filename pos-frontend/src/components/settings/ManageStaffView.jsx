@@ -134,10 +134,11 @@ const ManageStaffView = () => {
                   <p className="text-[11.5px] text-[#64748B]">Phone: {s.phone} · {roleHint(s.role) || s.role}</p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
+                  {/* N032: a role change or delete is confirmed first; the server then asks for the PIN. */}
                   <select
                     aria-label={`Role for ${s.name}`}
                     value={ROLES.some((r) => r.value === s.role) ? s.role : ""}
-                    onChange={(e) => roleMutation.mutate({ id: s._id, role: e.target.value })}
+                    onChange={(e) => window.confirm(`Change ${s.name}'s role to ${e.target.value}?`) && roleMutation.mutate({ id: s._id, role: e.target.value })}
                     disabled={roleMutation.isPending}
                     className="h-8 px-2 rounded-lg border border-[#E2E8F0] bg-white font-bold text-[12px] text-[#0F172A]"
                   >
@@ -147,7 +148,7 @@ const ManageStaffView = () => {
                     ))}
                   </select>
                   <button
-                    onClick={() => deleteMutation.mutate(s._id)}
+                    onClick={() => window.confirm(`Delete ${s.name}? They will no longer be able to sign in.`) && deleteMutation.mutate(s._id)}
                     disabled={deleteMutation.isPending}
                     className="h-8 px-3 rounded-lg border border-[#FECACA] text-[#DC2626] font-bold text-[12px] hover:bg-[#FEF2F2]"
                   >

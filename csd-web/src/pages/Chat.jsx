@@ -55,7 +55,7 @@ const NewConversationDialog = ({ onClose, onCreated }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div role="dialog" aria-modal="true" className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+      <div role="dialog" aria-modal="true" className="w-full max-w-md max-h-full overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-bold text-navy-900">New conversation</h2>
           <button type="button" onClick={onClose} className="text-navy-400 hover:text-navy-700" aria-label="Close">

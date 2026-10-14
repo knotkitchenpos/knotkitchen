@@ -10,7 +10,7 @@ import { COMPLETED, PREPARING } from "../constants/orderStatus.js";
 
 const KEY = "kk.offlineOrders.v1";
 
-export const isNetworkError = (err) => Boolean(err) && !err.response && (err.code === "ERR_NETWORK" || err.message === "Network Error" || (typeof navigator !== "undefined" && navigator.onLine === false));
+export const isNetworkError = (err) => Boolean(err) && !err.response && (err.code === "ERR_NETWORK" || err.code === "ECONNABORTED" || err.message === "Network Error" || (typeof navigator !== "undefined" && navigator.onLine === false));
 
 export const readQueue = () => {
   const q = readStoreScoped(KEY, []);
@@ -49,6 +49,10 @@ export const enqueueOrder = (order, localId = newLocalId()) => {
   writeQueue([...q, entry]);
   return entry;
 };
+
+/** O1: this device printed the sale's KOT, so its synced copy does not print another. */
+export const markKotPrinted = (localId) =>
+  writeQueue(readQueue().map((e) => (e.localId === localId ? { ...e, order: { ...e.order, kotPrinted: true } } : e)));
 
 export const removeFromQueue = (localIds) => {
   const drop = new Set(localIds);

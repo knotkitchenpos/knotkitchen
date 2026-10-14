@@ -51,7 +51,7 @@ const writePending = (slug, id) => {
  * Data model:
  *  - `identity` describes how the store was found (slug or host).
  *  - `useStorefront(identity)` provides the two payloads (on Knot Eats, only its own storefront).
- *  - `useCart(slug)` provides an isolated cart per store.
+ *  - `useCart(slug, categories)` provides an isolated cart per store, priced from the menu.
  *
  * The page is intentionally thin — it composes hooks and hands the fully
  * hydrated data to <StoreShell />, which handles rendering and interaction.
@@ -83,7 +83,7 @@ export default function StorePage({ slug, host, eats = null }) {
   // On Knot Eats `slug` is the 6-digit storeId, so the basket key is the same
   // the moment the page opens, before either payload lands.
   const effectiveSlug = eats ? slug : store?.store?.slug || bootstrap?.slug || slug || "";
-  const baseCart = useCart(effectiveSlug);
+  const baseCart = useCart(effectiveSlug, store?.categories);
   const cart = eats ? eats.wrapCart(baseCart) : baseCart;
 
   const [placing, setPlacing] = useState(false);
@@ -237,7 +237,8 @@ export default function StorePage({ slug, host, eats = null }) {
       value: confirmedOrder.bills?.totalWithTax,
       currency: store?.ordering?.currency || "INR",
     });
-  }, [tracking, confirmedOrder, store]);
+    // The currency, not `store`: the menu refreshes every 30 s (useStorefront).
+  }, [tracking, confirmedOrder, store?.ordering?.currency]);
   const banner =
     effectiveSlug && hasAnalytics(analytics) && !consent ? (
       <ConsentBanner
