@@ -79,6 +79,7 @@ const BLOCKER_MESSAGES = Object.freeze({
   NO_PIN: "Set your store's map pin in Store Properties.",
   NO_MENU: "Publish your menu: Settings > Manage Cache > Update Website Cache.",
   NO_ORDER_TYPE: "Turn on pickup or delivery in Order Toggles.",
+  PLAN: "Knot Eats needs the POS plan. Upgrade in Settings > Billing & Subscription.",
 });
 
 const UNAVAILABLE_MESSAGE = "This restaurant isn't on Knot Eats right now.";
@@ -114,6 +115,9 @@ const eligibility = async ({ settings, store, restaurant, restaurantId, dishCoun
   const codes = [];
   if (!ke.enabled) codes.push("NOT_OPTED_IN");
   if (ke.delisted) codes.push("DELISTED");
+  // Lazy: planFeatures loads the billing models, and tests fake it per file.
+  // shortcut: a store CSD moves to the Billing plan at renewal drops off at the next snapshot rebuild (<= 5 min, SNAPSHOT_TTL_MS); call invalidateListing() from the renewal if that gap ever matters.
+  if (!(await require("./planFeatures").hasFeature(restaurantId, "pos", settings?.storeId))) codes.push("PLAN");
 
   // Knot Eats does not need the website: only the store's status and the
   // account lock are asked.

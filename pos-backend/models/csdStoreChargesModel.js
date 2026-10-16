@@ -58,8 +58,8 @@ const csdStoreChargesSchema = new mongoose.Schema(
      * A negotiated price for one thing in the catalogue -- "ABC pays 449 for
      * the POS plan" while the standard price stays 499. Codes: POS, an add-on
      * code (per that add-on's own period: a WEBSITE price is per YEAR), a
-     * device code (TABLET or a printer, GST-inclusive), and TABLET_FIRST /
-     * TABLET_EXTRA for tablets rented before tablets were sold.
+     * device code (TABLET or a printer, GST-inclusive). Old rows may still
+     * name TABLET_FIRST / TABLET_EXTRA or TABLE_QR: retired, priced at nothing.
      *
      * Rupees, like every other amount on this document, because this is what
      * the admin dialog edits. services/pricing.js converts to paise at the

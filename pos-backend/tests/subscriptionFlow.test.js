@@ -98,7 +98,12 @@ const fakes = {
   "../models/orderModel": { distinct: async () => [] },
   "../models/platformSubscriptionModel": {
     PlatformSubscription: {
-      findOne: () => q(() => state.sub),
+      // `nextRead`: one read of the record as it was earlier (a request that loaded it before another write landed).
+      findOne: () => q(() => {
+        const s = state.nextRead || state.sub;
+        state.nextRead = null;
+        return s;
+      }),
       create: async (d) => {
         state.sub = {
           _id: "sub1",
@@ -106,6 +111,7 @@ const fakes = {
           storeId: d.storeId,
           planCode: "",
           planName: "",
+          pendingPlanCode: "",
           status: "NONE",
           currentPeriodStart: null,
           currentPeriodEnd: null,
@@ -121,6 +127,7 @@ const fakes = {
           save: async function save() {
             return this;
           },
+          markModified() {},
         };
         return state.sub;
       },
@@ -128,7 +135,7 @@ const fakes = {
       find: () => q(() => (state.sub ? [state.sub] : [])),
       distinct: async () => (state.sub ? [RID] : []),
       // Enough of MongoDB's updateOne for the service's atomic grants:
-      // "arr.field": { $ne }, field: { $gte }, and $inc / $push / $pull.
+      // "arr.field": { $ne }, field: { $gte } / value / null, and $inc / $push / $pull / $set.
       updateOne: async (filter, update) => {
         if (state.failNextUpdate) {
           state.failNextUpdate = false;
@@ -141,6 +148,8 @@ const fakes = {
             if (k === "_id") return true;
             const [arr, field] = k.split(".");
             if (field) return !(s[arr] || []).some((e) => e[field] === cond.$ne);
+            if (cond === null) return s[k] == null;
+            if (typeof cond !== "object") return s[k] === cond;
             return cond.$gte === undefined || s[k] >= cond.$gte;
           });
         if (!ok) return { matchedCount: 0, modifiedCount: 0 };
@@ -150,6 +159,10 @@ const fakes = {
           s[k] = s[k].filter((e) => !(e.code === c.code && e.endsAt && e.endsAt <= c.endsAt.$lte));
         }
         for (const [k, v] of Object.entries(update.$set || {})) {
+          if (!k.includes(".")) {
+            s[k] = v;
+            continue;
+          }
           const [arr, , field] = k.split(".");
           const match = filter[`${arr}.key`];
           const e = (s[arr] || []).find((x) => x.key === match);
@@ -268,6 +281,14 @@ const rejects = (promise, status, code) =>
 
 const debits = (kind) => state.entries.filter((e) => e.direction === "DEBIT" && (!kind || e.kind === kind));
 
+// A ₹200 add-on on the POS period. These tests used QR Table Ordering until 2026-10-16, when table
+// ordering moved into the POS plan and TABLE_QR was retired; KDS keeps their sums.
+const KDS = { code: "KDS", name: "Kitchen Display", description: "", pricePaise: 20000, periodDays: null, feature: "", isActive: true, sortOrder: 4 };
+const sellKds = () => state.config.addons.push({ ...KDS });
+// A QR Table Ordering add-on a store bought before it was retired, riding the POS period.
+const legacyQr = (on, extra = {}) =>
+  state.sub.addons.push({ code: "TABLE_QR", name: "QR Table Ordering", feature: "tableQr", pricePaise: 20000, activatedAt: on, endsAt: null, periodDays: null, paidUntil: null, ...extra });
+
 // ---------------------------------------------------------------------------
 // Activation
 // ---------------------------------------------------------------------------
@@ -349,18 +370,19 @@ test("after activation a top-up needs the later minimum; a demo store has no min
 
 test("an add-on is prorated for the rest of the period, taxed, and charged once however often it is asked for", async () => {
   reset();
+  sellKds();
   await topUp(10000);
   const on = addDays(state.sub.currentPeriodStart, 15); // 15 of 30 days left
   const before = state.balance;
 
-  const quoted = await billing.quote({ restaurantId: RID, item: "ADDON:TABLE_QR", on });
+  const quoted = await billing.quote({ restaurantId: RID, item: "ADDON:KDS", on });
   assert.equal(quoted.lines[0].amountPaise, 10000, "half of ₹200");
   assert.equal(quoted.totalPaise, 11800, "+ 18% GST");
 
-  await rejects(billing.addAddon({ restaurantId: RID, code: "TABLE_QR", acceptance: { accepted: false }, on }), 409, "ACCEPTANCE_REQUIRED");
+  await rejects(billing.addAddon({ restaurantId: RID, code: "KDS", acceptance: { accepted: false }, on }), 409, "ACCEPTANCE_REQUIRED");
   assert.equal(state.balance, before, "nothing taken without the terms accepted");
 
-  const bought = await billing.addAddon({ restaurantId: RID, code: "table_qr", acceptance: YES, on });
+  const bought = await billing.addAddon({ restaurantId: RID, code: "kds", acceptance: YES, on });
   assert.equal(bought.charged, 11800, "the quote is the charge");
   const invoice = state.invoices.find((i) => i.kind === "ADDON");
   assert.equal(invoice.lines[0].amountPaise, 10000);
@@ -370,7 +392,7 @@ test("an add-on is prorated for the rest of the period, taxed, and charged once 
   assert.equal(state.schedules[1].acceptedBy.name, "Owner");
 
   // A double click: already on, nothing charged.
-  const again = await billing.addAddon({ restaurantId: RID, code: "TABLE_QR", acceptance: YES, on });
+  const again = await billing.addAddon({ restaurantId: RID, code: "KDS", acceptance: YES, on });
   assert.equal(again.already, true);
   assert.equal(again.charged, 0);
   assert.equal(state.balance, before - 11800);
@@ -384,41 +406,44 @@ test("an add-on is prorated for the rest of the period, taxed, and charged once 
   assert.equal(state.sub.addons.filter((a) => a.code === "GMB").length, 1);
   assert.equal(state.balance, before - 11800 - 5900);
 
-  // What the add-ons unlock, and each one's period.
+  // What the plan unlocks (everything but the website, since 2026-10-16), and each add-on's period.
   const status = await billing.statusFor(RID, on);
-  assert.deepEqual(status.features, { website: false, tableQr: true, paymentGateway: false, onlineOrdering: true });
+  assert.deepEqual(status.features, { pos: true, website: false, tableQr: true, paymentGateway: true, websiteHours: true, onlineOrdering: true });
   assert.deepEqual(
     status.addons.map((a) => [a.code, a.owned, a.active, a.periodDays, a.yearly]),
-    [["TABLE_QR", true, true, 30, false], ["WEBSITE", false, false, 365, true], ["GMB", true, true, 30, false]],
+    [["WEBSITE", false, false, 365, true], ["GMB", true, true, 30, false], ["KDS", true, true, 30, false]],
+    "QR Table Ordering is not listed: it is in the POS plan",
   );
-  assert.equal(status.addons[0].price.label, "₹200.00");
-  assert.equal(status.addons[0].renewsAt.getTime(), state.sub.currentPeriodEnd.getTime(), "with the plan");
-  assert.equal(status.addons[1].price.label, "₹3,600.00", "per year");
+  const kds = status.addons.find((a) => a.code === "KDS");
+  assert.equal(kds.price.label, "₹200.00");
+  assert.equal(kds.renewsAt.getTime(), state.sub.currentPeriodEnd.getTime(), "with the plan");
+  assert.equal(status.addons[0].price.label, "₹3,600.00", "per year");
 });
 
 test("stopping an add-on keeps it to the period end without a refund; taking it back is free", async () => {
   reset();
+  sellKds();
   await topUp(10000);
   const on = addDays(state.sub.currentPeriodStart, 15);
-  await billing.addAddon({ restaurantId: RID, code: "TABLE_QR", acceptance: YES, on });
+  await billing.addAddon({ restaurantId: RID, code: "KDS", acceptance: YES, on });
   const paid = state.balance;
 
-  const { endsAt } = await billing.removeAddon({ restaurantId: RID, code: "TABLE_QR", on });
+  const { endsAt } = await billing.removeAddon({ restaurantId: RID, code: "KDS", on });
   assert.equal(endsAt.getTime(), state.sub.currentPeriodEnd.getTime());
   assert.equal(state.balance, paid, "no refund");
   let status = await billing.statusFor(RID, on);
-  assert.equal(status.features.tableQr, true, "still works until the period ends");
-  assert.equal(status.addons.find((a) => a.code === "TABLE_QR").renewsAt, null);
-  assert.ok(!status.nextRenewal.lines.some((l) => /QR Table/.test(l.description)), "and is not renewed");
-  assert.equal((await billing.statusFor(RID, state.sub.currentPeriodEnd)).features.tableQr, false);
+  assert.equal(status.addons.find((a) => a.code === "KDS").active, true, "still works until the period ends");
+  assert.equal(status.addons.find((a) => a.code === "KDS").renewsAt, null);
+  assert.ok(!status.nextRenewal.lines.some((l) => /Kitchen Display/.test(l.description)), "and is not renewed");
+  assert.equal((await billing.statusFor(RID, state.sub.currentPeriodEnd)).addons.find((a) => a.code === "KDS").owned, false);
 
   // Changed their mind within the period: back on, nothing charged, no terms to accept again.
-  const back = await billing.addAddon({ restaurantId: RID, code: "TABLE_QR", acceptance: null, on });
+  const back = await billing.addAddon({ restaurantId: RID, code: "KDS", acceptance: null, on });
   assert.equal(back.charged, 0);
   assert.equal(state.balance, paid);
   status = await billing.statusFor(RID, on);
-  assert.equal(status.addons.find((a) => a.code === "TABLE_QR").endsAt, null);
-  assert.ok(status.nextRenewal.lines.some((l) => /QR Table/.test(l.description)));
+  assert.equal(status.addons.find((a) => a.code === "KDS").endsAt, null);
+  assert.ok(status.nextRenewal.lines.some((l) => /Kitchen Display/.test(l.description)));
 });
 
 // ---------------------------------------------------------------------------
@@ -597,7 +622,8 @@ test("a tablet is bought once, online, like a printer: ₹10,000 including GST; 
 
   const status = await billing.statusFor(RID);
   assert.equal(status.printers.find((p) => p.code === "TABLET").owned, 1);
-  assert.deepEqual(Object.keys(status.tablet).sort(), ["extraPrice", "firstPrice"], "only what rented tablets renew at");
+  // Changed 2026-10-16 (was: status.tablet held the rental prices): tablet rent ended, so nothing about rentals is sent.
+  assert.deepEqual(["tablet" in status, "tablets" in status], [false, false]);
   assert.equal(status.nextRenewal.lines.length, 1, "a bought tablet never renews");
 
   const route = SRC("routes/subscriptionRoute.js");
@@ -732,19 +758,21 @@ test("a Rs 0 printer is refused before anything is recorded", async () => {
 // Renewal
 // ---------------------------------------------------------------------------
 
-test("at the period end the plan, add-ons and rented tablets renew from the wallet in one invoice", async () => {
+// Changed 2026-10-16 (was: the rented tablet renewed too, ₹600 + GST; total 153282): tablet rent ended for every store.
+test("at the period end the plan and add-ons renew from the wallet in one invoice; a rented tablet is not charged", async () => {
   reset();
+  sellKds();
   await topUp(10000);
   const on = addDays(state.sub.currentPeriodStart, 15);
-  await billing.addAddon({ restaurantId: RID, code: "TABLE_QR", acceptance: YES, on });
+  await billing.addAddon({ restaurantId: RID, code: "KDS", acceptance: YES, on });
   await billing.addAddon({ restaurantId: RID, code: "GMB", acceptance: YES, on });
-  // A tablet rented before tablets were sold keeps renewing at its rental price.
+  // A tablet rented before tablets were sold: no rent any more.
   state.sub.tablets.push({ serial: 1, pricePaise: 60000, rentedAt: on, endsAt: null });
   await billing.removeAddon({ restaurantId: RID, code: "GMB", on });
 
   const end = state.sub.currentPeriodEnd;
   const quoted = (await billing.statusFor(RID, on)).nextRenewal;
-  assert.equal(quoted.total.paise, 153282);
+  assert.equal(quoted.total.paise, 82482);
   const before = state.balance;
   const invoicesBefore = state.invoices.length;
 
@@ -755,16 +783,15 @@ test("at the period end the plan, add-ons and rented tablets renew from the wall
   assert.equal(invoice.kind, "SUBSCRIPTION");
   assert.deepEqual(invoice.lines.map((l) => [l.description, l.amountPaise]), [
     ["POS plan — 30 days", 49900],
-    ["QR Table Ordering add-on — 30 days", 20000],
-    ["Tablet #1 rental — 30 days", 60000],
+    ["Kitchen Display add-on — 30 days", 20000],
   ]);
-  assert.equal(invoice.totalPaise, 153282, "each line + GST; the stopped GMB add-on lapsed");
+  assert.equal(invoice.totalPaise, 82482, "each line + GST; the stopped GMB add-on lapsed; no tablet rent");
   assert.equal(invoice.totalPaise, quoted.total.paise, "what Billing said it would be");
-  assert.equal(state.balance, before - 153282);
+  assert.equal(state.balance, before - 82482);
   assert.equal(state.sub.status, "ACTIVE");
   assert.equal(state.sub.currentPeriodStart.getTime(), end.getTime(), "on time: continuous from the old end");
   assert.equal(state.sub.currentPeriodEnd.getTime(), addDays(end, 30).getTime());
-  assert.deepEqual(state.sub.addons.map((a) => a.code), ["TABLE_QR"]);
+  assert.deepEqual(state.sub.addons.map((a) => a.code), ["KDS"]);
 
   // Nothing is due again until the new end, however often it runs.
   await billing.renewDue(new Date(end.getTime() + 2 * MIN));
@@ -814,18 +841,41 @@ test("short at renewal: EXPIRED, locked after the grace period, and the next top
 // Review fixes
 // ---------------------------------------------------------------------------
 
-test("a rented tablet CSD ended stops renewing, and stays listed so its number never repeats", async () => {
+// Changed 2026-10-16 (was: a rented tablet CSD ended stops renewing; CSD's End rental is gone with the rent).
+// The owner, 2026-10-16: no store is charged tablet rent again, and QR Table Ordering is removed completely.
+test("REGRESSION: a store renting tablets and owning TABLE_QR renews with no rent or QR line, and its history is untouched", async () => {
   reset();
   await topUp(10000);
-  const on = addDays(state.sub.currentPeriodStart, 15);
-  state.sub.tablets.push({ serial: 1, pricePaise: 60000, rentedAt: on, endsAt: null });
-  await billing.endTablet({ restaurantId: RID, serial: 1, on });
+  const on = addDays(state.sub.currentPeriodStart, 10);
   const end = state.sub.currentPeriodEnd;
-  await billing.renewDue(new Date(end.getTime() + MIN));
-  assert.equal(state.sub.status, "ACTIVE");
-  assert.ok(!state.invoices.at(-1).lines.some((l) => /Tablet/.test(l.description)));
-  const tablets = (await billing.statusFor(RID, addDays(end, 15))).tablets;
-  assert.deepEqual(tablets.map((t) => [t.serial, t.active]), [[1, false]]);
+  assert.ok(!state.config.addons.some((a) => a.code === "TABLE_QR"), "the catalogue no longer has it");
+  state.sub.tablets.push(
+    { serial: 1, pricePaise: 60000, rentedAt: addDays(on, -60), endsAt: null },
+    { serial: 2, pricePaise: 50000, rentedAt: addDays(on, -60), endsAt: null },
+  );
+  legacyQr(on);
+  // A rent invoice and its ledger row from before, as history.
+  state.invoices.push({ _id: "invOld", kind: "SUBSCRIPTION", status: "PAID", lines: [{ description: "Tablet #1 rental — 30 days", amountPaise: 60000 }, { description: "QR Table Ordering add-on — 30 days", amountPaise: 20000 }] });
+  const history = JSON.stringify([state.invoices, state.entries]);
+  assert.equal("endTablet" in billing, false, "nothing left to end");
+
+  const status = await billing.statusFor(RID, on);
+  assert.deepEqual(["tablets" in status, "tablet" in status], [false, false], "POS Billing and CSD get no rentals");
+  assert.ok(!status.addons.some((a) => a.code === "TABLE_QR" || a.feature === "tableQr"), "nor the QR add-on");
+  assert.deepEqual(status.nextRenewal.lines.map((l) => l.description), ["POS plan — 30 days"]);
+  assert.equal(status.features.tableQr, true, "tables keep coming from the POS plan");
+
+  const result = await billing.renewDue(new Date(end.getTime() + MIN));
+  assert.deepEqual([result.renewed, result.failed], [1, 0], "no crash on codes the catalogue no longer has");
+  assert.deepEqual(state.invoices.at(-1).lines.map((l) => [l.description, l.amountPaise]), [["POS plan — 30 days", 49900]]);
+  assert.equal(debits("SUBSCRIPTION").at(-1).amountPaise, 58882, "₹499 + GST, nothing else");
+  assert.equal(JSON.stringify([state.invoices.slice(0, -1), state.entries.slice(0, -1)]), history, "past invoices and ledger rows unchanged");
+  assert.deepEqual(state.sub.addons.map((a) => a.code), [], "the QR entry drops off");
+  assert.equal(state.sub.tablets.length, 2, "rental rows stay as records");
+
+  // And every period after: still no rent.
+  await billing.renewDue(new Date(state.sub.currentPeriodEnd.getTime() + MIN));
+  assert.deepEqual(state.invoices.at(-1).lines.map((l) => l.description), ["POS plan — 30 days"]);
 });
 
 test("REGRESSION: a purchase whose save failed after the debit is completed by the retry, charged once", async () => {
@@ -917,7 +967,7 @@ test("a demo store gets every feature and is never charged", async () => {
   const status = await billing.statusFor(RID);
   assert.equal(status.exempt, true);
   assert.equal(status.needsActivation, false);
-  assert.deepEqual(status.features, { website: true, tableQr: true, paymentGateway: true, onlineOrdering: true });
+  assert.deepEqual(status.features, { pos: true, website: true, tableQr: true, paymentGateway: true, websiteHours: true, onlineOrdering: true });
   assert.equal(status.nextRenewal, null);
 
   await topUp(100);
@@ -926,6 +976,8 @@ test("a demo store gets every feature and is never charged", async () => {
     () => billing.preparePrinterPayment({ restaurantId: RID, code: "TABLET", acceptance: YES }),
     () => billing.preparePrinterPayment({ restaurantId: RID, code: "PRINTER_2IN", acceptance: YES }),
     () => billing.quote({ restaurantId: RID, item: "TABLET" }),
+    () => billing.changePlan({ restaurantId: RID, code: "BILLING", acceptance: YES }),
+    () => billing.quote({ restaurantId: RID, item: "PLAN:POS" }),
   ]) {
     await assert.rejects(attempt(), /demo store/);
   }
@@ -1148,6 +1200,7 @@ test("SOURCE: every charge carries its idempotency key", () => {
     "idempotencyKey: `renewal-${subscription._id}-${iso(subscription.currentPeriodEnd)}`",
     "idempotencyKey: `addon-${subscription._id}-${p.addon.code}-${iso(p.period.end)}`",
     "idempotencyKey: `addon-renewal-${subscription._id}-${a.code}-${iso(a.paidUntil)}`",
+    "idempotencyKey: `plan-${subscription._id}-${p.to.code}-${iso(subscription.currentPeriodEnd)}`",
     "const key = `printer-pay-${intent.gatewayOrderId}`",
   ]) {
     assert.ok(src.includes(key), key);
@@ -1170,4 +1223,352 @@ test("SOURCE: only a real top-up reaches the activation hook, and only once", ()
   assert.match(src, /const \{ entry, duplicate \} = await credit\(\{\s*restaurantId: intent\.restaurantId,\s*kind: "RECHARGE",/);
   assert.match(src, /if \(!duplicate\) \{\s*try \{\s*plan = await afterRecharge\(\{ restaurantId: intent\.restaurantId, amountPaise: paidPaise \}\);/);
   assert.ok(!/afterRecharge/.test(SRC("services/ledger.js")), "a CSD credit goes through the ledger alone");
+});
+
+// ---------------------------------------------------------------------------
+// The Billing plan (₹199): chosen at activation, upgraded by the store,
+// moved down only by KnotKitchen
+// ---------------------------------------------------------------------------
+
+test("the Billing plan: chosen before the first top-up, started by ₹3,000 at its own price, then top-ups of at least ₹1,500", async () => {
+  reset();
+  let status = await billing.statusFor(RID);
+  assert.deepEqual([status.planCode, status.basePlan.code], ["POS", "POS"], "nothing chosen reads as POS");
+  // Free, either way, before the plan starts.
+  assert.equal((await billing.changePlan({ restaurantId: RID, code: "billing" })).to.code, "BILLING");
+  await billing.changePlan({ restaurantId: RID, code: "POS" });
+  assert.equal(state.sub.planCode, "POS");
+  const chosen = await billing.changePlan({ restaurantId: RID, code: "BILLING" });
+  assert.deepEqual([chosen.already, chosen.charged, state.sub.planCode, state.sub.planName], [false, 0, "BILLING", "Billing"]);
+  assert.equal((await billing.changePlan({ restaurantId: RID, code: "BILLING" })).already, true);
+  assert.equal(state.invoices.length, 0);
+
+  status = await billing.statusFor(RID);
+  assert.equal(status.planCode, "BILLING");
+  assert.deepEqual(status.basePlan, { code: "BILLING", name: "Billing", price: { paise: 19900, rupees: 199, label: "₹199.00" } }, "the current plan");
+  assert.deepEqual(status.plans.map((p) => [p.code, p.name, p.price.paise, p.firstRechargeMin.paise, p.topUpMin.paise, p.current]), [
+    ["POS", "POS", 49900, 300000, 100000, false],
+    ["BILLING", "Billing", 19900, 300000, 150000, true],
+  ]);
+  assert.deepEqual([status.firstRechargeMin.paise, status.minTopUp.paise, status.pendingPlanCode, status.pendingPlanAt], [300000, 300000, "", null]);
+
+  await rejects(recharge.createRecharge({ restaurantId: RID, amountPaise: 299900 }), 400, "FIRST_TOPUP_MINIMUM");
+  await assert.rejects(recharge.createRecharge({ restaurantId: RID, amountPaise: 299900 }), /Your plan starts automatically when it arrives/);
+  const ok = await topUp(3000);
+  assert.equal(ok.plan.activated, true);
+  assert.deepEqual([state.sub.status, state.sub.planCode], ["ACTIVE", "BILLING"]);
+  assert.deepEqual(state.invoices[0].lines.map((l) => [l.description, l.amountPaise]), [["Billing plan — 30 days", 19900]]);
+  assert.equal(state.invoices[0].totalPaise, 23482, "₹199 + 18% GST");
+  assert.deepEqual(state.schedules[0].values.item, { plan: "BILLING", name: "Billing", pricePaise: 19900, periodDays: 30, acceptedVia: "ACTIVATION_TOP_UP" });
+
+  assert.deepEqual((await billing.statusFor(RID)).minTopUp, { paise: 150000, rupees: 1500, label: "₹1,500.00" });
+  await rejects(recharge.createRecharge({ restaurantId: RID, amountPaise: 149900 }), 400, "TOPUP_MINIMUM");
+  await topUp(1500);
+  assert.equal(state.balance, 300000 - 23482 + 150000);
+  assert.equal((await billing.statusFor(RID)).nextRenewal.lines[0].description, "Billing plan — 30 days");
+});
+
+test("Billing → POS mid-period: the difference for the days left + GST, once; the plan switches now and renews at the POS price", async () => {
+  reset();
+  await billing.changePlan({ restaurantId: RID, code: "BILLING" });
+  await topUp(10000);
+  const end = state.sub.currentPeriodEnd;
+  const on = addDays(state.sub.currentPeriodStart, 10); // 20 of 30 days left
+  const quoted = await billing.quote({ restaurantId: RID, item: "PLAN:POS", on });
+  assert.equal(quoted.lines.length, 1);
+  assert.match(quoted.lines[0].description, /^Upgrade to POS plan, until /);
+  assert.deepEqual([quoted.lines[0].amountPaise, quoted.totalPaise], [20000, 23600], "(₹499 − ₹199) × 20/30 = ₹200, + 18% GST");
+
+  await rejects(billing.changePlan({ restaurantId: RID, code: "POS", acceptance: { accepted: false }, on }), 409, "ACCEPTANCE_REQUIRED");
+  assert.equal(state.sub.planCode, "BILLING");
+  const before = state.balance;
+  const up = await billing.changePlan({ restaurantId: RID, code: "pos", acceptance: YES, on });
+  assert.deepEqual([up.already, up.charged, up.from.code, up.to.code], [false, 23600, "BILLING", "POS"], "the quote is the charge");
+  assert.equal(state.balance, before - 23600);
+  assert.deepEqual([state.sub.planCode, state.sub.planName], ["POS", "POS"]);
+  assert.equal(state.sub.currentPeriodEnd.getTime(), end.getTime(), "the period is unchanged");
+  const invoice = state.invoices.at(-1);
+  assert.deepEqual([invoice.kind, invoice.totalPaise, invoice.periodStart.getTime(), invoice.periodEnd.getTime()], ["SUBSCRIPTION", 23600, on.getTime(), end.getTime()]);
+  assert.equal(debits().at(-1).idempotencyKey, `plan-sub1-POS-${end.toISOString()}`);
+  const schedule = state.schedules.at(-1);
+  assert.equal(schedule.reason, "PLAN");
+  assert.deepEqual(schedule.values.item, { plan: "POS", name: "POS", from: "BILLING", pricePaise: 49900, periodDays: 30 });
+  assert.equal(schedule.acceptedBy.name, "Owner");
+
+  // A double click: already on it, nothing charged again.
+  const debitsBefore = debits().length;
+  const again = await billing.changePlan({ restaurantId: RID, code: "POS", acceptance: YES, on });
+  assert.deepEqual([again.already, again.charged], [true, 0]);
+  assert.equal(debits().length, debitsBefore);
+  assert.equal(state.balance, before - 23600);
+
+  const status = await billing.statusFor(RID, on);
+  assert.deepEqual([status.planCode, status.basePlan.code, status.basePlan.price.paise], ["POS", "POS", 49900]);
+  assert.deepEqual(status.nextRenewal.lines.map((l) => [l.description, l.amount.paise]), [["POS plan — 30 days", 49900]]);
+  await billing.renewDue(new Date(end.getTime() + MIN));
+  assert.deepEqual(state.invoices.at(-1).lines.map((l) => [l.description, l.amountPaise]), [["POS plan — 30 days", 49900]]);
+
+  // A negotiated Billing price: the difference is from what this store pays.
+  reset();
+  state.override = { billingExempt: false, planPrices: [{ code: "BILLING", price: 99 }] };
+  await billing.changePlan({ restaurantId: RID, code: "BILLING" });
+  await topUp(3000);
+  assert.equal(state.invoices[0].lines[0].amountPaise, 9900);
+  const negotiated = await billing.quote({ restaurantId: RID, item: "PLAN:POS", on: addDays(state.sub.currentPeriodStart, 10) });
+  assert.equal(negotiated.lines[0].amountPaise, 26667, "(₹499 − ₹99) × 20/30, rounded up");
+});
+
+test("an expired Billing store upgrades free; the renewal its next top-up runs charges the POS plan", async () => {
+  reset();
+  await billing.changePlan({ restaurantId: RID, code: "BILLING" });
+  await ledger.credit({ restaurantId: RID, kind: "RECHARGE", amountPaise: 300000, idempotencyKey: "recharge-old" });
+  await billing.afterRecharge({ restaurantId: RID, amountPaise: 300000, on: new Date(Date.now() - 32 * 24 * HOUR) });
+  await ledger.debit({ restaurantId: RID, kind: "ADJUSTMENT_DEBIT", amountPaise: state.balance });
+  await billing.renewDue();
+  assert.deepEqual([state.sub.status, state.sub.planCode], ["EXPIRED", "BILLING"]);
+
+  assert.equal((await billing.quote({ restaurantId: RID, item: "PLAN:POS" })).totalPaise, 0);
+  const up = await billing.changePlan({ restaurantId: RID, code: "POS", acceptance: YES });
+  assert.deepEqual([up.charged, state.sub.planCode], [0, "POS"]);
+  await topUp(1000);
+  assert.equal(state.sub.status, "ACTIVE");
+  assert.deepEqual(state.invoices.at(-1).lines.map((l) => [l.description, l.amountPaise]), [["POS plan — 30 days", 49900]]);
+});
+
+test("the store can never move itself to a smaller plan: only KnotKitchen can", async () => {
+  reset();
+  await topUp(3000);
+  await rejects(billing.quote({ restaurantId: RID, item: "PLAN:BILLING" }), 409, "DOWNGRADE_VIA_SUPPORT");
+  await rejects(billing.changePlan({ restaurantId: RID, code: "BILLING", acceptance: YES }), 409, "DOWNGRADE_VIA_SUPPORT");
+  await rejects(billing.changePlan({ restaurantId: RID, code: "GROWTH", acceptance: YES }), 400);
+  assert.equal(state.sub.planCode, "POS");
+  assert.equal(debits().length, 1, "only the activation");
+
+  const route = SRC("routes/subscriptionRoute.js");
+  assert.ok(route.includes('router.post("/plan", isVerifiedUser, requireProtectedAction,'), "the Owner, or Staff with the Store PIN");
+  assert.match(route, /action: result\.subscription\.activatedAt \? "SUBSCRIPTION\.PLAN\.UPGRADE" : "SUBSCRIPTION\.PLAN\.CHOOSE"/);
+});
+
+// Changed 2026-10-16 (was: refused on the Billing plan only, 409 PLAN_UPGRADE_REQUIRED; bought on the POS plan).
+test("QR Table Ordering cannot be bought on any plan (in the POS plan now); on the Billing plan Website and GMB can be bought", async () => {
+  for (const planCode of ["POS", "BILLING"]) {
+    reset();
+    await billing.changePlan({ restaurantId: RID, code: planCode });
+    await topUp(10000);
+    const on = addDays(state.sub.currentPeriodStart, 15);
+    // Off sale in the catalogue: not even listed.
+    await rejects(billing.quote({ restaurantId: RID, item: "ADDON:TABLE_QR", on }), 404);
+    await rejects(billing.addAddon({ restaurantId: RID, code: "TABLE_QR", acceptance: YES, on }), 404);
+    assert.ok(!(await billing.statusFor(RID, on)).addons.some((a) => a.code === "TABLE_QR"), `${planCode}: not on the Billing page`);
+    // A retired row on sale in the catalogue (none can be since v6), or owned from before: still refused, by what it unlocks.
+    state.config.addons.push({ code: "TABLE_QR", name: "QR Table Ordering", pricePaise: 20000, periodDays: null, feature: "tableQr", isActive: true });
+    await rejects(billing.quote({ restaurantId: RID, item: "ADDON:TABLE_QR", on }), 409, "ADDON_RETIRED");
+    await assert.rejects(billing.addAddon({ restaurantId: RID, code: "TABLE_QR", acceptance: YES, on }), /QR Table Ordering is no longer sold: table ordering comes with the POS plan\./);
+    assert.ok(!(await billing.statusFor(RID, on)).addons.some((a) => a.code === "TABLE_QR"), `${planCode}: still not listed`);
+    legacyQr(on, { endsAt: state.sub.currentPeriodEnd });
+    await rejects(billing.addAddon({ restaurantId: RID, code: "TABLE_QR", acceptance: null, on }), 409, "ADDON_RETIRED");
+    assert.equal(debits("SUBSCRIPTION").filter((e) => e.meta?.addon === "TABLE_QR").length, 0, "never charged");
+  }
+  reset();
+  await billing.changePlan({ restaurantId: RID, code: "BILLING" });
+  await topUp(10000);
+  const on = addDays(state.sub.currentPeriodStart, 15);
+  await billing.addAddon({ restaurantId: RID, code: "WEBSITE", acceptance: YES, on });
+  await billing.addAddon({ restaurantId: RID, code: "GMB", acceptance: YES, on });
+  assert.deepEqual(state.sub.addons.map((a) => a.code), ["WEBSITE", "GMB"]);
+  assert.equal((await billing.statusFor(RID, on)).features.website, true, "an add-on works whatever the plan");
+});
+
+test("CSD moves a store to the Billing plan at the end of its paid period: no refund, QR Table Ordering lapses then", async () => {
+  reset();
+  await topUp(10000);
+  const end = state.sub.currentPeriodEnd;
+  const on = addDays(state.sub.currentPeriodStart, 10);
+  legacyQr(on);
+  await billing.addAddon({ restaurantId: RID, code: "GMB", acceptance: YES, on });
+  const debitsBefore = debits().length;
+
+  await rejects(billing.csdChangePlan({ restaurantId: RID, code: "GROWTH", on }), 400);
+  const r = await billing.csdChangePlan({ restaurantId: RID, code: "billing", on });
+  assert.deepEqual([r.already, r.effectiveAt.getTime(), r.before], [false, end.getTime(), { planCode: "POS", pendingPlanCode: "" }]);
+  assert.deepEqual([state.sub.planCode, state.sub.pendingPlanCode], ["POS", "BILLING"]);
+  assert.equal(debits().length, debitsBefore, "nothing charged or refunded");
+  assert.equal((await billing.csdChangePlan({ restaurantId: RID, code: "BILLING", on })).already, true);
+
+  let status = await billing.statusFor(RID, on);
+  assert.deepEqual([status.planCode, status.pendingPlanCode, status.pendingPlanAt.getTime()], ["POS", "BILLING", end.getTime()]);
+  assert.deepEqual([status.features.pos, status.features.tableQr], [true, true], "the POS plan runs to its paid end");
+  assert.deepEqual(status.nextRenewal.lines.map((l) => [l.description, l.amount.paise]), [
+    ["Billing plan — 30 days", 19900],
+    ["GMB Management add-on — 30 days", 10000],
+  ], "priced at the Billing plan, without QR Table Ordering");
+
+  // The current plan's code cancels the scheduled move.
+  const undo = await billing.csdChangePlan({ restaurantId: RID, code: "POS", on });
+  assert.deepEqual([undo.already, undo.effectiveAt, state.sub.pendingPlanCode], [false, null, ""]);
+  assert.equal((await billing.csdChangePlan({ restaurantId: RID, code: "POS", on })).already, true, "nothing left to cancel");
+
+  await billing.csdChangePlan({ restaurantId: RID, code: "BILLING", on });
+  await billing.renewDue(new Date(end.getTime() + MIN));
+  assert.deepEqual([state.sub.status, state.sub.planCode, state.sub.planName, state.sub.pendingPlanCode], ["ACTIVE", "BILLING", "Billing", ""]);
+  assert.deepEqual(state.invoices.at(-1).lines.map((l) => [l.description, l.amountPaise]), [
+    ["Billing plan — 30 days", 19900],
+    ["GMB Management add-on — 30 days", 10000],
+  ]);
+  assert.deepEqual(state.sub.addons.map((a) => a.code), ["GMB"], "QR Table Ordering lapsed at the switch");
+  status = await billing.statusFor(RID, new Date(end.getTime() + HOUR));
+  assert.deepEqual([status.planCode, status.features.pos, status.features.tableQr], ["BILLING", false, false]);
+
+  // Upgrades are the store's own, in POS Billing.
+  await rejects(billing.csdChangePlan({ restaurantId: RID, code: "POS" }), 409, "UPGRADE_IN_POS");
+});
+
+test("CSD switches a store that has not started at once, either way; a cancelled one is refused", async () => {
+  reset();
+  const r = await billing.csdChangePlan({ restaurantId: RID, code: "BILLING" });
+  assert.equal(r.already, false);
+  assert.ok(r.effectiveAt instanceof Date);
+  assert.deepEqual([state.sub.planCode, state.sub.pendingPlanCode], ["BILLING", ""]);
+  await billing.csdChangePlan({ restaurantId: RID, code: "POS" });
+  assert.equal(state.sub.planCode, "POS", "an upgrade too, before the plan starts");
+  assert.equal((await billing.csdChangePlan({ restaurantId: RID, code: "POS" })).already, true);
+  assert.equal(state.invoices.length, 0);
+
+  await billing.cancelSubscription({ restaurantId: RID, reason: "Never opened", by: CSD });
+  await rejects(billing.csdChangePlan({ restaurantId: RID, code: "BILLING" }), 409, "SUBSCRIPTION_CANCELLED");
+  await rejects(billing.changePlan({ restaurantId: RID, code: "BILLING" }), 409, "SUBSCRIPTION_CANCELLED");
+});
+
+/** The record as a request read it before the next write landed; its save writes the plan it set (Mongoose $sets the changed paths). */
+const staleCopy = () => ({
+  ...state.sub,
+  save: async function save() {
+    Object.assign(state.sub, { planCode: this.planCode, planName: this.planName, pendingPlanCode: this.pendingPlanCode });
+    return this;
+  },
+});
+
+test("REGRESSION: a plan chosen while the activating top-up lands never leaves the store on a plan it did not pay for", async () => {
+  // POS chosen; the picker's "Billing" tap read the store before the ₹499 activation finished.
+  reset();
+  await billing.changePlan({ restaurantId: RID, code: "POS" });
+  let stale = staleCopy();
+  await topUp(3000);
+  assert.equal(state.invoices[0].lines[0].amountPaise, 49900);
+  state.nextRead = stale;
+  await rejects(billing.changePlan({ restaurantId: RID, code: "BILLING" }), 409, "DOWNGRADE_VIA_SUPPORT");
+  assert.deepEqual([state.sub.planCode, state.sub.status], ["POS", "ACTIVE"], "paid for POS, on POS");
+
+  // Billing chosen and started at ₹199; a late "POS" tap is an upgrade now, never a free one.
+  reset();
+  await billing.changePlan({ restaurantId: RID, code: "BILLING" });
+  stale = staleCopy();
+  await topUp(3000);
+  state.nextRead = stale;
+  await rejects(billing.changePlan({ restaurantId: RID, code: "POS" }), 409, "ACCEPTANCE_REQUIRED");
+  assert.equal(state.sub.planCode, "BILLING");
+  assert.equal(debits().length, 1, "only the ₹199 activation");
+
+  // CSD, the same race: a move down becomes the end-of-period one.
+  reset();
+  await billing.changePlan({ restaurantId: RID, code: "POS" });
+  stale = staleCopy();
+  await topUp(3000);
+  state.nextRead = stale;
+  const r = await billing.csdChangePlan({ restaurantId: RID, code: "BILLING" });
+  assert.deepEqual([r.already, r.effectiveAt.getTime()], [false, state.sub.currentPeriodEnd.getTime()]);
+  assert.deepEqual([state.sub.planCode, state.sub.pendingPlanCode], ["POS", "BILLING"]);
+
+  // activate() writes the plan it charged even when unchanged on its copy.
+  const act = SRC("services/subscription.js");
+  const body = act.slice(act.indexOf("const activate = async"), act.indexOf("const afterRecharge"));
+  assert.match(body, /subscription\.markModified\("planCode"\);\s*subscription\.markModified\("planName"\);/);
+});
+
+test("REGRESSION: an upgrade retried after its save failed is the one that switches: audited and recorded, never charged twice", async () => {
+  reset();
+  await billing.changePlan({ restaurantId: RID, code: "BILLING" });
+  await topUp(10000);
+  const on = addDays(state.sub.currentPeriodStart, 10);
+  const schedules = state.schedules.length;
+  state.failNextUpdate = true;
+  await assert.rejects(billing.changePlan({ restaurantId: RID, code: "POS", acceptance: YES, on }), /simulated crash after the debit/);
+  assert.equal(state.sub.planCode, "BILLING");
+  const balance = state.balance;
+  const debitCount = debits().length;
+
+  const retry = await billing.changePlan({ restaurantId: RID, code: "POS", acceptance: YES, on });
+  assert.deepEqual([retry.already, retry.charged, retry.subscription.planCode], [false, 0, "POS"], "this call switched: the route audits it");
+  assert.deepEqual([state.balance, debits().length], [balance, debitCount], "the first debit stands, no second");
+  assert.equal(state.schedules.length, schedules + 1);
+  assert.equal(state.schedules.at(-1).reason, "PLAN");
+
+  const again = await billing.changePlan({ restaurantId: RID, code: "POS", acceptance: YES, on });
+  assert.equal(again.already, true);
+  assert.equal(state.schedules.length, schedules + 1, "recorded once");
+});
+
+// The owner, 2026-10-16: the QR Table Ordering add-on is retired; one already paid is not renewed, and not refunded.
+test("REGRESSION: a QR Table Ordering add-on bought before it was retired is never renewed, nor refunded, and drops off at the next renewal", async () => {
+  reset();
+  await topUp(10000);
+  const end = state.sub.currentPeriodEnd;
+  const on = addDays(state.sub.currentPeriodStart, 10);
+  legacyQr(on);
+  // One CSD might have made on its own yearly clock, due before the plan.
+  legacyQr(on, { code: "QR_YEARLY", periodDays: 365, paidUntil: addDays(on, 1) });
+  await billing.addAddon({ restaurantId: RID, code: "GMB", acceptance: YES, on });
+  const credits = state.entries.filter((e) => e.direction === "CREDIT").length;
+
+  let status = await billing.statusFor(RID, on);
+  assert.equal(status.features.tableQr, true, "the POS plan has table ordering, add-on or not");
+  assert.ok(!status.addons.some((a) => a.feature === "tableQr"), "not shown: it cannot be bought, stopped or renewed");
+  assert.deepEqual(status.nextRenewal.lines.map((l) => [l.description, l.amount.paise]), [
+    ["POS plan — 30 days", 49900],
+    ["GMB Management add-on — 30 days", 10000],
+  ], "no ₹200 line");
+
+  // Its own clock comes due first: nothing is charged for it.
+  const early = await billing.renewDue(addDays(on, 2));
+  assert.deepEqual([early.addonsRenewed, early.addonErrors], [[], []]);
+  assert.equal(debits("ADDON").length, 0);
+
+  await billing.renewDue(new Date(end.getTime() + MIN));
+  assert.equal(state.sub.status, "ACTIVE");
+  assert.deepEqual(state.invoices.at(-1).lines.map((l) => [l.description, l.amountPaise]), [
+    ["POS plan — 30 days", 49900],
+    ["GMB Management add-on — 30 days", 10000],
+  ]);
+  assert.ok(!state.entries.some((e) => e.amountPaise === 20000 || e.amountPaise === 23600), "never ₹200 (+ GST) again");
+  assert.equal(state.entries.filter((e) => e.direction === "CREDIT").length, credits, "no refund for the days already paid");
+  assert.deepEqual(state.sub.addons.map((a) => a.code), ["GMB"], "dropped at the renewal");
+  status = await billing.statusFor(RID, new Date(end.getTime() + HOUR));
+  assert.deepEqual([status.planCode, status.features.tableQr, status.features.paymentGateway, status.features.website], ["POS", true, true, false]);
+});
+
+test("REGRESSION: TABLE_QR is retired by its code too: a catalogue row edited to unlock nothing is still not sold, listed or renewed", async () => {
+  reset();
+  await topUp(10000);
+  const end = state.sub.currentPeriodEnd;
+  const on = addDays(state.sub.currentPeriodStart, 10);
+  // What a CSD save stored before the fix: feature edited away, back on sale. (v6 removes it; this guards anyway.)
+  state.config.addons.push({ code: "TABLE_QR", name: "QR Table Ordering", pricePaise: 20000, periodDays: null, feature: "", isActive: true });
+  await rejects(billing.quote({ restaurantId: RID, item: "ADDON:TABLE_QR", on }), 409, "ADDON_RETIRED");
+  await rejects(billing.addAddon({ restaurantId: RID, code: "TABLE_QR", acceptance: YES, on }), 409, "ADDON_RETIRED");
+  legacyQr(on, { feature: "" });
+  const status = await billing.statusFor(RID, on);
+  assert.ok(!status.addons.some((a) => a.code === "TABLE_QR"), "not on the Billing page");
+  assert.deepEqual(status.nextRenewal.lines.map((l) => l.description), ["POS plan — 30 days"], "no ₹200 line");
+  await billing.renewDue(new Date(end.getTime() + MIN));
+  assert.ok(!state.entries.some((e) => e.amountPaise === 20000 || e.amountPaise === 23600), "never charged");
+  assert.deepEqual(state.sub.addons.map((a) => a.code), [], "dropped at the renewal");
+});
+
+test("2026-10-16: POS Billing's Devices list carries each device's picture and description from CSD", async () => {
+  reset();
+  const pic = "https://api.knotkitchen.com/uploads/platform/devices/0f8fad5b-d9cb-469f-a165-70867728950e.webp";
+  Object.assign(state.config.printers[0], { imageUrl: pic, description: "10-inch Android tablet" });
+  const [tablet, printer] = (await billing.statusFor(RID)).printers;
+  assert.deepEqual([tablet.code, tablet.imageUrl, tablet.description], ["TABLET", pic, "10-inch Android tablet"]);
+  assert.deepEqual([printer.imageUrl, printer.description], ["", ""], "none set: empty, never missing");
 });

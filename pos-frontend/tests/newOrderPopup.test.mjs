@@ -184,3 +184,12 @@ test("N020: a dish a guest adds while the order waits refreshes its New Order ca
   // A refreshed card re-arms, so a tap meant for the old list lands nowhere.
   assert.match(POPUP, /useArmed\(`\$\{queue\[0\]\?\.orderId\}:\$\{queue\[0\]\?\.items\?\.length\}`\)/);
 });
+
+test("REGRESSION: a guest's table order shows what they ordered, not ₹0, until it is accepted", () => {
+  // N017 keeps a guest's lines off the bill until accepted, so bills.totalWithTax
+  // is 0 on the card; the server sends the pending dishes' total beside it.
+  assert.match(BE("services/socket.js"), /pendingTotal: \(order\.items \|\| \[\]\)\.filter\(\(i\) => i\.status === "pending"\)/);
+  assert.match(POPUP, /const awaiting = !billed && Number\(current\.pendingTotal\) > 0;/);
+  assert.match(POPUP, /const total = awaiting \? Number\(current\.pendingTotal\) : billed;/);
+  assert.match(POPUP, /\{awaiting && <p[^>]*>Awaiting acceptance<\/p>\}/);
+});

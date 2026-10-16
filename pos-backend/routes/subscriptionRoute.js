@@ -8,6 +8,7 @@ const {
   statusFor,
   addAddon,
   removeAddon,
+  changePlan,
   renewDue,
   cancelSubscription,
   reinstateSubscription,
@@ -17,6 +18,7 @@ const { PlatformInvoice } = require("../models/platformSubscriptionModel");
 const { urlForInvoice } = require("../services/receiptLink");
 const { asAmount } = require("../services/money");
 const { requireProtectedAction, requireOwnerOnly } = require("../middlewares/requirePermission");
+const { logActivity } = require("../services/auditService");
 const {
   HardwareRequestError,
   resolveShipTo,
@@ -73,7 +75,7 @@ const purchased = (result) => ({
     : null,
 });
 
-// GET /api/subscription — the plan, add-ons, rented tablets, devices, next renewal.
+// GET /api/subscription — the plan, add-ons, devices, next renewal.
 router.get("/", isVerifiedUser, async (req, res, next) => {
   try {
     const restaurantId = ownRestaurantId(req);
@@ -118,6 +120,21 @@ router.delete("/addons/:code", isVerifiedUser, requireProtectedAction, async (re
   try {
     const { endsAt } = await removeAddon({ restaurantId: ownRestaurantId(req), code: String(req.params.code) });
     res.status(200).json({ success: true, data: { code: String(req.params.code).toUpperCase(), endsAt } });
+  } catch (err) {
+    asSubscriptionError(err, next);
+  }
+});
+
+// POST /api/subscription/plan { code, accepted } — choose the plan before the first top-up, or upgrade
+// (the difference for the days left of this period + GST, now). Never a downgrade: KnotKitchen does those.
+router.post("/plan", isVerifiedUser, requireProtectedAction, async (req, res, next) => {
+  try {
+    const result = await changePlan({ restaurantId: ownRestaurantId(req), code: String(req.body?.code || ""), createdBy: req.user?._id, acceptance: acceptanceFrom(req) });
+    if (!result.already) await logActivity({ req, action: result.subscription.activatedAt ? "SUBSCRIPTION.PLAN.UPGRADE" : "SUBSCRIPTION.PLAN.CHOOSE",
+      resource: "PlatformSubscription", entityType: "PlatformSubscription", entityId: result.subscription._id,
+      previousValue: { planCode: result.from.code }, newValue: { planCode: result.to.code, chargedPaise: result.charged, invoiceNumber: result.invoice?.invoiceNumber || "" },
+      description: `Plan ${result.from.code} → ${result.to.code}`, severity: "WARNING" });
+    res.status(200).json({ success: true, data: purchased(result) });
   } catch (err) {
     asSubscriptionError(err, next);
   }

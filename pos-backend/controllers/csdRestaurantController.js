@@ -18,7 +18,7 @@ const { csdAudit } = require("../services/csdAuditService");
 const config = require("../config/config");
 const { formatAddress } = require("../services/address");
 const { statusFor } = require("../services/subscription");
-const { hasWebsite } = require("../services/planFeatures");
+const { featuresOf, effectiveOrderToggles } = require("../services/planFeatures");
 
 const str = (v) => String(v ?? "").trim();
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
@@ -70,7 +70,7 @@ const getRestaurant = async (req, res, next) => {
     const openState = { isOpen: online.open, reason: online.reason };
 
     // The POS plan as the POS sees it (GET /api/subscription): add-ons,
-    // tablets and credits, hardware, the next renewal.
+    // hardware, the next renewal.
     let subscription = null;
     if (restaurant?._id) {
       try {
@@ -84,6 +84,14 @@ const getRestaurant = async (req, res, next) => {
       ...CsdStoreCharges.DEFAULTS,
       isDefault: true,
     };
+
+    // Live only with the Website add-on too (the resolver refuses the site without it),
+    // so without it the store's URL is not shown either.
+    const features = await featuresOf(restaurant?._id, storeId);
+    const siteLive = features.website;
+    // What the till, the counter API and the website take: Collection only on the Billing plan.
+    const toggles = effectiveOrderToggles(restaurant?.orderTypeToggles, features);
+    const billingOnly = features.pos === false;
 
     res.status(200).json({
       success: true,
@@ -111,7 +119,7 @@ const getRestaurant = async (req, res, next) => {
           storeId,
           restaurantType: restaurant?.restaurantType || "",
           restaurantPhone: restaurant?.restaurantPhone || "",
-          website: settings ? buildStorefrontUrl(settings) : "",
+          website: settings && siteLive ? buildStorefrontUrl(settings) : "",
           customDomain: settings?.customDomain || "",
           address: addressOf(restaurant),
           status: store.status,
@@ -137,7 +145,7 @@ const getRestaurant = async (req, res, next) => {
         },
 
         quickAccess: {
-          website: settings ? buildStorefrontUrl(settings) : "",
+          website: settings && siteLive ? buildStorefrontUrl(settings) : "",
           googleBusinessUrl: restaurant?.googleBusinessUrl || "",
           // The POS link is NOT a plain URL — it is minted per click through
           // /pos-session so the access is scoped, single-use and audited.
@@ -145,11 +153,10 @@ const getRestaurant = async (req, res, next) => {
         },
 
         websiteSettings: {
-          delivery: !!(settings?.ordering?.deliveryEnabled ?? restaurant?.orderTypeToggles?.delivery),
-          collection: !!(settings?.ordering?.pickupEnabled ?? restaurant?.orderTypeToggles?.collection),
-          tableOrders: !!restaurant?.orderTypeToggles?.table,
-          // Live only with the Website add-on too (the resolver refuses the site without it).
-          websiteEnabled: settings?.enabled !== false && (await hasWebsite(restaurant?._id, storeId)),
+          delivery: !billingOnly && !!(settings?.ordering?.deliveryEnabled ?? restaurant?.orderTypeToggles?.delivery),
+          collection: billingOnly || !!(settings?.ordering?.pickupEnabled ?? restaurant?.orderTypeToggles?.collection),
+          tableOrders: toggles.table,
+          websiteEnabled: settings?.enabled !== false && siteLive,
           currency: settings?.ordering?.currency || restaurant?.currency || "INR",
         },
 
@@ -177,9 +184,9 @@ const getRestaurant = async (req, res, next) => {
             ? { reason: settings.closedForToday.reason || "" }
             : null,
           orderMethods: {
-            delivery: !!settings?.ordering?.deliveryEnabled,
-            collection: !!settings?.ordering?.pickupEnabled,
-            tableOrders: !!restaurant?.orderTypeToggles?.table,
+            delivery: !billingOnly && !!settings?.ordering?.deliveryEnabled,
+            collection: billingOnly || !!settings?.ordering?.pickupEnabled,
+            tableOrders: toggles.table,
           },
         },
 
@@ -634,8 +641,7 @@ const updateCharges = async (req, res, next) => {
      * A negotiated price for one thing in the catalogue -- "ABC pays 449 for
      * the POS plan" while the standard price stays 499. Codes: POS, an add-on
      * (per its own period: WEBSITE is per year), a device (TABLET or a
-     * printer, GST-inclusive), TABLET_FIRST / TABLET_EXTRA for rented tablets
-     * (services/pricing priceFor).
+     * printer, GST-inclusive) (services/pricing priceFor).
      *
      * Sent as a whole list, not a patch, so removing an entry is possible:
      * with a merge there would be no way to put a restaurant back on the

@@ -46,8 +46,9 @@ const UNDECIDED_TABLE_ORDER = {
  * D4: a customer's order (table QR, website, Knot Eats) reaches the kitchen
  * printer when staff accept it, never before. Dishes accepted onto a ticket
  * the kitchen already has print as a round (ADDED ITEMS); otherwise the
- * whole order prints as new, with its Auto Receipt. A till order printed
- * when it was rung up; a settled or vanished table has nothing to cook.
+ * whole order prints as new, with its Auto Receipt (a table's receipt waits
+ * for the till settle). A till order printed when it was rung up; a settled
+ * or vanished table has nothing to cook.
  */
 const announceAccepted = async ({ order, accepted, session }) => {
   if (!accepted.length) return;
@@ -471,6 +472,12 @@ const syncSessionFromOrder = async (order, orderItems, action) => {
 
   // Drops cancelled lines from the total and saves.
   await recalculateSessionBill(session);
+  // The Orders page reads the order's own bill. Accepted dishes join the table's
+  // bill (N017), so the order carries it, as every session edit writes it.
+  if (action === "accept") {
+    order.bills = session.bills;
+    await order.save();
+  }
   return session;
 };
 

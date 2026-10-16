@@ -1,5 +1,6 @@
 import { createSlice } from "@reduxjs/toolkit";
 import { setOrderType } from "./orderTypeSlice.js";
+import { round2, round3 } from "../../utils/orderItems.js";
 
 const initialState = [];
 
@@ -63,8 +64,8 @@ const cartSlice = createSlice({
             const newFp = lineFingerprint(newItem);
             const existing = state.find(item => lineFingerprint(item) === newFp);
             if (existing) {
-                existing.quantity += newItem.quantity;
-                existing.price = existing.pricePerQuantity * existing.quantity;
+                existing.quantity = round3(existing.quantity + newItem.quantity);
+                existing.price = round2(existing.pricePerQuantity * existing.quantity);
             } else {
                 state.push(newItem);
             }
@@ -83,9 +84,11 @@ const cartSlice = createSlice({
         updateQuantity: (state, action) => {
             const { id, quantity } = action.payload;
             const item = state.find(item => item.id === id);
-            if (item && quantity > 0) {
-                item.quantity = quantity;
-                item.price = item.pricePerQuantity * quantity;
+            // Kept as typed (1.8 kg), to the gram; each line to the paisa, so the
+            // lines always add up to the subtotal (333.33 x 1.8 is 599.99, not 599.994).
+            if (item && round3(quantity) > 0) {
+                item.quantity = round3(quantity);
+                item.price = round2(item.pricePerQuantity * item.quantity);
             }
         },
 
@@ -127,7 +130,7 @@ const cartSlice = createSlice({
                     0,
                     Number(item.pricePerQuantity || 0) - removedUnit
                 );
-                item.price = item.pricePerQuantity * Number(item.quantity || 1);
+                item.price = round2(item.pricePerQuantity * Number(item.quantity || 1));
 
                 // Keep the display name aligned with what's actually in the
                 // line so the printed bill/kitchen ticket doesn't lie.
@@ -177,7 +180,7 @@ const cartSlice = createSlice({
                     0
                 );
                 line.pricePerQuantity = Number(base) + extras;
-                line.price = line.pricePerQuantity * Number(line.quantity || 1);
+                line.price = round2(line.pricePerQuantity * Number(line.quantity || 1));
             }
         });
     },

@@ -9,18 +9,22 @@ const {
 } = require("../services/ledger");
 const { settlePendingCharges } = require("../services/orderCharge");
 const {
-  statusFor, endTablet, cancelSubscription, reinstateSubscription, SubscriptionError,
+  statusFor, cancelSubscription, reinstateSubscription, csdChangePlan, SubscriptionError,
 } = require("../services/subscription");
 const { toPaise, toRupees, formatINR } = require("../services/money");
 const { isValidGstin } = require("../services/gst");
 const { csdAudit } = require("../services/csdAuditService");
+const appConfig = require("../config/config");
+const { validateImage } = require("../services/imageValidator");
+const { toWebp } = require("../services/imageCompress");
+const storage = require("../services/storage/localProvider");
+const { clearPricingCache } = require("./publicPricingController");
 
 /**
  * The admin panel's view of KnotKitchen's own pricing.
  *
- * This is the only place the POS plan, add-ons (and their periods), devices,
- * legacy tablet-rental prices, GST and the usage charges (platform fee per
- * source, e-bill) can be set. No restaurant-facing route writes any of it,
+ * This is the only place the POS and Billing plans, add-ons (and their periods), devices,
+ * GST and the usage charges (platform fee per source, e-bill) can be set. No restaurant-facing route writes any of it,
  * nor shows the usage charges -- that is the whole point
  * of the specification's rule that "all financial settings must be controlled
  * by the KnotKitchen Admin Panel".
@@ -50,6 +54,15 @@ const present = (config) => ({
     price: toRupees(config.basePlan?.pricePaise || 0),
     priceLabel: formatINR(config.basePlan?.pricePaise || 0),
   },
+  // The Billing plan: fixed code, its own price and both top-up minimums.
+  billingPlan: {
+    code: "BILLING",
+    name: config.billingPlan?.name || "Billing",
+    price: toRupees(config.billingPlan?.pricePaise || 0),
+    priceLabel: formatINR(config.billingPlan?.pricePaise || 0),
+    firstRechargeMin: toRupees(config.billingPlan?.firstRechargeMinPaise || 0),
+    topUpMin: toRupees(config.billingPlan?.topUpMinPaise || 0),
+  },
   addons: (config.addons || []).map((a) => ({
     code: a.code,
     name: a.name,
@@ -62,11 +75,6 @@ const present = (config) => ({
     isActive: a.isActive !== false,
     sortOrder: a.sortOrder || 0,
   })),
-  // What tablets rented before tablets were sold renew at.
-  tablet: {
-    firstPrice: toRupees(config.tablet?.firstPricePaise || 0),
-    extraPrice: toRupees(config.tablet?.extraPricePaise || 0),
-  },
   // Devices (the tablet and printers): one-time, GST-inclusive.
   printers: (config.printers || []).map((p) => ({
     code: p.code,
@@ -74,6 +82,8 @@ const present = (config) => ({
     price: toRupees(p.pricePaise),
     priceLabel: formatINR(p.pricePaise),
     isActive: p.isActive !== false,
+    description: p.description || "",
+    imageUrl: p.imageUrl || "",
   })),
   firstRechargeMin: toRupees(config.firstRechargeMinPaise || 0),
   topUpMin: toRupees(config.topUpMinPaise || 0),
@@ -113,9 +123,16 @@ const getBillingConfig = async (req, res, next) => {
 };
 
 const CODE = /^[A-Z0-9_]{2,30}$/;
-// Codes a price override can name besides the catalogue's own (services/pricing).
-const RESERVED_CODES = ["POS", "TABLET_FIRST", "TABLET_EXTRA"];
-const FEATURES = ["", "website", "tableQr"];
+// The plans' codes, and retired ones stores' rows may still name (tablet rent, QR Table Ordering).
+const RESERVED_CODES = ["POS", "BILLING", "TABLET_FIRST", "TABLET_EXTRA", "TABLE_QR"];
+// Table ordering is in the POS plan: no add-on unlocks it (isRetiredAddon).
+const FEATURES = ["", "website"];
+
+// What uploadDeviceImage hands out: our own media host, platform/devices, a random name.
+const isDeviceImageUrl = (url) => {
+  const prefix = `${appConfig.mediaPublicBaseUrl}/platform/devices/`;
+  return String(url || "").startsWith(prefix) && /^[0-9a-f-]{36}\.webp$/.test(String(url).slice(prefix.length));
+};
 
 /** A price in rupees, as paise, or an error on `key`. */
 const readPrice = (value, key, fieldErrors) => {
@@ -143,6 +160,8 @@ const readCatalog = (input, field, fieldErrors, seen, { addons = false, current 
     const code = String(raw?.code || "").trim().toUpperCase();
     if (!CODE.test(code)) {
       fieldErrors[`${field}.${i}.code`] = "Use 2 to 30 capital letters, digits or _.";
+    } else if (code === "TABLE_QR") {
+      fieldErrors[`${field}.${i}.code`] = "QR table ordering comes with the POS plan: this add-on is retired.";
     } else if (seen.has(code) || RESERVED_CODES.includes(code)) {
       fieldErrors[`${field}.${i}.code`] = `The code "${code}" is already used.`;
     }
@@ -153,15 +172,25 @@ const readCatalog = (input, field, fieldErrors, seen, { addons = false, current 
       pricePaise: readPrice(raw?.price, `${field}.${i}.price`, fieldErrors),
       isActive: raw?.isActive !== false,
     };
-    if (!addons) return item;
+    const saved = current.find((a) => a.code === code);
+    if (!addons) {
+      // A device's picture and description: left out (a CSD page from before
+      // they existed) keeps the saved ones, so an old tab's save never wipes them.
+      const imageUrl = raw?.imageUrl === undefined ? saved?.imageUrl || "" : String(raw.imageUrl || "").trim();
+      // It is shown on knotkitchen.com: only a picture uploaded here (or the one already saved).
+      if (imageUrl && imageUrl !== saved?.imageUrl && !isDeviceImageUrl(imageUrl)) {
+        fieldErrors[`${field}.${i}.imageUrl`] = "Upload the picture here; a link from elsewhere can't be used.";
+      }
+      const description = raw?.description === undefined ? saved?.description || "" : String(raw.description || "").trim().slice(0, 300);
+      return { ...item, description, imageUrl };
+    }
     const feature = raw?.feature === undefined || raw?.feature === null ? "" : String(raw.feature);
     if (!FEATURES.includes(feature)) {
-      fieldErrors[`${field}.${i}.feature`] = "Feature must be none, website or tableQr.";
+      fieldErrors[`${field}.${i}.feature`] = "Feature must be none or website.";
     }
     // Blank rides the POS period; otherwise its own, in whole days. Left out
     // (a CSD page loaded before periods existed) keeps the saved one, so a
     // save from it never turns the yearly Website monthly.
-    const saved = current.find((a) => a.code === code);
     const periodDays = raw?.periodDays === undefined ? (saved?.periodDays ?? null) : num(raw.periodDays);
     if (periodDays !== null && !(Number.isInteger(periodDays) && periodDays >= 1 && periodDays <= 366)) {
       fieldErrors[`${field}.${i}.periodDays`] = "Use whole days from 1 to 366, or leave it blank for the POS period.";
@@ -206,6 +235,18 @@ const updateBillingConfig = async (req, res, next) => {
         pricePaise: readPrice(bp.price, "basePlan.price", fieldErrors),
       };
     }
+    // The Billing plan. Minimums left out (a page from before they existed) keep the saved ones.
+    if (body.billingPlan !== undefined) {
+      const bp = body.billingPlan || {};
+      const saved = config.billingPlan || {};
+      config.billingPlan = {
+        code: "BILLING",
+        name: String(bp.name || "").trim().slice(0, 80) || saved.name || "Billing",
+        pricePaise: readPrice(bp.price, "billingPlan.price", fieldErrors),
+        firstRechargeMinPaise: bp.firstRechargeMin === undefined ? saved.firstRechargeMinPaise : readPrice(bp.firstRechargeMin, "billingPlan.firstRechargeMin", fieldErrors),
+        topUpMinPaise: bp.topUpMin === undefined ? saved.topUpMinPaise : readPrice(bp.topUpMin, "billingPlan.topUpMin", fieldErrors),
+      };
+    }
 
     // Codes stay unique across both lists, counting the one not being sent.
     const seen = new Set();
@@ -223,15 +264,6 @@ const updateBillingConfig = async (req, res, next) => {
     }
     if (addons) config.addons = addons;
     if (printers) config.printers = printers;
-
-    // Legacy rental prices: what tablets already rented renew at.
-    if (body.tablet !== undefined) {
-      const t = body.tablet || {};
-      config.tablet = {
-        firstPricePaise: readPrice(t.firstPrice, "tablet.firstPrice", fieldErrors),
-        extraPricePaise: readPrice(t.extraPrice, "tablet.extraPrice", fieldErrors),
-      };
-    }
 
     if (body.firstRechargeMin !== undefined) {
       config.firstRechargeMinPaise = readPrice(body.firstRechargeMin, "firstRechargeMin", fieldErrors);
@@ -323,6 +355,8 @@ const updateBillingConfig = async (req, res, next) => {
     }
 
     await config.save();
+    // knotkitchen.com reads the catalogue (GET /api/public/pricing): show the change now.
+    clearPricingCache();
 
     // Pricing changes are the kind of thing someone has to be able to account
     // for later.
@@ -351,8 +385,7 @@ const updateBillingConfig = async (req, res, next) => {
 
 /**
  * GET /api/csd/billing/accounts/:restaurantId — would this account lock, and
- * why; and its plan: add-ons (with their own renewals), rented tablets,
- * devices, next renewal.
+ * why; and its plan: add-ons (with their own renewals), devices, next renewal.
  *
  * Read-only. Deliberately does not APPLY the lock: an admin looking at a
  * restaurant should not be the thing that locks it.
@@ -418,11 +451,53 @@ const changeSubscription = (action) => async (req, res, next) => {
 };
 
 /**
+ * POST /api/csd/billing/accounts/:restaurantId/subscription/plan { code, reason }
+ * Admin only, audited. A store not started yet switches now; after that only
+ * a move to a smaller plan, at the end of the paid period (no refund). The
+ * current plan's code cancels a scheduled move. Upgrades are the store's, in
+ * POS Billing. Answers with the account standing.
+ */
+const changeAccountPlan = async (req, res, next) => {
+  try {
+    const { restaurantId } = req.params;
+    if (!mongoose.isValidObjectId(restaurantId) || !(await Restaurant.exists({ _id: restaurantId }))) {
+      return next(createHttpError(404, "Restaurant not found."));
+    }
+    const reason = String(req.body?.reason || "").trim();
+    if (reason.length < 3 || reason.length > 300) {
+      return next(createHttpError(400, "Give the reason (3 to 300 characters).", { fieldErrors: { reason: "3 to 300 characters." } }));
+    }
+    const code = String(req.body?.code || "").trim().toUpperCase();
+    const { subscription, already, before, effectiveAt } = await csdChangePlan({ restaurantId, code });
+    if (!already) {
+      await csdAudit({
+        req,
+        staff: req.csdStaff,
+        action: "BILLING.SUBSCRIPTION.PLAN",
+        resource: "PlatformSubscription",
+        entityType: "PlatformSubscription",
+        entityId: String(subscription._id),
+        storeId: subscription.storeId || "",
+        description: effectiveAt
+          ? `Plan ${before.planCode} → ${code}, effective ${new Date(effectiveAt).toISOString()}: ${reason}`
+          : `Scheduled plan change cancelled: ${reason}`,
+        previousValue: before,
+        newValue: { planCode: subscription.planCode, pendingPlanCode: subscription.pendingPlanCode || "", effectiveAt, reason },
+        severity: "WARNING",
+      });
+    }
+    res.status(200).json({ success: true, data: await accountStanding(restaurantId) });
+  } catch (err) {
+    if (err instanceof SubscriptionError) return next(createHttpError(err.status, err.message, { code: err.code }));
+    next(err);
+  }
+};
+
+/**
  * POST /api/csd/billing/accounts/:restaurantId/wallet/adjust — admin only, audited.
  * { direction: "CREDIT"|"DEBIT", amount (rupees), reason, reference?, idempotencyKey? }
  *
- * A manual Wallet movement: a rented tablet lost or damaged (at actual cost),
- * an erroneous charge put back, a permitted refund paid out by bank transfer
+ * A manual Wallet movement: an erroneous charge put back, a permitted refund paid out by bank transfer
  * (a DEBIT whose reference is the UTR). Through the ledger only, and never
  * through afterRecharge: a credit is not a top-up, so it never starts the plan.
  *
@@ -532,33 +607,27 @@ const adjustWallet = async (req, res, next) => {
 };
 
 /**
- * POST /api/csd/billing/accounts/:restaurantId/tablets/:serial/end — admin only.
- *
- * The tablet came back. It stops renewing at the current period end. The
- * restaurant cannot do this itself: the tablet is KnotKitchen's, and ending
- * the rental is the physical return.
+ * POST /api/csd/billing/device-image — admin only. A device's picture, for
+ * POS Billing and knotkitchen.com: checked like any upload (the real bytes,
+ * 5 MB at most), stored as WebP of about 200 KB under uploads/platform/devices
+ * (never the private CSD document store, never a store's media library).
+ * Answers { url }; it goes live only when Save puts it on a device row, which
+ * is audited with the prices.
  */
-const endTabletRental = async (req, res, next) => {
+// shortcut: a replaced or never-saved picture stays on disk; sweep platform/devices if the space ever matters.
+const uploadDeviceImage = async (req, res, next) => {
   try {
-    const { subscription, tablet } = await endTablet({
-      restaurantId: req.params.restaurantId,
-      serial: req.params.serial,
-    });
-    await csdAudit({
-      req,
-      staff: req.csdStaff,
-      action: "BILLING.TABLET.END",
-      resource: "PlatformSubscription",
-      entityType: "PlatformSubscription",
-      entityId: String(subscription._id),
-      storeId: subscription.storeId || "",
-      description: `Tablet #${tablet.serial} rental ends ${new Date(tablet.endsAt).toISOString()}`,
-      newValue: { serial: tablet.serial, endsAt: tablet.endsAt },
-      severity: "WARNING",
-    });
-    res.status(200).json({ success: true, data: { serial: tablet.serial, endsAt: tablet.endsAt } });
+    // A plain cross-site form can post multipart with the SameSite=None CSD cookie but cannot set
+    // this header (that needs a CORS preflight, which only listed origins pass): csd-web sends it.
+    if (req.headers?.["x-csd"] !== "1") return next(createHttpError(403, "Upload from the CSD panel."));
+    if (!req.uploadedFile?.buffer) return next(createHttpError(400, "No image file provided."));
+    const checked = validateImage({ buffer: req.uploadedFile.buffer, fileName: req.uploadedFile.fileName });
+    if (!checked.ok) return next(createHttpError(400, checked.error));
+    const image = await toWebp(req.uploadedFile.buffer);
+    // "platform" is not a store id (those are six digits), so it never mixes with a store's files.
+    const stored = await storage.upload({ buffer: image.buffer, mimeType: image.mimeType, storeId: "platform", folder: "devices" });
+    res.status(201).json({ success: true, data: { url: stored.url } });
   } catch (err) {
-    if (err instanceof SubscriptionError) return next(createHttpError(err.status, err.message));
     next(err);
   }
 };
@@ -566,11 +635,13 @@ const endTabletRental = async (req, res, next) => {
 module.exports = {
   getBillingConfig,
   updateBillingConfig,
+  uploadDeviceImage,
+  isDeviceImageUrl,
   getAccountStanding,
-  endTabletRental,
   adjustWallet,
   cancelAccountSubscription: changeSubscription("cancel"),
   reinstateAccountSubscription: changeSubscription("reinstate"),
+  changeAccountPlan,
   present,
   readCatalog,
 };

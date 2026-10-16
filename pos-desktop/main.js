@@ -8,6 +8,8 @@
  *
  *   - print a receipt silently through the printer the driver installed,
  *     with no dialog (window.knotDesktop.printHtml, see preload.js)
+ *   - send a receipt straight to a LAN printer's port 9100 by its IP
+ *     address (window.knotDesktop.printLan): a browser cannot open a socket
  *   - list those printers so Device Configuration can pick one
  *   - answer Web Bluetooth / WebUSB / Web Serial device pickers, which
  *     Electron has no UI for (chooser.html)
@@ -19,6 +21,7 @@
 
 const path = require("path");
 const fs = require("fs");
+const net = require("net");
 const {
   app,
   BrowserWindow,
@@ -212,6 +215,60 @@ const printHtml = (html, { printer = "", paperMm = 80, heightMm = 0, copies = 1 
     win.loadURL(`data:text/html;charset=utf-8,${encodeURIComponent(String(html || ""))}`);
   });
 
+/* ------------------------------------------------------------- LAN printer */
+
+const LAN_PORT = 9100;
+// Calibration knobs: a printer on the same network answers in milliseconds;
+// a job that will not drain is a printer that stopped reading (paper out, cover open).
+const LAN_CONNECT_MS = 3000;
+const LAN_WRITE_MS = 15000;
+
+/** Only a private IPv4 address: the POS page cannot make the app connect anywhere else. */
+const isLanIp = (host) => {
+  const m = /^(0|[1-9]\d{0,2})\.(0|[1-9]\d{0,2})\.(0|[1-9]\d{0,2})\.(0|[1-9]\d{0,2})$/.exec(String(host));
+  if (!m) return false;
+  const [a, b, ...rest] = m.slice(1).map(Number);
+  if ([a, b, ...rest].some((n) => n > 255)) return false;
+  return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
+};
+
+/**
+ * Raw bytes (the ESC/POS job the POS built) to a network printer's port 9100.
+ * With no data it only checks a printer answers there. Resolves once the
+ * bytes are handed to Windows; never hangs.
+ *
+ * shortcut: Windows may buffer a big job and report it sent while the printer
+ * is out of paper; read the printer's status back if that is ever needed.
+ */
+const sendLan = (host, data) =>
+  new Promise((resolve, reject) => {
+    if (!isLanIp(host)) {
+      reject(new Error("Enter the printer's IP address on this network, like 192.168.1.50."));
+      return;
+    }
+    const noAnswer = `No printer answered at ${host}. Check the address, that the printer is on, and that this computer is on the same network.`;
+    const socket = net.connect({ host, port: LAN_PORT });
+    let connected = false;
+    let timer = setTimeout(() => fail(noAnswer), LAN_CONNECT_MS);
+    const fail = (message) => {
+      clearTimeout(timer);
+      socket.destroy();
+      reject(new Error(message));
+    };
+    socket.once("error", (e) => fail(connected ? `The LAN printer stopped taking the job. Check its paper and cover. (${e.code || e.message})` : noAnswer));
+    socket.once("connect", () => {
+      connected = true;
+      clearTimeout(timer);
+      timer = setTimeout(() => fail("The LAN printer stopped taking the job. Check its paper and cover."), LAN_WRITE_MS);
+      // A failed pending write calls back with the error before 'error' fires: never report it printed.
+      socket.end(data ? Buffer.from(data) : undefined, (err) => {
+        if (err) return fail(`The LAN printer stopped taking the job. Check its paper and cover. (${err.code || err.message})`);
+        clearTimeout(timer);
+        resolve(true);
+      });
+    });
+  });
+
 const trusted = (event) => {
   try {
     return new URL(event.senderFrame.url).origin === POS_ORIGIN;
@@ -224,6 +281,10 @@ ipcMain.handle("printers:list", (event) => (trusted(event) ? listPrinters(event.
 ipcMain.handle("printers:print", (event, html, options) => {
   if (!trusted(event)) throw new Error("Not allowed.");
   return printHtml(html, options || {});
+});
+ipcMain.handle("printers:lan", (event, host, data) => {
+  if (!trusted(event)) throw new Error("Not allowed.");
+  return sendLan(String(host || ""), data instanceof Uint8Array ? data : null);
 });
 
 /* ------------------------------------------------------------------ updates */

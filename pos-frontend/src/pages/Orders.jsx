@@ -21,7 +21,7 @@ import { checkActionAuthorization, isManager } from "../utils/security";
 import { getMyRestaurant } from "../https";
 import { updateOnlineOrderStatus } from "../https/storefrontApi";
 import { printKot, printOrderReceipt, printWithFeedback } from "../utils/printReceipt";
-import { addedAfterOpening, billableItems, itemDisplayName, itemExtras } from "../utils/orderItems";
+import { addedAfterOpening, billableItems, formatQty, itemDisplayName, itemExtras, toQuantity } from "../utils/orderItems";
 import { isPreparing, isReady, isSettled, isCancelled, isRefunded, isFinished, isOutForDelivery, paidTakeawayCooking, awaitingAccept, statusLabel, COMPLETED, DELIVERED, OUT_FOR_DELIVERY, REFUND_STATUS, REFUND_STATUS_LABELS } from "../constants/orderStatus";
 import { sourceLabel, tableLabel, orderDisplayId } from "../utils/orderLabels";
 import { sendTableEBill } from "../utils/sendTableEBill";
@@ -790,7 +790,7 @@ const Orders = () => {
                     // need to see what was pulled -- but it must not read as
                     // something still being cooked or still being charged.
                     const isVoided = it.status === "cancelled";
-                    const lineQty = Math.max(1, Number(it.quantity) || 1);
+                    const lineQty = toQuantity(it.quantity);
                     return (
                     <div key={i} className={isVoided ? "opacity-60" : ""}>
                       <div className="flex items-start gap-3">
@@ -816,7 +816,7 @@ const Orders = () => {
                           {it.note && <p className="text-[11px] text-[#C2410C] truncate">Note: {it.note}</p>}
                         </div>
                         <span className="px-2.5 py-[3px] rounded-md border border-[#E2E8F0] text-[12px] font-bold text-[#334155] shrink-0">
-                          x {it.quantity}
+                          x {formatQty(it.quantity)}
                         </span>
                         <span
                           className={`text-[13.5px] font-extrabold w-[68px] text-right shrink-0 ${

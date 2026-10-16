@@ -3,15 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 import { getOrdersReport } from "../https";
 import { getMyRestaurant } from "../https";
 import { getWebsiteSettings } from "../https/storefrontApi";
-import { enqueueSnackbar } from "notistack";
 import { printHtmlDocument } from "../utils/printDocument";
-import { printReport } from "../utils/printReceipt";
+import { printReport, printWithFeedback } from "../utils/printReceipt";
 import { loadPrinterConfig, nativePrinting } from "../utils/printerDevice";
 import { isPreparing, isReady, isCancelled, statusLabel } from "../constants/orderStatus";
 import { sourceLabel, tableLabel, orderDisplayId } from "../utils/orderLabels";
 import { receiptAddress } from "../utils/address";
 import { buildQuickDates } from "../utils/quickDates.js";
-import { resolveItemAmounts } from "../utils/orderItems";
+import { formatQty, resolveItemAmounts } from "../utils/orderItems";
 import { money, localDay, cellDay, dateGB as fmtDate, time12 as fmtTime } from "../utils";
 
 /**
@@ -312,7 +311,7 @@ const OrderDetailsModal = ({ order, onClose }) => {
                     </p>
                   )}
                 </div>
-                <span className="text-[12px] font-bold text-[#334155] shrink-0">x {it.quantity}</span>
+                <span className="text-[12px] font-bold text-[#334155] shrink-0">x {formatQty(it.quantity)}</span>
                 <span className="text-[12.5px] font-extrabold text-[#0F172A] w-[68px] text-right shrink-0">
                   {money(resolveItemAmounts(it).lineTotal)}
                 </span>
@@ -366,8 +365,8 @@ const OrderDetailsModal = ({ order, onClose }) => {
  * the per-order listing.
  */
 const BREAKDOWN_TABLES = [
-  { key: "byItem", title: "Top dishes", cols: ["Dish", "Qty", "Sales"], cells: (r) => [r.name, r.quantity, money(r.amount)], reconciles: true },
-  { key: "byCategory", title: "By category", cols: ["Category", "Qty", "Sales"], cells: (r) => [r.name, r.quantity, money(r.amount)], reconciles: true },
+  { key: "byItem", title: "Top dishes", cols: ["Dish", "Qty", "Sales"], cells: (r) => [r.name, r.quantity === "" ? "" : formatQty(r.quantity), money(r.amount)], reconciles: true },
+  { key: "byCategory", title: "By category", cols: ["Category", "Qty", "Sales"], cells: (r) => [r.name, r.quantity === "" ? "" : formatQty(r.quantity), money(r.amount)], reconciles: true },
   {
     key: "byHour",
     title: "By hour",
@@ -633,11 +632,9 @@ const Reports = () => {
     // which cannot print a page): the report comes out of it like a receipt.
     // Otherwise the A4 page through the print dialog, for an office printer.
     if (printer.type || nativePrinting) {
-      try {
-        await printReport(buildReceiptReport(input), { config: printer });
-      } catch (err) {
-        enqueueSnackbar(err?.message || "The report could not be printed.", { variant: "error" });
-      }
+      // Says it is sending, then whether it went; a browser that forgot the
+      // Bluetooth printer gets a Reconnect tap, which this screen had no way to show.
+      await printWithFeedback("report", () => printReport(buildReceiptReport(input), { config: printer }));
       return;
     }
     printHtmlDocument(buildPrintHtml(input));

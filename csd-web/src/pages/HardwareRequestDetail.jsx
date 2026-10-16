@@ -95,9 +95,9 @@ const HardwareRequestDetail = () => {
 
   const open = ["REQUESTED", "ACCEPTED", "DISPATCHED"].includes(r.status);
   const tablet = r.type === "TABLET";
-  // Tablets used to be rented (paid from the wallet, or free) and are now
-  // bought online like a printer, always through the gateway; only the
-  // payment method tells the two apart.
+  // Tablets used to be rented (paid from the wallet, or free; rent ended
+  // 2026-10-16) and are now bought online like a printer, always through the
+  // gateway; only the payment method tells the two apart.
   const rental = tablet && r.payment.method !== "GATEWAY";
   const device = tablet ? "tablet" : "printer";
   const setD = (k) => (e) => setDispatch((f) => ({ ...f, [k]: e.target.value }));
@@ -179,7 +179,7 @@ const HardwareRequestDetail = () => {
           <p className="mt-1 text-sm text-navy-600">
             The refund goes to the store&apos;s KnotKitchen wallet (the store paid {r.payment.amount.label}
             {r.payment.method === "GATEWAY" ? " by card/UPI" : r.payment.method === "WALLET" ? " from its wallet" : ""}).
-            {rental ? " The tablet rental stops now." : ` The ${device} is no longer counted as the store's.`}
+            {rental ? "" : ` The ${device} is no longer counted as the store's.`}
             {" "}Leave the amount empty to refund everything paid{rental ? " (a renewal already billed for this tablet, that share too)" : ""}.
             {" "}A full refund voids the invoice; a part refund is noted on it.
             {" "}Refund in full unless the restaurant caused the cancellation (refused delivery, wrong address,
@@ -232,9 +232,7 @@ const HardwareRequestDetail = () => {
                 <input className={INPUT} placeholder="Note (optional)" value={deliver.note}
                   onChange={(e) => setDeliver((f) => ({ ...f, note: e.target.value }))} maxLength={500} />
                 <p className="text-xs text-navy-500 sm:col-span-2">
-                  {rental
-                    ? "Record the serial: the tablet is KnotKitchen's and comes back when the rental ends."
-                    : "Record the serial for the warranty."}
+                  {rental ? "Record the serial." : "Record the serial for the warranty."}
                 </p>
                 <div className="sm:col-span-2">
                   <button type="submit" disabled={busy} className={PRIMARY}>Mark delivered</button>

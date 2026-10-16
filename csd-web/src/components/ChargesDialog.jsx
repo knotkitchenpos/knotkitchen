@@ -31,20 +31,19 @@ const Field = ({ label, name, prefix, suffix, hint, placeholder, type = "number"
 
 /**
  * Everything a negotiated price can be for, from the live catalogue: the POS
- * plan, each add-on (on its own period), the first and each extra rented
- * tablet, each device. The codes are the ones services/pricing priceFor matches.
+ * and Billing plans, each add-on (on its own period), each device. The codes are the
+ * ones services/pricing priceFor matches (tablet rent ended 2026-10-16).
  */
 const catalogItems = (c) => {
   const per = `/ ${c.subscriptionDays} days`;
   return [
     { code: c.basePlan.code, label: `${c.basePlan.name} plan ${per}`, price: c.basePlan.price },
+    ...(c.billingPlan ? [{ code: c.billingPlan.code, label: `${c.billingPlan.name} plan ${per}`, price: c.billingPlan.price }] : []),
     ...c.addons.map((a) => ({
       code: a.code,
       label: `${a.name} ${a.periodDays === 365 ? "/ year" : a.periodDays ? `/ ${a.periodDays} days` : per}`,
       price: a.price,
     })),
-    { code: "TABLET_FIRST", label: `First rented tablet ${per} (existing rentals only)`, price: c.tablet.firstPrice },
-    { code: "TABLET_EXTRA", label: `Each extra rented tablet ${per} (existing rentals only)`, price: c.tablet.extraPrice },
     // Device prices (tablets and printers) already include GST; nothing is added on top.
     ...c.printers.map((p) => ({ code: p.code, label: `${p.name} (one-time)`, price: p.price, gstIncluded: true })),
   ];

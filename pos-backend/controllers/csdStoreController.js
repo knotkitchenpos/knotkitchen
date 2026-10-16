@@ -3,7 +3,10 @@ const Store = require("../models/storeModel");
 const Restaurant = require("../models/restaurantModel");
 const WebsiteSettings = require("../models/websiteSettingsModel");
 const CsdAgreementLink = require("../models/csdAgreementLinkModel");
+const CsdStoreCharges = require("../models/csdStoreChargesModel");
+const { PlatformSubscription } = require("../models/platformSubscriptionModel");
 const { buildStorefrontUrl } = require("../services/websiteProvisioningService");
+const { featuresFor } = require("../services/planFeatures");
 const { csdAudit } = require("../services/csdAuditService");
 const { formatAddress } = require("../services/address");
 const { purgeStoreData } = require("../services/storePurge");
@@ -122,7 +125,7 @@ const searchStores = async (req, res, next) => {
     // Website settings are fetched only for the page being returned, so the
     // storefront URL on each card costs one extra indexed query, not one per
     // candidate match.
-    const [stores, restaurants, websites] = await Promise.all([
+    const [stores, restaurants, websites, charges] = await Promise.all([
       Store.find({ storeId: { $in: pageIds }, ...notDeleted }).lean(),
       Restaurant.find(
         { storeId: { $in: pageIds }, ...notDeleted },
@@ -132,10 +135,25 @@ const searchStores = async (req, res, next) => {
         { storeId: { $in: pageIds }, ...notDeleted },
         { storeId: 1, slug: 1, subdomain: 1, customDomain: 1 }
       ).lean(),
+      CsdStoreCharges.find({ storeId: { $in: pageIds } }).select("storeId billingExempt").lean(),
     ]);
+    // The URL is shown only while the Website add-on is live (or a demo store),
+    // as the resolver serves the site. Two indexed reads per page, not per row.
+    const subscriptions = await PlatformSubscription.find({ restaurantId: { $in: restaurants.map((r) => r._id) } })
+      .select("restaurantId planCode addons")
+      .lean();
 
     const byStoreId = new Map(restaurants.map((r) => [r.storeId, r]));
-    const siteByStoreId = new Map(websites.map((w) => [w.storeId, buildStorefrontUrl(w)]));
+    const subByRestaurant = new Map(subscriptions.map((sub) => [String(sub.restaurantId), sub]));
+    const exemptStores = new Set(charges.filter((c) => c.billingExempt).map((c) => c.storeId));
+    const siteLive = (storeId) =>
+      featuresFor({
+        subscription: subByRestaurant.get(String(byStoreId.get(storeId)?._id)),
+        exempt: exemptStores.has(storeId),
+      }).website;
+    const siteByStoreId = new Map(
+      websites.filter((w) => siteLive(w.storeId)).map((w) => [w.storeId, buildStorefrontUrl(w)])
+    );
     const results = stores
       .filter((s) => !status || s.status === status)
       .map((s) => toResultRow(s, byStoreId.get(s.storeId), siteByStoreId.get(s.storeId) || ""))

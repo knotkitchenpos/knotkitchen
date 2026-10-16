@@ -1,6 +1,7 @@
-/* KnotKitchen landing page motion. No libraries; everything is optional:
-   with JavaScript off the page reads the same, just still (the "no-js" class
-   on <html> keeps every reveal visible until this file actually runs). */
+/* KnotKitchen landing page: today's prices from the API, and motion. No
+   libraries; everything is optional: with JavaScript off the page reads the
+   same, just still and with the prices written into the HTML (the "no-js"
+   class on <html> keeps every reveal visible until this file actually runs). */
 (() => {
   document.documentElement.classList.remove("no-js");
   const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -14,6 +15,85 @@
   /* ---- phones: the pricing fine print starts folded (open without script, and when printing) ---- */
   if (matchMedia("(max-width:700px)").matches) $$(".plan-notes details").forEach((d) => (d.open = false));
   addEventListener("beforeprint", () => $$(".plan-notes details").forEach((d) => (d.open = true)));
+
+  /* ---- prices, add-ons and devices from the catalogue CSD edits (GET /api/public/pricing).
+     The HTML already shows them, so a failed or slow request leaves the page as it is.
+     Before the reduced-motion return below: everyone gets today's prices. ---- */
+  const POS_APP = "https://business.knotkitchen.com";
+  const rupees = (n) => "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+  const el = (tag, props, ...kids) => {
+    const e = Object.assign(document.createElement(tag), props);
+    e.append(...kids);
+    return e;
+  };
+  // Only a picture uploaded in CSD (the server checks the same when it is saved).
+  const picture = (url) => (/^https:\/\/api\.knotkitchen\.com\/uploads\/platform\/devices\/[0-9a-f-]+\.webp$/.test(url || "") ? url : "");
+  // Sign in first; POS Billing then opens this device's request (pos-frontend Billing.jsx, ?device=).
+  const orderUrl = (code) => `${POS_APP}/settings/billing?device=${encodeURIComponent(code)}`;
+  const dialog = $("#device-dialog");
+  const showDevice = (d) => {
+    const src = picture(d.imageUrl);
+    $("#dd-media").replaceChildren(...(src ? [el("img", { src, alt: d.name, width: 640, height: 480 })] : []));
+    $("#dd-name").textContent = d.name;
+    $("#dd-price").textContent = `${rupees(d.price)} incl. GST, one time`;
+    $("#dd-desc").textContent = d.description;
+    $("#dd-order").href = orderUrl(d.code);
+    $("#dd-demo").href = "https://wa.me/918062177510?text=" +
+      encodeURIComponent(`Hi KnotKitchen, I'd like a demo and the ${d.name} (${rupees(d.price)}). Restaurant name:  City: `);
+    dialog.showModal();
+  };
+  const deviceCard = (d) => {
+    const src = picture(d.imageUrl);
+    const view = el("button", { type: "button", className: "dev-view" },
+      ...(src ? [el("img", { src: `${src}?w=640`, alt: "", width: 320, height: 240, loading: "lazy", className: "dev-img" })] : []),
+      el("b", { textContent: d.name }));
+    if (dialog && dialog.showModal) view.addEventListener("click", () => showDevice(d));
+    return el("li", {}, view, el("span", { textContent: d.description }),
+      el("em", { textContent: rupees(d.price) }, el("small", { textContent: "incl. GST, one time" })),
+      el("a", { className: "btn", href: orderUrl(d.code), textContent: "Order" }));
+  };
+  const showPricing = (p) => {
+    const plan = (code) => p.plans.find((x) => x.code === code) || {};
+    $$("[data-price]").forEach((e) => {
+      const [kind, code, field = "price"] = e.dataset.price.split(":");
+      const v = kind === "plan" ? plan(code)[field] : kind === "charge" ? (p.charges || {})[code] : undefined;
+      if (Number.isFinite(v)) e.textContent = rupees(v);
+    });
+    $$("[data-gst]").forEach((e) => { e.hidden = (p.taxable || {})[e.dataset.gst.split(":")[1]] === false; });
+    if (Number.isFinite(p.periodDays)) $$("[data-period]").forEach((e) => { e.textContent = p.periodDays; });
+    const addons = $("#addon-list");
+    if (addons) {
+      addons.replaceChildren(...p.addons.map((a) => el("li", {},
+        el("div", {}, el("b", { textContent: a.name }), el("span", { textContent: a.description })),
+        el("em", { textContent: rupees(a.price) }, el("small", { textContent: `+ GST / ${a.periodDays === 365 ? "year" : `${a.periodDays} days`}` })))));
+    }
+    const devices = $("#device-list");
+    if (devices) {
+      devices.className = "devices";
+      devices.replaceChildren(...(p.devices.length ? p.devices.map(deviceCard) : [el("li", { textContent: "No devices are on sale at the moment." })]));
+    }
+    // What search engines read: the POS plan's offer.
+    const ld = $('script[type="application/ld+json"]');
+    const pos = plan("POS");
+    if (ld && Number.isFinite(pos.price)) {
+      const data = JSON.parse(ld.textContent);
+      const offer = (data["@graph"] || []).map((g) => g.offers).find(Boolean);
+      if (offer) {
+        offer.price = String(pos.price);
+        offer.description = `POS plan: ${rupees(pos.price)} + GST per ${p.periodDays} days, prepaid from the KnotKitchen wallet`;
+        ld.textContent = JSON.stringify(data);
+      }
+    }
+  };
+  const giveUp = new AbortController();
+  setTimeout(() => giveUp.abort(), 4000);
+  fetch("https://api.knotkitchen.com/api/public/pricing", { signal: giveUp.signal })
+    .then((r) => (r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))
+    .then((body) => {
+      const p = body && body.data;
+      if (p && [p.plans, p.addons, p.devices].every(Array.isArray)) showPricing(p);
+    })
+    .catch(() => {}); // the prices in the HTML stay
 
   /* ---- reveal on scroll ---- */
   const io = new IntersectionObserver(

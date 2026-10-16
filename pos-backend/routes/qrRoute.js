@@ -48,8 +48,8 @@ const qrWaiterLimiter = rateLimit({
   message: "Your table has already called for a waiter. Someone is on their way.",
 });
 
-// Minting a table QR needs the QR add-on, like /api/table-qr. The diner routes
-// below stay open, so printed cards keep working if the add-on lapses mid-service.
+// Minting a table QR needs the POS plan (tableQr), like /api/table-qr. The diner
+// routes below stay open; resolveTableScope refuses them on the Billing plan.
 router.route("/tables/:tableId/generate").post(isVerifiedUser, requireProtectedAction, requirePermission("TABLE_UPDATE"), requireTableQrPlan, qr.generateTableQr);
 router.route("/table/:token").get(qrReadLimiter, resolveTableScope, qr.getTableByToken);
 router.route("/session/:token").get(qrReadLimiter, resolveTableScope, qr.getSessionByToken);

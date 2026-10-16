@@ -128,7 +128,7 @@ const withAssess = async ({ lastEntry = null, dues = { count: 0 }, subscription 
   Module._load = function (r) {
     if (r === "../models/storeModel") return { exists: async (f) => (closed && f.status === "closed" ? { _id: "s1" } : null) };
     if (r === "../models/restaurantModel") return { findById: () => ({ select: () => ({ lean: async () => ({ storeId: "148379" }) }) }) };
-    if (r === "./pricing") return { getPlatformConfig: async () => ({ graceHours, firstRechargeMinPaise: 250000 }), getOverride: async () => override };
+    if (r === "./pricing") return { getPlatformConfig: async () => ({ graceHours, firstRechargeMinPaise: 250000, billingPlan: { name: "Billing", firstRechargeMinPaise: 300000 } }), getOverride: async () => override };
     if (r === "./orderCharge") return { outstandingDues: async () => dues };
     if (r === "../models/platformSubscriptionModel") {
       return { PlatformSubscription: { findOne: () => ({ lean: async () => subscription }) } };
@@ -221,7 +221,8 @@ test("SOURCE: a store that never bought a plan starts locked, with Billing still
   // "When a store is created, everything should be locked except Billing and
   // Subscription." No grace: it has nothing running that could be cut off.
   const src = SRC("services/accountLock.js");
-  assert.match(src, /if \(!subscription\?\.currentPeriodEnd\) \{\s*reasons\.push\(\s*`No plan is active yet\. Recharge at least \$\{formatINR\(Number\(config\.firstRechargeMinPaise\) \|\| 0\)\} to start\. The POS plan starts automatically\.`/);
+  // The chosen plan's own first minimum and name (byte-identical copy for POS: see the runtime test below).
+  assert.match(src, /if \(!subscription\?\.currentPeriodEnd\) \{[^}]*const plan = planOf\(config, subscription\?\.planCode\);\s*reasons\.push\(`No plan is active yet\. Recharge at least \$\{formatINR\(plan\.firstRechargeMinPaise\)\} to start\. The \$\{plan\.name\} plan starts automatically\.`\);/);
   // Demo stores are decided before this rule is reached.
   assert.ok(src.indexOf("override?.billingExempt") < src.indexOf("!subscription?.currentPeriodEnd"));
   // Whoever creates a new store's balance row assesses it in the same breath,
@@ -247,6 +248,12 @@ test("a new store with no plan is locked at once; a demo store is not", async ()
   });
   await withAssess({ subscription: null, override: { billingExempt: true } }, async (svc) => {
     assert.equal((await svc.assessAccount("r1", new Date("2026-09-21"))).shouldLock, false);
+  });
+  // An owner who chose the Billing plan before the first top-up is told that plan's minimum.
+  await withAssess({ subscription: { planCode: "BILLING", status: "ACTIVE" } }, async (svc) => {
+    const res = await svc.assessAccount("r1", new Date("2026-09-21"));
+    assert.equal(res.shouldLock, true);
+    assert.match(res.reasons.join(" "), /No plan is active yet\. Recharge at least ₹3,000\.00 to start\. The Billing plan starts automatically\./);
   });
 });
 
@@ -280,7 +287,7 @@ test("SOURCE: paying re-evaluates the lock immediately", () => {
   const sub = SRC("services/subscription.js");
   // (Printers are paid through the gateway and never move the wallet, so they
   // have no lock to re-check: see the assertion after this loop.)
-  for (const [fn, n] of [["const activate", 1], ["const addAddon", 1], ["const renewOne", 2], ["const renewAddons", 1]]) {
+  for (const [fn, n] of [["const activate = ", 1], ["const addAddon", 1], ["const renewOne", 2], ["const renewAddons", 1]]) {
     const body = sub.slice(sub.indexOf(fn), sub.indexOf("\n};", sub.indexOf(fn)));
     assert.equal((body.match(/await settleLock\(restaurantId\)/g) || []).length, n, fn);
   }
@@ -304,7 +311,8 @@ test("SOURCE: the gate runs inside the shared auth middleware", () => {
   // One guard where every staff route already passes, rather than a line at
   // each call site that a new route can forget.
   const auth = SRC("middlewares/tokenVerification.js");
-  assert.match(auth, /return enforceAccountLock\(req, res, next\);/);
+  // The plan gate (middlewares/planGate) runs after the lock: 402 before 403.
+  assert.match(auth, /return enforceAccountLock\(req, res, \(\) => enforcePlan\(req, res, next\)\);/);
 });
 
 test("SOURCE: the sweep renews what is due before it locks anything", () => {

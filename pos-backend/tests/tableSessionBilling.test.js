@@ -88,6 +88,33 @@ test("N017: a % discount is computed on accepted dishes only", async () => {
   });
 });
 
+test("a discount's base is the bill's subtotal: each weighed line to the paisa first", async () => {
+  const session = {
+    restaurantId: RID, status: "OCCUPIED", bills: {}, timeline: [],
+    // 333.33 x 1.8 = 599.994 per line: the bill shows 1199.98, not 1199.99.
+    items: [1, 2].map(() => ({ price: 333.33, quantity: 1.8, status: "preparing", addedBy: "POS" })),
+    save: async () => {},
+  };
+  const fakes = {
+    "../services/gst": noGst,
+    "../models/tableSessionModel": { findOne: async () => session },
+    "../models/orderModel": { find: async () => [] },
+    "../services/socket": socket,
+  };
+  await withFakes(fakes, async ({ setDiscount }) => {
+    const res = { status() { return res; }, json() { return res; } };
+    const call = async (body) => {
+      let failure;
+      await setDiscount({ user: { restaurantId: RID }, params: { id: SID }, body }, res, (e) => { failure = e; });
+      return failure;
+    };
+    const whole = await call({ mode: "fixed", value: 1199.98 });
+    assert.equal(whole && whole.status, 400, "a discount of the whole bill would leave a ₹0 table stuck");
+    assert.equal(await call({ mode: "percent", value: 50 }), undefined);
+    assert.equal(session.bills.discount, 599.99);
+  });
+});
+
 // A table bill settled through recordSessionPayment, with every write recorded.
 const settle = async ({ session, orders, viaGateway, gatewayOrderId, body }) => {
   const calls = { updateOne: [] };

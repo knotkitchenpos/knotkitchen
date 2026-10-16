@@ -1,5 +1,5 @@
 import React from "react";
-import { itemDisplayName, itemExtras } from "../../utils/orderItems";
+import { formatQty, itemDisplayName, itemExtras, toQuantity } from "../../utils/orderItems";
 import { FaLongArrowAltRight } from "react-icons/fa";
 
 const SessionDetailModal = ({
@@ -50,7 +50,7 @@ const SessionDetailModal = ({
               const cancelled = item.status === "cancelled";
               // N017: a guest's dish the till has not accepted is not on the bill yet.
               const awaiting = item.status === "pending" && item.addedBy === "QR";
-              const lineQty = Math.max(1, Number(item.quantity) || 1);
+              const lineQty = toQuantity(item.quantity);
               const extras = itemExtras(item);
               return (
                 <div
@@ -69,7 +69,7 @@ const SessionDetailModal = ({
                       {itemDisplayName(item)}
                     </p>
                     <p className="text-xs text-content-muted">
-                      x{item.quantity}
+                      x{formatQty(item.quantity)}
                       {cancelled ? (
                         <span className="ml-1.5 text-accent-red font-semibold">
                           Cancelled{item.cancelReason ? ` — ${item.cancelReason}` : ""}

@@ -5,7 +5,8 @@ import { useLocation } from "react-router-dom";
 import { enqueueSnackbar } from "notistack";
 import { capOf } from "../../utils/modifierGroups";
 import { getPopularItems } from "../../https";
-import { thumbUrl, storeClock } from "../../utils";
+import { money, thumbUrl, storeClock } from "../../utils";
+import { formatQty } from "../../utils/orderItems";
 import { loadSystemMenu, readSavedMenu, systemMenuKey } from "../../utils/systemMenu";
 import { addItems } from "../../redux/slices/cartSlice";
 import { ModalShell } from "./ModalShell";
@@ -74,6 +75,9 @@ const activePrice = (item, orderType) => {
 // type changes (cartSlice listens for setOrderType).
 const channelBase = (item) =>
   Object.fromEntries(Object.keys(CHANNEL_KEY).map((type) => [type, activePrice(item, type)]));
+
+// Whole rupees stay short on the card; a price with paise shows them (1.80 read as 2).
+const cardPrice = (p) => (Number.isInteger(Number(p) || 0) ? `₹${Number(p) || 0}` : money(p));
 
 /* ---------- Icons ---------- */
 const IconSearch = () => (
@@ -796,7 +800,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
                     <DietMark veg={item.isVegetarian !== false} />
                     {inCart && (
                       <span className="absolute top-1.5 right-1.5 min-w-[20px] h-[20px] px-1.5 rounded-full bg-[#16A34A] text-white text-[10.5px] font-extrabold flex items-center justify-center shadow">
-                        {inCart.quantity}
+                        {formatQty(inCart.quantity)}
                       </span>
                     )}
                   </div>
@@ -807,7 +811,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
                       {item.name}
                     </p>
                     <p className="text-[14px] font-extrabold text-[#0F172A] mt-1">
-                      ₹{Number(price || 0).toFixed(0)}
+                      {cardPrice(price)}
                     </p>
                     {off && (
                       <p className="text-[10px] font-bold text-[#DC2626] mt-0.5">Out of stock</p>
@@ -849,11 +853,11 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
                     </p>
                   </div>
                   <span className="text-[14px] font-extrabold text-[#0F172A] shrink-0">
-                    ₹{Number(price || 0).toFixed(0)}
+                    {cardPrice(price)}
                   </span>
                   {inCart && (
                     <span className="min-w-[22px] h-[22px] px-2 rounded-full bg-[#16A34A] text-white text-[11px] font-extrabold flex items-center justify-center shrink-0">
-                      {inCart.quantity}
+                      {formatQty(inCart.quantity)}
                     </span>
                   )}
                 </button>

@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { FiPlus, FiTrash2, FiAlertTriangle, FiCheckCircle } from "react-icons/fi";
+import { FiPlus, FiTrash2, FiAlertTriangle, FiCheckCircle, FiImage } from "react-icons/fi";
 import { billingConfig, errorMessage } from "../api";
 
 /**
  * KnotKitchen's own pricing — the only place it can be set.
  *
  * Everything a restaurant is ever charged originates on this screen: the POS
- * plan, add-ons (on the POS period or yearly), devices (tablets and printers),
- * existing tablet rentals, the first and later top-up minimums, GST, the platform fees and the
+ * and Billing plans, add-ons (on the POS period or yearly), devices (tablets and printers),
+ * the first and later top-up minimums, GST, the platform fees and the
  * e-bill charge, and the renewal and lock policies. No restaurant-facing
  * screen can change any of it.
  *
@@ -107,6 +107,67 @@ const RemoveButton = ({ onClick }) => (
   </button>
 );
 
+/**
+ * A device's picture (POS Billing, knotkitchen.com). The upload is stored
+ * at once (admin only) but goes live only when Save puts its URL on the row,
+ * so it is audited with the prices. The server takes no other URL.
+ */
+const DevicePicture = ({ url, name, error, onChange }) => {
+  const [busy, setBusy] = useState(false);
+  const [uploadError, setUploadError] = useState("");
+  const pick = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    setUploadError("");
+    try {
+      onChange((await billingConfig.uploadDeviceImage(file)).url);
+    } catch (err) {
+      setUploadError(errorMessage(err, "Could not upload the picture."));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const problem = uploadError || error;
+  return (
+    <div>
+      <span className="text-xs font-semibold text-navy-700">Picture</span>
+      <div className="mt-1 flex items-center gap-3">
+        <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-navy-200 bg-navy-50">
+          {url ? (
+            <img src={url} alt={name || "Device"} className="h-full w-full object-contain" />
+          ) : (
+            <FiImage size={20} className="text-navy-300" aria-hidden="true" />
+          )}
+        </div>
+        <div className="flex flex-col items-start gap-1.5">
+          <label className="cursor-pointer rounded-lg border border-navy-300 px-2.5 py-1.5 text-xs font-semibold text-navy-700 hover:bg-navy-50 focus-within:ring-1 focus-within:ring-navy-500">
+            {busy ? "Uploading…" : url ? "Replace" : "Upload"}
+            <input
+              type="file"
+              accept="image/jpeg,image/png,image/webp,image/gif,image/avif"
+              className="sr-only"
+              disabled={busy}
+              onChange={pick}
+            />
+          </label>
+          {url && !busy && (
+            <button type="button" onClick={() => onChange("")} className="text-xs font-semibold text-red-600 hover:underline">
+              Remove picture
+            </button>
+          )}
+        </div>
+      </div>
+      {problem ? (
+        <span className="mt-1 block text-xs font-medium text-red-600">{problem}</span>
+      ) : (
+        <span className="mt-1 block text-xs text-navy-500">JPG, PNG or WebP, up to 5 MB.</span>
+      )}
+    </div>
+  );
+};
+
 const PLATFORM_FEE =
   "Added to the customer's bill as a Platform fee (+GST) only when they pay online; the same amount is then deducted from the store's wallet. Not shown in the POS app.";
 const PLATFORM_FEE_HINT =
@@ -194,7 +255,10 @@ const Billing = () => {
   // deleted. New rows are appended, so the saved ones are always the first N.
   const savedCount = useMemo(() => {
     const s = saved ? JSON.parse(saved) : {};
-    return { addons: (s.addons || []).length, printers: (s.printers || []).length };
+    return {
+      addons: (s.addons || []).length,
+      printers: (s.printers || []).length,
+    };
   }, [saved]);
 
   const save = async () => {
@@ -255,7 +319,7 @@ const Billing = () => {
       <Card
         title="POS plan"
         priceNotice
-        subtitle="The base subscription every store pays for each billing period, in rupees, + GST where applicable. Takeaway and delivery only; tables and dine-in come with the QR Table Ordering add-on."
+        subtitle="The base subscription every store pays for each billing period, in rupees, + GST where applicable. Everything except the website: tables, dine-in and QR table ordering are included."
       >
         <div className="grid gap-3 sm:grid-cols-4">
           <Field label="Name" error={fieldErrors["basePlan.name"]}>
@@ -291,6 +355,56 @@ const Billing = () => {
           </Field>
         </div>
       </Card>
+
+      {/* ---------------------------------------------------------------- */}
+      {/* Sent in the save with the rest of config, like basePlan. An older API without it skips the card. */}
+      {config.billingPlan && (
+        <Card
+          title="Billing plan"
+          priceNotice
+          subtitle="Billing only: Collection orders at the counter, orders, reports, menu, staff, rules & charges. Website and GMB add-ons can be bought on it. Everything else, tables and QR table ordering included, unlocks when the store upgrades."
+        >
+          <div className="grid gap-3 sm:grid-cols-4">
+            <Field label="Name" error={fieldErrors["billingPlan.name"]}>
+              <input
+                className={input}
+                value={config.billingPlan.name}
+                onChange={(e) => set({ billingPlan: { ...config.billingPlan, name: e.target.value } })}
+              />
+            </Field>
+            <Field
+              label="Price (₹)"
+              hint={`Every ${config.subscriptionDays} days, from the store's wallet.`}
+              error={fieldErrors["billingPlan.price"]}
+            >
+              <Money
+                value={config.billingPlan.price}
+                onChange={(v) => set({ billingPlan: { ...config.billingPlan, price: v } })}
+              />
+            </Field>
+            <Field
+              label="First top-up minimum (₹)"
+              hint="A new store on this plan must top up at least this first. It starts the plan automatically; the rest stays in the wallet."
+              error={fieldErrors["billingPlan.firstRechargeMin"]}
+            >
+              <Money
+                value={config.billingPlan.firstRechargeMin}
+                onChange={(v) => set({ billingPlan: { ...config.billingPlan, firstRechargeMin: v } })}
+              />
+            </Field>
+            <Field
+              label="Later top-up minimum (₹)"
+              hint="Every top-up after this plan has started must be at least this. 0 = no minimum."
+              error={fieldErrors["billingPlan.topUpMin"]}
+            >
+              <Money
+                value={config.billingPlan.topUpMin}
+                onChange={(v) => set({ billingPlan: { ...config.billingPlan, topUpMin: v } })}
+              />
+            </Field>
+          </div>
+        </Card>
+      )}
 
       {/* ---------------------------------------------------------------- */}
       <Card
@@ -340,7 +454,6 @@ const Billing = () => {
                   >
                     <option value="">Nothing (a service)</option>
                     <option value="website">Website and online payments</option>
-                    <option value="tableQr">QR table ordering, tables and dine-in</option>
                   </select>
                 </Field>
               </div>
@@ -416,28 +529,6 @@ const Billing = () => {
 
       {/* ---------------------------------------------------------------- */}
       <Card
-        title="Tablet rentals (existing rentals only)"
-        priceNotice
-        subtitle={`No new rentals: tablets are now sold once, under Devices. Tablets already rented keep renewing at these prices, + GST where applicable, every ${config.subscriptionDays} days until the rental is ended.`}
-      >
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label={`First tablet (₹ / ${config.subscriptionDays} days)`} error={fieldErrors["tablet.firstPrice"]}>
-            <Money
-              value={config.tablet.firstPrice}
-              onChange={(v) => set({ tablet: { ...config.tablet, firstPrice: v } })}
-            />
-          </Field>
-          <Field label={`Each extra tablet (₹ / ${config.subscriptionDays} days)`} error={fieldErrors["tablet.extraPrice"]}>
-            <Money
-              value={config.tablet.extraPrice}
-              onChange={(v) => set({ tablet: { ...config.tablet, extraPrice: v } })}
-            />
-          </Field>
-        </div>
-      </Card>
-
-      {/* ---------------------------------------------------------------- */}
-      <Card
         title="Devices"
         priceNotice
         subtitle="Tablets and printers. Price includes GST. Paid once online (UPI, card or netbanking), not from the wallet. No monthly fee."
@@ -472,6 +563,27 @@ const Billing = () => {
                   <Money value={p.price} onChange={(v) => setItem("printers", i, { price: v })} />
                 </Field>
               </div>
+              <div className="mt-3 grid gap-3 sm:grid-cols-4">
+                <DevicePicture
+                  url={p.imageUrl}
+                  name={p.name}
+                  error={fieldErrors[`printers.${i}.imageUrl`]}
+                  onChange={(imageUrl) => setItem("printers", i, { imageUrl })}
+                />
+                <Field
+                  label="Description"
+                  className="sm:col-span-3"
+                  hint="Shown with the picture in POS Billing and on knotkitchen.com."
+                >
+                  <input
+                    className={input}
+                    value={p.description || ""}
+                    maxLength={300}
+                    onChange={(e) => setItem("printers", i, { description: e.target.value })}
+                    placeholder="10-inch Android tablet with charger and stand."
+                  />
+                </Field>
+              </div>
               <div className="mt-3 flex items-center justify-between gap-3">
                 <Toggle
                   checked={p.isActive}
@@ -486,7 +598,9 @@ const Billing = () => {
 
         <AddButton
           label="Add device"
-          onClick={() => addItem("printers", { code: "", name: "", price: 0, isActive: true })}
+          onClick={() =>
+            addItem("printers", { code: "", name: "", price: 0, isActive: true, description: "", imageUrl: "" })
+          }
         />
         <p className="text-xs text-navy-500">
           A negotiated price for one restaurant is set on that restaurant&rsquo;s page, not here.
@@ -496,7 +610,7 @@ const Billing = () => {
       {/* ---------------------------------------------------------------- */}
       <Card
         title="GST"
-        subtitle="Nothing is taxed before the Applies from date, even with Registered switched on. GST applies to the POS plan, add-ons, existing tablet rentals, platform fees and e-bill charges. It is never added on top of device prices (tablets and printers), which already include it."
+        subtitle="Nothing is taxed before the Applies from date, even with Registered switched on. GST applies to the POS plan, add-ons, platform fees and e-bill charges. It is never added on top of device prices (tablets and printers), which already include it."
         warn={
           config.gst.registered && !config.gst.effectiveFrom
             ? "Registered is on but no start date is set, so nothing would be taxed. Set a date or switch Registered off."
@@ -514,7 +628,7 @@ const Billing = () => {
         {config.gst.registered && (
           <Warn>
             Before enabling GST: KnotKitchen must issue GST invoices for platform fees and e-bill charges. That
-            consolidated usage invoice is not built yet (see remaining.md). Plan, add-on, tablet rental and device
+            consolidated usage invoice is not built yet (see remaining.md). Plan, add-on and device
             invoices already carry GST.
           </Warn>
         )}
@@ -635,7 +749,7 @@ const Billing = () => {
       {/* ---------------------------------------------------------------- */}
       <Card
         title="Billing rules"
-        subtitle="How periods, late payment and locks behave. The wallet renews the plan, its add-ons and existing tablet rentals automatically at the end of each POS period; a yearly add-on renews on its own date."
+        subtitle="How periods, late payment and locks behave. The wallet renews the plan and its add-ons automatically at the end of each POS period; a yearly add-on renews on its own date."
       >
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="POS plan period (days)" error={fieldErrors.subscriptionDays}>

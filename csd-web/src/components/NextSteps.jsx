@@ -12,7 +12,7 @@ const NextSteps = ({ storeId }) => (
       starts and the rest stays in the wallet. Later top-ups are ₹1,000 or more.
     </li>
     <li>
-      Adds add-ons (QR Table Ordering for tables and dine-in, Website yearly) and buys tablets or
+      Adds add-ons (Website yearly, GMB Management) and buys tablets or
       printers from Billing if wanted.
     </li>
   </ol>

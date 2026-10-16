@@ -366,7 +366,9 @@ const calculateBill = ({
   taxInclusive = false,
 }) => {
   const t = computeTotals({
-    subtotal: items.reduce((s, i) => s + i.price * i.quantity, 0),
+    // Each line to the paisa first, as it is stored and printed: 333.33 x 1.8
+    // twice must total the 1199.98 the lines show, not 1199.99.
+    subtotal: items.reduce((s, i) => s + round2(i.price * i.quantity), 0),
     discount,
     serviceCharge: additionalCharges,
     serviceChargePercent,

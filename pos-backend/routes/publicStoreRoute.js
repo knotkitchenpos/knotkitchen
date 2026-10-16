@@ -6,6 +6,7 @@ const {
   getPublicStoreByDomain,
   getStoreHead,
 } = require("../controllers/publicStoreController");
+const { getPublicPricing } = require("../controllers/publicPricingController");
 const { rateLimit, clientIp } = require("../middlewares/rateLimiter");
 const config = require("../config/config");
 
@@ -35,6 +36,14 @@ const headLimiter = rateLimit({
   max: config.storefrontReadRateMax * 4,
   keyGenerator: (req) => `store-head:${String(req.get("x-store-host") || req.query.host || clientIp(req)).toLowerCase()}`,
 });
+
+// knotkitchen.com's pricing section, read on every visit (cached for a minute).
+const pricingLimiter = rateLimit({
+  windowMs: config.storefrontReadRateWindowMs,
+  max: config.storefrontReadRateMax,
+  keyGenerator: (req) => `pricing:${clientIp(req)}`,
+});
+router.get("/pricing", pricingLimiter, getPublicPricing);
 
 // Before /store/:storeId, which would otherwise take "head" as a store id.
 router.get("/store/head", headLimiter, getStoreHead);

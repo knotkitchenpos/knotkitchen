@@ -41,6 +41,8 @@ import com.getcapacitor.annotation.PermissionCallback;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.net.InetSocketAddress;
+import java.net.Socket;
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
@@ -48,6 +50,8 @@ import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -67,6 +71,7 @@ import java.util.concurrent.atomic.AtomicReference;
  *              receipt printers). A BLE printer paired only for classic
  *              took the SPP connection and printed nothing.
  *   usb        a printer on USB OTG, over its bulk OUT endpoint
+ *   lan        a network printer, raw TCP to its port 9100 by IP address
  */
 @CapacitorPlugin(
     name = "ThermalPrinter",
@@ -81,6 +86,10 @@ public class ThermalPrinterPlugin extends Plugin {
     private static final int USB_CHUNK = 16384;
     // A printer just switched on takes a moment before it answers.
     private static final long SPP_RETRY_PAUSE_MS = 1500;
+    // A GATT connect right after the last job's close, or to a printer that has
+    // just woken, often drops at once (status 133/8/19/22/62). Calibration knobs.
+    private static final int BLE_ATTEMPTS = 3;
+    private static final long BLE_RETRY_PAUSE_MS = 800;
 
     // Services the BLE printers put their write characteristic under; same
     // list as utils/printerDevice.js. Standard services never print.
@@ -346,10 +355,33 @@ public class ThermalPrinterPlugin extends Plugin {
     /**
      * BLE: connect, negotiate a larger MTU, find the printer's write
      * characteristic, stream the job in MTU-sized writes. Runs on the io
-     * thread; the GATT callbacks hand results back through latches.
+     * thread; the GATT callbacks hand results back through latches. A link
+     * that drops while connecting is tried again; never once data went out,
+     * which would print the ticket twice.
+     */
+    private void printBle(PluginCall call, byte[] bytes, BluetoothDevice device, int pace) {
+        try {
+            for (int attempt = 1; ; attempt++) {
+                String retry = printBleOnce(call, bytes, device, pace);
+                if (retry == null) return;
+                if (attempt == BLE_ATTEMPTS) {
+                    call.reject(retry);
+                    return;
+                }
+                Thread.sleep(BLE_RETRY_PAUSE_MS * attempt);
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            call.reject("Printing was interrupted.");
+        }
+    }
+
+    /**
+     * One attempt. Returns why it failed when nothing was written yet (worth
+     * another try), or null once it has resolved or rejected the call.
      */
     @SuppressLint("MissingPermission")
-    private void printBle(PluginCall call, byte[] bytes, BluetoothDevice device, int pace) {
+    private String printBleOnce(PluginCall call, byte[] bytes, BluetoothDevice device, int pace) {
         final CountDownLatch ready = new CountDownLatch(1);
         final Semaphore written = new Semaphore(0);
         final AtomicReference<BluetoothGattCharacteristic> tx = new AtomicReference<>();
@@ -369,7 +401,7 @@ public class ThermalPrinterPlugin extends Plugin {
                     // the request outright, then discover at the default size.
                     if (!gatt.requestMtu(512)) gatt.discoverServices();
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
-                    failure.compareAndSet(null, "The printer disconnected.");
+                    failure.compareAndSet(null, "The printer disconnected (GATT " + status + ").");
                     ready.countDown();
                     written.release();
                 }
@@ -383,6 +415,11 @@ public class ThermalPrinterPlugin extends Plugin {
 
             @Override
             public void onServicesDiscovered(BluetoothGatt gatt, int status) {
+                if (status != BluetoothGatt.GATT_SUCCESS) {
+                    failure.compareAndSet(null, "Could not read the printer's services (GATT " + status + ").");
+                    ready.countDown();
+                    return;
+                }
                 BluetoothGattCharacteristic best = null;
                 int bestScore = -1;
                 for (BluetoothGattService service : gatt.getServices()) {
@@ -417,18 +454,15 @@ public class ThermalPrinterPlugin extends Plugin {
             gatt = Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
                 ? device.connectGatt(getContext(), false, callback, BluetoothDevice.TRANSPORT_LE)
                 : device.connectGatt(getContext(), false, callback);
-            if (gatt == null) {
-                call.reject("Could not open a Bluetooth connection to the printer.");
-                return;
-            }
+            if (gatt == null) return "Could not open a Bluetooth connection to the printer.";
+            // Not tried again: a printer that is off would hold the job a minute, not 20 s.
             if (!ready.await(20, TimeUnit.SECONDS)) {
                 call.reject("The printer did not answer. Check it is on and nearby, then try again.");
-                return;
+                return null;
             }
             BluetoothGattCharacteristic ch = tx.get();
             if (ch == null || failure.get() != null) {
-                call.reject(failure.get() != null ? failure.get() : "This Bluetooth device does not accept print data.");
-                return;
+                return failure.get() != null ? failure.get() : "This Bluetooth device does not accept print data.";
             }
             boolean noResponse = (ch.getProperties() & BluetoothGattCharacteristic.PROPERTY_WRITE_NO_RESPONSE) != 0;
             ch.setWriteType(noResponse
@@ -439,13 +473,13 @@ public class ThermalPrinterPlugin extends Plugin {
                 ch.setValue(Arrays.copyOfRange(bytes, at, Math.min(bytes.length, at + chunk)));
                 if (!gatt.writeCharacteristic(ch)) {
                     call.reject("The printer stopped accepting data part-way through.");
-                    return;
+                    return null;
                 }
                 // Each write is acknowledged by onCharacteristicWrite; then a
                 // pause so an unacknowledged write cannot outrun the buffer.
                 if (!written.tryAcquire(3, TimeUnit.SECONDS) || failure.get() != null) {
                     call.reject(failure.get() != null ? failure.get() : "The printer stopped answering part-way through.");
-                    return;
+                    return null;
                 }
                 Thread.sleep(pace);
             }
@@ -467,6 +501,7 @@ public class ThermalPrinterPlugin extends Plugin {
                 }
             }
         }
+        return null;
     }
 
     private BluetoothAdapter adapter() {
@@ -604,11 +639,100 @@ public class ThermalPrinterPlugin extends Plugin {
         }
     }
 
+    /* --------------------------------------------------------------- lan -- */
+
+    private static final int LAN_PORT = 9100;
+    // Calibration knobs: a printer on the same network answers in milliseconds;
+    // a job that will not drain is a printer that stopped reading (paper out, cover open).
+    private static final int LAN_CONNECT_MS = 3000;
+    private static final long LAN_WRITE_MS = 15000;
+    // Closes a LAN socket whose write hangs, so one dead printer cannot block the print queue.
+    private final ScheduledExecutorService watchdog = Executors.newSingleThreadScheduledExecutor();
+
+    /** Only a private IPv4 address: the POS page cannot make the app connect anywhere else. */
+    static boolean isLanHost(String host) {
+        if (host == null || !host.matches("(0|[1-9]\\d{0,2})(\\.(0|[1-9]\\d{0,2})){3}")) return false;
+        String[] p = host.split("\\.");
+        int a = Integer.parseInt(p[0]);
+        int b = Integer.parseInt(p[1]);
+        for (String part : p) if (Integer.parseInt(part) > 255) return false;
+        return a == 10 || (a == 172 && b >= 16 && b <= 31) || (a == 192 && b == 168) || (a == 169 && b == 254);
+    }
+
+    private Socket openLan(String host) throws IOException {
+        Socket socket = new Socket();
+        try {
+            socket.connect(new InetSocketAddress(host, LAN_PORT), LAN_CONNECT_MS);
+            return socket;
+        } catch (IOException e) {
+            socket.close();
+            throw e;
+        }
+    }
+
+    /** { host }: resolves when a printer accepts a connection on host:9100. Sends nothing. */
+    @PluginMethod
+    public void probeLan(PluginCall call) {
+        String host = call.getString("host", "");
+        if (!isLanHost(host)) {
+            call.reject("Enter the printer's IP address on this network, like 192.168.1.50.");
+            return;
+        }
+        // On the print queue: a printer that takes one connection at a time is not probed mid-job.
+        io.execute(() -> {
+            try (Socket ignored = openLan(host)) {
+                call.resolve();
+            } catch (IOException e) {
+                call.reject("No printer answered at " + host + ". Check the address, that the printer is on, and that this tablet is on the same Wi-Fi.");
+            }
+        });
+    }
+
+    private void printLan(PluginCall call, byte[] bytes) {
+        String host = call.getString("host", "");
+        if (!isLanHost(host)) {
+            call.reject("The LAN printer's IP address is not valid. Enter it again in Device Configuration.");
+            return;
+        }
+        Socket socket = null;
+        ScheduledFuture<?> deadline = null;
+        try {
+            socket = openLan(host);
+            final Socket open = socket;
+            deadline = watchdog.schedule(() -> {
+                try {
+                    open.close();
+                } catch (IOException ignored) {
+                    // the write fails, and that is reported
+                }
+            }, LAN_WRITE_MS, TimeUnit.MILLISECONDS);
+            OutputStream out = socket.getOutputStream();
+            out.write(bytes);
+            out.flush();
+            socket.shutdownOutput();
+            call.resolve();
+        } catch (IOException e) {
+            call.reject(socket == null
+                ? "No printer answered at " + host + ". Check it is on and on the same Wi-Fi as this tablet."
+                : "The LAN printer stopped taking the job. Check its paper and cover. (" + e.getMessage() + ")");
+        } finally {
+            if (deadline != null) deadline.cancel(false);
+            if (socket != null) {
+                try {
+                    socket.close();
+                } catch (IOException ignored) {
+                    // nothing to recover
+                }
+            }
+        }
+    }
+
     /* ------------------------------------------------------------- print -- */
 
     /**
-     * { type: "bluetooth", address, pin? } or { type: "usb", vendorId, productId },
-     * plus data: base64 ESC/POS. pin answers a printer that asks to pair again.
+     * { type: "bluetooth", address, pin? }, { type: "usb", vendorId, productId } or
+     * { type: "lan", host }, plus data: base64 ESC/POS. pin answers a printer
+     * that asks to pair again.
      */
     @PluginMethod
     public void print(PluginCall call) {
@@ -636,6 +760,8 @@ public class ThermalPrinterPlugin extends Plugin {
             io.execute(() -> printBluetooth(call, bytes));
         } else if ("usb".equals(type)) {
             printUsb(call, bytes);
+        } else if ("lan".equals(type)) {
+            io.execute(() -> printLan(call, bytes));
         } else {
             call.reject("Unknown printer type.");
         }

@@ -1,4 +1,4 @@
-import { billableItems, itemDisplayName, itemExtras, resolveItemAmounts } from "./orderItems.js";
+import { billableItems, formatQty, itemDisplayName, itemExtras, resolveItemAmounts } from "./orderItems.js";
 import { orderDisplayId, tableLabel } from "./orderLabels.js";
 import { inr, STORE_TZ } from "./index.js";
 import { formatAddress } from "./address.js";
@@ -205,7 +205,7 @@ export const layoutReceipt = ({ order = {}, store = {}, settings = {}, images = 
       name: itemDisplayName(item) || "Item",
       extras: itemExtras(item).map((e) => (e.quantity > 1 ? `+ ${e.quantity}x ${e.name}` : `+ ${e.name}`)),
       rate: num(unitPrice),
-      qty: String(quantity),
+      qty: formatQty(quantity),
       price: num(lineTotal),
       lineTotal,
     };
@@ -424,14 +424,14 @@ export const layoutKot = ({ order = {}, items, store = {}, paper = 80, round = f
   // A struck-off dish must not reach the kitchen printer either.
   const lines = billableItems(Array.isArray(items) ? items : order.items);
   const qtyFont = font(big, true);
-  const qtyW = Math.ceil(Math.max(...lines.map((it) => measure(`${resolveItemAmounts(it).quantity} x`, qtyFont)), 0)) + P.gap;
+  const qtyW = Math.ceil(Math.max(...lines.map((it) => measure(`${formatQty(resolveItemAmounts(it).quantity)} x`, qtyFont)), 0)) + P.gap;
   const xName = P.pad + qtyW;
   let count = 0;
   lines.forEach((item, i) => {
     const { quantity } = resolveItemAmounts(item);
     count += quantity;
     if (i) y += 8;
-    ops.push({ type: "text", text: `${quantity} x`, x: P.pad, y, font: qtyFont, align: "left" });
+    ops.push({ type: "text", text: `${formatQty(quantity)} x`, x: P.pad, y, font: qtyFont, align: "left" });
     text(itemDisplayName(item) || "Item", { size: big, bold: true, x: xName, width: inner - qtyW });
     for (const e of itemExtras(item)) {
       text(e.quantity > 1 ? `+ ${e.quantity}x ${e.name}` : `+ ${e.name}`, { size: P.body, x: xName + 10, width: inner - qtyW - 10 });
@@ -447,7 +447,7 @@ export const layoutKot = ({ order = {}, items, store = {}, paper = 80, round = f
     text(`** ${orderNote}`, { size: P.body, bold: true });
     y += 4;
   }
-  pair("Items", String(count), { size: P.small });
+  pair("Items", formatQty(count), { size: P.small });
 
   y += P.pad * 3;
   return { width: W, height: Math.ceil(y), ops };

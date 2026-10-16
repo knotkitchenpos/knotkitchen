@@ -1,5 +1,4 @@
 const express = require("express");
-const { requireOnlineOrderingPlan } = require("../services/planFeatures");
 const {
   getMyRestaurant,
   getStoreProperties,
@@ -30,15 +29,14 @@ router.route("/verify-pin").post(isVerifiedUser, verifyPin);
 router.route("/change-pin").put(isVerifiedUser, requireOwnerOnly, changePin);
 // N034: settings saves need the PIN typed for that save (requireTypedPin), not an earlier 15-minute token.
 router.route("/pos-settings").put(isVerifiedUser, requireTypedPin(), updatePosSettings);
-// Locked on the POS plan alone (services/planFeatures onlineOrdering).
-router.route("/order-toggles").put(isVerifiedUser, requireTypedPin(), requireOnlineOrderingPlan, updateOrderToggles);
-// Website Timing & Holidays: the website's hours and the table QR's
-// ("Restaurant Time"), which the QR obeys, so the Website or the QR Table
-// Ordering add-on (services/planFeatures onlineOrdering). A QR-only store was
-// held to the default 4 PM opening with no way to change it.
-router.route("/timings").put(isVerifiedUser, requireTypedPin(), requireOnlineOrderingPlan, updateChannelTimings);
-router.route("/holidays").put(isVerifiedUser, requireTypedPin(), requireOnlineOrderingPlan, updateHolidays);
-router.route("/closed-for-today").put(isVerifiedUser, requireTypedPin(), requireOnlineOrderingPlan, toggleClosedForToday);
+// Locked on the Billing plan (middlewares/planGate); open on the POS plan.
+router.route("/order-toggles").put(isVerifiedUser, requireTypedPin(), updateOrderToggles);
+// Website Timing & Holidays: the website's, table QR's and Knot Eats' hours.
+// Open on the POS plan; on the Billing plan only with the Website add-on
+// (middlewares/planGate BILLING_WITH_ADDON, services/planFeatures websiteHours).
+router.route("/timings").put(isVerifiedUser, requireTypedPin(), updateChannelTimings);
+router.route("/holidays").put(isVerifiedUser, requireTypedPin(), updateHolidays);
+router.route("/closed-for-today").put(isVerifiedUser, requireTypedPin(), toggleClosedForToday);
 
 // Staff Management (Owner Only)
 router.route("/staff").post(isVerifiedUser, requireOwnerOnly, addStaffMember);

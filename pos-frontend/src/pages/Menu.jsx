@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
 import { useSelector } from "react-redux";
 import { getTotalPrice } from "../redux/slices/cartSlice";
+import { formatQty } from "../utils/orderItems";
 import ProductPanel from "../components/pos/ProductPanel";
 import OrderPanel from "../components/pos/OrderPanel";
 import AddCategoryModal from "../components/pos/AddCategoryModal";
@@ -34,7 +35,7 @@ const Menu = () => {
   const [showAddProduct, setShowAddProduct] = useState(false);
   // Phones: the cart opens full screen from the bar at the bottom.
   const [cartOpen, setCartOpen] = useState(false);
-  const cartCount = useSelector((s) => s.cart.reduce((n, i) => n + (i.quantity || 1), 0));
+  const cartCount = useSelector((s) => formatQty(s.cart.reduce((n, i) => n + (i.quantity || 1), 0)));
   const cartSubtotal = useSelector(getTotalPrice);
 
   const { data: menusRes } = useQuery({ queryKey: ["menus"], queryFn: getMenus });

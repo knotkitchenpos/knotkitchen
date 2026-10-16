@@ -204,6 +204,8 @@ const orderCreatedPayload = (order, storeId = "") => {
     })),
     itemCount: (order.items || []).reduce((sum, i) => sum + (Number(i.quantity) || 0), 0),
     bills: order.bills,
+    // N017: a guest's table lines stay off the bill until accepted; the New Order card shows what they ordered.
+    pendingTotal: (order.items || []).filter((i) => i.status === "pending").reduce((s, i) => s + (Number(i.total) || 0), 0),
     paymentStatus: order.payments?.[0]?.status || "pending",
     createdAt: order.createdAt || new Date(),
   };
@@ -269,8 +271,9 @@ const emitOrderCreated = ({ restaurantId, outletId, storeId, order, placedVia })
 
 /**
  * Staff accepted a customer's order (table QR, website, Knot Eats). The tills
- * print its KOT and Auto Receipt now, never on arrival, so a declined order
- * never reaches the kitchen (pos-frontend/src/hooks/useAutoReceiptPrint.js).
+ * print its KOT now, never on arrival, so a declined order never reaches the
+ * kitchen; Auto Receipt too, except a table's, which waits for the till to
+ * settle it (pos-frontend/src/hooks/useAutoReceiptPrint.js).
  * Same payload as `onlineOrder:created`, with the table populated.
  */
 const emitOrderAccepted = ({ restaurantId, outletId, storeId, order, table }) => {
@@ -343,7 +346,7 @@ const emitOrderStatusChanged = ({ restaurantId, outletId, storeId, order }) => {
  * room (`table:<id>`) because it is not in the restaurant room and must not
  * be -- it would receive every other table's traffic.
  */
-const emitTableSessionUpdated = ({ restaurantId, outletId, tableId, session, reason = "" }) => {
+const emitTableSessionUpdated = ({ restaurantId, outletId, tableId, session, reason = "", orderId, settledVia, table }) => {
   if (!io || !session) return;
   const payload = {
     type: "TABLE_SESSION_UPDATED",
@@ -352,6 +355,14 @@ const emitTableSessionUpdated = ({ restaurantId, outletId, tableId, session, rea
     status: session.status,
     reason,
     updatedAt: new Date(),
+    // A settle: the bill and how it was paid, for Auto Receipt Print (useAutoReceiptPrint.js).
+    ...(orderId
+      ? {
+          orderId: String(orderId),
+          settledVia,
+          table: table ? { _id: String(table._id), tableNumber: table.tableNumber ?? null, displayId: table.displayId || "", tableName: table.tableName || "" } : null,
+        }
+      : {}),
   };
   const rooms = [];
   if (restaurantId) rooms.push(`restaurant:${restaurantId}`);

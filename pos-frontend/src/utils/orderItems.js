@@ -16,11 +16,27 @@
  * subtotal correctly said 200.
  */
 
-const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+export const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+export const round3 = (n) => Math.round((Number(n) || 0) * 1000) / 1000;
+
+// A line's quantity. A weighed dish keeps its fraction to the gram (1.8 stays
+// 1.8, never 1 or 2); missing, zero, negative or nonsense reads as 1.
+// Mirrors pos-backend/services/orderItemAmounts.js -- keep them in step.
+export const toQuantity = (q) => (round3(q) > 0 ? round3(q) : 1);
+
+// How a quantity is printed: 2 -> "2", 1.8 -> "1.80", 0.375 -> "0.375".
+export const formatQty = (q) => {
+  const n = round3(q);
+  return Number.isInteger(n) ? String(n) : n.toFixed(3).replace(/0$/, "");
+};
+
+// A quantity the biller typed ("1.80"), or null. Read from a text box: a
+// type=number box snaps 1.80 to its step. At most 999.999 (the server caps a line at 1000).
+export const typedQty = (t) => (/^\d{1,3}(\.\d{1,3})?$/.test(String(t).trim()) && Number(t) > 0 ? Number(t) : null);
 
 export const toOrderItems = (cart = []) =>
   (Array.isArray(cart) ? cart : []).map((item) => {
-    const quantity = Math.max(1, Number(item.quantity) || 1);
+    const quantity = toQuantity(item.quantity);
     // `item.price` is the line total. `pricePerQuantity` is the unit, but fall
     // back to dividing for a cart restored from a held order saved before it.
     const lineTotal = Number(item.price || 0);
@@ -125,7 +141,7 @@ export const itemDisplayName = (item = {}) => {
  * line. That keeps receipts for old orders correct too.
  */
 export const resolveItemAmounts = (item = {}) => {
-  const quantity = Math.max(1, Math.floor(Number(item.quantity) || 1));
+  const quantity = toQuantity(item.quantity);
   const storedTotal = Number(item.total || 0);
   const lineTotal = storedTotal > 0 ? storedTotal : Number(item.price || 0);
 

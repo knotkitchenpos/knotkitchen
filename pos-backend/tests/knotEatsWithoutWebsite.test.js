@@ -36,7 +36,7 @@ const resolver = ({ status = "active", locked = false } = {}) => ({
   "./websitePublish": { applyPublishedSnapshot: () => {} },
   "../models/storeModel": { findOne: async () => ({ storeId: STORE, status }) },
   "../models/restaurantModel": { findById: async () => ({ _id: "r1", isActive: true }) },
-  "./planFeatures": { hasWebsite: async () => false },
+  "./planFeatures": { hasWebsite: async () => false, hasFeature: async () => true },
   "./accountLock": { isOrderingLocked: async () => locked },
 });
 
@@ -82,8 +82,9 @@ test("source: FSSAI is 14 digits; receipts and CSD do not advertise a disabled w
   assert.match(rc, /websiteUrl: \(await hasWebsite\(restaurant\._id, settings\?\.storeId\)\) \? buildStorefrontUrl\(settings\) : "",/);
   assert.match(
     SRC("controllers/csdRestaurantController.js"),
-    /websiteEnabled: settings\?\.enabled !== false && \(await hasWebsite\(restaurant\?\._id, storeId\)\),/,
+    /websiteEnabled: settings\?\.enabled !== false && siteLive,/,
   );
+  assert.match(SRC("controllers/csdRestaurantController.js"), /const features = await featuresOf\(restaurant\?\._id, storeId\);\s*const siteLive = features\.website;/);
 });
 
 /** getStorefront against an in-memory store; `listed` is the Knot Eats listing. */

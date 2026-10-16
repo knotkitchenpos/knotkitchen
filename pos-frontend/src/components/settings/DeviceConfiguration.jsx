@@ -8,11 +8,15 @@ import SecurityPinModal from "../common/SecurityPinModal";
 import { checkActionAuthorization } from "../../utils/security";
 import {
   bluetoothAvailable,
+  bluetoothLinked,
   chooseBluetoothPrinter,
   chooseUsbPrinter,
+  isLanIp,
+  lanPrinting,
   listNativePrinters,
   loadPrinterConfig,
   nativePrinting,
+  probeLanPrinter,
   savePrinterConfig,
   supports,
 } from "../../utils/printerDevice";
@@ -96,7 +100,6 @@ const PrinterChoices = ({ choices, kind, onPick }) =>
 const CONNECTIONS = [
   { key: "usb", label: "USB" },
   { key: "bluetooth", label: "Bluetooth" },
-  // Not a transport of its own: a network printer is reached through Windows or its USB cable (tab text below).
   { key: "lan", label: "LAN / Network" },
 ];
 
@@ -115,13 +118,57 @@ const btnGhost =
  * printer. `device` is that slot's record; `patchDevice` saves a change to it
  * at once. `allowDialog` offers a plain browser's print dialog, which only
  * the receipt printer may use: both slots would land on the same printer.
+ * `onUnsavedLan(true)` while a typed LAN address has not answered yet.
  */
-const PrinterSlot = ({ title, subtitle, emptyLabel = "Not set up", device, patchDevice, onTest, onClear, allowDialog = true, systemPrinters, btOn }) => {
-  const [tab, setTab] = useState(device.type === "bluetooth" ? "bluetooth" : "usb");
+const PrinterSlot = ({ title, subtitle, emptyLabel = "Not set up", device, patchDevice, onTest, onClear, onUnsavedLan, allowDialog = true, systemPrinters, btOn }) => {
+  const [tab, setTab] = useState(device.type === "bluetooth" || device.type === "lan" ? device.type : "usb");
   const [connecting, setConnecting] = useState(false);
   // App only: printers to pick from when more than one is found.
   const [choices, setChoices] = useState(null);
   const paper = device.paper || "80";
+  // Only a LAN slot starts with an address: a stale `lan` key never pulls a USB slot back.
+  const [ip, setIp] = useState(device.type === "lan" ? device.lan?.host || "" : "");
+  const [lanCheck, setLanCheck] = useState(null); // { host, state: "checking" | "ok" | "fail", message }
+
+  // A LAN printer connects by itself: a typed address is checked, and kept
+  // once a printer answers there; opening this screen checks the saved one again.
+  useEffect(() => {
+    const host = ip.trim();
+    if (!isLanIp(host) || !lanPrinting()) {
+      const typedAll = /^\d+\.\d+\.\d+\.\d+$/.test(host) && lanPrinting();
+      setLanCheck(typedAll ? { host, state: "fail", message: "Enter the printer's IP address on this network, like 192.168.1.50." } : null);
+      return undefined;
+    }
+    let live = true;
+    setLanCheck({ host, state: "checking" });
+    const t = setTimeout(async () => {
+      try {
+        await probeLanPrinter(host);
+        if (!live) return;
+        setLanCheck({ host, state: "ok" });
+        if (device.type !== "lan" || device.lan?.host !== host) {
+          patchDevice({ type: "lan", name: `LAN printer ${host}`, lan: { host }, usb: undefined, bluetooth: undefined, pin: "", protocol: "escpos", paper: "80" });
+          enqueueSnackbar(`LAN printer ${host} connected.`, { variant: "success" });
+        }
+      } catch (err) {
+        if (live) setLanCheck({ host, state: "fail", message: err?.message || `No printer answered at ${host}.` });
+      }
+    }, 600);
+    return () => {
+      live = false;
+      clearTimeout(t);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only a new address starts a check
+  }, [ip]);
+
+  // Save waits while a typed address has not answered: it is not kept until then.
+  const unsavedLan = tab === "lan" && ip.trim() !== "" && !(device.type === "lan" && device.lan?.host === ip.trim());
+  useEffect(() => {
+    onUnsavedLan?.(unsavedLan);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the parent passes a new callback every render
+  }, [unsavedLan]);
+  const lanHost = device.type === "lan" ? device.lan?.host : "";
+  const lanState = lanHost && lanCheck?.host === lanHost ? lanCheck.state : null;
 
   const pickPrinter = (kind, picked) => {
     setChoices(null);
@@ -171,6 +218,8 @@ const PrinterSlot = ({ title, subtitle, emptyLabel = "Not set up", device, patch
   };
 
   const isThis = (kind) => device.type === kind;
+  // A Bluetooth printer cannot print with Bluetooth off, nor in a browser that forgot it (after a reload).
+  const btState = device.type !== "bluetooth" ? null : btOn === false ? "off" : bluetoothLinked(device) ? null : "unlinked";
 
   return (
     <Card
@@ -178,8 +227,21 @@ const PrinterSlot = ({ title, subtitle, emptyLabel = "Not set up", device, patch
       subtitle={subtitle}
       right={
         device.type ? (
-          <span className="text-[11.5px] font-bold px-2.5 py-1 rounded-full bg-[#DCFCE7] text-[#15803D] max-w-[50%] truncate" title={device.name}>
-            {device.name}
+          <span
+            className={`text-[11.5px] font-bold px-2.5 py-1 rounded-full max-w-[50%] truncate ${
+              lanState === "fail" || btState ? "bg-[#FEE2E2] text-[#B91C1C]" : "bg-[#DCFCE7] text-[#15803D]"
+            }`}
+            title={device.name}
+          >
+            {lanState === "ok"
+              ? `Connected · ${lanHost}`
+              : lanState === "fail"
+                ? `Not reachable · ${lanHost}`
+                : btState === "off"
+                  ? `Bluetooth off · ${device.name}`
+                  : btState === "unlinked"
+                    ? "Not connected · tap Reconnect"
+                    : device.name}
           </span>
         ) : (
           <span className="text-[11.5px] font-bold px-2.5 py-1 rounded-full bg-[#F1F5F9] text-[#64748B]">{emptyLabel}</span>
@@ -271,14 +333,40 @@ const PrinterSlot = ({ title, subtitle, emptyLabel = "Not set up", device, patch
       )}
 
       {tab === "lan" && (
-        <div className="mt-4 space-y-2 text-[13px] text-[#64748B]">
-          <p>
-            <strong>Windows app:</strong> add the printer in Windows (Settings › Printers, by its IP address), then pick it
-            under <strong>USB › Printer installed on this computer</strong>.
-          </p>
-          <p>
-            <strong>Tablet or browser:</strong> connect the printer&apos;s USB cable and set it up under <strong>USB</strong>.
-          </p>
+        <div className="mt-4 text-[13px]">
+          {lanPrinting() ? (
+            <div className="max-w-[360px]">
+              <label className="block">
+                <span className="text-[13px] font-bold text-[#0F172A]">Printer IP address</span>
+                <span className="block text-[11.5px] text-[#94A3B8] mt-0.5">
+                  On the printer&apos;s self-test page. Reserve this address in your router so it stays the same after a restart.
+                </span>
+                <input
+                  inputMode="decimal"
+                  autoComplete="off"
+                  maxLength={15}
+                  value={ip}
+                  onChange={(e) => setIp(e.target.value.replace(/[^\d.]/g, ""))}
+                  placeholder="e.g. 192.168.1.50"
+                  className="mt-1.5 h-[40px] w-full rounded-xl border border-[#E2E8F0] px-3 text-[14px] font-bold"
+                />
+              </label>
+              <p
+                role="status"
+                className={`mt-1.5 text-[12px] font-bold ${
+                  lanCheck?.state === "ok" ? "text-[#15803D]" : lanCheck?.state === "fail" ? "text-[#DC2626]" : "text-[#64748B]"
+                }`}
+              >
+                {lanCheck?.state === "checking" ? "Connecting…" : lanCheck?.state === "ok" ? "Connected" : lanCheck?.message || ""}
+              </p>
+            </div>
+          ) : (
+            <p className="text-[12.5px] text-[#B45309] bg-[#FFFBEB] border border-[#FDE68A] rounded-xl p-3">
+              {desktopPrinting()
+                ? "Update the KnotKitchen POS app to use a LAN printer: it updates itself; restart it when it offers."
+                : "A browser cannot reach a network printer. Use the KnotKitchen POS app on Android or Windows."}
+            </p>
+          )}
         </div>
       )}
 
@@ -306,8 +394,8 @@ const PrinterSlot = ({ title, subtitle, emptyLabel = "Not set up", device, patch
               {nativePrinting && isThis("bluetooth") && device.protocol !== "cat" && (
                 <label className="block max-w-[360px]">
                   <span className="text-[13px] font-bold text-[#0F172A]">Printer PIN</span>
-                  <span className="block text-[11.5px] text-[#94A3B8] mt-0.5">
-                    The PIN you typed when pairing (usually 0000 or 1234). If the printer forgets the pairing when
+                  <span className={`block text-[11.5px] mt-0.5 ${device.pin ? "text-[#94A3B8]" : "font-bold text-[#B45309]"}`}>
+                    {device.pin ? null : "Not saved yet. "}The PIN you typed when pairing (usually 0000 or 1234). If the printer forgets the pairing when
                     switched off, the app uses it to reconnect without Android asking to pair again. A wrong PIN
                     un-pairs the printer.
                   </span>
@@ -329,23 +417,27 @@ const PrinterSlot = ({ title, subtitle, emptyLabel = "Not set up", device, patch
 
       <div className="mt-5 pt-4 border-t border-[#E2E8F0]">
         <p className="text-[13px] font-bold text-[#0F172A]">Paper size</p>
-        <div className="mt-2 grid grid-cols-2 gap-2 max-w-[360px]">
-          {PAPERS.map((p) => (
-            <button
-              key={p.key}
-              type="button"
-              aria-pressed={paper === p.key}
-              disabled={device.protocol === "cat" && p.key !== "58"}
-              onClick={() => patchDevice({ paper: p.key })}
-              className={`h-[56px] rounded-xl border text-left px-3 disabled:opacity-40 ${
-                paper === p.key ? "border-[#FD5302] bg-[#FFF6F0] ring-1 ring-[#FD5302]" : "border-[#E2E8F0] bg-white"
-              }`}
-            >
-              <span className="block text-[14px] font-extrabold text-[#0F172A]">{p.label}</span>
-              <span className="block text-[11.5px] text-[#64748B]">{p.sub}</span>
-            </button>
-          ))}
-        </div>
+        {tab === "lan" || device.type === "lan" ? (
+          <p className="mt-1 text-[12.5px] text-[#64748B]">80 mm (3 inch). A LAN printer always uses 80 mm paper.</p>
+        ) : (
+          <div className="mt-2 grid grid-cols-2 gap-2 max-w-[360px]">
+            {PAPERS.map((p) => (
+              <button
+                key={p.key}
+                type="button"
+                aria-pressed={paper === p.key}
+                disabled={device.protocol === "cat" && p.key !== "58"}
+                onClick={() => patchDevice({ paper: p.key })}
+                className={`h-[56px] rounded-xl border text-left px-3 disabled:opacity-40 ${
+                  paper === p.key ? "border-[#FD5302] bg-[#FFF6F0] ring-1 ring-[#FD5302]" : "border-[#E2E8F0] bg-white"
+                }`}
+              >
+                <span className="block text-[14px] font-extrabold text-[#0F172A]">{p.label}</span>
+                <span className="block text-[11.5px] text-[#64748B]">{p.sub}</span>
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
@@ -376,9 +468,20 @@ const DeviceConfiguration = () => {
   // was connected but not yet saved opened the print dialog instead.
   const patchDevice = (patch) => setDevice((d) => savePrinterConfig({ ...d, ...patch }));
   const patchKitchen = (patch) => setDevice((d) => savePrinterConfig({ ...d, kitchen: { ...d.kitchen, ...patch } }));
+  // A LAN address typed in a slot that has not answered yet: Save waits for it.
+  const [lanWaiting, setLanWaiting] = useState({});
 
+  // Checked again while the screen is open: Bluetooth turned off or on from
+  // the quick settings left the first answer on screen.
   useEffect(() => {
-    bluetoothAvailable().then(setBtOn);
+    const check = () => bluetoothAvailable().then(setBtOn);
+    check();
+    const t = setInterval(check, 5000);
+    window.addEventListener("focus", check);
+    return () => {
+      clearInterval(t);
+      window.removeEventListener("focus", check);
+    };
   }, []);
 
   // Windows app only: the printers the computer's driver knows about.
@@ -498,21 +601,26 @@ const DeviceConfiguration = () => {
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px] items-start">
       <div className="space-y-4 min-w-0">
         {/* ---------- Printers ---------- */}
+        {/* key: choosing a printer resets the card's tab and LAN address from what was kept; the slot prefix keeps the two keys apart. */}
         <PrinterSlot
+          key={`receipt-${device.type || "none"}`}
           title="Receipt Printer"
           subtitle="Bills and reports."
           device={device}
           patchDevice={patchDevice}
+          onUnsavedLan={(v) => setLanWaiting((w) => ({ ...w, receipt: v }))}
           onTest={testPrint}
           systemPrinters={systemPrinters}
           btOn={btOn}
         />
         <PrinterSlot
+          key={`kitchen-${device.kitchen?.type || "none"}`}
           title="Kitchen Printer (KOT)"
           subtitle="Kitchen order tickets. Not set up: KOTs print on the receipt printer."
           emptyLabel="Uses receipt printer"
           device={device.kitchen || {}}
           patchDevice={patchKitchen}
+          onUnsavedLan={(v) => setLanWaiting((w) => ({ ...w, kitchen: v }))}
           onTest={testKot}
           onClear={() => patchDevice({ kitchen: undefined })}
           allowDialog={false}
@@ -524,7 +632,7 @@ const DeviceConfiguration = () => {
         <Card title="Automation">
           <ToggleRow
             title="Auto Receipt Print"
-            note="Prints on the receipt printer."
+            note="Prints on the receipt printer. A table's bill prints when it is settled at the till; a guest who pays on their phone gets no paper copy (only the e-bill, if Auto E-Bill is on)."
             checked={Boolean(device.autoPrint)}
             onChange={(v) => patchDevice({ autoPrint: v })}
           />
@@ -610,8 +718,16 @@ const DeviceConfiguration = () => {
           />
         </Card>
 
-        <div className="flex justify-end">
-          <button type="button" className={`${btnPrimary} px-6`} onClick={save} disabled={saveMutation.isPending}>
+        <div className="flex items-center justify-end gap-3">
+          {lanWaiting.receipt || lanWaiting.kitchen ? (
+            <p className="text-[12px] text-[#64748B]">Save turns on once the LAN printer answers.</p>
+          ) : null}
+          <button
+            type="button"
+            className={`${btnPrimary} px-6`}
+            onClick={save}
+            disabled={saveMutation.isPending || lanWaiting.receipt || lanWaiting.kitchen}
+          >
             {saveMutation.isPending ? "Saving…" : "Save"}
           </button>
         </div>

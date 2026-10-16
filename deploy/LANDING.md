@@ -2,7 +2,7 @@
 
 The public marketing site (landing + legal pages) is plain static HTML/CSS in
 `deploy/landing/`, served directly by Caddy on the apex hostname. No build step,
-no container. `home.js` only adds motion: with JavaScript off, with reduced motion requested, or on paper, the page reads the same, just still. `<html class="no-js">` keeps every scroll-reveal visible until `home.js` runs and removes the class, so a blocked or failed script never hides a section.
+no container. `home.js` adds motion, and fills the pricing section from the CSD catalogue (below): with JavaScript off, with reduced motion requested, or on paper, the page reads the same, just still and with the prices written into the HTML. `<html class="no-js">` keeps every scroll-reveal visible until `home.js` runs and removes the class, so a blocked or failed script never hides a section.
 
 ## Files
 
@@ -15,7 +15,7 @@ no container. `home.js` only adds motion: with JavaScript off, with reduced moti
 | `return.html` | Return Policy |
 | `shipping.html` | Shipping Policy |
 | `style.css` | Shared stylesheet (light-only — see below) |
-| `home.css`, `home.js` | Landing page only: the animated hero, feature grid, pricing cards and scroll reveals |
+| `home.css`, `home.js` | Landing page only: the animated hero, feature grid, pricing cards (live from the API) and scroll reveals |
 | `robots.txt`, `sitemap.xml` | Crawler hints |
 | `assets/` | Brand artwork — see below |
 
@@ -180,3 +180,27 @@ restart caddy` only if a file does not appear.
 ```bash
 python -m http.server 4321 --directory deploy/landing
 ```
+
+## Prices, add-ons and devices come from CSD
+
+`home.js` reads `GET https://api.knotkitchen.com/api/public/pricing` on load
+(before its reduced-motion return, so everyone gets it) and gives up after 4 s.
+It returns the CSD Billing catalogue only, never a store's negotiated price:
+the POS and Billing plans with their top-up minimums, add-ons and devices on
+sale (a device added in CSD appears by itself, with its picture and
+description), and the per-order charges. The API caches it for a minute and a
+CSD save clears that cache; browsers keep it for up to a minute.
+
+- Each amount in the pricing section and the FAQ is a `data-price="plan:POS"`,
+  `plan:BILLING:topUpMin`, `charge:ebill`… element; the add-on and device lists
+  (`#addon-list`, `#device-list`) are rebuilt whole, and the JSON-LD offer gets
+  the POS price. What the HTML says is the fallback when the API is down, for
+  crawlers that do not run scripts, and with JavaScript off: refresh it on a
+  landing deploy after a price change.
+- A device's Order button opens `business.knotkitchen.com/settings/billing?device=CODE`:
+  POS sign-in first (the target is remembered through `/auth`), then Billing
+  opens that device's request. There is no guest checkout; visitors without an
+  account get Sign up: book a demo.
+- Device pictures are uploaded in CSD Billing (`POST /api/csd/billing/device-image`,
+  admin only) and served from `api.<base>/uploads/platform/devices/`; `home.js`
+  shows no other picture URL.

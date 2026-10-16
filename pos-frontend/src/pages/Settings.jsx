@@ -20,7 +20,7 @@ import RulesChargesView from "../components/settings/RulesChargesView";
 import KnotEatsView from "../components/settings/KnotEatsView";
 
 /** Which add-on unlocks a locked option (services/planFeatures on the server). */
-const ADDON_FOR = { website: "Website", tableQr: "QR Table Ordering", onlineOrdering: "Website or QR Table Ordering" };
+const ADDON_FOR = { website: "Website", websiteHours: "Website" };
 
 /** Anything that opens a screen can be pinned; Logout cannot. Help & Support is always in the side panel. */
 const canPin = (item) => Boolean(item && (item.path || item.mode === "view") && item.id !== "support");
@@ -65,17 +65,21 @@ const Settings = () => {
     },
   });
 
-  // Add-on features (services/planFeatures on the server, which also enforces
-  // them): the website tiles need the Website add-on, Manage Tables the QR
-  // Table Ordering add-on, and Order Toggles / Rules & Charges either one.
-  // On the POS plan alone they are locked.
-  const { data: subRes } = useQuery({ queryKey: ["subscription"], queryFn: getSubscriptionStatus });
+  // Plan and add-on features (services/planFeatures on the server, which also
+  // enforces them): Manage Website needs the Website add-on, on any plan. On
+  // the Billing plan, Manage Tables, Order Toggles and Knot Eats need the POS
+  // plan, and Website Timing & Holidays the POS plan or the Website add-on.
+  // Rules & Charges is open on every plan.
+  const { data: subRes, isLoading: planLoading } = useQuery({ queryKey: ["subscription"], queryFn: getSubscriptionStatus });
   const features = subRes?.data?.data?.features;
   const lockedByPlan = (item) => Boolean(item.feature && features && features[item.feature] === false);
   // Locked tiles open Billing.
   const blockedByPlan = lockedByPlan;
+  // On the Billing plan only an add-on's own screens open by buying it; the rest needs the POS plan.
   const lockedNote = (item) =>
-    `Needs the ${ADDON_FOR[item.feature] || "Website"} add-on. Tap to add it in Billing.`;
+    features?.pos === false && item.feature !== "website" && item.feature !== "websiteHours"
+      ? "Not on the Billing plan. Tap to upgrade in Billing & Subscription."
+      : `Needs the ${ADDON_FOR[item.feature] || "Website"} add-on. Tap to add it in Billing.`;
 
   const handleClick = (item) => {
     // The click that ends a long-press only opens the pin sheet.
@@ -140,6 +144,9 @@ const Settings = () => {
             <span className="text-[#94A3B8]"><I.lock /></span>
             <span className="text-[13.5px] font-bold text-[#334155]">{lockedNote(activeMeta)}</span>
           </button>
+        ) : activeMeta?.feature && planLoading ? (
+          // A gated view waits for the plan, so a locked one never draws (or calls its APIs) first.
+          <p className="text-[13.5px] text-[#94A3B8]">Loading…</p>
         ) : view === "cache" ? (
           <ManageCacheView />
         ) : view === "device" ? (

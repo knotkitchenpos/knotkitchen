@@ -21,11 +21,13 @@ const {
   getBillingConfig,
   updateBillingConfig,
   getAccountStanding,
-  endTabletRental,
   adjustWallet,
   cancelAccountSubscription,
   reinstateAccountSubscription,
+  changeAccountPlan,
+  uploadDeviceImage,
 } = require("../controllers/csdBillingConfigController");
+const { singleImageUpload } = require("../middlewares/uploadHandler");
 const {
   listAgreements, getAgreement, createStoreFromAgreement, retryPortalNotify,
 } = require("../controllers/csdAgreementController");
@@ -203,16 +205,24 @@ router.get("/settings", requireCsdAdmin, getSettings);
  * KnotKitchen's own pricing. The ONLY place the POS plan, add-ons, tablets,
  * printers, GST and the per-order charge can be set -- no restaurant-facing
  * route writes any of it. Reading is open to any CSD staff; changing a price,
- * ending a tablet rental (the physical return), or cancelling or reinstating
- * a store's subscription is admin-only (and audited).
+ * or cancelling or reinstating a store's subscription is admin-only (and
+ * audited). Tablet rent ended 2026-10-16, so there is no rental to end.
  */
 router.get("/billing/config", getBillingConfig);
 router.patch("/billing/config", requireCsdAdmin, updateBillingConfig);
+// A device's picture: stored here, live once the PATCH above saves it on the row.
+const deviceImageLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20,
+  keyGenerator: (req) => `csd-device-image:${req.csdStaff?._id || clientIp(req)}`,
+  message: "Too many uploads. Please wait a moment.",
+});
+router.post("/billing/device-image", requireCsdAdmin, deviceImageLimiter, singleImageUpload, uploadDeviceImage);
 router.get("/billing/accounts/:restaurantId", getAccountStanding);
-router.post("/billing/accounts/:restaurantId/tablets/:serial/end", requireCsdAdmin, endTabletRental);
 router.post("/billing/accounts/:restaurantId/wallet/adjust", requireCsdAdmin, adjustWallet);
 router.post("/billing/accounts/:restaurantId/subscription/cancel", requireCsdAdmin, cancelAccountSubscription);
 router.post("/billing/accounts/:restaurantId/subscription/reinstate", requireCsdAdmin, reinstateAccountSubscription);
+router.post("/billing/accounts/:restaurantId/subscription/plan", requireCsdAdmin, changeAccountPlan);
 
 /**
  * Printer and tablet requests from POS Billing (paid by the store). Any CSD

@@ -188,15 +188,23 @@ export const settings = {
 export const billingConfig = {
   get: () => api.get("/billing/config").then((r) => r.data.data),
   save: (payload) => api.patch("/billing/config", payload).then((r) => r.data.data),
-  // The tablet came back: its rental stops at the current period end (admin only).
-  endTablet: (restaurantId, serial) =>
-    api.post(`/billing/accounts/${restaurantId}/tablets/${serial}/end`).then((r) => r.data.data),
+  // Admin only: a device's picture, stored as WebP. Answers { url }; it goes
+  // live (POS Billing, knotkitchen.com) only when Save puts it on the row.
+  uploadDeviceImage: (file) => {
+    const body = new FormData();
+    body.append("file", file);
+    // X-CSD: the server refuses this upload without it (no cross-site form can set it).
+    return api.post("/billing/device-image", body, { timeout: 60000, headers: { "X-CSD": "1" } }).then((r) => r.data.data);
+  },
   // Renewals stop at the period end, then the store is marked Closed (admin
   // only). Both answer with the account payload, whose .subscription is fresh.
   cancelSubscription: (restaurantId, reason) =>
     api.post(`/billing/accounts/${restaurantId}/subscription/cancel`, { reason }).then((r) => r.data.data),
   reinstateSubscription: (restaurantId) =>
     api.post(`/billing/accounts/${restaurantId}/subscription/reinstate`).then((r) => r.data.data),
+  // Admin only, audited: a smaller plan from the period end; the current code cancels a scheduled change.
+  changePlan: (restaurantId, code, reason) =>
+    api.post(`/billing/accounts/${restaurantId}/subscription/plan`, { code, reason }).then((r) => r.data.data),
   // Admin only, audited: { direction: "CREDIT" | "DEBIT", amount (rupees),
   // reason, reference?, idempotencyKey }. Answers with the account payload.
   adjustWallet: (restaurantId, payload) =>

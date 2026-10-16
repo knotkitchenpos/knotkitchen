@@ -5,7 +5,7 @@
 
 const { isSettled } = require("../constants/orderStatus");
 const { formatAddress } = require("./address");
-const { resolveItemAmounts } = require("./orderItemAmounts");
+const { resolveItemAmounts, round3 } = require("./orderItemAmounts");
 const { round2 } = require("./money");
 
 const formatPaymentMethod = (method) => {
@@ -76,7 +76,7 @@ const buildReceipt = ({
     };
   });
 
-  const quantities = items.reduce((acc, curr) => acc + curr.quantity, 0);
+  const quantities = round3(items.reduce((acc, curr) => acc + curr.quantity, 0));
 
   // Resolve financial breakdown
   let subtotal = 0;

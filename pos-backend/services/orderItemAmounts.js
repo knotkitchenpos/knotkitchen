@@ -25,8 +25,21 @@
 
 const { round2 } = require("./money");
 
+const round3 = (n) => Math.round((Number(n) || 0) * 1000) / 1000;
+
+// A line's quantity. A weighed dish keeps its fraction to the gram (1.8 stays
+// 1.8, never 1 or 2); missing, zero, negative or nonsense reads as 1.
+// Mirrors pos-frontend/src/utils/orderItems.js -- keep them in step.
+const toQuantity = (q) => (round3(q) > 0 ? round3(q) : 1);
+
+// How a quantity is printed: 2 -> "2", 1.8 -> "1.80", 0.375 -> "0.375".
+const formatQty = (q) => {
+  const n = round3(q);
+  return Number.isInteger(n) ? String(n) : n.toFixed(3).replace(/0$/, "");
+};
+
 const resolveItemAmounts = (item = {}) => {
-  const quantity = Math.max(1, Math.floor(Number(item.quantity) || 1));
+  const quantity = toQuantity(item.quantity);
   const storedTotal = Number(item.total || 0);
 
   // `total` present and positive -> written under the current contract, or by
@@ -42,4 +55,4 @@ const resolveItemAmounts = (item = {}) => {
   };
 };
 
-module.exports = { resolveItemAmounts, round2 };
+module.exports = { resolveItemAmounts, round2, round3, toQuantity, formatQty };

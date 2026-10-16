@@ -35,7 +35,7 @@ const getMyRestaurant = async (req, res, next) => {
 const bcrypt = require("bcrypt");
 const WebsiteSettings = require("../models/websiteSettingsModel");
 const { buildStorefrontUrl } = require("../services/websiteProvisioningService");
-const { hasWebsite } = require("../services/planFeatures");
+const { hasWebsite, featuresOf, effectiveOrderToggles } = require("../services/planFeatures");
 
 /** posSettings with every field present, including ones added after the restaurant was saved. */
 const receiptSettingsOf = (restaurant) => {
@@ -113,7 +113,8 @@ const getStoreProperties = async (req, res, next) => {
         // The website link printed on receipts when none is typed in: only while
         // the website is on (Website add-on); receipts must not print a disabled site.
         websiteUrl: (await hasWebsite(restaurant._id, settings?.storeId)) ? buildStorefrontUrl(settings) : "",
-        orderTypeToggles: restaurant.orderTypeToggles || { collection: true, delivery: true, table: true },
+        // What the till may take now: Collection only on the Billing plan (stored switches untouched).
+        orderTypeToggles: effectiveOrderToggles(restaurant.orderTypeToggles, await featuresOf(restaurant._id, settings?.storeId)),
         hasCustomPin: Boolean(restaurant.securityPin),
       },
     });

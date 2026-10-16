@@ -280,8 +280,7 @@ const None = () => <p className="text-sm text-navy-400">None</p>;
 
 /**
  * The store's POS plan (GET /api/subscription, via the restaurant payload):
- * status, add-ons, tablets still rented from before tablets were sold,
- * hardware bought, and what the next renewals will take from the wallet. Amounts arrive as
+ * status, add-ons, hardware bought, and what the next renewals will take from the wallet. Amounts arrive as
  * { paise, rupees, label }; only the label is shown.
  */
 /** "Name (KnotKitchen)" / "Name (Restaurant)" from { type, name }. */
@@ -292,7 +291,7 @@ const byLabel = (by) => {
   return [by.name, who && `(${who})`].filter(Boolean).join(" ") || null;
 };
 
-const PosPlanCard = ({ sub, storeClosed: storeStatusClosed, isAdmin, onEndTablet, onCancel, onReinstate, onAdjust }) => {
+const PosPlanCard = ({ sub, storeClosed: storeStatusClosed, isAdmin, onCancel, onReinstate, onAdjust, onChangePlan }) => {
   const { storeId } = useParams();
   if (!sub) {
     return (
@@ -319,7 +318,6 @@ const PosPlanCard = ({ sub, storeClosed: storeStatusClosed, isAdmin, onEndTablet
   const addons = sub.addons.filter((a) => a.owned);
   // A yearly add-on renews on its own date, outside the POS period's renewal.
   const yearly = addons.filter((a) => a.yearly && a.renewsAt && !a.endsAt);
-  const tablets = sub.tablets || [];
 
   // Admin only; the server checks too.
   const action = !isAdmin ? null : cancelled ? (
@@ -350,7 +348,21 @@ const PosPlanCard = ({ sub, storeClosed: storeStatusClosed, isAdmin, onEndTablet
           <Row label="Cancelled by">{byLabel(sub.cancelledBy)}</Row>
         )}
         {storeClosed && !cancelled && <Row label="Store">Store closed</Row>}
-        <Row label="Plan">{`${sub.basePlan.name} · ${sub.basePlan.price.label} + GST where applicable ${per}`}</Row>
+        <Row label="Plan">
+          {`${sub.basePlan.name} · ${sub.basePlan.price.label} + GST where applicable ${per}`}
+          {/* Admin only; the server checks too. An older API without plans shows no button. */}
+          {isAdmin && !cancelled && sub.plans?.length > 1 && (
+            <button type="button" onClick={onChangePlan}
+              className="ml-3 text-xs font-semibold text-brand-600 hover:text-brand-700">
+              Change plan…
+            </button>
+          )}
+        </Row>
+        {sub.pendingPlanCode && (
+          <Row label="Scheduled">
+            {`Moves to ${sub.plans?.find((p) => p.code === sub.pendingPlanCode)?.name || sub.pendingPlanCode} plan on ${dOnly(sub.pendingPlanAt)}`}
+          </Row>
+        )}
         {sub.currentPeriodEnd && (
           <Row label="Period">{`${dOnly(sub.currentPeriodStart)} → ${dOnly(sub.currentPeriodEnd)}`}</Row>
         )}
@@ -384,31 +396,7 @@ const PosPlanCard = ({ sub, storeClosed: storeStatusClosed, isAdmin, onEndTablet
         </ul>
       )}
 
-      {/* No new rentals: tablets are now bought, and show under Hardware. */}
-      {tablets.length > 0 && <SubHead>Rented tablets (existing rentals)</SubHead>}
-      {tablets.length > 0 && (
-        <ul className="text-sm">
-          {tablets.map((t) => (
-            <li key={t.serial} className="flex items-center justify-between gap-3 border-b border-navy-100 py-1.5 last:border-b-0">
-              <span className="text-navy-800">
-                Tablet #{t.serial}
-                <span className="ml-1.5 text-xs text-navy-400">since {dOnly(t.rentedAt)}</span>
-              </span>
-              <span className="flex items-center gap-3 text-right text-navy-900">
-                {t.price.label} {per}{t.endsAt ? ` · ends ${dOnly(t.endsAt)}` : ""}
-                {/* The physical return: admin only, and the server checks. */}
-                {isAdmin && !t.endsAt && (
-                  <button type="button" onClick={() => onEndTablet(t.serial)}
-                    className="text-xs font-semibold text-red-600 hover:text-red-700">
-                    End rental
-                  </button>
-                )}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-
+      {/* Tablets are bought and show here; rent ended 2026-10-16, so no rentals are listed. */}
       <SubHead>Hardware</SubHead>
       {sub.hardware.length === 0 ? <None /> : (
         <ul className="text-sm">
@@ -475,7 +463,7 @@ const RestaurantDetail = () => {
   const [staff, setStaff] = useState([]);
   const [activity, setActivity] = useState([]);
   const [eats, setEats] = useState(null); // this store's Knot Eats row, {} when it has none
-  const [dialog, setDialog] = useState(null); // 'charges' | 'customers' | 'gbp' | 'website' | 'cancel' | 'adjust'
+  const [dialog, setDialog] = useState(null); // 'charges' | 'customers' | 'gbp' | 'website' | 'cancel' | 'adjust' | 'plan'
   // One key per opened dialog, so a double submit or a retry is applied once.
   const [adjust, setAdjust] = useState(null); // { direction, amount, reason, reference, key }
   const [adjustErr, setAdjustErr] = useState("");
@@ -483,6 +471,9 @@ const RestaurantDetail = () => {
   const [cancelReason, setCancelReason] = useState("");
   const [cancelErr, setCancelErr] = useState("");
   const [cancelling, setCancelling] = useState(false);
+  const [plan, setPlan] = useState(null); // { code, reason }
+  const [planErr, setPlanErr] = useState("");
+  const [changingPlan, setChangingPlan] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const [openingPos, setOpeningPos] = useState(false);
   const [gbpUrl, setGbpUrl] = useState("");
@@ -552,18 +543,6 @@ const RestaurantDetail = () => {
     }
   };
 
-  const endTablet = async (serial) => {
-    if (!window.confirm(
-      `End the rental of tablet #${serial}? Only do this once the tablet is back. It stops renewing at the end of the current period. This is audited.`
-    )) return;
-    try {
-      await billingApi.endTablet(data.charges.restaurantId, serial);
-      await load();
-    } catch (err) {
-      window.alert(errorMessage(err, "Could not end the rental."));
-    }
-  };
-
   const openAdjust = () => {
     setAdjustErr("");
     setAdjust({ direction: "DEBIT", amount: "", reason: "", reference: "", key: crypto.randomUUID() });
@@ -624,6 +603,35 @@ const RestaurantDetail = () => {
       setCancelErr(fieldErrors(err).reason || errorMessage(err, "Could not cancel the subscription."));
     } finally {
       setCancelling(false);
+    }
+  };
+
+  const openPlan = () => {
+    const plans = data.charges.subscription?.plans || [];
+    setPlanErr("");
+    setPlan({ code: (plans.find((p) => !p.current) || plans[0])?.code || "", reason: "" });
+    setDialog("plan");
+  };
+
+  const changePlan = async (e) => {
+    e.preventDefault();
+    const reason = plan.reason.trim();
+    if (reason.length < 3 || reason.length > 300) {
+      setPlanErr("Give a reason of 3 to 300 characters.");
+      return;
+    }
+    setChangingPlan(true);
+    setPlanErr("");
+    try {
+      await billingApi.changePlan(data.charges.restaurantId, plan.code, reason);
+      // Reload, like cancel: the plan, the scheduled row and the next renewal all change.
+      await load();
+      setDialog(null);
+    } catch (err) {
+      // e.g. 409 UPGRADE_IN_POS: the server's own message says why.
+      setPlanErr(fieldErrors(err).reason || errorMessage(err, "Could not change the plan."));
+    } finally {
+      setChangingPlan(false);
     }
   };
 
@@ -988,10 +996,10 @@ const RestaurantDetail = () => {
           sub={charges.subscription}
           storeClosed={basic.status === "closed"}
           isAdmin={isAdmin}
-          onEndTablet={endTablet}
           onCancel={() => { setCancelErr(""); setDialog("cancel"); }}
           onReinstate={reinstate}
           onAdjust={openAdjust}
+          onChangePlan={openPlan}
         />
 
         <Card title="Restaurant staff">
@@ -1139,14 +1147,59 @@ const RestaurantDetail = () => {
           </form>
         </div>
       )}
+      {dialog === "plan" && plan && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <form onSubmit={changePlan} className="w-full max-w-md max-h-full overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
+            <h2 className="mb-2 text-lg font-bold text-navy-900">Change plan</h2>
+            <p className="mb-3 text-sm text-navy-600">
+              A move to a smaller plan takes effect at the end of the paid period
+              {charges.subscription?.currentPeriodEnd ? ` (${dOnly(charges.subscription.currentPeriodEnd)})` : ""}.
+              No refund. QR Table Ordering stops then. A store that has not started switches now. Choose the
+              current plan to cancel a scheduled change. Upgrades are made by the store in POS Billing.
+            </p>
+            <label className="mb-3 block">
+              <span className="mb-1 block text-xs font-semibold uppercase tracking-wider text-navy-500">Plan</span>
+              <select value={plan.code}
+                onChange={(e) => { const code = e.target.value; setPlan((p) => ({ ...p, code })); setPlanErr(""); }}
+                className="w-full rounded-xl border border-navy-200 px-3.5 py-2.5 text-sm outline-none focus:border-brand-500">
+                {(charges.subscription?.plans || []).map((p) => (
+                  <option key={p.code} value={p.code}>
+                    {`${p.name} · ${p.price.label}${p.current ? " (current)" : ""}`}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="mb-1 block text-xs font-semibold uppercase tracking-wider text-navy-500" htmlFor="plan-reason">
+              Reason
+            </label>
+            <textarea id="plan-reason" rows={3} maxLength={300} value={plan.reason}
+              onChange={(e) => { const reason = e.target.value; setPlan((p) => ({ ...p, reason })); setPlanErr(""); }}
+              placeholder="e.g. Owner asked in writing to move to the Billing plan"
+              className={`w-full rounded-xl border px-3.5 py-2.5 text-sm outline-none ${
+                planErr ? "border-red-400" : "border-navy-200 focus:border-brand-500"
+              }`} />
+            {planErr && <p className="mt-1 text-xs text-red-600">{planErr}</p>}
+            <p className="mt-2 text-xs text-navy-400">3 to 300 characters. Recorded against your name.</p>
+            <div className="mt-5 flex justify-end gap-3">
+              <button type="button" onClick={() => setDialog(null)} disabled={changingPlan}
+                className="rounded-xl border border-navy-300 px-4 py-2.5 text-sm font-semibold text-navy-700 hover:bg-navy-50">
+                Cancel
+              </button>
+              <button type="submit" disabled={changingPlan || !plan.code}
+                className="rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-500 disabled:opacity-50">
+                {changingPlan ? "Saving…" : "Change plan"}
+              </button>
+            </div>
+          </form>
+        </div>
+      )}
       {dialog === "adjust" && adjust && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
           <form onSubmit={adjustWallet} className="w-full max-w-md max-h-full overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl">
             <h2 className="mb-2 text-lg font-bold text-navy-900">Adjust wallet</h2>
             <p className="mb-3 text-sm text-navy-600">
-              Balance now: {charges.subscription?.balance?.label ?? "—"}. Debit for a rented tablet&rsquo;s loss or
-              damage at actual cost, erroneous charges, or to record a permitted bank refund (reference = UTR). The
-              wallet is not otherwise refundable.
+              Balance now: {charges.subscription?.balance?.label ?? "—"}. Credit to put back an erroneous charge;
+              debit to record a permitted bank refund (reference = UTR). The wallet is not otherwise refundable.
             </p>
             <div className="mb-3 flex gap-2" role="radiogroup" aria-label="Direction">
               {[["DEBIT", "Debit (take out)"], ["CREDIT", "Credit (put in)"]].map(([v, label]) => (
@@ -1163,7 +1216,7 @@ const RestaurantDetail = () => {
             </div>
             {[
               ["amount", "Amount (₹)", { type: "number", min: "0.01", step: "0.01", required: true }],
-              ["reason", "Reason", { maxLength: 300, required: true, placeholder: "e.g. Tablet #2 screen damage, supplier invoice" }],
+              ["reason", "Reason", { maxLength: 300, required: true, placeholder: "e.g. Duplicate renewal charge put back" }],
               ["reference", "Reference (optional)", { maxLength: 100, placeholder: "Invoice number or bank UTR" }],
             ].map(([key, label, props]) => (
               <label key={key} className="mb-3 block">

@@ -1,6 +1,6 @@
 /**
- * The POS plan, its add-ons and devices (tablets and printers): activating,
- * buying and renewing them.
+ * The plan (POS or Billing, services/plans), its add-ons and devices (tablets
+ * and printers): activating, buying, upgrading and renewing them.
  *
  * The plan and add-ons are paid from the Business Balance (the wallet), never
  * from a card at this step -- the gateway's only job is topping the wallet up
@@ -17,8 +17,8 @@
  *   3. add-ons bought mid-period pay for the days left -- except one with its
  *      own period (the yearly Website), which pays a full period from the day
  *      it is bought. A device is paid once, online.
- *   4. at the period end the plan, add-ons and tablets rented before tablets
- *      were sold renew in one invoice, all or nothing (renewDue). Short ->
+ *   4. at the period end the plan and its add-ons renew in one invoice, all
+ *      or nothing (renewDue); tablet rent ended 2026-10-16. Short ->
  *      EXPIRED; the next top-up renews. An add-on with its own period renews
  *      alone on its own date (renewAddons); short, only it lapses.
  *   5. cancelled (by the owner or CSD): renewals stop, and at the period end
@@ -36,6 +36,7 @@ const crypto = require("node:crypto");
 const mongoose = require("mongoose");
 const { PlatformSubscription, PlatformInvoice, CommercialSchedule } = require("../models/platformSubscriptionModel");
 const { BusinessBalance } = require("../models/businessBalanceModel");
+const { isRetiredAddon } = require("../models/platformBillingModel");
 const Restaurant = require("../models/restaurantModel");
 const Store = require("../models/storeModel");
 const { AGREEMENT_VERSION } = require("../constants/agreement");
@@ -48,6 +49,7 @@ const { nextPeriod, isActiveAt, prorate } = require("./subscriptionPeriod");
 const { nextInvoiceNumber } = require("./invoiceNumber");
 const { evaluateLock, isStoreClosed } = require("./accountLock");
 const { featuresFor } = require("./planFeatures");
+const { planOf, plansOf, PLAN_RANK } = require("./plans");
 const { defaultShipTo } = require("./hardwareRequests");
 
 // Awaited after every money movement, so the Billing page's refresh right
@@ -57,6 +59,10 @@ const settleLock = (restaurantId) =>
 
 const DEMO_STORE = "This is a demo store. It has every add-on and is never charged.";
 const RENEW_FIRST = "Renew the POS plan first (top up the wallet).";
+const DOWNGRADE_VIA_SUPPORT = "Moving to a smaller plan is done only by KnotKitchen. Contact support.";
+// QR Table Ordering is in the POS plan since 2026-10-16. A store's entry for it is never sold,
+// shown or renewed; one already paid runs out its days (no refund) and drops off at renewal.
+const retired = isRetiredAddon;
 
 class SubscriptionError extends Error {
   constructor(message, status = 400, extra = {}) {
@@ -143,8 +149,8 @@ const catalogDays = (code, config) =>
   Number((config.addons || []).find((a) => a.code === code)?.periodDays) || Number(config.subscriptionDays);
 
 /**
- * GST on each line by itself, and the totals. The plan, add-ons and tablet
- * rentals are taxed on top (exclusive). A device line (`gstInclusive`) is sold at a
+ * GST on each line by itself, and the totals. The plan and add-ons are
+ * taxed on top (exclusive). A device line (`gstInclusive`) is sold at a
  * price that already includes GST: the amount charged never grows, and once
  * GST applies the invoice shows the GST contained in it.
  */
@@ -379,6 +385,8 @@ const addonPurchase = async ({ config, subscription, override, restaurant }, raw
   // One CSD has retired can still be taken back by a store that has it this period.
   const addon = (config.addons || []).find((a) => a.code === code && (a.isActive !== false || owned));
   if (!addon) throw new SubscriptionError("That add-on is not available.", 404);
+  if (retired(addon))
+    throw new SubscriptionError(`${addon.name} is no longer sold: table ordering comes with the ${planOf(config, "POS").name} plan.`, 409, { code: "ADDON_RETIRED" });
   requireActivePeriod(subscription, on);
   const pricePaise = await priceFor({ code, config, override });
   // One with its own period (the yearly Website) is bought whole, from today;
@@ -408,32 +416,57 @@ const printerPurchase = async ({ config, override, restaurant }, rawCode, on) =>
 };
 
 /**
- * What buying `item` would charge right now: "ADDON:<code>" or
- * "PRINTER:<code>" (any device). "TABLET" is the tablet device, as older
- * tills still ask for it.
+ * Moving this store to plan `rawCode`. Before activation either plan, free.
+ * After it only up, never down (KnotKitchen does those, csdChangePlan): the
+ * price difference for the days left of the running period, + GST, now. An
+ * expired store switches free; the renewal its next top-up runs charges the
+ * new plan.
+ */
+const planChange = async ({ config, subscription, override, restaurant }, rawCode, on) => {
+  const to = plansOf(config).find((p) => p.code === String(rawCode || "").trim().toUpperCase());
+  if (!to) throw new SubscriptionError("Choose a plan: POS or BILLING.", 400);
+  const from = planOf(config, subscription.planCode);
+  const activated = Boolean(subscription.activatedAt);
+  if (subscription.status === "CANCELLED") throw new SubscriptionError("This subscription is cancelled. Contact KnotKitchen support.", 409, { code: "SUBSCRIPTION_CANCELLED" });
+  if (activated && to.code !== from.code) {
+    if (PLAN_RANK[to.code] < PLAN_RANK[from.code]) throw new SubscriptionError(DOWNGRADE_VIA_SUPPORT, 409, { code: "DOWNGRADE_VIA_SUPPORT" });
+    if (subscription.cancelAt) throw new SubscriptionError(`The POS subscription is cancelled and ends on ${istDate(subscription.cancelAt)}. Undo the cancellation to buy more.`, 409, { code: "SUBSCRIPTION_ENDING" });
+  }
+  const [toPricePaise, fromPricePaise] = await Promise.all([priceFor({ code: to.code, config, override }), priceFor({ code: from.code, config, override })]);
+  const running = activated && subscription.status === "ACTIVE" && isActiveAt(subscription, on);
+  const amountPaise = running && to.code !== from.code
+    ? prorate({ pricePaise: Math.max(0, toPricePaise - fromPricePaise), periodEnd: subscription.currentPeriodEnd, days: config.subscriptionDays, on })
+    : 0;
+  const lines = amountPaise ? [{ description: `Upgrade to ${to.name} plan, until ${istDate(subscription.currentPeriodEnd)}`, amountPaise }] : [];
+  return { from, to, activated, toPricePaise, bill: priceLines(lines, { config, restaurant, on }) };
+};
+
+/**
+ * What buying `item` would charge right now: "ADDON:<code>", "PLAN:<code>"
+ * (an upgrade) or "PRINTER:<code>" (any device). "TABLET" is the tablet
+ * device, as older tills still ask for it.
  */
 const quote = async ({ restaurantId, item, on = new Date() }) => {
   const ctx = await load(restaurantId);
   if (ctx.exempt) throw new SubscriptionError(DEMO_STORE, 409);
   const [type, code] = String(item || "").split(":");
   if (type === "ADDON") return (await addonPurchase(ctx, code, on)).bill;
+  if (type === "PLAN") return (await planChange(ctx, code, on)).bill;
   if (type === "TABLET") return (await printerPurchase(ctx, "TABLET", on)).bill;
   if (type === "PRINTER") return (await printerPurchase(ctx, code, on)).bill;
-  throw new SubscriptionError("Say what to price: ADDON:<code>, TABLET or PRINTER:<code>.", 400);
+  throw new SubscriptionError("Say what to price: ADDON:<code>, PLAN:<code>, TABLET or PRINTER:<code>.", 400);
 };
 
 // ---------------------------------------------------------------------------
 // Activation, from the first qualifying top-up
 // ---------------------------------------------------------------------------
 
-/** Start the POS plan now: the plan price + GST from the wallet, period from today. */
+/** Start the store's plan (POS unless it chose Billing) now: its price + GST from the wallet, period from today. */
 const activate = async ({ restaurantId, on = new Date() }) => {
   const { config, subscription, override, restaurant, exempt } = await load(restaurantId);
   if (exempt || subscription.activatedAt || subscription.status === "CANCELLED") return null;
 
-  const base = config.basePlan || {};
-  const code = base.code || "POS";
-  const name = base.name || code;
+  const { code, name } = planOf(config, subscription.planCode);
   const period = nextPeriod({ subscription: null, days: config.subscriptionDays, on });
   const bill = priceLines(
     [{ description: `${name} plan — ${span(config.subscriptionDays)}`, amountPaise: await priceFor({ code, config, override }) }],
@@ -455,6 +488,9 @@ const activate = async ({ restaurantId, on = new Date() }) => {
 
   subscription.planCode = code;
   subscription.planName = name;
+  // Written even when unchanged: a plan chosen while this ran must not outlive the price charged above.
+  subscription.markModified("planCode");
+  subscription.markModified("planName");
   subscription.status = "ACTIVE";
   subscription.currentPeriodStart = period.start;
   subscription.currentPeriodEnd = period.end;
@@ -493,7 +529,7 @@ const activate = async ({ restaurantId, on = new Date() }) => {
 /**
  * A top-up (RECHARGE) was just credited. Only services/recharge calls this,
  * so a CSD credit never activates anything. Not activated yet, and this one
- * top-up is at least the minimum: the POS plan starts now. Then anything due
+ * top-up is at least its plan's first minimum: the plan starts now. Then anything due
  * renews at once -- which is what unlocks an expired store, and brings back a
  * lapsed yearly add-on.
  */
@@ -508,7 +544,7 @@ const afterRecharge = async ({ restaurantId, amountPaise, on = new Date() }) => 
 
   const paid = Math.round(Number(amountPaise) || 0);
   let activated = false;
-  if (!subscription.activatedAt && paid >= (Number(config.firstRechargeMinPaise) || 0)) {
+  if (!subscription.activatedAt && paid >= planOf(config, subscription.planCode).firstRechargeMinPaise) {
     activated = Boolean(await activate({ restaurantId, on }));
   }
 
@@ -526,19 +562,19 @@ const closedForTopUp = async (restaurantId) => {
   return subscription?.status === "CANCELLED" || (await isStoreClosed(restaurantId));
 };
 
-/** The smallest top-up allowed: none for a demo store, the first minimum until the plan starts, then the later one. */
-const topUpFloor = ({ config, activatedAt, exempt }) =>
-  exempt ? 0 : Number(activatedAt ? config.topUpMinPaise : config.firstRechargeMinPaise) || 0;
+/** The smallest top-up allowed: none for a demo store, the plan's first minimum until it starts, then its later one. */
+const topUpFloor = ({ config, planCode, activatedAt, exempt }) =>
+  exempt ? 0 : (activatedAt ? planOf(config, planCode).topUpMinPaise : planOf(config, planCode).firstRechargeMinPaise);
 
 /** The smallest top-up this store may open now, in paise, and whether it is the first (activating) one. */
 const minimumTopUpPaise = async (restaurantId) => {
   const [config, subscription, override] = await Promise.all([
     getPlatformConfig(),
-    PlatformSubscription.findOne({ restaurantId }).select("activatedAt").lean(),
+    PlatformSubscription.findOne({ restaurantId }).select("activatedAt planCode").lean(),
     getOverride(restaurantId),
   ]);
   return {
-    paise: topUpFloor({ config, activatedAt: subscription?.activatedAt, exempt: override?.billingExempt }),
+    paise: topUpFloor({ config, planCode: subscription?.planCode, activatedAt: subscription?.activatedAt, exempt: override?.billingExempt }),
     first: !subscription?.activatedAt,
   };
 };
@@ -634,16 +670,74 @@ const removeAddon = async ({ restaurantId, code, on = new Date() }) => {
   return { subscription, endsAt: addon.endsAt };
 };
 
-/** CSD only: a rented tablet came back. It stops renewing at the current period end. */
-const endTablet = async ({ restaurantId, serial, on = new Date() }) => {
-  const subscription = await getSubscription(restaurantId);
-  const tablet = (subscription.tablets || []).find((t) => t.serial === Number(serial));
-  if (!tablet) throw new SubscriptionError("This store has no tablet with that number.", 404);
-  if (!tablet.endsAt) {
-    tablet.endsAt = subscription.currentPeriodEnd || new Date(on);
-    await subscription.save();
+/**
+ * The store chooses its plan before the first top-up (free, either way), or
+ * upgrades (planChange prices it). Both writes are conditional: a choice only
+ * while the plan has not started (a top-up activating meanwhile charged the
+ * plan it read, so the request is re-run as an upgrade or a refused
+ * downgrade), and an upgrade only from the plan it priced, so exactly one
+ * request switches -- a retry whose debit was already taken included -- and
+ * that one is audited and recorded.
+ */
+const changePlan = async ({ restaurantId, code, acceptance, createdBy = null, on = new Date() }) => {
+  const ctx = await load(restaurantId);
+  const { config, subscription } = ctx;
+  if (ctx.exempt) throw new SubscriptionError(DEMO_STORE, 409);
+  const p = await planChange(ctx, code, on);
+  const set = { $set: { planCode: p.to.code, planName: p.to.name, pendingPlanCode: "" } };
+  if (p.to.code === p.from.code) return { subscription, invoice: null, charged: 0, already: true, from: p.from, to: p.to };
+  if (!p.activated) {          // chosen before the first top-up: free, either way
+    const r = await PlatformSubscription.updateOne({ _id: subscription._id, activatedAt: null }, set);
+    if (!Number(r?.matchedCount)) return changePlan({ restaurantId, code, acceptance, createdBy, on });
+    return { subscription: await getSubscription(restaurantId), invoice: null, charged: 0, already: false, from: p.from, to: p.to };
   }
-  return { subscription, tablet };
+  requireAcceptance(acceptance);
+  const { invoice, charged } = await charge({
+    subscription, bill: p.bill, kind: "SUBSCRIPTION", description: `Upgrade to ${p.to.name} plan`,
+    idempotencyKey: `plan-${subscription._id}-${p.to.code}-${iso(subscription.currentPeriodEnd)}`,
+    config, period: { start: new Date(on), end: subscription.currentPeriodEnd }, createdBy,
+    meta: { planCode: p.to.code, from: p.from.code, upgrade: true },
+  });
+  const switched = await grant(subscription, { planCode: subscription.planCode }, set);
+  if (switched) {
+    await recordSchedule({ restaurantId, storeId: subscription.storeId, reason: "PLAN",
+      values: acceptedValues({ bill: p.bill, item: { plan: p.to.code, name: p.to.name, from: p.from.code, pricePaise: p.toPricePaise, periodDays: config.subscriptionDays } }), acceptance });
+    await settleLock(restaurantId);
+  }
+  return { subscription: await getSubscription(restaurantId), invoice, charged, already: !switched, from: p.from, to: p.to };
+};
+
+/**
+ * CSD only. A store not started yet switches now, either way. After that only
+ * down, at the end of the paid period (no refund: the wallet is not
+ * refundable), applied by renewOne; the current plan's code cancels a
+ * scheduled change. Upgrades are the store's, in POS Billing (changePlan).
+ */
+const csdChangePlan = async ({ restaurantId, code, on = new Date() }) => {
+  const config = await getPlatformConfig();
+  const subscription = await getSubscription(restaurantId);
+  const to = plansOf(config).find((p) => p.code === String(code || "").trim().toUpperCase());
+  if (!to) throw new SubscriptionError("Choose a plan: POS or BILLING.", 400);
+  if (subscription.status === "CANCELLED") throw new SubscriptionError("This subscription is cancelled. Reinstate it first.", 409, { code: "SUBSCRIPTION_CANCELLED" });
+  const from = planOf(config, subscription.planCode);
+  const before = { planCode: from.code, pendingPlanCode: subscription.pendingPlanCode || "" };
+  const out = (already, effectiveAt, sub = subscription) => ({ subscription: sub, already, before, effectiveAt });
+  if (!subscription.activatedAt) {                       // not started: switches now, either way
+    if (to.code === from.code) return out(true, null);
+    // Only while still not started: a top-up that activated meanwhile charged the plan it read.
+    const r = await PlatformSubscription.updateOne({ _id: subscription._id, activatedAt: null }, { $set: { planCode: to.code, planName: to.name, pendingPlanCode: "" } });
+    if (!Number(r?.matchedCount)) return csdChangePlan({ restaurantId, code, on });
+    return out(false, new Date(on), await getSubscription(restaurantId));
+  }
+  if (to.code === from.code) {                           // same plan: cancels a scheduled change
+    if (!subscription.pendingPlanCode) return out(true, null);
+    subscription.pendingPlanCode = ""; await subscription.save(); return out(false, null);
+  }
+  if (PLAN_RANK[to.code] > PLAN_RANK[from.code])
+    throw new SubscriptionError("Upgrades are made by the store in POS Billing, which charges the difference.", 409, { code: "UPGRADE_IN_POS" });
+  if (subscription.pendingPlanCode === to.code) return out(true, subscription.currentPeriodEnd);
+  subscription.pendingPlanCode = to.code; await subscription.save();
+  return out(false, subscription.currentPeriodEnd);      // at the end of the paid period, no refund
 };
 
 /**
@@ -739,22 +833,22 @@ const recordPrinterPayment = async ({ intent, paidPaise, on = new Date() }) => {
 // ---------------------------------------------------------------------------
 
 /**
- * What the next renewal charges: the POS plan, and every add-on and rented
- * tablet still renewing, at this store's prices today. Stopped ones (endsAt
- * at or before the period end) lapse and are left out, and so is an add-on
- * with its own period, which renews on its own date (renewAddons). The first
- * tablet is priced as the first, the rest as extras. `target` is the entry a
- * line renews.
+ * What the next renewal charges: the plan (one CSD scheduled takes effect
+ * here), and every add-on (bar a retired one, which lapses here) still
+ * renewing, at this store's prices today. Stopped ones (endsAt at or before
+ * the period end) lapse and are left out, and so is an add-on with its own
+ * period, which renews on its own date (renewAddons). Rented tablets are
+ * never charged again (rent ended 2026-10-16). `target` is the entry a line
+ * renews.
  */
 const renewalLines = async ({ config, subscription, override }) => {
   const periodEnd = subscription.currentPeriodEnd;
   const days = span(config.subscriptionDays);
   const keep = (x) => !x.endsAt || new Date(x.endsAt) > new Date(periodEnd);
-  const addons = (subscription.addons || []).filter(keep);
-  const tablets = (subscription.tablets || []).filter(keep).sort((a, b) => a.serial - b.serial);
-  const base = config.basePlan || {};
+  const plan = planOf(config, subscription.pendingPlanCode || subscription.planCode);
+  const addons = (subscription.addons || []).filter(keep).filter((a) => !retired(a));
   const lines = [
-    { description: `${base.name || "POS"} plan — ${days}`, amountPaise: await priceFor({ code: base.code || "POS", config, override }), target: null },
+    { description: `${plan.name} plan — ${days}`, amountPaise: await priceFor({ code: plan.code, config, override }), target: null },
   ];
   for (const a of addons) {
     if (ownDays(a, config)) continue;
@@ -762,16 +856,12 @@ const renewalLines = async ({ config, subscription, override }) => {
     // An add-on CSD has since removed from the catalogue renews at what it was bought for.
     lines.push({ description: `${a.name} add-on — ${days}`, amountPaise: price === null ? Number(a.pricePaise) || 0 : price, target: a });
   }
-  for (const [i, t] of tablets.entries()) {
-    const amountPaise = await priceFor({ code: i === 0 ? "TABLET_FIRST" : "TABLET_EXTRA", config, override });
-    lines.push({ description: `Tablet #${t.serial} rental — ${days}`, amountPaise, target: t });
-  }
-  return { lines, addons, tablets };
+  return { lines, addons };
 };
 
 /**
- * Renew one subscription whose period has ended: plan, add-ons and tablets in
- * one invoice, all or nothing. Short of money -> EXPIRED with the reason, and
+ * Renew one subscription whose period has ended: plan and add-ons in one
+ * invoice, all or nothing. Short of money -> EXPIRED with the reason, and
  * the lock rules (grace, then lock) take over until a top-up renews it.
  */
 const renewOne = async (subscription, { config, on }) => {
@@ -787,9 +877,14 @@ const renewOne = async (subscription, { config, on }) => {
   }
   const override = await getOverride(restaurantId);
   if (override?.billingExempt) return { renewed: false };
+  // A plan change CSD scheduled takes effect with the new period (renewalLines prices it).
+  if (subscription.pendingPlanCode) {
+    const plan = planOf(config, subscription.pendingPlanCode);
+    subscription.planCode = plan.code; subscription.planName = plan.name; subscription.pendingPlanCode = "";
+  }
   const restaurant = await Restaurant.findById(restaurantId).select("address").lean();
 
-  const { lines, addons, tablets } = await renewalLines({ config, subscription, override });
+  const { lines, addons } = await renewalLines({ config, subscription, override });
   const bill = priceLines(lines, { config, restaurant, on });
   // On time, the new period continues from the old end; late, it starts the
   // day they pay. Always FROM_PAYMENT, whatever an old config row still holds.
@@ -828,8 +923,7 @@ const renewOne = async (subscription, { config, on }) => {
     a.periodDays = days;
     a.paidUntil = previousEnd;
   }
-  // Stopped add-ons lapse here. Returned tablets stay listed (ended) so tablet
-  // numbers, and the payment keys built from them, never repeat.
+  // Stopped (and retired) add-ons lapse here. Old rented-tablet rows are left as they are (history).
   subscription.addons = addons;
   subscription.status = "ACTIVE";
   subscription.currentPeriodStart = period.start;
@@ -857,7 +951,7 @@ const renewOne = async (subscription, { config, on }) => {
  */
 const renewAddons = async (subscription, { config, on }) => {
   const result = { renewed: [], errors: [] };
-  const due = (subscription.addons || []).filter((a) => !a.endsAt && a.paidUntil && new Date(a.paidUntil) <= new Date(on));
+  const due = (subscription.addons || []).filter((a) => !retired(a) && !a.endsAt && a.paidUntil && new Date(a.paidUntil) <= new Date(on));
   if (!due.length) return result;
   const restaurantId = subscription.restaurantId;
   const override = await getOverride(restaurantId);
@@ -1067,12 +1161,13 @@ const statusFor = async (restaurantId, on = new Date()) => {
   ]);
 
   // The whole catalogue on sale, marked with what this store has. One it
-  // owns that has since been retired still shows, so it can be stopped.
+  // owns that CSD has since taken off sale still shows, so it can be stopped;
+  // a retired one never does (it cannot be bought and lapses at renewal).
   const renews = !exempt && !subscription.cancelAt && subscription.status !== "CANCELLED";
   const addons = [];
   for (const a of [...(config.addons || [])].sort((x, y) => (x.sortOrder || 0) - (y.sortOrder || 0))) {
     const owned = (subscription.addons || []).find((o) => o.code === a.code && liveAt(o, on));
-    if (a.isActive === false && !owned) continue;
+    if (retired(a) || (a.isActive === false && !owned)) continue;
     // Its own period (the yearly Website), else the POS period it rides.
     const own = Number(owned?.periodDays) || Number(a.periodDays) || 0;
     addons.push({
@@ -1098,21 +1193,15 @@ const statusFor = async (restaurantId, on = new Date()) => {
     });
   }
 
-  // Tablets rented before tablets were sold: they keep renewing until ended.
-  const tablets = (subscription.tablets || []).map((t) => ({
-    serial: t.serial,
-    price: asAmount(t.pricePaise),
-    rentedAt: t.rentedAt,
-    endsAt: t.endsAt || null,
-    active: liveAt(t, on),
-  }));
-  const [firstPrice, extraPrice] = await Promise.all([price("TABLET_FIRST"), price("TABLET_EXTRA")]);
   // Devices on sale: the tablet and the printers.
   const printers = [];
   for (const p of (config.printers || []).filter((x) => x.isActive !== false)) {
     printers.push({
       code: p.code,
       name: p.name,
+      // Set in CSD Billing; the picture is an uploads URL (thumbUrl in the POS).
+      description: p.description || "",
+      imageUrl: p.imageUrl || "",
       price: asAmount(await price(p.code)),
       owned: (subscription.hardware || []).filter((h) => h.code === p.code && !h.cancelledAt).length,
     });
@@ -1125,17 +1214,34 @@ const statusFor = async (restaurantId, on = new Date()) => {
     nextRenewal = { at: subscription.currentPeriodEnd, ...billView(priceLines(lines, { config, restaurant, on })) };
   }
 
-  const base = config.basePlan || {};
+  const plan = planOf(config, subscription.planCode);
+  const plans = [];
+  for (const p of plansOf(config)) {
+    plans.push({
+      code: p.code,
+      name: p.name,
+      price: asAmount(await price(p.code)),
+      firstRechargeMin: asAmount(p.firstRechargeMinPaise),
+      topUpMin: asAmount(p.topUpMinPaise),
+      current: p.code === plan.code,
+    });
+  }
   return {
     status: subscription.status,
     active,
     // Set by CSD: a demo store, never billed and never locked.
     exempt,
     needsActivation: !exempt && !subscription.activatedAt,
-    firstRechargeMin: asAmount(Number(config.firstRechargeMinPaise) || 0),
+    // The store's plan ("" reads as POS), a move CSD scheduled for the period end, and both plans on sale.
+    planCode: plan.code,
+    pendingPlanCode: subscription.pendingPlanCode || "",
+    pendingPlanAt: subscription.pendingPlanCode ? subscription.currentPeriodEnd : null,
+    plans,
+    firstRechargeMin: asAmount(plan.firstRechargeMinPaise),
     // The smallest top-up allowed right now (the POS Billing presets floor on it).
-    minTopUp: asAmount(topUpFloor({ config, activatedAt: subscription.activatedAt, exempt })),
-    basePlan: { code: base.code || "POS", name: base.name || "POS", price: asAmount(await price(base.code || "POS")) },
+    minTopUp: asAmount(topUpFloor({ config, planCode: subscription.planCode, activatedAt: subscription.activatedAt, exempt })),
+    // The store's CURRENT plan (installed builds read this).
+    basePlan: { code: plan.code, name: plan.name, price: asAmount(await price(plan.code)) },
     periodDays: config.subscriptionDays,
     activatedAt: subscription.activatedAt,
     currentPeriodStart: subscription.currentPeriodStart,
@@ -1151,10 +1257,8 @@ const statusFor = async (restaurantId, on = new Date()) => {
     // N2: no top-ups; the POS shows "contact support to reopen" instead.
     storeClosed,
     topUpBlocked: storeClosed || subscription.status === "CANCELLED",
+    // No `tablets`/`tablet`: tablet rent ended 2026-10-16, so nothing lists it (installed tills read it as none).
     addons,
-    tablets,
-    // What rented tablets renew at. No new rentals: a tablet is a device now.
-    tablet: { firstPrice: asAmount(firstPrice), extraPrice: asAmount(extraPrice) },
     printers,
     hardware: (subscription.hardware || []).map((h) => ({
       code: h.code,
@@ -1184,7 +1288,8 @@ module.exports = {
   minimumTopUpPaise,
   addAddon,
   removeAddon,
-  endTablet,
+  changePlan,
+  csdChangePlan,
   preparePrinterPayment,
   recordPrinterPayment,
   renewDue,

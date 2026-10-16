@@ -16,6 +16,7 @@ const Bill = require("../models/billModel");
 const TableSession = require("../models/tableSessionModel");
 const Restaurant = require("../models/restaurantModel");
 const { buildReceipt } = require("../services/receiptService");
+const { formatQty } = require("../services/orderItemAmounts");
 const { readToken, tokenForEatsOrder } = require("../services/receiptLink");
 const { isSettled } = require("../constants/orderStatus");
 const config = require("../config/config");
@@ -110,7 +111,7 @@ const render = (receipt, { reviewUrl = "" } = {}) => {
 
       return `<div class="item">
         <div class="n">${esc(itemDisplayName(i))}
-          <div class="q">${Number(i.quantity)} × ${money(i.price)}</div>
+          <div class="q">${formatQty(i.quantity)} × ${money(i.price)}</div>
         </div>
         <div class="p">${money(i.total)}</div>
       </div>${extras}`;

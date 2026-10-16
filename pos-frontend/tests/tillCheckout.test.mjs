@@ -55,7 +55,7 @@ const offlineSale = async ({ kotPrint, printFails = false, code = "ERR_NETWORK" 
   const marked = [];
   const fnSrc = between("mutationFn: async (d) => {", "\n    onSuccess:").replace(/^mutationFn: /, "").replace(/,\s*$/, "");
   const mutationFn = new Function(
-    "roundKey", "addOrder", "isNetworkError", "enqueueOrder", "enqueueSnackbar", "localOrderView", "loadPrinterConfig", "printKot", "markKotPrinted",
+    "roundKey", "addOrder", "isNetworkError", "enqueueOrder", "enqueueSnackbar", "localOrderView", "loadPrinterConfig", "printKot", "markKotPrinted", "warnNotPrinted",
     `return (${fnSrc});`,
   )(
     "L1",
@@ -70,6 +70,7 @@ const offlineSale = async ({ kotPrint, printFails = false, code = "ERR_NETWORK" 
       return printFails ? Promise.reject(new Error("Printer not connected")) : Promise.resolve({ printed: true });
     },
     (localId) => marked.push(localId),
+    (what, err) => warned.push([`${what} not printed: ${err.message}`, "warning"]),
   );
   const res = await mutationFn({ items: [{ name: "Tea", quantity: 2 }] });
   await new Promise((r) => setImmediate(r));

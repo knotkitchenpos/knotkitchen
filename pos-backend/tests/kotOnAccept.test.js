@@ -2,7 +2,8 @@
  * D4 (owner, 2026-10-13): a customer's order -- table QR, website, Knot Eats --
  * reaches the kitchen printer when staff ACCEPT it, never before, and a
  * declined order prints nothing. The tills print on `onlineOrder:accepted`
- * (the whole order, then its Auto Receipt) or, for dishes accepted onto a
+ * (the whole order, then its Auto Receipt -- a table's receipt waits for the
+ * till to settle it) or, for dishes accepted onto a
  * ticket the kitchen already has, on `kitchen:round` (ADDED ITEMS).
  */
 
@@ -16,8 +17,8 @@ const ORDER_ID = "6a0000000000000000000001";
 const TABLE_ID = "6a0000000000000000000101";
 const user = { _id: "u1", role: "Owner", restaurantId: RID, name: "Asha" };
 
-const withController = async ({ order = null, session = null, found = [] }, fn) => {
-  const seen = { accepted: [], rounds: [], filter: null };
+const withController = async ({ order = null, session = null, found = [], recalc = async (s) => s }, fn) => {
+  const seen = { accepted: [], rounds: [], filter: null, emits: [] };
   const fakes = {
     "../models/orderModel": {
       findOne: async () => order,
@@ -35,14 +36,15 @@ const withController = async ({ order = null, session = null, found = [] }, fn) 
     },
     "../models/tableSessionModel": { findOne: async () => session },
     "./tableSessionController": {
-      recalculateSessionBill: async (s) => s,
+      recalculateSessionBill: recalc,
       releaseSessionForCancelledOrder: async () => null,
     },
     "../services/socket": {
       orderCreatedPayload: require("../services/socket").orderCreatedPayload,
       itemsAddedPayload: () => ({}),
-      emitOrderStatusChanged: () => {},
-      emitTableSessionUpdated: () => {},
+      // The Orders page refetches on these two: note the order's bill as saved when each fires.
+      emitOrderStatusChanged: () => seen.emits.push(["status", order && order.savedBill]),
+      emitTableSessionUpdated: () => seen.emits.push(["session", order && order.savedBill]),
       emitToRestaurant: () => {},
       emitKitchenRound: (e) => seen.rounds.push(e),
       emitOrderAccepted: (e) => seen.accepted.push(e),
@@ -248,4 +250,72 @@ test("emitOrderAccepted sends onlineOrder:accepted to the restaurant, outlet and
   } finally {
     delete require.cache[path];
   }
+});
+
+// Owner, 2026-10-16: a guest's table order showed ₹0 on the New Order card, and
+// the Orders page kept ₹0 after Accept while Manage Tables had the right amount.
+
+/** As the real recalculateSessionBill under N017: a guest's pending line is off the bill. 10% service charge. */
+const billSession = async (s) => {
+  const sub = s.items.filter((i) => i.status !== "cancelled" && i.status !== "pending").reduce((t, i) => t + i.total, 0);
+  s.bills = { subtotal: sub, tax: 0, serviceCharge: sub / 10, totalWithTax: sub + sub / 10 };
+  return s;
+};
+const sessionFor = (order) => ({
+  status: "OCCUPIED",
+  items: order.items.map((i) => ({ name: i.name, kdsItemId: i._id, status: i.status, total: i.total })),
+  bills: { ...order.bills },
+});
+/** A guest's first round: none of it is on the bill yet. `savedBill` is what the DB holds. */
+const unbilledOrder = (extra = {}) =>
+  guestOrder({
+    bills: { subtotal: 0, tax: 0, serviceCharge: 0, totalWithTax: 0 },
+    savedBill: null,
+    async save() { this.savedBill = this.bills?.totalWithTax; return this; },
+    ...extra,
+  });
+
+test("the New Order card carries a guest's pending total, not only the ₹0 bill", () => {
+  const order = unbilledOrder({
+    items: [
+      { _id: "a1", name: "Naan", quantity: 2, total: 80, status: "pending" },
+      { _id: "a2", name: "Lassi", quantity: 1, total: 60, status: "pending" },
+      { _id: "a3", name: "Kulfi", quantity: 1, total: 90, status: "cancelled" },
+    ],
+  });
+  const card = require("../services/socket").orderCreatedPayload(order);
+  assert.equal(card.bills.totalWithTax, 0);
+  assert.equal(card.pendingTotal, 140, "cancelled lines are not counted");
+});
+
+test("REGRESSION: accepting a guest's table order saves the table's bill on the order before Orders refetches", async () => {
+  const order = unbilledOrder();
+  const session = sessionFor(order);
+  await withController({ order, session, recalc: billSession }, async (mod, seen) => {
+    const { err } = await accept(mod);
+    assert.equal(err, null, err && err.message);
+    assert.equal(session.bills.totalWithTax, 154);
+    assert.equal(order.bills.totalWithTax, 154, "the Orders page showed ₹0 here");
+    assert.deepEqual(seen.emits, [["status", 154], ["session", 154]], "saved before the refresh events");
+  });
+});
+
+test("REGRESSION: accepting added dishes leaves the order's bill equal to the table's", async () => {
+  const order = unbilledOrder({
+    orderStatus: "In Progress",
+    items: [
+      { _id: "a1", name: "Naan", quantity: 2, total: 80, status: "preparing" },
+      { _id: "a3", name: "Kulfi", quantity: 1, total: 90, status: "pending" },
+    ],
+    bills: { subtotal: 80, tax: 0, serviceCharge: 8, totalWithTax: 88 },
+  });
+  const session = sessionFor(order);
+  await withController({ order, session, recalc: billSession }, async (mod, seen) => {
+    const { err } = await call(mod.resolveAddedItems, { user, params: { id: ORDER_ID }, body: { action: "accept" } });
+    assert.equal(err, null, err && err.message);
+    assert.equal(session.bills.totalWithTax, 187);
+    // The order's own recompute kept the old ₹8 service charge: 178.
+    assert.equal(order.bills.totalWithTax, 187);
+    assert.deepEqual(seen.emits, [["status", 187], ["session", 187]]);
+  });
 });

@@ -7,8 +7,8 @@
  * Two layers, and only two:
  *
  *   PlatformBillingConfig   the platform-wide catalogue (the POS plan,
- *                           add-ons, devices, legacy tablet rentals, GST, the
- *                           usage charges). A singleton.
+ *                           add-ons, devices, GST, the usage charges). A
+ *                           singleton.
  *   CsdStoreCharges         what THIS restaurant was negotiated. Already
  *                           existed, already audited, already has a CSD
  *                           dialog behind it -- so the price overrides were
@@ -29,6 +29,7 @@ const {
   DEFAULT_PLAN_PAISE,
   DEFAULT_FIRST_RECHARGE_MIN_PAISE,
   CATALOG_VERSION,
+  isRetiredAddon,
   DEFAULT_ORDER_CHARGE,
   DEFAULT_QR_ORDER_CHARGE,
   DEFAULT_KNOT_EATS_ORDER_CHARGE,
@@ -37,6 +38,7 @@ const {
 const CsdStoreCharges = require("../models/csdStoreChargesModel");
 const Restaurant = require("../models/restaurantModel");
 const { toPaise } = require("./money");
+const { isBilling } = require("./plans");
 
 /** The singleton, created on first read so the admin panel has something to edit. */
 const getPlatformConfig = async () => {
@@ -63,6 +65,11 @@ const getPlatformConfig = async () => {
       if (from < 3 && Number(existing.firstRechargeMinPaise) === V2.firstRechargeMinPaise) {
         existing.firstRechargeMinPaise = DEFAULT_FIRST_RECHARGE_MIN_PAISE;
       }
+      // Mongoose filled the Billing plan's defaults on load; this writes them once.
+      if (from < 4) existing.markModified("billingPlan");
+      // Table ordering is in the POS plan: its add-ons leave the catalogue (v5 only took them off sale).
+      // Stores' own entries, their invoices and the ledger are untouched; nothing renews or shows them.
+      if (from < 6) existing.addons = (existing.addons || []).filter((a) => !isRetiredAddon(a));
       existing.catalogVersion = CATALOG_VERSION;
       // Saved only if nobody else saved this row since it was read: two
       // servers upgrading at once write it once, and the other re-reads.
@@ -226,14 +233,12 @@ const getOverride = async (restaurantId, { storeId } = {}) => {
 
 /**
  * The catalogue price of one code, in paise, or null when no such thing is
- * sold. Codes: the POS plan ("POS"), an add-on (per its own period when it
- * has one), a device (TABLET or a printer, GST-inclusive), and TABLET_FIRST /
- * TABLET_EXTRA for tablets rented before tablets were sold.
+ * sold. Codes: the POS plan ("POS"), the Billing plan ("BILLING"), an add-on (per its own period when it
+ * has one), and a device (TABLET or a printer, GST-inclusive).
  */
 const catalogPricePaise = (config, code) => {
+  if (isBilling(code)) return Number(config.billingPlan?.pricePaise) || 0;
   if (code === (config.basePlan?.code || "POS")) return Number(config.basePlan?.pricePaise) || 0;
-  if (code === "TABLET_FIRST") return Number(config.tablet?.firstPricePaise) || 0;
-  if (code === "TABLET_EXTRA") return Number(config.tablet?.extraPricePaise) || 0;
   const item = [...(config.addons || []), ...(config.printers || [])].find((i) => i.code === code);
   return item ? Number(item.pricePaise) || 0 : null;
 };

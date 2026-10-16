@@ -212,11 +212,12 @@ test("every receipt print goes through the one renderer", () => {
   assert.match(SRC("src/pages/Orders.jsx"), /printOrderReceipt\(selected\)/);
   assert.match(SRC("src/hooks/useAutoReceiptPrint.js"), /onlineOrder:created/);
   assert.match(SRC("src/App.jsx"), /useAutoReceiptPrint\(\);/);
-  // LAN is not a transport of its own: the tab says how to reach a network
-  // printer through Windows or its USB cable (csd-billing/B7).
+  // LAN is a transport of its own: the tab takes the printer's IP address
+  // (lanPrinter.test.mjs), and receipts go through the same renderer.
   const device = SRC("src/components/settings/DeviceConfiguration.jsx");
   assert.doesNotMatch(device, /key: "lan", label: "LAN \/ Network", disabled: true/);
   assert.match(device, /tab === "lan"/);
+  assert.match(device, /probeLanPrinter\(host\)/);
 });
 
 test("GST bill: CGST/SGST split for a registered store, buyer and SAC printed", () => {
@@ -274,7 +275,7 @@ test("KOT: quantities, names, extras and notes; no prices, no address", () => {
 test("Auto KOT prints on new orders and on table rounds", () => {
   const hook = SRC("src/hooks/useAutoReceiptPrint.js");
   assert.match(hook, /socket\.on\("kitchen:round", onRound\)/);
-  assert.match(hook, /if \(config\.kotPrint\) \{\s+await printKot\(order/);
+  assert.match(hook, /if \(config\.kotPrint && !settled\) \{\s+await printKot\(order/);
   const socket = fs.readFileSync(path.join(__dirname, "..", "..", "pos-backend", "services", "socket.js"), "utf8");
   assert.match(socket, /emitEvent\("kitchen:round", payload, rooms\)/);
 });
@@ -292,7 +293,7 @@ test("D4: a customer's order prints when staff accept it; a till order when it i
   const printNew = hook.slice(hook.indexOf("const printNewOrder"), hook.indexOf("const onCreated"));
   assert.ok(printNew.indexOf("if (order.isOffline && (order.kotPrinted || !config.kotPrint)) return;") > printNew.indexOf("getOrderById("), "checked on the fetched order");
   // A device with only a kitchen printer still prints KOTs, new orders and rounds alike.
-  assert.match(printNew, /const wantKot = config\.kotPrint && kitchenPrinter\(config\)\.type;/);
+  assert.match(printNew, /const wantKot = !settled && config\.kotPrint && kitchenPrinter\(config\)\.type;/);
   const onRound = hook.slice(hook.indexOf("const onRound"), hook.indexOf("socket.on("));
   assert.match(onRound, /!kitchenPrinter\(config\)\.type/);
   assert.doesNotMatch(onRound, /!config\.type/);
@@ -317,7 +318,7 @@ test("KOTs go to the kitchen printer when one is set up, else the receipt printe
   // A receipt and a kitchen printer on Web Bluetooth stay connected together.
   const device = SRC("src/utils/printerDevice.js");
   assert.match(device, /const bts = new Map\(\);/);
-  assert.match(device, /bts\.set\(device\.id, link\);/);
+  assert.match(device, /bts\.set\(key, link\);/);
   assert.doesNotMatch(device, /let bt = null/);
   // Device Configuration: one slot each, the kitchen one can be cleared.
   const screen = SRC("src/components/settings/DeviceConfiguration.jsx");
@@ -354,10 +355,11 @@ test("Windows app: a system printer prints silently through window.knotDesktop",
   assert.match(src, /window\.knotDesktop\.printHtml\(html, \{ printer: printer\.systemPrinter/);
   // The dialog path stays for plain browsers.
   assert.match(src, /printCanvasWithDialog\(canvas, paper\);\n  return \{ printed: true, via: "dialog" \}/);
-  // The desktop shell exposes exactly those two calls.
+  // The desktop shell exposes those calls, plus printLan for a LAN printer (lanPrinter.test.mjs).
   const preload = SRC("../pos-desktop/preload.js");
   assert.match(preload, /listPrinters:/);
   assert.match(preload, /printHtml:/);
+  assert.match(preload, /printLan:/);
 });
 
 test("REGRESSION: a connected printer is kept at once, not only on Save", () => {
@@ -522,7 +524,8 @@ test("reports print on the receipt roll, and never as a page inside the Android 
   for (const op of textOps(layout)) assert.ok(op.x <= PAPER[58].width, "nothing runs off the roll");
 
   const reports = SRC("src/pages/Reports.jsx");
-  assert.match(reports, /if \(printer\.type \|\| nativePrinting\) \{\s*try \{\s*await printReport\(buildReceiptReport\(input\), \{ config: printer \}\);/);
+  // printWithFeedback: a browser that forgot the Bluetooth printer gets a Reconnect tap here too.
+  assert.match(reports, /if \(printer\.type \|\| nativePrinting\) \{[^}]*await printWithFeedback\("report", \(\) => printReport\(buildReceiptReport\(input\), \{ config: printer \}\)\);/);
   // In the app window.open returned the POS page itself and the report replaced the till.
   assert.match(SRC("src/utils/printDocument.js"), /if \(Capacitor\.isNativePlatform\(\)\) \{\s*throw new Error\(/);
 });
@@ -671,10 +674,10 @@ test("REGRESSION: no E-Bill for an offline order or a phone that is not a mobile
 test("REGRESSION O1: a synced offline sale prints its KOT on the kitchen device unless its own till printed one; never a receipt", async () => {
   const hook = SRC("src/hooks/useAutoReceiptPrint.js");
   const src = hook.slice(hook.indexOf("const printNewOrder"), hook.indexOf("// D4: a customer's order"));
-  const run = async (order, config) => {
+  const run = async (order, config, payload = { orderId: "o1" }, opts) => {
     const out = [];
     const printNewOrder = new Function(
-      "loadPrinterConfig", "kitchenPrinter", "claim", "getOrderById", "enqueueSnackbar", "printKot", "printOrderReceipt",
+      "loadPrinterConfig", "kitchenPrinter", "claim", "getOrderById", "enqueueSnackbar", "printKot", "printOrderReceipt", "warnNotPrinted",
       `${src}
 return printNewOrder;`,
     )(
@@ -685,8 +688,9 @@ return printNewOrder;`,
       () => {},
       async () => out.push("kot"),
       async () => out.push("receipt"),
+      () => {},
     );
-    await printNewOrder({ orderId: "o1" });
+    await printNewOrder(payload, opts);
     return out;
   };
   const kitchen = { type: "usb", kotPrint: true, autoPrint: true };
@@ -694,4 +698,201 @@ return printNewOrder;`,
   assert.deepEqual(await run({ isOffline: true, kotPrinted: true }, kitchen), [], "its till printed it at sale time");
   assert.deepEqual(await run({ isOffline: true }, { ...kitchen, kotPrint: false }), [], "a receipt-only device prints nothing for it");
   assert.deepEqual(await run({ isOffline: false }, kitchen), ["kot", "receipt"], "a live sale is unchanged");
+  // Owner, 2026-10-16: a table's KOT on Accept, its bill only when the till settles it.
+  assert.deepEqual(await run({ tableSessionId: "s1" }, kitchen), ["kot"], "table accepted / rung up: KOT, no receipt");
+  assert.deepEqual(await run({ tableSessionId: "s1" }, kitchen, { orderId: "o1", sessionId: "s1" }, { settled: true }), ["receipt"], "till settle: the bill, no second KOT");
+  assert.deepEqual(await run({ tableSessionId: "s1" }, { ...kitchen, autoPrint: false }, { orderId: "o1", sessionId: "s1" }, { settled: true }), [], "Auto Receipt Print off: nothing at settle");
+  assert.deepEqual(await run({ tableSessionId: "s1" }, { ...kitchen, kotPrint: false }), [], "Auto KOT off: nothing on Accept");
+  assert.deepEqual(await run({}, { ...kitchen, kotPrint: false }), ["receipt"], "website / Knot Eats on Accept: receipt as before");
+});
+
+test("REGRESSION: a table's bill prints once, on a till settle only; a phone payment gets the e-bill alone", async () => {
+  // Owner, 2026-10-16, rules 3-5.
+  const hook = SRC("src/hooks/useAutoReceiptPrint.js");
+  assert.match(hook, /socket\.on\("tableSessionUpdated", onTablePaid\)/);
+  assert.match(hook, /socket\.off\("tableSessionUpdated", onTablePaid\)/);
+  // Its own claim key: the Accept-time claim on the same order must not block the bill.
+  assert.match(hook, /claim\(settled \? `paid:\$\{payload\.orderId\}` : payload\.orderId\)/);
+  const src = hook.slice(hook.indexOf("const onTablePaid"), hook.indexOf("// Lines added to a table mid-meal"));
+  const calls = [];
+  const onTablePaid = new Function("printNewOrder", `${src}
+return onTablePaid;`)((...a) => calls.push(a));
+  const paid = { reason: "paid", orderId: "o1", sessionId: "s1" };
+  onTablePaid({ ...paid, settledVia: "POS" });
+  assert.deepEqual(calls, [[{ ...paid, settledVia: "POS" }, { settled: true }]], "cash / UPI / card / split at the till");
+  for (const p of [
+    { ...paid, settledVia: "QR" },
+    { ...paid, settledVia: "PAYMENT_LINK" },
+    { ...paid, settledVia: "ONLINE" },
+    { ...paid, reason: "payment_failed", settledVia: "POS" },
+    { reason: "items_added", sessionId: "s1" },
+    { reason: "paid", sessionId: "s1" },
+  ]) onTablePaid(p);
+  assert.equal(calls.length, 1, "QR / online / link payment, a failed attempt or a new round print no receipt");
+
+  // The claim: the same settle heard twice on one device prints one bill.
+  const claimSrc = hook.slice(hook.indexOf("const PRINTED_KEY"), hook.indexOf("const useAutoReceiptPrint"));
+  const store = {};
+  const localStorage = { getItem: (k) => store[k] ?? null, setItem: (k, v) => { store[k] = v; } };
+  const claim = new Function("localStorage", `${claimSrc}
+return claim;`)(localStorage);
+  assert.equal(claim("o1"), true, "Accept");
+  assert.equal(claim("paid:o1"), true, "settle, after Accept claimed the order");
+  assert.equal(claim("paid:o1"), false, "never twice");
+
+  // The setting's note must not promise an e-bill: that needs Auto E-Bill on too.
+  const screen = SRC("src/components/settings/DeviceConfiguration.jsx");
+  assert.match(screen, /gets no paper copy \(only the e-bill, if Auto E-Bill is on\)/);
+  assert.doesNotMatch(screen, /gets the e-bill instead/);
+});
+
+test("REGRESSION: a failed automatic print stays on screen with Retry (printer asleep)", async () => {
+  // Owner, 2026-10-16 (POS58 "keeps disconnecting"): an Auto KOT or receipt to a
+  // printer that had switched itself off was a 3-second toast, and the ticket was lost.
+  const hook = SRC("src/hooks/useAutoReceiptPrint.js");
+  assert.doesNotMatch(hook, /enqueueSnackbar\(`(KOT|Receipt) not printed/);
+  assert.equal(hook.match(/warnNotPrinted\(/g).length, 3, "new order KOT, receipt and table round");
+  // Retry prints with the printer saved at that moment, not the one that failed.
+  assert.match(hook, /warnNotPrinted\("KOT", err, \(\) => printKot\(order, \{ auto: true \}\)\)/);
+  assert.match(hook, /warnNotPrinted\("Receipt", err, \(\) => printOrderReceipt\(order, \{ auto: true \}\)\)/);
+  assert.match(hook, /warnNotPrinted\("KOT", err, \(\) => printKot\(ticket, opts\)\)/);
+  assert.match(SRC("src/components/pos/OrderPanel.jsx"), /warnNotPrinted\("KOT", e, \(\) => printKot\(localOrderView\(entry\), \{ auto: true \}\)\.then\(\(\) => markKotPrinted\(localId\)\)\)/);
+  // A pressed Print whose browser forgot the Bluetooth printer gets the same Reconnect tap.
+  const print = SRC("src/utils/printReceipt.js");
+  assert.match(print, /if \(err\?\.code === "BT_RECONNECT"\) return warnNotPrinted\(What, err, \(\) => printWithFeedback\(what, run\)\);/);
+
+  // warnNotPrinted itself, with notistack and React faked.
+  const make = (reconnect = async () => {}, linked = () => false) => {
+    const shown = [];
+    const closed = [];
+    const reconnected = [];
+    const warnNotPrinted = loadWarnNotPrinted(shown, closed, (printer) => {
+      reconnected.push(printer);
+      return reconnect(printer);
+    }, linked);
+    const button = (n, label) => shown[n].action(`k${n}`).children.find((c) => c.children[0] === label);
+    return { warnNotPrinted, shown, closed, reconnected, button };
+  };
+  const settle = () => new Promise((r) => setImmediate(r));
+
+  // Stays until dealt with, says why, and Retry prints again once.
+  const a = make();
+  let tries = 0;
+  a.warnNotPrinted("KOT", new Error("Could not reach the Bluetooth printer."), async () => { tries += 1; });
+  assert.equal(a.shown[0].msg, "KOT not printed: Could not reach the Bluetooth printer.");
+  assert.equal(a.shown[0].variant, "warning");
+  assert.equal(a.shown[0].persist, true);
+  assert.ok(a.button(0, "Dismiss"), "a Dismiss too");
+  a.button(0, "Retry").props.onClick();
+  await settle();
+  assert.deepEqual(a.closed, ["k0"]);
+  assert.equal(tries, 1);
+  assert.equal(a.shown.length, 1, "printed: nothing more on screen");
+  assert.equal(a.reconnected.length, 0, "no chooser for an ordinary failure");
+
+  // Still asleep: Retry fails, and a new warning with Retry takes its place.
+  const b = make();
+  b.warnNotPrinted("Receipt", new Error("asleep"), () => Promise.reject(new Error("still asleep")));
+  b.button(0, "Retry").props.onClick();
+  await settle();
+  assert.equal(b.shown.length, 2);
+  assert.equal(b.shown[1].msg, "Receipt not printed: still asleep");
+  assert.ok(b.button(1, "Retry"));
+
+  // Dismiss only closes it.
+  const c = make();
+  let never = 0;
+  c.warnNotPrinted("KOT", new Error("x"), async () => { never += 1; });
+  c.button(0, "Dismiss").props.onClick();
+  await settle();
+  assert.deepEqual([c.closed, never], [["k0"], 0]);
+
+  // A browser that forgot the printer: the tap opens its chooser at once (it needs the tap), then prints.
+  const printer = { type: "bluetooth", bluetooth: { id: "x", name: "POS58" } };
+  const forgot = Object.assign(new Error("tap Reconnect"), { code: "BT_RECONNECT", printer });
+  const d = make();
+  let printed = 0;
+  d.warnNotPrinted("KOT", forgot, async () => { printed += 1; });
+  assert.equal(d.button(0, "Retry"), undefined);
+  d.button(0, "Reconnect").props.onClick();
+  assert.deepEqual(d.reconnected, [printer], "requestDevice inside the click, not after an await");
+  await settle();
+  assert.equal(printed, 1);
+
+  // Closing the chooser keeps the Reconnect offer.
+  const e = make(() => Promise.reject(Object.assign(new Error("User cancelled the requestDevice() chooser."), { name: "NotFoundError" })));
+  e.warnNotPrinted("KOT", forgot, async () => assert.fail("not printed without a printer"));
+  e.button(0, "Reconnect").props.onClick();
+  await settle();
+  assert.equal(e.shown[1].msg, "KOT not printed: tap Reconnect");
+  assert.ok(e.button(1, "Reconnect"));
+
+  // Another ticket's Reconnect linked the printer meanwhile: no second chooser, it just prints.
+  const g = make(undefined, () => true);
+  let linkedPrints = 0;
+  g.warnNotPrinted("Receipt", forgot, async () => { linkedPrints += 1; });
+  g.button(0, "Reconnect").props.onClick();
+  await settle();
+  assert.deepEqual([g.reconnected.length, linkedPrints], [0, 1]);
+});
+
+/** warnNotPrinted with its shared list, from source, with notistack and React faked; keys are k0, k1, ... */
+function loadWarnNotPrinted(shown, closed, reconnect, linked) {
+  const print = SRC("src/utils/printReceipt.js");
+  const src = print.slice(print.indexOf("const unprinted = []"), print.indexOf("/** A sample order for Test Print. */")).replace(/export /g, "");
+  return new Function(
+    "enqueueSnackbar", "closeSnackbar", "createElement", "Fragment", "reconnectBluetoothPrinter", "bluetoothLinked",
+    `${src}\nreturn warnNotPrinted;`,
+  )(
+    (msg, opts) => {
+      shown.push({ msg, ...opts });
+      return `k${shown.length - 1}`;
+    },
+    (key) => closed.push(key),
+    (type, props, ...children) => ({ type, props: props || {}, children }),
+    "Fragment",
+    reconnect,
+    linked,
+  );
+}
+
+test("REGRESSION: a rush of failed prints is ONE warning, never dropped, and Retry all prints each once", async () => {
+  // notistack shows 3 toasts and, when all 3 persist, closes the oldest for the
+  // 4th, Retry and all: Order 1's KOT was lost when Order 2's receipt failed.
+  const shown = [];
+  const closed = [];
+  const warnNotPrinted = loadWarnNotPrinted(shown, closed, () => assert.fail("no chooser"), () => true);
+  const open = () => shown.map((_, i) => `k${i}`).filter((k) => !closed.includes(k));
+  const button = (n, label) => shown[n].action(`k${n}`).children.find((c) => c.children[0] === label);
+  const settle = () => new Promise((r) => setImmediate(r));
+
+  const ran = [];
+  const job = (name, ok = true) => async () => {
+    ran.push(name);
+    if (!ok) throw new Error(`${name} still asleep`);
+  };
+  const asleep = new Error("asleep");
+  warnNotPrinted("KOT", asleep, job("kot1"));
+  warnNotPrinted("Receipt", asleep, job("receipt1", false));
+  warnNotPrinted("KOT", asleep, job("kot2"));
+  warnNotPrinted("Receipt", asleep, job("receipt2"));
+  assert.deepEqual(open(), ["k3"], "one warning on screen, whatever the count");
+  assert.ok(shown.every((s) => s.persist && s.variant === "warning"));
+  assert.equal(shown[3].msg, "4 tickets not printed (KOT, Receipt, KOT, Receipt): asleep");
+
+  // A replaced warning is still fading out: tapping it does nothing.
+  button(0, "Retry").props.onClick();
+  button(0, "Dismiss").props.onClick();
+  await settle();
+  assert.deepEqual([ran, open()], [[], ["k3"]]);
+
+  // Retry all, tapped twice before the toast leaves: each ticket once, in order; the failure stays.
+  const retry = button(3, "Retry all");
+  retry.props.onClick();
+  retry.props.onClick();
+  await settle();
+  assert.deepEqual(ran, ["kot1", "receipt1", "kot2", "receipt2"]);
+  assert.deepEqual(open(), ["k4"]);
+  assert.equal(shown[4].msg, "Receipt not printed: receipt1 still asleep");
+  assert.ok(button(4, "Retry"));
 });

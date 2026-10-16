@@ -4,6 +4,7 @@ const config = require("../config/config");
 const User = require("../models/userModel");
 const sessionCookies = require("../services/sessionCookies");
 const { enforceAccountLock } = require("./accountLock");
+const { enforcePlan } = require("./planGate");
 
 /**
  * Access-token guard for all authenticated POS/API routes.
@@ -91,8 +92,9 @@ const isVerifiedUser = async (req, res, next) => {
     // function every staff route already goes through, so one guard covers
     // them all and none can be added later that forgets it. Billing, auth and
     // customer-facing paths are allow-listed inside -- a lock that stopped
-    // someone paying could not be undone by paying.
-    return enforceAccountLock(req, res, next);
+    // someone paying could not be undone by paying. Then the plan gate, the
+    // same way: the Billing plan is billing only (middlewares/planGate).
+    return enforceAccountLock(req, res, () => enforcePlan(req, res, next));
   } catch (error) {
     next(createHttpError(401, "Invalid Token!"));
   }
@@ -141,7 +143,7 @@ const resolveTableScope = async (req, res, next) => {
       table,
     };
 
-    // Table QR ordering is an add-on (services/planFeatures).
+    // Table QR ordering comes with the POS plan (services/planFeatures tableQr).
     if (!(await require("../services/planFeatures").hasFeature(req.scope.restaurantId, "tableQr"))) {
       return next(createHttpError(403, "Table ordering is not available at this restaurant. Please order with the staff."));
     }

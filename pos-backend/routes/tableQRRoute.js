@@ -16,7 +16,7 @@ const router = express.Router();
 router.route("/").get(isVerifiedUser, requirePermission("TABLE_READ"), listQrs);
 
 // Admin: get-or-create QR for a table
-// Table QR ordering is an add-on (services/planFeatures).
+// Table QR ordering comes with the POS plan (services/planFeatures tableQr).
 router.route("/table/:tableId").get(isVerifiedUser, requirePermission("TABLE_READ"), requireTableQrPlan, getOrCreateQr);
 
 // Admin: regenerate QR (invalidates previous token)

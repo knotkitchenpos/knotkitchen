@@ -42,7 +42,7 @@ test("a locked store's website is down: the resolver reports it unavailable", as
     if (r === "./websitePublish") return { applyPublishedSnapshot: () => {} };
     if (r === "../models/storeModel") return { findOne: async () => ({ storeId: "148379", status: "active" }) };
     if (r === "../models/restaurantModel") return { findById: async () => ({ _id: "r1", isActive: true }) };
-    if (r === "./planFeatures") return { hasWebsite: async () => true };
+    if (r === "./planFeatures") return { hasWebsite: async () => true, hasFeature: async () => true };
     if (r === "./accountLock") return { isOrderingLocked: async () => locked };
     return orig.apply(this, arguments);
   };
@@ -96,7 +96,7 @@ test("N4: a paid checkout is settled whatever the store's state; only new ones a
     if (r === "./websitePublish") return { applyPublishedSnapshot: () => {} };
     if (r === "../models/storeModel") return { findOne: async () => store };
     if (r === "../models/restaurantModel") return { findById: async () => ({ _id: "r1", isActive: true }) };
-    if (r === "./planFeatures") return { hasWebsite: async () => false };
+    if (r === "./planFeatures") return { hasWebsite: async () => false, hasFeature: async () => true };
     if (r === "./accountLock") return { isOrderingLocked: async () => true };
     return orig.apply(this, arguments);
   };

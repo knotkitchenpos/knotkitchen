@@ -3,7 +3,7 @@ import { useSelector } from "react-redux";
 import { enqueueSnackbar } from "notistack";
 import { getOrderById } from "../https";
 import { kitchenPrinter, loadPrinterConfig } from "../utils/printerDevice";
-import { printKot, printOrderReceipt } from "../utils/printReceipt";
+import { printKot, printOrderReceipt, warnNotPrinted } from "../utils/printReceipt";
 import { acquireSocket, releaseSocket } from "../socket";
 
 /**
@@ -18,6 +18,9 @@ import { acquireSocket, releaseSocket } from "../socket";
  *   never reaches the kitchen.
  * - Dishes added to a table the kitchen already has a ticket for are not a
  *   new order: no receipt, a KOT for just those lines (`kitchen:round`).
+ * - A table's receipt waits for the whole bill: it prints once, when the till
+ *   settles the table (`tableSessionUpdated`, settledVia "POS"). A guest who
+ *   paid on their phone gets the e-bill alone (sent by the server).
  */
 
 const PRINTED_KEY = "kk.autoPrinted.v1";
@@ -50,13 +53,13 @@ const useAutoReceiptPrint = () => {
 
     const socket = acquireSocket(restaurantId);
 
-    const printNewOrder = async (payload) => {
+    const printNewOrder = async (payload, { settled = false } = {}) => {
       const config = loadPrinterConfig();
       // A device with only a kitchen printer still prints its KOTs.
       const wantReceipt = config.autoPrint && config.type;
-      const wantKot = config.kotPrint && kitchenPrinter(config).type;
+      const wantKot = !settled && config.kotPrint && kitchenPrinter(config).type;
       if (!payload?.orderId || (!wantReceipt && !wantKot)) return;
-      if (!claim(payload.orderId)) return;
+      if (!claim(settled ? `paid:${payload.orderId}` : payload.orderId)) return;
       let order;
       try {
         order = (await getOrderById(payload.orderId))?.data?.data;
@@ -73,14 +76,13 @@ const useAutoReceiptPrint = () => {
       // when its till printed one (O1). A till without Auto KOT left the ticket to this device.
       if (order.isOffline && (order.kotPrinted || !config.kotPrint)) return;
       // Kitchen first: the cook is waiting, the customer copy can follow.
-      if (config.kotPrint) {
-        await printKot(order, { auto: true, config }).catch((err) =>
-          enqueueSnackbar(`KOT not printed: ${err?.message || "printer error"}`, { variant: "warning" }),
-        );
+      if (config.kotPrint && !settled) {
+        await printKot(order, { auto: true, config }).catch((err) => warnNotPrinted("KOT", err, () => printKot(order, { auto: true })));
       }
-      if (wantReceipt && !order.isOffline) {
+      // A table's bill waits for the till to settle it: guests order more.
+      if (wantReceipt && !order.isOffline && (settled || !order.tableSessionId)) {
         await printOrderReceipt(order, { auto: true, config }).catch((err) =>
-          enqueueSnackbar(`Receipt not printed: ${err?.message || "printer error"}`, { variant: "warning" }),
+          warnNotPrinted("Receipt", err, () => printOrderReceipt(order, { auto: true })),
         );
       }
     };
@@ -88,28 +90,32 @@ const useAutoReceiptPrint = () => {
     // D4: a customer's order (table QR, website, Knot Eats) prints when staff accept it, never on arrival.
     const onCreated = (payload) => (payload?.placedVia === "QR" || payload?.source === "WEBSITE" ? undefined : printNewOrder(payload));
 
+    // The table's bill when the till settles it; paid on the guest's phone, the e-bill alone.
+    const onTablePaid = (p) => (p?.reason === "paid" && p.settledVia === "POS" ? printNewOrder(p, { settled: true }) : undefined);
+
     // Lines added to a table mid-meal: a ticket for just those lines.
     const onRound = async (payload) => {
       const config = loadPrinterConfig();
       if (!config.kotPrint || !kitchenPrinter(config).type || !payload?.orderId || !payload.items?.length) return;
       if (!claim(`${payload.orderId}:${payload.roundId || payload.items.length}:${payload.at || ""}`)) return;
+      const ticket = { _id: payload.orderId, orderNumber: payload.orderNumber, orderType: "dine-in", table: payload.table, createdAt: payload.at };
+      const opts = { items: payload.items, round: true, auto: true };
       try {
-        await printKot(
-          { _id: payload.orderId, orderNumber: payload.orderNumber, orderType: "dine-in", table: payload.table, createdAt: payload.at },
-          { items: payload.items, round: true, auto: true, config },
-        );
+        await printKot(ticket, { ...opts, config });
       } catch (err) {
-        enqueueSnackbar(`KOT not printed: ${err?.message || "printer error"}`, { variant: "warning" });
+        warnNotPrinted("KOT", err, () => printKot(ticket, opts));
       }
     };
 
     socket.on("onlineOrder:created", onCreated);
     socket.on("onlineOrder:accepted", printNewOrder);
     socket.on("kitchen:round", onRound);
+    socket.on("tableSessionUpdated", onTablePaid);
     return () => {
       socket.off("onlineOrder:created", onCreated);
       socket.off("onlineOrder:accepted", printNewOrder);
       socket.off("kitchen:round", onRound);
+      socket.off("tableSessionUpdated", onTablePaid);
       releaseSocket();
     };
   }, [restaurantId]);

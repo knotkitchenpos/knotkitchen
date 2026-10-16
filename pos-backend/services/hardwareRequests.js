@@ -14,7 +14,8 @@
  * payment opens one request. A tablet RENTED before tablets were sold was
  * paid from the wallet (payment.method WALLET, key `tablet-<sub>-<serial>`);
  * its request ends the rental instead. Rental or purchase is told apart by
- * how it was paid, never by the type alone (legacyRental).
+ * how it was paid, never by the type alone (legacyRental). Rent itself ended
+ * 2026-10-16 (services/subscription renews none); what was paid stays refundable here.
  *
  * A refund always goes to the wallet (a REFUND ledger credit), for a card
  * payment too: it is instant, needs no gateway round trip, and pays the
@@ -335,7 +336,7 @@ const cancelRequest = async ({ id, restaurantId = null, by, reason = "", refundP
       throw new HardwareRequestError(
         by.type === "STORE"
           ? "KnotKitchen is already preparing this. Call support to cancel it."
-          : "A delivered request cannot be cancelled. A rented tablet coming back is ended from the store's page.",
+          : "A delivered request cannot be cancelled.",
         409,
         "NOT_CANCELLABLE",
       );

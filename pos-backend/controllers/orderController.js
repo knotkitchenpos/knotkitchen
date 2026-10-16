@@ -15,6 +15,7 @@ const { fireOrderCharge, fireOrderChargeReversal } = require("../services/orderC
 const { emitOrderCreated, emitOrderStatusChanged } = require("../services/socket");
 const { indianMobile } = require("../services/otpService");
 const { round2 } = require("../services/money");
+const { toQuantity } = require("../services/orderItemAmounts");
 const { isDuplicateKey } = require("../services/idempotency");
 const { computeDeliveryFeeFromSlabs } = require("../services/distanceService");
 const { displayPaymentMethod } = require("../constants/paymentMethods");
@@ -128,7 +129,8 @@ const sanitizeBills = (bills = {}) => ({
  * downstream aggregations.
  */
 const sanitizeItem = (raw = {}) => {
-  const quantity = Math.max(1, Math.min(1000, Math.floor(safeNumber(raw.quantity, 1))));
+  // A weighed dish keeps its fraction: 1.8 used to be floored to 1.
+  const quantity = Math.min(1000, toQuantity(safeNumber(raw.quantity, 1)));
   const price = safeNumber(raw.price, 0, { min: 0, max: 1e7 });
   // The schema means `price` per unit and `total` per line. A client that
   // sends only `price` used to store total: 0, which the receipt then
@@ -331,11 +333,16 @@ const addOrder = async (req, res, next) => {
     // Module 7 §4 — Order Type Toggles enforcement
     if (req.user?.restaurantId && mongoose.connection.readyState === 1) {
       try {
-        const restaurant = await Restaurant.findById(req.user.restaurantId);
-        const toggles = restaurant?.orderTypeToggles || { collection: true, delivery: true, table: true };
+        const { featuresOf, effectiveOrderToggles } = require("../services/planFeatures");
+        const [restaurant, features] = await Promise.all([Restaurant.findById(req.user.restaurantId), featuresOf(req.user.restaurantId, req.user.storeId)]);
+        const toggles = effectiveOrderToggles(restaurant?.orderTypeToggles, features);
         const key = normalizedOrderType === "dine-in" ? "table" : normalizedOrderType === "takeaway" ? "collection" : normalizedOrderType;
         if (toggles[key] === false) {
           return next(createHttpError(400, `${key.charAt(0).toUpperCase() + key.slice(1)} orders are currently disabled in Store Settings.`));
+        }
+        // Billing plan: Collection only, whatever the type (online, marketplace and the dine-in fallback have no toggle).
+        if (!features.pos && key !== "collection") {
+          return next(createHttpError(400, "Only Collection orders are on the Billing plan. Upgrade in Settings → Billing & Subscription."));
         }
       } catch (e) {
         // Safe fallback in test environments where Restaurant model is un-mocked

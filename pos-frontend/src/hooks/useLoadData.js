@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { removeUser, setUser } from "../redux/slices/userSlice";
 import { useNavigate } from "react-router-dom";
 import { isPublicPath } from "../utils/publicRoutes";
+import { rememberReturnTo } from "../utils/returnTo";
 
 const useLoadData = () => {
   const dispatch = useDispatch();
@@ -42,7 +43,11 @@ const useLoadData = () => {
         // N006: only the server refusing the session signs the tab out, never a lost connection.
         if (![401, 403].includes(error?.response?.status)) return;
         dispatch(removeUser());
-        if (!isPublicPath()) navigate("/auth");
+        // Back here after sign-in (knotkitchen.com's Order opens /settings/billing?device=...).
+        if (!isPublicPath()) {
+          rememberReturnTo();
+          navigate("/auth");
+        }
       } finally {
         if (isMounted) {
           setIsLoading(false);

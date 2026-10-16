@@ -1,5 +1,5 @@
-// Managing tables (add, edit, delete, settings) comes with the QR Table
-// Ordering add-on; reading them and freeing one stay open.
+// Managing tables (add, edit, delete, settings) comes with the POS plan
+// (services/planFeatures tableQr); reading them and freeing one stay open.
 const { requireTableQrPlan } = require("../services/planFeatures");
 const express = require("express");
 const { addTable, getTables, getTableById, updateTable, deleteTable, regenerateQr, getTableSettings, updateTableSettings, releaseTable } = require("../controllers/tableController");

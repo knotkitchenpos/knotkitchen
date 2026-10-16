@@ -13,25 +13,26 @@ export const MENU_ITEMS = [
   // Moved here from the side panel; pin it back with a long-press (Quick Shortcuts).
   { id: "tables", title: "5. Manage Tables", desc: "Tables, areas and table QR codes.", Icon: I.tables, path: "/tables", feature: "tableQr" },
   { id: "staff", title: "6. Manage Staff", desc: "Add/delete staff and PIN privileges.", Icon: I.users, mode: "view" },
-  { id: "toggles", title: "7. Order Toggles & Auto-Ready", desc: "Channel ON/OFF & auto-ready durations.", Icon: I.toggle, mode: "view", feature: "onlineOrdering" },
-  // Also the table QR's hours (Restaurant Time), so QR Table Ordering opens it too.
-  { id: "timings", title: "8. Website Timing & Holidays", desc: "Collection, delivery and table hours, Close for Today and holidays for the website and table QR.", Icon: I.calendar, mode: "view", feature: "onlineOrdering" },
-  { id: "rules", title: "9. Rules, Charges & Promotions", desc: "Min orders, delivery slabs, GST, coupons, free items.", Icon: I.fileText, mode: "view", feature: "onlineOrdering" },
+  { id: "toggles", title: "7. Order Toggles & Auto-Ready", desc: "Channel ON/OFF & auto-ready durations.", Icon: I.toggle, mode: "view", feature: "pos" },
+  // Also the table QR's and Knot Eats' hours. Open on the POS plan; on the Billing plan the Website add-on opens it.
+  { id: "timings", title: "8. Website Timing & Holidays", desc: "Collection, delivery and table hours, Close for Today and holidays for the website and table QR.", Icon: I.calendar, mode: "view", feature: "websiteHours" },
+  // Open on every plan: a billing-only store sets its own GST and charges here.
+  { id: "rules", title: "9. Rules, Charges & Promotions", desc: "Min orders, delivery slabs, GST, coupons, free items.", Icon: I.fileText, mode: "view" },
   { id: "reports", title: "10. Reports", desc: "Sales, revenue and order breakdowns.", Icon: I.chart, path: "/reports" },
   // Shift & Day End and Inventory are built (ShiftView, InventoryView) but
   // hidden until the user wants them on. Flip SHOW_LATER_FEATURES to list them.
   ...(SHOW_LATER_FEATURES
     ? [
-        { id: "shift", title: "Shift & Day End", desc: "Open the till with a float, close with a cash count, print the Z report.", Icon: I.cash, mode: "view" },
-        { id: "inventory", title: "Inventory", desc: "Ingredients, stock levels, recipes per dish, wastage. Sales deplete stock automatically.", Icon: I.boxes, mode: "view" },
+        { id: "shift", title: "Shift & Day End", desc: "Open the till with a float, close with a cash count, print the Z report.", Icon: I.cash, mode: "view", feature: "pos" },
+        { id: "inventory", title: "Inventory", desc: "Ingredients, stock levels, recipes per dish, wastage. Sales deplete stock automatically.", Icon: I.boxes, mode: "view", feature: "pos" },
       ]
     : []),
   // Reachable even when the account is locked -- it is the only screen that
   // can clear a lock, so it must never be gated. See middlewares/accountLock.js.
-  { id: "billing", title: "11. Billing & Subscription", desc: "Wallet, POS plan, add-ons, tablets, printers, their delivery and invoices.", Icon: I.fileText, path: "/settings/billing" },
+  { id: "billing", title: "11. Billing & Subscription", desc: "Wallet, plan, add-ons, tablets, printers, their delivery and invoices.", Icon: I.fileText, path: "/settings/billing" },
 
   { id: "website", title: "12. Manage Website", desc: "Landing page, branding, colours and domain.", Icon: I.globe, path: "/website", feature: "website" },
-  { id: "eats", title: "13. Knot Eats", desc: "List your restaurant on eats.knotkitchen.com.", Icon: I.store, mode: "view" },
+  { id: "eats", title: "13. Knot Eats", desc: "List your restaurant on eats.knotkitchen.com.", Icon: I.store, mode: "view", feature: "pos" },
 
   // Activity Log stays CSD-only: it is the audit trail of who did what,
   // including support's own actions, and has no POS route at all (CSD reads

@@ -112,6 +112,13 @@ test("REGRESSION: dishes plus adjustments add up to the Total Orders amount", ()
   assert.equal(b.byHour.find((r) => r.hour === 14).amount, 80);
 });
 
+test("REGRESSION: Top dishes rank by quantity sold, ties by amount", () => {
+  const b = buildReportBreakdown([{ orderStatus: "Completed", createdAt: at(13), bills: { totalWithTax: 990 }, items: [
+    // Lassi listed first so the amount tie-break, not insertion order, puts Biryani ahead.
+    { name: "Lassi", quantity: 2, total: 240 }, { name: "Biryani", quantity: 2, total: 600 }, { name: "Chai", quantity: 10, total: 150 }] }]);
+  assert.deepEqual(b.byItem.map((r) => r.name), ["Chai", "Biryani", "Lassi"]);
+});
+
 test("dish and category tables are not cut to 50 rows", () => {
   const many = Array.from({ length: 60 }, (_, i) => ({ name: `Dish ${i}`, quantity: 1, total: 1 }));
   const b = buildReportBreakdown([{ orderStatus: "Completed", createdAt: at(13), bills: { totalWithTax: 60 }, items: many }]);

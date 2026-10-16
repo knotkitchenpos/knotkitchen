@@ -16,6 +16,12 @@ contextBridge.exposeInMainWorld("knotDesktop", {
    * @param {{printer?: string, paperMm?: number, heightMm?: number, copies?: number}} [options]
    */
   printHtml: (html, options) => ipcRenderer.invoke("printers:print", String(html || ""), options || {}),
+  /**
+   * Raw ESC/POS bytes to a LAN printer's port 9100; no data only checks that a printer answers.
+   * @param {string} host  a private IPv4 address
+   * @param {Uint8Array|null} [data]
+   */
+  printLan: (host, data) => ipcRenderer.invoke("printers:lan", String(host || ""), data || null),
 });
 
 // chooser.html only.

@@ -17,6 +17,7 @@ const FIX_PATH = {
   NO_GATEWAY: "/settings?view=properties",
   NO_MENU: "/settings?view=cache",
   ACCOUNT_LOCKED: "/settings/billing",
+  PLAN: "/settings/billing",
   NO_PIN: "/settings?view=properties",
   NO_ORDER_TYPE: "/settings?view=toggles",
   STORE_STATUS: "/support",

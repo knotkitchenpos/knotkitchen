@@ -41,7 +41,7 @@ import {
 import { getMyRestaurant } from "../../https";
 import { getWebsiteSettings } from "../../https/storefrontApi";
 import Invoice from "../invoice/Invoice";
-import { toOrderItems } from "../../utils/orderItems";
+import { formatQty, toOrderItems, toQuantity, typedQty } from "../../utils/orderItems";
 import { enqueueOrder, isNetworkError, localOrderView, markKotPrinted, newLocalId } from "../../utils/offlineQueue";
 import { tableLabel } from "../../utils/orderLabels";
 import { deliveryFeeFor, deliveryMaxKm, hasDeliverySlabs } from "../../utils/rulesCharges";
@@ -49,7 +49,7 @@ import { readStoreScoped, writeStoreScoped } from "../../utils/storeSession";
 import { checkActionAuthorization } from "../../utils/security";
 import { requestPin } from "../../utils/pinPrompt";
 import { loadPrinterConfig } from "../../utils/printerDevice";
-import { printKot } from "../../utils/printReceipt";
+import { printKot, warnNotPrinted } from "../../utils/printReceipt";
 import DeliveryModal from "./DeliveryModal";
 import DiscountModal from "./DiscountModal";
 import PaymentMethodModal from "./PaymentMethodModal";
@@ -150,6 +150,7 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
   const [clock, setClock] = useState(new Date());
   const [noteFor, setNoteFor] = useState(null);
   const [noteText, setNoteText] = useState("");
+  const [qtyText, setQtyText] = useState("");
   const [showDiscount, setShowDiscount] = useState(false);
   const [showPaymentMethod, setShowPaymentMethod] = useState(false);
   const [showDelivery, setShowDelivery] = useState(false);
@@ -365,7 +366,7 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
         if (loadPrinterConfig().kotPrint && err.code !== "ECONNABORTED")
           printKot(localOrderView(entry), { auto: true })
             .then(() => markKotPrinted(localId))
-            .catch((e) => enqueueSnackbar(`KOT not printed: ${e?.message || "printer error"}`, { variant: "warning" }));
+            .catch((e) => warnNotPrinted("KOT", e, () => printKot(localOrderView(entry), { auto: true }).then(() => markKotPrinted(localId))));
         return { data: { data: localOrderView(entry), offline: true } };
       }
     },
@@ -863,7 +864,7 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
 
       {/* ===== Cart header ===== */}
       <div className="px-4 pb-2 shrink-0 flex items-center justify-between border-b border-[#E2E8F0] pt-1">
-        <h3 className="text-[16px] font-extrabold text-[#0F172A] pb-2">Order Cart ({count})</h3>
+        <h3 className="text-[16px] font-extrabold text-[#0F172A] pb-2">Order Cart ({formatQty(count)})</h3>
         <div className="flex items-center gap-3 pb-2">
           {heldOrders.length > 0 && (
             <button
@@ -924,7 +925,7 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
                 (s, m) => s + Number(m?.price || 0) * Number(m?.quantity || 1),
                 0,
               );
-              const lineQuantity = Math.max(1, Number(item.quantity) || 1);
+              const lineQuantity = toQuantity(item.quantity);
               // Prefer the stored unit price; fall back to dividing the line
               // total for carts restored from a held order, which predate it.
               const unitPrice =
@@ -943,8 +944,8 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
                     >
                       ⊗
                     </button>
-                    <span className="shrink-0 w-4 text-[14px] font-extrabold text-[#EF4444] text-center">
-                      {item.quantity}
+                    <span className="shrink-0 min-w-4 text-[14px] font-extrabold text-[#EF4444] text-center">
+                      {formatQty(item.quantity)}
                     </span>
                     <p className="flex-1 min-w-0 text-[14px] font-bold text-[#0F172A] truncate leading-tight">
                       {baseName}
@@ -1040,7 +1041,7 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
                       +
                     </button>
                     <span className="min-w-[16px] text-center text-[14px] font-extrabold text-[#0F172A]">
-                      {item.quantity}
+                      {formatQty(item.quantity)}
                     </span>
                     <button
                       onClick={() =>
@@ -1058,6 +1059,7 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
                       onClick={() => {
                         setNoteFor(item);
                         setNoteText(item.note || "");
+                        setQtyText(formatQty(item.quantity));
                       }}
                       className="w-9 h-9 lg:w-7 lg:h-7 rounded-full border-2 border-[#FD5302] text-[#C2410C] flex items-center justify-center text-[13px] hover:bg-[#FFF1E8] transition-colors"
                       title="Item settings / add note"
@@ -1180,15 +1182,28 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
       {noteFor && (
         <div className="fixed inset-0 z-[90] bg-black/40 flex items-center justify-center p-4">
           <div className="w-full max-w-[420px] bg-white rounded-2xl shadow-xl p-5">
-            <h3 className="text-[17px] font-extrabold text-[#0F172A]">Add Item Note</h3>
+            <h3 className="text-[17px] font-extrabold text-[#0F172A]">Item Settings</h3>
             <p className="text-[12.5px] text-[#94A3B8] mt-1 mb-3">
-              Note for <span className="font-bold text-[#334155]">{noteFor.name}</span>
+              <span className="font-bold text-[#334155]">{noteFor.name}</span>
             </p>
+            <label className="block text-[12px] font-bold text-[#64748B] mb-3">
+              Quantity
+              <input
+                type="text"
+                inputMode="decimal"
+                value={qtyText}
+                onChange={(e) => setQtyText(e.target.value)}
+                placeholder="e.g. 1.80"
+                aria-invalid={typedQty(qtyText) == null}
+                className="mt-1 w-full h-[44px] rounded-xl border border-[#E2E8F0] px-3 text-[14px] font-bold text-[#0F172A] focus:border-[#FD5302]"
+              />
+            </label>
             <textarea
               rows={3}
               value={noteText}
               onChange={(e) => setNoteText(e.target.value)}
-              placeholder="e.g. Extra spicy, no onions…"
+              placeholder="Note, e.g. Extra spicy, no onions…"
+              aria-label="Note"
               className="w-full rounded-xl border border-[#E2E8F0] p-3 text-[13.5px] resize-none focus:border-[#FD5302]"
             />
             <div className="grid grid-cols-2 gap-2.5 mt-4">
@@ -1201,11 +1216,13 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
               <button
                 onClick={() => {
                   dispatch(updateItemNote({ id: noteFor.id, note: noteText.trim() }));
+                  dispatch(updateQuantity({ id: noteFor.id, quantity: typedQty(qtyText) }));
                   setNoteFor(null);
                 }}
-                className="h-[44px] rounded-xl bg-[#FD5302] text-white text-[14px] font-bold hover:bg-[#D64502]"
+                disabled={typedQty(qtyText) == null}
+                className="h-[44px] rounded-xl bg-[#FD5302] text-white text-[14px] font-bold hover:bg-[#D64502] disabled:opacity-50"
               >
-                Save Note
+                Save
               </button>
             </div>
           </div>
@@ -1342,7 +1359,7 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
                           {customerName}
                         </p>
                         <p className="mt-0.5 text-[12px] text-[#64748B]">
-                          {heldOrder.orderType || "Collection"} · {itemCount} item{itemCount === 1 ? "" : "s"} · {money(heldTotal)}
+                          {heldOrder.orderType || "Collection"} · {formatQty(itemCount)} item{itemCount === 1 ? "" : "s"} · {money(heldTotal)}
                         </p>
                         <p className="mt-0.5 text-[11px] text-[#94A3B8]">Held order #{heldOrders.length - index}</p>
                       </div>

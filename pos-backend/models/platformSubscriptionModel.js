@@ -24,8 +24,11 @@ const subscriptionSchema = new mongoose.Schema(
     },
     storeId: { type: String, default: "", index: true },
 
+    // "" = POS (never chosen); "POS" | "BILLING" (services/plans).
     planCode: { type: String, default: "" },
     planName: { type: String, default: "" },
+    // A move to a smaller plan CSD scheduled; applied at the next renewal ("" = none).
+    pendingPlanCode: { type: String, default: "" },
 
     // NONE until the first qualifying top-up activates the POS plan. EXPIRED
     // when a renewal found the wallet short; the next top-up renews it.
@@ -151,7 +154,7 @@ const commercialScheduleSchema = new mongoose.Schema(
     storeId: { type: String, default: "", index: true },
     version: { type: Number, required: true },
     agreementVersion: { type: String, default: AGREEMENT_VERSION },
-    reason: { type: String, default: "" }, // SUBSCRIPTION | ADDON | TABLET | HARDWARE
+    reason: { type: String, default: "" }, // SUBSCRIPTION | ADDON | TABLET | HARDWARE | PLAN
     values: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
     hash: { type: String, required: true },
     acceptedAt: { type: Date, required: true },

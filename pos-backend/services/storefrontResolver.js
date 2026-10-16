@@ -108,6 +108,18 @@ const resolveStorefront = async ({ identifier, host, honourPaid = false, knotEat
   const refusal = honourPaid ? null : await unavailableReason({ settings, store, restaurant, restaurantId, knotEats });
   if (refusal) return { ok: false, status: 403, ...refusal, settings, store };
 
+  // Billing plan: pickup only on the website, no table booking. In memory only, never saved, so an upgrade restores the store's own switches.
+  // Pickup on, like the till's Collection: Order Toggles is locked on this plan, so a stored "off" could never be undone.
+  if (!knotEats && !honourPaid) {
+    const { hasFeature } = require("./planFeatures");
+    if (!(await hasFeature(restaurantId, "pos", settings.storeId)) && settings.ordering) {
+      settings.ordering.pickupEnabled = true;
+      settings.ordering.deliveryEnabled = false;
+      if (settings.ordering.tableBooking) settings.ordering.tableBooking.enabled = false;
+      else settings.ordering.tableBooking = { enabled: false };
+    }
+  }
+
   return {
     ok: true,
     settings,

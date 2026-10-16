@@ -244,6 +244,28 @@
 .lines span{display:block;color:var(--muted);font-size:.92rem}
 .lines em{flex:none;text-align:right;font:700 1.4rem/1.1 var(--display);font-style:normal;letter-spacing:-.03em;color:var(--text);font-variant-numeric:tabular-nums}
 .lines em small{display:block;margin-top:3px;font:500 .78rem var(--display);letter-spacing:0;color:var(--muted)}
+.plan-card .price b{font-weight:inherit}
+/* devices as home.js draws them from the catalogue (the .lines list is the no-script fallback) */
+.devices{list-style:none;margin:0 0 22px;padding:0;display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(min(100%,14rem),1fr))}
+.devices li{display:flex;flex-direction:column;gap:8px;padding:14px;border:1px solid var(--line);border-radius:18px;background:var(--bg)}
+.devices li>span{color:var(--muted);font-size:.92rem}
+.devices em{font:700 1.3rem/1.1 var(--display);font-style:normal;letter-spacing:-.03em;color:var(--text);font-variant-numeric:tabular-nums}
+.devices em small{display:block;margin-top:3px;font:500 .78rem var(--display);letter-spacing:0;color:var(--muted)}
+.devices .btn{margin-top:auto;align-self:stretch}
+.dev-view{display:flex;flex-direction:column;gap:10px;padding:0;border:0;background:none;font:inherit;color:inherit;text-align:left;cursor:pointer}
+.dev-view b{font-weight:600}
+.dev-view:hover b{color:var(--accent)}
+.dev-view:focus-visible{outline:2px solid var(--accent);outline-offset:4px;border-radius:12px}
+.dev-img{display:block;width:100%;height:auto;aspect-ratio:4/3;object-fit:contain;border-radius:12px;background:var(--bg-2)}
+.dev-dialog{width:min(36rem,calc(100% - 32px));max-height:calc(100% - 32px);padding:clamp(20px,4vw,32px);border:0;border-radius:24px;
+  background:var(--surface);color:var(--text);box-shadow:var(--lift-hi)}
+.dev-dialog::backdrop{background:rgba(10,27,69,.55)}
+.dev-dialog img{display:block;width:100%;height:auto;max-height:60vh;object-fit:contain;border-radius:16px;background:var(--bg-2);margin-bottom:16px}
+.dev-dialog h3{margin:0 0 .3em;padding-right:44px}
+.dev-dialog p{color:var(--muted)}
+.dev-dialog .dd-price{font:700 1.3rem var(--display);color:var(--text);margin:0 0 12px}
+.dd-close{position:absolute;top:14px;right:14px;width:40px;height:40px;border-radius:50%;border:1px solid var(--line);
+  background:var(--surface);color:var(--text);font-size:1.5rem;line-height:1;cursor:pointer}
 .plan-notes{margin-top:clamp(28px,4vw,44px);display:grid;gap:8px 48px;grid-template-columns:repeat(auto-fit,minmax(min(100%,20rem),1fr))}
 .plan-notes h3{margin:0 0 .4em}
 .plan-notes summary{cursor:pointer;margin:0 0 .4em}.plan-notes summary h3{display:inline}

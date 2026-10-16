@@ -689,6 +689,7 @@ const ProductDrawer = ({
                   <input
                     type="number"
                     min={0}
+                    step="0.01"
                     value={prodPrice}
                     onChange={(e) => setProdPrice(e.target.value)}
                     className="w-full h-[38px] px-3 mt-1 rounded-xl border border-[#E2E8F0] font-bold"
@@ -703,6 +704,7 @@ const ProductDrawer = ({
                       <input
                         type="number"
                         min={0}
+                        step="0.01"
                         value={channelPrices.posCollection}
                         onChange={(e) => setChannelPrices({ ...channelPrices, posCollection: e.target.value })}
                         className="w-full h-[32px] px-2 rounded-lg border border-[#CBD5E1] font-bold"
@@ -713,6 +715,7 @@ const ProductDrawer = ({
                       <input
                         type="number"
                         min={0}
+                        step="0.01"
                         value={channelPrices.posDelivery}
                         onChange={(e) => setChannelPrices({ ...channelPrices, posDelivery: e.target.value })}
                         className="w-full h-[32px] px-2 rounded-lg border border-[#CBD5E1] font-bold"
@@ -723,6 +726,7 @@ const ProductDrawer = ({
                       <input
                         type="number"
                         min={0}
+                        step="0.01"
                         value={channelPrices.posTable}
                         onChange={(e) => setChannelPrices({ ...channelPrices, posTable: e.target.value })}
                         className="w-full h-[32px] px-2 rounded-lg border border-[#CBD5E1] font-bold"

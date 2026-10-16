@@ -179,7 +179,7 @@ const Tables = () => {
       })
       .catch((err) => {
         const upgrade = err?.response?.data?.code === "PLAN_UPGRADE_REQUIRED";
-        // No QR Table Ordering add-on: no QR at all, rather than an old one diners cannot use.
+        // Not on this plan: no QR at all, rather than an old one diners cannot use.
         if (upgrade && !cancelled) setQrModalTable(null);
         enqueueSnackbar(
           err?.response?.data?.message || "Failed to load QR for this table.",

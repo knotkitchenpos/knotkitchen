@@ -28,8 +28,8 @@ const addonSchema = new mongoose.Schema(
     // its own date (the yearly Website). services/subscription.
     periodDays: { type: Number, default: null, min: 1, max: 366 },
     // What it unlocks (services/planFeatures). "" is a service with no switch
-    // in the product, such as GMB Management.
-    feature: { type: String, enum: ["", "website", "tableQr"], default: "" },
+    // in the product, such as GMB Management. Table ordering is in the POS plan (isRetiredAddon).
+    feature: { type: String, enum: ["", "website"], default: "" },
     // false retires it: no new sign-ups; stores that have it keep it.
     isActive: { type: Boolean, default: true },
     sortOrder: { type: Number, default: 0 },
@@ -45,6 +45,10 @@ const printerSchema = new mongoose.Schema(
     // pays. GST is never added on top of it.
     pricePaise: { type: Number, required: true, min: 0 },
     isActive: { type: Boolean, default: true },
+    // Shown in POS Billing and on knotkitchen.com. The picture is uploaded in
+    // CSD Billing (uploadDeviceImage): only our own platform/devices URLs.
+    description: { type: String, default: "", trim: true },
+    imageUrl: { type: String, default: "" },
   },
   { _id: false },
 );
@@ -55,14 +59,6 @@ const printerSchema = new mongoose.Schema(
  * that predates them.
  */
 const DEFAULT_ADDONS = [
-  {
-    code: "TABLE_QR",
-    name: "QR Table Ordering",
-    description: "Diners scan the table QR to order and pay.",
-    pricePaise: 20000,
-    feature: "tableQr",
-    sortOrder: 1,
-  },
   {
     code: "WEBSITE",
     name: "Website",
@@ -95,11 +91,20 @@ const DEFAULT_PRINTERS = [
 
 const DEFAULT_PLAN_PAISE = 49900;
 const DEFAULT_FIRST_RECHARGE_MIN_PAISE = 300000;
+const DEFAULT_BILLING_PLAN_PAISE = 19900; // ₹199
+const DEFAULT_BILLING_TOPUP_MIN_PAISE = 150000; // ₹1,500
 
 // Bumped when the shipped catalogue changes in a way a stored row has to be
 // moved to; services/pricing.getPlatformConfig does that once per version.
 // v3: first top-up ₹3,000 (was ₹2,500), later top-ups ₹1,000 (topUpMinPaise).
-const CATALOG_VERSION = 3;
+// v4: the Billing plan (billingPlan), written to the stored row once.
+// v5: QR Table Ordering comes with the POS plan; the TABLE_QR add-on goes off sale.
+// v6: retired add-ons (isRetiredAddon) leave the catalogue; stores' entries and old invoices stay.
+const CATALOG_VERSION = 6;
+
+// QR Table Ordering is in the POS plan since 2026-10-16: an add-on for it is
+// retired, by what it unlocked or by its code. Never sold, listed or renewed.
+const isRetiredAddon = (a) => a?.feature === "tableQr" || a?.code === "TABLE_QR";
 
 const gstSchema = new mongoose.Schema(
   {
@@ -184,17 +189,19 @@ const platformBillingConfigSchema = new mongoose.Schema(
       name: { type: String, default: "POS", trim: true },
       pricePaise: { type: Number, default: DEFAULT_PLAN_PAISE, min: 0 },
     },
-    addons: { type: [addonSchema], default: () => DEFAULT_ADDONS.map((a) => ({ ...a })) },
-    // Tablet RENTAL prices, for tablets already rented only: they keep
-    // renewing at these until ended. No new rentals -- a tablet is now bought
-    // once, like a printer (the TABLET device below).
-    tablet: {
-      firstPricePaise: { type: Number, default: 60000, min: 0 },
-      extraPricePaise: { type: Number, default: 50000, min: 0 },
+    // The Billing plan: billing only (services/planFeatures). Code fixed; its own top-up minimums.
+    billingPlan: {
+      code: { type: String, default: "BILLING" },
+      name: { type: String, default: "Billing", trim: true },
+      pricePaise: { type: Number, default: DEFAULT_BILLING_PLAN_PAISE, min: 0 },
+      firstRechargeMinPaise: { type: Number, default: DEFAULT_FIRST_RECHARGE_MIN_PAISE, min: 0 },
+      topUpMinPaise: { type: Number, default: DEFAULT_BILLING_TOPUP_MIN_PAISE, min: 0 },
     },
+    addons: { type: [addonSchema], default: () => DEFAULT_ADDONS.map((a) => ({ ...a })) },
+    // No tablet rent: it ended 2026-10-16 for every store. A tablet is a device (TABLET below).
     printers: { type: [printerSchema], default: () => DEFAULT_PRINTERS.map((p) => ({ ...p })) },
-    // A store that has not activated yet must top up at least this much in
-    // one go; that top-up starts the POS plan.
+    // A store on the POS plan that has not activated yet must top up at least
+    // this much in one go; that top-up starts the plan. (billingPlan has its own.)
     firstRechargeMinPaise: { type: Number, default: DEFAULT_FIRST_RECHARGE_MIN_PAISE, min: 0 },
     // Every top-up after the POS plan has started must be at least this; 0 = none.
     topUpMinPaise: { type: Number, default: 100000, min: 0 },
@@ -260,7 +267,10 @@ module.exports = {
   DEFAULT_PRINTERS,
   DEFAULT_PLAN_PAISE,
   DEFAULT_FIRST_RECHARGE_MIN_PAISE,
+  DEFAULT_BILLING_PLAN_PAISE,
+  DEFAULT_BILLING_TOPUP_MIN_PAISE,
   CATALOG_VERSION,
+  isRetiredAddon,
   DEFAULT_ORDER_CHARGE,
   DEFAULT_QR_ORDER_CHARGE,
   DEFAULT_KNOT_EATS_ORDER_CHARGE,

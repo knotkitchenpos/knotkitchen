@@ -260,10 +260,11 @@ const OrderMock = {
 };
 
 const emits = [];
+const sessionEvents = [];
 const socketMock = {
   emitOrderCreated() {},
   emitOrderStatusChanged() {},
-  emitTableSessionUpdated(p) { emits.push(p.reason); },
+  emitTableSessionUpdated(p) { emits.push(p.reason); sessionEvents.push(p); },
 };
 
 /** AuditLog.mock */
@@ -1040,6 +1041,89 @@ test("REGRESSION: settling a table with two orders books the bill once", async (
   assert.ok(session.items.every((si) => si.orderId === kept[0]._id), "the session points at the order that holds its lines");
   // Other tills and the diner's page hear about it.
   assert.ok(emits.includes("paid"));
+});
+
+test("REGRESSION: the paid event names the bill and how the table was closed (Auto Receipt Print)", async () => {
+  // Owner, 2026-10-16: the till settle prints the table's bill; a guest who paid on
+  // their phone gets the e-bill alone. The devices tell them apart by settledVia.
+  resetStore();
+  const ctrl = loadControllerWithMocks();
+  const user = makeUser();
+  const settle = async (tableNumber, body, extra = {}) => {
+    const table = makeTable({ tableNumber, tableName: `T${tableNumber}` });
+    const sessionId = await placeRounds(ctrl, table, user, [
+      [{ menuItemId: "menu_biryani", quantity: 1 }],
+      [{ menuItemId: "menu_water", quantity: 1 }],
+    ]);
+    const session = store.sessions.find((s) => s._id === sessionId);
+    sessionEvents.length = 0;
+    const err = await callController(
+      ctrl.recordSessionPayment,
+      { params: { id: sessionId }, user, body: { paymentStatus: "success", amount: session.bills.totalWithTax, ...body }, ip: "1.2.3.4", get: () => "t", ...extra },
+      makeResponse(),
+    );
+    assert.equal(err, undefined, err && err.message);
+    const [kept] = ordersOf(sessionId).filter((o) => o.isDeleted !== true);
+    return { event: sessionEvents.find((e) => e.reason === "paid"), kept };
+  };
+
+  for (const method of ["CASH", "UPI", "CARD"]) {
+    const { event, kept } = await settle(10 + method.length, { method });
+    assert.equal(event.orderId, kept._id, "the order that holds every round");
+    assert.equal(event.settledVia, "POS", `${method} at the till`);
+    assert.equal(event.table.tableNumber, 10 + method.length, "the receipt needs the table's name");
+  }
+
+  const qr = await settle(21, { method: "ONLINE" }, { viaGateway: true });
+  assert.equal(qr.event.settledVia, "QR", "the guest paid on their phone: no receipt");
+  assert.equal(qr.event.orderId, qr.kept._id);
+
+  const link = await settle(22, { method: "PAYMENT_LINK" });
+  assert.equal(link.event.settledVia, "PAYMENT_LINK", "a link payment is a phone payment too");
+
+  // A failed attempt names no bill.
+  const table = makeTable({ tableNumber: 23 });
+  const sessionId = await placeRounds(ctrl, table, user, [[{ menuItemId: "menu_biryani", quantity: 1 }]]);
+  const session = store.sessions.find((s) => s._id === sessionId);
+  sessionEvents.length = 0;
+  await pay(ctrl, user, sessionId, { method: "ONLINE", amount: session.bills.totalWithTax, paymentStatus: "failed" });
+  const failed = sessionEvents.find((e) => e.reason === "payment_failed");
+  assert.ok(failed);
+  assert.equal(failed.orderId, undefined);
+  assert.equal(failed.settledVia, undefined);
+});
+
+test("emitTableSessionUpdated carries the bill, settledVia and the table's name only for a settle", () => {
+  const sent = [];
+  const fakeIo = { use() {}, on() {}, to: (rooms) => ({ emit: (event, payload) => sent.push({ rooms, event, payload }) }) };
+  const orig = Module._load;
+  Module._load = function (r) {
+    if (r === "socket.io") return { Server: function Server() { return fakeIo; } };
+    return orig.apply(this, arguments);
+  };
+  const path = require.resolve("../services/socket");
+  delete require.cache[path];
+  let socket;
+  try {
+    socket = require(path);
+  } finally {
+    Module._load = orig;
+  }
+  try {
+    socket.initSocket({});
+    const session = { _id: "s1", sessionCode: "TS1", status: "CLOSED" };
+    const table = { _id: "t1", tableNumber: 7, displayId: "T7", tableName: "Patio", restaurantId: "rest-1" };
+    socket.emitTableSessionUpdated({ restaurantId: "rest-1", session, reason: "paid", orderId: "o1", settledVia: "POS", table });
+    socket.emitTableSessionUpdated({ restaurantId: "rest-1", session, reason: "items_added" });
+    assert.equal(sent[0].event, "tableSessionUpdated");
+    assert.equal(sent[0].payload.orderId, "o1");
+    assert.equal(sent[0].payload.settledVia, "POS");
+    assert.deepEqual(sent[0].payload.table, { _id: "t1", tableNumber: 7, displayId: "T7", tableName: "Patio" });
+    assert.equal(sent[1].payload.orderId, undefined, "nothing to print for a new round");
+    assert.equal(sent[1].payload.settledVia, undefined);
+  } finally {
+    delete require.cache[path];
+  }
 });
 
 test("REGRESSION: a cash settle after an abandoned online checkout is not a gateway payment", async () => {

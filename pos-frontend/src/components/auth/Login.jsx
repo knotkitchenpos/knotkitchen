@@ -14,6 +14,7 @@ import { useDispatch } from "react-redux";
 import { setUser } from "../../redux/slices/userSlice";
 import { setActiveStoreId } from "../../utils/storeSession";
 import { useNavigate } from "react-router-dom";
+import { takeReturnTo } from "../../utils/returnTo";
 import { SUPPORT_PHONE, SUPPORT_TEL } from "../../constants/support";
 
 /**
@@ -83,7 +84,8 @@ const Login = () => {
     if (mustChangePassword) {
       enqueueSnackbar("Please change your password from Settings.", { variant: "warning" });
     }
-    navigate("/");
+    // Where they were going before the sign-in screen (utils/returnTo), else home.
+    navigate(takeReturnTo());
   };
 
   // --- Step 1: resolve Store ID → decide login vs setup mode --------------

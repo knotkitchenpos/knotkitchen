@@ -300,8 +300,10 @@ export const verifyRecharge = (data) =>
 // need { accepted: true } (the order summary was accepted); a Staff member is
 // asked for the PIN by the global popup (utils/pinPrompt).
 export const getSubscriptionStatus = () => axiosWrapper.get("/api/subscription");
-// What buying `item` charges now: "ADDON:<code>" or "PRINTER:<code>" (a tablet is PRINTER:TABLET).
+// What buying `item` charges now: "ADDON:<code>", "PRINTER:<code>" (a tablet is PRINTER:TABLET) or "PLAN:<code>".
 export const getSubscriptionQuote = (item) => axiosWrapper.get("/api/subscription/quote", { params: { item } });
+// { code, accepted }: choose the plan before the first recharge, or upgrade. Never a downgrade: KnotKitchen does those.
+export const setSubscriptionPlan = (data) => axiosWrapper.post("/api/subscription/plan", data);
 export const addSubscriptionAddon = (data) => axiosWrapper.post("/api/subscription/addons", data);
 // Stops at renewal; it keeps working until then.
 export const stopSubscriptionAddon = (code) =>

@@ -201,8 +201,9 @@ const CATALOG = {
 test("every code resolves to its catalogue price, and an unknown one to nothing", () => {
   assert.equal(catalogPricePaise(CATALOG, "POS"), 39900);
   assert.equal(catalogPricePaise(CATALOG, "WEBSITE"), 30000);
-  assert.equal(catalogPricePaise(CATALOG, "TABLET_FIRST"), 60000);
-  assert.equal(catalogPricePaise(CATALOG, "TABLET_EXTRA"), 50000);
+  // Changed 2026-10-16 (was 60000 / 50000): tablet rent ended, so the retired codes price nothing, even on a stored row that still has the prices.
+  assert.equal(catalogPricePaise(CATALOG, "TABLET_FIRST"), null);
+  assert.equal(catalogPricePaise(CATALOG, "TABLET_EXTRA"), null);
   assert.equal(catalogPricePaise(CATALOG, "PRINTER_2IN"), 190000);
   // Null, so a caller cannot charge for something that is not sold.
   assert.equal(catalogPricePaise(CATALOG, "GROWTH"), null);
@@ -214,7 +215,10 @@ test("a negotiated price beats the catalogue, per code, in rupees converted once
   // A 0 is a real negotiated price, not "no override". Old lowercase codes still match.
   assert.equal(await priceFor({ code: "WEBSITE", config: CATALOG, override }), 0);
   assert.equal(await priceFor({ code: "GMB", config: CATALOG, override }), 10000, "the rest stay on the catalogue");
-  assert.equal(await priceFor({ code: "tablet_first", config: CATALOG, override: null }), 60000);
+  // Changed 2026-10-16 (was tablet_first -> 60000): rent ended, so a retired code prices nothing, even when a store row names it.
+  assert.equal(await priceFor({ code: "printer_2in", config: CATALOG, override: null }), 190000);
+  assert.equal(await priceFor({ code: "TABLET_FIRST", config: CATALOG, override: { planPrices: [{ code: "TABLET_FIRST", price: 400 }] } }), null);
+  assert.equal(await priceFor({ code: "TABLE_QR", config: CATALOG, override: { planPrices: [{ code: "TABLE_QR", price: 150 }] } }), null);
   assert.equal(await priceFor({ code: "NOPE", config: CATALOG, override }), null);
 });
 
@@ -232,6 +236,7 @@ test("REGRESSION: no price, rate or charge is written into the code", () => {
     "services/ledger.js",
     "services/subscription.js",
     "services/planFeatures.js",
+    "services/plans.js",
     "models/platformBillingModel.js",
   ];
   const forbidden = [

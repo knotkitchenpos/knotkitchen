@@ -1,3 +1,4 @@
+import { createElement, Fragment } from "react";
 import { closeSnackbar, enqueueSnackbar } from "notistack";
 import { getStoreProperties } from "../https";
 import { billableItems } from "./orderItems.js";
@@ -6,7 +7,7 @@ import { formatAddress } from "./address";
 import { layoutKot, layoutReceipt, layoutReport, paperOf } from "./receiptLayout.js";
 import { ditherInPlace, rasterJob, TEAR_FEED_DOTS, toMonochrome } from "./escpos.js";
 import { catJob } from "./catprinter.js";
-import { kitchenPrinter, loadPrinterConfig, sendToPrinter } from "./printerDevice.js";
+import { bluetoothLinked, kitchenPrinter, loadPrinterConfig, reconnectBluetoothPrinter, sendToPrinter } from "./printerDevice.js";
 import { ensureReceiptFont } from "./receiptFont.js";
 import { readStoreScoped, writeStoreScoped } from "./storeSession.js";
 import { BACKEND_URL } from "../config";
@@ -199,7 +200,7 @@ export const printKot = async (order, { items, round = false, auto = false, conf
 
 /**
  * Print a report (see layoutReport for its shape) on this device's receipt
- * printer, the same way receipts go: the app's USB/Bluetooth printer, the
+ * printer, the same way receipts go: the app's USB/Bluetooth/LAN printer, the
  * Windows app's printer silently, or the browser's print dialog.
  */
 export const printReport = async (report, { config } = {}) => {
@@ -215,7 +216,7 @@ const paperFor = (printer) => (printer.protocol === "cat" || printer.paper === "
 
 /** Hand a rendered ticket to whatever this device prints with. */
 const sendCanvas = async (canvas, { printer, paper, auto }) => {
-  if (printer.type === "usb" || printer.type === "bluetooth") {
+  if (printer.type === "usb" || printer.type === "bluetooth" || printer.type === "lan") {
     const pixels = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
     const bits = toMonochrome(pixels.data, canvas.width, canvas.height);
     const encode = printer.protocol === "cat" ? catJob : rasterJob;
@@ -244,20 +245,95 @@ const sendCanvas = async (canvas, { printer, paper, auto }) => {
  * desktop app says "sent to the print queue", not "printed".
  */
 export const printWithFeedback = async (what, run) => {
+  const What = what.charAt(0).toUpperCase() + what.slice(1);
   const key = enqueueSnackbar(`Sending the ${what} to the printer…`, { variant: "info", persist: true });
   try {
     const result = await run();
     closeSnackbar(key);
     // The browser's own dialog is its feedback.
     if (result && result.via !== "dialog") {
-      const What = what.charAt(0).toUpperCase() + what.slice(1);
       enqueueSnackbar(result.via === "desktop" ? `${What} sent to the Windows print queue.` : `${What} printed.`, { variant: "success" });
     }
     return result;
   } catch (err) {
     closeSnackbar(key);
+    // The browser forgot the Bluetooth printer: its chooser opens only from a tap, so offer one.
+    if (err?.code === "BT_RECONNECT") return warnNotPrinted(What, err, () => printWithFeedback(what, run));
     enqueueSnackbar(err?.message || `Could not print the ${what}.`, { variant: "error" });
   }
+};
+
+/**
+ * An automatic print that failed (the printer asleep, off or out of range)
+ * stays on screen with Retry: staff wake the printer and still get the
+ * ticket. It was a 3-second toast and the ticket was lost. When the browser
+ * forgot a Bluetooth printer, the same tap shows its chooser again.
+ * `again` reprints with the printer saved now, so a printer fixed in Device
+ * Configuration meanwhile is the one used.
+ *
+ * Every unprinted ticket shares ONE warning, with one Retry for them all:
+ * notistack shows three toasts and, when all three persist, closes the oldest
+ * for the next toast, Retry and all, so a rush lost tickets again.
+ */
+const unprinted = []; // { what, err, again }, oldest first
+let unprintedKey = null;
+
+const showUnprinted = () => {
+  if (unprintedKey !== null) closeSnackbar(unprintedKey);
+  unprintedKey = null;
+  if (!unprinted.length) return;
+  const { what, err } = unprinted[unprinted.length - 1];
+  const reason = err?.message || "printer error";
+  const label = unprinted.some((u) => u.err?.code === "BT_RECONNECT") ? "Reconnect" : unprinted.length > 1 ? "Retry all" : "Retry";
+  const message =
+    unprinted.length === 1 ? `${what} not printed: ${reason}` : `${unprinted.length} tickets not printed (${unprinted.map((u) => u.what).join(", ")}): ${reason}`;
+  unprintedKey = enqueueSnackbar(message, {
+    variant: "warning",
+    persist: true,
+    action: (key) =>
+      createElement(
+        Fragment,
+        null,
+        createElement("button", { type: "button", className: "px-2 font-bold underline", onClick: () => retryUnprinted(key) }, label),
+        createElement("button", { type: "button", className: "px-2", onClick: () => dismissUnprinted(key) }, "Dismiss"),
+      ),
+  });
+};
+
+const dismissUnprinted = (key) => {
+  if (key !== unprintedKey) return; // a newer warning holds tickets this one never showed
+  unprinted.length = 0;
+  showUnprinted();
+};
+
+const retryUnprinted = (key) => {
+  // A closed toast stays tappable while it fades out: a double tap printed the ticket twice.
+  if (key !== unprintedKey) return;
+  const jobs = unprinted.splice(0);
+  showUnprinted();
+  // The chooser only for a printer this page lost (another ticket's Reconnect may have linked it since).
+  const relink = jobs.find((j) => j.err?.code === "BT_RECONNECT" && !bluetoothLinked(j.err.printer));
+  // requestDevice runs inside this tap, as the browser requires.
+  (relink ? reconnectBluetoothPrinter(relink.err.printer) : Promise.resolve())
+    .then(
+      async () => {
+        for (const job of jobs) {
+          try {
+            await job.again();
+          } catch (e) {
+            unprinted.push({ ...job, err: e });
+          }
+        }
+      },
+      // Closing the chooser keeps the Reconnect offer.
+      (e) => unprinted.push(...jobs.map((j) => (j === relink && e?.name !== "NotFoundError" ? { ...j, err: e } : j))),
+    )
+    .finally(showUnprinted);
+};
+
+export const warnNotPrinted = (what, err, again) => {
+  unprinted.push({ what, err, again });
+  showUnprinted();
 };
 
 /** A sample order for Test Print. */

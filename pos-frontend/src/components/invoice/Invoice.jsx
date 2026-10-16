@@ -7,7 +7,7 @@ import { useMutation } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
 import { printOrderReceipt, printWithFeedback } from "../../utils/printReceipt";
 import { sendEBill } from "../../https";
-import { billableItems, itemDisplayName, itemExtras, resolveItemAmounts } from "../../utils/orderItems";
+import { billableItems, formatQty, itemDisplayName, itemExtras, resolveItemAmounts } from "../../utils/orderItems";
 import { money } from "../../utils";
 
 /**
@@ -222,7 +222,7 @@ const Invoice = ({
                                     <div className="flex justify-between items-start gap-3">
                                         <span className="text-white/90">
                                             {itemDisplayName(item)}{" "}
-                                            <span className="text-white/40">x{resolveItemAmounts(item).quantity}</span>
+                                            <span className="text-white/40">x{formatQty(resolveItemAmounts(item).quantity)}</span>
                                         </span>
                                         {/* The LINE amount, so the rows add up to the subtotal below. */}
                                         <span className="font-semibold shrink-0">

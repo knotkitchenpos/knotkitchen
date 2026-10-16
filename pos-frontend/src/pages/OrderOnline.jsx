@@ -12,6 +12,7 @@ import {
 import { loadCashfree } from "../utils/cashfree";
 import { money as formatMoney, thumbUrl } from "../utils";
 import { repriceCart } from "../utils/qrCart";
+import { formatQty } from "../utils/orderItems";
 
 /**
  * Customer-facing table-QR menu (mobile-first).
@@ -245,7 +246,7 @@ export default function OrderOnline() {
     ["Service charge", session?.bills?.serviceCharge],
   ].filter(([, v]) => Number(v));
   const sessionItems = session?.items || [];
-  const sessionItemCount = sessionItems.reduce((s, i) => s + (i.quantity || 0), 0);
+  const sessionItemCount = formatQty(sessionItems.reduce((s, i) => s + (i.quantity || 0), 0));
 
   const currency = restaurant?.currency === "USD" ? "$" : "₹";
   const money = (n) => formatMoney(n, currency);
@@ -664,7 +665,7 @@ export default function OrderOnline() {
                         it.status === "cancelled" ? "text-slate-500 line-through" : "text-slate-800"
                       }`}
                     >
-                      {it.name} <span className="text-slate-500 font-normal">× {it.quantity}</span>
+                      {it.name} <span className="text-slate-500 font-normal">× {formatQty(it.quantity)}</span>
                     </p>
                     <span
                       className={`inline-block mt-0.5 text-[10px] font-bold uppercase tracking-wider rounded px-1.5 py-0.5 ${

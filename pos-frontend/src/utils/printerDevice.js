@@ -16,7 +16,9 @@
  *   bluetooth  Web Bluetooth (BLE), raw ESC/POS. Chrome/Edge.
  *   system     The browser's print dialog, through the computer's own driver.
  *              Silent only when Chrome runs with --kiosk-printing.
- *   (LAN is not offered yet.)
+ *   lan        raw ESC/POS over TCP to the printer's port 9100, by its IP
+ *              address. Only in the Android and Windows apps: a browser
+ *              cannot open a socket.
  *
  * In the Android app neither WebUSB nor Web Bluetooth exists, so usb and
  * bluetooth go through the app's ThermalPrinter plugin instead
@@ -118,6 +120,44 @@ const toBase64 = (bytes) => {
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/* ---------------------------------------------------------------- LAN -- */
+
+/** A printer's address on this network: private IPv4 only (the apps refuse anything else too). */
+export const isLanIp = (host) => {
+  const m = /^(0|[1-9]\d{0,2})\.(0|[1-9]\d{0,2})\.(0|[1-9]\d{0,2})\.(0|[1-9]\d{0,2})$/.exec(String(host ?? "").trim());
+  if (!m) return false;
+  const [a, b, ...rest] = m.slice(1).map(Number);
+  if ([a, b, ...rest].some((n) => n > 255)) return false;
+  return a === 10 || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 169 && b === 254);
+};
+
+const UPDATE_FOR_LAN = "Update the KnotKitchen POS app to use a LAN printer.";
+
+/**
+ * Raw ESC/POS to a LAN printer's port 9100, through the Android or Windows
+ * app; with no bytes it only checks a printer answers. A browser cannot open
+ * a TCP connection at all, and an app from before LAN printing says to update.
+ */
+const lan = async (host, bytes) => {
+  try {
+    if (nativePrinting) {
+      return bytes ? await ThermalPrinter.print({ type: "lan", host, data: toBase64(bytes) }) : await ThermalPrinter.probeLan({ host });
+    }
+    if (typeof window.knotDesktop?.printLan === "function") return await window.knotDesktop.printLan(host, bytes || null);
+  } catch (err) {
+    if (err?.code === "UNIMPLEMENTED") throw new Error(UPDATE_FOR_LAN);
+    // Electron prefixes the main process's message.
+    throw new Error(String(err?.message || err).replace(/^Error invoking remote method '[^']+': (Error: )?/, ""));
+  }
+  throw new Error(window.knotDesktop ? UPDATE_FOR_LAN : "A browser cannot reach a network printer. Use the KnotKitchen POS app on Android or Windows.");
+};
+
+/** Whether this device can print to a LAN printer at all (the apps can; a browser cannot). */
+export const lanPrinting = () => nativePrinting || typeof window.knotDesktop?.printLan === "function";
+
+/** Resolves when a printer answers at host:9100; prints nothing. */
+export const probeLanPrinter = (host) => lan(host, null);
+
 /* ------------------------------------------------------------------ USB -- */
 
 let usb = null; // { device, endpoint }
@@ -189,14 +229,33 @@ const PRINTER_SERVICES = [
   "0000af30-0000-1000-8000-00805f9b34fb",
 ];
 
-// device.id -> { device, characteristic }: a receipt and a kitchen printer stay connected together.
+// saved bluetooth.id -> { device, characteristic }: a receipt and a kitchen printer stay connected together.
 const bts = new Map();
 
 /** Services every BLE device has and none prints through (Generic Access/Attribute, Device Info, Battery). */
 const STANDARD_SERVICE = /^0000(1800|1801|180a|180f)-/;
 
-const connectBluetooth = async (device) => {
-  const server = device.gatt.connected ? device.gatt : await device.gatt.connect();
+const ASLEEP = "The Bluetooth printer is not answering. Switch it on (it turns itself off when idle), then print again.";
+// Calibration knob: Chrome on Android has no connect timeout, and a printer that went to sleep held the job ~30 s.
+const CONNECT_MS = 10000;
+
+const gattConnect = (device) => {
+  let timer;
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error(ASLEEP)), CONNECT_MS);
+  });
+  return Promise.race([device.gatt.connect(), timeout])
+    .catch((err) => {
+      device.gatt.disconnect?.();
+      // Chrome's own text ("Bluetooth Device is no longer in range") read as "disconnected".
+      throw err?.name === "NetworkError" || err?.message === ASLEEP ? new Error(ASLEEP) : err;
+    })
+    .finally(() => clearTimeout(timer));
+};
+
+/** Connect and keep the link under `key`: the saved id, which a re-chosen device may not share. */
+const connectBluetooth = async (device, key = device.id) => {
+  const server = device.gatt.connected ? device.gatt : await gattConnect(device);
   // The first writable characteristic anywhere was sometimes a standard one
   // (a device-name field, say): the job was "sent", nothing printed. Prefer a
   // known printer service, never a standard one, and a characteristic that
@@ -213,7 +272,7 @@ const connectBluetooth = async (device) => {
   found.sort((a, b) => b.score - a.score);
   if (!found.length) throw new Error("This Bluetooth device does not accept print data.");
   const link = { device, characteristic: found[0].ch };
-  bts.set(device.id, link);
+  bts.set(key, link);
   return link;
 };
 
@@ -241,22 +300,43 @@ export const chooseBluetoothPrinter = async () => {
   if (!(await bluetoothAvailable())) throw new Error("Bluetooth is off on this device. Turn it on and try again.");
   const device = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices: PRINTER_SERVICES });
   await connectBluetooth(device);
-  return { name: device.name || "Bluetooth printer", bluetooth: { id: device.id } };
+  // The name lets Reconnect show only this printer.
+  return { name: device.name || "Bluetooth printer", bluetooth: { id: device.id, name: device.name || "" } };
 };
 
+/** `err` offering Reconnect: the browser's chooser for `config` (printer: what Reconnect asks it for). */
+const needsChooser = (err, config) => Object.assign(err, { code: "BT_RECONNECT", printer: config });
+
+/** The link to this printer, reconnected at print time when it dropped (the printer slept). */
 const bluetoothFor = async (config) => {
   const cached = bts.get(config.bluetooth?.id);
-  if (cached) return cached.device.gatt.connected ? cached : connectBluetooth(cached.device);
-  // Chrome only hands back a previously chosen device where getDevices is
-  // enabled; elsewhere the printer has to be chosen again after a reload.
+  if (cached) return cached.device.gatt.connected ? cached : connectBluetooth(cached.device, config.bluetooth.id);
+  // After a reload or a discarded tab: Chrome hands back a printer chosen
+  // before only where getDevices is enabled; elsewhere it must be chosen again.
   if (navigator.bluetooth.getDevices) {
     const match = (await navigator.bluetooth.getDevices()).find((d) => d.id === config.bluetooth?.id);
-    if (match) return connectBluetooth(match);
+    // Chrome may not have seen a remembered printer since it restarted and then
+    // never connects to it, awake or not; the chooser scans and finds it.
+    if (match) return connectBluetooth(match).catch((err) => { throw needsChooser(err, config); });
   }
-  const err = new Error("The Bluetooth printer needs reconnecting. Open Settings > Device Configuration and press Connect.");
-  err.code = "BT_RECONNECT";
-  throw err;
+  throw needsChooser(new Error("The browser needs the Bluetooth printer chosen again: tap Reconnect."), config);
 };
+
+/**
+ * From a tap (the browser shows its chooser only then): the chooser again,
+ * listing just this printer, and the link kept under the saved id.
+ */
+export const reconnectBluetoothPrinter = async (config) => {
+  const name = config.bluetooth?.name;
+  const device = await navigator.bluetooth.requestDevice({
+    ...(name ? { filters: [{ name }] } : { acceptAllDevices: true }),
+    optionalServices: PRINTER_SERVICES,
+  });
+  await connectBluetooth(device, config.bluetooth?.id);
+};
+
+/** False when this page has no link to the Web Bluetooth printer and printing needs Reconnect first. */
+export const bluetoothLinked = (config) => nativePrinting || config?.type !== "bluetooth" || bts.has(config.bluetooth?.id);
 
 /* ---------------------------------------------------------------- Send -- */
 
@@ -264,8 +344,30 @@ const bluetoothFor = async (config) => {
 export const BLE_CHUNK = 180;
 export const USB_CHUNK = 16384;
 
-/** Send a print job to the configured USB or Bluetooth printer. */
+const writeBluetooth = async (config, bytes) => {
+  const { characteristic } = await bluetoothFor(config);
+  const fast = characteristic.properties.writeWithoutResponse;
+  for (let at = 0; at < bytes.length; at += BLE_CHUNK) {
+    const chunk = bytes.slice(at, at + BLE_CHUNK);
+    if (fast) {
+      await characteristic.writeValueWithoutResponse(chunk);
+      // Unacknowledged writes can outrun the printer's buffer. The mini
+      // printers have a small one and pace at about 20 ms per write.
+      await sleep(config.protocol === "cat" ? 20 : 4);
+    } else {
+      await characteristic.writeValueWithResponse(chunk);
+    }
+  }
+};
+
+// One Web Bluetooth job at a time per printer: Chrome refuses a write while
+// another is pending ("GATT operation already in progress"), and the second of
+// a KOT and a receipt sent together was lost.
+const btJobs = new Map();
+
+/** Send a print job to the configured USB, Bluetooth or LAN printer. */
 export const sendToPrinter = async (config, bytes) => {
+  if (config.type === "lan") return lan(config.lan?.host, bytes);
   if (nativePrinting && (config.type === "usb" || config.type === "bluetooth")) {
     const cat = config.protocol === "cat";
     await ThermalPrinter.print({
@@ -294,20 +396,10 @@ export const sendToPrinter = async (config, bytes) => {
     return;
   }
   if (config.type === "bluetooth") {
-    const { characteristic } = await bluetoothFor(config);
-    const fast = characteristic.properties.writeWithoutResponse;
-    for (let at = 0; at < bytes.length; at += BLE_CHUNK) {
-      const chunk = bytes.slice(at, at + BLE_CHUNK);
-      if (fast) {
-        await characteristic.writeValueWithoutResponse(chunk);
-        // Unacknowledged writes can outrun the printer's buffer. The mini
-        // printers have a small one and pace at about 20 ms per write.
-        await sleep(config.protocol === "cat" ? 20 : 4);
-      } else {
-        await characteristic.writeValueWithResponse(chunk);
-      }
-    }
-    return;
+    const key = config.bluetooth?.id;
+    const job = (btJobs.get(key) || Promise.resolve()).then(() => writeBluetooth(config, bytes));
+    btJobs.set(key, job.catch(() => {})); // a failed job never blocks the next
+    return job;
   }
   throw new Error("No receipt printer is set up on this device.");
 };

@@ -10,6 +10,7 @@ import {
   verifyRecharge,
   getSubscriptionStatus,
   getSubscriptionQuote,
+  setSubscriptionPlan,
   addSubscriptionAddon,
   stopSubscriptionAddon,
   buySubscriptionPrinter,
@@ -22,17 +23,18 @@ import {
 } from "../https";
 import { loadCashfree } from "../utils/cashfree";
 import { isOwner } from "../utils/security";
-import { STORE_TZ } from "../utils";
+import { STORE_TZ, thumbUrl } from "../utils";
 
 /**
  * Settings → Billing & Subscription.
  *
  * The restaurant's own view of what it pays KnotKitchen and how. The wallet
- * (Business Balance) pays the POS plan and add-ons (a yearly add-on on its own
- * date) and any tablet rented before tablets were sold; devices (tablets and
- * printers) are bought once, online. Nothing on this screen can set a price,
+ * (Business Balance) pays the plan (POS, or the smaller Billing plan) and
+ * add-ons (a yearly add-on on its own date); devices (tablets and
+ * printers) are bought once, online. No tablet rent (ended 2026-10-16). Nothing on this screen can set a price,
  * and none of these endpoints would accept one. The owner can cancel the
- * subscription here.
+ * subscription here. A plan is chosen before the first recharge, and later
+ * only upgraded: a move to a smaller plan is KnotKitchen's (CSD), never here.
  *
  * This is also the screen a LOCKED account can still reach. If it ever stops
  * loading for a locked restaurant, that restaurant cannot pay its way out --
@@ -44,6 +46,12 @@ import { STORE_TZ } from "../utils";
  */
 
 const PRESETS = [500, 1000, 2000, 5000, 10000];
+
+/** What each plan unlocks (server: services/planFeatures). Shown at the plan choice. */
+const PLAN_BLURB = {
+  POS: "Everything: delivery, order toggles, website hours, Knot Eats, tables and table QR ordering. The website is an add-on.",
+  BILLING: "Billing only: Collection orders at the counter, orders, reports, menu, staff, rules & charges.",
+};
 
 const money = (amount) => amount?.label || "₹0.00";
 const dateOf = (d) => (d ? new Date(d).toLocaleDateString("en-IN", { dateStyle: "medium", timeZone: STORE_TZ }) : "—");
@@ -143,7 +151,7 @@ const CancelPlan = ({ sub, onClose, onConfirm, busy }) => {
         <p className="mt-2 text-[13px] text-[#334155]">
           {sub?.active
             ? `Renewals stop on ${dateOf(sub.currentPeriodEnd)}. After that your store is Closed.`
-            : "The POS plan ends now and your store is Closed."}{" "}
+            : "The plan ends now and your store is Closed."}{" "}
           Your wallet balance is not refundable.
         </p>
         <textarea
@@ -561,13 +569,26 @@ const Billing = () => {
             `Stop any time: it works until ${until}. No refund.`,
           ]
         : [
-            `Charged now for the days left in this period, then ${money(a.price)} + GST every ${periodDays} days with the POS plan.`,
+            `Charged now for the days left in this period, then ${money(a.price)} + GST every ${periodDays} days with your plan.`,
             "Stop it any time: it keeps working until the end of the period already paid. No refunds.",
           ],
       run: () => addSubscriptionAddon({ code: a.code, accepted: true }),
       done: `${a.name} is on.`,
     });
   };
+
+  // Billing → POS, now: the server charges the difference for the days left (+ GST). Never the other way here.
+  const upgradePlan = (pos) =>
+    review({
+      item: "PLAN:POS",
+      title: `Upgrade to the ${pos.name} plan`,
+      terms: [
+        `Charged now: the difference for the days left in this period, + GST. From ${dateOf(sub.currentPeriodEnd)} it renews at ${money(pos.price)} + GST every ${periodDays} days.`,
+        "Moving back to the Billing plan is done only by KnotKitchen support.",
+      ],
+      run: () => setSubscriptionPlan({ code: "POS", accepted: true }),
+      done: `You are on the ${pos.name} plan.`,
+    });
 
   // A device (a tablet or a printer): where to deliver it first, then the order summary.
   const buyPrinter = (p) =>
@@ -601,6 +622,19 @@ const Billing = () => {
         }),
     });
 
+  // knotkitchen.com's Order button: /settings/billing?device=<code>, kept through
+  // sign-in (utils/returnTo). That device's request opens once the list is here.
+  const [wantDevice, setWantDevice] = useState(() => new URLSearchParams(window.location.search).get("device"));
+  useEffect(() => {
+    if (!wantDevice || !sub) return;
+    setWantDevice(null);
+    window.history.replaceState(null, "", window.location.pathname);
+    const p = !sub.exempt && (sub.printers || []).find((x) => x.code === wantDevice.toUpperCase());
+    if (p) buyPrinter(p);
+    else enqueueSnackbar(sub.exempt ? "Devices are not sold to demo stores." : "That device is not on sale at the moment.", { variant: "warning" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wantDevice, sub]);
+
   const cancelRequest = (r) => {
     // A renewal that already billed a tablet still on its way is refunded too (r.refundable).
     const back = Number(r.refundable?.paise) > 0;
@@ -620,7 +654,7 @@ const Billing = () => {
         if (!res?.data?.data?.renewed) throw new Error(res?.data?.data?.lastRenewalError || "Nothing is due for renewal yet.");
         return res;
       },
-      done: "The POS plan is renewed.",
+      done: "The plan is renewed.",
     });
 
   // Owner only (requireOwnerOnly on the server): staff never see the link.
@@ -628,12 +662,12 @@ const Billing = () => {
     act.mutate(
       {
         run: () => cancelSubscription({ reason }),
-        done: sub?.active ? `Cancelled. The POS plan ends on ${dateOf(sub.currentPeriodEnd)}.` : "Cancelled.",
+        done: sub?.active ? `Cancelled. The plan ends on ${dateOf(sub.currentPeriodEnd)}.` : "Cancelled.",
       },
       { onSuccess: () => setCancelling(false) },
     );
   const undoCancel = () =>
-    act.mutate({ run: () => reinstateSubscription(), done: "Cancellation undone. The POS plan keeps renewing." });
+    act.mutate({ run: () => reinstateSubscription(), done: "Cancellation undone. The plan keeps renewing." });
 
   if (isLoading || subLoading) return <div className="p-6 text-[13px] text-[#94A3B8]">Loading billing…</div>;
   // Without the subscription the page would read as "EXPIRED" with no add-ons.
@@ -664,14 +698,15 @@ const Billing = () => {
   const storeClosed = cancelled || closedByServer || Boolean(sub?.topUpBlocked || sub?.storeClosed || balance?.closed);
   // The restaurant can undo only its own cancellation, and only before it takes effect.
   const canUndo = Boolean(sub?.cancelAt) && !cancelled && sub?.cancelledBy?.type !== "CSD";
-  // Tablets rented before they were sold: listed until each rental ends.
-  const tablets = (sub?.tablets || sub?.tablet?.tablets || []).filter((t) => t.active);
+  const billingPlan = sub?.planCode === "BILLING";
+  const posPlan = sub?.plans?.find((p) => p.code === "POS");
+  const pendingPlan = sub?.pendingPlanCode && (sub.plans?.find((p) => p.code === sub.pendingPlanCode)?.name || sub.pendingPlanCode);
 
   return (
     <div className="h-full overflow-y-auto bg-[#F8FAFC] p-4 sm:p-5 space-y-5">
       <header>
         <h1 className="text-[20px] font-extrabold text-[#0F172A]">Billing &amp; Subscription</h1>
-        <p className="text-[13px] text-[#64748B]">Your wallet, POS plan, add-ons, tablets, printers, their delivery and invoices.</p>
+        <p className="text-[13px] text-[#64748B]">Your wallet, plan, add-ons, tablets, printers, their delivery and invoices.</p>
       </header>
 
       {balance?.locked && (
@@ -681,6 +716,50 @@ const Billing = () => {
             {balance.lockedReason || "There is an outstanding amount on this account."} It unlocks by itself once paid.
           </p>
         </div>
+      )}
+
+      {/* Before the first recharge only: after it, a plan is only upgraded (below), never moved down here. */}
+      {sub?.needsActivation && !sub.exempt && !storeClosed && sub.plans?.length > 0 && (
+        <Card
+          title="Choose your plan"
+          subtitle="Starts with your first recharge. You can upgrade later; moving to a smaller plan is done by KnotKitchen."
+        >
+          <div className="grid gap-3 sm:grid-cols-2">
+            {sub.plans.map((p) => (
+              <div
+                key={p.code}
+                className={`flex flex-col gap-1 rounded-xl border p-3 ${p.current ? "border-[#FD5302] bg-[#FFF7ED]" : "border-[#E2E8F0]"}`}
+              >
+                <p className="text-[14px] font-extrabold text-[#0F172A]">
+                  {p.name}
+                  {p.current && <Tag tone="green">SELECTED</Tag>}
+                </p>
+                <p className="text-[12px] font-semibold text-[#334155]">
+                  {money(p.price)} + GST / {periodDays} days
+                </p>
+                <p className="text-[12px] text-[#64748B]">
+                  First recharge {money(p.firstRechargeMin)} · later top-ups at least {money(p.topUpMin)}
+                </p>
+                {PLAN_BLURB[p.code] && <p className="text-[12px] text-[#64748B]">{PLAN_BLURB[p.code]}</p>}
+                {!p.current && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      act.mutate({
+                        run: () => setSubscriptionPlan({ code: p.code, accepted: true }),
+                        done: `${p.name} plan chosen. It starts with your first recharge.`,
+                      })
+                    }
+                    className={`${PRIMARY} mt-2 self-start`}
+                  >
+                    Choose {p.name}
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        </Card>
       )}
 
       <div className="grid gap-5 lg:grid-cols-2">
@@ -704,8 +783,8 @@ const Billing = () => {
           <>
           {sub?.needsActivation && (
             <p className="mt-3 rounded-xl border border-[#FED7AA] bg-[#FFF7ED] px-3 py-2 text-[12.5px] text-[#9A3412]">
-              <span className="font-extrabold">First recharge: at least {money(sub.firstRechargeMin)}.</span> Your POS
-              plan ({money(sub.basePlan?.price)} + GST for {periodDays} days) starts automatically when it arrives, and
+              <span className="font-extrabold">First recharge: at least {money(sub.firstRechargeMin)}.</span> Your{" "}
+              {sub.basePlan?.name} plan ({money(sub.basePlan?.price)} + GST for {periodDays} days) starts automatically when it arrives, and
               the rest stays in your wallet.
             </p>
           )}
@@ -763,17 +842,23 @@ const Billing = () => {
             </p>
           ) : sub?.needsActivation ? (
             <p className="text-[13px] text-[#64748B]">
-              Not started yet. Recharge at least {money(sub.firstRechargeMin)} in one payment and the POS plan starts
-              automatically: {money(sub.basePlan?.price)} + GST comes out of it for the first {periodDays} days.
+              Not started yet. Recharge at least {money(sub.firstRechargeMin)} in one payment and the {sub.basePlan?.name} plan
+              starts automatically: {money(sub.basePlan?.price)} + GST comes out of it for the first {periodDays} days.
             </p>
           ) : (
             <div className="space-y-3">
               <p className="text-[13px] text-[#64748B]">
                 Current period: {dateOf(sub?.currentPeriodStart)} – {dateOf(sub?.currentPeriodEnd)}
               </p>
+              {/* Scheduled by KnotKitchen (CSD); the store has no control over it. */}
+              {pendingPlan && (
+                <p className="rounded-xl border border-[#FED7AA] bg-[#FFF7ED] px-3 py-2 text-[12.5px] text-[#9A3412]">
+                  KnotKitchen is moving this store to the {pendingPlan} plan on {dateOf(sub.pendingPlanAt)}.
+                </p>
+              )}
               {sub && !sub.active && !sub.cancelAt && (
                 <div className="rounded-xl border border-[#FECACA] bg-[#FEF2F2] px-3 py-2 text-[12.5px] text-[#991B1B]">
-                  <p className="font-extrabold">The POS plan ended on {dateOf(sub.currentPeriodEnd)}.</p>
+                  <p className="font-extrabold">The plan ended on {dateOf(sub.currentPeriodEnd)}.</p>
                   <p className="mt-0.5">
                     {sub.lastRenewalError || "It has not renewed yet."}{" "}
                     {sub.inGrace ? `The POS locks at ${timeOf(sub.graceEndsAt)} unless it renews. ` : ""}
@@ -818,6 +903,20 @@ const Billing = () => {
           )}
         </Card>
       </div>
+
+      {/* The Billing plan's way up. No control here ever moves a store down. */}
+      {posPlan && billingPlan && !sub.needsActivation && !sub.exempt && !cancelled && !sub.cancelAt && (
+        <Card title={`Upgrade to the ${posPlan.name} plan`} subtitle={`${money(posPlan.price)} + GST every ${periodDays} days, from your wallet`}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="min-w-0 flex-1 basis-[220px] text-[13px] text-[#64748B]">
+              {PLAN_BLURB.POS} You pay only the difference for the days left in this period, and it switches at once.
+            </p>
+            <button type="button" disabled={busy} onClick={() => upgradePlan(posPlan)} className={PRIMARY}>
+              Upgrade
+            </button>
+          </div>
+        </Card>
+      )}
 
       {/* ------------------------------------------------------------ */}
       <Card
@@ -896,13 +995,13 @@ const Billing = () => {
         )}
         {sub && !sub.exempt && !sub.active && (
           <p className="mt-3 text-[12px] font-semibold text-[#94A3B8]">
-            Add-ons can be added while the POS plan is running. Recharge the wallet to start or renew it.
+            Add-ons can be added while your plan is running. Recharge the wallet to start or renew it.
           </p>
         )}
       </Card>
 
       {sub && !sub.exempt && (
-        <div className={`grid gap-5 ${tablets.length > 0 ? "lg:grid-cols-2" : ""}`}>
+        <div className="grid gap-5">
           {/* ---------------------------------------------------------- */}
           {/* Tablets and printers alike: the server's device list, each bought once through the gateway. */}
           <Card title="Devices" subtitle="Tablets and printers. Buy once, paid online by UPI, card or netbanking (not from your wallet). No monthly fee. Delivered by KnotKitchen.">
@@ -912,8 +1011,20 @@ const Billing = () => {
               <div className="space-y-2">
                 {sub.printers.map((p) => (
                   <div key={p.code} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#E2E8F0] p-3">
+                    {/* The picture and description CSD set (CSD Billing → Devices). */}
+                    {p.imageUrl && (
+                      <img
+                        src={thumbUrl(p.imageUrl, 160)}
+                        alt={p.name}
+                        width={64}
+                        height={64}
+                        loading="lazy"
+                        className="h-16 w-16 shrink-0 rounded-lg bg-[#F8FAFC] object-contain"
+                      />
+                    )}
                     <div className="min-w-0 flex-1 basis-[220px]">
                       <p className="text-[14px] font-extrabold text-[#0F172A]">{p.name}</p>
+                      {p.description && <p className="text-[12px] text-[#475569]">{p.description}</p>}
                       <p className="text-[12px] text-[#64748B]">
                         {money(p.price)} incl. GST, one time{p.owned ? ` · you have bought ${p.owned}` : ""}
                       </p>
@@ -926,23 +1037,6 @@ const Billing = () => {
               </div>
             )}
           </Card>
-
-          {/* No new rentals: this card is only for tablets rented before, until each rental ends. */}
-          {tablets.length > 0 && (
-            <Card title="Rented tablets" subtitle={`Existing rentals, renewing every ${periodDays} days with the POS plan until they end.`}>
-              <div className="space-y-1.5">
-                {tablets.map((t) => (
-                  <p key={t.serial} className="flex flex-wrap justify-between gap-2 text-[13px] text-[#0F172A]">
-                    <span className="font-bold">Tablet #{t.serial}</span>
-                    <span className="text-[#64748B]">
-                      {money(t.price)} + GST / {periodDays} days
-                      {t.endsAt ? ` · returned, rental ends ${dateOf(t.endsAt)}` : ` · since ${dateOf(t.rentedAt)}`}
-                    </span>
-                  </p>
-                ))}
-              </div>
-            </Card>
-          )}
         </div>
       )}
 

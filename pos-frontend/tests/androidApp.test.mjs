@@ -45,6 +45,24 @@ test("in the app, USB and Bluetooth print through the plugin, not WebUSB/Web Blu
   assert.ok(send.indexOf("nativePrinting &&") < send.indexOf('config.type === "usb") {\n    const { device'), "native branch first");
 });
 
+test("in the app, a LAN printer prints over TCP 9100 on the print queue, and never hangs it", () => {
+  const java = JAVA("ThermalPrinterPlugin.java");
+  assert.match(java, /\} else if \("lan"\.equals\(type\)\) \{\s*io\.execute\(\(\) -> printLan\(call, bytes\)\);/);
+  assert.match(java, /private static final int LAN_PORT = 9100;/);
+  assert.match(java, /socket\.connect\(new InetSocketAddress\(host, LAN_PORT\), LAN_CONNECT_MS\);/);
+  // A printer that stops reading (paper out) is closed after the write deadline, freeing the queue.
+  const print = java.slice(java.indexOf("private void printLan("), java.indexOf("/* ------------------------------------------------------------- print -- */"));
+  assert.match(print, /watchdog\.schedule\(/);
+  assert.match(print, /if \(deadline != null\) deadline\.cancel\(false\);/);
+  // Only a private IPv4 address, checked before any connection.
+  assert.ok(print.indexOf("if (!isLanHost(host))") < print.indexOf("openLan(host)"), "printLan validates first");
+  const probe = java.slice(java.indexOf("public void probeLan("), java.indexOf("private void printLan("));
+  assert.ok(probe.indexOf("if (!isLanHost(host))") >= 0 && probe.indexOf("if (!isLanHost(host))") < probe.indexOf("io.execute("), "probeLan validates first");
+  // No leading zeros: "192.168.001.050" is no address a socket opens (it would go to DNS).
+  assert.ok(java.includes(String.raw`host.matches("(0|[1-9]\\d{0,2})(\\.(0|[1-9]\\d{0,2})){3}")`), "octets without leading zeros");
+  assert.match(java, /return a == 10 \|\| \(a == 172 && b >= 16 && b <= 31\) \|\| \(a == 192 && b == 168\) \|\| \(a == 169 && b == 254\);/);
+});
+
 test("the permissions the plugin needs are declared", () => {
   const manifest = SRC("android/app/src/main/AndroidManifest.xml");
   assert.match(manifest, /android\.permission\.BLUETOOTH_CONNECT/);
@@ -117,6 +135,36 @@ test("REGRESSION: a BLE receipt printer prints in seconds, not minutes", () => {
   );
   // No pause between a receipt printer's writes; mini printers keep theirs.
   assert.match(SRC("src/utils/printerDevice.js"), /pace: cat \? 20 : 0,/);
+});
+
+test("REGRESSION: a BLE printer that drops the link while connecting is tried again, never once data went out", () => {
+  // POS58 (owner, 2026-10-16): a GATT connect right after the last job's
+  // close, or to a printer that just woke, drops at once; one try lost the ticket.
+  const java = JAVA("ThermalPrinterPlugin.java");
+  assert.match(java, /private static final int BLE_ATTEMPTS = 3;/);
+  assert.match(java, /private static final long BLE_RETRY_PAUSE_MS = 800;/);
+  const retry = java.slice(java.indexOf("private void printBle("), java.indexOf("private String printBleOnce("));
+  assert.match(retry, /String retry = printBleOnce\(call, bytes, device, pace\);\s+if \(retry == null\) return;/);
+  assert.match(retry, /if \(attempt == BLE_ATTEMPTS\) \{\s+call\.reject\(retry\);/);
+  assert.match(retry, /Thread\.sleep\(BLE_RETRY_PAUSE_MS \* attempt\);/);
+
+  const once = java.slice(java.indexOf("private String printBleOnce("), java.indexOf("private BluetoothAdapter adapter()"));
+  const firstWrite = once.indexOf("gatt.writeCharacteristic(ch)");
+  assert.ok(firstWrite > 0);
+  // A message asks for another try; every one of them comes before any data goes out.
+  const retries = [...once.matchAll(/return (?!null)[^;]+;/g)];
+  assert.ok(retries.length >= 2, "gatt == null and a failure while connecting are retried");
+  for (const m of retries) assert.ok(m.index < firstWrite, `retried after data went out: ${m[0]}`);
+  // From the first write on, a failure is final.
+  assert.doesNotMatch(once.slice(firstWrite), /return (?!null)[^;]+;/);
+  // A printer that is off fails in 20 s, not a minute: the timeout is never retried.
+  assert.match(once, /if \(!ready\.await\(20, TimeUnit\.SECONDS\)\) \{\s+call\.reject\("The printer did not answer[^"]*"\);\s+return null;/);
+  // The GATT status is in the message, and a failed discovery is not read as "does not accept print data".
+  assert.ok(once.includes('"The printer disconnected (GATT " + status + ")."'));
+  const discovered = once.slice(once.indexOf("public void onServicesDiscovered("));
+  assert.match(discovered, /^[^{]*\{\s+if \(status != BluetoothGatt\.GATT_SUCCESS\) \{/);
+  // Each attempt starts from a closed GATT.
+  assert.match(once, /finally \{\s+if \(gatt != null\) \{\s+try \{\s+gatt\.disconnect\(\);\s+gatt\.close\(\);/);
 });
 
 test("Cashfree checkout in the app can list and open UPI apps", () => {

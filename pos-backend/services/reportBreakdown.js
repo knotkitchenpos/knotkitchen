@@ -8,11 +8,13 @@
  * difference between those lines and what was taken (discount, exclusive GST
  * and charges, refunds, anything else), so the rows add up to the Total
  * Orders amount. Hour and staff rows are net of refunds, like that total.
+ * Dishes are ranked by quantity sold, ties by amount (owner, 2026-10-15);
+ * categories and staff stay ranked by amount.
  */
 const { isCancelled } = require("../constants/orderStatus");
 
 const { round2 } = require("./money");
-const { resolveItemAmounts } = require("./orderItemAmounts");
+const { resolveItemAmounts, round3 } = require("./orderItemAmounts");
 const { netAmount, orderTotal, refundedTotal } = require("./refunds");
 const { DEFAULT_TZ } = require("./tableBookings");
 const { localClock } = require("./websiteAvailability");
@@ -24,7 +26,7 @@ const lineAmount = (item) => resolveItemAmounts(item).lineTotal;
 const top = (map, key, limit = Infinity) =>
   [...map.values()]
     .map((r) => ({ ...r, amount: round2(r.amount) }))
-    .sort((a, b) => b[key] - a[key])
+    .sort((a, b) => b[key] - a[key] || b.amount - a.amount)
     .slice(0, limit);
 
 /**
@@ -68,13 +70,13 @@ const buildReportBreakdown = (orders, { categoryOf = () => "", timeZone = DEFAUL
       lines += amt;
       const name = String(it.name || "Item").trim();
       const r = items.get(name) || { name, quantity: 0, amount: 0 };
-      r.quantity += qty;
+      r.quantity = round3(r.quantity + qty); // 1.8 + 1.1 kg is 2.9, not 2.9000000000000004
       r.amount += amt;
       items.set(name, r);
 
       const cat = String(categoryOf(it) || "Uncategorised");
       const c = categories.get(cat) || { name: cat, quantity: 0, amount: 0 };
-      c.quantity += qty;
+      c.quantity = round3(c.quantity + qty);
       c.amount += amt;
       categories.set(cat, c);
     }
@@ -106,7 +108,8 @@ const buildReportBreakdown = (orders, { categoryOf = () => "", timeZone = DEFAUL
     .filter((a) => Math.abs(a.amount) >= 0.01);
 
   return {
-    byItem: top(items, "amount"),
+    // Owner 2026-10-15: dishes rank by quantity sold, ties by amount.
+    byItem: top(items, "quantity"),
     byCategory: top(categories, "amount"),
     byHour: hours.map((r) => ({ ...r, amount: round2(r.amount) })).filter((r) => r.count > 0),
     byStaff: top(staff, "amount", 50),

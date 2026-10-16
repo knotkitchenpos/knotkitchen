@@ -38,6 +38,7 @@ const Store = require("../models/storeModel");
 const Restaurant = require("../models/restaurantModel");
 const { getPlatformConfig, getOverride } = require("./pricing");
 const { formatINR } = require("./money");
+const { planOf } = require("./plans");
 
 const HOUR_MS = 60 * 60 * 1000;
 
@@ -163,9 +164,9 @@ const assessAccount = async (restaurantId, on = new Date()) => {
     // Closed: nothing renews, so there is nothing to wait for.
     reasons.push("The POS subscription was cancelled and this store is closed. Contact KnotKitchen support to reopen it.");
   } else if (!subscription?.currentPeriodEnd) {
-    reasons.push(
-      `No plan is active yet. Recharge at least ${formatINR(Number(config.firstRechargeMinPaise) || 0)} to start. The POS plan starts automatically.`,
-    );
+    // The plan the owner chose (POS unless they picked Billing), with its own first minimum.
+    const plan = planOf(config, subscription?.planCode);
+    reasons.push(`No plan is active yet. Recharge at least ${formatINR(plan.firstRechargeMinPaise)} to start. The ${plan.name} plan starts automatically.`);
   } else {
     const endedAt = new Date(subscription.currentPeriodEnd).getTime();
     if (now > endedAt + graceMs) {

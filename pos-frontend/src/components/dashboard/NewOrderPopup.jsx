@@ -216,7 +216,10 @@ const NewOrderPopup = () => {
       (current.tableNumber != null ? `Table ${current.tableNumber}` : "Table —");
 
   const items = Array.isArray(current.items) ? current.items : [];
-  const total = Number(current.bills?.totalWithTax || current.bills?.total || 0);
+  const billed = Number(current.bills?.totalWithTax || current.bills?.total || 0);
+  // N017: a guest's table order is off the bill until accepted; show what they ordered meanwhile.
+  const awaiting = !billed && Number(current.pendingTotal) > 0;
+  const total = awaiting ? Number(current.pendingTotal) : billed;
   const customer = current.customerDetails || current.customer || {};
 
   return (
@@ -263,6 +266,7 @@ const NewOrderPopup = () => {
               <p className="text-[22px] font-extrabold text-[#C2410C]">
                 ₹{total.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </p>
+              {awaiting && <p className="text-[10.5px] font-bold text-[#B45309]">Awaiting acceptance</p>}
             </div>
           </div>
 

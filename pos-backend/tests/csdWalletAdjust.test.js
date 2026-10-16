@@ -193,7 +193,7 @@ test("bad input is refused before anything moves", async () => {
 test("SOURCE: adjusting is admin-only, never touches balancePaise, never runs afterRecharge", () => {
   assert.match(SRC("routes/csdRoute.js"), /router\.post\("\/billing\/accounts\/:restaurantId\/wallet\/adjust", requireCsdAdmin, adjustWallet\)/);
   const src = SRC("controllers/csdBillingConfigController.js");
-  const body = src.slice(src.indexOf("const adjustWallet"), src.indexOf("const endTabletRental"));
+  const body = src.slice(src.indexOf("const adjustWallet"), src.indexOf("module.exports"));
   assert.ok(!/\$inc|afterRecharge\(|BusinessBalance\.|\.balancePaise\s*=/.test(body));
   assert.match(body, /\(direction === "CREDIT" \? credit : debit\)\(/, "only the ledger service moves money");
 });
@@ -245,21 +245,22 @@ test("GST registered needs a valid GSTIN and a rate above 0", async () => {
 test("a saved add-on or device can go off sale but never leave the list", async () => {
   // A dropped add-on keeps renewing for the stores on it, out of their sight.
   reset();
+  // Changed 2026-10-16: was a saved TABLE_QR row, which v6 removes from the catalogue and CSD can no longer send.
   state.config.addons = [
-    { code: "TABLE_QR", name: "QR", pricePaise: 20000, feature: "tableQr" },
+    { code: "GMB", name: "GMB Management", pricePaise: 10000, feature: "" },
     { code: "WEBSITE", name: "Website", pricePaise: 360000, periodDays: 365, feature: "website" },
   ];
   state.config.printers = [{ code: "PRINTER_2IN", name: "2-inch", pricePaise: 170000 }];
   const website = { code: "WEBSITE", name: "Website", price: 3600, periodDays: 365, feature: "website" };
   const dropped = await call(ctrl.updateBillingConfig, { body: { addons: [website] } });
   assert.equal(dropped.status, 400);
-  assert.match(dropped.error.fieldErrors.addons, /"TABLE_QR" is saved: take it off sale/);
+  assert.match(dropped.error.fieldErrors.addons, /"GMB" is saved: take it off sale/);
   const noDevice = await call(ctrl.updateBillingConfig, { body: { printers: [] } });
   assert.match(noDevice.error.fieldErrors.printers, /"PRINTER_2IN" is saved/);
   assert.equal(state.saved, 0);
 
   const offSale = await call(ctrl.updateBillingConfig, {
-    body: { addons: [{ code: "TABLE_QR", name: "QR", price: 200, feature: "tableQr", isActive: false }, website] },
+    body: { addons: [{ code: "GMB", name: "GMB Management", price: 100, feature: "", isActive: false }, website] },
   });
   assert.equal(offSale.status, 200);
   assert.equal(state.config.addons[0].isActive, false);

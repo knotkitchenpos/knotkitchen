@@ -20,8 +20,9 @@ const { getKnotEats, setKnotEats } = require("../controllers/knotEatsController"
 // Toggles and Rules & Charges all write through it. The restrictions that
 // remain are per field, in the controller -- payment gateway credentials are
 // Owner-only there -- plus requireWebsitePlan: Manage Website needs the
-// Website add-on, while the Order Toggles / Rules & Charges fields and the
-// gateway keys (Store Properties) always pass.
+// Website add-on; the Rules & Charges fields and the gateway keys (Store
+// Properties) pass on every plan; the Order Toggles auto-ready fields need the
+// POS plan.
 router.route("/settings")
   .get(isVerifiedUser, getWebsiteSettings)
   .put(isVerifiedUser, requireTypedPin(), requireWebsitePlan, updateWebsiteSettings); // N034: PIN typed for this save

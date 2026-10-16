@@ -130,6 +130,8 @@ test("SOURCE: the two resolvers agree", () => {
   const fe = FE("src/utils/orderItems.js");
   for (const src of [be, fe]) {
     assert.match(src, /storedTotal > 0 \? storedTotal : Number\(item\.price \|\| 0\)/);
-    assert.match(src, /Math\.max\(1, Math\.floor\(Number\(item\.quantity\) \|\| 1\)\)/);
+    // A weighed quantity (1.8) is kept, not floored; nonsense still reads as 1.
+    assert.match(src, /const quantity = toQuantity\(item\.quantity\);/);
+    assert.match(src, /const toQuantity = \(q\) => \(round3\(q\) > 0 \? round3\(q\) : 1\);/);
   }
 });

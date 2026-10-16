@@ -3,10 +3,14 @@ import {
   Routes,
   Route,
   useLocation,
+  useNavigate,
   Navigate,
 } from "react-router-dom";
-import { lazy, Suspense, useEffect, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { useSelector } from "react-redux";
+import { useQuery } from "@tanstack/react-query";
+import { useSnackbar } from "notistack";
+import { getSubscriptionStatus } from "./https";
 
 import Sidebar, { MobileNav } from "./components/shared/Sidebar";
 import { AccountLockBanner, LockRedirect, useAccountLock } from "./components/shared/AccountLock";
@@ -75,6 +79,28 @@ function Layout() {
   const bare = isPublicPath(location.pathname) || location.pathname === "/website/preview";
   // Unpaid: warn during the grace period, then only Billing stays open.
   const lock = useAccountLock(Boolean(isAuth) && !bare);
+  const { data: subRes, isPending: planPending, isLoading: planLoading } = useQuery({ queryKey: ["subscription"], queryFn: getSubscriptionStatus, enabled: Boolean(isAuth) && !bare, staleTime: 60_000 });
+  // Billing plan (services/planFeatures pos): no tables, table bookings, waiter calls or marketplace.
+  const billingOnly = subRes?.data?.data?.features?.pos === false;
+  // Their popups wait for the plan, so a Billing store's first poll is not refused (and prompted) before it is known.
+  const tableService = !planPending && !billingOnly;
+
+  // A call refused as not on this plan (axiosWrapper, PLAN_UPGRADE_REQUIRED): offer Billing, at most once per 10 s.
+  const navigate = useNavigate();
+  const { enqueueSnackbar } = useSnackbar();
+  const planPromptAt = useRef(0);
+  useEffect(() => {
+    const onPlanLocked = (e) => {
+      if (Date.now() - planPromptAt.current < 10_000) return;
+      planPromptAt.current = Date.now();
+      enqueueSnackbar(e.detail || "Not on your plan. Upgrade in Billing & Subscription.", {
+        variant: "warning",
+        action: <button type="button" className="font-bold underline" onClick={() => navigate("/settings/billing")}>Billing</button>,
+      });
+    };
+    window.addEventListener("kk:plan-locked", onPlanLocked);
+    return () => window.removeEventListener("kk:plan-locked", onPlanLocked);
+  }, [enqueueSnackbar, navigate]);
 
   // Staff devices load every page once, soon after start: the service worker
   // then holds them all for offline use, and a tab left open across a deploy
@@ -96,7 +122,8 @@ function Layout() {
         <Route path="/menu" element={<ProtectedRoutes><Menu /></ProtectedRoutes>} />
         <Route path="/orders" element={<ProtectedRoutes><Orders /></ProtectedRoutes>} />
         <Route path="/reports" element={<ProtectedRoutes><Reports /></ProtectedRoutes>} />
-        <Route path="/tables" element={<ProtectedRoutes><Tables /></ProtectedRoutes>} />
+        {/* Settings draws the lock card: the tables tile is locked by tableQr. While the plan loads, neither (offline the query pauses, and the floor shows). */}
+        <Route path="/tables" element={<ProtectedRoutes>{planLoading ? <FullScreenLoader /> : billingOnly ? <Navigate to="/settings?view=tables" replace /> : <Tables />}</ProtectedRoutes>} />
         <Route path="/settings" element={<ProtectedRoutes><Settings /></ProtectedRoutes>} />
         {/* Reachable even when the account is locked -- see middlewares/accountLock.js */}
         <Route path="/settings/billing" element={<ProtectedRoutes><Billing /></ProtectedRoutes>} />
@@ -134,12 +161,12 @@ function Layout() {
       </main>
       {isAuth && !lock.locked && (
         <>
-          <MarketplaceOrderPopup />
+          {tableService && <MarketplaceOrderPopup />}
           <NewOrderPopup />
-          <WaiterCallPopup />
-          <TableBookingPopup />
+          {tableService && <WaiterCallPopup />}
+          {tableService && <TableBookingPopup />}
           <PrepDuePopup />
-          <AddedItemsPopup />
+          {tableService && <AddedItemsPopup />}
         </>
       )}
     </div>

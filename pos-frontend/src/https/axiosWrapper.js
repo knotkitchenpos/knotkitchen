@@ -87,6 +87,10 @@ axiosWrapper.interceptors.response.use(
     if (error.response?.status === 402 && error.response?.data?.code === "ACCOUNT_LOCKED") {
       window.dispatchEvent(new Event("kk:account-locked"));
     }
+    // Not on this store's plan (middlewares/planGate.js): App.jsx offers Billing.
+    if (error.response?.status === 403 && error.response?.data?.code === "PLAN_UPGRADE_REQUIRED") {
+      window.dispatchEvent(new CustomEvent("kk:plan-locked", { detail: error.response.data.message || "" }));
+    }
 
     // A protected action without a fresh Security PIN: ask for it once, then
     // retry (the request interceptor attaches the new PIN token). Closing the

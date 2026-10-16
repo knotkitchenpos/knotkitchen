@@ -3,6 +3,7 @@ const { logActivity } = require("../services/auditService");
 const { buildCooldownUpdate } = require("../services/tableCooldownService");
 const { userScope } = require("../services/tenantContext");
 const { round2, toRupees } = require("../services/money");
+const { round3 } = require("../services/orderItemAmounts");
 const { resolveGstForRestaurant } = require("../services/gst");
 const Table = require("../models/tableModel");
 const TableSession = require("../models/tableSessionModel");
@@ -371,7 +372,10 @@ const enrichItems = async ({ items, restaurantId, outletId, addedBy = "SYSTEM" }
   const validatedItems = [];
   for (const rawItem of items) {
     if (!rawItem.menuItemId) throw createHttpError(400, "Each item must have menuItemId!");
-    if (!rawItem.quantity || rawItem.quantity < 1) throw createHttpError(400, "Quantity must be at least 1!");
+    // The till may sell by weight (1.8 kg, kept to the gram); a diner orders whole dishes.
+    const quantity = round3(rawItem.quantity);
+    if (!(quantity > 0)) throw createHttpError(400, "Quantity must be more than 0!");
+    if (addedBy === "QR" && !Number.isInteger(quantity)) throw createHttpError(400, "Quantity must be a whole number!");
 
     const { item, timezone } = await priceService.resolveMenuItem({
       menuItemId: rawItem.menuItemId,
@@ -407,9 +411,9 @@ const enrichItems = async ({ items, restaurantId, outletId, addedBy = "SYSTEM" }
     validatedItems.push({
       menuItemId: item._id,
       name: variant?.name ? `${item.name} (${variant.name})` : item.name,
-      quantity: Number(rawItem.quantity),
+      quantity,
       price: unitPrice,
-      total: round2(unitPrice * Number(rawItem.quantity)),
+      total: round2(unitPrice * quantity),
       modifiers: components,
       note: rawItem.note || "",
       addedBy,
@@ -456,6 +460,12 @@ const addItemsToSession = async (req, res, next) => {
       if (session && key && session.items.some((i) => i.requestId === key)) return { session, replay: true };
 
       if (!session) {
+        // The Table order toggle (always off on the Billing plan) stops new tables; open ones still take rounds.
+        let tableOff = false;
+        try { tableOff = (await require("../services/planFeatures").orderTogglesFor(req.user?.restaurantId, req.user?.storeId)).table === false; }
+        catch (err) { console.warn("[tableSession] toggle check failed, allowing:", err.message); }
+        if (tableOff) throw createHttpError(400, "Table orders are currently disabled in Store Settings.");
+
         const count = validateCapacity(table, customerCount);
         // A table promised to a booking stops taking new parties from its
         // block start. Seating the booking (Manage Tables) releases it.
@@ -1030,6 +1040,7 @@ const recordSessionPayment = async (req, res, next) => {
     };
     if (paid) session.bills.platformFee = platformFee;
 
+    let paidTable = null;
     if (paid) {
       session.paymentRequestedAt = session.paymentRequestedAt || new Date();
 
@@ -1049,7 +1060,7 @@ const recordSessionPayment = async (req, res, next) => {
       // service, so the next party is not seated onto a table nobody has
       // cleared. The update frees it immediately when the restaurant has the
       // wait set to 0.
-      await Table.findOneAndUpdate(
+      paidTable = await Table.findOneAndUpdate(
         { _id: session.tableId },
         await buildCooldownUpdate(session.restaurantId),
         { session: mongoSession }
@@ -1234,6 +1245,15 @@ const recordSessionPayment = async (req, res, next) => {
         tableId: session.tableId,
         session,
         reason: paid ? "paid" : "payment_failed",
+        // The bill Auto Receipt Print prints for a till settle ("POS"); a guest who paid on
+        // their phone (gateway "QR", or a link/online payment) gets the e-bill alone.
+        ...(paid && liveOrders.length
+          ? {
+              orderId: liveOrders[0]._id,
+              settledVia: req.viaGateway ? "QR" : ["ONLINE", "PAYMENT_LINK"].includes(normalizedMethod) ? normalizedMethod : "POS",
+              table: paidTable,
+            }
+          : {}),
       });
     } catch (err) {
       console.warn("emitTableSessionUpdated failed:", err.message);
@@ -1905,7 +1925,7 @@ const setDiscount = async (req, res, next) => {
     }
 
     const sub = round2(
-      session.items.filter(isBillable).reduce((t, i) => t + i.price * i.quantity, 0),
+      session.items.filter(isBillable).reduce((t, i) => t + round2(i.price * i.quantity), 0),
     );
     // ponytail: a percentage is stored as an amount, so dishes added after it
     // keep the old figure. Store bills.discountPercent if that ever matters.
