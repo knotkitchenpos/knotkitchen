@@ -6,6 +6,7 @@ const portal = require("../services/onboardPortalService");
 const { mapAgreementToStore } = require("../services/agreementMapper");
 const { generateUniqueStoreId } = require("../services/storeIdGenerator");
 const { provisionWebsiteForStore } = require("../services/websiteProvisioningService");
+const { NEW_STORE_ORDER_TYPES } = require("../services/newStoreDefaults");
 const { csdAudit } = require("../services/csdAuditService");
 const { AGREEMENT_VERSION } = require("../constants/agreement");
 
@@ -275,6 +276,7 @@ const createStoreFromAgreement = async (req, res, next) => {
       currency: "INR",
       timezone: "Asia/Kolkata",
       isActive: true,
+      orderTypeToggles: { ...NEW_STORE_ORDER_TYPES },
     });
 
     let store;
@@ -314,6 +316,7 @@ const createStoreFromAgreement = async (req, res, next) => {
           phone: values.restaurantPhone || values.ownerPhone,
           email: values.restaurantEmail || values.ownerEmail,
         },
+        newStore: true,
       });
     } catch (err) {
       storefrontError = err.message;

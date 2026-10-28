@@ -8,6 +8,7 @@ const crypto = require("crypto");
 const config = require("../config/config");
 const sessionCookies = require("../services/sessionCookies");
 const { provisionWebsiteForStore } = require("../services/websiteProvisioningService");
+const { NEW_STORE_ORDER_TYPES } = require("../services/newStoreDefaults");
 
 const provisionWebsiteSafely = async (params) => {
   try {
@@ -485,6 +486,7 @@ const setupStorePassword = async (req, res, next) => {
         isVerified: true,
         isApproved: true,
         subscriptionStatus: "ACTIVE",
+        orderTypeToggles: { ...NEW_STORE_ORDER_TYPES },
       });
       store.restaurantId = restaurant._id;
       store.status = "active";
@@ -523,6 +525,8 @@ const setupStorePassword = async (req, res, next) => {
       storeId: store.storeId,
       storeName: restaurant.name,
       restaurantId: restaurant._id,
+      // Only a restaurant created just now starts with the new-store settings.
+      newStore: !initialRestaurant,
     });
 
     await signTokensAndSetCookies(user, req, res);

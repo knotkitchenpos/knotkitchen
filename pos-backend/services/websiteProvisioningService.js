@@ -1,6 +1,7 @@
 const WebsiteSettings = require("../models/websiteSettingsModel");
 const { DEFAULT_THEME_KEY, getDefaultTheme } = require("./themeRegistry");
 const config = require("../config/config");
+const { NEW_STORE_AUTO_READY } = require("./newStoreDefaults");
 
 /**
  * Automatic website provisioning (§35, §36).
@@ -29,7 +30,9 @@ const DEFAULT_OPENING_HOURS = [0, 1, 2, 3, 4, 5, 6].map((day) => ({
  */
 const provisionWebsiteForStore = async (params, deps = {}) => {
   const Model = deps.Model || WebsiteSettings;
-  const { storeId, storeName, restaurantId, outletId, currency, currencySymbol, contact } = params || {};
+  // `newStore`: the store is being created now, not an older one provisioned
+  // on first access; only then does it start with the new-store settings.
+  const { storeId, storeName, restaurantId, outletId, currency, currencySymbol, contact, newStore } = params || {};
 
   if (!storeId) throw new Error("provisionWebsiteForStore: storeId is required");
 
@@ -71,6 +74,7 @@ const provisionWebsiteForStore = async (params, deps = {}) => {
       deliveryEnabled: false,
       currency: currency || "INR",
       currencySymbol: currencySymbol || (currency === "GBP" ? "£" : currency === "USD" ? "$" : "₹"),
+      ...(newStore ? { autoReadyEnabled: NEW_STORE_AUTO_READY } : {}),
     },
     contact: contact || {},
     openingHours: DEFAULT_OPENING_HOURS,

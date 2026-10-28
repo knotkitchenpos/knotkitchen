@@ -3,6 +3,7 @@ const Store = require("../models/storeModel");
 const Restaurant = require("../models/restaurantModel");
 const { generateUniqueStoreId } = require("../services/storeIdGenerator");
 const { provisionWebsiteForStore } = require("../services/websiteProvisioningService");
+const { NEW_STORE_ORDER_TYPES } = require("../services/newStoreDefaults");
 const { normalizePhone } = require("../services/otpService");
 const { csdAudit } = require("../services/csdAuditService");
 const { isValidGstin } = require("../services/gst");
@@ -140,6 +141,7 @@ const createStore = async (req, res, next) => {
       currency: "INR",
       timezone: "Asia/Kolkata",
       isActive: true,
+      orderTypeToggles: { ...NEW_STORE_ORDER_TYPES },
     });
 
     let store;
@@ -173,6 +175,7 @@ const createStore = async (req, res, next) => {
         restaurantId: restaurant._id,
         currency: "INR",
         contact: { phone: v.restaurantPhone || v.ownerPhone, email: v.ownerEmail },
+        newStore: true,
       });
     } catch (err) {
       storefrontError = err.message;
