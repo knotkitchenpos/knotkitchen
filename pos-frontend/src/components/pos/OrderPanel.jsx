@@ -937,16 +937,9 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
 
               return (
                 <div key={item.id} className="space-y-1">
-                  {/* Main line: ❌ + red qty + name + price */}
+                  {/* Main line: red qty + name + price. The line is removed with
+                      the × in the action row below. */}
                   <div className="flex items-center gap-2.5">
-                    <button
-                      onClick={() => dispatch(removeItem(item.id))}
-                      className="shrink-0 text-[#EF4444] hover:text-[#DC2626] text-[18px] leading-none"
-                      title="Remove item"
-                      aria-label={`Remove ${baseName}`}
-                    >
-                      ⊗
-                    </button>
                     <span className="shrink-0 min-w-4 text-[14px] font-extrabold text-[#EF4444] text-center">
                       {formatQty(item.quantity)}
                     </span>
