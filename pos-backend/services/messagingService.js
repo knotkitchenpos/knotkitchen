@@ -36,8 +36,22 @@ const { sendDlt, sendText, sendWhatsAppTemplate, Fast2SmsError } = require("./fa
 const apiKey = () => process.env.FAST2SMS_API_KEY || process.env.SMS_API_KEY || "";
 const senderId = () => process.env.FAST2SMS_SENDER_ID || "";
 
-/** One WhatsApp Business number serves every template on the account. */
-const whatsAppPhoneNumberId = () => process.env.FAST2SMS_WHATSAPP_PHONE_NUMBER_ID || "";
+/**
+ * One WhatsApp Business number serves every template on the account: the
+ * sender +91 94776 23682. Its id is not a secret, so it lives here; the env
+ * var only exists to point a test account elsewhere.
+ */
+const WHATSAPP_PHONE_NUMBER_ID = "1356188524245302";
+const whatsAppPhoneNumberId = () =>
+  process.env.FAST2SMS_WHATSAPP_PHONE_NUMBER_ID || WHATSAPP_PHONE_NUMBER_ID;
+
+/**
+ * The approved e-bill template. Its id belongs with the variable list below,
+ * not in the server's env: the five variables only fit THIS template, and an
+ * env value left on the previous one (36774, four variables) made Fast2SMS
+ * reject every e-bill as an invalid template.
+ */
+const EBILL_WHATSAPP_MESSAGE_ID = "37414";
 
 /**
  * The message catalogue.
@@ -79,7 +93,7 @@ const MESSAGES = {
      * approved template, and bill.<base> serves /<token> (deploy/Caddyfile).
      */
     whatsapp: {
-      messageId: () => process.env.FAST2SMS_EBILL_WHATSAPP_MESSAGE_ID || "",
+      messageId: () => EBILL_WHATSAPP_MESSAGE_ID,
       variables: ({ restaurantName, orderNumber, billDate, total, billToken }) => [
         restaurantName || "Knot Kitchen",
         orderNumber || "",
@@ -231,6 +245,8 @@ const sendOrderReadyMessage = async (payload) => {
 };
 
 module.exports = {
+  EBILL_WHATSAPP_MESSAGE_ID,
+  WHATSAPP_PHONE_NUMBER_ID,
   MESSAGES,
   channelFor,
   sendPaymentLinkMessage,

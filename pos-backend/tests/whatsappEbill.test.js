@@ -270,41 +270,61 @@ test("missing configuration is named specifically", async () => {
 // Channel selection and variable order
 // ---------------------------------------------------------------------------
 
-test("e-bills use WhatsApp when it is configured, and fall back cleanly", async () => {
+test("REGRESSION: e-bills go out on WhatsApp template 37414 whatever the server env says", async () => {
+  // A server env left on the previous template (36774, four variables), or
+  // missing the phone number id and so falling back to a DLT SMS template,
+  // made Fast2SMS reject every e-bill as an invalid template.
   const { MESSAGES, channelFor } = require("../services/messagingService");
 
   await withEnv(
     {
-      FAST2SMS_EBILL_WHATSAPP_MESSAGE_ID: "31172",
-      FAST2SMS_WHATSAPP_PHONE_NUMBER_ID: "PNID",
-    },
-    () => assert.equal(channelFor(MESSAGES.eBill), "whatsapp"),
-  );
-
-  await withEnv(
-    {
-      FAST2SMS_EBILL_WHATSAPP_MESSAGE_ID: "31172",
-      FAST2SMS_WHATSAPP_PHONE_NUMBER_ID: undefined, // half-configured
+      FAST2SMS_EBILL_WHATSAPP_MESSAGE_ID: "36774", // stale
+      FAST2SMS_WHATSAPP_PHONE_NUMBER_ID: undefined, // missing
       FAST2SMS_EBILL_TEMPLATE_ID: "555",
       FAST2SMS_SENDER_ID: "KNOTKT",
     },
-    () =>
-      assert.equal(
-        channelFor(MESSAGES.eBill),
-        "dlt",
-        "a WhatsApp id with no number id must not be attempted",
-      ),
+    () => {
+      assert.equal(channelFor(MESSAGES.eBill), "whatsapp", "never the DLT fallback");
+      assert.equal(MESSAGES.eBill.whatsapp.messageId(), "37414");
+    },
   );
 
+  // Messages with no WhatsApp template still choose between DLT and plain SMS.
   await withEnv(
-    {
-      FAST2SMS_EBILL_WHATSAPP_MESSAGE_ID: undefined,
-      FAST2SMS_WHATSAPP_PHONE_NUMBER_ID: undefined,
-      FAST2SMS_EBILL_TEMPLATE_ID: undefined,
-      FAST2SMS_SENDER_ID: undefined,
-    },
-    () => assert.equal(channelFor(MESSAGES.eBill), "v3"),
+    { FAST2SMS_ORDER_READY_TEMPLATE_ID: undefined, FAST2SMS_SENDER_ID: undefined },
+    () => assert.equal(channelFor(MESSAGES.orderReady), "v3"),
   );
+});
+
+test("an e-bill send uses template 37414 and the sender's phone number id", async () => {
+  const { calls, restore } = captureFetch();
+  try {
+    await withEnv(
+      {
+        FAST2SMS_API_KEY: "KEY",
+        FAST2SMS_EBILL_WHATSAPP_MESSAGE_ID: "36774",
+        FAST2SMS_WHATSAPP_PHONE_NUMBER_ID: undefined,
+      },
+      async () => {
+        const { sendEBillMessage } = require("../services/messagingService");
+        const res = await sendEBillMessage({
+          phone: "9477623682",
+          restaurantName: "Spice Garden",
+          orderNumber: "A-1042",
+          billDate: "14 Oct 2026, 7:35 pm",
+          total: "525.00",
+          billToken: "o_x_y",
+        });
+        assert.equal(res.sent, true);
+        const url = new URL(calls[0].url);
+        assert.equal(url.searchParams.get("message_id"), "37414");
+        assert.equal(url.searchParams.get("phone_number_id"), "1356188524245302");
+        assert.equal(url.searchParams.get("variables_values").split("|").length, 5);
+      },
+    );
+  } finally {
+    restore();
+  }
 });
 
 test("the e-bill variable order matches the registered WhatsApp template", () => {

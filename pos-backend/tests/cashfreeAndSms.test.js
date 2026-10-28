@@ -227,7 +227,10 @@ test("with no template configured a message still goes out as free text", () => 
       if (k.startsWith("FAST2SMS_")) delete process.env[k];
     }
     for (const [name, spec] of Object.entries(MESSAGES)) {
-      assert.equal(channelFor(spec), "v3", `${name} must still have a free-text fallback`);
+      // The e-bill's WhatsApp template and sender are fixed in code, so it
+      // needs no env to go out on WhatsApp.
+      const expected = spec.whatsapp ? "whatsapp" : "v3";
+      assert.equal(channelFor(spec), expected, `${name} must still have a channel with no env`);
     }
   } finally {
     process.env = saved;

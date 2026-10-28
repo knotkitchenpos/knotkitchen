@@ -151,13 +151,12 @@ echo "=============================================="
 echo " Fast2SMS (WhatsApp)"
 echo "=============================================="
 echo
-echo "  E-bills go out over WhatsApp when these two are set, because the"
-echo "  template carries a tappable bill link that SMS cannot."
-echo "  Both come from the Fast2SMS WhatsApp panel; neither is a secret."
-echo "  Leave them blank to keep e-bills on SMS."
+echo "  E-bills always go out over WhatsApp template ebill_whatsapp (37414)"
+echo "  from +91 94776 23682. Both ids are set in"
+echo "  pos-backend/services/messagingService.js; leave this blank unless"
+echo "  you are pointing at a different WhatsApp number."
 echo
-ask FAST2SMS_WHATSAPP_PHONE_NUMBER_ID  "WhatsApp phone_number_id of the sender +91 94776 23682 (Fast2SMS WhatsApp panel)" "" "1356188524245302"
-ask FAST2SMS_EBILL_WHATSAPP_MESSAGE_ID "E-bill WhatsApp Message ID (ebill_whatsapp)" "" "37414"
+ask FAST2SMS_WHATSAPP_PHONE_NUMBER_ID  "WhatsApp phone_number_id override (blank = 1356188524245302)"
 
 echo "=============================================="
 echo " Public receipt links"
@@ -211,7 +210,7 @@ const names = [
   "CASHFREE_APP_ID","CASHFREE_SECRET_KEY","CASHFREE_ENV","CASHFREE_NOTIFY_URL",
   "FAST2SMS_API_KEY","FAST2SMS_SENDER_ID","FAST2SMS_EBILL_TEMPLATE_ID",
   "FAST2SMS_ORDER_READY_TEMPLATE_ID","FAST2SMS_PAYMENT_LINK_TEMPLATE_ID","FAST2SMS_OTP_ID",
-  "FAST2SMS_WHATSAPP_PHONE_NUMBER_ID","FAST2SMS_EBILL_WHATSAPP_MESSAGE_ID",
+  "FAST2SMS_WHATSAPP_PHONE_NUMBER_ID",
   "PUBLIC_API_URL","RECEIPT_LINK_SECRET","CREDENTIALS_SECRET",
   "GOOGLE_MAPS_SERVER_KEY","GOOGLE_MAPS_BROWSER_KEY",
 ];
