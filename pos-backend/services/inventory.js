@@ -133,7 +133,7 @@ const depletionPlan = (items = [], recipes = []) => {
     const per = Math.max(1, Number(recipe.yield) || 1);
     for (const ing of recipe.ingredients || []) {
       const qty = round3((Number(ing.quantity) || 0) * servings / per);
-      if (qty > 0) take.push({ ingredientId: String(ing.ingredientId), quantity: qty, unit: ing.unit || "", itemName: it.name || "" });
+      if (qty > 0) take.push({ ingredientId: String(ing.ingredientId), quantity: qty, unit: ing.unit || "", itemName: it.name || "", itemIndex });
     }
   });
   return { lines, take };
@@ -151,21 +151,47 @@ const depleteOrder = async (order) => {
   const { lines, take } = depletionPlan(items, recipes);
   if (!lines.length) return;
 
+  // Claim each line before taking its stock, one atomic update apiece. Two
+  // saves close together (a till order, then the platform-fee stamp on it)
+  // each ran this with the line still unmarked, and the recipe came off
+  // twice. Only the run whose update flips the flag takes that line. Matched
+  // by the line's own _id where it has one, never a bare position (N014: a
+  // write to an index that is not there adds a nameless line).
+  const claimed = new Set();
+  for (const { itemIndex } of lines) {
+    const it = items[itemIndex];
+    const claim = it._id
+      ? Order.updateOne(
+          { _id: order._id, items: { $elemMatch: { _id: it._id, stockDepleted: { $ne: true } } } },
+          { $set: { "items.$.stockDepleted": true } },
+        )
+      : Order.updateOne(
+          { _id: order._id, [`items.${itemIndex}.name`]: it.name, [`items.${itemIndex}.stockDepleted`]: { $ne: true } },
+          { $set: { [`items.${itemIndex}.stockDepleted`]: true } },
+        );
+    if ((await claim)?.modifiedCount) claimed.add(itemIndex);
+  }
+  const mine = take.filter((t) => claimed.has(t.itemIndex));
+  if (!mine.length) return;
+
   const units = new Map(
-    (await Ingredient.find({ _id: { $in: [...new Set(take.map((t) => t.ingredientId))] }, restaurantId: order.restaurantId }).select("_id unit").lean())
+    (await Ingredient.find({ _id: { $in: [...new Set(mine.map((t) => t.ingredientId))] }, restaurantId: order.restaurantId }).select("_id unit").lean())
       .map((i) => [String(i._id), i.unit]),
   );
   const alerts = [];
-  for (const t of take) {
+  for (const t of mine) {
     const unit = units.get(t.ingredientId);
     if (!unit) continue;
     // 20 g from a shelf counted in kg takes 0.02. A recipe saved before units
     // could differ has the item's own unit, so nothing changes for it.
     const quantity = convertQty(t.quantity, t.unit || unit, unit);
     if (!quantity) continue;
+    // Subtracted and rounded in one atomic update: a plain $inc left 1 kg
+    // less 30 g twice as 0.9099999999999999, and that drift can tip the
+    // "at or below the minimum" check either way.
     const ing = await Ingredient.findOneAndUpdate(
       { _id: t.ingredientId, restaurantId: order.restaurantId, isDeleted: { $ne: true } },
-      { $inc: { stockQuantity: -quantity } },
+      [{ $set: { stockQuantity: { $round: [{ $subtract: [{ $ifNull: ["$stockQuantity", 0] }, quantity] }, 3] } } }],
       { new: true },
     );
     if (!ing) continue;
@@ -197,11 +223,6 @@ const depleteOrder = async (order) => {
       /* no socket in this process: the POS still finds them on its next load */
     }
   }
-
-  // Mark the lines so a later save (a new round, a status change) skips them.
-  const set = {};
-  for (const { itemIndex } of lines) set[`items.${itemIndex}.stockDepleted`] = true;
-  await Order.updateOne({ _id: order._id }, { $set: set });
 };
 
 module.exports = {

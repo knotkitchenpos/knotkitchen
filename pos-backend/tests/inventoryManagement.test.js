@@ -66,6 +66,7 @@ test("one status rule: out, low (at or below the minimum), maximum reached, in s
 // ---------------------------------------------------------------------------
 
 const buildDepletion = ({ shelf, recipes }) => {
+  const claimedLines = new Set();
   const moves = [];
   const emitted = [];
   const flags = {};
@@ -73,7 +74,9 @@ const buildDepletion = ({ shelf, recipes }) => {
     find: () => lean(Object.values(shelf).map((i) => ({ _id: i._id, unit: i.unit }))),
     findOneAndUpdate: async (filter, update) => {
       const ing = shelf[String(filter._id)];
-      ing.stockQuantity = Math.round((ing.stockQuantity + update.$inc.stockQuantity) * 1000) / 1000;
+      // The service's pipeline update: stock less the quantity, rounded to 3 places.
+      const [, quantity] = update[0].$set.stockQuantity.$round[0].$subtract;
+      ing.stockQuantity = Math.round((ing.stockQuantity - quantity) * 1000) / 1000;
       return { ...ing, toObject: () => ({ ...ing }) };
     },
     updateOne: async (filter, update) => { flags[String(filter._id)] = update.$set.isLowStock; },
@@ -85,7 +88,15 @@ const buildDepletion = ({ shelf, recipes }) => {
       Recipe: { find: () => lean(recipes) },
       StockMovement: { create: async (m) => moves.push(m) },
     },
-    "../models/orderModel": { updateOne: async () => ({}) },
+    // A line's claim flips its flag once, like the database's atomic update.
+    "../models/orderModel": {
+      updateOne: async (filter, update) => {
+        const key = filter.items?.$elemMatch ? String(filter.items.$elemMatch._id) : Object.keys(update.$set)[0];
+        if (claimedLines.has(`${filter._id}:${key}`)) return { modifiedCount: 0 };
+        claimedLines.add(`${filter._id}:${key}`);
+        return { modifiedCount: 1 };
+      },
+    },
     "./socket": { emitToRestaurant: (rid, event, payload) => emitted.push({ rid, event, payload }) },
   });
   return { service, moves, emitted, flags };
@@ -116,6 +127,52 @@ test("selling 2 chicken pizzas takes 2 dough, 40 g mozzarella and 20 g sausage o
     ["Mozzarella Cheese", -0.04, "kg", "sale"],
     ["Chicken Sausage", -0.02, "kg", "sale"],
   ]);
+});
+
+test("REGRESSION: a POS order keeps the dish id, so its recipe comes off the shelf", () => {
+  // addOrder's sanitizeItem dropped menuItemId: every till order was saved
+  // without it, matched no recipe, and stock never moved (owner, 2026-10-28).
+  const { toQuantity } = require("../services/orderItemAmounts");
+  const { depletionPlan } = require("../services/inventory");
+  const ctrl = SRC("controllers/orderController.js");
+  const block = ctrl.slice(ctrl.indexOf("const safeNumber"), ctrl.indexOf("/**\n * The first till line"));
+  const sanitizeItem = new Function("toQuantity", `${block}; return sanitizeItem;`)(toQuantity);
+
+  const pizza = oid();
+  const dough = oid();
+  // The till's cart line (ProductPanel addItems -> toOrderItems), as posted.
+  const line = sanitizeItem({ id: 1730100000000.5, menuItemId: String(pizza), name: "Chicken Pizza", quantity: 2, price: 299, total: 598 });
+  assert.equal(line.menuItemId, String(pizza));
+
+  const { take } = depletionPlan([line], [{ menuItemId: pizza, ingredients: [{ ingredientId: dough, quantity: 1, unit: "pcs" }] }]);
+  assert.deepEqual(take.map((t) => [t.ingredientId, t.quantity]), [[String(dough), 2]]);
+
+  // Anything that is not a dish id is left out rather than stored.
+  assert.equal(sanitizeItem({ menuItemId: "not-an-id", name: "x", price: 1 }).menuItemId, undefined);
+  assert.equal(sanitizeItem({ menuItemId: { $gt: "" }, name: "x", price: 1 }).menuItemId, undefined);
+});
+
+test("REGRESSION: two saves of one order at once take its recipe off the shelf once", async () => {
+  // A till order is saved, then saved again by the platform-fee stamp; both
+  // saves queued a deduction with the line still unmarked, and one Margherita
+  // took 2 dough and 60 g of cheese (owner, 2026-10-28).
+  const dough = { _id: oid(), name: "Pizza Dough", unit: "pcs", stockQuantity: 5, reorderLevel: 2, maxLevel: 0 };
+  const cheese = { _id: oid(), name: "Mozzarella Cheese", unit: "kg", stockQuantity: 1, reorderLevel: 0.2, maxLevel: 0 };
+  const pizza = oid();
+  const { service, moves } = buildDepletion({
+    shelf: { [dough._id]: dough, [cheese._id]: cheese },
+    recipes: [{ menuItemId: pizza, ingredients: [
+      { ingredientId: dough._id, quantity: 1, unit: "pcs" },
+      { ingredientId: cheese._id, quantity: 30, unit: "g" },
+    ] }],
+  });
+  const order = { _id: oid(), restaurantId: oid(), items: [{ _id: oid(), menuItemId: pizza, name: "Margherita Pizza", quantity: 1 }] };
+
+  await Promise.all([service.depleteOrder(order), service.depleteOrder(order)]);
+
+  assert.equal(dough.stockQuantity, 4, "one pizza, one dough");
+  assert.equal(cheese.stockQuantity, 0.97, "1 kg - 30 g");
+  assert.equal(moves.length, 2);
 });
 
 test("the sale that takes an item to its minimum alerts the POS once; the next one does not", async () => {

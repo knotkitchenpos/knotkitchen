@@ -140,7 +140,13 @@ const sanitizeItem = (raw = {}) => {
   const total =
     safeNumber(raw.total, 0, { min: 0, max: 1e9 }) ||
     safeNumber(price * quantity, 0, { min: 0, max: 1e9 });
+  // The dish this line sold (the till's cart sends it). Dropping it left every
+  // POS order unmatched to its recipe, so stock never came off on a sale
+  // (services/inventory.js#depletionPlan). A plain hex check, not mongoose:
+  // anything else is simply not a dish id.
+  const menuItemId = /^[a-f0-9]{24}$/i.test(String(raw.menuItemId || "")) ? String(raw.menuItemId) : undefined;
   return {
+  menuItemId,
   name: String(raw.name || "").slice(0, 200),
   quantity,
   price,
