@@ -61,24 +61,31 @@ const MESSAGES = {
 
   eBill: {
     /**
-     * WhatsApp template `customer_bill_whatsapp` (Utility, en; Fast2SMS
-     * Message ID 36774, sender +91 94776 23682).
+     * WhatsApp template `ebill_whatsapp` (Utility, en; Fast2SMS Message ID
+     * 37414, sender +91 94776 23682). Replaces `customer_bill_whatsapp`
+     * (36774), which had no bill link.
      *
      *   HEADER  Order Bill                  (fixed text, no variable)
-     *   BODY    🍽️ {{1}}                    -> restaurant name
-     *           Order ID: {{2}}             -> order number
-     *           Date: {{3}}                 -> bill date, store time
-     *           Subtotal: ₹ {{4}}           -> what the diner paid
+     *   BODY    Here is your bill summary:
+     *           *{{1}}*                     -> restaurant name
+     *           *Order ID:* {{2}}           -> order number
+     *           *Date:* {{3}}               -> bill date, store time
+     *           *Subtotal:* ₹{{4}}          -> what the diner paid
+     *   FOOTER  Powered by KnotKitchen
+     *   BUTTON  View Bill (URL)             https://bill.knotkitchen.com/{{5}}
+     *                                       -> the signed bill token only
      *
-     * The template has no link, so the bill URL is not sent on WhatsApp.
+     * {{5}} is the token, not the URL: the button's base is fixed in the
+     * approved template, and bill.<base> serves /<token> (deploy/Caddyfile).
      */
     whatsapp: {
       messageId: () => process.env.FAST2SMS_EBILL_WHATSAPP_MESSAGE_ID || "",
-      variables: ({ restaurantName, orderNumber, billDate, total }) => [
+      variables: ({ restaurantName, orderNumber, billDate, total, billToken }) => [
         restaurantName || "Knot Kitchen",
         orderNumber || "",
         billDate || "",
         total || "",
+        billToken || "",
       ],
     },
 

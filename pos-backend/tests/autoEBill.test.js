@@ -100,8 +100,9 @@ const build = ({
       },
     },
     "./receiptLink": {
-      urlForOrder: (id) => `https://api.knotkitchen.com/r/o_${id}_sig`,
-      urlForSession: (id) => `https://api.knotkitchen.com/r/s_${id}_sig`,
+      tokenForOrder: (id) => `o_${id}_sig`,
+      tokenForSession: (id) => `s_${id}_sig`,
+      receiptUrl: (token) => `https://api.knotkitchen.com/r/${token}`,
     },
   };
 
@@ -241,6 +242,7 @@ test("a table session is linked as a session, not as an order", async () => {
   const { service, sent } = build({ tableSession: SESSION });
   await service.maybeSendAutoEBill({ tableSessionId: "sess1" });
   assert.match(sent[0].receiptUrl, /\/r\/s_sess1_/, "an order-shaped token would 404");
+  assert.equal(sent[0].billToken, "s_sess1_sig", "the View Bill button gets the same token");
 });
 
 // ---------------------------------------------------------------------------

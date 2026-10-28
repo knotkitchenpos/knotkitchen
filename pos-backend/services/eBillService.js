@@ -25,7 +25,7 @@ const TableSession = require("../models/tableSessionModel");
 const Restaurant = require("../models/restaurantModel");
 const { buildReceipt } = require("./receiptService");
 const { sendEBillMessage } = require("./messagingService");
-const { urlForOrder, urlForSession } = require("./receiptLink");
+const { tokenForOrder, tokenForSession, receiptUrl } = require("./receiptLink");
 const { fireEBillCharge } = require("./ebillCharge");
 
 /** The bill's date as the diner reads it, in the store's time: "14 Oct 2026, 7:35 pm". */
@@ -113,9 +113,12 @@ const deliverEBill = async ({ order, tableSession, bill, restaurant, phone }) =>
   // A missing signing key or public origin is a misconfiguration, not a
   // server fault. Report it in the same shape as any other non-delivery,
   // naming what to fix.
+  // The WhatsApp button takes the token alone; SMS and the operator get the URL.
+  let billToken;
   let billUrl;
   try {
-    billUrl = tableSession ? urlForSession(tableSession._id) : urlForOrder(order._id);
+    billToken = tableSession ? tokenForSession(tableSession._id) : tokenForOrder(order._id);
+    billUrl = receiptUrl(billToken);
   } catch (linkErr) {
     return {
       receipt,
@@ -140,6 +143,7 @@ const deliverEBill = async ({ order, tableSession, bill, restaurant, phone }) =>
     total: Number(receipt.totalPaid || receipt.total || 0).toFixed(2),
     itemsCount: receipt.quantities,
     receiptUrl: billUrl,
+    billToken,
   });
 
   // Charged on DELIVERY, never on an attempt, and once per BILL. A send that

@@ -310,14 +310,16 @@ test("e-bills use WhatsApp when it is configured, and fall back cleanly", async 
 test("the e-bill variable order matches the registered WhatsApp template", () => {
   const { MESSAGES } = require("../services/messagingService");
 
-  // customer_bill_whatsapp, as approved (header "Order Bill" has no variable):
-  //   BODY  🍽️ {{1}} / Order ID: {{2}} / Date: {{3}} / Subtotal: ₹ {{4}}
+  // ebill_whatsapp (37414), as approved (header "Order Bill" has no variable):
+  //   BODY    *{{1}}* / Order ID: {{2}} / Date: {{3}} / Subtotal: ₹{{4}}
+  //   BUTTON  View Bill -> https://bill.knotkitchen.com/{{5}}
   const values = MESSAGES.eBill.whatsapp.variables({
     restaurantName: "Spice Garden",
     orderNumber: "A-1042",
     billDate: "14 Oct 2026, 7:35 pm",
     total: "525.00",
-    receiptUrl: "https://api.knotkitchen.com/r/o_x_y",
+    receiptUrl: "https://bill.knotkitchen.com/o_x_y",
+    billToken: "o_x_y",
   });
 
   assert.deepEqual(values, [
@@ -325,7 +327,34 @@ test("the e-bill variable order matches the registered WhatsApp template", () =>
     "A-1042",                // {{2}}
     "14 Oct 2026, 7:35 pm",  // {{3}}
     "525.00",                // {{4}}
+    "o_x_y",                 // {{5}} the token only: the button supplies the host
   ]);
+});
+
+test("the View Bill button token is the one the bill host serves", async () => {
+  await withEnv(
+    { RECEIPT_LINK_SECRET: "s3cr3t", RECEIPT_PUBLIC_URL: "https://bill.knotkitchen.com" },
+    () => {
+      const link = require("../services/receiptLink");
+      const { MESSAGES } = require("../services/messagingService");
+      const token = link.tokenForOrder(ID_A);
+      const [, , , , button] = MESSAGES.eBill.whatsapp.variables({
+        restaurantName: "Spice Garden",
+        orderNumber: "A-1042",
+        billDate: "14 Oct 2026, 7:35 pm",
+        total: "525.00",
+        billToken: token,
+      });
+      // What the template builds from {{5}} is exactly the link we would send by SMS.
+      assert.equal(`https://bill.knotkitchen.com/${button}`, link.receiptUrl(token));
+      // And deploy/Caddyfile's bill.<base> rewrite accepts it.
+      assert.match(button, /^[ois]_[0-9a-fA-F]{24}_[A-Za-z0-9_-]{22}$/);
+    },
+  );
+});
+
+test("SOURCE: the e-bill passes the bill token to the template", () => {
+  assert.match(CODE("services/eBillService.js"), /billToken,/);
 });
 
 test("the e-bill date is the store's time, not the server's", () => {
@@ -386,7 +415,7 @@ test("SOURCE: the dead FRONTEND_URL receipt link is gone", () => {
   }
   assert.match(
     CODE("services/eBillService.js"),
-    /urlForSession|urlForOrder/,
+    /tokenForSession|tokenForOrder/,
     "the signed link builder is used instead",
   );
 });

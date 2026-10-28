@@ -156,8 +156,8 @@ echo "  template carries a tappable bill link that SMS cannot."
 echo "  Both come from the Fast2SMS WhatsApp panel; neither is a secret."
 echo "  Leave them blank to keep e-bills on SMS."
 echo
-ask FAST2SMS_WHATSAPP_PHONE_NUMBER_ID  "WhatsApp phone_number_id of the sender +91 94776 23682 (Fast2SMS WhatsApp panel)"
-ask FAST2SMS_EBILL_WHATSAPP_MESSAGE_ID "E-bill WhatsApp Message ID (customer_bill_whatsapp)" "" "36774"
+ask FAST2SMS_WHATSAPP_PHONE_NUMBER_ID  "WhatsApp phone_number_id of the sender +91 94776 23682 (Fast2SMS WhatsApp panel)" "" "1356188524245302"
+ask FAST2SMS_EBILL_WHATSAPP_MESSAGE_ID "E-bill WhatsApp Message ID (ebill_whatsapp)" "" "37414"
 
 echo "=============================================="
 echo " Public receipt links"
@@ -254,16 +254,16 @@ if (channel === "whatsapp") {
   const vars = MESSAGES.eBill.whatsapp.variables({
     restaurantName: "Your Restaurant",
     orderNumber: "A-1042",
+    billDate: "14 Oct 2026, 7:35 pm",
     total: "525.00",
-    receiptUrl: "https://api.knotkitchen.com/r/o_x_y",
+    billToken: "o_000000000000000000000000_xxxxxxxxxxxxxxxxxxxxxx",
   });
   console.log("");
   console.log("Variables, in the order they will be sent:");
   vars.forEach((v, i) => console.log("  " + (i + 1) + ".", v));
   console.log("");
-  console.log("Expected in the message: header shows the restaurant, then");
-  console.log("Order No / Total / View Bill. If they come out shuffled, the");
-  console.log("header belongs at the OTHER end of the list -- say so and it");
-  console.log("is a one-line change.");
+  console.log("Expected in the message (ebill_whatsapp): restaurant, Order ID,");
+  console.log("Date, Subtotal, and a View Bill button opening");
+  console.log("https://bill.knotkitchen.com/<variable 5>.");
 }
 '
