@@ -230,7 +230,7 @@ const Orders = () => {
       if (notif?.sent) {
         enqueueSnackbar("Order marked Ready. Customer notified via SMS.", { variant: "success" });
       } else if (notif?.reason === "no_phone") {
-        enqueueSnackbar("Order marked Ready. No phone on file — SMS skipped.", { variant: "info" });
+        // No phone, no SMS: nothing to tell the till (owner, 2026-10-29).
       } else if (notif?.reason === "duplicate") {
         enqueueSnackbar("Order already marked Ready. Customer was previously notified.", { variant: "info" });
       } else {
