@@ -61,46 +61,46 @@ export const loadSystemMenu = async () => {
   }
 };
 
-export const photoUrls = (menus) => {
-  const urls = new Set();
+/** Each product photo, once: its grid (320) and list (160) copies. */
+export const productPhotos = (menus) => {
+  const photos = new Map();
   for (const menu of menus || []) {
     for (const item of menu?.items || []) {
       const img = item?.imageThumbnailUrl || item?.imageUrl || item?.image;
-      if (img) {
-        urls.add(thumbUrl(img, 320));
-        urls.add(thumbUrl(img, 160));
-      }
+      if (img && !photos.has(img)) photos.set(img, [thumbUrl(img, 320), thumbUrl(img, 160)]);
     }
   }
-  return [...urls];
+  return [...photos.values()];
 };
 
-/** Fetches every product photo, four at a time. Resolves { saved, total }. */
+export const photoUrls = (menus) => productPhotos(menus).flat();
+
+const fetchImage = (src) =>
+  new Promise((done) => {
+    const img = new Image();
+    img.onload = () => done(true);
+    img.onerror = () => done(false);
+    img.src = src;
+  });
+
+/**
+ * Fetches every product photo, four at a time. Resolves { saved, total } in
+ * PHOTOS, one per product photo: counting both copies read as twice the menu.
+ * A photo counts as saved once both its copies are.
+ */
 export const savePhotos = async (menus) => {
-  const urls = photoUrls(menus);
+  const photos = productPhotos(menus);
   const version = readSavedMenu()?.version;
   let ok = 0;
-  for (let i = 0; i < urls.length; i += 4) {
-    await Promise.all(
-      urls.slice(i, i + 4).map(
-        (src) =>
-          new Promise((done) => {
-            const img = new Image();
-            img.onload = () => {
-              ok += 1;
-              done();
-            };
-            img.onerror = done;
-            img.src = src;
-          }),
-      ),
-    );
+  for (let i = 0; i < photos.length; i += 2) {
+    const results = await Promise.all(photos.slice(i, i + 2).map((copies) => Promise.all(copies.map(fetchImage))));
+    ok += results.filter((loaded) => loaded.every(Boolean)).length;
   }
-  const photos = { saved: ok, total: urls.length, at: Date.now() };
+  const saved = { saved: ok, total: photos.length, at: Date.now() };
   const current = readSavedMenu();
   // Only if it is still the same menu (and the same store) we started with.
-  if (current?.version === version) save({ ...current, photos });
-  return photos;
+  if (current?.version === version) save({ ...current, photos: saved });
+  return saved;
 };
 
 /** The Manage Cache button: check now, refresh the screen, re-save the photos. */

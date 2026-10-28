@@ -6,3 +6,8 @@
 # graphify knowledge graph output (local, rebuildable)
 graphify-out/
 brag-output/
+
+# Production secrets, kept on the VPS only (deploy/.env.production.example is
+# the tracked template), and the copies taken before editing them.
+/deploy/.env
+/deploy/.env.bak*

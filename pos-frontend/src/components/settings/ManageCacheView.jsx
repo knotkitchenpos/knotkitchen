@@ -131,7 +131,7 @@ const ManageCacheView = () => {
           <div>
             <h4 className="text-[15px] font-extrabold text-[#0F172A]">Update Website Cache</h4>
             <p className="text-[12.5px] text-[#64748B] mt-0.5">
-              Publish menu and saved Manage Website changes to your website and Knot Eats
+              Publish menu changes to your website and Knot Eats
             </p>
           </div>
           <button

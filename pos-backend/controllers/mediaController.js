@@ -94,14 +94,11 @@ const uploadMedia = async (req, res, next) => {
 
     const folder = ALLOWED_FOLDERS.includes(req.body?.folder) ? req.body.folder : "general";
 
-    // Item and category photos: WebP of about 200 KB at most, whatever was
-    // uploaded (services/imageCompress.js). Other folders keep the original.
-    let image = { buffer: req.uploadedFile.buffer, mimeType: validation.mimeType, width: validation.width, height: validation.height };
-    let fileName = validation.fileName;
-    if (folder === "products" || folder === "categories") {
-      image = await require("../services/imageCompress").toWebp(req.uploadedFile.buffer);
-      fileName = fileName.replace(/\.[a-z0-9]+$/i, "") + ".webp";
-    }
+    // Every upload is converted to WebP and only the WebP is stored; the
+    // original is never written (services/imageCompress.js has the size per folder).
+    const { toWebp, optionsForFolder } = require("../services/imageCompress");
+    const image = await toWebp(req.uploadedFile.buffer, optionsForFolder(folder));
+    const fileName = validation.fileName.replace(/\.[a-z0-9]+$/i, "") + ".webp";
 
     const stored = await storage.upload({
       buffer: image.buffer,

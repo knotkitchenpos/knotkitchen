@@ -10,8 +10,36 @@ const MAX_SIDE = 1600;
 const TARGET_BYTES = 200 * 1024;
 const QUALITIES = [82, 72, 62, 52];
 
-const toWebp = async (input, { maxSide = MAX_SIDE, targetBytes = TARGET_BYTES } = {}) => {
+/**
+ * Every upload is stored this way, only ever the WebP: the original is never
+ * written. Per media-library folder:
+ *   products, categories  200 KB, as above
+ *   logo, general         lossless first: a logo or a receipt QR code keeps
+ *                         its sharp edges, text and transparency, and these
+ *                         are small; lossy only if lossless is too big
+ *   cover, gallery, offers 400 KB: shown large on the website
+ */
+const FOLDER_OPTIONS = {
+  logo: { lossless: true },
+  general: { lossless: true },
+  cover: { targetBytes: 400 * 1024 },
+  gallery: { targetBytes: 400 * 1024 },
+  offers: { targetBytes: 400 * 1024 },
+};
+const optionsForFolder = (folder) => FOLDER_OPTIONS[folder] || {};
+
+const toWebp = async (input, { maxSide = MAX_SIDE, targetBytes = TARGET_BYTES, lossless = false } = {}) => {
   const sharp = require("sharp");
+  if (lossless) {
+    const out = await sharp(input)
+      .rotate()
+      .resize({ width: maxSide, height: maxSide, fit: "inside", withoutEnlargement: true })
+      .webp({ lossless: true })
+      .toBuffer({ resolveWithObject: true });
+    if (out.data.length <= targetBytes) {
+      return { buffer: out.data, width: out.info.width, height: out.info.height, mimeType: "image/webp" };
+    }
+  }
   let side = maxSide;
   let last;
   for (let round = 0; round < 5; round += 1) {
@@ -29,4 +57,4 @@ const toWebp = async (input, { maxSide = MAX_SIDE, targetBytes = TARGET_BYTES } 
   return { buffer: last.data, width: last.info.width, height: last.info.height, mimeType: "image/webp" };
 };
 
-module.exports = { toWebp, TARGET_BYTES, MAX_SIDE };
+module.exports = { toWebp, optionsForFolder, TARGET_BYTES, MAX_SIDE };

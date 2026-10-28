@@ -80,3 +80,22 @@ test("Manage Staff: pick a role when adding, change it later", () => {
 test("a closed PIN popup is not reopened by query retries", () => {
   assert.match(SRC("src/main.jsx"), /retry: \(count, err\) => err\?\.response\?\.data\?\.code !== "PIN_REQUIRED" && count < 3,/);
 });
+
+test("REGRESSION: Photos saved counts each product photo once, not its two copies", () => {
+  // Each photo is saved as a grid (320) and a list (160) copy; counting files
+  // showed twice the menu ("40 of 40" for 20 products).
+  const src = SRC("src/utils/systemMenu.js");
+  assert.match(src, /photos\.set\(img, \[thumbUrl\(img, 320\), thumbUrl\(img, 160\)\]\)/, "both copies are still fetched");
+  assert.match(src, /!photos\.has\(img\)/, "a photo two products share counts once");
+  const save = src.slice(src.indexOf("export const savePhotos"), src.indexOf("export const checkMenuNow"));
+  assert.match(save, /const photos = productPhotos\(menus\);/);
+  assert.match(save, /ok \+= results\.filter\(\(loaded\) => loaded\.every\(Boolean\)\)\.length;/, "saved once both copies are");
+  assert.match(save, /total: photos\.length/);
+  assert.match(save, /save\(\{ \.\.\.current, photos: saved \}\)/);
+});
+
+test("Manage Cache: the website publish says what it publishes", () => {
+  const view = SRC("src/components/settings/ManageCacheView.jsx");
+  assert.match(view, /Publish menu changes to your website and Knot Eats/);
+  assert.doesNotMatch(view, /saved Manage Website changes/);
+});
