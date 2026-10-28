@@ -5,6 +5,9 @@ import { getWebsiteSettings, updateWebsiteSettings, validateGatewayCredentials }
 
 /**
  * Store Properties > Payment Gateway (owner only; the server checks too).
+ * PIN-protected like the rest of Store Properties: `locked` until the PIN at
+ * the top of the page is verified, and every change carries that `pin` for
+ * the server to check again (websiteSettingsController, gatewayPinOk).
  * Open to every store: Knot Eats and table QR payments use these keys, with or
  * without the Website add-on. Verify & Save is the only way keys are saved
  * (the validate endpoint stores them), so a blank secret is never sent as a
@@ -32,7 +35,7 @@ const Status = ({ on }) =>
     <span className="px-2.5 py-1 rounded-full bg-[#F1F5F9] text-[#64748B] text-xs font-bold">Unconfigured</span>
   );
 
-const PaymentGatewayCard = () => {
+const PaymentGatewayCard = ({ locked = true, pin = "" }) => {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ["website", "settings"], queryFn: getWebsiteSettings });
   const pg = data?.data?.data?.settings?.paymentGateways || {};
@@ -48,7 +51,7 @@ const PaymentGatewayCard = () => {
   const fail = (err, fallback) => enqueueSnackbar(err.response?.data?.message || fallback, { variant: "error" });
 
   const verify = useMutation({
-    mutationFn: (gateway) => validateGatewayCredentials({ gateway, ...form[gateway] }),
+    mutationFn: (gateway) => validateGatewayCredentials({ gateway, ...form[gateway], pin }),
     onSuccess: (res, gateway) => {
       enqueueSnackbar(res.data?.message || "Credentials verified and saved.", { variant: "success" });
       const secret = gateway === "cashfree" ? "clientSecret" : "saltKey";
@@ -59,7 +62,7 @@ const PaymentGatewayCard = () => {
   });
 
   const setActive = useMutation({
-    mutationFn: (value) => updateWebsiteSettings({ paymentGateways: { activeGateway: value } }),
+    mutationFn: (value) => updateWebsiteSettings({ paymentGateways: { activeGateway: value }, pin }),
     onSuccess: () => {
       enqueueSnackbar("Active payment gateway updated.", { variant: "success" });
       refresh();
@@ -73,22 +76,19 @@ const PaymentGatewayCard = () => {
   const cf = form.cashfree;
   const pp = form.phonepe;
   const active = pg.activeGateway || "cashfree";
-  const busy = verify.isPending || setActive.isPending;
+  const busy = locked || verify.isPending || setActive.isPending;
 
   return (
     <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
-      <div>
+      <div className="flex items-center justify-between gap-3">
         <h4 className="text-[16px] font-extrabold text-[#0F172A]">Payment Gateway</h4>
-        <p className="text-[12px] text-[#94A3B8]">
-          Configure Cashfree or PhonePe credentials. Only ONE gateway can be active at a time for website, Knot Eats and table QR payments.
-        </p>
+        {locked ? (
+          <span className="px-3 py-1 rounded-full bg-[#F1F5F9] text-[#64748B] text-[12px] font-bold">Locked</span>
+        ) : null}
       </div>
 
-      <div className="p-3 rounded-xl border border-[#FDE68A] bg-[#FFFBEB] text-xs text-[#92400E]">
-        Enter <strong>this restaurant&apos;s own</strong> payment gateway keys. Every online payment settles to the account these
-        keys belong to. Never enter KnotKitchen&apos;s keys here.
-      </div>
-
+      {/* One switch for every field and button: nothing changes until the PIN unlocks it. */}
+      <fieldset disabled={locked} className={`m-0 min-w-0 border-0 p-0 space-y-4 ${locked ? "opacity-60" : ""}`}>
       <div>
         <label className={labelClass}>Select Active Gateway</label>
         <select className={inputClass} value={active} disabled={busy} onChange={(e) => setActive.mutate(e.target.value)}>
@@ -102,7 +102,6 @@ const PaymentGatewayCard = () => {
         <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
           <div>
             <h4 className="font-extrabold text-sm text-[#0F172A]">Cashfree</h4>
-            <p className="text-xs text-[#94A3B8]">Accept Instant UPI, Cards & BNPL</p>
           </div>
           <Status on={pg.cashfree?.isConfigured} />
         </div>
@@ -144,7 +143,6 @@ const PaymentGatewayCard = () => {
         <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-3">
           <div>
             <h4 className="font-extrabold text-sm text-[#0F172A]">PhonePe</h4>
-            <p className="text-xs text-[#94A3B8]">Direct PhonePe UPI & PG Integration</p>
           </div>
           <Status on={pg.phonepe?.isConfigured} />
         </div>
@@ -184,6 +182,7 @@ const PaymentGatewayCard = () => {
           Verify & Save PhonePe Credentials
         </button>
       </div>
+      </fieldset>
     </div>
   );
 };

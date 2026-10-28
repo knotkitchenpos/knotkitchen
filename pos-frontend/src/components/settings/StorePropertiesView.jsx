@@ -46,9 +46,6 @@ const StoreLogoField = ({ value, disabled, onChange }) => {
       </div>
       <div className="min-w-[220px] flex-1">
         <p className="text-[13.5px] font-extrabold text-[#0F172A]">Store Logo</p>
-        <p className="text-[11.5px] text-[#64748B]">
-          Shown on the POS, invoices, printed receipts, the table QR page and your website. PNG, JPG or WebP; a square image works best.
-        </p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -68,7 +65,6 @@ const StoreLogoField = ({ value, disabled, onChange }) => {
               Remove
             </button>
           ) : null}
-          {disabled ? <span className="text-[11.5px] text-[#94A3B8]">Unlock with your PIN to change it.</span> : null}
         </div>
         <input
           ref={fileRef}
@@ -170,7 +166,6 @@ const StorePropertiesView = () => {
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#E2E8F0] pb-3">
           <div className="min-w-0">
             <h4 className="text-[16px] font-extrabold text-[#0F172A]">Store Properties</h4>
-            <p className="text-[12px] text-[#94A3B8]">Editing protected properties requires PIN verification</p>
           </div>
           {!pinVerified ? (
             <div className="flex items-center gap-2">
@@ -367,7 +362,10 @@ const StorePropertiesView = () => {
         />
       )}
 
-      {(user?.role === "Owner" || user?.role === "owner" || user?.role === "superadmin") && <PaymentGatewayCard />}
+      {/* Locked with the rest of Store Properties until the PIN above unlocks it. */}
+      {(user?.role === "Owner" || user?.role === "owner" || user?.role === "superadmin") && (
+        <PaymentGatewayCard locked={!pinVerified} pin={pin} />
+      )}
 
       {/* Owner PIN Management */}
       {(user?.role === "Owner" || user?.role === "owner") && (
@@ -375,7 +373,6 @@ const StorePropertiesView = () => {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
               <h4 className="text-[15px] font-extrabold text-[#0F172A]">Protection PIN Management</h4>
-              <p className="text-[12px] text-[#94A3B8]">Owner can change the security PIN</p>
             </div>
             <button
               onClick={() => setShowChangePin(!showChangePin)}

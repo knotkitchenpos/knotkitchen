@@ -355,6 +355,8 @@ test("Website settings: switching TO an unconfigured gateway is still refused", 
     if (r === "../models/websiteSettingsModel") return { findOne: async () => mockSettings };
     if (r === "../models/storeModel") return {};
     if (r === "../models/mediaAssetModel") return {};
+    // No PIN set yet: the default one unlocks (restaurantController.verifyPinHelper).
+    if (r === "../models/restaurantModel") return { findOne: async () => ({ _id: RESTAURANT_ID, securityPin: "" }) };
     return orig.apply(this, arguments);
   };
 
@@ -366,7 +368,7 @@ test("Website settings: switching TO an unconfigured gateway is still refused", 
   const req = {
     user: ownerUser,
     csdStaff: { _id: "csd-staff-1", name: "CSD" },
-    body: { paymentGateways: { activeGateway: "phonepe" } },
+    body: { paymentGateways: { activeGateway: "phonepe" }, pin: "8796" },
   };
 
   try {

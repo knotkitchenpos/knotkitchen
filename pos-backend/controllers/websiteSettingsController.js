@@ -713,10 +713,26 @@ const updateWebsiteSettings = async (req, res, next) => {
         pg.activeGateway !== undefined && pg.activeGateway !== currentActive;
       const credentialsSubmitted = ["cashfree", "phonepe"].some((k) => pg[k]);
 
+      // A real change, not the echo of what is stored: a new secret, or a
+      // field that differs. Only that asks for the PIN.
+      const credentialsChanging = ["cashfree", "phonepe"].some((k) => {
+        const gw = pg[k];
+        if (!gw) return false;
+        const secret = gw.clientSecret || gw.saltKey;
+        if (secret && typeof secret === "string" && !secret.includes("••••")) return true;
+        const stored = settings.paymentGateways?.[k] || {};
+        return ["clientId", "merchantId", "saltIndex", "environment"].some(
+          (f) => gw[f] !== undefined && String(gw[f]) !== String(stored[f] ?? ""),
+        );
+      });
+
       if (activeGatewayChanging || credentialsSubmitted) {
         if (req.user?.role !== "Owner" && req.user?.role !== "owner" && req.user?.role !== "superadmin") {
           return next(createHttpError(403, "Only the Store Owner can configure payment gateways."));
         }
+      }
+      if ((activeGatewayChanging || credentialsChanging) && !(await gatewayPinOk(req))) {
+        return next(createHttpError(401, GATEWAY_PIN_MESSAGE));
       }
 
       if (activeGatewayChanging && ["cashfree", "phonepe"].includes(pg.activeGateway)) {
@@ -930,8 +946,22 @@ const updateWebsiteSettings = async (req, res, next) => {
   }
 };
 
+/**
+ * The payment gateway is PIN-protected like Store Properties (owner,
+ * 2026-10-29): a till left signed in as the owner must not be able to change
+ * where the restaurant's money goes. Same PIN, same check
+ * (restaurantController.verifyPinHelper); the client sends it as `pin`.
+ */
+const GATEWAY_PIN_MESSAGE = "Enter your PIN to change the payment gateway.";
+const gatewayPinOk = async (req) => {
+  const restaurant = await Restaurant.findOne({ _id: req.user?.restaurantId, isDeleted: { $ne: true } }, { securityPin: 1 });
+  if (!restaurant) return false;
+  return require("./restaurantController").verifyPinHelper(restaurant, req.body?.pin);
+};
+
 const validateGatewayCredentials = async (req, res, next) => {
   try {
+    if (!(await gatewayPinOk(req))) return next(createHttpError(401, GATEWAY_PIN_MESSAGE));
     const { tenant, settings } = await loadOwnSettings(req);
     const { gateway, clientId, clientSecret, merchantId, saltKey, saltIndex, environment } = req.body || {};
 

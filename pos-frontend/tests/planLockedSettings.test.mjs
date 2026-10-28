@@ -44,8 +44,12 @@ test("locked tiles name the add-on, or the plan upgrade on the Billing plan", ()
 test("the payment gateway lives in Store Properties, and Knot Eats blockers point to their screens", () => {
   const props = SRC("src/components/settings/StorePropertiesView.jsx");
   assert.match(props, /import PaymentGatewayCard from "\.\/PaymentGatewayCard";/);
-  assert.match(props, /<PaymentGatewayCard \/>/);
+  // Locked until the PIN at the top of Store Properties unlocks it (owner, 2026-10-29).
+  assert.match(props, /<PaymentGatewayCard locked=\{!pinVerified\} pin=\{pin\} \/>/);
   const card = SRC("src/components/settings/PaymentGatewayCard.jsx");
+  assert.match(card, /<fieldset disabled=\{locked\}/);
+  assert.match(card, /validateGatewayCredentials\(\{ gateway, \.\.\.form\[gateway\], pin \}\)/);
+  assert.match(card, /updateWebsiteSettings\(\{ paymentGateways: \{ activeGateway: value \}, pin \}\)/);
   assert.match(card, /validateGatewayCredentials\(/);
   assert.match(card, /updateWebsiteSettings\(\{ paymentGateways: \{ activeGateway/);
   assert.doesNotMatch(card, /existing_secret_token/);

@@ -159,8 +159,9 @@ const requireWebsitePlan = async (req, res, next) => {
   if (autoReady && !(await hasFeature(req.user?.restaurantId, "pos"))) return planRequired(res, "pos");
   if (keys.length && keys.every((k) => POS_KEYS.has(k))) return next(); // Rules, Charges & Promotions: every plan
   // Every key, not just the non-POS ones: { ordering, paymentGateways } is not
-  // a gateway save and must not skip the website check.
-  const gatewayOnly = keys.length > 0 && keys.every((k) => k === "paymentGateways");
+  // a gateway save and must not skip the website check. The owner's PIN rides
+  // along with a gateway change (websiteSettingsController, gatewayPinOk).
+  const gatewayOnly = keys.includes("paymentGateways") && keys.every((k) => k === "paymentGateways" || k === "pin");
   if (gatewayOnly) return next();
   if (await hasWebsite(req.user?.restaurantId)) return next();
   return addonRequired(res, "website", WEBSITE_MSG);
