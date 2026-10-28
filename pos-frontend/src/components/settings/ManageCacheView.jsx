@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useSelector } from "react-redux";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { enqueueSnackbar } from "notistack";
+import { enqueueSnackbar } from "../../utils/notify";
 import { publishSystemCache, publishWebsiteCache } from "../../https";
 import SecurityPinModal from "../common/SecurityPinModal";
 import { checkActionAuthorization } from "../../utils/security";
@@ -21,7 +21,7 @@ const DeviceMenuCard = () => {
       if (res.offline) {
         enqueueSnackbar("No internet. This device keeps using its saved menu.", { variant: "warning" });
       } else {
-        enqueueSnackbar(res.changed ? "Menu updated on this device." : "Menu is up to date.", { variant: "success" });
+        enqueueSnackbar(res.changed ? "Menu updated on this device." : "Menu is up to date.", { variant: "success", important: true });
       }
     } catch (err) {
       enqueueSnackbar(err?.response?.data?.message || "Could not check for menu updates.", { variant: "error" });

@@ -1,5 +1,5 @@
 import { createElement, Fragment } from "react";
-import { closeSnackbar, enqueueSnackbar } from "notistack";
+import { closeSnackbar, enqueueSnackbar } from "./notify";
 import { getStoreProperties } from "../https";
 import { billableItems } from "./orderItems.js";
 import { printHtmlDocument } from "./printDocument";

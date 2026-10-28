@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { enqueueSnackbar } from "notistack";
+import { enqueueSnackbar } from "../utils/notify";
 import { FiPrinter, FiGlobe, FiBell, FiHeadphones, FiX, FiPhoneCall } from "react-icons/fi";
 import { SUPPORT_PHONE, SUPPORT_TEL } from "../constants/support";
 import { createSupportRequest } from "../https";
@@ -158,7 +158,7 @@ const Support = () => {
         existing
           ? `Request ${jobId} is already with our team. They will contact you shortly.`
           : `Request ${jobId} sent. Our team will contact you shortly.`,
-        { variant: "success" },
+        { variant: "success", important: true },
       );
       return true;
     } catch (err) {

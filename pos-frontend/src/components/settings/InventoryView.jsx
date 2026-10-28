@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { enqueueSnackbar } from "notistack";
+import { enqueueSnackbar } from "../../utils/notify";
 import {
   createIngredient,
   deleteIngredient,

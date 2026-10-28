@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { enqueueSnackbar } from "notistack";
+import { enqueueSnackbar } from "../../utils/notify";
 import { money } from "../../utils";
 import { getStoreProperties, getTableSessionById, setTableDiscount, setTableServiceCharge } from "../../https";
 import DiscountModal from "../pos/DiscountModal";

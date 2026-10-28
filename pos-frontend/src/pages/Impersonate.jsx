@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useSearchParams, useNavigate } from "react-router-dom";
 import { useDispatch } from "react-redux";
-import { enqueueSnackbar } from "notistack";
+import { enqueueSnackbar } from "../utils/notify";
 import { impersonateWithSupportToken } from "../https";
 import { setUser } from "../redux/slices/userSlice";
 import { setActiveStoreId } from "../utils/storeSession";
@@ -43,7 +43,7 @@ const Impersonate = () => {
           `Signed in as ${name || role} · CSD support session${
             data.supportContext?.issuedBy ? ` (${data.supportContext.issuedBy})` : ""
           }`,
-          { variant: "success" }
+          { variant: "success", important: true }
         );
         // Strip the token from the URL history so a back button doesn't leak it.
         navigate("/", { replace: true });

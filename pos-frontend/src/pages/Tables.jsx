@@ -27,7 +27,7 @@ import {
   releaseTable,
   getOrCreateTableQr,
 } from "../https";
-import { enqueueSnackbar } from "notistack";
+import { enqueueSnackbar } from "../utils/notify";
 // NOTE: `FiQrCode` does not exist in the `react-icons/fi` set — it was a
 // bad copy-paste (probably meant `FaQrcode` from `fa`). Rather than pull
 // in another icon package for a single glyph we render a small inline
@@ -1094,7 +1094,7 @@ const Tables = () => {
                     return;
                   }
                   navigator.clipboard.writeText(url);
-                  enqueueSnackbar("QR Link copied to clipboard!", { variant: "success" });
+                  enqueueSnackbar("QR Link copied to clipboard!", { variant: "success", important: true });
                 }}
                 className="flex-1 py-2.5 rounded-xl border border-[#FD5302] text-[#C2410C] text-xs font-bold"
               >

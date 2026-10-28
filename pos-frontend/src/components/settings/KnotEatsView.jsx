@@ -2,7 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { useSelector } from "react-redux";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { enqueueSnackbar } from "notistack";
+import { enqueueSnackbar } from "../../utils/notify";
 import { getKnotEats, setKnotEatsEnabled } from "../../https/eatsApi";
 import { isOwner } from "../../utils/security";
 import { STORE_TZ } from "../../utils";
@@ -70,7 +70,7 @@ const KnotEatsView = () => {
   const copyUrl = async () => {
     try {
       await navigator.clipboard.writeText(k.publicUrl);
-      enqueueSnackbar("Link copied.", { variant: "success" });
+      enqueueSnackbar("Link copied.", { variant: "success", important: true });
     } catch {
       enqueueSnackbar("Couldn't copy. Select the link and copy it.", { variant: "warning" });
     }

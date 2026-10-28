@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { enqueueSnackbar } from "notistack";
+import { enqueueSnackbar } from "../../utils/notify";
 
 const GuestCountModal = ({ table, onClose, onConfirm }) => {
   const capacity = Number(table?.capacity) || 4;

@@ -9,7 +9,7 @@ import {
   setupStorePassword,
   storeLogin,
 } from "../../https/index";
-import { enqueueSnackbar } from "notistack";
+import { enqueueSnackbar } from "../../utils/notify";
 import { useDispatch } from "react-redux";
 import { setUser } from "../../redux/slices/userSlice";
 import { setActiveStoreId } from "../../utils/storeSession";

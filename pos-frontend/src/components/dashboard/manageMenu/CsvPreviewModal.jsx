@@ -1,5 +1,5 @@
 import React from "react";
-import { enqueueSnackbar } from "notistack";
+import { enqueueSnackbar } from "../../../utils/notify";
 import { importMenuCsv } from "../../../https";
 
 /** "Replace the whole menu with this CSV?" -- `data` is the preview the server returned. */

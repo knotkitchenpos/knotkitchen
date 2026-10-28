@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
-import { enqueueSnackbar } from "notistack";
+import { enqueueSnackbar } from "../../utils/notify";
 import { answerBackInStock, getRestockAlerts, turnOffProductsFor } from "../../https";
 import { acquireSocket, releaseSocket } from "../../socket";
 import { qty, unitLabel } from "../../utils/inventory";

@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useSelector } from "react-redux";
-import { enqueueSnackbar } from "notistack";
+import { enqueueSnackbar } from "../utils/notify";
 import { getOrderById } from "../https";
 import { kitchenPrinter, loadPrinterConfig } from "../utils/printerDevice";
 import { printKot, printOrderReceipt, warnNotPrinted } from "../utils/printReceipt";

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
-import { enqueueSnackbar } from "notistack";
+import { enqueueSnackbar } from "../../utils/notify";
 import { listPrepDueOrders, startPreparingOrder } from "../../https/storefrontApi";
 import useAlertBeep from "../../hooks/useAlertBeep";
 import useArmed from "../../hooks/useArmed";

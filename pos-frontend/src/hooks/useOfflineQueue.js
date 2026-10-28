@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { enqueueSnackbar } from "notistack";
+import { enqueueSnackbar } from "../utils/notify";
 import { useQueryClient } from "@tanstack/react-query";
 import { syncOfflineOrders } from "../https";
 import { markRejected, readQueue, removeFromQueue } from "../utils/offlineQueue";
@@ -34,7 +34,7 @@ const useOfflineQueue = (enabled = true) => {
         enqueueSnackbar(`${fresh.length} offline order(s) were refused: ${fresh[0].error}`, { variant: "error", autoHideDuration: 8000 });
       }
       if (syncedOrders.length) {
-        enqueueSnackbar(`${syncedOrders.length} offline order(s) synced.`, { variant: "success" });
+        enqueueSnackbar(`${syncedOrders.length} offline order(s) synced.`, { variant: "success", important: true });
         qc.invalidateQueries({ queryKey: ["orders"] });
       }
     } catch {

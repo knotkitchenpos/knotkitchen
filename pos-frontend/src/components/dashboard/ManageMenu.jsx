@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { enqueueSnackbar } from "notistack";
+import { enqueueSnackbar } from "../../utils/notify";
 import { capOf, groupForSave, groupLibrary } from "../../utils/modifierGroups";
 import { thumbUrl } from "../../utils";
 import {

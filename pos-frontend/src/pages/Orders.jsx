@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useSelector } from "react-redux";
-import { enqueueSnackbar } from "notistack";
+import { enqueueSnackbar } from "../utils/notify";
 import KnotLogo from "../components/shared/KnotLogo";
 import {
   cancelOrder,
@@ -277,7 +277,7 @@ const Orders = () => {
     mutationFn: ({ kind, orderId, reason, amount }) =>
       kind === "refund" ? refundOrder({ orderId, amount }) : cancelOrder({ orderId, reason }),
     onSuccess: (res, vars) => {
-      enqueueSnackbar(res.data?.message || (vars.kind === "refund" ? "Refund sent to Cashfree" : "Order cancelled"), { variant: "success" });
+      enqueueSnackbar(res.data?.message || (vars.kind === "refund" ? "Refund sent to Cashfree" : "Order cancelled"), { variant: "success", important: true });
       setReasonFor(null);
       qc.invalidateQueries({ queryKey: ["orders"] });
     },

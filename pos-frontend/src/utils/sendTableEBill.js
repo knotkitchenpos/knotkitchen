@@ -18,7 +18,7 @@ export const sendTableEBill = async ({ sessionId, phone, notify }) => {
   try {
     const res = await sendEBill({ tableSessionId: sessionId, phone });
     if (res?.data?.sent) {
-      notify(`E-bill sent to ${phone}.`, { variant: "success" });
+      notify(`E-bill sent to ${phone}.`, { variant: "success", important: true });
       return true;
     }
     notify(res?.data?.message || "Paid, but the e-bill could not be delivered.", {

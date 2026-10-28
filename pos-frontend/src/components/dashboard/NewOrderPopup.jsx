@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
-import { enqueueSnackbar } from "notistack";
+import { enqueueSnackbar } from "../../utils/notify";
 import { listAwaitingOrders, updateOnlineOrderStatus } from "../../https/storefrontApi";
 import { AWAITING_ACCEPTANCE, PREPARING } from "../../constants/orderStatus";
 import useAlertBeep from "../../hooks/useAlertBeep";

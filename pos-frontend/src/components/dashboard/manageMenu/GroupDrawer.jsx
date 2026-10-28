@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { enqueueSnackbar } from "notistack";
+import { enqueueSnackbar } from "../../../utils/notify";
 import { groupEditorPayload, selectionTypeOf } from "../../../utils/modifierGroups";
 import { IconX } from "./icons";
 

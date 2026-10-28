@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { enqueueSnackbar } from "notistack";
+import { enqueueSnackbar } from "../../utils/notify";
 import { markOrderAsSeen } from "../../https/marketplace";
 import { BACKEND_URL } from "../../config";
 

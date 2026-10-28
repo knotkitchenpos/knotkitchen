@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { enqueueSnackbar } from "notistack";
+import { enqueueSnackbar } from "../utils/notify";
 import { useSelector } from "react-redux";
 import { Capacitor } from "@capacitor/core";
 import {
@@ -438,10 +438,10 @@ const Billing = () => {
     const { credited, purchased, already, reason } = verified.data.data;
 
     if (purchased) {
-      enqueueSnackbar("Paid. KnotKitchen will confirm and deliver it: follow it under Printer & tablet requests.", { variant: "success" });
+      enqueueSnackbar("Paid. KnotKitchen will confirm and deliver it: follow it under Printer & tablet requests.", { variant: "success", important: true });
       refreshMoney();
     } else if (credited || already) {
-      enqueueSnackbar("Balance added.", { variant: "success" });
+      enqueueSnackbar("Balance added.", { variant: "success", important: true });
       setAmount("");
       refreshMoney();
     } else {
@@ -530,7 +530,7 @@ const Billing = () => {
       // Gone to Cashfree's page: the return reports how it went.
       if (res?.redirected) return;
       // A repeated tap on something already bought: nothing was charged again.
-      enqueueSnackbar(res?.data?.data?.already ? "Already done. Nothing was charged again." : done, { variant: "success" });
+      enqueueSnackbar(res?.data?.data?.already ? "Already done. Nothing was charged again." : done, { variant: "success", important: true });
       setSummary(null);
       refreshMoney();
     },

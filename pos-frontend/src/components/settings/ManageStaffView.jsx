@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { useSelector } from "react-redux";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { enqueueSnackbar } from "notistack";
+import { enqueueSnackbar } from "../../utils/notify";
 import { addStaffMember, deleteStaffMember, getStaffMembers, updateStaffRole } from "../../https";
 
 // What each role may do. Everyone but the owner needs the Security PIN for

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { FaCheck } from "react-icons/fa6";
 import { useMutation } from "@tanstack/react-query";
-import { enqueueSnackbar } from "notistack";
+import { enqueueSnackbar } from "../../utils/notify";
 import { printOrderReceipt, printWithFeedback } from "../../utils/printReceipt";
 import { sendEBill } from "../../https";
 import { billableItems, formatQty, itemDisplayName, itemExtras, resolveItemAmounts } from "../../utils/orderItems";
@@ -109,7 +109,7 @@ const Invoice = ({
         onSuccess: (res) => {
             const data = res?.data;
             if (data?.sent) {
-                enqueueSnackbar(`E-Bill sent to ${customerPhone}`, { variant: "success" });
+                enqueueSnackbar(`E-Bill sent to ${customerPhone}`, { variant: "success", important: true });
                 setEmailedTo(customerPhone);
             } else {
                 enqueueSnackbar(

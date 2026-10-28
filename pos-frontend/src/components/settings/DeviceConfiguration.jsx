@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useSelector } from "react-redux";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { enqueueSnackbar } from "notistack";
+import { enqueueSnackbar } from "../../utils/notify";
 import { getStoreProperties, updatePosSettings } from "../../https";
 import { uploadMedia } from "../../https/storefrontApi";
 import SecurityPinModal from "../common/SecurityPinModal";
@@ -146,7 +146,7 @@ const PrinterSlot = ({ title, subtitle, emptyLabel = "Not set up", device, patch
         setLanCheck({ host, state: "ok" });
         if (device.type !== "lan" || device.lan?.host !== host) {
           patchDevice({ type: "lan", name: `LAN printer ${host}`, lan: { host }, usb: undefined, bluetooth: undefined, pin: "", protocol: "escpos", paper: "80" });
-          enqueueSnackbar(`LAN printer ${host} connected.`, { variant: "success" });
+          enqueueSnackbar(`LAN printer ${host} connected.`, { variant: "success", important: true });
         }
       } catch (err) {
         if (live) setLanCheck({ host, state: "fail", message: err?.message || `No printer answered at ${host}.` });
@@ -185,7 +185,7 @@ const PrinterSlot = ({ title, subtitle, emptyLabel = "Not set up", device, patch
       // a 57 mm mini printer; there is no choice to make in the screen.
       ...(cat ? { protocol: "cat", paper: "58" } : { protocol: "escpos" }),
     });
-    enqueueSnackbar(`${picked.name} connected. Choose the paper size, then Test Print.`, { variant: "success" });
+    enqueueSnackbar(`${picked.name} connected. Choose the paper size, then Test Print.`, { variant: "success", important: true });
   };
 
   const connect = async (kind) => {

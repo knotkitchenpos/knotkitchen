@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "react-router-dom";
-import { enqueueSnackbar } from "notistack";
+import { enqueueSnackbar } from "../../utils/notify";
 import { capOf } from "../../utils/modifierGroups";
 import { getPopularItems } from "../../https";
 import { money, thumbUrl, storeClock } from "../../utils";

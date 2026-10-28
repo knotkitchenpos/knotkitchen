@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { QRCodeSVG } from "qrcode.react";
-import { enqueueSnackbar } from "notistack";
+import { enqueueSnackbar } from "../../utils/notify";
 import { getStoreProperties, regenerateTableQr } from "../../https";
 import { CARD, drawTableQrCard, qrFromSvg } from "../../utils/tableQrCard";
 import { loadBitmap } from "../../utils/printReceipt";
@@ -42,7 +42,7 @@ const PrintTableQRModal = ({ isOpen, onClose, table }) => {
     mutationFn: () => regenerateTableQr(table?._id),
     onSuccess: () => {
       enqueueSnackbar("New QR generated. The previous code no longer works.", {
-        variant: "success",
+        variant: "success", important: true,
       });
       setConfirmingReplace(false);
       queryClient.invalidateQueries({ queryKey: ["tables"] });
