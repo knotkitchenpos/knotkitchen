@@ -4,6 +4,7 @@ const MenuGroup = require("../models/menuGroupModel");
 const createHttpError = require("http-errors");
 const mongoose = require("mongoose");
 const { logActivity } = require("../services/auditService");
+const { cleanRecipeLines, saveRecipe } = require("../services/inventory");
 const {
   groupRules,
   cleanGroupOptions,
@@ -361,6 +362,29 @@ const updateSubcategory = async (req, res, next) => {
   }
 };
 
+/**
+ * The Recipe section of the product form: `recipe: { enabled, ingredients }`,
+ * or absent when the form did not send one (an older till), which leaves any
+ * saved recipe alone. Checked before the product is saved, so a recipe that
+ * cannot be kept never leaves a product saved without it.
+ */
+const checkRecipe = async (req) => {
+  const recipe = req.body?.recipe;
+  if (!recipe || typeof recipe !== "object") return null;
+  await cleanRecipeLines(req.user.restaurantId, recipe.ingredients);
+  return recipe;
+};
+const keepRecipe = (req, recipe, item) =>
+  recipe && item
+    ? saveRecipe({
+        restaurantId: req.user.restaurantId,
+        menuItemId: item._id,
+        menuItemName: item.name,
+        enabled: recipe.enabled !== false,
+        ingredients: recipe.ingredients,
+      })
+    : null;
+
 const addDish = async (req, res, next) => {
   try {
     const {
@@ -404,6 +428,7 @@ const addDish = async (req, res, next) => {
       return next(error);
     }
 
+    const recipe = await checkRecipe(req);
     const cleanSubcategory = typeof subcategory === "string" ? subcategory.trim().slice(0, 120) : "";
 
     menu.items.push({
@@ -428,6 +453,7 @@ const addDish = async (req, res, next) => {
       modifierGroups: placeGroups([], modifierGroups, await libraryFor(menuScopeFor(req.user), modifierGroups)),
     });
     await menu.save();
+    await keepRecipe(req, recipe, menu.items[menu.items.length - 1]);
     res.status(201).json({ success: true, message: "Dish added!", data: menu });
   } catch (error) {
     next(error);
@@ -465,6 +491,7 @@ const updateDish = async (req, res, next) => {
 
     const item = menu.items.id(itemId);
     if (!item) return next(createHttpError(404, "Dish not found!"));
+    const recipe = await checkRecipe(req);
 
     if (name !== undefined) item.name = String(name).trim();
     if (price !== undefined) {
@@ -505,6 +532,7 @@ const updateDish = async (req, res, next) => {
     }
 
     await menu.save();
+    await keepRecipe(req, recipe, item);
     res.status(200).json({ success: true, message: "Product updated!", data: menu });
   } catch (error) {
     next(error);

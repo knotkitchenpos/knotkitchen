@@ -1,0 +1,95 @@
+import test from "node:test";
+import assert from "node:assert";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { UNITS, unitsLike, unitLabel, recipeForSave, STATUS } from "../src/utils/inventory.js";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const SRC = (rel) => fs.readFileSync(path.join(__dirname, "..", rel), "utf8");
+
+// Inventory Management: a Settings option below Manage Menu, a dashboard with
+// a status per item, a Recipe section in the product form, and a POS alert
+// when an item needs restocking.
+
+test("Inventory Management is option 5, directly below Manage Menu, on the POS plan", () => {
+  const menu = SRC("src/constants/settingsMenu.js");
+  const lines = menu.split("\n").filter((l) => /^\s*\{ id: "/.test(l));
+  const ids = lines.map((l) => /id: "([^"]+)"/.exec(l)[1]);
+  assert.equal(ids[ids.indexOf("menu") + 1], "inventory");
+  assert.match(menu, /\{ id: "inventory", title: "5\. Inventory Management", [^\n]*mode: "view", feature: "pos" \}/);
+  // Shown always now, not behind the later-features switch.
+  const later = menu.slice(menu.indexOf("...(SHOW_LATER_FEATURES"), menu.indexOf(": []),"));
+  assert.doesNotMatch(later, /id: "inventory"/);
+  // Numbered 1..16 with no gap or repeat.
+  const numbers = lines.map((l) => /title: "(\d+)\. /.exec(l)?.[1]).filter(Boolean).map(Number);
+  assert.deepEqual(numbers, Array.from({ length: numbers.length }, (_, i) => i + 1));
+  assert.match(SRC("src/pages/Settings.jsx"), /view === "inventory" \? \(\s*<InventoryView \/>/);
+});
+
+test("units: a dropdown offers only units of the item's kind", () => {
+  assert.deepEqual(unitsLike("kg").map((u) => u.code), ["g", "kg"]);
+  assert.deepEqual(unitsLike("L").map((u) => u.label), ["ML", "Litre"]);
+  assert.deepEqual(unitsLike("pcs").map((u) => u.code), ["pcs", "dozen"]);
+  assert.equal(unitLabel("pcs"), "Piece");
+  assert.deepEqual(UNITS.map((u) => u.code).sort(), ["L", "dozen", "g", "kg", "ml", "pack", "pcs"], "the server's list");
+  assert.deepEqual(Object.values(STATUS).map((s) => s.label), ["In Stock", "Low Stock", "Out of Stock", "Maximum Stock Reached"]);
+});
+
+test("the dashboard shows the counts and every item's stock, minimum, maximum, cost price and status", () => {
+  const view = SRC("src/components/settings/InventoryView.jsx");
+  for (const label of ["Total items", "Low stock", "Out of stock", "At maximum stock"]) assert.match(view, new RegExp(`label="${label}"`));
+  for (const col of ["Current stock", "Min", "Max", "Cost price", "Status"]) assert.match(view, new RegExp(`>${col}</th>`));
+  assert.match(view, /<StatusBadge status=\{i\.status\} \/>/, "the status the server worked out");
+  // Stock entry: quantity, a unit of the item's kind, and the total cost.
+  assert.match(view, /unitsLike\(item\.unit\)\.map/);
+  assert.match(view, /totalCost: type === "purchase" && cost !== "" \? Number\(cost\) : undefined/);
+  assert.match(view, /Total cost price \(₹\)/);
+  // Minimum and maximum on the item form, with the range checked.
+  assert.match(view, /Minimum stock \(\{u\}\)/);
+  assert.match(view, /Maximum stock \(\{u\}\)/);
+  assert.match(view, /const badRange = max > 0 && max <= min;/);
+});
+
+test("the product form's Recipe sits below the price and is sent with the product", () => {
+  const drawer = SRC("src/components/dashboard/manageMenu/ProductDrawer.jsx");
+  const price = drawer.indexOf("Same Price for All Channels");
+  const recipe = drawer.indexOf("<RecipeSection");
+  const save = drawer.indexOf("onClick={handleSaveProduct}");
+  assert.ok(price > 0 && recipe > price && save > recipe, "price, then Recipe, then Save");
+  assert.match(drawer, /recipe: recipeForSave\(recipe\),/);
+  const section = SRC("src/components/dashboard/manageMenu/RecipeSection.jsx");
+  assert.match(section, /features\?\.pos !== false/, "hidden on a plan without inventory");
+  assert.match(section, /unitsLike\(unitOf\(r\.ingredientId\)\)/, "each line in a unit of its item's kind");
+  assert.match(section, /refetchOnMount: "always"/, "never the recipe from before the last save");
+  assert.match(section, /onChange\(null\); \/\/ never the last product's recipe while this one loads/);
+});
+
+test("recipeForSave: sent when on, or when switching a saved one off; otherwise left out", () => {
+  const rows = [
+    { ingredientId: "dough", quantity: "1", unit: "pcs" },
+    { ingredientId: "cheese", quantity: "20", unit: "g" },
+    { ingredientId: "", quantity: "5", unit: "" },
+    { ingredientId: "sausage", quantity: "", unit: "g" },
+  ];
+  assert.deepEqual(recipeForSave({ enabled: true, existed: false, rows }), {
+    enabled: true,
+    ingredients: [
+      { ingredientId: "dough", quantity: 1, unit: "pcs" },
+      { ingredientId: "cheese", quantity: 20, unit: "g" },
+    ],
+  });
+  assert.equal(recipeForSave({ enabled: false, existed: true, rows }).enabled, false, "switching a saved recipe off reaches the server");
+  assert.equal(recipeForSave({ enabled: false, existed: false, rows }), undefined, "a product that never had one sends nothing");
+  assert.equal(recipeForSave(null), undefined, "not loaded yet: the server keeps what it has");
+});
+
+test("the POS shows a restock alert, live and on open, only on the POS plan", () => {
+  const alert = SRC("src/components/dashboard/RestockAlert.jsx");
+  assert.match(alert, /socket\.on\("inventory:restock", onRestock\);/);
+  assert.match(alert, /socket\.off\("inventory:restock", onRestock\);/);
+  assert.match(alert, /getRestockAlerts\(\)/, "what already needs restocking when the POS opens");
+  assert.match(alert, /navigate\("\/settings\?view=inventory"\)/);
+  assert.match(SRC("src/App.jsx"), /\{tableService && <RestockAlert \/>\}/);
+  assert.match(SRC("src/https/index.js"), /export const getRestockAlerts = \(\) => axiosWrapper\.get\("\/api\/inventory\/alerts"\);/);
+});

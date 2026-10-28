@@ -3,6 +3,8 @@ import { enqueueSnackbar } from "notistack";
 import { IconX } from "./icons";
 import { uploadMediaAsset } from "../../../https";
 import { groupForSave } from "../../../utils/modifierGroups";
+import RecipeSection from "./RecipeSection";
+import { recipeForSave } from "../../../utils/inventory";
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 const TARGET_BYTES = 200 * 1024;
@@ -86,6 +88,8 @@ const ProductDrawer = ({
   const [dispatchCol, setDispatchCol] = useState(true);
   const [dispatchDel, setDispatchDel] = useState(true);
   const [dispatchTbl, setDispatchTbl] = useState(true);
+  // The Recipe section's value (RecipeSection loads it); null until loaded.
+  const [recipe, setRecipe] = useState(null);
 
   const showCreateProduct = open;
   const editingProduct = editing;
@@ -267,6 +271,8 @@ const ProductDrawer = ({
           editingProduct?.modifierGroups?.find((g) => g?.name === name) || allGroupsMap.get(name) || { name },
         ),
       ),
+      // Sent only when a recipe is on or was saved before (to switch it off).
+      recipe: recipeForSave(recipe),
     };
 
     if (editingProduct) {
@@ -736,8 +742,16 @@ const ProductDrawer = ({
                 </div>
               )}
             </div>
+
+            {/* Recipe: inventory used per serving, below the price */}
+            <RecipeSection
+              open={showCreateProduct}
+              productId={editingProduct?._id ? String(editingProduct._id) : ""}
+              value={recipe}
+              onChange={setRecipe}
+            />
           </div>
-  
+
           <div className="pt-4 border-t border-[#E2E8F0]">
             <button
               onClick={handleSaveProduct}

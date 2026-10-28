@@ -106,7 +106,7 @@ const Settings = () => {
 
   // ?view= draws a sub-view here, or the lock of a locked option. An option with a
   // page of its own (?view=tables) opens that page; an unknown or hidden id
-  // (shift/inventory while SHOW_LATER_FEATURES is off) is the plain list.
+  // (shift while SHOW_LATER_FEATURES is off) is the plain list.
   const linked = MENU_ITEMS.find((m) => m.id === activeSubView);
   const activeMeta = linked && (linked.mode === "view" || blockedByPlan(linked)) ? linked : null;
   const view = activeMeta?.id;

@@ -24,6 +24,7 @@ import NewOrderPopup from "./components/dashboard/NewOrderPopup";
 import WaiterCallPopup from "./components/dashboard/WaiterCallPopup";
 import TableBookingPopup from "./components/dashboard/TableBookingPopup";
 import PrepDuePopup from "./components/dashboard/PrepDuePopup";
+import RestockAlert from "./components/dashboard/RestockAlert";
 import AddedItemsPopup from "./components/dashboard/AddedItemsPopup";
 import useAutoReceiptPrint from "./hooks/useAutoReceiptPrint";
 import useOfflineQueue from "./hooks/useOfflineQueue";
@@ -166,6 +167,8 @@ function Layout() {
           {tableService && <WaiterCallPopup />}
           {tableService && <TableBookingPopup />}
           <PrepDuePopup />
+          {/* Inventory is on the POS plan, as its Settings option is. */}
+          {tableService && <RestockAlert />}
           {tableService && <AddedItemsPopup />}
         </>
       )}

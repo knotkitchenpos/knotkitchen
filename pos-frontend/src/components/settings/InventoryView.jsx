@@ -14,177 +14,288 @@ import {
   upsertRecipe,
 } from "../../https";
 import { dateTimeIN as when } from "../../utils";
+import { STATUS, UNITS, qty, unitLabel, unitsLike } from "../../utils/inventory";
 
 /**
- * Settings > Inventory.
+ * Settings > Inventory Management.
  *
- * Stock: the ingredients on the shelf, with a reorder level. Receive a
- * purchase, record wastage, or correct the count.
- * Recipes: what each dish on the menu uses. Every sale then takes that off
- * the shelf on its own (pos-backend/services/inventory.js).
+ * Dashboard: every item with its stock, minimum, maximum, cost price and
+ * status, and the counts that need attention. Add stock as it is bought
+ * (quantity, unit and what it cost), record wastage, or correct the count.
+ * Recipes: what each product uses; also set in Manage Menu's product form.
+ * Every sale then takes that off the shelf on its own
+ * (pos-backend/services/inventory.js), and the POS alerts when an item
+ * reaches its minimum.
  * Log: every movement, newest first.
  */
 
-const UNITS = ["kg", "g", "L", "ml", "pcs", "pack", "dozen"];
 const CATEGORIES = [
   ["produce", "Produce"], ["meat", "Meat"], ["seafood", "Seafood"], ["dairy", "Dairy"],
   ["dry_goods", "Dry goods"], ["beverage", "Beverage"], ["other", "Other"],
 ];
-const TABS = [["stock", "Stock"], ["recipes", "Recipes"], ["log", "Log"]];
+const TABS = [["dashboard", "Dashboard"], ["recipes", "Recipes"], ["log", "Log"]];
 
 const inputClass = "h-[40px] w-full rounded-xl border border-[#E2E8F0] bg-white px-3 text-[13px] font-bold text-[#0F172A] outline-none focus:border-[#FD5302]";
+const labelClass = "block text-[11.5px] font-bold text-[#64748B] mb-1";
 const btnPrimary = "h-[40px] px-4 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold hover:bg-[#D64502] disabled:opacity-50";
 const btnGhost = "h-[36px] px-3 rounded-xl border border-[#E2E8F0] text-[#334155] text-[12.5px] font-bold hover:bg-[#F8FAFC] disabled:opacity-50";
-const qty = (n) => Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 3 });
 
-/* ------------------------------------------------------------------ stock */
+const StatusBadge = ({ status }) => {
+  const s = STATUS[status] || STATUS.in;
+  return <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-bold ${s.className}`}>{s.label}</span>;
+};
 
-const StockTab = ({ ingredients, refresh }) => {
-  const [form, setForm] = useState({ name: "", unit: "kg", category: "other", stockQuantity: "", reorderLevel: "", costPerUnit: "" });
-  const [move, setMove] = useState(null); // { ingredient, type }
-  const [moveQty, setMoveQty] = useState("");
-  const [moveReason, setMoveReason] = useState("");
-  const [editing, setEditing] = useState(null); // ingredient being edited
+const Modal = ({ title, onClose, children }) => (
+  <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4" onClick={onClose}>
+    <div className="w-full sm:max-w-md max-h-[92dvh] overflow-y-auto rounded-t-2xl sm:rounded-2xl bg-white p-5 shadow-2xl space-y-3" onClick={(e) => e.stopPropagation()}>
+      <h3 className="text-[15px] font-extrabold text-[#0F172A]">{title}</h3>
+      {children}
+    </div>
+  </div>
+);
 
-  const createMut = useMutation({
-    mutationFn: createIngredient,
-    onSuccess: () => {
-      enqueueSnackbar("Ingredient added", { variant: "success" });
-      setForm({ name: "", unit: "kg", category: "other", stockQuantity: "", reorderLevel: "", costPerUnit: "" });
-      refresh();
-    },
-    onError: (e) => enqueueSnackbar(e.response?.data?.message || "Could not add", { variant: "error" }),
+/* ------------------------------------------------------------ item form */
+
+const EMPTY_ITEM = { name: "", unit: "pcs", category: "other", stockQuantity: "", reorderLevel: "", maxLevel: "", costPerUnit: "" };
+
+/** Add a new item, or edit one (`item` set): name, unit, minimum, maximum, cost price. */
+const ItemModal = ({ item, onClose, refresh }) => {
+  const [form, setForm] = useState(() =>
+    item
+      ? { ...EMPTY_ITEM, ...item, reorderLevel: String(item.reorderLevel ?? ""), maxLevel: item.maxLevel ? String(item.maxLevel) : "", costPerUnit: String(item.costPerUnit ?? "") }
+      : EMPTY_ITEM,
+  );
+  const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
+  const done = (msg) => { enqueueSnackbar(msg, { variant: "success" }); refresh(); onClose(); };
+  const fail = (e) => enqueueSnackbar(e.response?.data?.message || "Could not save", { variant: "error" });
+  const body = () => ({
+    name: form.name,
+    unit: form.unit,
+    category: form.category,
+    reorderLevel: Number(form.reorderLevel) || 0,
+    maxLevel: Number(form.maxLevel) || 0,
+    costPerUnit: Number(form.costPerUnit) || 0,
   });
-  const updateMut = useMutation({
-    mutationFn: ({ id, ...d }) => updateIngredient(id, d),
-    onSuccess: () => { enqueueSnackbar("Saved", { variant: "success" }); setEditing(null); refresh(); },
-    onError: (e) => enqueueSnackbar(e.response?.data?.message || "Could not save", { variant: "error" }),
+  const saveMut = useMutation({
+    mutationFn: () => (item ? updateIngredient(item._id, body()) : createIngredient({ ...body(), stockQuantity: Number(form.stockQuantity) || 0 })),
+    onSuccess: () => done(item ? "Item saved" : "Item added"),
+    onError: fail,
   });
-  const deleteMut = useMutation({
-    mutationFn: deleteIngredient,
-    onSuccess: () => { enqueueSnackbar("Removed", { variant: "success" }); refresh(); },
-    onError: (e) => enqueueSnackbar(e.response?.data?.message || "Could not remove", { variant: "error" }),
-  });
+  const deleteMut = useMutation({ mutationFn: () => deleteIngredient(item._id), onSuccess: () => done("Item removed"), onError: fail });
+  const min = Number(form.reorderLevel) || 0;
+  const max = Number(form.maxLevel) || 0;
+  const badRange = max > 0 && max <= min;
+  const u = unitLabel(form.unit);
+
+  return (
+    <Modal title={item ? `Edit ${item.name}` : "Add inventory item"} onClose={onClose}>
+      <div>
+        <label className={labelClass}>Item name</label>
+        <input autoFocus className={inputClass} placeholder="e.g. Pizza Dough, Mozzarella Cheese" value={form.name} onChange={set("name")} maxLength={120} />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div>
+          <label className={labelClass}>Unit</label>
+          <select className={inputClass} value={form.unit} onChange={set("unit")}>
+            {UNITS.map((x) => <option key={x.code} value={x.code}>{x.label}</option>)}
+          </select>
+        </div>
+        <div>
+          <label className={labelClass}>Category</label>
+          <select className={inputClass} value={form.category} onChange={set("category")}>
+            {CATEGORIES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+          </select>
+        </div>
+        {!item && (
+          <div className="col-span-2">
+            <label className={labelClass}>Current stock ({u})</label>
+            <input className={inputClass} type="number" min="0" step="any" inputMode="decimal" value={form.stockQuantity} onChange={set("stockQuantity")} placeholder="0" />
+          </div>
+        )}
+        <div>
+          <label className={labelClass}>Minimum stock ({u})</label>
+          <input className={inputClass} type="number" min="0" step="any" inputMode="decimal" value={form.reorderLevel} onChange={set("reorderLevel")} placeholder="Alert at" />
+        </div>
+        <div>
+          <label className={labelClass}>Maximum stock ({u})</label>
+          <input className={inputClass} type="number" min="0" step="any" inputMode="decimal" value={form.maxLevel} onChange={set("maxLevel")} placeholder="Optional" />
+        </div>
+        <div className="col-span-2">
+          <label className={labelClass}>Cost price (₹ per {u})</label>
+          <input className={inputClass} type="number" min="0" step="any" inputMode="decimal" value={form.costPerUnit} onChange={set("costPerUnit")} placeholder="Updated by each stock purchase" />
+        </div>
+      </div>
+      {badRange && <p className="text-[12px] font-bold text-[#B91C1C]">Maximum stock must be more than the minimum stock.</p>}
+      {item && item.unit !== form.unit && (
+        <p className="text-[12px] text-[#64748B]">Stock, minimum, maximum and cost are converted to {u} where the units are the same kind of measure.</p>
+      )}
+      <div className="flex gap-2 pt-1">
+        {item && (
+          <button type="button" className={`${btnGhost} h-[40px]`} disabled={deleteMut.isPending}
+            onClick={() => { if (window.confirm(`Remove ${item.name}? Recipes that use it stop taking it.`)) deleteMut.mutate(); }}>
+            Remove
+          </button>
+        )}
+        <button type="button" className={`${btnGhost} h-[40px] flex-1`} onClick={onClose}>Back</button>
+        <button type="button" className={`${btnPrimary} flex-1`} disabled={!form.name.trim() || badRange || saveMut.isPending} onClick={() => saveMut.mutate()}>
+          {saveMut.isPending ? "Saving…" : "Save"}
+        </button>
+      </div>
+    </Modal>
+  );
+};
+
+/* ----------------------------------------------------------- stock entry */
+
+const MOVE_TITLE = { purchase: "Add stock", waste: "Record wastage", adjustment: "Correct the count" };
+
+/** Stock in or out for one item. A purchase takes the quantity in any unit of its kind, and what it cost in total. */
+const StockModal = ({ item, type, onClose, refresh }) => {
+  const [amount, setAmount] = useState("");
+  const [unit, setUnit] = useState(item.unit);
+  const [cost, setCost] = useState("");
+  const [reason, setReason] = useState("");
   const moveMut = useMutation({
-    mutationFn: recordStockMovement,
-    onSuccess: () => { enqueueSnackbar("Stock updated", { variant: "success" }); setMove(null); setMoveQty(""); setMoveReason(""); refresh(); },
+    mutationFn: () => recordStockMovement({
+      ingredientId: item._id, type, quantity: Number(amount), unit,
+      totalCost: type === "purchase" && cost !== "" ? Number(cost) : undefined, reason,
+    }),
+    onSuccess: () => { enqueueSnackbar("Stock updated", { variant: "success" }); refresh(); onClose(); },
     onError: (e) => enqueueSnackbar(e.response?.data?.message || "Could not update stock", { variant: "error" }),
   });
+  const n = Number(amount);
+  const perUnit = type === "purchase" && n > 0 && Number(cost) > 0 ? Number(cost) / n : null;
 
-  const low = ingredients.filter((i) => i.isLowStock);
+  return (
+    <Modal title={`${MOVE_TITLE[type]} · ${item.name}`} onClose={onClose}>
+      <p className="text-[12px] text-[#64748B] -mt-2">Now {qty(item.stockQuantity)} {unitLabel(item.unit)}.</p>
+      <div className="grid grid-cols-3 gap-2">
+        <div className="col-span-2">
+          <label className={labelClass}>{type === "adjustment" ? "Actual count" : type === "purchase" ? "Quantity bought" : "Quantity lost"}</label>
+          <input autoFocus className={inputClass} type="number" min="0" step="any" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} />
+        </div>
+        <div>
+          <label className={labelClass}>Unit</label>
+          <select className={inputClass} value={unit} onChange={(e) => setUnit(e.target.value)} disabled={type === "adjustment"}>
+            {unitsLike(item.unit).map((x) => <option key={x.code} value={x.code}>{x.label}</option>)}
+          </select>
+        </div>
+      </div>
+      {type === "purchase" && (
+        <div>
+          <label className={labelClass}>Total cost price (₹)</label>
+          <input className={inputClass} type="number" min="0" step="any" inputMode="decimal" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="What this purchase cost" />
+          {perUnit !== null && (
+            <p className="mt-1 text-[11.5px] text-[#64748B]">₹{qty(perUnit)} per {unitLabel(unit)}</p>
+          )}
+        </div>
+      )}
+      <input className={`${inputClass} font-medium`} value={reason} onChange={(e) => setReason(e.target.value)} maxLength={200}
+        placeholder={type === "waste" ? "Reason (spoiled, spilled, expired…)" : "Note (optional, e.g. supplier)"} />
+      <div className="flex gap-2 pt-1">
+        <button type="button" className={`${btnGhost} h-[40px] flex-1`} onClick={onClose}>Back</button>
+        <button type="button" className={`${btnPrimary} flex-1`}
+          disabled={amount === "" || (type !== "adjustment" && !(n > 0)) || moveMut.isPending || (type === "waste" && !reason.trim())}
+          onClick={() => moveMut.mutate()}>
+          {moveMut.isPending ? "Saving…" : "Save"}
+        </button>
+      </div>
+    </Modal>
+  );
+};
+
+/* ------------------------------------------------------------- dashboard */
+
+const Card = ({ label, value, tone, active, onClick }) => (
+  <button type="button" onClick={onClick}
+    className={`rounded-2xl border p-3 text-left transition ${active ? "border-[#FD5302] ring-1 ring-[#FD5302]" : "border-[#E2E8F0] hover:border-[#CBD5E1]"} bg-white`}>
+    <span className="block text-[11.5px] font-bold text-[#64748B]">{label}</span>
+    <span className={`block text-[22px] font-black tabular-nums ${tone}`}>{value}</span>
+  </button>
+);
+
+const DashboardTab = ({ ingredients, refresh }) => {
+  const [filter, setFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const [editing, setEditing] = useState(null); // null | "new" | item
+  const [move, setMove] = useState(null); // { item, type }
+
+  const count = (s) => ingredients.filter((i) => i.status === s).length;
+  const rows = ingredients
+    .filter((i) => filter === "all" || i.status === filter)
+    .filter((i) => i.name.toLowerCase().includes(search.trim().toLowerCase()));
 
   return (
     <div className="space-y-4">
-      {low.length > 0 && (
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        <Card label="Total items" value={ingredients.length} tone="text-[#0F172A]" active={filter === "all"} onClick={() => setFilter("all")} />
+        <Card label="Low stock" value={count("low")} tone="text-[#B45309]" active={filter === "low"} onClick={() => setFilter("low")} />
+        <Card label="Out of stock" value={count("out")} tone="text-[#B91C1C]" active={filter === "out"} onClick={() => setFilter("out")} />
+        <Card label="At maximum stock" value={count("max")} tone="text-[#1D4ED8]" active={filter === "max"} onClick={() => setFilter("max")} />
+      </div>
+
+      {count("low") + count("out") > 0 && (
         <div className="rounded-xl border border-[#FED7AA] bg-[#FFF7ED] p-3 text-[12.5px] text-[#9A3412]">
-          <span className="font-bold">Low stock:</span> {low.map((i) => `${i.name} (${qty(i.stockQuantity)} ${i.unit})`).join(", ")}
+          <span className="font-bold">Needs restocking:</span>{" "}
+          {ingredients.filter((i) => i.status === "low" || i.status === "out").map((i) => `${i.name} (${qty(i.stockQuantity)} ${unitLabel(i.unit)})`).join(", ")}
         </div>
       )}
 
-      <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4">
-        <p className="text-[13px] font-extrabold text-[#0F172A] mb-2">Add an ingredient</p>
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
-          <input className={`${inputClass} md:col-span-2`} placeholder="Name (e.g. Paneer)" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          <select className={inputClass} value={form.unit} onChange={(e) => setForm({ ...form, unit: e.target.value })}>
-            {UNITS.map((u) => <option key={u} value={u}>{u}</option>)}
-          </select>
-          <select className={inputClass} value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value })}>
-            {CATEGORIES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-          </select>
-          <input className={inputClass} type="number" min="0" placeholder="In stock" value={form.stockQuantity} onChange={(e) => setForm({ ...form, stockQuantity: e.target.value })} />
-          <input className={inputClass} type="number" min="0" placeholder="Reorder at" value={form.reorderLevel} onChange={(e) => setForm({ ...form, reorderLevel: e.target.value })} />
-        </div>
-        <div className="mt-2 flex items-center gap-2">
-          <input className={`${inputClass} max-w-[180px]`} type="number" min="0" placeholder="Cost per unit ₹" value={form.costPerUnit} onChange={(e) => setForm({ ...form, costPerUnit: e.target.value })} />
-          <button type="button" className={btnPrimary} disabled={!form.name.trim() || createMut.isPending} onClick={() => createMut.mutate({ ...form, stockQuantity: Number(form.stockQuantity) || 0, reorderLevel: Number(form.reorderLevel) || 0, costPerUnit: Number(form.costPerUnit) || 0 })}>
-            Add
-          </button>
-        </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <input className={`${inputClass} font-medium flex-1 min-w-[160px]`} placeholder="Search items…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <button type="button" className={btnPrimary} onClick={() => setEditing("new")}>+ Add item</button>
       </div>
 
-      <div className="bg-white border border-[#E2E8F0] rounded-2xl overflow-hidden">
+      <div className="bg-white border border-[#E2E8F0] rounded-2xl overflow-x-auto">
         {ingredients.length === 0 ? (
-          <p className="p-6 text-center text-[13px] text-[#94A3B8]">No ingredients yet. Add what you buy: paneer, oil, rice…</p>
+          <p className="p-6 text-center text-[13px] text-[#94A3B8]">No inventory items yet. Add what you buy: pizza dough, mozzarella cheese, chicken sausage…</p>
+        ) : rows.length === 0 ? (
+          <p className="p-6 text-center text-[13px] text-[#94A3B8]">No items match.</p>
         ) : (
-          <table className="w-full text-[12.5px]">
+          <table className="w-full min-w-[640px] text-[12.5px]">
             <thead className="bg-[#F8FAFC] text-[11px] uppercase tracking-wide text-[#94A3B8]">
               <tr>
-                <th className="px-3 py-2 text-left">Ingredient</th>
-                <th className="px-3 py-2 text-right">In stock</th>
-                <th className="px-3 py-2 text-right hidden sm:table-cell">Reorder at</th>
-                <th className="px-3 py-2 text-right hidden sm:table-cell">Cost/unit</th>
+                <th className="px-3 py-2 text-left">Item</th>
+                <th className="px-3 py-2 text-right">Current stock</th>
+                <th className="px-3 py-2 text-right">Min</th>
+                <th className="px-3 py-2 text-right">Max</th>
+                <th className="px-3 py-2 text-right">Cost price</th>
+                <th className="px-3 py-2 text-left">Status</th>
                 <th className="px-3 py-2 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#F1F5F9]">
-              {ingredients.map((i) => (
-                <tr key={i._id} className={i.isLowStock ? "bg-[#FFF7ED]" : ""}>
-                  <td className="px-3 py-2">
-                    <span className="font-bold text-[#0F172A]">{i.name}</span>
-                    <span className="block text-[11px] text-[#94A3B8]">{CATEGORIES.find(([k]) => k === i.category)?.[1] || i.category}</span>
-                  </td>
-                  <td className={`px-3 py-2 text-right font-extrabold tabular-nums ${i.isLowStock ? "text-[#C2410C]" : "text-[#0F172A]"}`}>{qty(i.stockQuantity)} {i.unit}</td>
-                  <td className="px-3 py-2 text-right tabular-nums hidden sm:table-cell">{qty(i.reorderLevel)} {i.unit}</td>
-                  <td className="px-3 py-2 text-right tabular-nums hidden sm:table-cell">₹{qty(i.costPerUnit)}</td>
-                  <td className="px-3 py-2">
-                    <div className="flex flex-wrap justify-end gap-1">
-                      <button type="button" className={btnGhost} onClick={() => setMove({ ingredient: i, type: "purchase" })}>+ Receive</button>
-                      <button type="button" className={btnGhost} onClick={() => setMove({ ingredient: i, type: "waste" })}>Waste</button>
-                      <button type="button" className={btnGhost} onClick={() => setMove({ ingredient: i, type: "adjustment" })}>Count</button>
-                      <button type="button" className={btnGhost} onClick={() => setEditing({ ...i })}>Edit</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+              {rows.map((i) => {
+                const u = unitLabel(i.unit);
+                return (
+                  <tr key={i._id} className={i.status === "out" ? "bg-[#FEF2F2]" : i.status === "low" ? "bg-[#FFF7ED]" : ""}>
+                    <td className="px-3 py-2">
+                      <span className="font-bold text-[#0F172A]">{i.name}</span>
+                      <span className="block text-[11px] text-[#94A3B8]">{CATEGORIES.find(([k]) => k === i.category)?.[1] || i.category}</span>
+                    </td>
+                    <td className="px-3 py-2 text-right font-extrabold tabular-nums text-[#0F172A] whitespace-nowrap">{qty(i.stockQuantity)} {u}</td>
+                    <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{i.reorderLevel ? `${qty(i.reorderLevel)} ${u}` : "—"}</td>
+                    <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{i.maxLevel ? `${qty(i.maxLevel)} ${u}` : "—"}</td>
+                    <td className="px-3 py-2 text-right tabular-nums whitespace-nowrap">{i.costPerUnit ? `₹${qty(i.costPerUnit)} / ${u}` : "—"}</td>
+                    <td className="px-3 py-2"><StatusBadge status={i.status} /></td>
+                    <td className="px-3 py-2">
+                      <div className="flex flex-wrap justify-end gap-1">
+                        <button type="button" className={btnGhost} onClick={() => setMove({ item: i, type: "purchase" })}>+ Stock</button>
+                        <button type="button" className={btnGhost} onClick={() => setMove({ item: i, type: "waste" })}>Waste</button>
+                        <button type="button" className={btnGhost} onClick={() => setMove({ item: i, type: "adjustment" })}>Count</button>
+                        <button type="button" className={btnGhost} onClick={() => setEditing(i)}>Edit</button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}
       </div>
 
-      {move && (
-        <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4" onClick={() => setMove(null)}>
-          <div className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl bg-white p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-[15px] font-extrabold text-[#0F172A]">
-              {move.type === "purchase" ? "Receive" : move.type === "waste" ? "Wastage" : "Correct the count"} · {move.ingredient.name}
-            </h3>
-            <p className="text-[12px] text-[#64748B] mt-0.5">Now {qty(move.ingredient.stockQuantity)} {move.ingredient.unit}.</p>
-            <input autoFocus className={`${inputClass} mt-3`} type="number" min="0" step="any" inputMode="decimal" value={moveQty} onChange={(e) => setMoveQty(e.target.value)}
-              placeholder={move.type === "adjustment" ? `Actual count in ${move.ingredient.unit}` : `Quantity in ${move.ingredient.unit}`} />
-            <input className={`${inputClass} mt-2 font-medium`} value={moveReason} onChange={(e) => setMoveReason(e.target.value)} maxLength={200}
-              placeholder={move.type === "waste" ? "Reason (spoiled, spilled, expired…)" : "Note (optional)"} />
-            <div className="mt-4 flex gap-2">
-              <button type="button" className={`${btnGhost} h-[40px] flex-1`} onClick={() => setMove(null)}>Back</button>
-              <button type="button" className={`${btnPrimary} flex-1`} disabled={moveQty === "" || moveMut.isPending || (move.type === "waste" && !moveReason.trim())}
-                onClick={() => moveMut.mutate({ ingredientId: move.ingredient._id, type: move.type, quantity: Number(moveQty), reason: moveReason })}>
-                {moveMut.isPending ? "Saving…" : "Save"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {editing && (
-        <div className="fixed inset-0 z-[70] flex items-end sm:items-center justify-center bg-black/40 p-0 sm:p-4" onClick={() => setEditing(null)}>
-          <div className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl bg-white p-5 shadow-2xl space-y-2" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-[15px] font-extrabold text-[#0F172A]">Edit ingredient</h3>
-            <input className={inputClass} value={editing.name} onChange={(e) => setEditing({ ...editing, name: e.target.value })} />
-            <div className="grid grid-cols-2 gap-2">
-              <select className={inputClass} value={editing.unit} onChange={(e) => setEditing({ ...editing, unit: e.target.value })}>{UNITS.map((u) => <option key={u}>{u}</option>)}</select>
-              <select className={inputClass} value={editing.category} onChange={(e) => setEditing({ ...editing, category: e.target.value })}>{CATEGORIES.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select>
-              <input className={inputClass} type="number" min="0" value={editing.reorderLevel} onChange={(e) => setEditing({ ...editing, reorderLevel: e.target.value })} placeholder="Reorder at" />
-              <input className={inputClass} type="number" min="0" value={editing.costPerUnit} onChange={(e) => setEditing({ ...editing, costPerUnit: e.target.value })} placeholder="Cost per unit" />
-            </div>
-            <div className="flex gap-2 pt-2">
-              <button type="button" className={`${btnGhost} h-[40px]`} onClick={() => { if (window.confirm(`Remove ${editing.name}?`)) deleteMut.mutate(editing._id); setEditing(null); }}>Remove</button>
-              <button type="button" className={`${btnGhost} h-[40px] flex-1`} onClick={() => setEditing(null)}>Back</button>
-              <button type="button" className={`${btnPrimary} flex-1`} disabled={updateMut.isPending}
-                onClick={() => updateMut.mutate({ id: editing._id, name: editing.name, unit: editing.unit, category: editing.category, reorderLevel: Number(editing.reorderLevel) || 0, costPerUnit: Number(editing.costPerUnit) || 0 })}>
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {editing && <ItemModal item={editing === "new" ? null : editing} onClose={() => setEditing(null)} refresh={refresh} />}
+      {move && <StockModal item={move.item} type={move.type} onClose={() => setMove(null)} refresh={refresh} />}
     </div>
   );
 };
@@ -198,57 +309,65 @@ const RecipesTab = ({ ingredients, refresh }) => {
     const menus = menusRes?.data?.data || [];
     return (Array.isArray(menus) ? menus : []).flatMap((m) => (m.items || []).map((it) => ({ id: String(it._id), name: it.name, category: m.name })));
   }, [menusRes]);
-  const recipes = recipesRes?.data?.data || [];
+  const recipes = useMemo(() => recipesRes?.data?.data || [], [recipesRes]);
   const byDish = useMemo(() => new Map(recipes.map((r) => [String(r.menuItemId), r])), [recipes]);
 
   const [dishId, setDishId] = useState("");
-  const [rows, setRows] = useState([]); // [{ingredientId, quantity}]
+  const [rows, setRows] = useState([]); // [{ingredientId, quantity, unit}]
   const [yieldN, setYieldN] = useState(1);
   const [search, setSearch] = useState("");
 
+  const unitOf = (id) => ingredients.find((i) => i._id === id)?.unit || "";
   const pick = (id) => {
     setDishId(id);
     const r = byDish.get(id);
-    setRows(r ? r.ingredients.map((i) => ({ ingredientId: String(i.ingredientId), quantity: String(i.quantity) })) : [{ ingredientId: "", quantity: "" }]);
+    setRows(r ? r.ingredients.map((i) => ({ ingredientId: String(i.ingredientId), quantity: String(i.quantity), unit: i.unit || unitOf(String(i.ingredientId)) })) : [{ ingredientId: "", quantity: "", unit: "" }]);
     setYieldN(r?.yield || 1);
   };
   const saveMut = useMutation({
     mutationFn: () => {
       const dish = dishes.find((d) => d.id === dishId);
-      return upsertRecipe(dishId, { menuItemName: dish?.name, yield: Number(yieldN) || 1, ingredients: rows.filter((r) => r.ingredientId && Number(r.quantity) > 0).map((r) => ({ ingredientId: r.ingredientId, quantity: Number(r.quantity) })) });
+      return upsertRecipe(dishId, {
+        menuItemName: dish?.name,
+        yield: Number(yieldN) || 1,
+        ingredients: rows.filter((r) => r.ingredientId && Number(r.quantity) > 0).map((r) => ({ ingredientId: r.ingredientId, quantity: Number(r.quantity), unit: r.unit || unitOf(r.ingredientId) })),
+      });
     },
     onSuccess: () => { enqueueSnackbar("Recipe saved", { variant: "success" }); refresh(); },
     onError: (e) => enqueueSnackbar(e.response?.data?.message || "Could not save the recipe", { variant: "error" }),
   });
   const delMut = useMutation({
     mutationFn: () => deleteRecipe(dishId),
-    onSuccess: () => { enqueueSnackbar("Recipe removed", { variant: "success" }); setRows([{ ingredientId: "", quantity: "" }]); refresh(); },
+    onSuccess: () => { enqueueSnackbar("Recipe removed", { variant: "success" }); setRows([{ ingredientId: "", quantity: "", unit: "" }]); refresh(); },
     onError: (e) => enqueueSnackbar(e.response?.data?.message || "Could not remove", { variant: "error" }),
   });
-  const unitOf = (id) => ingredients.find((i) => i._id === id)?.unit || "";
   const filtered = dishes.filter((d) => `${d.name} ${d.category}`.toLowerCase().includes(search.trim().toLowerCase())).slice(0, 300);
+  const setRow = (i, patch) => setRows(rows.map((x, k) => (k === i ? { ...x, ...patch } : x)));
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
       <div className="md:col-span-2 bg-white border border-[#E2E8F0] rounded-2xl p-3">
-        <input className={`${inputClass} mb-2 font-medium`} placeholder="Search dishes…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <input className={`${inputClass} mb-2 font-medium`} placeholder="Search products…" value={search} onChange={(e) => setSearch(e.target.value)} />
         <div className="max-h-[420px] overflow-y-auto divide-y divide-[#F1F5F9]">
-          {filtered.map((d) => (
-            <button key={d.id} type="button" onClick={() => pick(d.id)} className={`w-full text-left px-2 py-2 hover:bg-[#F8FAFC] ${dishId === d.id ? "bg-[#FFF1E8]" : ""}`}>
-              <span className="block text-[13px] font-bold text-[#0F172A]">{d.name}</span>
-              <span className="block text-[11px] text-[#94A3B8]">
-                {d.category}{byDish.has(d.id) ? ` · ${byDish.get(d.id).ingredients.length} ingredient(s)` : " · no recipe"}
-              </span>
-            </button>
-          ))}
-          {filtered.length === 0 && <p className="p-4 text-center text-[12.5px] text-[#94A3B8]">No dishes.</p>}
+          {filtered.map((d) => {
+            const r = byDish.get(d.id);
+            return (
+              <button key={d.id} type="button" onClick={() => pick(d.id)} className={`w-full text-left px-2 py-2 hover:bg-[#F8FAFC] ${dishId === d.id ? "bg-[#FFF1E8]" : ""}`}>
+                <span className="block text-[13px] font-bold text-[#0F172A]">{d.name}</span>
+                <span className="block text-[11px] text-[#94A3B8]">
+                  {d.category}{r ? ` · ${r.ingredients.length} item(s)${r.isActive === false ? " · off" : ""}` : " · no recipe"}
+                </span>
+              </button>
+            );
+          })}
+          {filtered.length === 0 && <p className="p-4 text-center text-[12.5px] text-[#94A3B8]">No products.</p>}
         </div>
       </div>
       <div className="md:col-span-3 bg-white border border-[#E2E8F0] rounded-2xl p-4">
         {!dishId ? (
-          <p className="text-[13px] text-[#94A3B8]">Pick a dish to set what one serving uses.</p>
+          <p className="text-[13px] text-[#94A3B8]">Pick a product to set what one serving uses. You can also set it in Manage Menu, under the product&apos;s price.</p>
         ) : ingredients.length === 0 ? (
-          <p className="text-[13px] text-[#94A3B8]">Add ingredients under Stock first.</p>
+          <p className="text-[13px] text-[#94A3B8]">Add inventory items on the Dashboard first.</p>
         ) : (
           <div className="space-y-2">
             <p className="text-[13px] font-extrabold text-[#0F172A]">{dishes.find((d) => d.id === dishId)?.name}</p>
@@ -259,16 +378,18 @@ const RecipesTab = ({ ingredients, refresh }) => {
             </label>
             {rows.map((r, i) => (
               <div key={i} className="flex items-center gap-2">
-                <select className={inputClass} value={r.ingredientId} onChange={(e) => setRows(rows.map((x, k) => (k === i ? { ...x, ingredientId: e.target.value } : x)))}>
-                  <option value="">Ingredient…</option>
+                <select className={inputClass} value={r.ingredientId} onChange={(e) => setRow(i, { ingredientId: e.target.value, unit: unitOf(e.target.value) })}>
+                  <option value="">Item…</option>
                   {ingredients.map((ing) => <option key={ing._id} value={ing._id}>{ing.name}</option>)}
                 </select>
-                <input className={`${inputClass} w-[110px]`} type="number" min="0" step="any" inputMode="decimal" placeholder="Qty" value={r.quantity} onChange={(e) => setRows(rows.map((x, k) => (k === i ? { ...x, quantity: e.target.value } : x)))} />
-                <span className="w-[40px] text-[12px] text-[#64748B]">{unitOf(r.ingredientId)}</span>
+                <input className={`${inputClass} w-[90px]`} type="number" min="0" step="any" inputMode="decimal" placeholder="Qty" value={r.quantity} onChange={(e) => setRow(i, { quantity: e.target.value })} />
+                <select className={`${inputClass} w-[96px]`} value={r.unit || unitOf(r.ingredientId)} disabled={!r.ingredientId} onChange={(e) => setRow(i, { unit: e.target.value })}>
+                  {unitsLike(unitOf(r.ingredientId)).map((x) => <option key={x.code} value={x.code}>{x.label}</option>)}
+                </select>
                 <button type="button" aria-label="Remove" className="text-[#94A3B8] hover:text-[#DC2626]" onClick={() => setRows(rows.filter((_, k) => k !== i))}>&times;</button>
               </div>
             ))}
-            <button type="button" className="text-[12.5px] font-bold text-[#C2410C] hover:underline" onClick={() => setRows([...rows, { ingredientId: "", quantity: "" }])}>+ Add ingredient</button>
+            <button type="button" className="text-[12.5px] font-bold text-[#C2410C] hover:underline" onClick={() => setRows([...rows, { ingredientId: "", quantity: "", unit: "" }])}>+ Add item</button>
             <div className="flex gap-2 pt-2">
               {byDish.has(dishId) && <button type="button" className={`${btnGhost} h-[40px]`} onClick={() => delMut.mutate()}>Remove recipe</button>}
               <button type="button" className={btnPrimary} disabled={saveMut.isPending} onClick={() => saveMut.mutate()}>{saveMut.isPending ? "Saving…" : "Save recipe"}</button>
@@ -282,19 +403,19 @@ const RecipesTab = ({ ingredients, refresh }) => {
 
 /* -------------------------------------------------------------------- log */
 
-const TYPE_LABEL = { purchase: "Received", sale: "Sold", waste: "Wastage", adjustment: "Count", transfer: "Transfer" };
+const TYPE_LABEL = { purchase: "Stock added", sale: "Sold", waste: "Wastage", adjustment: "Count", transfer: "Transfer" };
 
 const LogTab = () => {
   const { data } = useQuery({ queryKey: ["inventory", "movements"], queryFn: () => getStockMovements({ limit: 200 }) });
   const rows = data?.data?.data || [];
   return (
-    <div className="bg-white border border-[#E2E8F0] rounded-2xl overflow-hidden">
+    <div className="bg-white border border-[#E2E8F0] rounded-2xl overflow-x-auto">
       {rows.length === 0 ? (
         <p className="p-6 text-center text-[13px] text-[#94A3B8]">Nothing has moved yet.</p>
       ) : (
-        <table className="w-full text-[12.5px]">
+        <table className="w-full min-w-[560px] text-[12.5px]">
           <thead className="bg-[#F8FAFC] text-[11px] uppercase tracking-wide text-[#94A3B8]">
-            <tr><th className="px-3 py-2 text-left">When</th><th className="px-3 py-2 text-left">Ingredient</th><th className="px-3 py-2 text-left">Type</th><th className="px-3 py-2 text-right">Qty</th><th className="px-3 py-2 text-left hidden sm:table-cell">Note</th></tr>
+            <tr><th className="px-3 py-2 text-left">When</th><th className="px-3 py-2 text-left">Item</th><th className="px-3 py-2 text-left">Type</th><th className="px-3 py-2 text-right">Qty</th><th className="px-3 py-2 text-right">Cost</th><th className="px-3 py-2 text-left hidden sm:table-cell">Note</th></tr>
           </thead>
           <tbody className="divide-y divide-[#F1F5F9]">
             {rows.map((m) => (
@@ -302,7 +423,8 @@ const LogTab = () => {
                 <td className="px-3 py-2 text-[#64748B] whitespace-nowrap">{when(m.createdAt)}</td>
                 <td className="px-3 py-2 font-bold text-[#0F172A]">{m.ingredientName}</td>
                 <td className="px-3 py-2">{TYPE_LABEL[m.type] || m.type}</td>
-                <td className={`px-3 py-2 text-right font-bold tabular-nums ${m.quantity < 0 ? "text-[#DC2626]" : "text-[#16A34A]"}`}>{m.quantity > 0 ? "+" : ""}{qty(m.quantity)} {m.unit}</td>
+                <td className={`px-3 py-2 text-right font-bold tabular-nums whitespace-nowrap ${m.quantity < 0 ? "text-[#DC2626]" : "text-[#16A34A]"}`}>{m.quantity > 0 ? "+" : ""}{qty(m.quantity)} {unitLabel(m.unit)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{m.cost ? `₹${qty(m.cost)}` : ""}</td>
                 <td className="px-3 py-2 text-[#64748B] hidden sm:table-cell">{m.reason}</td>
               </tr>
             ))}
@@ -317,7 +439,7 @@ const LogTab = () => {
 
 const InventoryView = () => {
   const qc = useQueryClient();
-  const [tab, setTab] = useState("stock");
+  const [tab, setTab] = useState("dashboard");
   const { data, isLoading } = useQuery({ queryKey: ["inventory", "ingredients"], queryFn: getIngredients });
   const ingredients = data?.data?.data || [];
   const refresh = () => qc.invalidateQueries({ queryKey: ["inventory"] });
@@ -326,8 +448,8 @@ const InventoryView = () => {
   return (
     <div className="space-y-4">
       <p className="text-[13px] text-[#64748B] leading-relaxed">
-        Keep the shelf in the POS. Give each dish a recipe and every sale takes its ingredients off the shelf on its own;
-        receive purchases and record wastage here. Low stock is flagged when the count reaches the reorder level.
+        Track what you buy. Give each product a recipe (here or in Manage Menu) and every sale takes its items off the shelf on its own.
+        The POS alerts when an item reaches its minimum stock.
       </p>
       <div className="flex gap-2">
         {TABS.map(([k, l]) => (
@@ -336,7 +458,7 @@ const InventoryView = () => {
           </button>
         ))}
       </div>
-      {tab === "stock" && <StockTab ingredients={ingredients} refresh={refresh} />}
+      {tab === "dashboard" && <DashboardTab ingredients={ingredients} refresh={refresh} />}
       {tab === "recipes" && <RecipesTab ingredients={ingredients} refresh={refresh} />}
       {tab === "log" && <LogTab />}
     </div>

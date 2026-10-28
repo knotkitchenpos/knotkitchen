@@ -12,6 +12,8 @@ const ingredientSchema = new mongoose.Schema(
     unit: { type: String, required: true }, // kg, g, L, ml, pcs
     stockQuantity: { type: Number, default: 0 },
     reorderLevel: { type: Number, default: 0 },
+    // Maximum stock: 0 means none set. Status: services/inventory.js#stockStatus.
+    maxLevel: { type: Number, default: 0 },
     costPerUnit: { type: Number, default: 0 },
     supplierId: { type: mongoose.Schema.Types.ObjectId, ref: "Vendor" },
     batch: {
@@ -132,6 +134,8 @@ const stockMovementSchema = new mongoose.Schema(
     unit: { type: String, required: true },
     reason: { type: String, default: "" },
     referenceId: { type: String, default: "" }, // order ID, PO ID, etc.
+    // What a purchase cost in total (₹); 0 for everything else.
+    cost: { type: Number, default: 0 },
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
   },
   { timestamps: true }

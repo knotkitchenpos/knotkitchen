@@ -5,6 +5,7 @@ const c = require("../controllers/inventoryController");
 
 const router = express.Router();
 
+router.route("/alerts").get(isVerifiedUser, c.listRestockAlerts);
 router.route("/ingredients").get(isVerifiedUser, c.listIngredients).post(isVerifiedUser, c.createIngredient);
 router.route("/ingredients/:id").put(isVerifiedUser, c.updateIngredient).delete(isVerifiedUser, requireProtectedAction, c.deleteIngredient);
 router.route("/movements").get(isVerifiedUser, c.listMovements).post(isVerifiedUser, c.recordMovement);
