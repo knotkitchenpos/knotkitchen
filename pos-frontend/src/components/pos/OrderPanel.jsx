@@ -54,6 +54,7 @@ import DeliveryModal from "./DeliveryModal";
 import DiscountModal from "./DiscountModal";
 import PaymentMethodModal from "./PaymentMethodModal";
 import TableModal from "./TableModal";
+import useStockGuard from "../../hooks/useStockGuard";
 import { money as formatMoney, time12, dateGB } from "../../utils";
 
 /* ---------- Icons (drawn to match the reference) ---------- */
@@ -140,6 +141,8 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
   const dispatch = useDispatch();
   const qc = useQueryClient();
   const cart = useSelector((s) => s.cart);
+  // One more of a dish asks first when the shelf cannot cover it.
+  const { guardStock, stockDialog } = useStockGuard();
   const user = useSelector((s) => s.user);
   const customer = useSelector((s) => s.customer);
   const orderType = useSelector((s) => s.orderType.orderType);
@@ -1033,7 +1036,11 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
                       ×
                     </button>
                     <button
-                      onClick={() => dispatch(updateQuantity({ id: item.id, quantity: (item.quantity || 1) + 1 }))}
+                      onClick={() =>
+                        guardStock(item.menuItemId, 1, () =>
+                          dispatch(updateQuantity({ id: item.id, quantity: (item.quantity || 1) + 1 })),
+                        )
+                      }
                       className="w-9 h-9 lg:w-7 lg:h-7 rounded-full border-2 border-[#22C55E] text-[#22C55E] flex items-center justify-center text-[14px] font-bold hover:bg-[#DCFCE7] transition-colors"
                       title="Increase quantity"
                       aria-label="Increase quantity"
@@ -1215,9 +1222,15 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
               </button>
               <button
                 onClick={() => {
-                  dispatch(updateItemNote({ id: noteFor.id, note: noteText.trim() }));
-                  dispatch(updateQuantity({ id: noteFor.id, quantity: typedQty(qtyText) }));
+                  const line = noteFor;
+                  const quantity = typedQty(qtyText);
+                  dispatch(updateItemNote({ id: line.id, note: noteText.trim() }));
                   setNoteFor(null);
+                  // A larger quantity typed in is checked against the shelf like the + button.
+                  const more = quantity - (Number(line.quantity) || 0);
+                  const apply = () => dispatch(updateQuantity({ id: line.id, quantity }));
+                  if (more > 0) guardStock(line.menuItemId, more, apply);
+                  else apply();
                 }}
                 disabled={typedQty(qtyText) == null}
                 className="h-[44px] rounded-xl bg-[#FD5302] text-white text-[14px] font-bold hover:bg-[#D64502] disabled:opacity-50"
@@ -1385,6 +1398,7 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
           </div>
         </div>
       )}
+      {stockDialog}
     </aside>
   );
 };

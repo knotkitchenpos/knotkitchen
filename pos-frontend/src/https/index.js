@@ -63,6 +63,10 @@ export const syncOfflineOrders = (orders) => axiosWrapper.post("/api/offline/ord
 export const getIngredients = () => axiosWrapper.get("/api/inventory/ingredients");
 // What needs restocking now: the POS alert on load (live ones arrive as inventory:restock).
 export const getRestockAlerts = () => axiosWrapper.get("/api/inventory/alerts");
+// The POS stock warning ("Only 1 Pizza Dough in stock") and the restock alert's two questions.
+export const getStockAvailability = () => axiosWrapper.get("/api/inventory/availability");
+export const turnOffProductsFor = (ingredientId) => axiosWrapper.post(`/api/inventory/ingredients/${ingredientId}/turn-off-products`);
+export const answerBackInStock = (turnOn) => axiosWrapper.post("/api/inventory/back-in-stock", { turnOn });
 export const createIngredient = (d) => axiosWrapper.post("/api/inventory/ingredients", d);
 export const updateIngredient = (id, d) => axiosWrapper.put(`/api/inventory/ingredients/${id}`, d);
 export const deleteIngredient = (id) => axiosWrapper.delete(`/api/inventory/ingredients/${id}`);

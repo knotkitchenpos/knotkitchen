@@ -3,7 +3,7 @@ import assert from "node:assert";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { UNITS, unitsLike, unitLabel, recipeForSave, STATUS } from "../src/utils/inventory.js";
+import { UNITS, unitsLike, unitLabel, recipeForSave, STATUS, stockShortfalls, shortfallText, convertQty } from "../src/utils/inventory.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SRC = (rel) => fs.readFileSync(path.join(__dirname, "..", rel), "utf8");
@@ -92,4 +92,57 @@ test("the POS shows a restock alert, live and on open, only on the POS plan", ()
   assert.match(alert, /navigate\("\/settings\?view=inventory"\)/);
   assert.match(SRC("src/App.jsx"), /\{tableService && <RestockAlert \/>\}/);
   assert.match(SRC("src/https/index.js"), /export const getRestockAlerts = \(\) => axiosWrapper\.get\("\/api\/inventory\/alerts"\);/);
+});
+
+// ---------------------------------------------------------------------------
+// Stock never below 0 (owner, 2026-10-28): 2 Pizza Dough, 1 per pizza,
+// minimum 1. The first pizza leaves 1; the second asks "Only 1 in stock. Do
+// you want to continue?"; at 0 the till offers to turn the pizzas off.
+// ---------------------------------------------------------------------------
+
+const stockOf = (dough, cheese = 1) => ({
+  items: [
+    { _id: "dough", name: "Pizza Dough", unit: "pcs", stockQuantity: dough },
+    { _id: "cheese", name: "Mozzarella Cheese", unit: "kg", stockQuantity: cheese },
+  ],
+  recipes: [
+    { menuItemId: "pizza", yield: 1, ingredients: [{ ingredientId: "dough", quantity: 1, unit: "pcs" }, { ingredientId: "cheese", quantity: 20, unit: "g" }] },
+    { menuItemId: "margherita", yield: 1, ingredients: [{ ingredientId: "dough", quantity: 1, unit: "pcs" }] },
+  ],
+});
+
+test("a pizza that would use up the last dough asks first; one that leaves some does not", () => {
+  assert.deepEqual(stockShortfalls([], { menuItemId: "pizza", quantity: 1 }, stockOf(2)), [], "2 dough, 1 pizza: 1 left");
+  const short = stockShortfalls([], { menuItemId: "pizza", quantity: 1 }, stockOf(1));
+  assert.deepEqual(short.map((i) => [i.name, i.stockQuantity]), [["Pizza Dough", 1]]);
+  assert.equal(shortfallText(short[0]), "Only 1 Pizza Dough in stock.");
+});
+
+test("the whole cart counts: a pizza already in it, or another dish on the same dough", () => {
+  const stock = stockOf(2);
+  assert.deepEqual(stockShortfalls([{ menuItemId: "pizza", quantity: 1 }], { menuItemId: "pizza", quantity: 1 }, stock).map((i) => i.name), ["Pizza Dough"]);
+  assert.deepEqual(stockShortfalls([{ menuItemId: "margherita", quantity: 1 }], { menuItemId: "pizza", quantity: 1 }, stock).map((i) => i.name), ["Pizza Dough"]);
+  // The recipe's 20 g comes off a shelf counted in kg: 0.02 kg left is used up by one pizza.
+  const cheese = stockShortfalls([], { menuItemId: "pizza", quantity: 1 }, stockOf(10, 0.02));
+  assert.equal(shortfallText(cheese[0]), "Only 0.02 KG Mozzarella Cheese in stock.");
+  assert.equal(convertQty(20, "g", "kg"), 0.02);
+  assert.equal(convertQty(1, "g", "pcs"), null);
+});
+
+test("nothing left says so; a dish with no recipe or no stock list never asks", () => {
+  assert.equal(shortfallText(stockShortfalls([], { menuItemId: "pizza", quantity: 1 }, stockOf(0))[0]), "Pizza Dough is out of stock.");
+  assert.deepEqual(stockShortfalls([], { menuItemId: "chai", quantity: 1 }, stockOf(0)), []);
+  assert.deepEqual(stockShortfalls([], { menuItemId: "pizza", quantity: 1 }, undefined), [], "offline before the first fetch");
+});
+
+test("the till checks before a dish goes in, and asks the two product questions after", () => {
+  const panel = SRC("src/components/pos/ProductPanel.jsx");
+  assert.equal((panel.match(/guardStock\((item|customizingItem)\._id, 1, /g) || []).length, 2, "both ways into the cart");
+  assert.match(SRC("src/components/pos/OrderPanel.jsx"), /guardStock\(item\.menuItemId, 1, \(\) =>/, "the + button");
+  assert.match(SRC("src/hooks/useRealtimeSync.js"), /"inventory:stock": \["stock-availability", "inventory"\]/);
+  const alert = SRC("src/components/dashboard/RestockAlert.jsx");
+  assert.match(alert, /title=\{`\$\{asking\.name\} is out of stock\.`\}/);
+  assert.match(alert, /Do you want to turn off all products using this item\?/);
+  assert.match(alert, /Items are back in stock\./);
+  assert.match(alert, /Do you want to turn on the products that were previously turned off due to stock shortage\?/);
 });

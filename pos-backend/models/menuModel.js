@@ -122,6 +122,11 @@ const menuItemSchema = new mongoose.Schema({
     visibleOnPosWhenOff: { type: Boolean, default: false },
     visibleOnWebsiteWhenOff: { type: Boolean, default: false },
 
+    // Switched off because these inventory items ran out (services/stockProducts):
+    // the POS offers to switch it back on when they are in stock again. Unset
+    // for a product switched off by hand. No default, so no menu changes shape.
+    stockOffBy: { type: [mongoose.Schema.Types.ObjectId], default: undefined },
+
     // Product Image
     image: { type: String, default: "" },
     imageId: { type: mongoose.Schema.Types.ObjectId, ref: "MediaAsset", default: null },

@@ -3,7 +3,8 @@ import React from "react";
 /**
  * The confirmation for every destructive Manage Menu action (delete product,
  * category, group, component, bulk delete). `state` is what `askConfirm()` on
- * the page stored: { title, message, confirmLabel, tone, onConfirm }.
+ * the page stored: { title, message, confirmLabel, cancelLabel, tone, onConfirm }.
+ * The POS stock warning (hooks/useStockGuard) uses it too.
  */
 const ConfirmDialog = ({ state, onClose }) => (
   <>
@@ -58,7 +59,7 @@ const ConfirmDialog = ({ state, onClose }) => (
             onClick={onClose}
             className="h-[40px] px-4 rounded-xl border border-[#E2E8F0] text-[#475569] text-[13px] font-bold hover:bg-[#F8FAFC]"
           >
-            Cancel
+            {state.cancelLabel || "Cancel"}
           </button>
           <button
             type="button"

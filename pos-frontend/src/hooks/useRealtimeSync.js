@@ -40,6 +40,8 @@ const INVALIDATE_ON = {
   "order:prepStarted": ["orders"],
   // KnotKitchen accepted, shipped, delivered or cancelled a printer/tablet (a refund moves the wallet).
   "hardwareRequest:updated": ["subscription", "business-balance"],
+  // A sale or a stock entry moved the shelf: the POS stock warning and the Inventory screens.
+  "inventory:stock": ["stock-availability", "inventory"],
 };
 
 const useRealtimeSync = () => {

@@ -10,6 +10,7 @@ const {
   needsRestock,
   saveRecipe,
 } = require("../services/inventory");
+const { countOnSale, turnOffFor, backInStock, answerBackInStock } = require("../services/stockProducts");
 
 /**
  * Inventory: items on the shelf, their stock, the recipes that tie products to
@@ -32,6 +33,15 @@ const num = (v, { min = 0, max = 1e9 } = {}) => {
   return Math.min(max, Math.max(min, n));
 };
 const round3 = (n) => Math.round((Number(n) || 0) * 1000) / 1000;
+const emit = (restaurantId, event, payload) => {
+  try {
+    require("../services/socket").emitToRestaurant(String(restaurantId), event, payload);
+  } catch {
+    /* no socket in this process: the tills catch up on their next load */
+  }
+};
+/** What the "back in stock" question shows: how many products, for which items. */
+const backSummary = ({ products = [], ingredients = [] } = {}) => ({ products: products.length, ingredients });
 const CATEGORIES = ["produce", "meat", "seafood", "dairy", "dry_goods", "beverage", "other"];
 
 /** An item as the screens read it: with its status worked out by the one rule. */
@@ -69,10 +79,14 @@ const listIngredients = async (req, res, next) => {
 /** The items that need restocking now: what the POS alert shows on load. */
 const listRestockAlerts = async (req, res, next) => {
   try {
-    const data = await Ingredient.find({ ...scope(req), isLowStock: true }).sort({ stockQuantity: 1 }).lean();
+    const s = scope(req);
+    const data = await Ingredient.find({ ...s, isLowStock: true }).sort({ stockQuantity: 1 }).lean();
     const items = data.map(view).filter((i) => needsRestock(i.status))
       .map((i) => ({ ingredientId: String(i._id), name: i.name, status: i.status, stockQuantity: round3(i.stockQuantity), unit: i.unit, reorderLevel: i.reorderLevel || 0 }));
-    res.status(200).json({ success: true, data: items });
+    // An empty item still offers to turn off the products on sale that use it.
+    for (const i of items.filter((x) => x.status === "out")) i.productsOn = await countOnSale(s.restaurantId, i.ingredientId);
+    // Beside `data`, so a till reading only the list still works.
+    res.status(200).json({ success: true, data: items, backInStock: backSummary(await backInStock(s.restaurantId)) });
   } catch (e) { next(e); }
 };
 
@@ -165,6 +179,10 @@ const recordMovement = async (req, res, next) => {
     const cost = type === "purchase" ? round3(num(req.body?.totalCost, { min: 0, max: 1e9 }) ?? 0) : 0;
 
     const before = Number(ing.stockQuantity) || 0;
+    // Stock never goes below nothing: more wasted than is on the shelf is a miscount.
+    if (type === "waste" && quantity > round3(before)) {
+      throw createHttpError(400, `Only ${round3(Math.max(0, before))} ${UNITS[ing.unit]?.label || ing.unit} of ${ing.name} in stock.`);
+    }
     const delta = type === "purchase" ? quantity : type === "waste" ? -quantity : quantity - before;
     ing.stockQuantity = round3(before + delta);
     if (type === "purchase" && cost > 0 && quantity > 0) ing.costPerUnit = round3(cost / quantity);
@@ -180,7 +198,71 @@ const recordMovement = async (req, res, next) => {
       await logActivity({ req, action: "Stock Wasted", resource: "Inventory", resourceId: ing._id,
         newValue: `${quantity} ${ing.unit} ${ing.name}`, description: `Wastage: ${quantity} ${ing.unit} ${ing.name}${movement.reason ? ` (${movement.reason})` : ""}` });
     }
-    res.status(201).json({ success: true, data: { ingredient: view(ing), movement } });
+    // Stock coming in may free products switched off for want of it: every
+    // till is asked whether to turn them back on.
+    const back = delta > 0 ? await backInStock(s.restaurantId) : { products: [] };
+    emit(s.restaurantId, "inventory:stock", {});
+    if (back.products.length) emit(s.restaurantId, "inventory:back", backSummary(back));
+    res.status(201).json({ success: true, data: { ingredient: view(ing), movement, backInStock: backSummary(back) } });
+  } catch (e) { next(e); }
+};
+
+/* ------------------------------------------------- products and the stock */
+
+/**
+ * What the POS checks a dish against before ringing it up ("Only 1 Pizza
+ * Dough in stock. Do you want to continue?"): each item's stock and every
+ * active recipe. Lean, so a till can keep it and check offline.
+ */
+const stockAvailability = async (req, res, next) => {
+  try {
+    const s = scope(req);
+    const [items, recipes] = await Promise.all([
+      Ingredient.find(s).select("_id name unit stockQuantity").lean(),
+      Recipe.find({ restaurantId: s.restaurantId, isActive: { $ne: false }, isDeleted: { $ne: true } })
+        .select("menuItemId yield ingredients").lean(),
+    ]);
+    res.status(200).json({
+      success: true,
+      data: {
+        items: items.map((i) => ({ _id: String(i._id), name: i.name, unit: i.unit, stockQuantity: round3(i.stockQuantity) })),
+        recipes: recipes.map((r) => ({
+          menuItemId: String(r.menuItemId),
+          yield: r.yield || 1,
+          ingredients: (r.ingredients || []).map((l) => ({ ingredientId: String(l.ingredientId), quantity: l.quantity, unit: l.unit || "" })),
+        })),
+      },
+    });
+  } catch (e) { next(e); }
+};
+
+/** "Pizza Dough is out of stock. Turn off all products using this item?" Yes. */
+const turnOffProducts = async (req, res, next) => {
+  try {
+    const s = scope(req);
+    const ing = await Ingredient.findOne({ _id: oid(req.params.id), restaurantId: s.restaurantId }).select("_id name").lean();
+    if (!ing) throw createHttpError(404, "Ingredient not found!");
+    const names = await turnOffFor(s.restaurantId, ing._id);
+    // The other tills drop the same question.
+    emit(s.restaurantId, "inventory:answered", { kind: "off", ingredientId: String(ing._id) });
+    await logActivity({ req, action: "Products Turned Off", resource: "Inventory", resourceId: ing._id,
+      newValue: names.join(", "), description: `${ing.name} out of stock: turned off ${names.length} product(s)` });
+    res.status(200).json({ success: true, data: { count: names.length, products: names } });
+  } catch (e) { next(e); }
+};
+
+/** "Items are back in stock. Turn on the products turned off for them?" Yes or No. */
+const answerBack = async (req, res, next) => {
+  try {
+    const s = scope(req);
+    const turnOn = req.body?.turnOn === true;
+    const count = await answerBackInStock(s.restaurantId, turnOn);
+    emit(s.restaurantId, "inventory:answered", { kind: "back" });
+    if (turnOn && count) {
+      await logActivity({ req, action: "Products Turned On", resource: "Inventory",
+        newValue: String(count), description: `Back in stock: turned on ${count} product(s)` });
+    }
+    res.status(200).json({ success: true, data: { count } });
   } catch (e) { next(e); }
 };
 
@@ -230,4 +312,5 @@ const deleteRecipe = async (req, res, next) => {
 module.exports = {
   listIngredients, listRestockAlerts, createIngredient, updateIngredient, deleteIngredient,
   recordMovement, listMovements, listRecipes, upsertRecipe, deleteRecipe,
+  stockAvailability, turnOffProducts, answerBack,
 };

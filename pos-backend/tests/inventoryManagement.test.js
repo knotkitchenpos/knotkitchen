@@ -72,12 +72,16 @@ const buildDepletion = ({ shelf, recipes }) => {
   const flags = {};
   const Ingredient = {
     find: () => lean(Object.values(shelf).map((i) => ({ _id: i._id, unit: i.unit }))),
-    findOneAndUpdate: async (filter, update) => {
+    findOneAndUpdate: async (filter, update, options) => {
       const ing = shelf[String(filter._id)];
-      // The service's pipeline update: stock less the quantity, rounded to 3 places.
-      const [, quantity] = update[0].$set.stockQuantity.$round[0].$subtract;
-      ing.stockQuantity = Math.round((ing.stockQuantity - quantity) * 1000) / 1000;
-      return { ...ing, toObject: () => ({ ...ing }) };
+      const had = { ...ing };
+      // The service's pipeline update: stock less the quantity, rounded to 3
+      // places, never below 0. It asks for the value before the update.
+      const [floor, rounded] = update[0].$set.stockQuantity.$max;
+      const [, quantity] = rounded.$round[0].$subtract;
+      ing.stockQuantity = Math.max(floor, Math.round((ing.stockQuantity - quantity) * 1000) / 1000);
+      const doc = options?.new === false ? had : { ...ing };
+      return { ...doc, toObject: () => ({ ...doc }) };
     },
     updateOne: async (filter, update) => { flags[String(filter._id)] = update.$set.isLowStock; },
   };
@@ -98,6 +102,7 @@ const buildDepletion = ({ shelf, recipes }) => {
       },
     },
     "./socket": { emitToRestaurant: (rid, event, payload) => emitted.push({ rid, event, payload }) },
+    "./stockProducts": { countOnSale: async () => 2 },
   });
   return { service, moves, emitted, flags };
 };
@@ -179,25 +184,46 @@ test("the sale that takes an item to its minimum alerts the POS once; the next o
   const dough = { _id: oid(), name: "Pizza Dough", unit: "pcs", stockQuantity: 4, reorderLevel: 2, maxLevel: 0 };
   const pizza = oid();
   const restaurantId = oid();
-  const { service, emitted, flags } = buildDepletion({
+  const { service, emitted: all, flags } = buildDepletion({
     shelf: { [dough._id]: dough },
     recipes: [{ menuItemId: pizza, yield: 1, ingredients: [{ ingredientId: dough._id, quantity: 1, unit: "pcs" }] }],
   });
+  // Every sale also tells the tills the stock moved (inventory:stock); the alerts are the restock ones.
+  const emitted = { get length() { return all.filter((e) => e.event === "inventory:restock").length; } };
+  const alert = (n) => all.filter((e) => e.event === "inventory:restock")[n];
   const sell = (n) => service.depleteOrder({ _id: oid(), restaurantId, items: [{ menuItemId: pizza, name: "Chicken Pizza", quantity: n }] });
 
   await sell(1); // 4 -> 3: still in stock
   assert.equal(emitted.length, 0);
+  assert.equal(all.at(-1).event, "inventory:stock", "the tills hear the stock moved");
   await sell(1); // 3 -> 2: at the minimum
   assert.equal(emitted.length, 1);
-  assert.equal(emitted[0].event, "inventory:restock");
-  assert.equal(emitted[0].rid, String(restaurantId), "only this restaurant's tills");
-  assert.deepEqual(emitted[0].payload.items.map((i) => [i.name, i.status, i.stockQuantity, i.unit]), [["Pizza Dough", "low", 2, "pcs"]]);
+  assert.equal(alert(0).rid, String(restaurantId), "only this restaurant's tills");
+  assert.deepEqual(alert(0).payload.items.map((i) => [i.name, i.status, i.stockQuantity, i.unit]), [["Pizza Dough", "low", 2, "pcs"]]);
   assert.equal(flags[String(dough._id)], true, "flagged for restocking");
   await sell(1); // 2 -> 1: still low, no second alert
   assert.equal(emitted.length, 1);
-  await sell(1); // 1 -> 0: out of stock is news
+  await sell(1); // 1 -> 0: out of stock is news, and asks about the 2 products still on sale
   assert.equal(emitted.length, 2);
-  assert.equal(emitted[1].payload.items[0].status, "out");
+  assert.deepEqual([alert(1).payload.items[0].status, alert(1).payload.items[0].productsOn], ["out", 2]);
+});
+
+test("stock never goes below 0: the sale stands, the shelf stops at nothing, the log says what was short", async () => {
+  // 1 dough left, an order for 2 pizzas the till was warned about (owner, 2026-10-28).
+  const dough = { _id: oid(), name: "Pizza Dough", unit: "pcs", stockQuantity: 1, reorderLevel: 1, maxLevel: 0 };
+  const pizza = oid();
+  const { service, moves } = buildDepletion({
+    shelf: { [dough._id]: dough },
+    recipes: [{ menuItemId: pizza, ingredients: [{ ingredientId: dough._id, quantity: 1, unit: "pcs" }] }],
+  });
+  await service.depleteOrder({ _id: oid(), restaurantId: oid(), items: [{ menuItemId: pizza, name: "Chicken Pizza", quantity: 2 }] });
+  assert.equal(dough.stockQuantity, 0, "0, not -1");
+  assert.deepEqual(moves.map((m) => [m.quantity, m.reason]), [[-1, "Chicken Pizza (short by 1 Piece)"]]);
+
+  // Another sale with nothing left records no movement and leaves it at 0.
+  await service.depleteOrder({ _id: oid(), restaurantId: oid(), items: [{ menuItemId: pizza, name: "Chicken Pizza", quantity: 1 }] });
+  assert.equal(dough.stockQuantity, 0);
+  assert.equal(moves.length, 1);
 });
 
 test("a recipe line in a unit the item cannot take is skipped at sale, never deducted wrongly", async () => {
@@ -216,8 +242,9 @@ test("a recipe line in a unit the item cannot take is skipped at sale, never ded
 // Stock entry
 // ---------------------------------------------------------------------------
 
-const buildController = (ing) => {
+const buildController = (ing, back = { products: [], ingredients: [] }) => {
   const moves = [];
+  const emitted = [];
   const controller = loadWith("../controllers/inventoryController", {
     "../models/inventoryModel": {
       Ingredient: { findOne: async () => ing },
@@ -225,8 +252,10 @@ const buildController = (ing) => {
       StockMovement: { create: async (m) => { moves.push(m); return m; } },
     },
     "../services/auditService": { logActivity: async () => {} },
+    "../services/stockProducts": { backInStock: async () => back, countOnSale: async () => 0 },
+    "../services/socket": { emitToRestaurant: (rid, event, payload) => emitted.push({ event, payload }) },
   });
-  return { controller, moves };
+  return { controller, moves, emitted };
 };
 
 const call = async (handler, body) => {
@@ -253,6 +282,27 @@ test("buying 5 pizza dough for ₹20 adds 5 pieces and sets the cost price to �
   assert.equal(dough.isLowStock, false, "5 is above the minimum of 2");
   assert.equal(out.json.data.ingredient.status, "in");
   assert.deepEqual([moves[0].type, moves[0].quantity, moves[0].unit, moves[0].cost], ["purchase", 5, "pcs", 20]);
+});
+
+test("dough bought again asks every till whether to turn its products back on", async () => {
+  const dough = shelfItem({ name: "Pizza Dough", unit: "pcs", stockQuantity: 0, reorderLevel: 1 });
+  const back = { products: [{ itemId: String(oid()), name: "Chicken Pizza" }, { itemId: String(oid()), name: "Margherita Pizza" }], ingredients: ["Pizza Dough"] };
+  const { controller, emitted } = buildController(dough, back);
+  const out = await call(controller.recordMovement, { ingredientId: String(dough._id), type: "purchase", quantity: 10, unit: "pcs" });
+  assert.equal(out.err, undefined);
+  assert.deepEqual(out.json.data.backInStock, { products: 2, ingredients: ["Pizza Dough"] });
+  assert.deepEqual(emitted.map((e) => e.event), ["inventory:stock", "inventory:back"]);
+  assert.deepEqual(emitted[1].payload, { products: 2, ingredients: ["Pizza Dough"] });
+});
+
+test("more wasted than is on the shelf is refused: stock never goes below 0", async () => {
+  const dough = shelfItem({ name: "Pizza Dough", unit: "pcs", stockQuantity: 2 });
+  const { controller, moves } = buildController(dough);
+  const out = await call(controller.recordMovement, { ingredientId: String(dough._id), type: "waste", quantity: 3, reason: "dropped" });
+  assert.equal(out.err?.status, 400);
+  assert.equal(out.err.message, "Only 2 Piece of Pizza Dough in stock.");
+  assert.equal(dough.stockQuantity, 2);
+  assert.equal(moves.length, 0);
 });
 
 test("100 g of flour bought for a shelf counted in kg adds 0.1 kg at ₹100 a kg", async () => {
@@ -318,5 +368,5 @@ test("the POS can read what needs restocking now, scoped to its own restaurant",
   const routes = SRC("routes/inventoryRoute.js");
   assert.match(routes, /router\.route\("\/alerts"\)\.get\(isVerifiedUser, c\.listRestockAlerts\);/);
   const src = SRC("controllers/inventoryController.js");
-  assert.match(src, /Ingredient\.find\(\{ \.\.\.scope\(req\), isLowStock: true \}\)/);
+  assert.match(src, /const s = scope\(req\);\n\s+const data = await Ingredient\.find\(\{ \.\.\.s, isLowStock: true \}\)/);
 });

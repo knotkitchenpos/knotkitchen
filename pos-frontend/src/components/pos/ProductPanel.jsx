@@ -9,6 +9,7 @@ import { money, thumbUrl, storeClock } from "../../utils";
 import { formatQty } from "../../utils/orderItems";
 import { loadSystemMenu, readSavedMenu, systemMenuKey } from "../../utils/systemMenu";
 import { addItems } from "../../redux/slices/cartSlice";
+import useStockGuard from "../../hooks/useStockGuard";
 import { ModalShell } from "./ModalShell";
 
 /* ---------- Reference tile palette ---------- */
@@ -145,6 +146,8 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
   const dispatch = useDispatch();
   const location = useLocation();
   const cart = useSelector((s) => s.cart);
+  // "Only 1 Pizza Dough in stock. Do you want to continue?" before a dish goes in.
+  const { guardStock, stockDialog } = useStockGuard();
   // "Collection" | "Delivery" | "Table Service" — drives Dispatch Type filtering below.
   const orderType = useSelector((s) => s.orderType.orderType);
 
@@ -477,6 +480,8 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
     // rows under the dish.
     const displayName = `${customizingItem.name}${variantObj ? ` (${variantObj.name})` : ""}`;
 
+    // Cancel on the stock warning leaves the choices open, untouched.
+    guardStock(customizingItem._id, 1, () => {
     dispatch(
       addItems({
         id: Date.now() + Math.random(),
@@ -498,6 +503,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
     );
 
     setCustomizingItem(null);
+    });
   };
 
   const add = (item) => {
@@ -520,6 +526,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
       price = variant.price;
       label = ` (${variant.name})`;
     }
+    guardStock(item._id, 1, () =>
     dispatch(
       addItems({
         id: Date.now() + Math.random(),
@@ -538,7 +545,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
         orderTypes: orderTypesOf(item),
         isCombo: item.isCombo || false,
       })
-    );
+    ));
   };
 
   const heading = searching
@@ -1030,6 +1037,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
           </div>
         </ModalShell>
       )}
+      {stockDialog}
     </div>
   );
 };

@@ -62,7 +62,9 @@ test("SOURCE: the product card shows paise, the price box steps by paise, the âš
   const drawer = SRC("src/components/dashboard/manageMenu/ProductDrawer.jsx");
   assert.equal((drawer.match(/type="number"\s+min=\{0\}\s+step="0\.01"/g) || []).length, 4);
   const order = SRC("src/components/pos/OrderPanel.jsx");
-  assert.match(order, /dispatch\(updateQuantity\(\{ id: noteFor\.id, quantity: typedQty\(qtyText\) \}\)\)/);
+  // The typed quantity is applied (after the stock check when it went up).
+  assert.match(order, /const quantity = typedQty\(qtyText\);/);
+  assert.match(order, /const apply = \(\) => dispatch\(updateQuantity\(\{ id: line\.id, quantity \}\)\);/);
   assert.match(order, /inputMode="decimal"/);
 });
 

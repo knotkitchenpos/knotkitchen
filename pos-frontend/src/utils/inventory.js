@@ -6,14 +6,22 @@
  */
 
 export const UNITS = [
-  { code: "pcs", label: "Piece", family: "count" },
-  { code: "dozen", label: "Dozen", family: "count" },
-  { code: "g", label: "Gram", family: "mass" },
-  { code: "kg", label: "KG", family: "mass" },
-  { code: "ml", label: "ML", family: "volume" },
-  { code: "L", label: "Litre", family: "volume" },
-  { code: "pack", label: "Pack", family: "pack" },
+  { code: "pcs", label: "Piece", family: "count", factor: 1 },
+  { code: "dozen", label: "Dozen", family: "count", factor: 12 },
+  { code: "g", label: "Gram", family: "mass", factor: 1 },
+  { code: "kg", label: "KG", family: "mass", factor: 1000 },
+  { code: "ml", label: "ML", family: "volume", factor: 1 },
+  { code: "L", label: "Litre", family: "volume", factor: 1000 },
+  { code: "pack", label: "Pack", family: "pack", factor: 1 },
 ];
+
+/** `quantity` in `from`, expressed in `to` (as the server converts); null across kinds of measure. */
+export const convertQty = (quantity, from, to) => {
+  const a = UNITS.find((u) => u.code === from);
+  const b = UNITS.find((u) => u.code === to);
+  if (!a || !b || a.family !== b.family) return null;
+  return Math.round(((Number(quantity) || 0) * a.factor) / b.factor * 1000) / 1000;
+};
 
 export const unitLabel = (code) => UNITS.find((u) => u.code === code)?.label || code || "";
 
@@ -31,6 +39,42 @@ export const STATUS = {
 };
 
 export const qty = (n) => Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 3 });
+
+/**
+ * The items a dish would use up if `add` (a dish and how many more of it) went
+ * into this cart: each one whose stock the whole cart needs all of, or more.
+ * `stock` is GET /api/inventory/availability. A dish with no recipe uses
+ * nothing. With 1 Pizza Dough left, a pizza on 1 dough returns the dough:
+ * "Only 1 Pizza Dough in stock. Do you want to continue?"
+ */
+export const stockShortfalls = (cart = [], add = {}, stock) => {
+  const recipes = new Map((stock?.recipes || []).map((r) => [String(r.menuItemId), r]));
+  const recipe = recipes.get(String(add.menuItemId || ""));
+  if (!recipe) return [];
+  const items = new Map((stock.items || []).map((i) => [String(i._id), i]));
+  const need = new Map();
+  for (const line of [...(Array.isArray(cart) ? cart : []), add]) {
+    const r = recipes.get(String(line?.menuItemId || ""));
+    if (!r) continue;
+    const servings = Number(line.quantity) || 0;
+    for (const l of r.ingredients || []) {
+      const item = items.get(String(l.ingredientId));
+      const amount = item && convertQty((Number(l.quantity) || 0) * servings / Math.max(1, Number(r.yield) || 1), l.unit || item.unit, item.unit);
+      if (amount) need.set(item._id, (need.get(item._id) || 0) + amount);
+    }
+  }
+  const used = [...new Set((recipe.ingredients || []).map((l) => String(l.ingredientId)))];
+  return used
+    .map((id) => items.get(id))
+    .filter((item) => item && (need.get(item._id) || 0) >= (Number(item.stockQuantity) || 0) - 1e-9)
+    .map((item) => ({ ingredientId: item._id, name: item.name, unit: item.unit, stockQuantity: Math.max(0, Number(item.stockQuantity) || 0) }));
+};
+
+/** "Only 1 Pizza Dough in stock." / "Only 0.02 KG Mozzarella Cheese in stock." / "Flour is out of stock." */
+export const shortfallText = (item) =>
+  item.stockQuantity > 0
+    ? `Only ${qty(item.stockQuantity)}${item.unit === "pcs" ? "" : ` ${unitLabel(item.unit)}`} ${item.name} in stock.`
+    : `${item.name} is out of stock.`;
 
 /**
  * The product form's Recipe section as Manage Menu sends it: only when a

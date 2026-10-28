@@ -518,7 +518,11 @@ const updateDish = async (req, res, next) => {
       item.imageThumbnailUrl = imageUrl;
       item.image = imageUrl;
     }
-    if (isAvailable !== undefined) item.isAvailable = Boolean(isAvailable);
+    if (isAvailable !== undefined) {
+      // Switched by hand: it no longer waits for stock (services/stockProducts).
+      if (Boolean(isAvailable) !== (item.isAvailable !== false)) item.stockOffBy = undefined;
+      item.isAvailable = Boolean(isAvailable);
+    }
     if (visibleOnPosWhenOff !== undefined) item.visibleOnPosWhenOff = Boolean(visibleOnPosWhenOff);
     if (visibleOnWebsiteWhenOff !== undefined) item.visibleOnWebsiteWhenOff = Boolean(visibleOnWebsiteWhenOff);
     if (schedule !== undefined) item.schedule = schedule;
@@ -1215,6 +1219,8 @@ const toggleDishAvailability = async (req, res, next) => {
     }
 
     item.isAvailable = !item.isAvailable;
+    // Switched by hand: it no longer waits for stock (services/stockProducts).
+    item.stockOffBy = undefined;
     // D6: sold out goes live at once (tills, QR, website, Knot Eats), no Publish needed.
     for (const path of ["systemSnapshot", "websiteSnapshot"]) {
       const copy = menu[path]?.items?.id?.(itemId);

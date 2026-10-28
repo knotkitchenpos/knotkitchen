@@ -186,42 +186,60 @@ const depleteOrder = async (order) => {
     // could differ has the item's own unit, so nothing changes for it.
     const quantity = convertQty(t.quantity, t.unit || unit, unit);
     if (!quantity) continue;
-    // Subtracted and rounded in one atomic update: a plain $inc left 1 kg
-    // less 30 g twice as 0.9099999999999999, and that drift can tip the
-    // "at or below the minimum" check either way.
-    const ing = await Ingredient.findOneAndUpdate(
+    // Subtracted, rounded and floored at 0 in one atomic update. A plain $inc
+    // left 1 kg less 30 g twice as 0.9099999999999999 (drift that tips the
+    // minimum check), and sold past nothing into negative stock. The sale
+    // still stands (the POS warned before it was rung up); the shelf just
+    // cannot hold less than nothing. The old value says what really came off.
+    const prev = await Ingredient.findOneAndUpdate(
       { _id: t.ingredientId, restaurantId: order.restaurantId, isDeleted: { $ne: true } },
-      [{ $set: { stockQuantity: { $round: [{ $subtract: [{ $ifNull: ["$stockQuantity", 0] }, quantity] }, 3] } } }],
-      { new: true },
+      [{ $set: { stockQuantity: { $max: [0, { $round: [{ $subtract: [{ $ifNull: ["$stockQuantity", 0] }, quantity] }, 3] }] } } }],
+      { new: false },
     );
-    if (!ing) continue;
+    if (!prev) continue;
+    const had = Number(prev.stockQuantity) || 0;
+    const left = Math.max(0, round3(had - quantity));
+    const taken = round3(had - left);
+    const ing = { ...(prev.toObject ? prev.toObject() : prev), stockQuantity: left };
     const status = stockStatus(ing);
-    const before = stockStatus({ ...ing.toObject(), stockQuantity: ing.stockQuantity + quantity });
+    const before = stockStatus({ ...ing, stockQuantity: had });
     if (ing.isLowStock !== needsRestock(status)) {
       await Ingredient.updateOne({ _id: ing._id }, { $set: { isLowStock: needsRestock(status) } });
     }
     // Only the sale that crosses the line raises the alert, not every one after it.
     if (needsRestock(status) && status !== before) {
-      alerts.push({ ingredientId: String(ing._id), name: ing.name, status, stockQuantity: round3(ing.stockQuantity), unit: ing.unit, reorderLevel: ing.reorderLevel || 0 });
+      alerts.push({ ingredientId: String(ing._id), name: ing.name, status, stockQuantity: left, unit: ing.unit, reorderLevel: ing.reorderLevel || 0 });
     }
+    if (taken <= 0) continue;
+    const short = round3(quantity - taken);
     await StockMovement.create({
       restaurantId: order.restaurantId,
       outletId: order.outletId || undefined,
       ingredientId: ing._id,
       ingredientName: ing.name,
       type: "sale",
-      quantity: -quantity,
+      quantity: -taken,
       unit,
-      reason: t.itemName,
+      reason: short > 0 ? `${t.itemName} (short by ${short} ${UNITS[unit]?.label || unit})` : t.itemName,
       referenceId: String(order._id),
     });
   }
-  if (alerts.length) {
+  // The out-of-stock alert asks whether to turn off the products that use
+  // the item, so it says how many are still on sale.
+  for (const a of alerts.filter((x) => x.status === "out")) {
     try {
-      require("./socket").emitToRestaurant(String(order.restaurantId), "inventory:restock", { items: alerts });
+      a.productsOn = await require("./stockProducts").countOnSale(order.restaurantId, a.ingredientId);
     } catch {
-      /* no socket in this process: the POS still finds them on its next load */
+      a.productsOn = 0;
     }
+  }
+  try {
+    const { emitToRestaurant } = require("./socket");
+    if (alerts.length) emitToRestaurant(String(order.restaurantId), "inventory:restock", { items: alerts });
+    // Tills check what is left before ringing a dish up (the POS stock warning).
+    emitToRestaurant(String(order.restaurantId), "inventory:stock", {});
+  } catch {
+    /* no socket in this process: the POS still finds them on its next load */
   }
 };
 
