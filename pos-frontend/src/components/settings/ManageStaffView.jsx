@@ -70,7 +70,6 @@ const ManageStaffView = () => {
       <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
         <div>
           <h4 className="text-[15px] font-extrabold text-[#0F172A]">Add Staff Member</h4>
-          <p className="text-[12px] text-[#94A3B8]">Staff members sign in with the Store ID and their registered phone number.</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[13px]">

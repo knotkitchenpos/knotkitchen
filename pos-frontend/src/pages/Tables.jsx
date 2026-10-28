@@ -605,9 +605,6 @@ const Tables = () => {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mt-2">
           <div>
             <h1 className="font-display text-2xl font-extrabold text-[#0F172A]">Manage Tables</h1>
-            <p className="text-[#64748B] text-sm">
-              Organize tables by floor/area, customize IDs (e.g. GF-T1), set capacity & generate QR codes.
-            </p>
           </div>
 
           <div className="flex items-center gap-3">

@@ -82,11 +82,6 @@ const RulesChargesForm = ({ settings }) => {
       {/* §3 GST & Packing */}
       <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
         <h4 className="text-[15px] font-extrabold text-[#0F172A]">GST & Packing</h4>
-        <p className="text-[12px] text-[#94A3B8]">
-          GST is charged only when this store has a GST Number saved under Store
-          Properties <span className="font-bold">and</span> a rate above 0 here.
-          Leave the rate at 0 to charge no GST.
-        </p>
         <div className="grid grid-cols-2 gap-4 text-[13px]">
           <div>
             <label className="text-[11.5px] font-bold text-[#94A3B8]">GST rate (%)</label>
@@ -130,7 +125,6 @@ const RulesChargesForm = ({ settings }) => {
               placeholder="0 (none)"
               className="w-full h-[38px] px-3 mt-1 rounded-xl border border-[#E2E8F0] font-bold"
             />
-            <p className="mt-1 text-[11px] text-[#94A3B8]">Dine-in only, added on the bill after discount and tax. Shown as its own line; it can be removed when the table pays.</p>
           </div>
           <div>
             <label className="text-[11.5px] font-bold text-[#94A3B8]">Packing charge on website orders (₹)</label>
@@ -143,7 +137,6 @@ const RulesChargesForm = ({ settings }) => {
               placeholder="0 (none)"
               className="w-full h-[38px] px-3 mt-1 rounded-xl border border-[#E2E8F0] font-bold"
             />
-            <p className="mt-1 text-[11px] text-[#94A3B8]">Website orders only. Never added to till, table or QR bills.</p>
           </div>
         </div>
         {errors("gst")}
@@ -171,7 +164,6 @@ const RulesChargesForm = ({ settings }) => {
       {/* §2 Delivery Distance Slabs */}
       <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
         <h4 className="text-[15px] font-extrabold text-[#0F172A]">Delivery Distance Slabs</h4>
-        <p className="text-[12px] text-[#94A3B8]">Distance calculated server-side. Orders beyond max distance are rejected.</p>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-[13px] items-end">
           <div><label className="text-[11px] font-bold text-[#94A3B8]">Max Distance (km)</label><input type="number" min={0} value={maxDist} onChange={(e)=>setMaxDist(e.target.value)} className="w-full h-[36px] px-2 mt-1 rounded-xl border border-[#E2E8F0] font-bold"/></div>
           <div><label className="text-[11px] font-bold text-[#94A3B8]">Min km</label><input type="number" value={sMin} onChange={(e)=>setSMin(e.target.value)} placeholder="0" className="w-full h-[36px] px-2 mt-1 rounded-xl border border-[#E2E8F0] font-bold"/></div>
@@ -202,7 +194,6 @@ const RulesChargesForm = ({ settings }) => {
       {/* §6 Free Item */}
       <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
         <h4 className="text-[15px] font-extrabold text-[#0F172A]">Free Item Promotions</h4>
-        <p className="text-[12px] text-[#94A3B8]">Server-side only. Price forced to ₹0. Shown on receipt.</p>
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 text-[13px] items-end">
           <div><label className="text-[11px] font-bold text-[#94A3B8]">Item Name</label><input value={fName} onChange={(e)=>setFName(e.target.value)} placeholder="Free Gulab Jamun" className="w-full h-[36px] px-2 mt-1 rounded-xl border border-[#E2E8F0] font-bold"/></div>
           <div><label className="text-[11px] font-bold text-[#94A3B8]">Min Order ₹</label><input type="number" value={fMin} onChange={(e)=>setFMin(e.target.value)} placeholder="500" className="w-full h-[36px] px-2 mt-1 rounded-xl border border-[#E2E8F0] font-bold"/></div>
@@ -210,21 +201,6 @@ const RulesChargesForm = ({ settings }) => {
         </div>
         {errors("free")}
         {freeRules.length>0&&<div className="pt-2 border-t border-[#E2E8F0] space-y-2 text-[13px]">{freeRules.map((r,i)=><div key={i} className="flex justify-between p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]"><span className="font-bold">{r.itemName} (min ₹{r.minOrderAmount||0})</span><button onClick={()=>save("free",{freeItemConfig:freeRules.filter((_,j)=>j!==i)})} disabled={mut.isPending} className="text-[#DC2626] font-bold text-[12px]">Remove</button></div>)}</div>}
-      </div>
-
-      {/* §7 Promotion Priority */}
-      <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 text-[13px] text-[#334155] space-y-2">
-        <h4 className="text-[15px] font-extrabold text-[#0F172A]">Promotion Priority (Deterministic)</h4>
-        <ol className="list-decimal pl-5 space-y-1">
-          <li>Item prices + Variants + Add-ons + Modifiers</li>
-          <li>Free Item auto-injection (₹0)</li>
-          <li>Discount / Coupon (clamped so total ≥ 0)</li>
-          <li>Packing Charge</li>
-          <li>GST / Tax</li>
-          <li>Service charge (table bills only, on the bill after tax)</li>
-          <li>Delivery Fee (distance slabs / max distance)</li>
-          <li>Total = max(0, Subtotal − Discount + Packing + GST (only when prices exclude it) + Service charge + Delivery)</li>
-        </ol>
       </div>
     </div>
   );

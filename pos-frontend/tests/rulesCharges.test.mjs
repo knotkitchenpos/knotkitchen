@@ -61,12 +61,9 @@ test("Manage Website's full save never sends the Rules & Charges lists", () => {
   assert.doesNotMatch(src("components/settings/RulesChargesView.jsx"), /\bversion\s*:/);
 });
 
-test("the Promotion Priority total matches services/price.computeTotals", () => {
-  // Service charge (table bills) is added after tax, and GST is added only when prices exclude it.
-  assert.match(
-    src("components/settings/RulesChargesView.jsx"),
-    /Total = max\(0, Subtotal − Discount \+ Packing \+ GST[^<]*\+ Service charge \+ Delivery\)/,
-  );
+test("the Promotion Priority card is gone; the order of charges lives in services/price.computeTotals", () => {
+  // Removed from the screen (owner, 2026-10-29). The server prices every bill.
+  assert.doesNotMatch(src("components/settings/RulesChargesView.jsx"), /Promotion Priority/);
 });
 
 test("REGRESSION V2: Auto-ready and Auto-complete name the refused minute instead of 'the highlighted fields'", () => {

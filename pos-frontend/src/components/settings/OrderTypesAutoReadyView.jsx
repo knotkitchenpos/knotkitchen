@@ -144,14 +144,12 @@ const OrderTypesAutoReadyView = () => {
       <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
         <div>
           <h4 className="text-[15px] font-extrabold text-[#0F172A]">Order Type Toggles</h4>
-          <p className="text-[12px] text-[#94A3B8]">If toggled OFF, order types are removed from POS & website and creation attempts are rejected server-side.</p>
         </div>
 
         <div className="space-y-3 text-[13px]">
           <div className="flex items-center justify-between p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
             <div>
               <p className="font-bold text-[#0F172A]">Collection Orders</p>
-              <p className="text-[11.5px] text-[#64748B]">Takeaway / Pickup orders</p>
             </div>
             <input
               type="checkbox"
@@ -164,7 +162,6 @@ const OrderTypesAutoReadyView = () => {
           <div className="flex items-center justify-between p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
             <div>
               <p className="font-bold text-[#0F172A]">Delivery Orders</p>
-              <p className="text-[11.5px] text-[#64748B]">Home delivery orders</p>
             </div>
             <input
               type="checkbox"
@@ -177,7 +174,6 @@ const OrderTypesAutoReadyView = () => {
           <div className="flex items-center justify-between p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]">
             <div>
               <p className="font-bold text-[#0F172A]">Table Orders</p>
-              <p className="text-[11.5px] text-[#64748B]">Dine-in table service</p>
             </div>
             <input
               type="checkbox"
@@ -205,7 +201,6 @@ const OrderTypesAutoReadyView = () => {
         <label className="flex items-center justify-between p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] text-[13px]">
           <span>
             <span className="block font-bold text-[#0F172A]">Mark orders Ready automatically</span>
-            <span className="block text-[11.5px] text-[#64748B]">Off: only the kitchen marks an order Ready. The minutes still time the prep alert for scheduled pickups.</span>
           </span>
           <input type="checkbox" checked={autoOn} onChange={(e) => setAutoOn(e.target.checked)} className="w-5 h-5 accent-[#FD5302]" />
         </label>

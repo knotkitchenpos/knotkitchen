@@ -445,9 +445,6 @@ const TimingsHolidaysView = () => {
                 </span>
               )}
             </div>
-            <p className="text-[12.5px] text-[#475569]">
-              Temporarily close takeaway and online ordering for the entire current business day (including overnight shift). Regular schedule will automatically resume tomorrow without altering any configured hours.
-            </p>
             {settings.closedForToday?.enabled && (
               <p className="text-[12px] font-bold text-[#DC2626] pt-1">
                 🚫 Ordering is currently blocked for today ({settings.closedForToday?.date}). Will automatically re-open on tomorrow's scheduled time.
@@ -480,7 +477,6 @@ const TimingsHolidaysView = () => {
       <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
         <div>
           <h4 className="text-[15px] font-extrabold text-[#0F172A]">Holidays Calendar</h4>
-          <p className="text-[12px] text-[#94A3B8]">During a holiday, website displays "Store is Closed" and online ordering is blocked server-side.</p>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-[13px]">
