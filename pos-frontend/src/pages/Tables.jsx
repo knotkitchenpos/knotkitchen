@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import TableCard from "../components/tables/TableCard";
@@ -39,6 +39,7 @@ import { setOrderType } from "../redux/slices/orderTypeSlice";
 import { updateTable as updateTableAction, setSessionId } from "../redux/slices/customerSlice";
 import { readStoreScoped, writeStoreScoped } from "../utils/storeSession";
 import { localDay } from "../utils";
+import { nextTableName } from "../utils/tableNames";
 
 const IconQr = ({ size = 13 }) => (
   <svg
@@ -89,6 +90,9 @@ const Tables = () => {
 
   // Modals
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  // Tables created since the Add Table form opened (it stays open between them).
+  const [addedNames, setAddedNames] = useState([]);
+  const tableNameRef = useRef(null);
   const [editingTable, setEditingTable] = useState(null);
   const [qrModalTable, setQrModalTable] = useState(null);
   const [settleTarget, setSettleTarget] = useState(null);
@@ -394,13 +398,20 @@ const Tables = () => {
     releaseMut.mutate(tableId);
   };
 
+  // Create Table keeps the form open with the same area, capacity and switch,
+  // and offers the next name selected (T1 -> T2), so a floor is set up in a
+  // row of quick adds. The tables made so far are listed in the form.
   const addTableMutation = useMutation({
     mutationFn: addTable,
-    onSuccess: (res) => {
+    onSuccess: (res, vars) => {
       enqueueSnackbar(res?.data?.message || "Table added successfully!", { variant: "success" });
       queryClient.invalidateQueries({ queryKey: ["tables"] });
-      setIsAddModalOpen(false);
-      resetForm();
+      setAddedNames((list) => [...list, vars.displayId]);
+      setDisplayId(nextTableName(vars.displayId));
+      setTimeout(() => {
+        tableNameRef.current?.focus();
+        tableNameRef.current?.select();
+      }, 0);
     },
     onError: (error) => {
       enqueueSnackbar(error.response?.data?.message || "Failed to add table.", { variant: "error" });
@@ -436,6 +447,7 @@ const Tables = () => {
     setArea(allAreas[0] || "Ground Floor");
     setCapacity(4);
     setIsEnabled(true);
+    setAddedNames([]);
   };
 
   const handleAddSubmit = (e) => {
@@ -910,6 +922,7 @@ const Tables = () => {
                   Display Table ID / Name (e.g. GF-T1, VIP-01, Garden-3)
                 </label>
                 <input
+                  ref={tableNameRef}
                   type="text"
                   value={displayId}
                   onChange={(e) => setDisplayId(e.target.value)}
@@ -917,6 +930,9 @@ const Tables = () => {
                   className="w-full h-11 px-3 rounded-xl border border-[#E2E8F0] font-bold text-sm text-[#0F172A] focus:outline-none focus:border-[#FD5302]"
                   required
                 />
+                {!editingTable && addedNames.length > 0 && (
+                  <p className="mt-1.5 text-[12px] font-bold text-[#15803D]">Added: {addedNames.join(", ")}</p>
+                )}
               </div>
 
               <div>
@@ -968,7 +984,7 @@ const Tables = () => {
                   }}
                   className="px-4 py-2.5 rounded-xl border border-[#E2E8F0] font-bold text-[#475569]"
                 >
-                  Cancel
+                  {!editingTable && addedNames.length > 0 ? "Done" : "Cancel"}
                 </button>
                 <button
                   type="submit"
