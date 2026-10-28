@@ -130,7 +130,8 @@ const DietMark = ({ veg }) => (
  *
  * Design contract enforced by this file — do not casually break these:
  *   - No "Products" H1 header (§1)
- *   - Top toolbar shows ONLY: Search, Add Category, Add Product, view toggle (§1)
+ *   - Top toolbar shows ONLY: Search, view toggle (§1). Add Category and Add
+ *     Product are tiles at the end of the category row (owner, 2026-10-28).
  *   - Category chips do NOT expose a delete button (§1). Menu editing lives
  *     under Settings → Manage Menu.
  *   - Product cards show ONLY veg-mark, image, name, price (§3). No plus
@@ -565,13 +566,12 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
       {/*
         §1: Top toolbar only. NO "Products" heading. Only:
           - Search
-          - Add Category
-          - Add Product
           - Grid / List toggle
+        Add Category and Add Product are tiles at the end of the category row.
       */}
       <div className="px-3 sm:px-5 pt-3 sm:pt-4 pb-3 shrink-0 flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-2.5">
-        {/* Phones: search takes its own row, the buttons wrap below it. */}
-        <div className="relative basis-full sm:basis-auto flex-1 sm:max-w-[440px]">
+        {/* Search and the view toggle share the row on every screen. */}
+        <div className="relative min-w-0 flex-1 sm:max-w-[440px]">
           <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#94A3B8]">
             <IconSearch />
           </span>
@@ -590,20 +590,6 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
             </button>
           )}
         </div>
-
-        <button
-          onClick={onAddCategory}
-          className="h-[40px] px-3.5 rounded-xl border border-[#FD5302] text-[#C2410C] bg-white text-[13px] font-bold flex items-center gap-1.5 hover:bg-[#FFF1E8] transition-colors"
-        >
-          <IconPlus size={14} /> <span className="sm:hidden">Category</span><span className="hidden sm:inline">Add Category</span>
-        </button>
-
-        <button
-          onClick={onAddProduct}
-          className="h-[40px] px-3.5 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold flex items-center gap-1.5 hover:bg-[#D64502] transition-colors"
-        >
-          <IconPlus size={14} /> <span className="sm:hidden">Product</span><span className="hidden sm:inline">Add Product</span>
-        </button>
 
         <div className="ml-auto flex items-center rounded-xl border border-[#E2E8F0] overflow-hidden h-[40px]">
           <button
@@ -630,8 +616,8 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
       {/*
         §1: Category chips.
         - NO delete "×" button.
-        - Add-Category tile at the end remains so the operator has a fast
-          in-context add.
+        - Add Category and Add Product tiles at the end, so the operator has a
+          fast in-context add.
       */}
       {!searching && (
         <div className="px-3 sm:px-5 pb-3 shrink-0">
@@ -661,6 +647,13 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
               className="shrink-0 h-[38px] px-3.5 rounded-lg border border-dashed border-[#CBD5E1] bg-[#F8FAFC] text-[#475569] text-[12.5px] font-bold flex items-center gap-1 hover:border-[#FD5302] hover:text-[#C2410C] transition-colors"
             >
               <IconPlus size={13} /> Add Category
+            </button>
+
+            <button
+              onClick={onAddProduct}
+              className="shrink-0 h-[38px] px-3.5 rounded-lg border border-dashed border-[#CBD5E1] bg-[#F8FAFC] text-[#475569] text-[12.5px] font-bold flex items-center gap-1 hover:border-[#FD5302] hover:text-[#C2410C] transition-colors"
+            >
+              <IconPlus size={13} /> Add Product
             </button>
           </div>
 
