@@ -8,7 +8,7 @@ const crypto = require("crypto");
 const config = require("../config/config");
 const sessionCookies = require("../services/sessionCookies");
 const { provisionWebsiteForStore } = require("../services/websiteProvisioningService");
-const { NEW_STORE_ORDER_TYPES } = require("../services/newStoreDefaults");
+const { NEW_STORE_ORDER_TYPES, NEW_STORE_POS_SETTINGS } = require("../services/newStoreDefaults");
 
 const provisionWebsiteSafely = async (params) => {
   try {
@@ -487,6 +487,7 @@ const setupStorePassword = async (req, res, next) => {
         isApproved: true,
         subscriptionStatus: "ACTIVE",
         orderTypeToggles: { ...NEW_STORE_ORDER_TYPES },
+        posSettings: { ...NEW_STORE_POS_SETTINGS },
       });
       store.restaurantId = restaurant._id;
       store.status = "active";

@@ -3,7 +3,7 @@ const Store = require("../models/storeModel");
 const Restaurant = require("../models/restaurantModel");
 const { generateUniqueStoreId } = require("../services/storeIdGenerator");
 const { provisionWebsiteForStore } = require("../services/websiteProvisioningService");
-const { NEW_STORE_ORDER_TYPES } = require("../services/newStoreDefaults");
+const { NEW_STORE_ORDER_TYPES, NEW_STORE_POS_SETTINGS } = require("../services/newStoreDefaults");
 const { normalizePhone } = require("../services/otpService");
 const { csdAudit } = require("../services/csdAuditService");
 const { isValidGstin } = require("../services/gst");
@@ -142,6 +142,7 @@ const createStore = async (req, res, next) => {
       timezone: "Asia/Kolkata",
       isActive: true,
       orderTypeToggles: { ...NEW_STORE_ORDER_TYPES },
+      posSettings: { ...NEW_STORE_POS_SETTINGS },
     });
 
     let store;

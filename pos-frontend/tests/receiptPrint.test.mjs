@@ -740,9 +740,8 @@ return claim;`)(localStorage);
   assert.equal(claim("paid:o1"), true, "settle, after Accept claimed the order");
   assert.equal(claim("paid:o1"), false, "never twice");
 
-  // The setting's note must not promise an e-bill: that needs Auto E-Bill on too.
+  // The setting carries no note now (owner, 2026-10-29); none may promise an e-bill either.
   const screen = SRC("src/components/settings/DeviceConfiguration.jsx");
-  assert.match(screen, /gets no paper copy \(only the e-bill, if Auto E-Bill is on\)/);
   assert.doesNotMatch(screen, /gets the e-bill instead/);
 });
 

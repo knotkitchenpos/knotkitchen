@@ -116,11 +116,9 @@ const btnGhost =
 /**
  * One printer this device prints to: the receipt printer or the kitchen
  * printer. `device` is that slot's record; `patchDevice` saves a change to it
- * at once. `allowDialog` offers a plain browser's print dialog, which only
- * the receipt printer may use: both slots would land on the same printer.
- * `onUnsavedLan(true)` while a typed LAN address has not answered yet.
+ * at once. `onUnsavedLan(true)` while a typed LAN address has not answered yet.
  */
-const PrinterSlot = ({ title, subtitle, emptyLabel = "Not set up", device, patchDevice, onTest, onClear, onUnsavedLan, allowDialog = true, systemPrinters, btOn }) => {
+const PrinterSlot = ({ title, subtitle, emptyLabel = "Not set up", device, patchDevice, onTest, onClear, onUnsavedLan, systemPrinters, btOn }) => {
   const [tab, setTab] = useState(device.type === "bluetooth" || device.type === "lan" ? device.type : "usb");
   const [connecting, setConnecting] = useState(false);
   // App only: printers to pick from when more than one is found.
@@ -269,17 +267,13 @@ const PrinterSlot = ({ title, subtitle, emptyLabel = "Not set up", device, patch
 
       {tab === "usb" && (
         <div className="mt-4 space-y-3 text-[13px]">
-          <p className="text-[#64748B]">
-            Connect the printer to this device with its USB cable, then press <strong>Find USB printer</strong> and pick it from the list.
-          </p>
           {supports.usb() ? (
             <button type="button" className={btnPrimary} disabled={connecting} onClick={() => connect("usb")}>
               {connecting ? "Connecting…" : isThis("usb") ? "Choose a different USB printer" : "Find USB printer"}
             </button>
           ) : (
             <p className="text-[12.5px] text-[#B45309] bg-[#FFFBEB] border border-[#FDE68A] rounded-xl p-3">
-              This browser cannot reach USB printers directly. Open the POS in Chrome or Edge
-              {allowDialog ? <>, or use the computer&apos;s printer driver below.</> : "."}
+              This browser cannot reach USB printers directly. Open the POS in Chrome or Edge.
             </p>
           )}
           <PrinterChoices choices={choices} kind="usb" onPick={pickPrinter} />
@@ -310,23 +304,6 @@ const PrinterSlot = ({ title, subtitle, emptyLabel = "Not set up", device, patch
                 </option>
               ))}
             </select>
-          </div>
-          )}
-          {allowDialog && !nativePrinting && !desktopPrinting() && (
-          <div className="rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] p-3">
-            <p className="font-bold text-[#0F172A]">Printer installed on a Windows computer?</p>
-            <p className="text-[12px] text-[#64748B] mt-0.5">
-              Windows keeps USB printers for its own driver. Install the KnotKitchen POS Windows app to print through
-              that driver silently. In a browser, make the receipt printer the default printer; receipts then open the
-              print dialog (Chrome with <code>--kiosk-printing</code> skips it).
-            </p>
-            <button
-              type="button"
-              className={`${btnGhost} mt-2`}
-              onClick={() => patchDevice({ type: "system", name: "Computer's printer driver" })}
-            >
-              {isThis("system") ? "Using the computer's printer driver" : "Use the computer's printer driver"}
-            </button>
           </div>
           )}
         </div>
@@ -415,11 +392,10 @@ const PrinterSlot = ({ title, subtitle, emptyLabel = "Not set up", device, patch
         </div>
       )}
 
+      {/* A LAN printer always uses 80 mm paper: there is nothing to choose. */}
+      {tab !== "lan" && device.type !== "lan" && (
       <div className="mt-5 pt-4 border-t border-[#E2E8F0]">
         <p className="text-[13px] font-bold text-[#0F172A]">Paper size</p>
-        {tab === "lan" || device.type === "lan" ? (
-          <p className="mt-1 text-[12.5px] text-[#64748B]">80 mm (3 inch). A LAN printer always uses 80 mm paper.</p>
-        ) : (
           <div className="mt-2 grid grid-cols-2 gap-2 max-w-[360px]">
             {PAPERS.map((p) => (
               <button
@@ -437,8 +413,8 @@ const PrinterSlot = ({ title, subtitle, emptyLabel = "Not set up", device, patch
               </button>
             ))}
           </div>
-        )}
       </div>
+      )}
 
       <div className="mt-4 flex flex-wrap gap-2">
         <button type="button" className={btnGhost} onClick={onTest} disabled={!device.type}>
@@ -616,14 +592,12 @@ const DeviceConfiguration = () => {
         <PrinterSlot
           key={`kitchen-${device.kitchen?.type || "none"}`}
           title="Kitchen Printer (KOT)"
-          subtitle="Kitchen order tickets. Not set up: KOTs print on the receipt printer."
           emptyLabel="Uses receipt printer"
           device={device.kitchen || {}}
           patchDevice={patchKitchen}
           onUnsavedLan={(v) => setLanWaiting((w) => ({ ...w, kitchen: v }))}
           onTest={testKot}
           onClear={() => patchDevice({ kitchen: undefined })}
-          allowDialog={false}
           systemPrinters={systemPrinters}
           btOn={btOn}
         />
@@ -632,13 +606,11 @@ const DeviceConfiguration = () => {
         <Card title="Automation">
           <ToggleRow
             title="Auto Receipt Print"
-            note="Prints on the receipt printer. A table's bill prints when it is settled at the till; a guest who pays on their phone gets no paper copy (only the e-bill, if Auto E-Bill is on)."
             checked={Boolean(device.autoPrint)}
             onChange={(v) => patchDevice({ autoPrint: v })}
           />
           <ToggleRow
             title="Auto KOT Print"
-            note="Prints on the kitchen printer, or the receipt printer if none. Turn it on for one device per kitchen printer. Customer orders (table QR, website, Knot Eats) print when someone taps Accept."
             checked={Boolean(device.kotPrint)}
             onChange={(v) => patchDevice({ kotPrint: v })}
           />
@@ -653,7 +625,6 @@ const DeviceConfiguration = () => {
         <Card title="Receipt Customization">
           <div className="pb-3">
             <label htmlFor="receipt-advert" className="text-[13.5px] font-bold text-[#0F172A]">Advertisement</label>
-            <p className="text-[11.5px] text-[#94A3B8]">Printed at the bottom of the receipt.</p>
             <textarea
               id="receipt-advert"
               value={form.customMessage || ""}
@@ -666,7 +637,6 @@ const DeviceConfiguration = () => {
 
           <ToggleRow
             title="Website Link"
-            note="Print the restaurant's website address on the receipt."
             checked={Boolean(form.showWebsiteLink)}
             onChange={(v) => patch({ showWebsiteLink: v })}
           >
@@ -683,7 +653,6 @@ const DeviceConfiguration = () => {
 
           <ToggleRow
             title="Website QR Code"
-            note="Print your website QR code at the bottom, with the website link under it."
             checked={Boolean(form.showQrCode)}
             onChange={(v) => {
               if (v && !form.qrCodeImage) fileRef.current?.click();

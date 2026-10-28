@@ -6,8 +6,11 @@
  *   Order Type Toggles   Collection on; Delivery and Table orders off until
  *                        the owner turns them on (Settings → Order Toggles).
  *   Auto-Ready           "Mark orders Ready automatically" on.
+ *   Auto E-Bill          on: the diner gets the bill on WhatsApp/SMS
+ *                        (Settings → Device Configuration).
  */
 const NEW_STORE_ORDER_TYPES = Object.freeze({ collection: true, delivery: false, table: false });
 const NEW_STORE_AUTO_READY = true;
+const NEW_STORE_POS_SETTINGS = Object.freeze({ autoEBill: true });
 
-module.exports = { NEW_STORE_ORDER_TYPES, NEW_STORE_AUTO_READY };
+module.exports = { NEW_STORE_ORDER_TYPES, NEW_STORE_AUTO_READY, NEW_STORE_POS_SETTINGS };

@@ -165,7 +165,8 @@ test("Device Configuration: IP in, auto-connect, kept only once a printer answer
   assert.match(slot, /`Connected · \$\{lanHost\}`/);
   assert.match(slot, /`Not reachable · \$\{lanHost\}`/);
   // No paper choice for a LAN printer.
-  assert.match(slot, /\{tab === "lan" \|\| device\.type === "lan" \? \(\s*<p[^>]*>80 mm \(3 inch\)\. A LAN printer always uses 80 mm paper\.<\/p>\s*\) : \(/);
+  // No paper choice for a LAN printer: the section is not shown at all.
+  assert.match(slot, /\{tab !== "lan" && device\.type !== "lan" && \(\s*<div[^>]*>\s*<p[^>]*>Paper size<\/p>/);
   // Save waits for the printer to answer.
   assert.match(ui, /disabled=\{saveMutation\.isPending \|\| lanWaiting\.receipt \|\| lanWaiting\.kitchen\}/);
   // A browser, or an app from before LAN printing, is told what to do.

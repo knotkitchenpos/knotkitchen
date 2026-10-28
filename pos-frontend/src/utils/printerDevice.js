@@ -180,7 +180,7 @@ const openUsb = async (device) => {
   } catch {
     throw new Error(
       "The computer's printer driver is using this USB printer, so the browser cannot reach it. " +
-        "Choose \"Use the computer's printer driver\" instead.",
+        "Install the KnotKitchen POS Windows app to print through that driver.",
     );
   }
   const endpoint = alt.endpoints.find((e) => e.direction === "out" && e.type === "bulk").endpointNumber;
