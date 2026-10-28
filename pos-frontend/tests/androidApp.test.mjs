@@ -95,7 +95,24 @@ test("REGRESSION: a paired printer switched off and on reconnects without asking
   const secure = open.indexOf("createRfcommSocketToServiceRecord(SPP)");
   assert.ok(insecure > 0 && secure > insecure, "unauthenticated first; the authenticated channel only as the last resort");
   assert.match(open, /insecureChannelOne\(device\)/, "channel 1 fallback for a printer that has just been switched on");
-  assert.match(open, /Thread\.sleep\(SPP_RETRY_PAUSE_MS\)/, "and a second round after a pause");
+  assert.match(open, /Thread\.sleep\(SPP_RETRY_PAUSE_MS \* round\)/, "and more rounds after a growing pause");
+});
+
+test("REGRESSION: a printer that has printed unauthenticated is never offered the pairing channel", () => {
+  // It reached the secure channel -- and Android's pairing dialog -- whenever
+  // it was still booting after power-on and missed the quick rounds.
+  const java = JAVA("ThermalPrinterPlugin.java");
+  const open = java.slice(java.indexOf("private BluetoothSocket openSpp("), java.indexOf("private static BluetoothSocket insecureChannelOne("));
+  const remember = open.indexOf("putBoolean(INSECURE_OK + address, true)");
+  const bail = open.indexOf("if (knownInsecure) {");
+  const secure = open.indexOf("createRfcommSocketToServiceRecord(SPP)");
+  assert.ok(remember > 0, "a successful unauthenticated connect is remembered for that printer");
+  assert.ok(remember < open.indexOf("return socket;"), "remembered on success, before the socket is handed back");
+  assert.ok(bail > remember && secure > bail, "a known printer gives up before the secure channel");
+  assert.match(open, /int rounds = knownInsecure \? SPP_ROUNDS_KNOWN : SPP_ROUNDS;/, "and waits longer instead");
+  assert.match(java, /SPP_ROUNDS_KNOWN = 4;/);
+  assert.match(java, /getSharedPreferences\(PRINTER_PREFS, Context\.MODE_PRIVATE\)/, "kept on this device across app restarts");
+  assert.match(java, /^import android\.content\.SharedPreferences;$/m);
 });
 
 test("REGRESSION: a printer that forgot its pairing and asks for the PIN is answered without Android's dialog", () => {

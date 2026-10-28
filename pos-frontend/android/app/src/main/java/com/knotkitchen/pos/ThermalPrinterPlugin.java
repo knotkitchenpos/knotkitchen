@@ -16,6 +16,7 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.hardware.usb.UsbConstants;
 import android.hardware.usb.UsbDevice;
@@ -84,8 +85,15 @@ public class ThermalPrinterPlugin extends Plugin {
     // Calibration knobs: printers differ in how fast they drain their buffer.
     private static final int BT_CHUNK = 1024;
     private static final int USB_CHUNK = 16384;
-    // A printer just switched on takes a moment before it answers.
+    // A printer just switched on takes a moment before it answers: rounds of
+    // connects, the pause growing 1.5 s, 3 s, 4.5 s... between them.
     private static final long SPP_RETRY_PAUSE_MS = 1500;
+    private static final int SPP_ROUNDS = 2;
+    // A printer known to work unauthenticated is never offered the secure
+    // channel (the pairing dialog), so it waits longer for the printer instead.
+    private static final int SPP_ROUNDS_KNOWN = 4;
+    private static final String PRINTER_PREFS = "kk.thermalPrinter";
+    private static final String INSECURE_OK = "insecureOk:";
     // A GATT connect right after the last job's close, or to a printer that has
     // just woken, often drops at once (status 133/8/19/22/62). Calibration knobs.
     private static final int BLE_ATTEMPTS = 3;
@@ -315,23 +323,37 @@ public class ThermalPrinterPlugin extends Plugin {
      * The authenticated channel is kept as the last resort for the few
      * printers that refuse anything else -- the only step that can bring the
      * pairing dialog back, and only when the printer really needs it.
+     *
+     * A printer that has ever printed unauthenticated never needs it, so it
+     * never gets it: it used to, whenever it was still booting after being
+     * switched on and missed the quick rounds, and that is what brought the
+     * pairing dialog back on phones and tablets. It gets more rounds instead,
+     * spread over the few seconds a printer takes to come up, and then a
+     * plain "not answering". Remembered per printer, on this device.
      */
     @SuppressLint("MissingPermission")
     private BluetoothSocket openSpp(BluetoothDevice device) throws IOException, InterruptedException {
+        String address = device.getAddress();
+        boolean knownInsecure = printerPrefs().getBoolean(INSECURE_OK + address, false);
+        int rounds = knownInsecure ? SPP_ROUNDS_KNOWN : SPP_ROUNDS;
         IOException last = null;
-        for (int round = 0; round < 2; round++) {
-            if (round > 0) Thread.sleep(SPP_RETRY_PAUSE_MS);
+        for (int round = 0; round < rounds; round++) {
+            if (round > 0) Thread.sleep(SPP_RETRY_PAUSE_MS * round);
             for (int way = 0; way < 2; way++) {
                 BluetoothSocket socket = null;
                 try {
                     socket = way == 0 ? device.createInsecureRfcommSocketToServiceRecord(SPP) : insecureChannelOne(device);
                     socket.connect();
+                    if (!knownInsecure) printerPrefs().edit().putBoolean(INSECURE_OK + address, true).apply();
                     return socket;
                 } catch (IOException e) {
                     closeQuietly(socket);
                     last = e;
                 }
             }
+        }
+        if (knownInsecure) {
+            throw new IOException("the printer is not answering yet; switch it on, wait a few seconds and print again", last);
         }
         BluetoothSocket secure = device.createRfcommSocketToServiceRecord(SPP);
         try {
@@ -507,6 +529,11 @@ public class ThermalPrinterPlugin extends Plugin {
     private BluetoothAdapter adapter() {
         BluetoothManager manager = (BluetoothManager) getContext().getSystemService(Context.BLUETOOTH_SERVICE);
         return manager != null ? manager.getAdapter() : null;
+    }
+
+    /** What this device has learnt about its printers (see openSpp). */
+    private SharedPreferences printerPrefs() {
+        return getContext().getSharedPreferences(PRINTER_PREFS, Context.MODE_PRIVATE);
     }
 
     private static void closeQuietly(BluetoothSocket socket) {
