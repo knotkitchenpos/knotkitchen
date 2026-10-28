@@ -655,10 +655,8 @@ const Reports = () => {
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div>
             <h1 className="text-[22px] sm:text-[28px] font-extrabold text-[#0F172A] tracking-tight">Reports</h1>
-            <p className="text-[13.5px] text-[#94A3B8] mt-1">
-              {restaurantName}
-              {restaurantAddress ? ` · ${restaurantAddress}` : ""}
-            </p>
+            {/* The restaurant's name only; the printed report keeps the address. */}
+            <p className="text-[13.5px] text-[#94A3B8] mt-1">{restaurantName}</p>
           </div>
           <div className="flex items-center gap-2">
             <button

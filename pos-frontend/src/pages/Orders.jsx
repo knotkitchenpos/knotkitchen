@@ -221,7 +221,6 @@ const Orders = () => {
     refetchOnWindowFocus: true,
   });
   const orders = data?.data?.data || [];
-  const responseWindow = data?.data?.window;
 
   const readyMutation = useMutation({
     mutationFn: (orderId) => markOrderReady(orderId),
@@ -396,21 +395,6 @@ const Orders = () => {
     return o.customerDetails?.name || "Walk-in Customer";
   };
 
-  // Human-friendly window label under the search bar so the biller can
-  // see AT A GLANCE which day/range they're looking at. Server's window
-  // (returned in `responseWindow`) is authoritative — we use it rather
-  // than re-derive locally so timezone edge cases (midnight rollover
-  // while the page is open) stay consistent with what actually matched.
-  const windowLabel = useMemo(() => {
-    if (!responseWindow) return "";
-    const fromDay = new Date(responseWindow.from);
-    const toDay = new Date(responseWindow.to);
-    const fmt = dateGB;
-    if (responseWindow.source === "today") return `Today · ${fmt(fromDay)}`;
-    if (responseWindow.source === "single") return fmt(fromDay);
-    return `${fmt(fromDay)} → ${fmt(toDay)}`;
-  }, [responseWindow]);
-
   return (
     <div className="flex h-full w-full overflow-hidden">
       {/* ===== Center: Orders list ===== */}
@@ -493,11 +477,6 @@ const Orders = () => {
                 className="h-[32px] px-2 rounded-lg border border-[#E2E8F0] text-[12.5px] font-semibold text-[#334155] focus:border-[#FD5302]"
               />
             </>
-          )}
-          {windowLabel && (
-            <span className="text-[11.5px] font-semibold text-[#64748B] ml-auto">
-              Showing: <span className="text-[#334155]">{windowLabel}</span>
-            </span>
           )}
         </div>
 
