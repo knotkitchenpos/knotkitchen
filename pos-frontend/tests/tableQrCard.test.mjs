@@ -21,7 +21,10 @@ test("REGRESSION: the QR is drawn from its outline at whole pixels per module, n
   assert.match(card, /g\.fill\(new Path2D\(qr\.d\)\);/);
   assert.doesNotMatch(card, /drawImage\(qr/);
   const modal = SRC("src/components/tables/PrintTableQRModal.jsx");
-  assert.match(modal, /<QRCodeSVG ref=\{qrRef\} value=\{qrUrl\} level="H" marginSize=\{4\}/);
+  // A one-module quiet zone, and the code fills the frame (owner, 2026-10-29).
+  assert.match(modal, /<QRCodeSVG ref=\{qrRef\} value=\{qrUrl\} level="H" marginSize=\{1\}/);
+  assert.match(card, /drawQr\(g, qr, cx, top \+ 20, box - 40\);/);
+  assert.doesNotMatch(card, /g\.fillRect\(cx - box \/ 2 \+ 30, top \+ 30, box - 60, box - 60\);/);
   assert.match(modal, /qr: qrUrl \? qrFromSvg\(qrRef\.current\) : null,/);
   // One image for preview, download and print.
   assert.match(modal, /<img src=\{card\}/);

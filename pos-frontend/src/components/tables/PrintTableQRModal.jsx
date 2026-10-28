@@ -216,7 +216,7 @@ const PrintTableQRModal = ({ isOpen, onClose, table }) => {
             </div>
           )}
           {/* The QR's outline, off screen: the card draws it from this at print size. */}
-          {qrUrl ? <QRCodeSVG ref={qrRef} value={qrUrl} level="H" marginSize={4} style={{ display: "none" }} /> : null}
+          {qrUrl ? <QRCodeSVG ref={qrRef} value={qrUrl} level="H" marginSize={1} style={{ display: "none" }} /> : null}
         </div>
 
         {/* Replace the code. Destructive to every printed copy, so it asks. */}

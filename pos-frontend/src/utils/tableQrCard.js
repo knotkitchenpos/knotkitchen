@@ -159,7 +159,11 @@ export const qrFromSvg = (svg) => {
   return size > 0 && d ? { size, d } : null;
 };
 
-/** The QR in `room` px, at the largest whole number of pixels per module. */
+/**
+ * The QR in `room` px, at the largest whole number of pixels per module, on
+ * a white square exactly its own size: its one-module quiet zone is the only
+ * white around it (owner, 2026-10-29: no white border, the QR fills the frame).
+ */
 const drawQr = (g, qr, cx, top, room) => {
   const k = Math.max(1, Math.floor(room / qr.size));
   const side = k * qr.size;
@@ -168,6 +172,8 @@ const drawQr = (g, qr, cx, top, room) => {
   g.save();
   g.translate(x, y);
   g.scale(k, k);
+  g.fillStyle = "#FFFFFF";
+  g.fillRect(0, 0, qr.size, qr.size);
   g.fillStyle = "#000000";
   g.fill(new Path2D(qr.d));
   g.restore();
@@ -264,10 +270,9 @@ export const drawTableQrCard = ({ canvas, logo = null, restaurantName = "", tabl
   g.strokeRect(cx - box / 2, top, box, box);
   g.lineWidth = 1.5;
   g.strokeRect(cx - box / 2 + 16, top + 16, box - 32, box - 32);
-  g.fillStyle = "#FFFFFF";
-  g.fillRect(cx - box / 2 + 30, top + 30, box - 60, box - 60);
   if (qr) {
-    drawQr(g, qr, cx, top + 40, box - 80);
+    // The whole inside of the inner frame: no white box around the code.
+    drawQr(g, qr, cx, top + 20, box - 40);
   } else {
     g.fillStyle = SOFT_INK;
     g.font = font(36, { italic: true });
