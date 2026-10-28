@@ -19,6 +19,13 @@ name: knotkitchen
 networks:
   knot:
     driver: bridge
+  # The test environment's own network (deploy/systemtest/docker-compose.yml).
+  # Only Caddy joins it, to hand systemtest.<base> to the test copy's gateway;
+  # no production container can be reached from a test one. Created by
+  # deploy/bootstrap-volumes.sh.
+  systemtest:
+    external: true
+    name: knotkitchen_systemtest
 
 # -----------------------------------------------------------------------------
 # Volumes.
@@ -307,7 +314,8 @@ services:
       dockerfile: Dockerfile
     image: knotkitchen/caddy:latest
     restart: unless-stopped
-    networks: [knot]
+    # systemtest: hands systemtest.<base> to the test copy (see networks above).
+    networks: [knot, systemtest]
     ports:
       - "80:80"
       - "443:443"

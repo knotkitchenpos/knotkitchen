@@ -568,3 +568,45 @@ curl -s https://api.knotkitchen.com/api/eats/config | grep -o '"roadDistance":[a
 Add `https://eats.knotkitchen.com/healthz` to the uptime monitor (§11).
 Road distances and the daily cap usage show in CSD → Knot Eats ("Google road
 distances today").
+
+## 15. Test environment (systemtest.knotkitchen.com)
+
+Every change is deployed here first and checked before it reaches production.
+
+| Branch | Deploys to | Workflow |
+|---|---|---|
+| `systemtest` | the test copy: `business.systemtest.knotkitchen.com`, `csd.systemtest…`, `api.systemtest…`, `<slug>.systemtest…`, `bill./pay./order./eats.systemtest…` | `.github/workflows/deploy-systemtest.yml` |
+| `main` | production | `.github/workflows/deploy.yml` |
+
+Flow: push the change to `systemtest`, check it on the test site, and only
+when it is approved merge `systemtest` into `main`.
+
+**How it runs.** A second Compose project, `knotkitchen-test`, on the same VPS
+from its own checkout, `/srv/knot-test` (`deploy/systemtest/docker-compose.yml`).
+Each app extends its production service, so their settings cannot drift, but
+with its own image names (`knotkitchen-test/*`), its own MongoDB (`st-mongo`,
+a one-node replica set), its own volumes and its own network
+(`knotkitchen_systemtest`). The onboarding portal is not part of it.
+
+**Routing.** DNS: `systemtest` and `*.systemtest` point at the VPS. The
+production Caddy holds one fixed block for them (`deploy/Caddyfile`): it
+terminates TLS (one DNS-01 certificate) and hands every request to
+`st-gateway`, the test copy's own Caddy (`deploy/systemtest/Caddyfile`), which
+does all the routing and asks for the test password on every page (not on the
+API). A broken test config takes down the test site only.
+
+**Settings.** `/srv/knot-test/deploy/systemtest/.env`, on the VPS only. Fresh
+secrets of its own; from production only the Fast2SMS settings (the test copy
+sends real SMS/WhatsApp, so test with your own numbers). Cashfree runs in TEST
+mode: a store's sandbox keys go in its Store Properties. The logins (site
+password, support-desk admin) are in `/root/systemtest-access.txt`.
+
+**By hand on the VPS:**
+
+```bash
+cd /srv/knot-test
+C="docker compose -f deploy/systemtest/docker-compose.yml --env-file deploy/systemtest/.env"
+$C ps                     # what is running
+$C logs -f st-pos-api     # backend log
+$C down                   # stop the test copy (its data stays in its volumes)
+```

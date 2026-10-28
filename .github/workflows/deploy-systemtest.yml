@@ -1,0 +1,84 @@
+# =============================================================================
+# Knot Kitchen — Test environment deploy (systemtest.knotkitchen.com)
+# =============================================================================
+# Every change goes here first. Triggered by a push to the `systemtest` branch
+# (or by hand); production still deploys only from `main` (deploy.yml).
+#
+# Runs on the same VPS as production, in its own checkout (/srv/knot-test) and
+# its own Compose project (knotkitchen-test): see
+# deploy/systemtest/docker-compose.yml. It never touches the production
+# checkout, containers, images or volumes.
+#
+# Secrets: the production deploy's DEPLOY_SSH_HOST / _USER / _KEY. The test
+# copy's own settings live only on the VPS, in
+# /srv/knot-test/deploy/systemtest/.env (see DEPLOYMENT.md, "Test environment").
+
+name: Deploy to test environment
+
+"on":
+  push:
+    branches: [systemtest]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-systemtest
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Rebuild + restart the test copy
+    runs-on: ubuntu-24.04
+    environment:
+      name: systemtest
+      url: https://business.systemtest.knotkitchen.com
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_SSH_HOST }}
+          username: ${{ secrets.DEPLOY_SSH_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script_stop: true
+          script: |
+            set -euo pipefail
+            cd /srv/knot-test
+
+            echo "==> Fetching latest systemtest"
+            git fetch --prune origin systemtest
+            # The test branch is rebuilt from main now and then, so it is
+            # followed exactly rather than fast-forwarded. Untracked files
+            # (deploy/systemtest/.env) are left alone.
+            git checkout -B systemtest origin/systemtest
+            git reset --hard origin/systemtest
+            echo "==> Deploying $(git rev-parse --short HEAD)"
+
+            bash deploy/bootstrap-volumes.sh
+
+            C="docker compose -f deploy/systemtest/docker-compose.yml --env-file deploy/systemtest/.env"
+            echo "==> Building + starting the test containers"
+            $C build --pull
+            $C up -d --remove-orphans
+            # The gateway reads its Caddyfile at start; a changed one needs a restart.
+            $C restart st-gateway
+
+            echo "==> Waiting for the test backend to become ready"
+            for i in $(seq 1 45); do
+              if $C exec -T st-pos-api wget -qO- http://127.0.0.1:8000/ready >/dev/null 2>&1; then
+                echo "Test backend ready after ${i} attempts."
+                exit 0
+              fi
+              sleep 2
+            done
+            echo "Test backend never became ready — check its logs."
+            $C logs --tail=200 st-pos-api
+            exit 1
+
+      - name: Smoke test
+        run: |
+          set -e
+          curl -fsS https://api.systemtest.knotkitchen.com/health > /dev/null && echo "api       OK"
+          # Pages ask for the test password: 401 means up and protected.
+          for h in business csd; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "https://$h.systemtest.knotkitchen.com/")
+            echo "$h: $code"; [ "$code" = "401" ]
+          done

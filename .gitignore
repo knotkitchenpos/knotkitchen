@@ -11,3 +11,6 @@ brag-output/
 # the tracked template), and the copies taken before editing them.
 /deploy/.env
 /deploy/.env.bak*
+
+# The test environment's settings and its copy of secrets, on the VPS only.
+/deploy/systemtest/.env

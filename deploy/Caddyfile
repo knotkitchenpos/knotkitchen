@@ -312,6 +312,29 @@ eats.{$BASE_DOMAIN} {
 }
 
 # =============================================================================
+# systemtest.knotkitchen.com and below — the test environment
+# =============================================================================
+# Every change is checked here before it reaches production. This block only
+# terminates TLS and hands the request to the test copy's own Caddy
+# (st-gateway, deploy/systemtest/Caddyfile), which does all of the test
+# routing and asks for the test password. It never changes with the test
+# copy, so nothing done to the test environment can stop this Caddy from
+# loading; with the test copy down these hosts answer 502 and nothing else is
+# affected. One DNS-01 certificate covers every store's test website.
+# See DEPLOYMENT.md, "Test environment".
+systemtest.{$BASE_DOMAIN}, *.systemtest.{$BASE_DOMAIN} {
+	import security_headers
+	tls {
+		dns cloudflare {env.CLOUDFLARE_API_TOKEN}
+	}
+	reverse_proxy st-gateway:80 {
+		header_up Host              {host}
+		header_up X-Forwarded-For   {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+}
+
+# =============================================================================
 # www.knotkitchen.com -> knotkitchen.com
 # =============================================================================
 # One canonical host for the landing site. Without this the wildcard below

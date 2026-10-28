@@ -1,0 +1,112 @@
+# =============================================================================
+# Test environment gateway (st-gateway): routes for systemtest.<base>
+# =============================================================================
+# The production Caddy terminates TLS for systemtest.knotkitchen.com and
+# *.systemtest.knotkitchen.com and hands every request here, over plain HTTP
+# on the test network (the one fixed block in deploy/Caddyfile). All of the
+# test copy's routing, and its password, live in THIS file, run by the test
+# copy's own Caddy: a mistake here takes down the test site, never the live
+# one. It mirrors the production routes, pointing at the st-* containers.
+#
+# Client IP and scheme: the production Caddy sets X-Forwarded-For to the
+# client and X-Forwarded-Proto to https; they are passed on as they came, so
+# the API (trust proxy = 1) still sees the real client and a secure request.
+#
+# Every page is behind a password (SYSTEMTEST_AUTH_USER / _HASH from
+# deploy/systemtest/.env). The API is not: the POS, CSD and websites call it
+# from the browser with their own session, and a browser never sends one
+# host's password to another -- a CORS preflight would be refused. Its data is
+# test data, and every write needs a login.
+# =============================================================================
+
+{
+	auto_https off
+	admin off
+}
+
+(proxy_headers) {
+	header_up X-Forwarded-For   {http.request.header.X-Forwarded-For}
+	header_up X-Real-IP         {http.request.header.X-Forwarded-For}
+	header_up X-Forwarded-Proto {http.request.header.X-Forwarded-Proto}
+	header_up X-Forwarded-Host  {host}
+}
+
+(page_headers) {
+	header {
+		X-Robots-Tag "noindex, nofollow"
+		-Server
+	}
+}
+
+(password) {
+	basic_auth {
+		{$SYSTEMTEST_AUTH_USER} {$SYSTEMTEST_AUTH_HASH}
+	}
+}
+
+http://api.systemtest.knotkitchen.com {
+	request_body {
+		max_size 12MB
+	}
+	reverse_proxy st-pos-api:8000 {
+		import proxy_headers
+	}
+}
+
+http://business.systemtest.knotkitchen.com {
+	import page_headers
+	import password
+	encode zstd gzip
+	reverse_proxy st-pos-web:80
+}
+
+http://csd.systemtest.knotkitchen.com {
+	import page_headers
+	import password
+	encode zstd gzip
+	reverse_proxy st-csd-web:80
+}
+
+http://bill.systemtest.knotkitchen.com {
+	import page_headers
+	import password
+	encode zstd gzip
+	@token path_regexp tok ^/([ois]_[0-9a-fA-F]{24}_[A-Za-z0-9_-]{22})$
+	rewrite @token /r/{re.tok.1}
+	reverse_proxy st-pos-api:8000 {
+		import proxy_headers
+	}
+}
+
+http://pay.systemtest.knotkitchen.com {
+	import page_headers
+	import password
+	encode zstd gzip
+	@pay path /c/*
+	handle @pay {
+		reverse_proxy st-pos-api:8000 {
+			import proxy_headers
+		}
+	}
+	handle {
+		redir https://systemtest.knotkitchen.com/ 302
+	}
+}
+
+http://order.systemtest.knotkitchen.com {
+	import page_headers
+	import password
+	encode zstd gzip
+	@qr path_regexp qtok ^/([0-9a-f]{64})$
+	redir @qr /t/{re.qtok.1} 302
+	reverse_proxy st-pos-web:80
+}
+
+# The root (no landing page in the test copy), Knot Eats, and every store's
+# test website (<slug>.systemtest…): the customer website app.
+http://systemtest.knotkitchen.com, http://*.systemtest.knotkitchen.com {
+	import page_headers
+	import password
+	encode zstd gzip
+	reverse_proxy st-customer-web:80
+}

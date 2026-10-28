@@ -12,9 +12,9 @@ name: CI
 
 "on":
   push:
-    branches: [main, master]
+    branches: [main, master, systemtest]
   pull_request:
-    branches: [main, master]
+    branches: [main, master, systemtest]
 
 # Cancel in-flight runs on the same ref so a rapid re-push doesn't queue.
 concurrency:

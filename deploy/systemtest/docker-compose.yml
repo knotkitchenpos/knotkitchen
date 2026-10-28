@@ -1,0 +1,111 @@
+# =============================================================================
+# Knot Kitchen — test environment (systemtest.<base>)
+# =============================================================================
+# A full second copy of the system on the same VPS, for checking every change
+# before it reaches production. Deployed from the `systemtest` branch by
+# .github/workflows/deploy-systemtest.yml into its own checkout (/srv/knot-test):
+#
+#   docker compose -p knotkitchen-test -f deploy/systemtest/docker-compose.yml \
+#     --env-file deploy/systemtest/.env up -d --build
+#
+# Each app EXTENDS its production service (../docker-compose.yml), so the two
+# can never drift apart in their environment variables. What differs:
+#
+#   * service names are st-*: the production Caddy reaches them by these names
+#     on the test network, where nothing answers to a production name
+#   * image names are knotkitchen-test/*: building here must never retag the
+#     production images
+#   * its own network (knotkitchen_systemtest), shared only with the
+#     production Caddy: a test container cannot reach a production one
+#   * its own MongoDB (st-mongo, a one-node replica set: table rounds use
+#     transactions), and its own volumes: nothing here touches live data
+#   * BASE_DOMAIN=systemtest.<base> in deploy/systemtest/.env, which makes every
+#     URL api.systemtest…, business.systemtest…, <slug>.systemtest…
+#
+# The onboarding portal is not part of the test copy.
+# Routing: the production Caddy terminates TLS for systemtest.<base> and its
+# subdomains and hands every request to st-gateway, the test copy's own Caddy
+# (deploy/systemtest/Caddyfile), which routes it and asks for the password.
+# =============================================================================
+
+name: knotkitchen-test
+
+networks:
+  systemtest:
+    external: true
+    name: knotkitchen_systemtest
+
+volumes:
+  st_mongo:
+  st_uploads:
+  st_csd_documents:
+
+services:
+  st-mongo:
+    image: mongo:7.0
+    restart: unless-stopped
+    networks: [systemtest]
+    command: ["mongod", "--replSet", "rs0", "--bind_ip_all"]
+    volumes:
+      - st_mongo:/data/db
+    # Becomes a one-node replica set the first time; healthy once it is primary.
+    healthcheck:
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - --eval
+        - "try { rs.status().ok } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'st-mongo:27017' }] }).ok }"
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 20s
+
+  st-gateway:
+    image: caddy:2.8.4-alpine
+    restart: unless-stopped
+    networks: [systemtest]
+    environment:
+      SYSTEMTEST_AUTH_USER: ${SYSTEMTEST_AUTH_USER:?set SYSTEMTEST_AUTH_USER in deploy/systemtest/.env}
+      SYSTEMTEST_AUTH_HASH: ${SYSTEMTEST_AUTH_HASH:?set SYSTEMTEST_AUTH_HASH in deploy/systemtest/.env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+    depends_on:
+      - st-pos-api
+      - st-pos-web
+      - st-csd-web
+      - st-customer-web
+
+  st-pos-api:
+    extends:
+      file: ../docker-compose.yml
+      service: pos-api
+    image: knotkitchen-test/pos-api:latest
+    networks: !override [systemtest]
+    volumes: !override
+      - st_uploads:/app/uploads
+      - st_csd_documents:/app/csd-documents
+    depends_on:
+      st-mongo:
+        condition: service_healthy
+
+  st-pos-web:
+    extends:
+      file: ../docker-compose.yml
+      service: pos-web
+    image: knotkitchen-test/pos-web:latest
+    networks: !override [systemtest]
+
+  st-csd-web:
+    extends:
+      file: ../docker-compose.yml
+      service: csd-web
+    image: knotkitchen-test/csd-web:latest
+    networks: !override [systemtest]
+
+  st-customer-web:
+    extends:
+      file: ../docker-compose.yml
+      service: customer-web
+    image: knotkitchen-test/customer-web:latest
+    networks: !override [systemtest]

@@ -43,3 +43,14 @@ if [[ "$created" -gt 0 ]]; then
   echo "existing data was expected in them — a rename or a project-name change"
   echo "would show up exactly like this."
 fi
+
+# The test environment's network, shared by the production Caddy and the test
+# copy (deploy/systemtest/docker-compose.yml). External in both, so whichever
+# comes up first finds it; creating it is idempotent like the volumes.
+NETWORK=knotkitchen_systemtest
+if docker network inspect "$NETWORK" >/dev/null 2>&1; then
+  echo "  ok       network $NETWORK (exists)"
+else
+  docker network create "$NETWORK" >/dev/null
+  echo "  CREATED  network $NETWORK"
+fi
