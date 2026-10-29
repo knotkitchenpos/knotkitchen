@@ -110,6 +110,11 @@ function QuickActions({ device, admin, onDone }) {
 function InfoTab({ d, admin, onSaved }) {
   const stores = useApi("/stores");
   const groups = useApi(d.storeId ? `/groups?storeId=${d.storeId._id}` : null);
+  // A policy for this tablet alone, on top of its store's and group's.
+  const canPolicy = can(admin, "policies.edit");
+  const policies = useApi(can(admin, "policies.view") ? "/policies" : null);
+  const devicePolicyId = policies.data?.items?.find((p) => p.assignments.some((a) => a.scope === "device" && String(a.targetId) === String(d._id)))?._id || "";
+  const [policyId, setPolicyId] = useState(null); // null: unchanged
   const [form, setForm] = useState({
     name: d.name, storeId: d.storeId?._id || "", groupId: d.groupId?._id || "", lifecycle: d.lifecycle, pilot: d.pilot,
     inventory: { assetTag: d.inventory?.assetTag || "", purchaseDate: d.inventory?.purchaseDate?.slice(0, 10) || "", warrantyUntil: d.inventory?.warrantyUntil?.slice(0, 10) || "", notes: d.inventory?.notes || "" },
@@ -118,7 +123,13 @@ function InfoTab({ d, admin, onSaved }) {
   const reauth = useReauth();
   const editable = can(admin, "devices.edit");
   const inv = (k) => (e) => setForm({ ...form, inventory: { ...form.inventory, [k]: e.target.value } });
-  const save = () => act.run(async () => { await api.patch(`/devices/${d._id}`, form); onSaved(); });
+  const save = () => act.run(async () => {
+    await api.patch(`/devices/${d._id}`, form);
+    if (canPolicy && policyId !== null && policyId !== devicePolicyId) {
+      await api.put("/policy-assignments", { scope: "device", targetId: d._id, policyId: policyId || null });
+    }
+    onSaved();
+  });
   const retire = async () => {
     const wipe = window.confirm("Retire this device. OK = also wipe it (Super Admin). Cancel = choose not to wipe.");
     if (!wipe && !window.confirm("Retire WITHOUT wiping? Its credentials are revoked and it stops reporting.")) return;
@@ -146,6 +157,14 @@ function InfoTab({ d, admin, onSaved }) {
             {d.lifecycle === "retired" && <option>retired</option>}
           </select>
         </Field>
+        {policies.data && (
+          <Field label="Policy (this tablet only)">
+            <select disabled={!canPolicy} value={policyId ?? devicePolicyId} onChange={(e) => setPolicyId(e.target.value)}>
+              <option value="">Inherit from store/company</option>
+              {policies.data.items.map((p) => <option key={p._id} value={p._id}>{p.name}</option>)}
+            </select>
+          </Field>
+        )}
         <Field label="Pilot device (gets rollouts first)"><select disabled={!editable} value={form.pilot ? "1" : ""} onChange={(e) => setForm({ ...form, pilot: Boolean(e.target.value) })}><option value="">No</option><option value="1">Yes</option></select></Field>
         <Field label="Asset tag"><input disabled={!editable} value={form.inventory.assetTag} onChange={inv("assetTag")} /></Field>
         <Field label="Purchase date"><input disabled={!editable} type="date" value={form.inventory.purchaseDate} onChange={inv("purchaseDate")} /></Field>
