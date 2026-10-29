@@ -25,6 +25,9 @@ router.get("/stores", requirePerm("devices.view"), wrap(async (req, res) => {
   const q = { archived: { $ne: true } };
   if (req.admin.role === "store_user") q._id = { $in: req.admin.storeIds };
   if (req.query.q) q.name = new RegExp(escapeRegex(req.query.q), "i");
+  // status=active: what CSD lists as active (stores added by hand, without a KK ID, count as active).
+  if (req.query.status === "active") q.$or = [{ kkStatus: "active" }, { kkStoreId: { $in: [null, ""] } }];
+  else if (req.query.status) q.kkStatus = String(req.query.status);
   const stores = await Store.find(q).sort({ name: 1 }).limit(1000).lean();
   const counts = await Device.aggregate([
     { $match: { lifecycle: { $ne: "retired" }, storeId: { $in: stores.map((s) => s._id) } } },

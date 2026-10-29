@@ -224,3 +224,43 @@ test("audit log is hash-chained and verifies", async () => {
   assert.strictEqual(v2.ok, false);
   assert.strictEqual(v2.brokenAtSeq, 2);
 });
+
+// Runs last: syncing hides every KKMDM store the source does not have.
+test("store sync mirrors CSD: restaurant names, statuses, deleted and removed stores hidden", async () => {
+  const srcUri = process.env.MONGODB_URI.replace("/kkmdm_test", "/kkmdm_test_source");
+  const src = await mongoose.createConnection(srcUri).asPromise();
+  await src.dropDatabase();
+  await src.collection("stores").insertMany([
+    { storeId: "711111", storeName: "Old name", status: "active" },
+    { storeId: "722222", storeName: "Onboarding", status: "pending" },
+    { storeId: "733333", storeName: "Gone", status: "deleted", isDeleted: true },
+    { storeId: "744444", storeName: "Left us", status: "closed" },
+  ]);
+  await src.collection("restaurants").insertOne({ storeId: "711111", name: "Name CSD shows" });
+  await Store.create({ companyId: (await Store.findOne()).companyId, name: "Removed from KK", kkStoreId: "755555" });
+  await Store.create({ companyId: (await Store.findOne()).companyId, name: "Added by hand" });
+
+  const { syncStores } = require("../src/lib/storeSync");
+  config.knotkitchenMongoUri = srcUri;
+  try {
+    const r = await syncStores();
+    assert.strictEqual(r.total, 4);
+    assert.strictEqual(r.active, 1);
+    const by = async (id) => Store.findOne({ kkStoreId: id }).lean();
+    assert.strictEqual((await by("711111")).name, "Name CSD shows");
+    assert.strictEqual((await by("722222")).kkStatus, "pending");
+    assert.strictEqual((await by("733333")).archived, true, "deleted in CSD");
+    assert.strictEqual((await by("744444")).archived, false, "closed stores stay listed, as in CSD");
+    assert.strictEqual((await by("755555")).archived, true, "no longer in KnotKitchen");
+    assert.strictEqual((await Store.findOne({ name: "Added by hand" }).lean()).archived, false);
+
+    const active = await call("GET", "/api/stores?status=active", { cookie: superCookie });
+    const names = active.body.items.map((s) => s.name);
+    for (const n of ["Added by hand", "Name CSD shows"]) assert.ok(names.includes(n), `${n} is active`);
+    for (const n of ["Onboarding", "Gone", "Left us", "Removed from KK"]) assert.ok(!names.includes(n), `${n} is not active`);
+  } finally {
+    config.knotkitchenMongoUri = "";
+    await src.dropDatabase();
+    await src.close();
+  }
+});

@@ -5,7 +5,9 @@ import { useAuth, can } from "../auth.jsx";
 
 export default function Stores() {
   const { admin } = useAuth();
-  const { data, error, reload } = useApi("/stores");
+  // Active by default, as CSD lists them; the other CSD statuses on request.
+  const [status, setStatus] = useState("active");
+  const { data, error, reload } = useApi(`/stores${status ? `?status=${status}` : ""}`);
   const policies = useApi(can(admin, "policies.view") ? "/policies" : null);
   const [edit, setEdit] = useState(null);
   const [syncMsg, setSyncMsg] = useState("");
@@ -13,7 +15,7 @@ export default function Stores() {
 
   const sync = async () => {
     const r = await act.run(() => api.post("/stores/sync"));
-    setSyncMsg(r.skipped ? `Skipped: ${r.reason}` : `Synced ${r.total} KnotKitchen stores (${r.created} new, ${r.updated} updated).`);
+    setSyncMsg(r.skipped ? `Skipped: ${r.reason}` : `Synced ${r.total} KnotKitchen stores: ${r.active} active, ${r.created} new, ${r.updated} updated, ${r.archived} deleted.`);
     reload();
   };
 
@@ -23,7 +25,19 @@ export default function Stores() {
         <h1>Stores</h1>
         {can(admin, "stores.edit") && <div className="row"><span className="muted">{syncMsg}</span><button className="btn" disabled={act.busy} onClick={() => sync().catch(() => {})}>Sync from KnotKitchen</button></div>}
       </div>
-      <p className="note">Stores are imported from KnotKitchen&apos;s restaurant records (matched on the 6-digit store ID), not maintained twice.</p>
+      <p className="note">Stores come from KnotKitchen&apos;s records as CSD shows them (matched on the 6-digit store ID), and follow CSD within 5 minutes; deleted stores drop out.</p>
+      <div className="row" style={{ marginBottom: 8 }}>
+        <select value={status} onChange={(e) => setStatus(e.target.value)}>
+          <option value="active">Active</option>
+          <option value="">All statuses</option>
+          <option value="pending">Pending</option>
+          <option value="suspended">Suspended</option>
+          <option value="closed_temporarily">Closed temporarily</option>
+          <option value="closed_until">Closed until a date</option>
+          <option value="closed">Closed</option>
+        </select>
+        <span className="muted">{data?.items?.length ?? 0} stores</span>
+      </div>
       <Err error={error || act.error} />
       <div className="card scroll">
         <table><thead><tr><th>Store</th><th>KK store ID</th><th>KK status</th><th>Devices</th><th>Policy</th><th>Maintenance window</th><th>Business hours</th><th>Synced</th><th /></tr></thead>

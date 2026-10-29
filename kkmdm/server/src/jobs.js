@@ -54,7 +54,8 @@ function start() {
   every(60_000, "expire-commands", commands.expireOld);
   every(60_000, "alerts", () => alerts.evaluate());
   every(3600_000, "telemetry-rollup", rollupYesterday);
-  if (config.knotkitchenMongoUri) every(6 * 3600_000, "store-sync", syncStores);
+  // Stores follow CSD within minutes (a few hundred small reads).
+  if (config.knotkitchenMongoUri) every(5 * 60_000, "store-sync", syncStores);
 }
 
 module.exports = { start, offlineSweep, rollupYesterday };
