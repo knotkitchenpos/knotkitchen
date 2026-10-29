@@ -66,7 +66,8 @@ public final class Kiosk {
 
     private static final String SETTINGS = "com.android.settings";
     /** A panel's "See more" leads into full Settings, so the door shuts by itself. */
-    private static final long PANEL_MS = 2 * 60 * 1000L;
+    // Long enough to pair a Bluetooth printer.
+    private static final long PANEL_MS = 3 * 60 * 1000L;
     private static volatile long panelUntil;
 
     /**

@@ -29,9 +29,10 @@ import android.widget.TextView;
  * The tablet's own quick settings, inside the kiosk. Android keeps its Quick
  * Settings tiles off in lock task mode whatever the policy says, so the agent
  * does the same jobs as Device Owner: Wi-Fi and Bluetooth on/off, brightness,
- * auto-rotate. Choosing a Wi-Fi network and mobile data use Android's own
- * small panels (Settings.Panel, Android 10+), which belong to the Settings
- * app; Settings is let into the kiosk only while one is open (Kiosk.openPanel).
+ * auto-rotate. Choosing a Wi-Fi network, mobile data and Bluetooth pairing use
+ * Android's own screens (Settings.Panel on Android 10+, and the Bluetooth
+ * settings page), which belong to the Settings app; Settings is let into the
+ * kiosk only while one is open (Kiosk.openPanel).
  *
  * Opened from the KK Agent notification in the pull-down shade, or by the
  * POS with the com.knotkitchen.mdm.action.QUICK_SETTINGS action.
@@ -109,7 +110,7 @@ public class QuickSettingsActivity extends Activity {
             boolean btOn = bt.isEnabled();
             int st = bt.getState();
             String s = st == BluetoothAdapter.STATE_TURNING_ON ? "Turning on…" : st == BluetoothAdapter.STATE_TURNING_OFF ? "Turning off…" : btOn ? "On" : "Off";
-            list.addView(card(Ui.text(this, "Bluetooth", 18, Color.WHITE, true), s, toggle(btOn, on -> {
+            LinearLayout b = card(Ui.text(this, "Bluetooth", 18, Color.WHITE, true), s, toggle(btOn, on -> {
                 try {
                     //noinspection deprecation,MissingPermission -- Device Owner is exempt on Android 13+
                     boolean ok = on ? bt.enable() : bt.disable();
@@ -117,7 +118,11 @@ public class QuickSettingsActivity extends Activity {
                 } catch (SecurityException e) {
                     say("Bluetooth permission missing");
                 }
-            })));
+            }));
+            // Scanning and pairing (printers, scanners) are Android's own Bluetooth
+            // screen; Android 10 has no small panel for it as it has for Wi-Fi.
+            b.addView(small("Pair a device", () -> openPanel(Settings.ACTION_BLUETOOTH_SETTINGS)));
+            list.addView(b);
         }
 
         // ---- Brightness ----

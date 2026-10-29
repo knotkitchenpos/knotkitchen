@@ -291,10 +291,10 @@ Admin                Dashboard/Server                 Tablet (setup wizard)     
 * **Tablet settings inside the kiosk:** Android keeps its Quick Settings tiles off in lock task mode whatever the features say. Instead, the agent's ongoing notification in the shade ("Tablet settings") opens `QuickSettingsActivity`, which the POS can also open with `com.knotkitchen.mdm.action.QUICK_SETTINGS`. Its controls:
   * **Wi-Fi:** on/off, and the Android 10+ Wi-Fi panel for choosing a network. The Slate refuses `setWifiEnabled` even from the Device Owner, so there the switch opens the panel.
   * **Mobile data:** the internet-connectivity panel.
-  * **Bluetooth:** on/off.
+  * **Bluetooth:** on/off, and **Pair a device**, which opens Android's Bluetooth settings page for scanning and pairing. Android 10 has no small panel for it.
   * **Brightness:** a slider and Auto, through `setSystemSetting`.
   * **Auto-rotate:** needs the `WRITE_SETTINGS` app-op, granted by `adb-provision.sh` or once from technician mode, because Android has no Device Owner switch for it.
-  * **Panel safety:** the panels belong to Settings, so Settings joins the lock task allowlist only while one is open. The agent screen coming back, or a 2-minute timer, removes it again, and Android then ends the Settings task. Verified: from a panel's network details page, the timer returned the tablet to the locked POS.
+  * **Panel safety:** the panels belong to Settings, so Settings joins the lock task allowlist only while one is open. The agent screen coming back, or a 3-minute timer, removes it again, and Android then ends the Settings task. Verified: from a panel's network details page, the timer returned the tablet to the locked POS.
 * Restrictions applied (on by default): no install/uninstall/unknown sources, factory reset, safe boot, add user, debugging, screen capture, date/time config, VPN config, USB file transfer, physical media. Wi-Fi, Bluetooth and mobile network config stay allowed, for the tablet settings screen above.
 * **Watchdog:** a POS exit within 15 s of launch counts as a crash. Five in 2 min is a crash loop, which backs off from 30 s up to 5 min and alerts. Every heartbeat re-checks lock task and restores it if it has drifted. `onLockTaskModeExiting` self-heals after 1.5 s.
 * **Technician escape:**
