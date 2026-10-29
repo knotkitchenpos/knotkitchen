@@ -151,5 +151,15 @@
         <receiver
             android:name=".InstallReceiver"
             android:exported="false" />
+
+        <!-- The POS's own updater hands its download here: the kiosk policy
+             blocks the POS installing it. See PosUpdateReceiver for the checks. -->
+        <receiver
+            android:name=".PosUpdateReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="com.knotkitchen.mdm.action.INSTALL_POS_UPDATE" />
+            </intent-filter>
+        </receiver>
     </application>
 </manifest>

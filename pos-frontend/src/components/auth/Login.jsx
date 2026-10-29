@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { FiKey, FiPhone, FiLock, FiArrowRight, FiArrowLeft, FiAlertCircle } from "react-icons/fi";
 import { useMutation } from "@tanstack/react-query";
@@ -16,6 +16,7 @@ import { setActiveStoreId } from "../../utils/storeSession";
 import { useNavigate } from "react-router-dom";
 import { takeReturnTo } from "../../utils/returnTo";
 import { SUPPORT_PHONE, SUPPORT_TEL } from "../../constants/support";
+import { getManagedDevice } from "../../utils/managedDevice";
 
 /**
  * POS sign-in — email/password migration (2026-08-31, replaces phone + OTP).
@@ -60,6 +61,15 @@ const Login = () => {
   const [ownerPhone, setOwnerPhone] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+
+  // A tablet KKMDM manages already knows its store: fill the Store ID in,
+  // unless someone has started typing one.
+  useEffect(() => {
+    getManagedDevice().then(({ config }) => {
+      const sid = String(config.store_id || "");
+      if (/^\d{6}$/.test(sid)) setStoreId((typed) => typed || sid);
+    });
+  }, []);
 
   const goBack = () => {
     setErrorMessage("");

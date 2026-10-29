@@ -42,6 +42,11 @@ import java.security.MessageDigest;
  * unknown apps" is allowed for this app, shows Android's own screen once.
  * Android only accepts it if signed with this app's key; the SHA-256 catches a
  * truncated or half-replaced download.
+ *
+ * On a tablet KKMDM manages (ManagedDevice) the kiosk policy blocks app
+ * installs, this app's own included: the update is offered the same way, and
+ * KK Agent installs it. If KKMDM rolls POS builds out itself for that tablet
+ * (managed config pos_updates=kkmdm), this updater stays quiet instead.
  */
 final class ShellUpdater {
 
@@ -68,6 +73,8 @@ final class ShellUpdater {
         }
         // A debug build is signed with another key: a release update could never install over it.
         if ((activity.getApplicationInfo().flags & ApplicationInfo.FLAG_DEBUGGABLE) != 0) return;
+        boolean managed = ManagedDevice.isManaged(activity);
+        if (managed && ManagedDevice.kkmdmOwnsUpdates(activity)) return;
         long now = System.currentTimeMillis();
         if (now - lastCheck < EVERY_MS) return;
         lastCheck = now;
@@ -82,8 +89,14 @@ final class ShellUpdater {
                     new AlertDialog.Builder(activity)
                         .setTitle("App update available")
                         .setMessage("KnotKitchen POS " + m.optString("versionName")
-                            + " is ready. The app closes to install it; open it again afterwards.")
+                            + (managed ? " is ready. The app closes to install it and reopens by itself."
+                                : " is ready. The app closes to install it; open it again afterwards."))
                         .setPositiveButton("Install", (d, w) -> {
+                            if (managed) {
+                                ManagedDevice.installUpdate(activity, m);
+                                toast(activity, "Installing the update. The app restarts by itself in a minute or two.");
+                                return;
+                            }
                             toast(activity, "Downloading the update...");
                             new Thread(() -> install(activity, m)).start();
                         })

@@ -28,6 +28,9 @@
             android:grantUriPermissions="true">
             <meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- Store, terminal and update settings from KKMDM on a managed tablet (ManagedDevice). -->
+        <meta-data android:name="android.content.APP_RESTRICTIONS" android:resource="@xml/app_restrictions" />
     </application>
 
     <!-- Permissions -->
@@ -43,6 +46,8 @@
          Android 11+ hides them from queryIntentActivities without this.
          Keep in step with UPI_SCHEMES there. -->
     <queries>
+        <!-- KK Agent (KKMDM), on managed tablets: technician screen, update installs. -->
+        <package android:name="com.knotkitchen.mdm" />
         <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="upi" /></intent>
         <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="tez" /></intent>
         <intent><action android:name="android.intent.action.VIEW" /><data android:scheme="gpay" /></intent>

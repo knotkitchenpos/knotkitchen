@@ -4,4 +4,15 @@
     <string name="title_activity_main">KnotKitchen POS</string>
     <string name="package_name">com.knotkitchen.pos</string>
     <string name="custom_url_scheme">com.knotkitchen.pos</string>
+
+    <!-- Managed configuration keys (res/xml/app_restrictions.xml) -->
+    <string name="mc_device_id">KKMDM device ID</string>
+    <string name="mc_device_name">KKMDM device name</string>
+    <string name="mc_server">KKMDM server</string>
+    <string name="mc_store_id">Store ID</string>
+    <string name="mc_restaurant_id">Restaurant ID</string>
+    <string name="mc_store_name">Store name</string>
+    <string name="mc_terminal_name">Terminal name</string>
+    <string name="mc_device_group">Device group</string>
+    <string name="mc_pos_updates">Who installs POS updates (self or kkmdm)</string>
 </resources>

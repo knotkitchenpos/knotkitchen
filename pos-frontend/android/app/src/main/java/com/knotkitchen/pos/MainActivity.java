@@ -20,6 +20,7 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(ThermalPrinterPlugin.class);
         registerPlugin(UpiIntentPlugin.class);
         registerPlugin(FileSavePlugin.class);
+        registerPlugin(ManagedDevicePlugin.class);
         super.onCreate(savedInstanceState);
 
         // A till on the counter should not go dark between orders.

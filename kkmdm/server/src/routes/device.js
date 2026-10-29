@@ -119,6 +119,7 @@ router.post("/device/enroll", enrollLimit, wrap(async (req, res) => {
 
   const policy = await resolveForDevice(device.toObject());
   await Device.updateOne({ _id: device._id }, { $set: { "policy.policyId": policy.policyId, "policy.expectedHash": policy.hash } });
+  const apps = await desiredAppsFor(device);
   res.json({
     deviceId: device._id,
     deviceName: device.name,
@@ -126,8 +127,8 @@ router.post("/device/enroll", enrollLimit, wrap(async (req, res) => {
     techSecret,
     techStepSeconds: 300,
     policy: { hash: policy.hash, settings: policy.settings },
-    managedConfig: await managedConfigFor(device),
-    apps: await desiredAppsFor(device),
+    managedConfig: await managedConfigFor(device, apps),
+    apps,
     serverTime: Date.now(),
   });
 }));
@@ -200,12 +201,13 @@ router.post("/device/sync", deviceLimit, requireDevice(), wrap(async (req, res) 
 
   const merged = { ...d.toObject(), ...set, apps: set.apps || d.apps };
   const store = d.storeId ? await Store.findById(d.storeId, { maintenanceWindow: 1, timezone: 1 }).lean() : null;
+  const apps = await desiredAppsFor(merged);
   const reply = {
     serverTime: Date.now(),
     heartbeatSeconds: policy.settings.telemetry?.heartbeatSeconds || config.heartbeatSeconds,
     policyHash: policy.hash,
-    managedConfig: await managedConfigFor(merged),
-    apps: await desiredAppsFor(merged),
+    managedConfig: await managedConfigFor(merged, apps),
+    apps,
     maintenanceWindowOpen: store ? inWindow(store.maintenanceWindow?.start, store.maintenanceWindow?.end, store.timezone) : true,
     lostMode: d.lostMode?.enabled ? { message: d.lostMode.message, phone: d.lostMode.phone } : null,
     commands: await commands.pendingFor(d),

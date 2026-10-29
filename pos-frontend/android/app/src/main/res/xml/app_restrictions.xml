@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The managed configuration KK Agent (KKMDM) gives this app on a managed
+     tablet. See ManagedDevice.java; kkmdm/server/src/lib/policy.js
+     (managedConfigFor) is what fills it in. -->
+<restrictions xmlns:android="http://schemas.android.com/apk/res/android">
+    <restriction android:key="kkmdm_device_id" android:title="@string/mc_device_id" android:restrictionType="string" android:defaultValue="" />
+    <restriction android:key="kkmdm_device_name" android:title="@string/mc_device_name" android:restrictionType="string" android:defaultValue="" />
+    <restriction android:key="kkmdm_server" android:title="@string/mc_server" android:restrictionType="string" android:defaultValue="" />
+    <restriction android:key="store_id" android:title="@string/mc_store_id" android:restrictionType="string" android:defaultValue="" />
+    <restriction android:key="restaurant_id" android:title="@string/mc_restaurant_id" android:restrictionType="string" android:defaultValue="" />
+    <restriction android:key="store_name" android:title="@string/mc_store_name" android:restrictionType="string" android:defaultValue="" />
+    <restriction android:key="terminal_name" android:title="@string/mc_terminal_name" android:restrictionType="string" android:defaultValue="" />
+    <restriction android:key="device_group" android:title="@string/mc_device_group" android:restrictionType="string" android:defaultValue="" />
+    <restriction android:key="pos_updates" android:title="@string/mc_pos_updates" android:restrictionType="string" android:defaultValue="self" />
+</restrictions>

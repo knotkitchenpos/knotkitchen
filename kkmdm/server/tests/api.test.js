@@ -83,6 +83,7 @@ test("enrollment: single-use token enrolls once, reuse and junk are rejected and
   assert.match(ok.body.credential, /^[a-f0-9]{24}\.[A-Za-z0-9_-]{40,}$/);
   assert.ok(ok.body.policy.settings.kiosk.enabled);
   assert.strictEqual(ok.body.managedConfig.store_id, "123456");
+  assert.strictEqual(ok.body.managedConfig.pos_updates, "self", "no POS build uploaded: the POS updates itself through the agent");
   deviceAuth = `Device ${ok.body.credential}`;
   deviceId = ok.body.deviceId;
 

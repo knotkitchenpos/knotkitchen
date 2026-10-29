@@ -29,6 +29,7 @@ import {
   SAMPLE_ORDER,
 } from "../../utils/printReceipt";
 import { looksLikeCatPrinter } from "../../utils/catprinter";
+import { openTechnicianMode, useManagedDevice } from "../../utils/managedDevice";
 
 /**
  * Settings > Device Configuration.
@@ -112,6 +113,45 @@ const btnPrimary =
   "h-[40px] px-4 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold hover:bg-[#D64502] disabled:opacity-50";
 const btnGhost =
   "h-[40px] px-4 rounded-xl border border-[#E2E8F0] text-[#334155] text-[13px] font-bold hover:bg-[#F8FAFC] disabled:opacity-50";
+
+/**
+ * Only on a tablet KKMDM manages (utils/managedDevice.js): which terminal this
+ * is, and the way out of the kiosk for a technician -- Wi-Fi, Android
+ * settings, a printer's USB permission. The agent asks for the technician PIN
+ * from KKMDM, so staff cannot leave the POS with it.
+ */
+const ManagedTabletCard = () => {
+  const { managed, config } = useManagedDevice();
+  if (!managed) return null;
+  const rows = [
+    ["Terminal", config.terminal_name],
+    ["Store", [config.store_name, config.store_id].filter(Boolean).join(" · ")],
+    ["Group", config.device_group],
+    ["App updates", config.pos_updates === "kkmdm" ? "Rolled out by KKMDM" : "Automatic, installed by KK Agent"],
+  ].filter(([, v]) => v);
+  const open = () =>
+    openTechnicianMode().catch(() => enqueueSnackbar("KK Agent is not installed on this tablet.", { variant: "error" }));
+  return (
+    <Card
+      title="Managed tablet"
+      subtitle="Locked to the POS by KKMDM."
+      right={
+        <button type="button" className={btnGhost} onClick={open}>
+          Technician mode
+        </button>
+      }
+    >
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[13px]">
+        {rows.map(([k, v]) => (
+          <React.Fragment key={k}>
+            <dt className="text-[#64748B]">{k}</dt>
+            <dd className="font-semibold text-[#0F172A] break-words">{v}</dd>
+          </React.Fragment>
+        ))}
+      </dl>
+    </Card>
+  );
+};
 
 /**
  * One printer this device prints to: the receipt printer or the kitchen
@@ -556,6 +596,8 @@ const DeviceConfiguration = () => {
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px] items-start">
       <div className="space-y-4 min-w-0">
+        <ManagedTabletCard />
+
         {/* ---------- Printers ---------- */}
         {/* key: choosing a printer resets the card's tab and LAN address from what was kept; the slot prefix keeps the two keys apart. */}
         <PrinterSlot

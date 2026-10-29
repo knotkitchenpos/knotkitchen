@@ -167,8 +167,14 @@ async function resolveForDevice(deviceOrId) {
   return { settings, sources, layers, hash: hashSettings(settings), policyId: mostSpecific?._id || null };
 }
 
-/** Managed configuration handed to the POS app through the agent. */
-async function managedConfigFor(device) {
+/**
+ * Managed configuration handed to the POS app through the agent.
+ * pos_updates says who installs POS updates: "kkmdm" when an uploaded POS
+ * build is desired for this device (pin, rollout or stable), so the POS's own
+ * updater stays quiet; else "self", and the POS's updater hands its download
+ * to KK Agent, which installs it (the kiosk policy blocks the POS doing so).
+ */
+async function managedConfigFor(device, desiredApps = []) {
   const [store, group] = await Promise.all([
     device.storeId ? Store.findById(device.storeId).lean() : null,
     device.groupId ? Group.findById(device.groupId).lean() : null,
@@ -182,6 +188,7 @@ async function managedConfigFor(device) {
     store_name: store?.name || "",
     terminal_name: device.name,
     device_group: group?.name || "",
+    pos_updates: desiredApps.some((a) => a.packageName === config.posPackage) ? "kkmdm" : "self",
   };
 }
 

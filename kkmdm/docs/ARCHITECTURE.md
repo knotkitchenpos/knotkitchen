@@ -292,11 +292,24 @@ Admin                Dashboard/Server                 Tablet (setup wizard)     
   * The dashboard can also do this remotely (`kiosk_exit_temp` / `kiosk_relock`).
 * The agent's HOME screen is only visible for a moment, so the 7-tap gesture is mainly a fallback. The POS should offer an entry point (below).
 
-**Required changes to the KnotKitchen POS app (`pos-frontend/android`)**
-1. **Read managed configuration** on start and on `ACTION_APPLICATION_RESTRICTIONS_CHANGED` (`RestrictionsManager.getApplicationRestrictions()`). Keys: `kkmdm_device_id, kkmdm_device_name, store_id, restaurant_id, store_name, terminal_name, device_group, kkmdm_server`. Use `store_id` to preselect or auto-log into the restaurant, and show `terminal_name` on receipts and KOTs. Add `res/xml/app_restrictions.xml` and the `android.content.APP_RESTRICTIONS` meta-data.
-2. **Technician entry:** a hidden menu item (for example long-press the version number in Settings) that does `startActivity(new Intent("com.knotkitchen.mdm.action.TECHNICIAN"))`.
+**Changes to the KnotKitchen POS app (`pos-frontend`)**
+1. **Managed configuration: done.**
+   * `ManagedDevice.java` reads `RestrictionsManager.getApplicationRestrictions()`; the keys are declared in `res/xml/app_restrictions.xml`.
+   * `ManagedDevicePlugin` (`getConfig`, `openTechnician`, a `configChanged` event on `ACTION_APPLICATION_RESTRICTIONS_CHANGED`) hands it to the pages through `src/utils/managedDevice.js`.
+   * Keys: `kkmdm_device_id, kkmdm_device_name, kkmdm_server, store_id, restaurant_id, store_name, terminal_name, device_group, pos_updates`.
+   * Sign-in prefills the Store ID from `store_id`.
+   * Still open: printing `terminal_name` on receipts and KOTs.
+2. **Technician entry: done.** Settings → Device Configuration shows a "Managed tablet" card only on managed tablets: terminal, store, group, who installs updates, and a **Technician mode** button that opens the agent's PIN screen (`com.knotkitchen.mdm.action.TECHNICIAN`). The PIN gate is the agent's, so the button is safe to show.
 3. **Stay inside the kiosk.** Don't open the external browser, Settings, the Play Store or share sheets. UPI intents (`UpiIntentPlugin`) open other apps, which lock task blocks unless their packages are in `kiosk.allowedPackages`. Either list the UPI apps a store uses in its policy, or use in-app or QR UPI flows on kiosk devices.
-4. **`ShellUpdater`:** on managed devices let KKMDM own updates (staged rollouts). Skip the self-update when `kkmdm_device_id` is present in managed config, and upload POS builds to KKMDM → Applications instead.
+4. **`ShellUpdater` keeps working on managed tablets: done.**
+   * **The problem:** the kiosk policy sets `DISALLOW_INSTALL_APPS`, which also blocks the POS installing its own update.
+   * **The handoff:** the POS still checks the GitHub manifest and offers "Install". On a managed tablet it then sends `com.knotkitchen.mdm.action.INSTALL_POS_UPDATE` (apkUrl, sha256, versionCode) to the agent, which installs it as Device Owner (`PosUpdateReceiver`, via `AppInstaller`). HOME reopens the new POS, still locked.
+   * **Checks, because any app can send that broadcast:** the request must be for the kiosk's POS, from https or the KKMDM server, with a SHA-256, and newer than the installed version. Android itself refuses an APK signed with another key.
+   * **Who owns updates:** the server sets managed config `pos_updates=kkmdm` once a POS build is pinned, rolled out or made stable for the device. The POS updater then stays quiet and the agent refuses handoffs, so the two never fight over the version. Otherwise it is `pos_updates=self`.
+   * **Tested on the Slate:**
+     * The agent downloaded and verified POS 1.0.185 and committed it. Android rejected it with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, because the tablet's POS 1.0.179 is a debug-signed sideload, not the release key.
+     * Requests that were not https, not newer, or had no SHA-256 were refused.
+     * A production-signed tablet takes the update; this tablet needs a release-signed POS reinstall first.
 5. **USB printers:** Android's USB permission dialog comes from System UI. Under lock task it shows on most OEMs, but **test it per model**. Where it is blocked, grant the permission once during technician mode (tick "always").
 6. **Lock-task safe UI:** no reliance on Home or Recents; handle `onBackPressed` on the root screen (the agent reopens the POS if it exits, which is fine but slower).
 
