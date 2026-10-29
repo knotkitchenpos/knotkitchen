@@ -307,9 +307,11 @@ Admin                Dashboard/Server                 Tablet (setup wizard)     
    * **Checks, because any app can send that broadcast:** the request must be for the kiosk's POS, from https or the KKMDM server, with a SHA-256, and newer than the installed version. Android itself refuses an APK signed with another key.
    * **Who owns updates:** the server sets managed config `pos_updates=kkmdm` once a POS build is pinned, rolled out or made stable for the device. The POS updater then stays quiet and the agent refuses handoffs, so the two never fight over the version. Otherwise it is `pos_updates=self`.
    * **Tested on the Slate:**
-     * The agent downloaded and verified POS 1.0.185 and committed it. Android rejected it with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`, because the tablet's POS 1.0.179 is a debug-signed sideload, not the release key.
-     * Requests that were not https, not newer, or had no SHA-256 were refused.
-     * A production-signed tablet takes the update; this tablet needs a release-signed POS reinstall first.
+     * **Wrong key refused:** the first attempt went over the tablet's debug-signed POS 1.0.179 sideload, and Android refused 1.0.185 with `INSTALL_FAILED_UPDATE_INCOMPATIBLE`.
+     * **Clean start:** the debug POS was removed and release 1.0.184 installed, both through KKMDM commands (`uninstall_app` / `install_app`, forced past the maintenance window).
+     * **Handoff 1.0.184 → 1.0.185:** downloaded, SHA-256 verified, installed, install restrictions restored, and the POS back in front with lock task LOCKED.
+     * **Bad requests refused:** not https, not newer, and no SHA-256.
+     * **Screen-off caveat:** HOME relaunches the POS once the screen is awake, so a tablet that updates while its screen is off shows the POS when woken.
 5. **USB printers:** Android's USB permission dialog comes from System UI. Under lock task it shows on most OEMs, but **test it per model**. Where it is blocked, grant the permission once during technician mode (tick "always").
 6. **Lock-task safe UI:** no reliance on Home or Recents; handle `onBackPressed` on the root screen (the agent reopens the POS if it exits, which is fine but slower).
 
