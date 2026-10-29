@@ -1,0 +1,62 @@
+plugins {
+    id "com.android.application"
+}
+
+// Release signing comes from signing/keystore.properties (not in git).
+// The Device Owner can only be updated by an APK signed with the SAME key,
+// so this key is the fleet's lifeline: see docs/ARCHITECTURE.md "Key custody".
+def keystoreProps = new Properties()
+def keystoreFile = rootProject.file("signing/keystore.properties")
+if (keystoreFile.exists()) keystoreFile.withInputStream { keystoreProps.load(it) }
+
+android {
+    namespace "com.knotkitchen.mdm"
+    compileSdk 35
+    buildToolsVersion "35.0.0"
+
+    defaultConfig {
+        applicationId "com.knotkitchen.mdm"
+        // Android 9: lock task features, ActivityOptions.setLockTaskEnabled, built-in QR provisioning.
+        minSdk 28
+        targetSdk 34
+        versionCode 7
+        versionName "0.1.6"
+        // SHA-256 SPKI pins for the KKMDM server, "sha256/AAAA...,sha256/BBBB..." (empty = no pinning, dev only).
+        buildConfigField "String", "CERT_PINS", "\"${project.findProperty('kkmdmCertPins') ?: ''}\""
+    }
+
+    signingConfigs {
+        release {
+            if (keystoreFile.exists()) {
+                storeFile rootProject.file(keystoreProps["storeFile"])
+                storePassword keystoreProps["storePassword"]
+                keyAlias keystoreProps["keyAlias"]
+                keyPassword keystoreProps["keyPassword"]
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig keystoreFile.exists() ? signingConfigs.release : signingConfigs.debug
+        }
+        debug {
+            // Same key as release so a debug build can update a provisioned device.
+            signingConfig keystoreFile.exists() ? signingConfigs.release : signingConfigs.debug
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation "com.squareup.okhttp3:okhttp:4.12.0"
+}

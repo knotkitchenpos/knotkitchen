@@ -20,6 +20,16 @@
       ],
       "cwd": "pos-frontend",
       "port": 5173
+    },
+    {
+      "name": "kkmdm-dashboard",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "cwd": "kkmdm/dashboard",
+      "port": 5177
     }
   ]
 }

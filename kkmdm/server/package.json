@@ -1,0 +1,25 @@
+{
+  "name": "kkmdm-server",
+  "version": "0.1.0",
+  "description": "KKMDM - KnotKitchen Mobile Device Management backend (admin API, device API, command queue, push channel)",
+  "main": "src/index.js",
+  "private": true,
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "seed": "node src/seed.js",
+    "test": "node --test --test-concurrency=1 tests/*.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "bcrypt": "^6.0.0",
+    "cookie-parser": "^1.4.7",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.24.4",
+    "ws": "^8.18.0"
+  }
+}

@@ -1,0 +1,7 @@
+.gradle/
+build/
+app/build/
+local.properties
+# Agent signing key: never commit. See docs/ARCHITECTURE.md "Key custody".
+signing/*.jks
+signing/keystore.properties

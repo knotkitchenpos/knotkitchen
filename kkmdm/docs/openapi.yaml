@@ -1,0 +1,327 @@
+openapi: 3.0.3
+info:
+  title: KKMDM API
+  version: 0.1.0
+  description: |
+    KnotKitchen Mobile Device Management.
+    Admin API (/api): session cookie `kkmdm_session` from /api/auth/login, and every
+    non-GET request must send `X-KKMDM: 1` (CSRF guard). Permissions per route are in
+    server/src/lib/rbac.js; a missing permission answers 403, a stale re-auth 428.
+    Device API (/device): `Authorization: Device <deviceId>.<secret>`.
+servers:
+  - url: http://localhost:8100
+components:
+  securitySchemes:
+    adminSession: { type: apiKey, in: cookie, name: kkmdm_session }
+    deviceCredential: { type: apiKey, in: header, name: Authorization, description: "Device <deviceId>.<secret>" }
+  parameters:
+    id: { name: id, in: path, required: true, schema: { type: string } }
+    page: { name: page, in: query, schema: { type: integer, minimum: 1 } }
+    limit: { name: limit, in: query, schema: { type: integer, maximum: 500 } }
+  schemas:
+    Error:
+      type: object
+      properties: { error: { type: string }, message: { type: string } }
+    CommandType:
+      type: string
+      enum: [refresh_status, restart_app, reboot, lock, apply_policy, kiosk_exit_temp, kiosk_relock, lost_mode_on, lost_mode_off, locate, pull_logs, bugreport, install_app, uninstall_app, wipe, release_device_owner]
+    Command:
+      type: object
+      properties:
+        cmdId: { type: string, format: uuid }
+        deviceId: { type: string }
+        type: { $ref: "#/components/schemas/CommandType" }
+        params: { type: object }
+        status: { type: string, enum: [queued, sent, delivered, executing, succeeded, failed, expired, cancelled] }
+        expiresAt: { type: string, format: date-time }
+        holdForMaintenance: { type: boolean }
+        result: { type: object }
+        error: { type: string }
+        history: { type: array, items: { type: object, properties: { status: { type: string }, at: { type: string, format: date-time } } } }
+    Telemetry:
+      type: object
+      properties:
+        battery: { type: integer }
+        charging: { type: boolean }
+        plugged: { type: string }
+        storageFreeMb: { type: integer }
+        storageTotalMb: { type: integer }
+        ramFreeMb: { type: integer }
+        ramTotalMb: { type: integer }
+        networkType: { type: string, enum: [wifi, ethernet, cellular, usb, other, none] }
+        ssid: { type: string }
+        signal: { type: integer }
+        ip: { type: string }
+        internetReachable: { type: boolean }
+        uptimeSec: { type: integer }
+        lastBootReason: { type: string }
+        volume: { type: integer }
+        brightness: { type: integer }
+    Device:
+      type: object
+      properties:
+        _id: { type: string }
+        name: { type: string }
+        storeId: { type: string }
+        groupId: { type: string }
+        lifecycle: { type: string, enum: [in_stock, enrolled, active, in_repair, retired] }
+        serial: { type: string }
+        model: { type: string }
+        manufacturer: { type: string }
+        androidVersion: { type: string }
+        agentVersion: { type: string }
+        posVersion: { type: string }
+        online: { type: boolean }
+        lastSeenAt: { type: string, format: date-time }
+        telemetry: { $ref: "#/components/schemas/Telemetry" }
+        kiosk: { type: object, properties: { state: { type: string, enum: [unknown, locked, unlocked, technician, lost, error] }, error: { type: string }, crashCount: { type: integer } } }
+        policy: { type: object, properties: { expectedHash: { type: string }, appliedHash: { type: string }, compliant: { type: boolean }, errors: { type: array, items: { type: string } } } }
+        inventory: { type: object, properties: { assetTag: { type: string }, purchaseDate: { type: string, format: date }, warrantyUntil: { type: string, format: date }, notes: { type: string } } }
+        pilot: { type: boolean }
+    DesiredApp:
+      type: object
+      properties:
+        packageName: { type: string }
+        versionId: { type: string }
+        versionCode: { type: integer }
+        sha256: { type: string }
+        url: { type: string }
+        respectMaintenanceWindow: { type: boolean }
+security:
+  - adminSession: []
+paths:
+  /healthz:
+    get: { security: [], summary: "Liveness", responses: { "200": { description: ok } } }
+
+  # ---------------- auth ----------------
+  /api/auth/login:
+    post:
+      security: []
+      summary: Sign in (sets the session cookie). 401 totp_required asks for the 2FA code.
+      requestBody: { content: { application/json: { schema: { type: object, required: [email, password], properties: { email: { type: string }, password: { type: string }, totp: { type: string } } } } } }
+      responses: { "200": { description: signed in }, "401": { description: invalid_credentials | totp_required | invalid_totp | locked } }
+  /api/auth/logout: { post: { summary: "Sign out", responses: { "200": { description: ok } } } }
+  /api/auth/me: { get: { summary: "Current admin and permissions", responses: { "200": { description: ok } } } }
+  /api/auth/reauth:
+    post:
+      summary: Re-confirm password (+2FA) to unlock destructive actions for 5 minutes
+      requestBody: { content: { application/json: { schema: { type: object, properties: { password: { type: string }, totp: { type: string } } } } } }
+      responses: { "200": { description: ok }, "401": { description: failed } }
+  /api/auth/2fa/setup: { post: { summary: "Start TOTP enrolment (returns otpauth URL)", responses: { "200": { description: ok } } } }
+  /api/auth/2fa/enable: { post: { summary: "Confirm a TOTP code and enable 2FA", responses: { "200": { description: ok } } } }
+  /api/auth/password: { post: { summary: "Change own password (ends other sessions)", responses: { "200": { description: ok } } } }
+
+  # ---------------- dashboard ----------------
+  /api/summary: { get: { summary: "Dashboard totals, recent alerts, rollouts", responses: { "200": { description: ok } } } }
+
+  # ---------------- devices ----------------
+  /api/devices:
+    get:
+      summary: Device list (devices.view; store users see their stores only)
+      parameters:
+        - $ref: "#/components/parameters/page"
+        - $ref: "#/components/parameters/limit"
+        - { name: q, in: query, schema: { type: string } }
+        - { name: status, in: query, schema: { type: string, enum: [online, offline] } }
+        - { name: lifecycle, in: query, schema: { type: string } }
+        - { name: storeId, in: query, schema: { type: string } }
+        - { name: groupId, in: query, schema: { type: string } }
+        - { name: lowBattery, in: query, schema: { type: integer } }
+        - { name: notCharging, in: query, schema: { type: boolean } }
+        - { name: outdated, in: query, schema: { type: boolean } }
+        - { name: kioskError, in: query, schema: { type: boolean } }
+        - { name: noncompliant, in: query, schema: { type: boolean } }
+        - { name: pilot, in: query, schema: { type: boolean } }
+        - { name: sort, in: query, schema: { type: string, enum: [name, lastSeen, battery] } }
+      responses: { "200": { description: ok, content: { application/json: { schema: { type: object, properties: { items: { type: array, items: { $ref: "#/components/schemas/Device" } }, total: { type: integer } } } } } } }
+  /api/devices/export.csv: { get: { summary: "CSV export with the same filters", responses: { "200": { description: text/csv } } } }
+  /api/devices/{id}:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get: { summary: "Device detail", responses: { "200": { description: ok } } }
+    patch:
+      summary: Rename, move store/group, lifecycle, pilot flag, inventory (devices.edit)
+      requestBody: { content: { application/json: { schema: { type: object, properties: { name: { type: string }, storeId: { type: string }, groupId: { type: string }, lifecycle: { type: string }, pilot: { type: boolean }, inventory: { type: object } } } } } }
+      responses: { "200": { description: ok } }
+  /api/devices/{id}/policy: { parameters: [{ $ref: "#/components/parameters/id" }], get: { summary: "Effective policy, layers, per-key sources, applied state", responses: { "200": { description: ok } } } }
+  /api/devices/{id}/events: { parameters: [{ $ref: "#/components/parameters/id" }], get: { summary: "Device activity log", responses: { "200": { description: ok } } } }
+  /api/devices/{id}/telemetry: { parameters: [{ $ref: "#/components/parameters/id" }, { name: hours, in: query, schema: { type: integer } }], get: { summary: "Telemetry history", responses: { "200": { description: ok } } } }
+  /api/devices/{id}/logs: { parameters: [{ $ref: "#/components/parameters/id" }], get: { summary: "Pulled logs and bug reports (logs.pull)", responses: { "200": { description: ok } } } }
+  /api/devices/{id}/logs/{logId}/download: { parameters: [{ $ref: "#/components/parameters/id" }, { name: logId, in: path, required: true, schema: { type: string } }], get: { summary: "Download a log", responses: { "200": { description: file } } } }
+  /api/devices/{id}/commands:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get: { summary: "Command history for the device", responses: { "200": { description: ok } } }
+    post:
+      summary: Queue a command. Permission depends on the type (rbac.COMMAND_PERMS); wipe/release need re-auth (428).
+      requestBody: { content: { application/json: { schema: { type: object, required: [type], properties: { type: { $ref: "#/components/schemas/CommandType" }, params: { type: object }, force: { type: boolean, description: skip the maintenance window } } } } } }
+      responses: { "201": { description: queued, content: { application/json: { schema: { type: object, properties: { command: { $ref: "#/components/schemas/Command" } } } } } }, "403": { description: forbidden }, "428": { description: reauth_required } }
+  /api/devices/bulk/commands:
+    post:
+      summary: Bulk command (fleet.bulk). Whole fleet needs re-auth.
+      requestBody: { content: { application/json: { schema: { type: object, required: [type, target], properties: { type: { $ref: "#/components/schemas/CommandType" }, params: { type: object }, force: { type: boolean }, target: { type: object, properties: { deviceIds: { type: array, items: { type: string } }, storeId: { type: string }, groupId: { type: string }, fleet: { type: boolean } } } } } } } }
+      responses: { "201": { description: "{ bulkId, total }" } }
+  /api/devices/{id}/technician-otp: { parameters: [{ $ref: "#/components/parameters/id" }], post: { summary: "Issue the current technician PIN (technician.otp; audit-logged)", responses: { "200": { description: "{ code, validUntil }" } } } }
+  /api/devices/{id}/rotate-credentials: { parameters: [{ $ref: "#/components/parameters/id" }], post: { summary: "Hand the device a new credential on its next sync", responses: { "200": { description: ok } } } }
+  /api/devices/{id}/retire: { parameters: [{ $ref: "#/components/parameters/id" }], post: { summary: "Retire/offboard: optional wipe (Super Admin + re-auth), revoke credentials", requestBody: { content: { application/json: { schema: { type: object, properties: { wipe: { type: boolean } } } } } }, responses: { "200": { description: ok } } } }
+
+  # ---------------- organisation ----------------
+  /api/stores:
+    get: { summary: "Stores with device counts and store policy", responses: { "200": { description: ok } } }
+    post: { summary: "Create a store manually (stores.edit)", responses: { "201": { description: created } } }
+  /api/stores/{id}: { parameters: [{ $ref: "#/components/parameters/id" }], patch: { summary: "Maintenance window, business hours, app pins", responses: { "200": { description: ok } } } }
+  /api/stores/sync: { post: { summary: "Import/refresh stores from KnotKitchen's restaurant records", responses: { "200": { description: "{ created, updated, archived, total }" } } } }
+  /api/groups:
+    get: { summary: "Groups", responses: { "200": { description: ok } } }
+    post: { summary: "Create a group in a store", responses: { "201": { description: created } } }
+  /api/groups/{id}:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    patch: { summary: "Rename", responses: { "200": { description: ok } } }
+    delete: { summary: "Delete (devices stay in the store)", responses: { "200": { description: ok } } }
+  /api/policies:
+    get: { summary: "Policies with their assignments", responses: { "200": { description: ok } } }
+    post: { summary: "Create (unknown setting keys are rejected)", responses: { "201": { description: created } } }
+  /api/policies/defaults: { get: { summary: "Built-in defaults (every settable key)", responses: { "200": { description: ok } } } }
+  /api/policies/{id}:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    get: { summary: "One policy", responses: { "200": { description: ok } } }
+    put: { summary: "Update (bumps version, wakes affected devices)", responses: { "200": { description: ok } } }
+    delete: { summary: "Delete", responses: { "200": { description: ok } } }
+  /api/policy-assignments:
+    put:
+      summary: Assign (or clear with policyId null) the policy of one level
+      requestBody: { content: { application/json: { schema: { type: object, properties: { scope: { type: string, enum: [company, store, group, device] }, targetId: { type: string }, policyId: { type: string, nullable: true } } } } } }
+      responses: { "200": { description: ok } }
+
+  # ---------------- enrollment ----------------
+  /api/enrollment/tokens:
+    get: { summary: "Tokens with status (active/used/expired/revoked)", responses: { "200": { description: ok } } }
+    post:
+      summary: Create a token and its QR payload. The raw token is returned once.
+      requestBody: { content: { application/json: { schema: { type: object, required: [storeId], properties: { storeId: { type: string }, groupId: { type: string }, policyId: { type: string }, deviceName: { type: string }, mode: { type: string, enum: [single, batch] }, count: { type: integer }, ttlHours: { type: number }, wifi: { type: object, properties: { ssid: { type: string }, security: { type: string }, password: { type: string }, hidden: { type: boolean } } } } } } } }
+      responses: { "201": { description: "{ id, token, expiresAt, maxUses, qrPayload }" }, "409": { description: agent_apk_missing } }
+  /api/enrollment/tokens/{id}/revoke: { parameters: [{ $ref: "#/components/parameters/id" }], post: { summary: "Revoke", responses: { "200": { description: ok } } } }
+  /api/enrollment/attempts: { get: { summary: "Redemption attempts (success and failure)", responses: { "200": { description: ok } } } }
+  /api/enrollment/agent: { get: { summary: "Agent APK URL and checksum used in QRs", responses: { "200": { description: ok } } } }
+
+  # ---------------- apps ----------------
+  /api/apps: { get: { summary: "Apps, versions, install counts", responses: { "200": { description: ok } } } }
+  /api/apps/upload:
+    post:
+      summary: Upload an APK (raw body). Package/version/cert parsed; v2/v3 signature verified; cert change refused.
+      parameters: [{ name: label, in: query, schema: { type: string } }]
+      requestBody: { content: { application/vnd.android.package-archive: { schema: { type: string, format: binary } } } }
+      responses: { "201": { description: uploaded }, "400": { description: invalid_apk | signature_mismatch }, "409": { description: version_exists } }
+  /api/apps/{id}/set-current: { parameters: [{ $ref: "#/components/parameters/id" }], post: { summary: "Make a version the fleet stable version now", responses: { "200": { description: ok } } } }
+  /api/apps/rollouts/all: { get: { summary: "Rollouts with progress", responses: { "200": { description: ok } } } }
+  /api/apps/rollouts: { post: { summary: "Start a staged rollout (pilot stage)", responses: { "201": { description: started } } } }
+  /api/apps/rollouts/{id}/{action}:
+    parameters:
+      - $ref: "#/components/parameters/id"
+      - { name: action, in: path, required: true, schema: { type: string, enum: [advance, all, pause, resume, complete, rollback] } }
+    post: { summary: "Move a rollout (advance takes { percent })", responses: { "200": { description: ok } } }
+
+  # ---------------- operations ----------------
+  /api/commands: { get: { summary: "Fleet command history", parameters: [{ name: status, in: query, schema: { type: string } }, { name: type, in: query, schema: { type: string } }, { name: bulkId, in: query, schema: { type: string } }], responses: { "200": { description: ok } } } }
+  /api/commands/{cmdId}/cancel: { parameters: [{ name: cmdId, in: path, required: true, schema: { type: string } }], post: { summary: "Cancel a queued command", responses: { "200": { description: ok } } } }
+  /api/bulk: { get: { summary: "Bulk jobs with progress", responses: { "200": { description: ok } } } }
+  /api/alerts: { get: { summary: "Alerts", parameters: [{ name: status, in: query, schema: { type: string } }], responses: { "200": { description: ok } } } }
+  /api/alerts/{id}/ack: { parameters: [{ $ref: "#/components/parameters/id" }], post: { summary: "Acknowledge", responses: { "200": { description: ok } } } }
+  /api/alert-rules:
+    get: { summary: "Alert rules and available types", responses: { "200": { description: ok } } }
+    post: { summary: "Create a rule", responses: { "201": { description: created } } }
+  /api/alert-rules/{id}:
+    parameters: [{ $ref: "#/components/parameters/id" }]
+    patch: { summary: "Update", responses: { "200": { description: ok } } }
+    delete: { summary: "Delete", responses: { "200": { description: ok } } }
+  /api/audit: { get: { summary: "Audit log", parameters: [{ name: action, in: query, schema: { type: string } }, { name: actor, in: query, schema: { type: string } }, { name: targetId, in: query, schema: { type: string } }], responses: { "200": { description: ok } } } }
+  /api/audit/verify: { get: { summary: "Walk the hash chain", responses: { "200": { description: "{ ok, checked, brokenAtSeq? }" } } } }
+  /api/roles: { get: { summary: "Roles and permissions", responses: { "200": { description: ok } } } }
+  /api/admins:
+    get: { summary: "Admin users (admins.manage)", responses: { "200": { description: ok } } }
+    post: { summary: "Create an admin user", responses: { "201": { description: created } } }
+  /api/admins/{id}: { parameters: [{ $ref: "#/components/parameters/id" }], patch: { summary: "Role, stores, disable, password reset, 2FA reset (ends their sessions)", responses: { "200": { description: ok } } } }
+  /api/settings: { get: { summary: "Server and agent settings", responses: { "200": { description: ok } } } }
+
+  # ---------------- device API ----------------
+  /agent/kk-agent.apk:
+    get: { security: [], summary: "Agent APK for the setup wizard (QR provisioning)", responses: { "200": { description: APK } } }
+  /device/enroll:
+    post:
+      security: []
+      summary: Redeem an enrollment token. Rate-limited; every attempt logged.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+                facts: { type: object, properties: { serial: { type: string }, hardwareId: { type: string }, imei: { type: string }, manufacturer: { type: string }, model: { type: string }, androidVersion: { type: string }, sdkInt: { type: integer }, securityPatch: { type: string }, gms: { type: boolean }, agentVersion: { type: string }, agentVersionCode: { type: integer }, emulator: { type: boolean } } }
+                attestation: { type: object, properties: { chain: { type: array, items: { type: string, format: byte } } } }
+      responses:
+        "200": { description: "{ deviceId, deviceName, credential, techSecret, techStepSeconds, policy{hash,settings}, managedConfig, apps[DesiredApp], serverTime }" }
+        "401": { description: token_missing | token_unknown | token_revoked | token_expired | token_used }
+        "403": { description: attestation_failed | emulator_rejected }
+  /device/sync:
+    post:
+      security: [{ deviceCredential: [] }]
+      summary: Heartbeat + work fetch
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                telemetry: { $ref: "#/components/schemas/Telemetry" }
+                apps: { type: array, items: { type: object, properties: { packageName: { type: string }, versionCode: { type: integer }, versionName: { type: string } } } }
+                agentVersion: { type: string }
+                posVersion: { type: string }
+                posVersionCode: { type: integer }
+                kiosk: { type: object, properties: { state: { type: string }, error: { type: string }, crashCount: { type: integer }, technicianUntil: { type: integer } } }
+                policy: { type: object, properties: { appliedHash: { type: string }, errors: { type: array, items: { type: string } }, appliedAt: { type: integer } } }
+                wantPolicy: { type: boolean }
+                events: { type: array, items: { type: object, properties: { type: { type: string }, message: { type: string }, at: { type: integer } } } }
+                location: { type: object }
+      responses:
+        "200":
+          description: Work for the device
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  serverTime: { type: integer }
+                  heartbeatSeconds: { type: integer }
+                  policyHash: { type: string }
+                  policy: { type: object, description: present only when the device must (re)apply }
+                  managedConfig: { type: object }
+                  apps: { type: array, items: { $ref: "#/components/schemas/DesiredApp" } }
+                  maintenanceWindowOpen: { type: boolean }
+                  lostMode: { type: object, nullable: true }
+                  commands: { type: array, items: { $ref: "#/components/schemas/Command" } }
+                  newCredential: { type: string, description: after an admin-requested rotation }
+        "401": { description: device_unauthorized }
+  /device/commands/{cmdId}:
+    post:
+      security: [{ deviceCredential: [] }]
+      summary: Report command progress (never moves backwards)
+      parameters: [{ name: cmdId, in: path, required: true, schema: { type: string } }]
+      requestBody: { content: { application/json: { schema: { type: object, properties: { status: { type: string, enum: [delivered, executing, succeeded, failed] }, result: { type: object }, error: { type: string } } } } } }
+      responses: { "200": { description: ok } }
+  /device/logs:
+    post:
+      security: [{ deviceCredential: [] }]
+      summary: Upload agent log / logcat / bug report (raw body, 50 MB max)
+      parameters: [{ name: kind, in: query, schema: { type: string, enum: [agent, logcat, bugreport, crash] } }, { name: cmdId, in: query, schema: { type: string } }]
+      responses: { "201": { description: stored } }
+  /device/apps/{versionId}/download:
+    get:
+      security: [{ deviceCredential: [] }]
+      parameters: [{ name: versionId, in: path, required: true, schema: { type: string } }]
+      summary: Download an APK from the repository (X-Checksum-Sha256 header)
+      responses: { "200": { description: APK } }
+  /device/ws:
+    get:
+      security: [{ deviceCredential: [] }]
+      summary: "WebSocket wake channel. Server sends {\"type\":\"sync\"}; the device then calls /device/sync."
+      responses: { "101": { description: switching protocols } }

@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.Agent" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:colorPrimary">#080F1F</item>
+        <item name="android:colorAccent">#F97316</item>
+        <item name="android:statusBarColor">#080F1F</item>
+        <item name="android:windowBackground">@android:color/white</item>
+    </style>
+    <style name="Theme.Agent.Fullscreen" parent="Theme.Agent">
+        <item name="android:windowBackground">#080F1F</item>
+        <item name="android:windowFullscreen">true</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+</resources>
