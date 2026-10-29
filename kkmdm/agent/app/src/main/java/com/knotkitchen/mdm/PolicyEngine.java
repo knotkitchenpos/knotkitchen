@@ -189,6 +189,12 @@ public final class PolicyEngine {
             dpm.setPermissionGrantState(admin, c.getPackageName(), Manifest.permission.ACCESS_FINE_LOCATION, state);
         });
 
+        // Bluetooth on/off in the tablet settings screen (Android 12+ makes it a runtime permission).
+        step("bluetoothPermission", () -> {
+            if (Build.VERSION.SDK_INT >= 31) dpm.setPermissionGrantState(admin, c.getPackageName(),
+                    Manifest.permission.BLUETOOTH_CONNECT, DevicePolicyManager.PERMISSION_GRANT_STATE_GRANTED);
+        });
+
         // ---- POS: no permission prompts staff could get stuck on ----
         step("posPermissions", () -> {
             String pos = Kiosk.primaryPackage(c);

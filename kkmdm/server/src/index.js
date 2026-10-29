@@ -7,7 +7,7 @@ const jobs = require("./jobs");
 const { bootstrap } = require("./seed");
 
 async function main() {
-  await mongoose.connect(config.mongoUri);
+  await mongoose.connect(config.mongoUri, config.mongoDbName ? { dbName: config.mongoDbName } : {});
   await bootstrap();
   const server = http.createServer(createApp());
   push.attach(server);

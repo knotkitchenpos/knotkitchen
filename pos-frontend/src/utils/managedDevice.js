@@ -31,6 +31,9 @@ export const getManagedDevice = async () => {
 /** The agent's PIN-protected technician screen (Wi-Fi, settings, printers' USB permission). */
 export const openTechnicianMode = () => ManagedDevice.openTechnician();
 
+/** The agent's tablet settings: Wi-Fi, mobile data, Bluetooth, brightness, auto-rotate. */
+export const openTabletSettings = () => ManagedDevice.openTabletSettings();
+
 /** { managed, config }, kept current when KKMDM changes it (the tablet moved store, was renamed). */
 export const useManagedDevice = () => {
   const [state, setState] = useState(NOT_MANAGED);

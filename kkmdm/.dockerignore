@@ -1,0 +1,8 @@
+node_modules
+**/node_modules
+**/.env
+server/storage
+agent
+dashboard/dist
+docs
+scripts

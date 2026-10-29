@@ -21,6 +21,7 @@ final class ManagedDevice {
 
     static final String AGENT = "com.knotkitchen.mdm";
     private static final String TECHNICIAN = "com.knotkitchen.mdm.action.TECHNICIAN";
+    private static final String QUICK_SETTINGS = "com.knotkitchen.mdm.action.QUICK_SETTINGS";
     private static final String INSTALL_POS_UPDATE = "com.knotkitchen.mdm.action.INSTALL_POS_UPDATE";
 
     private ManagedDevice() {}
@@ -43,8 +44,17 @@ final class ManagedDevice {
 
     /** Opens the agent's PIN-protected technician screen. */
     static boolean openTechnician(Context c) {
+        return openAgent(c, TECHNICIAN);
+    }
+
+    /** The agent's tablet settings: Wi-Fi, mobile data, Bluetooth, brightness, auto-rotate. */
+    static boolean openTabletSettings(Context c) {
+        return openAgent(c, QUICK_SETTINGS);
+    }
+
+    private static boolean openAgent(Context c, String action) {
         try {
-            c.startActivity(new Intent(TECHNICIAN).setPackage(AGENT).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            c.startActivity(new Intent(action).setPackage(AGENT).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             return true;
         } catch (ActivityNotFoundException e) {
             return false;

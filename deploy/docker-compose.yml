@@ -63,6 +63,9 @@ volumes:
   onboard_uploads: # onboard-portal's uploaded KYC documents
     external: true
     name: knotkitchen_onboard_uploads
+  kkmdm_storage:   # KKMDM: uploaded APKs, the agent APK, device logs, its generated secrets
+    external: true
+    name: knotkitchen_kkmdm_storage
 
 services:
   # ---------------------------------------------------------------------------
@@ -304,6 +307,38 @@ services:
       - onboard_uploads:/app/uploads
 
   # ---------------------------------------------------------------------------
+  # KKMDM (tablet management: server + admin dashboard)  →  mdm.${BASE_DOMAIN}
+  #
+  # Its own database (KKMDM_DB_NAME) on the POS cluster, and a read-only look
+  # at the POS's stores for Stores -> Sync. Secrets not set here are generated
+  # on first boot and kept on the kkmdm_storage volume (storage/secrets.json),
+  # as is the first Super Admin's password (storage/initial-admin.txt):
+  #   docker compose -f deploy/docker-compose.yml exec kkmdm cat storage/initial-admin.txt
+  # ---------------------------------------------------------------------------
+  kkmdm:
+    build:
+      context: ../kkmdm
+      dockerfile: Dockerfile
+    image: knotkitchen/kkmdm:latest
+    restart: unless-stopped
+    networks: [knot]
+    environment:
+      NODE_ENV: production
+      PORT: "8100"
+      MONGODB_URI: ${MONGODB_URI}
+      KKMDM_DB_NAME: ${KKMDM_DB_NAME:-kkmdm}
+      KNOTKITCHEN_MONGODB_URI: ${MONGODB_URI}
+      PUBLIC_URL: https://mdm.${BASE_DOMAIN}
+      DASHBOARD_ORIGINS: https://mdm.${BASE_DOMAIN}
+      ADMIN_JWT_SECRET: ${KKMDM_ADMIN_JWT_SECRET:-}
+      DATA_ENCRYPTION_KEY: ${KKMDM_DATA_ENCRYPTION_KEY:-}
+      SUPERADMIN_EMAIL: ${KKMDM_SUPERADMIN_EMAIL:-admin@knotkitchen.com}
+      SUPERADMIN_PASSWORD: ${KKMDM_SUPERADMIN_PASSWORD:-}
+      ALERT_WEBHOOK_URL: ${KKMDM_ALERT_WEBHOOK_URL:-}
+    volumes:
+      - kkmdm_storage:/app/storage
+
+  # ---------------------------------------------------------------------------
   # Caddy reverse proxy — the only container that publishes host ports.
   # Uses Let's Encrypt HTTP-01 (Hostinger DNS, no Cloudflare) to obtain and
   # renew certificates for every hostname in deploy/Caddyfile automatically.
@@ -334,6 +369,7 @@ services:
       - caddy_config:/config
     depends_on:
       - pos-api
+      - kkmdm
       - onboard-portal
       - pos-web
       - customer-web

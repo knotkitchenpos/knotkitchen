@@ -48,9 +48,14 @@ public class AgentService extends Service {
     @Override
     public void onCreate() {
         super.onCreate();
+        // Android's quick settings tiles are off in the kiosk; this opens the agent's own.
+        PendingIntent settings = PendingIntent.getActivity(this, 0, QuickSettingsActivity.intent(this),
+                PendingIntent.FLAG_IMMUTABLE | PendingIntent.FLAG_UPDATE_CURRENT);
         Notification n = new Notification.Builder(this, AgentApp.CHANNEL)
-                .setContentTitle("KnotKitchen device management")
-                .setSmallIcon(android.R.drawable.ic_lock_lock)
+                .setContentTitle("Tablet settings")
+                .setContentText("Wi-Fi, mobile data, Bluetooth, brightness, auto-rotate")
+                .setSmallIcon(android.R.drawable.ic_menu_manage)
+                .setContentIntent(settings)
                 .setOngoing(true)
                 .build();
         if (Build.VERSION.SDK_INT >= 34) startForeground(1, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);

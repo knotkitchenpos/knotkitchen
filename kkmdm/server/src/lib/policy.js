@@ -16,12 +16,16 @@ const DEFAULT_SETTINGS = {
     autoStart: true,
     // Lock task features left ON (everything else is hidden).
     showSystemInfo: true,
-    showNotifications: false,
-    showHome: false,
+    // The pull-down shade with quick settings: Wi-Fi, Bluetooth, mobile data,
+    // brightness, auto-rotate. Android only allows it together with Home; Home
+    // lands on the agent's HOME, which reopens the POS at once. Tiles that open
+    // Settings (long-press) stay blocked by lock task.
+    showNotifications: true,
+    showHome: true,
     showOverview: false,
     showGlobalActions: false,
     showKeyguard: false,
-    disableStatusBar: true,
+    disableStatusBar: false,
     disableKeyguard: true,
   },
   restrictions: {
@@ -39,7 +43,8 @@ const DEFAULT_SETTINGS = {
     blockConfigBluetooth: false,
     blockConfigDateTime: true,
     blockConfigVpn: true,
-    blockConfigMobileNetworks: true,
+    // Off so the quick settings mobile data tile works.
+    blockConfigMobileNetworks: false,
     // MTP/PTP off; USB host peripherals (printers, scanners) keep working.
     blockUsbFileTransfer: true,
     blockMountMedia: true,

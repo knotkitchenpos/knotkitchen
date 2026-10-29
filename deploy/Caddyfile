@@ -15,6 +15,7 @@
 #   business.knotkitchen.com   → pos-web       (POS SPA)
 #   api.knotkitchen.com        → pos-api       (POS backend API)
 #   agreement.knotkitchen.com  → onboard-portal (partner onboarding)
+#   mdm.knotkitchen.com        → kkmdm          (tablet management + dashboard)
 #   bill.knotkitchen.com       → pos-api       (customer bill link, /r/<token>)
 #   pay.knotkitchen.com        → pos-api       (website checkout, /c/*)
 #   order.knotkitchen.com      → pos-web       (table QR link, /t/<token>)
@@ -232,6 +233,31 @@ order.{$BASE_DOMAIN} {
 				file_server
 			}
 		}
+	}
+}
+
+# =============================================================================
+# mdm.knotkitchen.com — KKMDM: tablet management (admin dashboard + device API)
+# =============================================================================
+# One upstream serves the dashboard, its API, the tablets' sync and WebSocket
+# (/device/ws; reverse_proxy upgrades it by itself) and APK downloads, which
+# can be large: no response buffering, generous body size for APK uploads.
+mdm.{$BASE_DOMAIN} {
+	import security_headers
+
+	request_body {
+		max_size 300MB
+	}
+
+	encode zstd gzip
+	reverse_proxy kkmdm:8100 {
+		header_up X-Real-IP           {remote_host}
+		header_up X-Forwarded-For     {remote_host}
+		header_up X-Forwarded-Proto   {scheme}
+		header_up X-Forwarded-Host    {host}
+
+		health_uri     /healthz
+		health_interval 15s
 	}
 }
 

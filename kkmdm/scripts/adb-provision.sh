@@ -38,6 +38,8 @@ else
   echo "Making KK Agent the Device Owner..."
   adb shell dpm set-device-owner "$ADMIN"
 fi
+# Auto-rotate in the agent's tablet settings: Android has no Device Owner switch for it.
+adb shell appops set "$PKG" WRITE_SETTINGS allow
 
 # Loopback servers are reached through the USB cable.
 case "$SERVER" in

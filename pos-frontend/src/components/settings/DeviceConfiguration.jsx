@@ -29,7 +29,7 @@ import {
   SAMPLE_ORDER,
 } from "../../utils/printReceipt";
 import { looksLikeCatPrinter } from "../../utils/catprinter";
-import { openTechnicianMode, useManagedDevice } from "../../utils/managedDevice";
+import { openTabletSettings, openTechnicianMode, useManagedDevice } from "../../utils/managedDevice";
 
 /**
  * Settings > Device Configuration.
@@ -129,16 +129,21 @@ const ManagedTabletCard = () => {
     ["Group", config.device_group],
     ["App updates", config.pos_updates === "kkmdm" ? "Rolled out by KKMDM" : "Automatic, installed by KK Agent"],
   ].filter(([, v]) => v);
-  const open = () =>
-    openTechnicianMode().catch(() => enqueueSnackbar("KK Agent is not installed on this tablet.", { variant: "error" }));
+  const failed = () => enqueueSnackbar("KK Agent is not installed on this tablet, or needs an update.", { variant: "error" });
   return (
     <Card
       title="Managed tablet"
       subtitle="Locked to the POS by KKMDM."
       right={
-        <button type="button" className={btnGhost} onClick={open}>
-          Technician mode
-        </button>
+        <div className="flex flex-wrap justify-end gap-2">
+          {/* Wi-Fi, mobile data, Bluetooth, brightness, auto-rotate: also in the pull-down shade. */}
+          <button type="button" className={btnGhost} onClick={() => openTabletSettings().catch(failed)}>
+            Tablet settings
+          </button>
+          <button type="button" className={btnGhost} onClick={() => openTechnicianMode().catch(failed)}>
+            Technician mode
+          </button>
+        </div>
       }
     >
       <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 text-[13px]">

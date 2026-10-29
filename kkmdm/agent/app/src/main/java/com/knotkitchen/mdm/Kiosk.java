@@ -58,7 +58,52 @@ public final class Kiosk {
         pk.add(primaryPackage(c));
         JSONArray allowed = kioskSettings(c).optJSONArray("allowedPackages");
         if (allowed != null) for (int i = 0; i < allowed.length(); i++) pk.add(allowed.optString(i));
+        if (System.currentTimeMillis() < panelUntil) pk.add(SETTINGS);
         return pk.toArray(new String[0]);
+    }
+
+    // ---------------- Settings panels (QuickSettingsActivity) ----------------
+
+    private static final String SETTINGS = "com.android.settings";
+    /** A panel's "See more" leads into full Settings, so the door shuts by itself. */
+    private static final long PANEL_MS = 2 * 60 * 1000L;
+    private static volatile long panelUntil;
+
+    /**
+     * Opens one of Android's small settings panels (Wi-Fi networks, mobile
+     * data). They are Settings activities, which lock task blocks, so Settings
+     * joins the allowlist until the agent's screen is back or PANEL_MS ends.
+     */
+    static boolean openPanel(Activity a, String action) {
+        DevicePolicyManager dpm = AgentApp.dpm(a);
+        try {
+            panelUntil = System.currentTimeMillis() + PANEL_MS;
+            dpm.setLockTaskPackages(AgentApp.admin(a), lockTaskPackages(a));
+            a.startActivity(new Intent(action));
+            Context app = a.getApplicationContext();
+            new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
+                if (panelUntil == 0 || System.currentTimeMillis() < panelUntil - 1000) return;
+                AgentLog.i("kiosk", "settings panel time is up");
+                closePanel(app);
+                bringHomeToFront(app);
+            }, PANEL_MS);
+            return true;
+        } catch (Exception e) {
+            AgentLog.w("kiosk", "panel " + action + ": " + e.getMessage());
+            closePanel(a);
+            return false;
+        }
+    }
+
+    /** Settings leaves the allowlist; Android ends its lock task and the POS is back. */
+    static void closePanel(Context c) {
+        if (panelUntil == 0) return;
+        panelUntil = 0;
+        try {
+            if (wanted(c)) AgentApp.dpm(c).setLockTaskPackages(AgentApp.admin(c), lockTaskPackages(c));
+        } catch (Exception e) {
+            AgentLog.w("kiosk", "panel close: " + e.getMessage());
+        }
     }
 
     /** Applies lock task allowlist/features, status bar, keyguard and HOME. Returns errors. */

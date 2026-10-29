@@ -143,7 +143,13 @@ AgentApp ─ AgentLog (rolling file, pulled by "pull_logs")
 
 At 10k devices on a 60 s heartbeat that is about 170 syncs/s, which suits 2–3 Node instances behind Caddy with MongoDB indexes on every list filter (`models/index.js`). Bulk commands fan out as individual rows; past roughly 50k targets that loop should move to a job queue (BullMQ).
 
-**Environments:** dev runs locally (`local-test` mongod on 27018, DB `kkmdm`). For staging and prod, add a `kkmdm` service to `deploy/docker-compose.yml` and an `mdm.<BASE_DOMAIN>` Caddy site (WebSocket upgrade passes through Caddy by default). Schema changes go in Mongoose models plus idempotent scripts. CI: `npm test` (server) and `./gradlew assembleRelease` (agent).
+**Environments:**
+* **Dev** runs locally (`local-test` mongod on 27018, DB `kkmdm`).
+* **Production** is the `kkmdm` service in `deploy/docker-compose.yml`, behind Caddy at `https://mdm.<BASE_DOMAIN>` (`kkmdm/Dockerfile`: server plus the built dashboard, same origin).
+  * It uses the POS cluster's `MONGODB_URI` with its own database (`KKMDM_DB_NAME`, default `kkmdm`), and reads the POS stores through the same URI.
+  * Its volume is `knotkitchen_kkmdm_storage`, external and created by `deploy/bootstrap-volumes.sh`. It holds APKs, logs, and `secrets.json` with the JWT and data keys generated on first boot unless `KKMDM_ADMIN_JWT_SECRET` / `KKMDM_DATA_ENCRYPTION_KEY` are set in `deploy/.env`.
+  * The first Super Admin password is in `storage/initial-admin.txt` (`docker compose -f deploy/docker-compose.yml exec kkmdm cat storage/initial-admin.txt`), unless `KKMDM_SUPERADMIN_PASSWORD` is set.
+  * **After the first deploy:** upload the signed `kk-agent.apk` on Applications. The newest agent upload also becomes the QR download (`storage/agent/kk-agent.apk`). The signing key never leaves the build machine, so CI cannot build it. Schema changes go in Mongoose models plus idempotent scripts. CI: `npm test` (server) and `./gradlew assembleRelease` (agent).
 
 ---
 
@@ -281,8 +287,15 @@ Admin                Dashboard/Server                 Tablet (setup wizard)     
 * `HomeActivity` is the **persistent preferred HOME**. It pins itself (`startLockTask`) and starts the POS with `ActivityOptions.setLockTaskEnabled(true)`.
 * When the POS crashes, is force-stopped, finishes or is updated, Android returns to HOME, which relaunches it. Verified: force-stop, restart command, agent update and reboot all came back LOCKED.
 * `bringHomeToFront` must use a real `CATEGORY_HOME` intent. An explicitly started HomeActivity is not the system's home, and the stock launcher surfaced on the first force-stop test. That is fixed.
-* Lock task allowlist: agent + `kiosk.primaryPackage` + `kiosk.allowedPackages`. Features default to SYSTEM_INFO only (clock and battery), with no home, recents, notifications or global actions.
-* Restrictions applied (on by default): no install/uninstall/unknown sources, factory reset, safe boot, add user, debugging, screen capture, date/time config, VPN config, mobile networks, USB file transfer, physical media. Wi-Fi and Bluetooth config stay allowed, so staff can reconnect Wi-Fi in technician mode.
+* Lock task allowlist: agent + `kiosk.primaryPackage` + `kiosk.allowedPackages`. Default features: SYSTEM_INFO (clock and battery), NOTIFICATIONS (the pull-down shade) and HOME, which Android requires for the shade. HOME lands on the agent's HOME, which reopens the POS. No recents and no power menu.
+* **Tablet settings inside the kiosk:** Android keeps its Quick Settings tiles off in lock task mode whatever the features say. Instead, the agent's ongoing notification in the shade ("Tablet settings") opens `QuickSettingsActivity`, which the POS can also open with `com.knotkitchen.mdm.action.QUICK_SETTINGS`. Its controls:
+  * **Wi-Fi:** on/off, and the Android 10+ Wi-Fi panel for choosing a network. The Slate refuses `setWifiEnabled` even from the Device Owner, so there the switch opens the panel.
+  * **Mobile data:** the internet-connectivity panel.
+  * **Bluetooth:** on/off.
+  * **Brightness:** a slider and Auto, through `setSystemSetting`.
+  * **Auto-rotate:** needs the `WRITE_SETTINGS` app-op, granted by `adb-provision.sh` or once from technician mode, because Android has no Device Owner switch for it.
+  * **Panel safety:** the panels belong to Settings, so Settings joins the lock task allowlist only while one is open. The agent screen coming back, or a 2-minute timer, removes it again, and Android then ends the Settings task. Verified: from a panel's network details page, the timer returned the tablet to the locked POS.
+* Restrictions applied (on by default): no install/uninstall/unknown sources, factory reset, safe boot, add user, debugging, screen capture, date/time config, VPN config, USB file transfer, physical media. Wi-Fi, Bluetooth and mobile network config stay allowed, for the tablet settings screen above.
 * **Watchdog:** a POS exit within 15 s of launch counts as a crash. Five in 2 min is a crash loop, which backs off from 30 s up to 5 min and alerts. Every heartbeat re-checks lock task and restores it if it has drifted. `onLockTaskModeExiting` self-heals after 1.5 s.
 * **Technician escape:**
   * The PIN is a TOTP over a per-device seed with a 5-min step and ±1 step tolerance. It works offline.

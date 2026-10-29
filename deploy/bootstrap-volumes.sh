@@ -25,6 +25,7 @@ VOLUMES=(
   knotkitchen_csd_documents
   knotkitchen_onboard_data
   knotkitchen_onboard_uploads
+  knotkitchen_kkmdm_storage
 )
 
 created=0

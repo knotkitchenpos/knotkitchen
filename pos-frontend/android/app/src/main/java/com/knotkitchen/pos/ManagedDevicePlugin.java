@@ -57,6 +57,12 @@ public class ManagedDevicePlugin extends Plugin {
         else call.reject("KK Agent is not installed on this tablet.");
     }
 
+    @PluginMethod
+    public void openTabletSettings(PluginCall call) {
+        if (ManagedDevice.openTabletSettings(getContext())) call.resolve();
+        else call.reject("KK Agent is not installed on this tablet, or is too old.");
+    }
+
     private static JSObject toJs(Context c) {
         Bundle b = ManagedDevice.config(c);
         JSObject config = new JSObject();

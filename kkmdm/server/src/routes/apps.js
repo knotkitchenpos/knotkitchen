@@ -6,6 +6,7 @@ const { App, AppVersion, Rollout, Device } = require("../models");
 const { wrap, HttpError } = require("../lib/http");
 const { requirePerm } = require("../lib/adminAuth");
 const { inspectApk } = require("../lib/apk");
+const { AGENT_FILE, localAgentInfo } = require("../lib/agentApk");
 const { inRollout } = require("../lib/desiredApps");
 const { audit } = require("../lib/audit");
 const push = require("../lib/push");
@@ -83,6 +84,15 @@ router.post("/upload", requirePerm("apps.manage"),
       label: req.query.label, minSdk: info.minSdk, targetSdk: info.targetSdk, sha256: info.sha256, size: info.size,
       signingCertSha256: info.signingCertSha256, signatureScheme: info.signatureScheme, file, uploadedBy: req.admin._id,
     });
+    // The newest agent upload is also what QR provisioning downloads, so a
+    // fresh server needs nothing copied onto it by hand.
+    if (info.packageName === config.agentPackage) {
+      const current = localAgentInfo();
+      if (!current || info.versionCode > current.versionCode) {
+        fs.mkdirSync(path.dirname(AGENT_FILE), { recursive: true });
+        fs.copyFileSync(file, AGENT_FILE);
+      }
+    }
     await audit(req, "app.version_uploaded", { targetType: "app_version", targetId: v._id, details: { packageName: v.packageName, versionCode: v.versionCode, sha256: v.sha256 } });
     res.status(201).json({ app, version: { ...v.toObject(), file: undefined } });
   }));

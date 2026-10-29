@@ -1,3 +1,4 @@
+const path = require("path");
 const express = require("express");
 const cookieParser = require("cookie-parser");
 const config = require("./config");
@@ -43,6 +44,13 @@ function createApp() {
   admin.use("/", require("./routes/org").router);
   admin.use("/", require("./routes/misc").router);
   app.use("/api", admin);
+
+  // The dashboard, same origin as its API (production container). Hash
+  // routing, so index.html is the only page.
+  if (config.dashboardDir) {
+    app.use(express.static(config.dashboardDir, { index: "index.html", maxAge: "1h" }));
+    app.get("/", (req, res) => res.sendFile(path.join(config.dashboardDir, "index.html")));
+  }
 
   app.use((req, res) => res.status(404).json({ error: "not_found" }));
   // eslint-disable-next-line no-unused-vars
