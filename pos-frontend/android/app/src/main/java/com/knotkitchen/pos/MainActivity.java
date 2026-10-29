@@ -1,6 +1,7 @@
 package com.knotkitchen.pos;
 
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.net.Uri;
 import android.os.Bundle;
 import android.view.WindowManager;
@@ -14,6 +15,7 @@ import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 
 import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.WebViewListener;
 
 public class MainActivity extends BridgeActivity {
 
@@ -34,6 +36,14 @@ public class MainActivity extends BridgeActivity {
         WebView webView = getBridge().getWebView();
         CookieManager.getInstance().setAcceptCookie(true);
         CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true);
+
+        // Kiosk tablets: the pages at Android's "Small" display size (KioskDisplay).
+        getBridge().addWebViewListener(new WebViewListener() {
+            @Override
+            public void onPageLoaded(WebView view) {
+                KioskDisplay.apply(MainActivity.this, view);
+            }
+        });
 
         // Back goes back inside the POS; at the first screen it sends the app to
         // the background instead of closing it, so the till is not signed out of
@@ -61,6 +71,13 @@ public class MainActivity extends BridgeActivity {
         hideNavigationBar();
         // The app updates itself; the POS pages are live and never need it.
         ShellUpdater.check(this);
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        // Rotation: the layout width follows the new screen width.
+        KioskDisplay.apply(this, getBridge().getWebView());
     }
 
     @Override

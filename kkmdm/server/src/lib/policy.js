@@ -57,6 +57,10 @@ const DEFAULT_SETTINGS = {
     stayOnWhilePlugged: true,
     // null = leave the user/auto setting alone; 0..255 forces a value.
     brightness: null,
+    // The POS draws its pages at this % of the tablet's default display size
+    // (85 = Android's "Small"); tablets already set smaller are left alone.
+    // Android has no Device Owner switch for display size itself.
+    posScalePercent: 85,
   },
   audio: {
     // Order alerts must stay audible.
@@ -196,6 +200,7 @@ async function managedConfigFor(device, desiredApps = [], settings = DEFAULT_SET
     terminal_name: device.name,
     device_group: group?.name || "",
     hide_navigation_bar: settings.kiosk?.hideNavigationBar !== false,
+    display_scale_percent: Number.isInteger(settings.display?.posScalePercent) ? settings.display.posScalePercent : 85,
     pos_updates: desiredApps.some((a) => a.packageName === config.posPackage) ? "kkmdm" : "self",
   };
 }
