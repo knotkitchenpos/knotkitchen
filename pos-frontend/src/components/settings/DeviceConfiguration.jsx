@@ -315,9 +315,6 @@ const PrinterSlot = ({ title, subtitle, emptyLabel = "Not set up", device, patch
             <div className="max-w-[360px]">
               <label className="block">
                 <span className="text-[13px] font-bold text-[#0F172A]">Printer IP address</span>
-                <span className="block text-[11.5px] text-[#94A3B8] mt-0.5">
-                  On the printer&apos;s self-test page. Reserve this address in your router so it stays the same after a restart.
-                </span>
                 <input
                   inputMode="decimal"
                   autoComplete="off"
@@ -367,26 +364,9 @@ const PrinterSlot = ({ title, subtitle, emptyLabel = "Not set up", device, patch
               <button type="button" className={btnPrimary} disabled={connecting} onClick={() => connect("bluetooth")}>
                 {connecting ? "Connecting…" : isThis("bluetooth") ? "Reconnect / change printer" : "Search & connect"}
               </button>
+              {/* No pairing-PIN field: the app reconnects a paired printer on its own
+                  (ThermalPrinterPlugin, openSpp). A PIN saved before is still passed on. */}
               <PrinterChoices choices={choices} kind="bluetooth" onPick={pickPrinter} />
-              {nativePrinting && isThis("bluetooth") && device.protocol !== "cat" && (
-                <label className="block max-w-[360px]">
-                  <span className="text-[13px] font-bold text-[#0F172A]">Printer PIN</span>
-                  <span className={`block text-[11.5px] mt-0.5 ${device.pin ? "text-[#94A3B8]" : "font-bold text-[#B45309]"}`}>
-                    {device.pin ? null : "Not saved yet. "}The PIN you typed when pairing (usually 0000 or 1234). If the printer forgets the pairing when
-                    switched off, the app uses it to reconnect without Android asking to pair again. A wrong PIN
-                    un-pairs the printer.
-                  </span>
-                  <input
-                    inputMode="numeric"
-                    autoComplete="off"
-                    maxLength={16}
-                    value={device.pin || ""}
-                    onChange={(e) => patchDevice({ pin: e.target.value.replace(/\D/g, "") })}
-                    placeholder="e.g. 0000"
-                    className="mt-1.5 h-[40px] w-full rounded-xl border border-[#E2E8F0] px-3 text-[14px] font-bold"
-                  />
-                </label>
-              )}
             </>
           )}
         </div>

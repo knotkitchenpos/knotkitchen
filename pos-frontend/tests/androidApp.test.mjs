@@ -133,11 +133,11 @@ test("REGRESSION: a printer that forgot its pairing and asks for the PIN is answ
   assert.match(java, /if \(pin == null \|\| !pin\.matches\("\[0-9\]\{1,16\}"\)\) return null;/);
   // The web hands the saved PIN over with every Bluetooth print.
   assert.match(SRC("src/utils/printerDevice.js"), /pin: config\.pin \|\| "",/);
-  // Device Configuration: the field in the app for a Bluetooth receipt printer,
-  // digits only, kept for the same printer and cleared for another one.
+  // Device Configuration has no PIN field any more (owner, 2026-10-29): the app
+  // reconnects on its own. A PIN saved before is kept for the same printer and
+  // cleared for another one.
   const config = SRC("src/components/settings/DeviceConfiguration.jsx");
-  assert.match(config, /nativePrinting && isThis\("bluetooth"\) && device\.protocol !== "cat" &&/);
-  assert.match(config, /patchDevice\(\{ pin: e\.target\.value\.replace\(\/\\D\/g, ""\) \}\)/);
+  assert.doesNotMatch(config, /patchDevice\(\{ pin: e\.target\.value/);
   assert.match(config, /picked\.bluetooth\.address === device\.bluetooth\?\.address/);
   assert.match(config, /pin: samePrinter \? device\.pin : "",/);
 });

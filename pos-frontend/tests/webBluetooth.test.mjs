@@ -246,9 +246,8 @@ test("Device Configuration: Bluetooth status is checked again, and the pill says
   assert.match(slot, /lanState === "fail" \|\| btState \? "bg-\[#FEE2E2\] text-\[#B91C1C\]" : "bg-\[#DCFCE7\] text-\[#15803D\]"/);
   assert.match(slot, /btState === "off"\s+\? `Bluetooth off · \$\{device\.name\}`/);
   assert.match(slot, /btState === "unlinked"\s+\? "Not connected · tap Reconnect"/);
-  // An empty Printer PIN is flagged: Android's pairing dialog comes back after a power cycle without it.
-  assert.match(slot, /device\.pin \? "text-\[#94A3B8\]" : "font-bold text-\[#B45309\]"/);
-  assert.match(slot, /\{device\.pin \? null : "Not saved yet\. "\}The PIN you typed when pairing/);
+  // No Printer PIN field (owner, 2026-10-29): the app reconnects on its own.
+  assert.doesNotMatch(slot, /Printer PIN/);
 });
 
 test("the app never shows Not connected: it prints over its own plugin, not Web Bluetooth", async () => {
