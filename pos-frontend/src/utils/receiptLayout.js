@@ -28,7 +28,12 @@ export const paperOf = (size) => PAPER[String(size) === "58" ? 58 : 80];
 // so every device prints the same. The rest is the fallback if it could not load.
 export const RECEIPT_FONT_NAME = "KK Receipt";
 const FAMILY = `"${RECEIPT_FONT_NAME}", Arial, Helvetica, sans-serif`;
-export const font = (size, bold = false) => `${bold ? "bold " : ""}${size}px ${FAMILY}`;
+// "Bold" prints at 600, not 700 (owner, 2026-10-29): the full-bold strokes of
+// a title or dish name are so wide that a battery thermal printer cannot heat
+// all their dots at once, and they came out grey and speckled. 600 still
+// stands out from the 400 body, and its strokes print solid black.
+export const BOLD_WEIGHT = 600;
+export const font = (size, bold = false) => `${bold ? `${BOLD_WEIGHT} ` : ""}${size}px ${FAMILY}`;
 
 // The rate and price columns carry no symbol; only the totals block does.
 const num = (n) => inr(n).slice(1);

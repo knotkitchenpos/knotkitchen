@@ -341,7 +341,7 @@ test("a pre-order's KOT says when it is wanted, on the store's clock", () => {
     assert.ok(label, "a For line");
     const value = ops.find((o) => o.y === label.y && o.align === "right");
     assert.match(value.text, /14 Oct.*07:30\s?pm/i);
-    assert.match(value.font, /^bold /);
+    assert.match(value.font, /^600 /); // bold prints at weight 600
     assert.ok(!textOps(layoutKot({ order: ORDER, paper: 58, measure })).some((o) => o.text === "For"), "not on an order for now");
   } finally {
     if (saved === undefined) delete process.env.TZ;
@@ -894,4 +894,12 @@ test("REGRESSION: a rush of failed prints is ONE warning, never dropped, and Ret
   assert.deepEqual(open(), ["k4"]);
   assert.equal(shown[4].msg, "Receipt not printed: receipt1 still asleep");
   assert.ok(button(4, "Retry"));
+});
+
+test("REGRESSION: bold prints at weight 600, so wide strokes print solid on a battery thermal printer", async () => {
+  // Full bold titles and dish names came out grey and speckled (owner, 2026-10-29).
+  const { font, BOLD_WEIGHT } = await import("../src/utils/receiptLayout.js");
+  assert.equal(BOLD_WEIGHT, 600);
+  assert.match(font(28, true), /^600 28px "KK Receipt"/);
+  assert.match(font(20), /^20px "KK Receipt"/, "body text stays at the regular weight");
 });
