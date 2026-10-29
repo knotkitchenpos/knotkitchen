@@ -6,7 +6,8 @@ import { axiosWrapper } from "./axiosWrapper";
  */
 
 // ---------- Website settings ----------
-export const getWebsiteSettings = () => axiosWrapper.get("/api/website/settings");
+// A time limit, like the till's other offline-critical reads (https/index.js OFFLINE_TIMEOUT).
+export const getWebsiteSettings = () => axiosWrapper.get("/api/website/settings", { timeout: 10000 });
 export const updateWebsiteSettings = (data) => axiosWrapper.put("/api/website/settings", data);
 export const validateGatewayCredentials = (data) => axiosWrapper.post("/api/website/validate-gateway", data);
 

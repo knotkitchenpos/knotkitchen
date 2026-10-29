@@ -8,6 +8,25 @@ import { getPopularItems } from "../../https";
 import { money, thumbUrl, storeClock } from "../../utils";
 import { formatQty } from "../../utils/orderItems";
 import { loadSystemMenu, readSavedMenu, systemMenuKey } from "../../utils/systemMenu";
+import { readStoreScoped, writeStoreScoped } from "../../utils/storeSession";
+
+/**
+ * Popular Items, kept on this device like the menu: it comes from the server,
+ * so a till opened with no internet showed an empty "Popular Items" screen and
+ * looked as if it had no menu (owner, 2026-10-29).
+ */
+const POPULAR_KEY = "kk.pos.popularItems";
+const loadPopular = async () => {
+  try {
+    const res = await getPopularItems({ limit: 12, days: 30 });
+    writeStoreScoped(POPULAR_KEY, { data: res.data });
+    return res;
+  } catch (err) {
+    const saved = readStoreScoped(POPULAR_KEY, null);
+    if (saved && !err?.response) return saved;
+    throw err;
+  }
+};
 import { addItems } from "../../redux/slices/cartSlice";
 import useStockGuard from "../../hooks/useStockGuard";
 import { ModalShell } from "./ModalShell";
@@ -295,8 +314,13 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
   const showPopular = !searching && !category && !viewAll;
   const { data: popRes, isLoading: popLoading } = useQuery({
     queryKey: ["popular-items"],
-    queryFn: () => getPopularItems({ limit: 12, days: 30 }),
+    queryFn: loadPopular,
     enabled: showPopular,
+    // The saved list at once (like the menu), refreshed behind it; and the
+    // refresh runs offline too, so it falls back instead of pausing.
+    initialData: () => readStoreScoped(POPULAR_KEY, undefined),
+    initialDataUpdatedAt: 0,
+    networkMode: "always",
     staleTime: 60_000,
   });
   const popular = useMemo(
@@ -319,9 +343,13 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
     );
   }, [category, hasSubcats, subcat, categoryItems]);
 
+  // Nothing popular to show yet (no sales, offline with no saved list, or
+  // still asking): every product instead of an empty or spinning first screen.
+  const popularFallback = showPopular && popular.length === 0 && allItems.length > 0;
+
   const products = searching
     ? searchResults
-    : viewAll
+    : viewAll || popularFallback
     ? allItems
     : showPopular
     ? popular
@@ -551,7 +579,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
 
   const heading = searching
     ? `Search Results (${searchResults.length})`
-    : viewAll
+    : viewAll || popularFallback
     ? `All Products (${allItems.length})`
     : showPopular
     ? "Popular Items"
@@ -743,7 +771,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
               );
             })}
           </div>
-        ) : popLoading && showPopular ? (
+        ) : popLoading && showPopular && !popularFallback ? (
           <div className="flex justify-center py-16">
             <div className="w-8 h-8 rounded-full border-[3px] border-[#FD5302] border-t-transparent animate-spin" />
           </div>

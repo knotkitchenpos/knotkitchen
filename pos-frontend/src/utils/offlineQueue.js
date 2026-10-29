@@ -88,4 +88,6 @@ export const localOrderView = (entry) => ({
   orderStatus: entry.order.paymentMethod ? COMPLETED : PREPARING,
   createdAt: entry.placedAt,
   offline: true,
+  // Why the server refused it on a sync (markRejected), for the Orders list.
+  syncError: entry.error || "",
 });

@@ -26,6 +26,27 @@ import { isPreparing, isReady, isSettled, isCancelled, isRefunded, isFinished, i
 import { sourceLabel, tableLabel, orderDisplayId } from "../utils/orderLabels";
 import { sendTableEBill } from "../utils/sendTableEBill";
 import { money, time12 as timeOf, time12, dateGB, dateTimeIN, localDay, STORE_TZ } from "../utils";
+import { readStoreScoped, writeStoreScoped } from "../utils/storeSession";
+import { localOrderView, readQueue } from "../utils/offlineQueue";
+
+/**
+ * Today's orders, kept on this device (offline-first, owner 2026-10-29). The
+ * list used to live only in memory, so a till restarted with no internet
+ * showed "No orders found". A copy from another day is never shown as today.
+ */
+const TODAY_KEY = "kk.pos.ordersToday";
+const loadOrders = async (params) => {
+  if (params) return getOrders(params);
+  try {
+    const res = await getOrders();
+    writeStoreScoped(TODAY_KEY, { day: localDay(), data: res.data });
+    return res;
+  } catch (err) {
+    const saved = readStoreScoped(TODAY_KEY, null);
+    if (!err?.response && saved?.day === localDay()) return { data: saved.data, offline: true };
+    throw err;
+  }
+};
 
 /* ---------- Icons ---------- */
 const I = {
@@ -214,13 +235,27 @@ const Orders = () => {
 
   const { data, isLoading, refetch, isFetching } = useQuery({
     queryKey: ["orders", orderParams],
-    queryFn: () => getOrders(orderParams),
+    queryFn: () => loadOrders(orderParams),
+    // Runs offline too, so the saved copy is shown instead of a paused query.
+    networkMode: "always",
     // Refetch when the window regains focus so a Ready that fired via the
     // server-side auto-ready timer (Module 4 §4) surfaces without needing
     // a manual click.
     refetchOnWindowFocus: true,
   });
-  const orders = data?.data?.data || [];
+  // Sales taken with no internet, waiting on this device to sync
+  // (utils/offlineQueue): shown first, today only, and not opened (the server
+  // has no order to act on until they sync).
+  const [queued, setQueued] = useState(() => readQueue());
+  useEffect(() => {
+    const changed = () => setQueued(readQueue());
+    window.addEventListener("kk:offline-queue", changed);
+    return () => window.removeEventListener("kk:offline-queue", changed);
+  }, []);
+  const orders = useMemo(
+    () => [...(orderParams ? [] : queued.map(localOrderView)), ...(data?.data?.data || [])],
+    [orderParams, queued, data],
+  );
 
   const readyMutation = useMutation({
     mutationFn: (orderId) => markOrderReady(orderId),
@@ -539,9 +574,9 @@ const Orders = () => {
                     key={o._id}
                     role="button"
                     tabIndex={0}
-                    onClick={() => openOrder(o._id)}
+                    onClick={() => !o.offline && openOrder(o._id)}
                     onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
+                      if (!o.offline && (e.key === "Enter" || e.key === " ")) {
                         e.preventDefault();
                         openOrder(o._id);
                       }
@@ -582,6 +617,11 @@ const Orders = () => {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <p className="text-[14.5px] font-extrabold text-[#0F172A] truncate">{orderTitle(o)}</p>
+                        {o.offline && (
+                          <span className={`px-2 py-[2px] rounded-md text-[10.5px] font-bold shrink-0 ${o.syncError ? "bg-[#FEE2E2] text-[#B91C1C]" : "bg-[#FEF3C7] text-[#92400E]"}`}>
+                            {o.syncError ? "Not synced" : "Waiting to sync"}
+                          </span>
+                        )}
                         <span
                           className="px-2 py-[2px] rounded-md text-[10.5px] font-bold shrink-0"
                           style={{ background: meta.bg, color: meta.fg }}

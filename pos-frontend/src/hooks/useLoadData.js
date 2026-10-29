@@ -1,4 +1,4 @@
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { getUserData } from "../https";
 import { setActiveStoreId } from "../utils/storeSession";
 import { useEffect, useState } from "react";
@@ -10,7 +10,12 @@ import { rememberReturnTo } from "../utils/returnTo";
 const useLoadData = () => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const [isLoading, setIsLoading] = useState(true);
+  // A till already signed in on this device opens at once and checks its
+  // session in the background. Waiting for /api/user first left the app on
+  // the loading screen for as long as a dead connection took to give up:
+  // offline-first means the saved session is enough to open (owner, 2026-10-29).
+  const signedIn = useSelector((state) => Boolean(state.user?.isAuth));
+  const [isLoading, setIsLoading] = useState(!signedIn);
 
   useEffect(() => {
     let isMounted = true;

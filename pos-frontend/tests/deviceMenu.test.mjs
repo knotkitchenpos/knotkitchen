@@ -78,7 +78,8 @@ test("Manage Staff: pick a role when adding, change it later", () => {
 });
 
 test("a closed PIN popup is not reopened by query retries", () => {
-  assert.match(SRC("src/main.jsx"), /retry: \(count, err\) => err\?\.response\?\.data\?\.code !== "PIN_REQUIRED" && count < 3,/);
+  // Nor is a request with no connection at all (offline-first, owner 2026-10-29).
+  assert.match(SRC("src/main.jsx"), /retry: \(count, err\) => Boolean\(err\?\.response\) && err\.response\.data\?\.code !== "PIN_REQUIRED" && count < 3,/);
 });
 
 test("REGRESSION: Photos saved counts each product photo once, not its two copies", () => {

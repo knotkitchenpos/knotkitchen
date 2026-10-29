@@ -81,7 +81,11 @@ const queryClient = new QueryClient({
       staleTime: 30000,
       // A PIN refusal is not retried: each retry would open the PIN popup
       // again after the staff member closed it (https/axiosWrapper.js).
-      retry: (count, err) => err?.response?.data?.code !== "PIN_REQUIRED" && count < 3,
+      // No connection at all (no response, or the request timed out) is not
+      // retried: offline the till goes straight to its saved copies instead
+      // of a spinner through three back-off retries, and refetchOnReconnect
+      // below brings everything back once the internet returns.
+      retry: (count, err) => Boolean(err?.response) && err.response.data?.code !== "PIN_REQUIRED" && count < 3,
 
       /**
        * Belt and braces behind the socket.

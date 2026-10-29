@@ -1,7 +1,14 @@
 import { axiosWrapper } from "./axiosWrapper";
 
 // Auth Endpoints
-export const getUserData = () => axiosWrapper.get("/api/user");
+/**
+ * What the till needs to keep selling is asked for with a time limit: on
+ * "Wi-Fi connected but no internet" a request otherwise hangs for a minute or
+ * more instead of failing, and the till waits on it instead of using its
+ * saved copy (menu, settings, today's orders) or the offline queue.
+ */
+export const OFFLINE_TIMEOUT = 10000;
+export const getUserData = () => axiosWrapper.get("/api/user", { timeout: OFFLINE_TIMEOUT });
 export const logout = () => axiosWrapper.post("/api/user/logout");
 // Help & Support: becomes a job in the CSD queue.
 export const createSupportRequest = (data) => axiosWrapper.post("/api/support/requests", data);
@@ -53,7 +60,7 @@ export const getOrderById = (id) => axiosWrapper.get(`/api/order/${id}`);
 //   getOrders({ date: "2026-08-19" })          → single-day filter
 //   getOrders({ from: "2026-08-01", to: … })   → inclusive date range
 export const getOrders = (params) =>
-  axiosWrapper.get("/api/order", params ? { params } : undefined);
+  axiosWrapper.get("/api/order", { timeout: OFFLINE_TIMEOUT, ...(params ? { params } : {}) });
 export const updateOrderStatus = ({ orderId, orderStatus }) =>
   axiosWrapper.put(`/api/order/${orderId}`, { orderStatus });
 /* ---------- Offline ---------- */
@@ -183,7 +190,9 @@ export const setTableDiscount = (sessionId, data) =>
   axiosWrapper.post(`/api/table-session/${sessionId}/discount`, data);
 
 // Menu Endpoints
-export const getMenus = (params) => axiosWrapper.get("/api/menu", params ? { params } : undefined);
+// The "has it changed?" check is quick; a whole menu on a slow line may take longer.
+export const getMenus = (params) =>
+  axiosWrapper.get("/api/menu", { timeout: params?.versionOnly ? OFFLINE_TIMEOUT : 30000, ...(params ? { params } : {}) });
 
 export const addCategory = (data) => axiosWrapper.post("/api/menu/category", data);
 export const updateCategory = (data) => axiosWrapper.put("/api/menu/category", data);
@@ -246,7 +255,7 @@ export const publishWebsiteCache = () =>
   axiosWrapper.post("/api/menu/publish/website");
 
 // Module 7 — Store Properties, Protection PIN, POS Settings & Staff
-export const getStoreProperties = () => axiosWrapper.get("/api/restaurant/properties");
+export const getStoreProperties = () => axiosWrapper.get("/api/restaurant/properties", { timeout: OFFLINE_TIMEOUT });
 export const updateStoreProperties = (data) => axiosWrapper.put("/api/restaurant/properties", data);
 export const verifyPin = (pin) => axiosWrapper.post("/api/restaurant/verify-pin", { pin });
 export const changePin = (data) => axiosWrapper.put("/api/restaurant/change-pin", data);
@@ -326,5 +335,5 @@ export const reinstateSubscription = () => axiosWrapper.post("/api/subscription/
 export const getPlatformInvoices = () => axiosWrapper.get("/api/subscription/invoices");
 
 /* ---------- Restaurant, waiter calls ---------- */
-export const getMyRestaurant = () => axiosWrapper.get("/api/restaurant/me");
+export const getMyRestaurant = () => axiosWrapper.get("/api/restaurant/me", { timeout: OFFLINE_TIMEOUT });
 export const dismissWaiterCall = (tableId) => axiosWrapper.post(`/api/qr/waiter-call/${tableId}/dismiss`);
