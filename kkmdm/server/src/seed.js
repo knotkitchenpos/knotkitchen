@@ -22,11 +22,12 @@ async function bootstrap() {
   if (!(await AdminUser.exists({}))) {
     let password = config.superAdminPassword;
     if (!password) {
-      if (config.isProduction) throw new Error("SUPERADMIN_PASSWORD must be set for the first boot");
+      // Production too: the file sits on the private storage volume, readable
+      // only from the host (docker compose exec kkmdm cat storage/initial-admin.txt).
       password = `Kk-${randomToken(9)}9a`;
       fs.mkdirSync(config.storageDir, { recursive: true });
       const file = path.join(config.storageDir, "initial-admin.txt");
-      fs.writeFileSync(file, `email: ${config.superAdminEmail}\npassword: ${password}\n`);
+      fs.writeFileSync(file, `email: ${config.superAdminEmail}\npassword: ${password}\n`, { mode: 0o600 });
       console.log(`[kkmdm] created Super Admin ${config.superAdminEmail}; password written to ${file}`);
     }
     await AdminUser.create({
