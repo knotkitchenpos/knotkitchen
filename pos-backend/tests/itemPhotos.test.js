@@ -92,6 +92,10 @@ test("REGRESSION: a CSV import keeps the photo of every item whose name did not 
   const orig = Module._load;
   Module._load = function (request) {
     if (request === "../models/menuModel") return Menu;
+    // The store's group list (the CSV carries groups now): empty here.
+    if (request === "../models/menuGroupModel") {
+      return { find: () => ({ lean: async () => [] }), countDocuments: async () => 0, exists: async () => false, updateOne: async () => ({}) };
+    }
     return orig.apply(this, arguments);
   };
   delete require.cache[require.resolve("../controllers/csvMenuController")];
