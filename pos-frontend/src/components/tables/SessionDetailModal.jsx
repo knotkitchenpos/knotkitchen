@@ -19,6 +19,16 @@ const SessionDetailModal = ({
   // all: this returned null, so clicking the table opened nothing. It now
   // renders, and the only thing it offers is the release.
   const statusColor = { OCCUPIED: "text-accent-amber", OPEN: "text-accent-green", PROCESSING: "text-accent-blue", BILL_REQUESTED: "text-accent-blue", PAYMENT_PENDING: "text-accent-red" };
+  // Words, not the server's codes: "PAYMENT_PENDING" ran out of its box on a phone.
+  const statusLabel = {
+    OPEN: "Open",
+    OCCUPIED: "Occupied",
+    PROCESSING: "Processing",
+    BILL_REQUESTED: "Bill requested",
+    PAYMENT_PENDING: "Payment pending",
+    PAID: "Paid",
+    CLOSED: "Closed",
+  };
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -35,10 +45,10 @@ const SessionDetailModal = ({
             <p className="text-xs text-content-muted">Customers</p>
             <p className="text-lg font-bold text-content">{session?.customerCount ?? 0} / {session?.capacity || table?.capacity}</p>
           </div>
-          <div className="p-3 rounded-xl bg-surface-input border border-border">
+          <div className="min-w-0 p-3 rounded-xl bg-surface-input border border-border">
             <p className="text-xs text-content-muted">Status</p>
-            <p className={`text-lg font-bold ${statusColor[session?.status] || "text-content"}`}>
-              {session?.status || "No active order"}
+            <p className={`text-lg font-bold leading-tight break-words ${statusColor[session?.status] || "text-content"}`}>
+              {statusLabel[session?.status] || session?.status || "No active order"}
             </p>
           </div>
         </div>
