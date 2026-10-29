@@ -19,6 +19,7 @@ public class MainActivity extends BridgeActivity {
         // Local plugins register before the bridge starts.
         registerPlugin(ThermalPrinterPlugin.class);
         registerPlugin(UpiIntentPlugin.class);
+        registerPlugin(FileSavePlugin.class);
         super.onCreate(savedInstanceState);
 
         // A till on the counter should not go dark between orders.

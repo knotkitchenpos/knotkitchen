@@ -28,7 +28,8 @@ test("REGRESSION: the QR is drawn from its outline at whole pixels per module, n
   assert.match(modal, /qr: qrUrl \? qrFromSvg\(qrRef\.current\) : null,/);
   // One image for preview, download and print.
   assert.match(modal, /<img src=\{card\}/);
-  assert.match(modal, /canvas\.toBlob\(/);
+  // Saved through utils/saveImage: a browser download, or the app's FileSave.
+  assert.match(modal, /saveCanvasPng\(cardCanvas\.current, `knotkitchen-qr-\$\{safe \|\| "table"\}\.png`\);/);
   assert.match(modal, /<body><img src="\$\{card\}"/);
 });
 

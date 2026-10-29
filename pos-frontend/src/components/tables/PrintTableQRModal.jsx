@@ -5,6 +5,7 @@ import { enqueueSnackbar } from "../../utils/notify";
 import { getStoreProperties, regenerateTableQr } from "../../https";
 import { CARD, drawTableQrCard, qrFromSvg } from "../../utils/tableQrCard";
 import { loadBitmap } from "../../utils/printReceipt";
+import { saveCanvasPng } from "../../utils/saveImage";
 
 /**
  * Print-Ready Table QR Card (§Manage Tables Module 2).
@@ -120,18 +121,9 @@ const PrintTableQRModal = ({ isOpen, onClose, table }) => {
    * can fail once printed small.
    */
   const handleDownloadImage = () => {
-    const canvas = cardCanvas.current;
-    if (!canvas) return;
-    canvas.toBlob((blob) => {
-      if (!blob) return;
-      const safe = String(tableDisplay).replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "");
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.download = `knotkitchen-qr-${safe || "table"}.png`;
-      link.href = url;
-      link.click();
-      setTimeout(() => URL.revokeObjectURL(url), 10000);
-    }, "image/png");
+    const safe = String(tableDisplay).replace(/[^A-Za-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    // A browser downloads it; the app saves it to the phone (utils/saveImage).
+    saveCanvasPng(cardCanvas.current, `knotkitchen-qr-${safe || "table"}.png`);
   };
 
   /** Print exactly the card, at its real A6 size, and nothing else. */
