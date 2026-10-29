@@ -1,7 +1,7 @@
 import React, { useCallback, useState } from "react";
 import { useSelector } from "react-redux";
 import { useQuery } from "@tanstack/react-query";
-import { getStockAvailability } from "../https";
+import { getStockAvailability, getSubscriptionStatus } from "../https";
 import { shortfallText, stockShortfalls } from "../utils/inventory";
 import ConfirmDialog from "../components/dashboard/manageMenu/ConfirmDialog";
 
@@ -22,11 +22,17 @@ import ConfirmDialog from "../components/dashboard/manageMenu/ConfirmDialog";
  */
 const useStockGuard = () => {
   const cart = useSelector((s) => s.cart);
+  // Inventory is a POS-plan feature: on the Billing plan the server refuses the
+  // call, and the till popped "This is not on the Billing plan" on every visit
+  // (owner, 2026-10-29). Ask only once the plan is known to include it.
+  const { data: subRes } = useQuery({ queryKey: ["subscription"], queryFn: getSubscriptionStatus, staleTime: 60_000 });
+  const inventoryOn = Boolean(subRes) && subRes?.data?.data?.features?.pos !== false;
   const { data: stock } = useQuery({
     queryKey: ["stock-availability"],
     queryFn: async () => (await getStockAvailability()).data?.data,
     staleTime: 60_000,
     retry: false,
+    enabled: inventoryOn,
   });
   const [ask, setAsk] = useState(null);
 

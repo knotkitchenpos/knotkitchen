@@ -146,3 +146,13 @@ test("the till checks before a dish goes in, and asks the two product questions 
   assert.match(alert, /Items are back in stock\./);
   assert.match(alert, /Do you want to turn on the products that were previously turned off due to stock shortage\?/);
 });
+
+test("REGRESSION: the till never asks for inventory on the Billing plan", () => {
+  // The stock check ran for every store, the server refused it on the Billing
+  // plan, and the till popped "Upgrade to the POS plan" (owner, 2026-10-29).
+  const guard = SRC("src/hooks/useStockGuard.jsx");
+  assert.match(guard, /const inventoryOn = Boolean\(subRes\) && subRes\?\.data\?\.data\?\.features\?\.pos !== false;/);
+  assert.match(guard, /enabled: inventoryOn,/);
+  const recipe = SRC("src/components/dashboard/manageMenu/RecipeSection.jsx");
+  assert.match(recipe, /const available = Boolean\(subRes\) && subRes\?\.data\?\.data\?\.features\?\.pos !== false;/);
+});

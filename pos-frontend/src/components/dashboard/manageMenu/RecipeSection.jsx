@@ -16,7 +16,8 @@ import { unitLabel, unitsLike } from "../../../utils/inventory";
  */
 const RecipeSection = ({ open, productId, value, onChange }) => {
   const { data: subRes } = useQuery({ queryKey: ["subscription"], queryFn: getSubscriptionStatus, staleTime: 60_000, enabled: open });
-  const available = subRes?.data?.data?.features?.pos !== false;
+  // Only once the plan is known: an inventory call on the Billing plan is refused, and pops "Upgrade to the POS plan".
+  const available = Boolean(subRes) && subRes?.data?.data?.features?.pos !== false;
   const { data: ingRes, isSuccess: ingLoaded } = useQuery({ queryKey: ["inventory", "ingredients"], queryFn: getIngredients, enabled: open && available });
   // Fresh on every open: a cached copy from before this product's last save would show the old recipe.
   const { data: recRes, isFetchedAfterMount: recLoaded } = useQuery({
