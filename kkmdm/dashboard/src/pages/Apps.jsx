@@ -10,6 +10,7 @@ export default function Apps() {
   const fileRef = useRef();
   const act = useAction();
   const [msg, setMsg] = useState("");
+  const [importUrl, setImportUrl] = useState("");
   const manage = can(admin, "apps.manage");
   const roll = can(admin, "rollouts.manage");
 
@@ -19,6 +20,14 @@ export default function Apps() {
     const r = await act.run(() => api.upload(`/apps/upload?label=${encodeURIComponent(file.name)}`, file));
     setMsg(`Uploaded ${r.version.packageName} ${r.version.versionName} (${r.version.versionCode}); signature verified (${r.version.signatureScheme}).`);
     fileRef.current.value = "";
+    reload();
+  };
+  // The server downloads it itself (GitHub release assets), so nothing has to be uploaded from a PC.
+  const importApk = async () => {
+    if (!importUrl.trim()) return;
+    const r = await act.run(() => api.post("/apps/import", { url: importUrl.trim() }));
+    setMsg(`Imported ${r.version.packageName} ${r.version.versionName} (${r.version.versionCode}); signature verified (${r.version.signatureScheme}).`);
+    setImportUrl("");
     reload();
   };
   const setCurrent = async (app, v) => {
@@ -46,6 +55,11 @@ export default function Apps() {
           <input type="file" accept=".apk" ref={fileRef} />
           <button className="btn primary" disabled={act.busy} onClick={() => upload().catch(() => {})}>{act.busy ? "Uploading…" : "Upload"}</button>
           <span className="muted">Package, version and signing certificate are read from the APK; the v2/v3 signature is verified.</span>
+          <div className="row" style={{ width: "100%" }}>
+            <b>or import from URL</b>
+            <input style={{ flex: 1, minWidth: 260 }} placeholder="https://github.com/…/releases/download/…/app.apk" value={importUrl} onChange={(e) => setImportUrl(e.target.value)} />
+            <button className="btn" disabled={act.busy || !importUrl.trim()} onClick={() => importApk().catch(() => {})}>Import</button>
+          </div>
           {msg && <div style={{ width: "100%" }}>{msg}</div>}
         </div>
       )}

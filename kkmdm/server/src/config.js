@@ -72,6 +72,8 @@ const config = {
   superAdminPassword: env.SUPERADMIN_PASSWORD || "",
   dashboardOrigins: (env.DASHBOARD_ORIGINS || "http://localhost:5177").split(",").map((s) => s.trim()).filter(Boolean),
   alertWebhookUrl: env.ALERT_WEBHOOK_URL || "",
+  // Hosts the Applications "import from URL" may download from.
+  importHosts: (env.KKMDM_IMPORT_HOSTS || "github.com").split(",").map((s) => s.trim()).filter(Boolean),
   adminSessionMinutes: 60,
   reauthWindowMinutes: 5,
   enrollTokenDefaultTtlHours: 24,

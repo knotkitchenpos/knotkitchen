@@ -206,6 +206,14 @@ test("effective policy follows company -> store -> device and reports sources", 
   assert.strictEqual(bad.status, 400, "unknown keys are rejected");
 });
 
+test("APK import only downloads https URLs from the allowed hosts", async () => {
+  for (const url of ["http://github.com/x.apk", "https://example.com/x.apk", "https://127.0.0.1/x.apk", "file:///etc/passwd", "nonsense"]) {
+    const r = await call("POST", "/api/apps/import", { cookie: superCookie, body: { url } });
+    assert.strictEqual(r.status, 400, url);
+    assert.ok(["url_not_allowed", "bad_url"].includes(r.body.error), `${url}: ${r.body.error}`);
+  }
+});
+
 test("audit log is hash-chained and verifies", async () => {
   await new Promise((r) => setTimeout(r, 200));
   const v = await verifyChain();

@@ -44,6 +44,52 @@ router.get("/", requirePerm("apps.view"), wrap(async (req, res) => {
   });
 }));
 
+/** Stores one APK (upload or import): verified, versioned, audited. */
+async function storeApk(req, buf, meta = {}) {
+  let info;
+  try {
+    info = inspectApk(buf);
+  } catch (err) {
+    await audit(req, "app.upload_rejected", { details: { reason: err.message, ...meta } });
+    throw new HttpError(400, "invalid_apk", err.message);
+  }
+  let app = await App.findOne({ packageName: info.packageName });
+  if (app?.signingCertSha256 && app.signingCertSha256 !== info.signingCertSha256) {
+    await audit(req, "app.upload_rejected", { details: { packageName: info.packageName, reason: "signing certificate changed", ...meta } });
+    throw new HttpError(400, "signature_mismatch", "Signed with a different certificate than earlier versions; Android would refuse the update.");
+  }
+  if (await AppVersion.exists({ packageName: info.packageName, versionCode: info.versionCode })) {
+    throw new HttpError(409, "version_exists", `${info.packageName} versionCode ${info.versionCode} is already uploaded`);
+  }
+  if (!app) {
+    app = await App.create({
+      packageName: info.packageName,
+      name: req.query.name || info.packageName,
+      role: roleFor(info.packageName),
+      signingCertSha256: info.signingCertSha256,
+    });
+  }
+  fs.mkdirSync(APK_DIR, { recursive: true });
+  const file = path.join(APK_DIR, `${info.packageName}-${info.versionCode}-${info.sha256.slice(0, 12)}.apk`);
+  fs.writeFileSync(file, buf);
+  const v = await AppVersion.create({
+    appId: app._id, packageName: info.packageName, versionCode: info.versionCode, versionName: info.versionName,
+    label: req.query.label, minSdk: info.minSdk, targetSdk: info.targetSdk, sha256: info.sha256, size: info.size,
+    signingCertSha256: info.signingCertSha256, signatureScheme: info.signatureScheme, file, uploadedBy: req.admin._id,
+  });
+  // The newest agent upload is also what QR provisioning downloads, so a
+  // fresh server needs nothing copied onto it by hand.
+  if (info.packageName === config.agentPackage) {
+    const current = localAgentInfo();
+    if (!current || info.versionCode > current.versionCode) {
+      fs.mkdirSync(path.dirname(AGENT_FILE), { recursive: true });
+      fs.copyFileSync(file, AGENT_FILE);
+    }
+  }
+  await audit(req, "app.version_uploaded", { targetType: "app_version", targetId: v._id, details: { packageName: v.packageName, versionCode: v.versionCode, sha256: v.sha256, ...meta } });
+  return { app, version: { ...v.toObject(), file: undefined } };
+}
+
 /**
  * Upload: raw APK body (Content-Type application/vnd.android.package-archive).
  * The package, version and signing cert come from the APK itself and the
@@ -53,49 +99,35 @@ router.post("/upload", requirePerm("apps.manage"),
   express.raw({ type: ["application/vnd.android.package-archive", "application/octet-stream"], limit: "300mb" }),
   wrap(async (req, res) => {
     if (!Buffer.isBuffer(req.body) || req.body.length < 100) throw new HttpError(400, "apk_body_required");
-    let info;
-    try {
-      info = inspectApk(req.body);
-    } catch (err) {
-      await audit(req, "app.upload_rejected", { details: { reason: err.message } });
-      throw new HttpError(400, "invalid_apk", err.message);
-    }
-    let app = await App.findOne({ packageName: info.packageName });
-    if (app?.signingCertSha256 && app.signingCertSha256 !== info.signingCertSha256) {
-      await audit(req, "app.upload_rejected", { details: { packageName: info.packageName, reason: "signing certificate changed" } });
-      throw new HttpError(400, "signature_mismatch", "Signed with a different certificate than earlier versions; Android would refuse the update.");
-    }
-    if (await AppVersion.exists({ packageName: info.packageName, versionCode: info.versionCode })) {
-      throw new HttpError(409, "version_exists", `${info.packageName} versionCode ${info.versionCode} is already uploaded`);
-    }
-    if (!app) {
-      app = await App.create({
-        packageName: info.packageName,
-        name: req.query.name || info.packageName,
-        role: roleFor(info.packageName),
-        signingCertSha256: info.signingCertSha256,
-      });
-    }
-    fs.mkdirSync(APK_DIR, { recursive: true });
-    const file = path.join(APK_DIR, `${info.packageName}-${info.versionCode}-${info.sha256.slice(0, 12)}.apk`);
-    fs.writeFileSync(file, req.body);
-    const v = await AppVersion.create({
-      appId: app._id, packageName: info.packageName, versionCode: info.versionCode, versionName: info.versionName,
-      label: req.query.label, minSdk: info.minSdk, targetSdk: info.targetSdk, sha256: info.sha256, size: info.size,
-      signingCertSha256: info.signingCertSha256, signatureScheme: info.signatureScheme, file, uploadedBy: req.admin._id,
-    });
-    // The newest agent upload is also what QR provisioning downloads, so a
-    // fresh server needs nothing copied onto it by hand.
-    if (info.packageName === config.agentPackage) {
-      const current = localAgentInfo();
-      if (!current || info.versionCode > current.versionCode) {
-        fs.mkdirSync(path.dirname(AGENT_FILE), { recursive: true });
-        fs.copyFileSync(file, AGENT_FILE);
-      }
-    }
-    await audit(req, "app.version_uploaded", { targetType: "app_version", targetId: v._id, details: { packageName: v.packageName, versionCode: v.versionCode, sha256: v.sha256 } });
-    res.status(201).json({ app, version: { ...v.toObject(), file: undefined } });
+    res.status(201).json(await storeApk(req, req.body));
   }));
+
+const IMPORT_MAX = 300 * 1024 * 1024;
+
+/**
+ * Import: the server downloads the APK itself, e.g. a GitHub release asset,
+ * so a build can be published without uploading it from someone's PC. Only
+ * https URLs on the allowed hosts (KKMDM_IMPORT_HOSTS, default github.com;
+ * its redirect to GitHub's file host is followed). The APK then goes through
+ * exactly the same checks as an upload.
+ */
+router.post("/import", requirePerm("apps.manage"), wrap(async (req, res) => {
+  let url;
+  try {
+    url = new URL(String(req.body?.url || ""));
+  } catch {
+    throw new HttpError(400, "bad_url");
+  }
+  if (url.protocol !== "https:" || !config.importHosts.includes(url.hostname)) {
+    throw new HttpError(400, "url_not_allowed", `Only https URLs on ${config.importHosts.join(", ")}`);
+  }
+  const r = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(5 * 60 * 1000) });
+  if (!r.ok) throw new HttpError(400, "download_failed", `HTTP ${r.status}`);
+  if (Number(r.headers.get("content-length")) > IMPORT_MAX) throw new HttpError(400, "too_large");
+  const buf = Buffer.from(await r.arrayBuffer());
+  if (buf.length > IMPORT_MAX) throw new HttpError(400, "too_large");
+  res.status(201).json(await storeApk(req, buf, { importedFrom: url.href }));
+}));
 
 router.patch("/:id", requirePerm("apps.manage"), wrap(async (req, res) => {
   const app = await App.findById(req.params.id);
