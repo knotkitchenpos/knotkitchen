@@ -127,7 +127,7 @@ router.post("/device/enroll", enrollLimit, wrap(async (req, res) => {
     techSecret,
     techStepSeconds: 300,
     policy: { hash: policy.hash, settings: policy.settings },
-    managedConfig: await managedConfigFor(device, apps),
+    managedConfig: await managedConfigFor(device, apps, policy.settings),
     apps,
     serverTime: Date.now(),
   });
@@ -206,7 +206,7 @@ router.post("/device/sync", deviceLimit, requireDevice(), wrap(async (req, res) 
     serverTime: Date.now(),
     heartbeatSeconds: policy.settings.telemetry?.heartbeatSeconds || config.heartbeatSeconds,
     policyHash: policy.hash,
-    managedConfig: await managedConfigFor(merged, apps),
+    managedConfig: await managedConfigFor(merged, apps, policy.settings),
     apps,
     maintenanceWindowOpen: store ? inWindow(store.maintenanceWindow?.start, store.maintenanceWindow?.end, store.timezone) : true,
     lostMode: d.lostMode?.enabled ? { message: d.lostMode.message, phone: d.lostMode.phone } : null,

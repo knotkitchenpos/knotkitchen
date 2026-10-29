@@ -26,6 +26,8 @@ const DEFAULT_SETTINGS = {
     showGlobalActions: false,
     showKeyguard: false,
     disableStatusBar: false,
+    // The POS hides the Back/Home bar (a swipe up shows it for a moment).
+    hideNavigationBar: true,
     disableKeyguard: true,
   },
   restrictions: {
@@ -179,7 +181,7 @@ async function resolveForDevice(deviceOrId) {
  * updater stays quiet; else "self", and the POS's updater hands its download
  * to KK Agent, which installs it (the kiosk policy blocks the POS doing so).
  */
-async function managedConfigFor(device, desiredApps = []) {
+async function managedConfigFor(device, desiredApps = [], settings = DEFAULT_SETTINGS) {
   const [store, group] = await Promise.all([
     device.storeId ? Store.findById(device.storeId).lean() : null,
     device.groupId ? Group.findById(device.groupId).lean() : null,
@@ -193,6 +195,7 @@ async function managedConfigFor(device, desiredApps = []) {
     store_name: store?.name || "",
     terminal_name: device.name,
     device_group: group?.name || "",
+    hide_navigation_bar: settings.kiosk?.hideNavigationBar !== false,
     pos_updates: desiredApps.some((a) => a.packageName === config.posPackage) ? "kkmdm" : "self",
   };
 }

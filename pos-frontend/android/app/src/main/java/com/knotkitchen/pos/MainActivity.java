@@ -9,6 +9,9 @@ import android.webkit.WebBackForwardList;
 import android.webkit.WebView;
 
 import androidx.activity.OnBackPressedCallback;
+import androidx.core.view.WindowCompat;
+import androidx.core.view.WindowInsetsCompat;
+import androidx.core.view.WindowInsetsControllerCompat;
 
 import com.getcapacitor.BridgeActivity;
 
@@ -55,8 +58,29 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onResume() {
         super.onResume();
+        hideNavigationBar();
         // The app updates itself; the POS pages are live and never need it.
         ShellUpdater.check(this);
+    }
+
+    @Override
+    public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        // A dialog or the keyboard brings the bar back; hide it again after.
+        if (hasFocus) hideNavigationBar();
+    }
+
+    /**
+     * On a KKMDM kiosk tablet the Back/Home bar is hidden (managed config
+     * hide_navigation_bar, default on); a swipe up from the bottom shows it for
+     * a moment. The status bar stays, so the pull-down shade with Tablet
+     * settings keeps working. Unmanaged phones and tablets keep both bars.
+     */
+    private void hideNavigationBar() {
+        if (!ManagedDevice.isManaged(this) || !ManagedDevice.config(this).getBoolean("hide_navigation_bar", true)) return;
+        WindowInsetsControllerCompat bars = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
+        bars.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
+        bars.hide(WindowInsetsCompat.Type.navigationBars());
     }
 
     @Override
