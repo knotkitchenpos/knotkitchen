@@ -198,6 +198,29 @@ public final class Kiosk {
         return inLockTask(c) ? "locked" : "unlocked";
     }
 
+    /**
+     * What the kiosk looks like to Android right now, for the device's event
+     * log: lock task mode, the features in force, and the two "setup finished"
+     * flags. SystemUI keeps Home and the pull-down shade off until both are 1,
+     * whatever the lock task features say.
+     */
+    static String describe(Context c) {
+        int mode = c.getSystemService(ActivityManager.class).getLockTaskModeState();
+        String m = mode == ActivityManager.LOCK_TASK_MODE_LOCKED ? "locked" : mode == ActivityManager.LOCK_TASK_MODE_PINNED ? "PINNED" : "none";
+        int f = 0;
+        try {
+            f = AgentApp.dpm(c).getLockTaskFeatures(AgentApp.admin(c));
+        } catch (Exception ignored) {
+        }
+        String features = ((f & DevicePolicyManager.LOCK_TASK_FEATURE_HOME) != 0 ? "home " : "")
+                + ((f & DevicePolicyManager.LOCK_TASK_FEATURE_NOTIFICATIONS) != 0 ? "notifications " : "")
+                + ((f & DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO) != 0 ? "systeminfo " : "");
+        return "mode=" + m + " features=[" + features.trim() + "]"
+                + " user_setup_complete=" + Settings.Secure.getInt(c.getContentResolver(), "user_setup_complete", -1)
+                + " device_provisioned=" + Settings.Global.getInt(c.getContentResolver(), Settings.Global.DEVICE_PROVISIONED, -1)
+                + " adb=" + Settings.Global.getInt(c.getContentResolver(), Settings.Global.ADB_ENABLED, -1);
+    }
+
     public static String stateError(Context c) {
         if (!AgentApp.isDeviceOwner(c)) return "agent is not Device Owner";
         if (!DeviceInfo.isInstalled(c, primaryPackage(c))) return primaryPackage(c) + " is not installed";

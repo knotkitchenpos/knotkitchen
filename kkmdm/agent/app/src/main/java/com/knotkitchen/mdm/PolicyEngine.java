@@ -102,6 +102,12 @@ public final class PolicyEngine {
         for (String[] pair : RESTRICTIONS) {
             step(pair[0], () -> setRestriction(pair[1], r.optBoolean(pair[0], false)));
         }
+        // "Debugging allowed" means switched on, too: a factory reset turns
+        // USB debugging off, and getting to Developer options inside the kiosk
+        // takes a technician session.
+        step("adbEnabled", () -> {
+            if (!r.optBoolean("blockDebugging", false)) dpm.setGlobalSetting(admin, Settings.Global.ADB_ENABLED, "1");
+        });
         if (Build.VERSION.SDK_INT >= 29) {
             step("blockUnknownSourcesGlobally", () -> setRestriction(UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES_GLOBALLY, r.optBoolean("blockUnknownSources", true)));
         }

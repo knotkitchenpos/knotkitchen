@@ -186,6 +186,7 @@ public final class SyncEngine {
         p.setApplied(p.policyHash(), errors);
         AgentLog.i("policy", "applied " + p.policyHash() + (errors.isEmpty() ? "" : " with errors " + errors));
         event(c, errors.isEmpty() ? "policy_applied" : "policy_errors", p.policyHash() + (errors.isEmpty() ? "" : " " + errors));
+        event(c, "kiosk_status", Kiosk.describe(c));
     }
 
     private static void handleManagedConfig(Context c, JSONObject cfg) {
