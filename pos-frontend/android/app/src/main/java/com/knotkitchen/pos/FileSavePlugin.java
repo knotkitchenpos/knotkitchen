@@ -23,7 +23,8 @@ import java.io.FileOutputStream;
 import java.io.OutputStream;
 
 /**
- * Saving an image the POS made (the table QR card) on the phone or tablet.
+ * Saving a file the POS made (the table QR card, the menu CSV) on the phone
+ * or tablet.
  *
  * The app is a WebView around the live POS, and a WebView ignores the
  * browser's <a download>: the Download PNG button did nothing in the app.
@@ -70,6 +71,64 @@ public class FileSavePlugin extends Plugin {
         }
     }
 
+    /**
+     * Any other file the POS makes (the menu CSV): into Downloads/KnotKitchen
+     * on Android 10+, through the share sheet on 6-9.
+     */
+    @PluginMethod
+    public void saveFile(PluginCall call) {
+        String data = call.getString("data");
+        String mimeType = call.getString("mimeType", "application/octet-stream");
+        String fileName = safeName(call.getString("fileName", "knotkitchen.txt"));
+        if (data == null || mimeType == null || mimeType.isEmpty()) {
+            call.reject("There is no file to save.");
+            return;
+        }
+        byte[] bytes;
+        try {
+            bytes = Base64.decode(data, Base64.DEFAULT);
+        } catch (IllegalArgumentException e) {
+            call.reject("The file could not be read.");
+            return;
+        }
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                saveToDownloads(call, bytes, fileName, mimeType);
+            } else {
+                shareFile(call, bytes, fileName, mimeType);
+            }
+        } catch (Exception e) {
+            Logger.error("FileSave", "saving " + fileName + " failed", e);
+            call.reject("The file could not be saved.");
+        }
+    }
+
+    private void saveToDownloads(PluginCall call, byte[] bytes, String fileName, String mimeType) throws Exception {
+        ContentResolver resolver = getContext().getContentResolver();
+        ContentValues values = new ContentValues();
+        values.put(MediaStore.Downloads.DISPLAY_NAME, fileName);
+        values.put(MediaStore.Downloads.MIME_TYPE, mimeType);
+        values.put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS + "/" + FOLDER);
+        values.put(MediaStore.Downloads.IS_PENDING, 1);
+        Uri uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+        if (uri == null) throw new IllegalStateException("MediaStore refused the file");
+        try (OutputStream out = resolver.openOutputStream(uri)) {
+            if (out == null) throw new IllegalStateException("no output stream");
+            out.write(bytes);
+        } catch (Exception e) {
+            resolver.delete(uri, null, null);
+            throw e;
+        }
+        values.clear();
+        values.put(MediaStore.Downloads.IS_PENDING, 0);
+        resolver.update(uri, values, null, null);
+
+        JSObject result = new JSObject();
+        result.put("saved", true);
+        result.put("location", Environment.DIRECTORY_DOWNLOADS + "/" + FOLDER);
+        call.resolve(result);
+    }
+
     private void saveToPictures(PluginCall call, byte[] bytes, String fileName, String mimeType) throws Exception {
         ContentResolver resolver = getContext().getContentResolver();
         ContentValues values = new ContentValues();
@@ -110,7 +169,7 @@ public class FileSavePlugin extends Plugin {
             .setType(mimeType)
             .putExtra(Intent.EXTRA_STREAM, uri)
             .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
-        getActivity().startActivity(Intent.createChooser(send, "Save the image"));
+        getActivity().startActivity(Intent.createChooser(send, mimeType.startsWith("image/") ? "Save the image" : "Save the file"));
 
         JSObject result = new JSObject();
         result.put("saved", false);

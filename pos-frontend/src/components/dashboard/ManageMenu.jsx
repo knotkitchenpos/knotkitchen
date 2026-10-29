@@ -34,6 +34,7 @@ import {
 import { IconChevronRight, IconDoc, IconDots, IconFolder } from "./manageMenu/icons";
 import ConfirmDialog from "./manageMenu/ConfirmDialog";
 import CsvPreviewModal from "./manageMenu/CsvPreviewModal";
+import { saveBlob } from "../../utils/saveImage";
 import ViewProductModal from "./manageMenu/ViewProductModal";
 import BulkGroupPickerModal from "./manageMenu/BulkGroupPickerModal";
 import ProductDrawer from "./manageMenu/ProductDrawer";
@@ -852,12 +853,8 @@ const ManageMenu = () => {
               onClick={async () => {
                 try {
                   const res = await exportMenuCsv();
-                  const url = window.URL.createObjectURL(new Blob([res.data]));
-                  const a = document.createElement("a");
-                  a.href = url;
-                  a.download = "knotkitchen_menu.csv";
-                  a.click();
-                  enqueueSnackbar("CSV exported!", { variant: "success" });
+                  // A browser downloads it; the app saves it to Downloads/KnotKitchen (utils/saveImage).
+                  await saveBlob(new Blob([res.data], { type: "text/csv" }), "knotkitchen_menu.csv");
                 } catch (e) {
                   enqueueSnackbar("Failed to export CSV", { variant: "error" });
                 }

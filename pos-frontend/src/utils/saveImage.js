@@ -12,6 +12,48 @@ import { enqueueSnackbar } from "./notify";
  */
 const FileSave = registerPlugin("FileSave");
 
+const UPDATE_APP = "Update the KnotKitchen app to download files. ";
+
+const blobToBase64 = (blob) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(",")[1] || "");
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+
+/**
+ * Save any file (the menu CSV). A browser downloads it; the app saves it into
+ * Downloads/KnotKitchen (FileSave.saveFile, Android 10+) or offers the share
+ * sheet. An app from before saveFile (1.0.185) says to update.
+ */
+export const saveBlob = async (blob, fileName) => {
+  if (!blob) return;
+  if (!Capacitor.isNativePlatform()) {
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.download = fileName;
+    link.href = url;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+    return;
+  }
+  if (!Capacitor.isPluginAvailable("FileSave")) {
+    enqueueSnackbar(UPDATE_APP + "Or export from a computer.", { variant: "warning" });
+    return;
+  }
+  try {
+    const data = await blobToBase64(blob);
+    const res = await FileSave.saveFile({ data, fileName, mimeType: blob.type || "application/octet-stream" });
+    if (res?.saved) enqueueSnackbar(`Saved to ${res.location}.`, { variant: "success", important: true });
+  } catch (err) {
+    const old = err?.code === "UNIMPLEMENTED" || /not implemented/i.test(err?.message || "");
+    enqueueSnackbar(old ? UPDATE_APP + "Or export from a computer." : err?.message || "The file could not be saved.", {
+      variant: old ? "warning" : "error",
+    });
+  }
+};
+
 export const saveCanvasPng = async (canvas, fileName) => {
   if (!canvas) return;
 
