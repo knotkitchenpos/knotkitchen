@@ -311,6 +311,9 @@ public final class PolicyEngine {
                 else if (v instanceof Integer) b.putInt(k, (Integer) v);
                 else if (v != null && v != JSONObject.NULL) b.putString(k, String.valueOf(v));
             }
+            // The Tablet settings switch: with the shade off, the POS hides the
+            // status bar too (only the app on screen can hide it).
+            b.putBoolean("hide_status_bar", new Prefs(c).shadeOff());
             AgentApp.dpm(c).setApplicationRestrictions(AgentApp.admin(c), Kiosk.primaryPackage(c), b);
         } catch (Exception e) {
             AgentLog.e("policy", "managed config failed", e);

@@ -12,6 +12,7 @@
     <restriction android:key="terminal_name" android:title="@string/mc_terminal_name" android:restrictionType="string" android:defaultValue="" />
     <restriction android:key="device_group" android:title="@string/mc_device_group" android:restrictionType="string" android:defaultValue="" />
     <restriction android:key="hide_navigation_bar" android:title="@string/mc_hide_navigation_bar" android:restrictionType="bool" android:defaultValue="true" />
+    <restriction android:key="hide_status_bar" android:title="@string/mc_hide_status_bar" android:restrictionType="bool" android:defaultValue="false" />
     <restriction android:key="display_scale_percent" android:title="@string/mc_display_scale_percent" android:restrictionType="integer" android:defaultValue="85" />
     <restriction android:key="pos_updates" android:title="@string/mc_pos_updates" android:restrictionType="string" android:defaultValue="self" />
 </restrictions>

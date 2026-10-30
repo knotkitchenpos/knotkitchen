@@ -89,15 +89,20 @@ public class MainActivity extends BridgeActivity {
 
     /**
      * On a KKMDM kiosk tablet the Back/Home bar is hidden (managed config
-     * hide_navigation_bar, default on); a swipe up from the bottom shows it for
-     * a moment. The status bar stays, so the pull-down shade with Tablet
-     * settings keeps working. Unmanaged phones and tablets keep both bars.
+     * hide_navigation_bar, default on); a swipe shows it for a moment. The
+     * status bar stays, for the pull-down shade with Tablet settings, unless
+     * that shade is switched off in Tablet settings (hide_status_bar): then it
+     * goes too. Unmanaged phones and tablets keep both bars.
      */
     private void hideNavigationBar() {
-        if (!ManagedDevice.isManaged(this) || !ManagedDevice.config(this).getBoolean("hide_navigation_bar", true)) return;
+        if (!ManagedDevice.isManaged(this)) return;
+        android.os.Bundle cfg = ManagedDevice.config(this);
         WindowInsetsControllerCompat bars = WindowCompat.getInsetsController(getWindow(), getWindow().getDecorView());
         bars.setSystemBarsBehavior(WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE);
-        bars.hide(WindowInsetsCompat.Type.navigationBars());
+        if (cfg.getBoolean("hide_navigation_bar", true)) bars.hide(WindowInsetsCompat.Type.navigationBars());
+        // Switched back on in Tablet settings: the bar returns on the next resume.
+        if (cfg.getBoolean("hide_status_bar", false)) bars.hide(WindowInsetsCompat.Type.statusBars());
+        else bars.show(WindowInsetsCompat.Type.statusBars());
     }
 
     @Override

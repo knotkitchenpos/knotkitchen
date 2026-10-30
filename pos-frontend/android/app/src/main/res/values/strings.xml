@@ -15,6 +15,7 @@
     <string name="mc_terminal_name">Terminal name</string>
     <string name="mc_device_group">Device group</string>
     <string name="mc_hide_navigation_bar">Hide the navigation bar</string>
+    <string name="mc_hide_status_bar">Hide the status bar (notification bar switched off on the tablet)</string>
     <string name="mc_display_scale_percent">POS page size, % of the default display size</string>
     <string name="mc_pos_updates">Who installs POS updates (self or kkmdm)</string>
 </resources>

@@ -144,10 +144,11 @@ public class QuickSettingsActivity extends Activity {
             boolean shadeOn = !prefs.shadeOff();
             list.addView(card(Ui.text(this, "Notification bar", 18, Color.WHITE, true),
                     shadeOn ? "On: pull down from the top for Tablet settings"
-                            : "Off: open Tablet settings from the POS (Settings > Device Configuration)",
+                            : "Off: the bar is hidden; open Tablet settings from the POS (Settings > Device Configuration)",
                     toggle(shadeOn, on -> {
                         prefs.setShadeOff(!on);
                         Kiosk.configure(this);
+                        PolicyEngine.applyManagedConfig(this, prefs.managedConfig());
                         SyncEngine.event(this, "kiosk_shade", on ? "Notification bar turned on in Tablet settings" : "Notification bar turned off in Tablet settings");
                     })));
         }
