@@ -9,6 +9,8 @@ import android.content.Context;
 
 public class AgentApp extends Application {
     public static final String CHANNEL = "kkmdm";
+    /** The ongoing "Tablet settings" entry in the shade: full row and a status bar icon, not tucked under Silent. */
+    public static final String TABLET_CHANNEL = "tablet_settings";
 
     @Override
     public void onCreate() {
@@ -17,6 +19,9 @@ public class AgentApp extends Application {
         NotificationChannel ch = new NotificationChannel(CHANNEL, "Device management", NotificationManager.IMPORTANCE_MIN);
         ch.setShowBadge(false);
         getSystemService(NotificationManager.class).createNotificationChannel(ch);
+        NotificationChannel tablet = new NotificationChannel(TABLET_CHANNEL, "Tablet settings", NotificationManager.IMPORTANCE_LOW);
+        tablet.setShowBadge(false);
+        getSystemService(NotificationManager.class).createNotificationChannel(tablet);
         AgentLog.i("app", "started, device owner=" + isDeviceOwner(this));
         // A Settings panel left open when the process died leaves its guard on.
         if (isDeviceOwner(this)) new Thread(() -> PolicyEngine.releaseSettingsGuard(this), "settings-guard").start();

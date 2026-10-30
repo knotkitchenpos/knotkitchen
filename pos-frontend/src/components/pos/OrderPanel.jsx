@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "../../utils/notify";
 import KnotLogo from "../shared/KnotLogo";
+import { useBattery, useManagedDevice } from "../../utils/managedDevice";
 import {
   canRemoveModifier,
   getTotalPrice,
@@ -151,6 +152,9 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
   const subtotal = useSelector(getTotalPrice);
 
   const [clock, setClock] = useState(new Date());
+  // Kiosk tablets: battery % beside the clock (the status bar cannot show it there).
+  const { managed } = useManagedDevice();
+  const battery = useBattery(managed);
   const [noteFor, setNoteFor] = useState(null);
   const [noteText, setNoteText] = useState("");
   const [qtyText, setQtyText] = useState("");
@@ -828,6 +832,14 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
         <span className="px-2 py-[3px] rounded-full bg-[#DCFCE7] text-[#15803D] text-[10.5px] font-bold flex items-center gap-1 shrink-0">
           <span className="w-[5px] h-[5px] rounded-full bg-[#22C55E]" /> Online
         </span>
+        {battery && (
+          <span
+            className={`text-[11.5px] font-bold shrink-0 ${battery.level <= 15 && !battery.charging ? "text-[#DC2626]" : "text-[#475569]"}`}
+            title={battery.charging ? "Charging" : "Battery"}
+          >
+            {battery.charging ? "⚡" : "🔋"} {battery.level}%
+          </span>
+        )}
         <div className="flex items-center gap-1.5 shrink-0">
           <span className="text-[#94A3B8]"><IconClock /></span>
           <div className="text-right leading-tight">

@@ -80,6 +80,11 @@ public class QuickSettingsActivity extends Activity {
     private void render() {
         list.removeAllViews();
         list.addView(Ui.text(this, "Tablet settings", 24, Color.WHITE, true));
+        android.os.BatteryManager bm = getSystemService(android.os.BatteryManager.class);
+        if (bm != null) {
+            int pct = bm.getIntProperty(android.os.BatteryManager.BATTERY_PROPERTY_CAPACITY);
+            if (pct >= 0 && pct <= 100) list.addView(Ui.text(this, "Battery " + pct + "%" + (bm.isCharging() ? " · charging" : ""), 15, Ui.MUTED, false));
+        }
 
         // ---- Wi-Fi ----
         WifiManager wifi = getApplicationContext().getSystemService(WifiManager.class);

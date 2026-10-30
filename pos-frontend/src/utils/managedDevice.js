@@ -58,3 +58,32 @@ export const useManagedDevice = () => {
   }, []);
   return state;
 };
+
+/**
+ * Battery level for the POS header on kiosk tablets. Android has no Device
+ * Owner switch for the status bar's battery percentage, so the POS shows it
+ * itself. null where the browser has no Battery API.
+ */
+export const useBattery = (enabled = true) => {
+  const [battery, setBattery] = useState(null);
+  useEffect(() => {
+    if (!enabled || typeof navigator === "undefined" || !navigator.getBattery) return undefined;
+    let alive = true;
+    let b;
+    const read = () => alive && b && setBattery({ level: Math.round(b.level * 100), charging: b.charging });
+    navigator.getBattery().then((x) => {
+      b = x;
+      read();
+      b.addEventListener("levelchange", read);
+      b.addEventListener("chargingchange", read);
+    }).catch(() => {});
+    return () => {
+      alive = false;
+      if (b) {
+        b.removeEventListener("levelchange", read);
+        b.removeEventListener("chargingchange", read);
+      }
+    };
+  }, [enabled]);
+  return battery;
+};
