@@ -76,11 +76,16 @@ public final class Kiosk {
      * joins the allowlist until the agent's screen is back or PANEL_MS ends.
      */
     static boolean openPanel(Activity a, String action) {
+        return openPanel(a, new Intent(action));
+    }
+
+    static boolean openPanel(Activity a, Intent intent) {
         DevicePolicyManager dpm = AgentApp.dpm(a);
         try {
             panelUntil = System.currentTimeMillis() + PANEL_MS;
+            guardSettings(a, true);
             dpm.setLockTaskPackages(AgentApp.admin(a), lockTaskPackages(a));
-            a.startActivity(new Intent(action));
+            a.startActivity(intent);
             Context app = a.getApplicationContext();
             new android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(() -> {
                 if (panelUntil == 0 || System.currentTimeMillis() < panelUntil - 1000) return;
@@ -90,7 +95,7 @@ public final class Kiosk {
             }, PANEL_MS);
             return true;
         } catch (Exception e) {
-            AgentLog.w("kiosk", "panel " + action + ": " + e.getMessage());
+            AgentLog.w("kiosk", "panel " + intent.getAction() + ": " + e.getMessage());
             closePanel(a);
             return false;
         }
@@ -105,6 +110,48 @@ public final class Kiosk {
         } catch (Exception e) {
             AgentLog.w("kiosk", "panel close: " + e.getMessage());
         }
+        guardSettings(c, false);
+    }
+
+    static boolean panelOpen() {
+        return System.currentTimeMillis() < panelUntil;
+    }
+
+    /**
+     * What Settings may not do while it is let in for a panel. Any Settings
+     * screen can reach the rest of Settings (a panel's "See more", a page's
+     * search), so instead of hoping nobody wanders, the dangerous parts are
+     * switched off for those minutes: Developer options, force-stopping or
+     * clearing the POS and the agent, accounts, credentials, network reset,
+     * location and tethering. Wi-Fi and Bluetooth stay usable.
+     */
+    static final String[] SETTINGS_GUARD = {
+            android.os.UserManager.DISALLOW_DEBUGGING_FEATURES,
+            android.os.UserManager.DISALLOW_APPS_CONTROL,
+            android.os.UserManager.DISALLOW_MODIFY_ACCOUNTS,
+            android.os.UserManager.DISALLOW_CONFIG_CREDENTIALS,
+            android.os.UserManager.DISALLOW_NETWORK_RESET,
+            android.os.UserManager.DISALLOW_CONFIG_LOCATION,
+            android.os.UserManager.DISALLOW_CONFIG_TETHERING,
+            android.os.UserManager.DISALLOW_FACTORY_RESET,
+    };
+
+    /** On: adds the guard. Off: each guarded restriction back to what the policy says. */
+    static void guardSettings(Context c, boolean on) {
+        if (on) {
+            DevicePolicyManager dpm = AgentApp.dpm(c);
+            ComponentName admin = AgentApp.admin(c);
+            for (String r : SETTINGS_GUARD) {
+                try {
+                    dpm.addUserRestriction(admin, r);
+                } catch (Exception e) {
+                    AgentLog.w("kiosk", "guard " + r + ": " + e.getMessage());
+                }
+            }
+            return;
+        }
+        Context app = c.getApplicationContext();
+        new Thread(() -> PolicyEngine.releaseSettingsGuard(app), "settings-guard").start();
     }
 
     /** Applies lock task allowlist/features, status bar, keyguard and HOME. Returns errors. */

@@ -100,13 +100,13 @@ public final class PolicyEngine {
         JSONObject sec = obj(s, "security");
 
         for (String[] pair : RESTRICTIONS) {
-            step(pair[0], () -> setRestriction(pair[1], r.optBoolean(pair[0], false)));
+            step(pair[0], () -> setRestriction(pair[1], r.optBoolean(pair[0], false) || guarded(pair[1])));
         }
         // "Debugging allowed" means switched on, too: a factory reset turns
         // USB debugging off, and getting to Developer options inside the kiosk
         // takes a technician session.
         step("adbEnabled", () -> {
-            if (!r.optBoolean("blockDebugging", false)) dpm.setGlobalSetting(admin, Settings.Global.ADB_ENABLED, "1");
+            if (!r.optBoolean("blockDebugging", false) && !Kiosk.panelOpen()) dpm.setGlobalSetting(admin, Settings.Global.ADB_ENABLED, "1");
         });
         if (Build.VERSION.SDK_INT >= 29) {
             step("blockUnknownSourcesGlobally", () -> setRestriction(UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES_GLOBALLY, r.optBoolean("blockUnknownSources", true)));
@@ -217,6 +217,43 @@ public final class PolicyEngine {
 
         // Kiosk last, so the allowlist reflects everything above.
         errors.addAll(Kiosk.configure(c));
+    }
+
+    /**
+     * Ends Kiosk.SETTINGS_GUARD: a restriction the policy also controls goes
+     * back to the policy's value, the rest are cleared, and USB debugging is
+     * switched back on where the policy allows it. From closing a Settings
+     * panel, and from every agent start (a crash mid-panel must not leave it on).
+     */
+    private static boolean guarded(String restriction) {
+        if (!Kiosk.panelOpen()) return false;
+        for (String g : Kiosk.SETTINGS_GUARD) if (g.equals(restriction)) return true;
+        return false;
+    }
+
+    static void releaseSettingsGuard(Context c) {
+        if (Kiosk.panelOpen() || !AgentApp.isDeviceOwner(c)) return;
+        DevicePolicyManager dpm = AgentApp.dpm(c);
+        ComponentName admin = AgentApp.admin(c);
+        JSONObject p = new Prefs(c).policy();
+        JSONObject r = p != null ? p.optJSONObject("restrictions") : null;
+        for (String guard : Kiosk.SETTINGS_GUARD) {
+            boolean on = false;
+            for (String[] pair : RESTRICTIONS) {
+                if (pair[1].equals(guard)) on = r != null ? r.optBoolean(pair[0], false) : true;
+            }
+            try {
+                if (on) dpm.addUserRestriction(admin, guard);
+                else dpm.clearUserRestriction(admin, guard);
+            } catch (Exception e) {
+                AgentLog.w("policy", "release " + guard + ": " + e.getMessage());
+            }
+        }
+        try {
+            if (r != null && !r.optBoolean("blockDebugging", false)) dpm.setGlobalSetting(admin, Settings.Global.ADB_ENABLED, "1");
+        } catch (Exception e) {
+            AgentLog.w("policy", "adb back on: " + e.getMessage());
+        }
     }
 
     private void setRestriction(String key, boolean on) {

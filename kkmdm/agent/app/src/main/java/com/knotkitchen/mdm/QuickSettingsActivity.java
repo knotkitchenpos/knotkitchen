@@ -119,9 +119,13 @@ public class QuickSettingsActivity extends Activity {
                     say("Bluetooth permission missing");
                 }
             }));
-            // Scanning and pairing (printers, scanners) are Android's own Bluetooth
-            // screen; Android 10 has no small panel for it as it has for Wi-Fi.
-            b.addView(small("Pair a device", () -> openPanel(Settings.ACTION_BLUETOOTH_SETTINGS)));
+            if (btOn) {
+                String paired = pairedNames(bt);
+                TextView t = Ui.text(this, paired.isEmpty() ? "No paired devices yet" : "Paired: " + paired, 13, Ui.MUTED, false);
+                t.setGravity(Gravity.START);
+                b.addView(t);
+            }
+            b.addView(small("Pair a device", this::pairDevice));
             list.addView(b);
         }
 
@@ -185,6 +189,39 @@ public class QuickSettingsActivity extends Activity {
 
     private void openPanel(String action) {
         if (!Kiosk.openPanel(this, action)) say("Not available on this tablet");
+    }
+
+    /**
+     * Pairing a printer or scanner: Android's Bluetooth device picker, a bare
+     * list of nearby devices that pairs on tap and has no way on into
+     * Settings (no menu, search or back arrow), unlike the Bluetooth settings
+     * page, from which the main Settings screen was a tap away. That page is
+     * only the fallback for a tablet without the picker.
+     */
+    private void pairDevice() {
+        Intent picker = new Intent("android.bluetooth.devicepicker.action.LAUNCH")
+                .putExtra("android.bluetooth.devicepicker.extra.NEED_AUTH", true)
+                .putExtra("android.bluetooth.devicepicker.extra.FILTER_TYPE", 0) // all devices
+                .addFlags(Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
+        if (picker.resolveActivity(getPackageManager()) != null) {
+            if (!Kiosk.openPanel(this, picker)) say("Not available on this tablet");
+        } else {
+            openPanel(Settings.ACTION_BLUETOOTH_SETTINGS);
+        }
+    }
+
+    @SuppressWarnings("MissingPermission")
+    private static String pairedNames(BluetoothAdapter bt) {
+        StringBuilder s = new StringBuilder();
+        try {
+            for (android.bluetooth.BluetoothDevice d : bt.getBondedDevices()) {
+                if (s.length() > 0) s.append(", ");
+                s.append(d.getName() != null ? d.getName() : d.getAddress());
+            }
+        } catch (SecurityException ignored) {
+            // permission not granted yet
+        }
+        return s.toString();
     }
 
     private void setSystem(String key, String value) {

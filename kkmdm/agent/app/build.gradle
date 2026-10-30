@@ -19,8 +19,8 @@ android {
         // Android 9: lock task features, ActivityOptions.setLockTaskEnabled, built-in QR provisioning.
         minSdk 28
         targetSdk 34
-        versionCode 13
-        versionName "0.1.12"
+        versionCode 14
+        versionName "0.1.13"
         // SHA-256 SPKI pins for the KKMDM server, "sha256/AAAA...,sha256/BBBB..." (empty = no pinning, dev only).
         buildConfigField "String", "CERT_PINS", "\"${project.findProperty('kkmdmCertPins') ?: ''}\""
     }

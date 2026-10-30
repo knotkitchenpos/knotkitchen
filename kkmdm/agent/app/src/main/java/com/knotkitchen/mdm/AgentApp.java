@@ -18,6 +18,8 @@ public class AgentApp extends Application {
         ch.setShowBadge(false);
         getSystemService(NotificationManager.class).createNotificationChannel(ch);
         AgentLog.i("app", "started, device owner=" + isDeviceOwner(this));
+        // A Settings panel left open when the process died leaves its guard on.
+        if (isDeviceOwner(this)) new Thread(() -> PolicyEngine.releaseSettingsGuard(this), "settings-guard").start();
     }
 
     public static ComponentName admin(Context c) {
