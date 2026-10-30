@@ -167,7 +167,9 @@ public final class Kiosk {
             if (k.optBoolean("showSystemInfo", true)) f |= DevicePolicyManager.LOCK_TASK_FEATURE_SYSTEM_INFO;
             if (k.optBoolean("showHome", false)) f |= DevicePolicyManager.LOCK_TASK_FEATURE_HOME;
             // Notifications and overview need HOME; Android throws otherwise.
-            if (k.optBoolean("showHome", false) && k.optBoolean("showNotifications", false)) f |= DevicePolicyManager.LOCK_TASK_FEATURE_NOTIFICATIONS;
+            if (k.optBoolean("showHome", false) && k.optBoolean("showNotifications", false) && !new Prefs(c).shadeOff()) {
+                f |= DevicePolicyManager.LOCK_TASK_FEATURE_NOTIFICATIONS;
+            }
             if (k.optBoolean("showHome", false) && k.optBoolean("showOverview", false)) f |= DevicePolicyManager.LOCK_TASK_FEATURE_OVERVIEW;
             if (k.optBoolean("showGlobalActions", false)) f |= DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS;
             if (k.optBoolean("showKeyguard", false)) f |= DevicePolicyManager.LOCK_TASK_FEATURE_KEYGUARD;

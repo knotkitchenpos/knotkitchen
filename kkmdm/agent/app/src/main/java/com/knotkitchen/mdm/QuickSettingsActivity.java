@@ -134,6 +134,24 @@ public class QuickSettingsActivity extends Activity {
             list.addView(b);
         }
 
+        // ---- Notification bar ----
+        // Off: the pull-down shade is disabled on this tablet (the kiosk drops
+        // its notifications feature). Tablet settings stays reachable from the
+        // POS, Settings > Device Configuration > Tablet settings.
+        Prefs prefs = new Prefs(this);
+        boolean policyAllows = Kiosk.kioskSettings(this).optBoolean("showNotifications", false);
+        if (policyAllows) {
+            boolean shadeOn = !prefs.shadeOff();
+            list.addView(card(Ui.text(this, "Notification bar", 18, Color.WHITE, true),
+                    shadeOn ? "On: pull down from the top for Tablet settings"
+                            : "Off: open Tablet settings from the POS (Settings > Device Configuration)",
+                    toggle(shadeOn, on -> {
+                        prefs.setShadeOff(!on);
+                        Kiosk.configure(this);
+                        SyncEngine.event(this, "kiosk_shade", on ? "Notification bar turned on in Tablet settings" : "Notification bar turned off in Tablet settings");
+                    })));
+        }
+
         // ---- Brightness ----
         boolean auto = Settings.System.getInt(getContentResolver(), Settings.System.SCREEN_BRIGHTNESS_MODE, 0) == 1;
         LinearLayout br = card(Ui.text(this, "Brightness", 18, Color.WHITE, true), auto ? "Automatic" : null,

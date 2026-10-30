@@ -94,6 +94,9 @@ public final class Prefs {
     public long technicianUntil() { return sp.getLong("techUntil", 0); }
     public void setTechnicianUntil(long t) { sp.edit().putLong("techUntil", t).apply(); }
     public boolean technicianActive() { return technicianUntil() > System.currentTimeMillis(); }
+    /** Turned off on this tablet from Tablet settings (on top of the policy's kiosk.showNotifications). */
+    public boolean shadeOff() { return sp.getBoolean("shadeOff", false); }
+    public void setShadeOff(boolean off) { sp.edit().putBoolean("shadeOff", off).apply(); }
 
     public JSONObject lostMode() { return json(sp.getString("lostMode", null)); }
     public void setLostMode(JSONObject o) {
