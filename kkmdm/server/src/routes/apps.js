@@ -123,10 +123,10 @@ router.post("/upload-links", requirePerm("apps.manage"), wrap(async (req, res) =
 /** The public half of an upload link (mounted outside the admin API, see uploadRouter). */
 const uploadRouter = express.Router();
 uploadRouter.post("/upload/:token",
-  express.raw({ type: () => true, limit: "300mb" }),
-  wrap(async (req, res) => {
+  // Claimed when the upload starts, before the body is read: a large APK can
+  // take longer to arrive than the link lives. Atomic, so it cannot be used twice.
+  wrap(async (req, res, next) => {
     const now = new Date();
-    // Claimed atomically, so a link cannot be used twice even at the same moment.
     const link = await UploadLink.findOneAndUpdate(
       { tokenHash: sha256(String(req.params.token)), usedAt: null, expiresAt: { $gt: now } },
       { $set: { usedAt: now } },
@@ -135,11 +135,19 @@ uploadRouter.post("/upload/:token",
     if (!link) throw new HttpError(410, "link_invalid", "This upload link is unknown, used or expired.");
     const admin = await AdminUser.findById(link.createdBy);
     if (!admin || admin.disabled) throw new HttpError(410, "link_invalid");
+    req.uploadLink = link;
+    req.admin = admin;
+    // An upload that breaks off does not burn the link (it can be retried while it lives).
+    req.on("aborted", () => UploadLink.updateOne({ _id: link._id, versionId: null }, { $unset: { usedAt: 1 } }).catch(() => {}));
+    next();
+  }),
+  express.raw({ type: () => true, limit: "300mb" }),
+  wrap(async (req, res) => {
+    const link = req.uploadLink;
     if (!Buffer.isBuffer(req.body) || req.body.length < 100) {
       await UploadLink.updateOne({ _id: link._id }, { $unset: { usedAt: 1 } });
       throw new HttpError(400, "apk_body_required");
     }
-    req.admin = admin;
     try {
       const out = await storeApk(req, req.body, { via: "upload_link", linkId: String(link._id) });
       await UploadLink.updateOne({ _id: link._id }, { $set: { versionId: out.version._id } });
