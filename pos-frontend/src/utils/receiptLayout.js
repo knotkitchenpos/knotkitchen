@@ -125,7 +125,7 @@ export const layoutReceipt = ({ order = {}, store = {}, settings = {}, images = 
   const W = P.width;
   const inner = W - P.pad * 2;
   const ops = [];
-  let y = P.pad * 2;
+  let y = P.pad; // half the old top margin (owner, 2026-10-30)
 
   const text = (value, { size = P.body, bold = false, align = "left", x = P.pad, width = inner } = {}) => {
     const fnt = font(size, bold);
@@ -319,7 +319,7 @@ export const layoutReport = ({ title = "Report", store = {}, period = "", genera
   const W = P.width;
   const inner = W - P.pad * 2;
   const ops = [];
-  let y = P.pad * 2;
+  let y = P.pad; // half the old top margin (owner, 2026-10-30)
   const text = (value, { size = P.body, bold = false, align = "left" } = {}) => {
     const fnt = font(size, bold);
     for (const line of wrap(String(value), fnt, inner, measure)) {
@@ -379,7 +379,7 @@ export const layoutKot = ({ order = {}, items, store = {}, paper = 80, round = f
   const W = P.width;
   const inner = W - P.pad * 2;
   const ops = [];
-  let y = P.pad * 2;
+  let y = P.pad; // half the old top margin (owner, 2026-10-30)
   const big = P.body + 4;
 
   const text = (value, { size = P.body, bold = false, align = "left", x = P.pad, width = inner } = {}) => {

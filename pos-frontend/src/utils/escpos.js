@@ -66,6 +66,10 @@ const BAND_ROWS = 120;
 // Calibration knob: how far a printer with no cutter feeds after a print so
 // the last line clears its tear bar (8 dots = 1 mm at 203 dpi).
 export const TEAR_FEED_DOTS = 104; // 13 mm
+// 3-inch: half that (owner, 2026-10-30: the margin under the last line was
+// twice what was wanted). The 2-inch portables keep 13 mm: their tear bar
+// sits further from the head, and less left the last line inside.
+export const TEAR_FEED_DOTS_80 = 52; // 6.5 mm
 
 const blankRow = (bits, rowBytes, y) => {
   for (let i = y * rowBytes, end = i + rowBytes; i < end; i += 1) if (bits[i]) return false;

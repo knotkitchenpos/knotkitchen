@@ -5,7 +5,7 @@ import { billableItems } from "./orderItems.js";
 import { printHtmlDocument } from "./printDocument";
 import { formatAddress } from "./address";
 import { layoutKot, layoutReceipt, layoutReport, paperOf } from "./receiptLayout.js";
-import { ditherInPlace, rasterJob, TEAR_FEED_DOTS, toMonochrome } from "./escpos.js";
+import { ditherInPlace, rasterJob, TEAR_FEED_DOTS, TEAR_FEED_DOTS_80, toMonochrome } from "./escpos.js";
 import { catJob } from "./catprinter.js";
 import { bluetoothLinked, kitchenPrinter, loadPrinterConfig, reconnectBluetoothPrinter, sendToPrinter } from "./printerDevice.js";
 import { ensureReceiptFont } from "./receiptFont.js";
@@ -225,7 +225,7 @@ const sendCanvas = async (canvas, { printer, paper, auto }) => {
     // its last line and the next one started with a long blank strip
     // (owner, 2026-10-30). A printer with a cutter gets a short blank margin
     // under the last line before it cuts.
-    await sendToPrinter(printer, encode(bits, canvas.width, canvas.height, { tearFeed: TEAR_FEED_DOTS }));
+    await sendToPrinter(printer, encode(bits, canvas.width, canvas.height, { tearFeed: paper === "58" ? TEAR_FEED_DOTS : TEAR_FEED_DOTS_80 }));
     return { printed: true, via: printer.type };
   }
   if (auto && printer.type !== "system") return { printed: false, via: "none" };

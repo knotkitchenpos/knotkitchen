@@ -185,7 +185,7 @@ test("Device Configuration has no Printer type or Paper end choice: a receipt pr
   assert.match(
     SRC("src/utils/printReceipt.js"),
     // Every paper size feeds past the tear bar: 3-inch printers without a cutter exist too (owner, 2026-10-30).
-    /encode\(bits, canvas\.width, canvas\.height, \{ tearFeed: TEAR_FEED_DOTS \}\)/,
+    /encode\(bits, canvas\.width, canvas\.height, \{ tearFeed: paper === "58" \? TEAR_FEED_DOTS : TEAR_FEED_DOTS_80 \}\)/,
   );
 });
 
