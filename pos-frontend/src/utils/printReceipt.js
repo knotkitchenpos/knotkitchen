@@ -220,9 +220,12 @@ const sendCanvas = async (canvas, { printer, paper, auto }) => {
     const pixels = canvas.getContext("2d").getImageData(0, 0, canvas.width, canvas.height);
     const bits = toMonochrome(pixels.data, canvas.width, canvas.height);
     const encode = printer.protocol === "cat" ? catJob : rasterJob;
-    // A 2-inch printer has no cutter: feed the receipt out past its tear bar.
-    // A 3-inch one cuts, and the cut feeds it out.
-    await sendToPrinter(printer, encode(bits, canvas.width, canvas.height, { tearFeed: paper === "58" ? TEAR_FEED_DOTS : 0 }));
+    // Feed the receipt out past the tear bar, on every paper size. 3-inch
+    // printers without a cutter ignore the cut, so the receipt was torn off at
+    // its last line and the next one started with a long blank strip
+    // (owner, 2026-10-30). A printer with a cutter gets a short blank margin
+    // under the last line before it cuts.
+    await sendToPrinter(printer, encode(bits, canvas.width, canvas.height, { tearFeed: TEAR_FEED_DOTS }));
     return { printed: true, via: printer.type };
   }
   if (auto && printer.type !== "system") return { printed: false, via: "none" };
