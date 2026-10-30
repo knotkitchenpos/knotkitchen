@@ -206,6 +206,24 @@ test("effective policy follows company -> store -> device and reports sources", 
   assert.strictEqual(bad.status, 400, "unknown keys are rejected");
 });
 
+test("one-time upload link: needs an admin, takes one APK, then is dead", async () => {
+  const link = await call("POST", "/api/apps/upload-links", { cookie: superCookie, body: { label: "test" } });
+  assert.strictEqual(link.status, 201, JSON.stringify(link.body));
+  const path_ = new URL(link.body.url).pathname;
+  const send = (p, body) => fetch(base + p, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body }).then(async (r) => ({ status: r.status, body: await r.json() }));
+
+  const junk = await send(path_, Buffer.alloc(500, 1));
+  assert.strictEqual(junk.status, 400, "not an APK");
+  const apk = fs.readFileSync(path.join(__dirname, "..", "storage", "agent", "kk-agent.apk"));
+  const ok = await send(path_, apk);
+  assert.strictEqual(ok.status, 201, JSON.stringify(ok.body));
+  assert.strictEqual(ok.body.version.packageName, "com.knotkitchen.mdm");
+  const again = await send(path_, apk);
+  assert.strictEqual(again.status, 410, "used once");
+  assert.strictEqual((await send("/upload/" + "x".repeat(43), apk)).status, 410, "unknown token");
+  assert.strictEqual((await call("POST", "/api/apps/upload-links", { body: {} })).status, 401, "creating one needs a session");
+});
+
 test("APK import only downloads https URLs from the allowed hosts", async () => {
   for (const url of ["http://github.com/x.apk", "https://example.com/x.apk", "https://127.0.0.1/x.apk", "file:///etc/passwd", "nonsense"]) {
     const r = await call("POST", "/api/apps/import", { cookie: superCookie, body: { url } });

@@ -2,7 +2,8 @@ const express = require("express");
 const fs = require("fs");
 const path = require("path");
 const config = require("../config");
-const { App, AppVersion, Rollout, Device } = require("../models");
+const { App, AppVersion, Rollout, Device, UploadLink, AdminUser } = require("../models");
+const { randomToken, sha256 } = require("../lib/crypto");
 const { wrap, HttpError } = require("../lib/http");
 const { requirePerm } = require("../lib/adminAuth");
 const { inspectApk } = require("../lib/apk");
@@ -100,6 +101,54 @@ router.post("/upload", requirePerm("apps.manage"),
   wrap(async (req, res) => {
     if (!Buffer.isBuffer(req.body) || req.body.length < 100) throw new HttpError(400, "apk_body_required");
     res.status(201).json(await storeApk(req, req.body));
+  }));
+
+const UPLOAD_LINK_MINUTES = 10;
+
+/**
+ * One-time upload link: an admin creates it here (signed in), and whoever
+ * holds it may POST one APK to it within 10 minutes, with no session,
+ * e.g. a large file sent with curl from the build PC. The APK gets exactly the
+ * checks of a normal upload and is audited as the link's creator.
+ */
+router.post("/upload-links", requirePerm("apps.manage"), wrap(async (req, res) => {
+  const token = randomToken(32);
+  const expiresAt = new Date(Date.now() + UPLOAD_LINK_MINUTES * 60 * 1000);
+  const label = String(req.body?.label || "").slice(0, 120);
+  const link = await UploadLink.create({ tokenHash: sha256(token), createdBy: req.admin._id, label, expiresAt });
+  await audit(req, "app.upload_link_created", { targetType: "upload_link", targetId: link._id, details: { label, expiresAt } });
+  res.status(201).json({ url: `${config.publicUrl}/upload/${token}`, expiresAt });
+}));
+
+/** The public half of an upload link (mounted outside the admin API, see uploadRouter). */
+const uploadRouter = express.Router();
+uploadRouter.post("/upload/:token",
+  express.raw({ type: () => true, limit: "300mb" }),
+  wrap(async (req, res) => {
+    const now = new Date();
+    // Claimed atomically, so a link cannot be used twice even at the same moment.
+    const link = await UploadLink.findOneAndUpdate(
+      { tokenHash: sha256(String(req.params.token)), usedAt: null, expiresAt: { $gt: now } },
+      { $set: { usedAt: now } },
+      { new: true },
+    );
+    if (!link) throw new HttpError(410, "link_invalid", "This upload link is unknown, used or expired.");
+    const admin = await AdminUser.findById(link.createdBy);
+    if (!admin || admin.disabled) throw new HttpError(410, "link_invalid");
+    if (!Buffer.isBuffer(req.body) || req.body.length < 100) {
+      await UploadLink.updateOne({ _id: link._id }, { $unset: { usedAt: 1 } });
+      throw new HttpError(400, "apk_body_required");
+    }
+    req.admin = admin;
+    try {
+      const out = await storeApk(req, req.body, { via: "upload_link", linkId: String(link._id) });
+      await UploadLink.updateOne({ _id: link._id }, { $set: { versionId: out.version._id } });
+      res.status(201).json(out);
+    } catch (err) {
+      // A rejected APK does not burn the link; it can be retried until it expires.
+      await UploadLink.updateOne({ _id: link._id }, { $unset: { usedAt: 1 } });
+      throw err;
+    }
   }));
 
 const IMPORT_MAX = 300 * 1024 * 1024;
@@ -215,4 +264,4 @@ router.post("/rollouts/:id/:action", requirePerm("rollouts.manage"), wrap(async 
   res.json({ rollout: r, progress: await rolloutProgress(r) });
 }));
 
-module.exports = { router };
+module.exports = { uploadRouter, router };

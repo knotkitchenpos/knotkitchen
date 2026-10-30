@@ -29,12 +29,13 @@ function createApp() {
 
   app.use(cookieParser());
   // APK uploads parse their own raw body; everything else is JSON.
-  app.use((req, res, next) => (req.path === "/api/apps/upload" || req.path === "/device/logs" ? next() : express.json({ limit: "1mb" })(req, res, next)));
+  app.use((req, res, next) => (req.path === "/api/apps/upload" || req.path === "/device/logs" || req.path.startsWith("/upload/") ? next() : express.json({ limit: "1mb" })(req, res, next)));
 
   app.get("/healthz", (req, res) => res.json({ ok: true, service: "kkmdm" }));
 
   app.use("/", require("./routes/device").router);
   app.use("/api/auth", require("./routes/auth").router);
+  app.use("/", require("./routes/apps").uploadRouter);
 
   const admin = express.Router();
   admin.use(requireAdmin());

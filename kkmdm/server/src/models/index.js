@@ -395,6 +395,17 @@ const AuditLog = mongoose.model("AuditLog", new Schema({
   // Keep empty objects in details: the stored row must be exactly what was hashed.
 }, { minimize: false }));
 
+// One-time link for uploading an APK without a browser session (from a PC or
+// script). Only the token's hash is stored; used once, then dead.
+const UploadLink = mongoose.model("UploadLink", new Schema({
+  tokenHash: { type: String, required: true, unique: true },
+  createdBy: { type: Schema.Types.ObjectId, ref: "AdminUser", required: true },
+  label: String,
+  expiresAt: { type: Date, required: true },
+  usedAt: Date,
+  versionId: { type: Schema.Types.ObjectId, ref: "AppVersion" },
+}, { timestamps: true }));
+
 const Counter = mongoose.model("Counter", new Schema({ _id: String, seq: Number }));
 
 module.exports = {
@@ -405,5 +416,5 @@ module.exports = {
   Command, BulkJob, COMMAND_STATUSES,
   Telemetry, TelemetryDaily,
   AlertRule, Alert, ALERT_TYPES,
-  AdminUser, Role, AuditLog, Counter,
+  AdminUser, Role, AuditLog, Counter, UploadLink,
 };
