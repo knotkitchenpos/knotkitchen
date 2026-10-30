@@ -75,9 +75,13 @@ public final class AppInstaller {
             boolean missing = have == null;
             boolean waitForWindow = !missing && a.optBoolean("respectMaintenanceWindow", true) && !windowOpen;
             if (waitForWindow) continue;
-            // Downgrades (rollback) need uninstall first; never for the agent itself.
+            // Downgrades (rollback) need uninstall first; never for the agent itself,
+            // nor a system component (Android System WebView): uninstalling it
+            // drops every update back to the factory version.
             boolean downgrade = have != null && have.getLongVersionCode() > want;
-            if (downgrade && pkg.equals(c.getPackageName())) continue;
+            boolean system = have != null && have.applicationInfo != null
+                    && (have.applicationInfo.flags & android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0;
+            if (downgrade && (pkg.equals(c.getPackageName()) || system)) continue;
             try {
                 if (downgrade) {
                     AgentLog.i("install", "rollback " + pkg + " " + have.getLongVersionCode() + " -> " + want + ": uninstalling first");
