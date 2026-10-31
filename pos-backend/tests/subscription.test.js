@@ -225,7 +225,7 @@ test("the invoice carries every field the spec lists", () => {
     ["cgst amount", "116.91"],
     ["total in figures", "1,532.82"],
     ["total in words", "Thirty Two and Eighty Two Paise Only"],
-    ["footer", "computer generated digital invoice, no signature required"],
+    ["footer", "computer generated invoice, no signature required"],
   ]) {
     assert.ok(html.includes(needle), `missing ${label}`);
   }
