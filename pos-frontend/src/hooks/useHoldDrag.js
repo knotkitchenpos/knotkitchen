@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { HOLD_MS } from "./useHoldReorder";
+import { HOLD_MS } from "./useHoldReorder.js";
 
 // A finger or mouse that moves this far before the hold is up is not holding.
 const SLOP_PX = 8;
