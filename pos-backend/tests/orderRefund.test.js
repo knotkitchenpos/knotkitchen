@@ -41,8 +41,10 @@ test("a cancelled gateway order can refund up to what was paid, less what alread
   assert.equal(refundableAmount(gateway({ refunds: [{ amount: 500, status: "FAILED" }] })), 500);
 });
 
-test("an order that is not cancelled, or not gateway-paid, has nothing to refund", () => {
-  assert.equal(refundableAmount(gateway({ orderStatus: "Completed" })), 0);
+test("a completed gateway order can be refunded too; one not gateway-paid has nothing to refund", () => {
+  // Part of a completed order (owner, 2026-10-31): the order stays Completed.
+  assert.equal(refundableAmount(gateway({ orderStatus: "Completed" })), 500);
+  assert.equal(refundableAmount(gateway({ orderStatus: "Completed", refunds: [{ amount: 5, status: "SUCCESS" }] })), 495);
   assert.equal(refundableAmount(gateway({ paymentData: {}, payments: [{ method: "cash", amount: 500, status: "paid" }] })), 0);
   assert.equal(refundStatusOf(gateway({ paymentData: {}, payments: [{ method: "upi", amount: 500, status: "paid" }] })), "NOT_APPLICABLE");
 });

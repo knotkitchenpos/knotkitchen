@@ -1232,6 +1232,31 @@ const Orders = () => {
                 </button>
               )}
             </div>
+
+            {/* A part of a gateway payment goes back without cancelling the
+                order (₹5 of ₹20 for a missing item; owner, 2026-10-31). The
+                order stays as it is; Cancel still refunds whatever is left. */}
+            {!isCancelled(selected.orderStatus) && selected.paymentKind === "gateway" && selected.paid && (
+              selected.refundStatus === REFUND_STATUS.REFUND_PENDING ? (
+                <button
+                  disabled={syncMutation.isPending}
+                  onClick={() => syncMutation.mutate(selected._id)}
+                  title="Cashfree is processing the refund. Tap to check where it stands."
+                  className="mt-2 w-full h-[42px] rounded-xl bg-[#FFFBEB] text-[#B45309] text-[12.5px] font-bold disabled:opacity-40"
+                >
+                  Refund Pending
+                </button>
+              ) : Number(selected.refundableAmount) > 0 ? (
+                <button
+                  disabled={voidMutation.isPending || !isManager(user)}
+                  onClick={() => askReason("refund", selected)}
+                  title={isManager(user) ? "Send part or all of the payment back to the customer through Cashfree, without cancelling the order." : "Only the store owner or a manager can refund"}
+                  className="mt-2 w-full h-[42px] rounded-xl border border-[#E2E8F0] text-[#334155] text-[12.5px] font-bold hover:bg-[#F8FAFC] disabled:opacity-40"
+                >
+                  {Number(selected.refundedTotal) > 0 ? "Refund more" : "Refund"} (up to {money(selected.refundableAmount)})
+                </button>
+              ) : null
+            )}
           </>
         )}
       </aside>

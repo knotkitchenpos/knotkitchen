@@ -7,18 +7,21 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 const SRC = (p) => fs.readFileSync(path.join(here, "..", p), "utf8");
 
-test("the Refund button exists only on a cancelled order, and only in the states the backend allows", () => {
+test("Refund on a cancelled order in the states the backend allows; a gateway order not cancelled has its own part refund", () => {
   const page = SRC("src/pages/Orders.jsx");
   const block = page.slice(page.indexOf("{isCancelled(selected.orderStatus) ? ("), page.indexOf("<I.x s={16} /> Cancel"));
   assert.match(block, /selected\.refundStatus === REFUND_STATUS\.REFUNDED/);
   assert.match(block, /selected\.refundStatus === REFUND_STATUS\.REFUND_PENDING/);
   assert.match(block, /askReason\("refund", selected\)/);
-  assert.equal((page.match(/askReason\("refund"/g) || []).length, 1, "one way in, inside the cancelled branch");
+  // Two ways in: the cancelled order's button, and a part refund on a gateway
+  // order that is not cancelled (owner, 2026-10-31).
+  assert.equal((page.match(/askReason\("refund"/g) || []).length, 2);
+  assert.match(page, /\{!isCancelled\(selected\.orderStatus\) && selected\.paymentKind === "gateway" && selected\.paid && \(/);
   assert.match(block, /Refund Pending/);
   assert.match(block, /Retry Refund/);
   // A cancelled cash or counter-UPI order renders nothing: NOT_APPLICABLE falls through to null.
   assert.match(block, /\) : null/);
-  assert.ok(!/isSettled\(selected\.orderStatus\) \? \(\s*<button[^]*?Refund/.test(page), "no refund on an active order");
+  // A counter-paid order never gets one: the part refund needs a gateway payment (above).
 });
 
 test("a paid order can be cancelled; the money is handled afterwards, not by the cancel", () => {

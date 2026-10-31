@@ -6,11 +6,14 @@
  *   cash      never refunded from here: the counter hands it back.
  *   offline   UPI, card or wallet taken at the counter. KnotKitchen did not
  *             move that money, so it cannot move it back.
- *   gateway   paid through Cashfree. Refundable once the order is CANCELLED,
- *             through Cashfree's refund API, for what was paid less what has
- *             already gone back.
+ *   gateway   paid through Cashfree. Refundable through Cashfree's refund API,
+ *             all or part of it, as often as is needed, up to what was paid
+ *             less what has already gone back. The order need not be
+ *             cancelled: a completed order keeps its status and a part comes
+ *             back (₹5 of ₹20 for a missing item; owner, 2026-10-31).
+ *             Cancelling refunds whatever is left.
  *
- * Cancelling and refunding are two actions. A cancelled gateway order is
+ * Cancelling and refunding are two actions. A gateway order is
  * NOT_REFUNDED until Cashfree confirms; REFUND_PENDING while Cashfree is
  * processing; REFUNDED only on Cashfree's word; REFUND_FAILED when Cashfree
  * refused, or the attempt could not be confirmed.
@@ -88,9 +91,9 @@ const refundedTotal = (order) =>
 const pendingTotal = (order) =>
   round2((order?.refunds || []).filter(isPendingEntry).reduce((sum, r) => sum + (Number(r.amount) || 0), 0));
 
-/** What is left to give back through the gateway. Zero unless cancelled, gateway-paid and paid. */
+/** What is left to give back through the gateway. Zero unless gateway-paid and paid. */
 const refundableAmount = (order) => {
-  if (!order || !isCancelled(order.orderStatus)) return 0;
+  if (!order) return 0;
   if (paymentKindOf(order) !== PAYMENT_KIND.GATEWAY || !wasPaid(order)) return 0;
   return Math.max(0, round2(paidAmount(order) - refundedTotal(order) - pendingTotal(order)));
 };
@@ -132,9 +135,6 @@ const refundEligibility = (order) => {
   }
   if (kind === PAYMENT_KIND.NONE || !wasPaid(order)) {
     return no(409, "PAYMENT_NOT_SUCCESSFUL", "This order was not paid, so there is nothing to refund.");
-  }
-  if (!isCancelled(order.orderStatus)) {
-    return no(409, "ORDER_NOT_CANCELLED", "Cancel the order first. A refund is only offered on a cancelled order.");
   }
   const status = refundStatusOf(order);
   if (status === REFUND_STATUS.REFUNDED) return no(409, "ALREADY_REFUNDED", "This order has already been refunded.");
@@ -266,7 +266,8 @@ const reconcileFailedAttempt = async (order, refundId, err) => {
 };
 
 /**
- * Refund a cancelled, gateway-paid order through Cashfree.
+ * Refund a gateway-paid order through Cashfree, all or part of what is left
+ * (cancelled or not; the name is older than partial refunds).
  *
  * One attempt at a time: the claim is a conditional update on the stored
  * refundStatus, so a second click that races the first finds it already
@@ -303,7 +304,7 @@ const refundCancelledOrder = async (order, { user, reason, amount: asked } = {})
   const sequence = order.refunds.length + 1;
   const refundId = `rf_${String(order._id).slice(-10)}_${sequence}`;
   // No reason needed: the order was cancelled with one, and that is the note.
-  const note = String(reason || order.cancelReason || "Order cancelled").trim().slice(0, 100);
+  const note = String(reason || order.cancelReason || (isCancelled(order.orderStatus) ? "Order cancelled" : "Partial refund")).trim().slice(0, 100);
   const now = new Date();
   order.refunds.push({
     amount,
@@ -345,14 +346,17 @@ const refundCancelledOrder = async (order, { user, reason, amount: asked } = {})
  * Cashfree. Nothing when unpaid or when a refund is already on file.
  */
 const refundOnCancel = async (order, { user, reason } = {}) => {
-  if (!order || !wasPaid(order) || (order.refunds || []).length) return null;
+  if (!order || !wasPaid(order)) return null;
   if (paymentKindOf(order) === PAYMENT_KIND.GATEWAY) {
+    // What a part refund already sent back is not sent again: only what is left.
+    if (!(refundableAmount(order) > 0) || pendingTotal(order) > 0) return null;
     // N012: the cancel stands either way; a failed attempt shows Retry Refund on the order.
     return refundCancelledOrder(order, { user, reason }).catch((err) => {
       console.warn("[refund] on cancel:", err.message);
       return null;
     });
   }
+  if ((order.refunds || []).length) return null;
   const lines = (order.payments || []).filter((p) => isPaidPayment(p) && Number(p.amount) > 0);
   const parts = lines.length ? lines : [{ method: methodOf(order) || "cash", amount: paidAmount(order) }];
   const now = new Date();

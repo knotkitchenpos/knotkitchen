@@ -137,13 +137,22 @@ test("Test 2 - counter UPI: KnotKitchen never moved the money, so it cannot move
   assert.equal(calls.createRefund.length, 0);
 });
 
-test("a gateway order that is still active is NOT_REFUNDED and cannot be refunded yet", async () => {
+test("a completed gateway order: part of it goes back, the order stays Completed, and more can follow", async () => {
+  // ₹5 back of what was paid, e.g. a missing item (owner, 2026-10-31).
   const { svc, calls, order } = load();
   const o = order({ ...gatewayPaid, orderStatus: "Completed" });
   assert.equal(svc.refundStatusOf(o), "NOT_REFUNDED");
-  assert.equal(svc.refundableAmount(o), 0, "nothing is refundable before cancellation");
-  await assert.rejects(svc.refundCancelledOrder(o, { user }), (e) => e.code === "ORDER_NOT_CANCELLED");
-  assert.equal(calls.createRefund.length, 0);
+  assert.equal(svc.refundableAmount(o), 850);
+
+  const { entry, amount } = await svc.refundCancelledOrder(o, { user, amount: 5 });
+  assert.equal(amount, 5);
+  assert.equal(calls.createRefund[0].amount, 5, "only the part asked for");
+  assert.equal(entry.reason, "Partial refund");
+  assert.equal(o.orderStatus, "Completed", "the order is not cancelled by a part refund");
+  assert.equal(svc.refundableAmount(o), 845, "what is left can still go back");
+
+  // Never more than what is left.
+  await assert.rejects(svc.refundCancelledOrder(o, { user, amount: 846 }), (e) => e.code === "REFUND_AMOUNT_INVALID");
 });
 
 test("Test 3 - Cashfree paid, cancelled: the refund is a real Cashfree refund and its answer sets the status", async () => {
@@ -413,4 +422,15 @@ test("REGRESSION N012: cancelling a paid order records the refund, to each way i
   assert.equal(await svc.refundOnCancel(unpaid, { user }), null);
   assert.equal(calls.updates.length, before, "nothing was taken, nothing goes back");
   assert.equal(unpaid.refunds.length, 0);
+});
+
+test("cancelling after a part refund sends back only what is left", async () => {
+  const { svc, calls, order } = load();
+  const o = order({ ...gatewayPaid, orderStatus: "Completed" });
+  await svc.refundCancelledOrder(o, { user, amount: 5 });
+  o.orderStatus = "Cancelled";
+  await svc.refundOnCancel(o, { user, reason: "Customer left" });
+  assert.deepEqual(calls.createRefund.map((c) => c.amount), [5, 845]);
+  assert.equal(svc.refundableAmount(o), 0);
+  assert.equal(svc.refundStatusOf(o), "REFUNDED");
 });
