@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { enqueueSnackbar } from "../../../utils/notify";
 import { groupEditorPayload, selectionTypeOf } from "../../../utils/modifierGroups";
 import { IconX } from "./icons";
+import { backdropClose } from "../../../utils/backdropClose";
 
 /**
  * The modifier-group slide-over: name, rule, components, assigned products.
@@ -68,7 +69,7 @@ const GroupDrawer = ({
     <>
     {/* Drawer: Manage / Create Group Drawer */}
     {showManageGroup && (
-      <div className="fixed inset-0 z-[100] bg-black/50 flex justify-end">
+      <div className="fixed inset-0 z-[100] bg-black/50 flex justify-end" {...backdropClose(onClose)}>
         <div className="w-full max-w-[440px] bg-white h-full shadow-2xl flex flex-col p-6 overflow-y-auto text-[#0F172A]">
           <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-4 mb-4">
             <h3 className="text-[18px] font-extrabold">

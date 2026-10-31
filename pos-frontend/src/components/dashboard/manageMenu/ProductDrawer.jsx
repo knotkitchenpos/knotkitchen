@@ -5,6 +5,7 @@ import { uploadMediaAsset } from "../../../https";
 import { groupForSave } from "../../../utils/modifierGroups";
 import RecipeSection from "./RecipeSection";
 import { recipeForSave } from "../../../utils/inventory";
+import { backdropClose } from "../../../utils/backdropClose";
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 const TARGET_BYTES = 200 * 1024;
@@ -286,7 +287,7 @@ const ProductDrawer = ({
     <>
     {/* Drawer: Create / Edit Product Slide-Over Drawer */}
     {showCreateProduct && (
-      <div className="fixed inset-0 z-[100] bg-black/50 flex justify-end">
+      <div className="fixed inset-0 z-[100] bg-black/50 flex justify-end" {...backdropClose(onClose)}>
         <div className="w-full max-w-[420px] bg-white h-full shadow-2xl flex flex-col p-6 overflow-y-auto text-[#0F172A]">
           <div className="flex items-center justify-between border-b border-[#E2E8F0] pb-4 mb-4">
             <h3 className="text-[18px] font-extrabold">
