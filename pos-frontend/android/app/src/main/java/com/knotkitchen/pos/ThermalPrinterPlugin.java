@@ -94,6 +94,13 @@ public class ThermalPrinterPlugin extends Plugin {
     private static final int SPP_ROUNDS_KNOWN = 4;
     private static final String PRINTER_PREFS = "kk.thermalPrinter";
     private static final String INSECURE_OK = "insecureOk:";
+    // Which of openSpp's two unauthenticated ways reached this printer last.
+    private static final String SPP_WAY = "sppWay:";
+    // The serial-port link stays open this long after a job, so the next one
+    // (the receipt after the KOT, the next order) prints at once instead of
+    // connecting again. It also holds the printer: another phone waits this
+    // long to print to it. Calibration knob.
+    private static final long SPP_KEEP_MS = 20000;
     // A GATT connect right after the last job's close, or to a printer that has
     // just woken, often drops at once (status 133/8/19/22/62). Calibration knobs.
     private static final int BLE_ATTEMPTS = 3;
@@ -115,6 +122,17 @@ public class ThermalPrinterPlugin extends Plugin {
 
     // One job at a time: two receipts interleaved on one printer is garbage.
     private final ExecutorService io = Executors.newSingleThreadExecutor();
+
+    // The kept serial-port link (SPP_KEEP_MS). Touched only on the io thread.
+    private BluetoothSocket keptSocket;
+    private String keptAddress;
+    private ScheduledFuture<?> keptTimer;
+
+    @Override
+    protected void handleOnDestroy() {
+        io.execute(this::dropKeptSocket);
+        super.handleOnDestroy();
+    }
 
     /* ------------------------------------------------------------ status -- */
 
@@ -205,31 +223,48 @@ public class ThermalPrinterPlugin extends Plugin {
             printBle(call, bytes, remote, call.getInt("pace", 5));
             return;
         }
-        BluetoothSocket socket = null;
+        // The link the last job left open, when it went to this printer.
+        BluetoothSocket socket = takeKeptSocket(remote.getAddress());
         PinAnswer pinAnswer = null;
         try {
-            // Discovery slows a connection down, but stopping it needs
-            // BLUETOOTH_SCAN on Android 12+, which this app does not hold: it
-            // never scans, only lists paired printers. Without the guard every
-            // print failed with "Need android.permission.BLUETOOTH_SCAN".
-            try {
-                adapter.cancelDiscovery();
-            } catch (SecurityException ignored) {
-                // not scanning anyway
+            for (boolean reused = socket != null; ; reused = false) {
+                if (socket == null) {
+                    // Discovery slows a connection down, but stopping it needs
+                    // BLUETOOTH_SCAN on Android 12+, which this app does not hold: it
+                    // never scans, only lists paired printers. Without the guard every
+                    // print failed with "Need android.permission.BLUETOOTH_SCAN".
+                    try {
+                        adapter.cancelDiscovery();
+                    } catch (SecurityException ignored) {
+                        // not scanning anyway
+                    }
+                    // Only a printer that is still paired: one the owner removed in
+                    // Settings, or one a wrong PIN un-paired, is never paired silently.
+                    if (pinAnswer == null && remote.getBondState() == BluetoothDevice.BOND_BONDED) {
+                        pinAnswer = answerPinRequests(remote, call.getString("pin", ""));
+                    }
+                    socket = openSpp(remote);
+                }
+                try {
+                    OutputStream out = socket.getOutputStream();
+                    for (int at = 0; at < bytes.length; at += BT_CHUNK) {
+                        out.write(bytes, at, Math.min(BT_CHUNK, bytes.length - at));
+                        out.flush();
+                    }
+                    break;
+                } catch (IOException e) {
+                    if (!reused) throw e;
+                    // The kept link had dropped (the printer was switched off
+                    // and on, or slept): connect again and send the job anew.
+                    closeQuietly(socket);
+                    socket = null;
+                }
             }
-            // Only a printer that is still paired: one the owner removed in
-            // Settings, or one a wrong PIN un-paired, is never paired silently.
-            if (remote.getBondState() == BluetoothDevice.BOND_BONDED) {
-                pinAnswer = answerPinRequests(remote, call.getString("pin", ""));
-            }
-            socket = openSpp(remote);
-            OutputStream out = socket.getOutputStream();
-            for (int at = 0; at < bytes.length; at += BT_CHUNK) {
-                out.write(bytes, at, Math.min(BT_CHUNK, bytes.length - at));
-                out.flush();
-            }
-            // Closing at once can drop what is still in the radio's buffer.
-            Thread.sleep(Math.min(4000, 300 + bytes.length / 40));
+            // Kept open, not closed: closing at once dropped what was still in
+            // the radio's buffer, and the wait for it to drain (up to 4 s) held
+            // every next job. The link closes once it has been idle a while.
+            keepSocket(socket, remote.getAddress());
+            socket = null;
             call.resolve();
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
@@ -245,6 +280,39 @@ public class ThermalPrinterPlugin extends Plugin {
             closeQuietly(socket);
             stopAnswering(pinAnswer);
         }
+    }
+
+    /** The kept link, when it is to `address` and still open; any other is closed. On the io thread. */
+    private BluetoothSocket takeKeptSocket(String address) {
+        BluetoothSocket socket = keptSocket;
+        boolean usable = socket != null && address.equalsIgnoreCase(keptAddress) && socket.isConnected();
+        if (!usable) {
+            dropKeptSocket();
+            return null;
+        }
+        if (keptTimer != null) keptTimer.cancel(false);
+        keptSocket = null;
+        keptAddress = null;
+        keptTimer = null;
+        return socket;
+    }
+
+    /** Keep `socket` open for the next job; closed after SPP_KEEP_MS without one. On the io thread. */
+    private void keepSocket(BluetoothSocket socket, String address) {
+        dropKeptSocket();
+        keptSocket = socket;
+        keptAddress = address;
+        keptTimer = watchdog.schedule(() -> io.execute(() -> {
+            if (keptSocket == socket) dropKeptSocket();
+        }), SPP_KEEP_MS, TimeUnit.MILLISECONDS);
+    }
+
+    private void dropKeptSocket() {
+        if (keptTimer != null) keptTimer.cancel(false);
+        closeQuietly(keptSocket);
+        keptSocket = null;
+        keptAddress = null;
+        keptTimer = null;
     }
 
     /**
@@ -336,15 +404,21 @@ public class ThermalPrinterPlugin extends Plugin {
         String address = device.getAddress();
         boolean knownInsecure = printerPrefs().getBoolean(INSECURE_OK + address, false);
         int rounds = knownInsecure ? SPP_ROUNDS_KNOWN : SPP_ROUNDS;
+        // The way that worked last time first: a printer whose service lookup
+        // never answers no longer waits for it to fail before every job.
+        int firstWay = printerPrefs().getInt(SPP_WAY + address, 0);
         IOException last = null;
         for (int round = 0; round < rounds; round++) {
             if (round > 0) Thread.sleep(SPP_RETRY_PAUSE_MS * round);
-            for (int way = 0; way < 2; way++) {
+            for (int i = 0; i < 2; i++) {
+                int way = (firstWay + i) % 2;
                 BluetoothSocket socket = null;
                 try {
                     socket = way == 0 ? device.createInsecureRfcommSocketToServiceRecord(SPP) : insecureChannelOne(device);
                     socket.connect();
-                    if (!knownInsecure) printerPrefs().edit().putBoolean(INSECURE_OK + address, true).apply();
+                    if (!knownInsecure || way != firstWay) {
+                        printerPrefs().edit().putBoolean(INSECURE_OK + address, true).putInt(SPP_WAY + address, way).apply();
+                    }
                     return socket;
                 } catch (IOException e) {
                     closeQuietly(socket);

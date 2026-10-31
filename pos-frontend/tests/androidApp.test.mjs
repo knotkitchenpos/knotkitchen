@@ -115,6 +115,27 @@ test("REGRESSION: a printer that has printed unauthenticated is never offered th
   assert.match(java, /^import android\.content\.SharedPreferences;$/m);
 });
 
+test("a 2-inch Bluetooth printer prints the next job at once: the link is kept open, not reopened", () => {
+  // Each job connected again and then waited up to 4 s for the radio to drain
+  // before closing, so a KOT and its receipt came out with a pause between
+  // them (owner, 2026-10-31).
+  const java = JAVA("ThermalPrinterPlugin.java");
+  const classic = java.slice(java.indexOf("private void printBluetooth("), java.indexOf("private BluetoothSocket takeKeptSocket("));
+  assert.match(classic, /BluetoothSocket socket = takeKeptSocket\(remote\.getAddress\(\)\);/);
+  assert.match(classic, /keepSocket\(socket, remote\.getAddress\(\)\);\s*socket = null;\s*call\.resolve\(\);/);
+  assert.doesNotMatch(classic, /Thread\.sleep/, "no drain wait before the job counts as printed");
+  // A kept link that dropped (printer switched off and on) is reconnected and the job sent again.
+  assert.match(classic, /if \(!reused\) throw e;/);
+  assert.match(java, /SPP_KEEP_MS = 20000;/);
+  assert.match(java, /keptTimer = watchdog\.schedule\(\(\) -> io\.execute\(/, "closed on the print queue once idle");
+  assert.match(java, /protected void handleOnDestroy\(\) \{\s*io\.execute\(this::dropKeptSocket\);/);
+  // The way that reached the printer last is tried first.
+  const open = java.slice(java.indexOf("private BluetoothSocket openSpp("), java.indexOf("private static BluetoothSocket insecureChannelOne("));
+  assert.match(open, /int firstWay = printerPrefs\(\)\.getInt\(SPP_WAY \+ address, 0\);/);
+  assert.match(open, /int way = \(firstWay \+ i\) % 2;/);
+  assert.match(open, /putInt\(SPP_WAY \+ address, way\)/);
+});
+
 test("REGRESSION: a printer that forgot its pairing and asks for the PIN is answered without Android's dialog", () => {
   const java = JAVA("ThermalPrinterPlugin.java");
   // Answering starts before the connection and stops when the job ends.
@@ -122,7 +143,7 @@ test("REGRESSION: a printer that forgot its pairing and asks for the PIN is answ
     java.indexOf('pinAnswer = answerPinRequests(remote, call.getString("pin", ""));') < java.indexOf("socket = openSpp(remote);"),
   );
   // Only for a printer still paired: never pairs a removed or unknown device silently.
-  assert.match(java, /if \(remote\.getBondState\(\) == BluetoothDevice\.BOND_BONDED\) \{\s*pinAnswer = answerPinRequests/);
+  assert.match(java, /if \(pinAnswer == null && remote\.getBondState\(\) == BluetoothDevice\.BOND_BONDED\) \{\s*pinAnswer = answerPinRequests/);
   assert.match(java, /finally \{\s*closeQuietly\(socket\);\s*stopAnswering\(pinAnswer\);/);
   const answer = java.slice(java.indexOf("private static final class PinAnswer"), java.indexOf("/* --------------------------------------------------------------- usb -- */"));
   // Only this printer, only the PIN variant, only once: a wrong PIN un-pairs it.

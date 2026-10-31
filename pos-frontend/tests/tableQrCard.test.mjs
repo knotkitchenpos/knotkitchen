@@ -53,5 +53,5 @@ test("REGRESSION: the card prints the store's logo, read from restaurantLogo lik
   const modal = SRC("src/components/tables/PrintTableQRModal.jsx");
   assert.match(modal, /const restaurantLogo = storeProps\.restaurantLogo \|\|/);
   assert.match(modal, /const logo = await loadBitmap\(restaurantLogo\);/);
-  assert.match(SRC("src/utils/printReceipt.js"), /export const loadBitmap = async \(url\) =>/);
+  assert.match(SRC("src/utils/printReceipt.js"), /export const loadBitmap = \(url\) =>/);
 });

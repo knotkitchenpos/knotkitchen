@@ -9,7 +9,7 @@ import { ditherInPlace, rasterJob, TEAR_FEED_DOTS, TEAR_FEED_DOTS_80, toMonochro
 import { catJob } from "./catprinter.js";
 import { bluetoothLinked, kitchenPrinter, loadPrinterConfig, reconnectBluetoothPrinter, sendToPrinter } from "./printerDevice.js";
 import { ensureReceiptFont } from "./receiptFont.js";
-import { readStoreScoped, writeStoreScoped } from "./storeSession.js";
+import { getActiveStoreId, readStoreScoped, writeStoreScoped } from "./storeSession.js";
 import { BACKEND_URL } from "../config";
 
 /**
@@ -41,11 +41,29 @@ export const receiptContextFrom = (props = {}, posSettings = props.posSettings) 
   settings: { ...(posSettings || {}), websiteLink: posSettings?.websiteLink || props.websiteUrl || "" },
 });
 
+// A KOT and its receipt print together: one fetch serves both, and any
+// print within a few seconds of it, so neither waits on the network again.
+const CONTEXT_REUSE_MS = 10000;
+let recentContext = null;
+
 /**
  * Store Properties for the receipt. The last good copy is kept on the
  * device so an order taken offline still prints with the right header.
  */
-export const loadReceiptContext = async () => {
+export const loadReceiptContext = () => {
+  const store = getActiveStoreId();
+  if (recentContext && recentContext.store === store && Date.now() - recentContext.at < CONTEXT_REUSE_MS) {
+    return recentContext.promise;
+  }
+  const promise = fetchReceiptContext();
+  recentContext = { store, at: Date.now(), promise };
+  promise.catch(() => {
+    if (recentContext?.promise === promise) recentContext = null;
+  });
+  return promise;
+};
+
+const fetchReceiptContext = async () => {
   try {
     const props = (await getStoreProperties())?.data?.data || {};
     writeStoreScoped("kk.receiptProps.v1", props);
@@ -57,9 +75,24 @@ export const loadReceiptContext = async () => {
   }
 };
 
+// The logo and QR image, downloaded once per address, not on every print.
+const bitmaps = new Map();
+
 /** An image as a bitmap the canvas can read back. A missing or blocked image is left off the receipt. */
-export const loadBitmap = async (url) => {
-  if (!url) return null;
+export const loadBitmap = (url) => {
+  if (!url) return Promise.resolve(null);
+  if (!bitmaps.has(url)) {
+    const loading = fetchBitmap(url);
+    bitmaps.set(url, loading);
+    // A failed download is tried again on the next print.
+    loading.then((bitmap) => {
+      if (!bitmap) bitmaps.delete(url);
+    });
+  }
+  return bitmaps.get(url);
+};
+
+const fetchBitmap = async (url) => {
   try {
     const res = await fetch(absolute(url), { mode: "cors" });
     if (!res.ok) return null;
