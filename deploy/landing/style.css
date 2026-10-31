@@ -219,6 +219,9 @@ footer{border-top:1px solid var(--line);background:var(--bg-2);padding:clamp(40p
   grid-template-columns:repeat(auto-fit,minmax(min(100%,max(210px,(100% - 2*var(--f-gap))/3)),1fr))}
 footer h4{font-size:.95rem;letter-spacing:-.01em;color:var(--text);margin:0 0 14px;font-weight:600}
 .f-about{color:var(--muted);max-width:30em}
+.f-founder{color:var(--muted);max-width:30em;margin-top:18px;line-height:1.55}
+.f-founder strong{color:var(--text);font-weight:600}
+.f-founder span{font-size:.88rem}
 footer ul{list-style:none;margin:0;padding:0;display:grid;gap:9px}
 footer ul a{color:var(--muted)}
 footer ul a:hover{color:var(--text)}
