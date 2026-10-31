@@ -133,3 +133,16 @@ select:-webkit-autofill {
   .bg-gradient-brand { background-image: linear-gradient(135deg, #FD5302, #C2410C); }
   .btn-primary { @apply rounded-xl bg-[#FD5302] text-white font-bold px-4 py-2.5 hover:bg-[#D64502] disabled:opacity-50 disabled:cursor-not-allowed; }
 }
+
+/* Pop-ups never block the screen under them (owner, 2026-10-31): a tap on
+   the toast's body reaches the button beneath it (Settings sat under the
+   "KOT not printed" warning); only the toast's own buttons take taps.
+   notistack sets pointer-events: all on its own wrappers, hence !important. */
+.notistack-SnackbarContainer,
+.notistack-SnackbarContainer * {
+  pointer-events: none !important;
+}
+.notistack-SnackbarContainer :is(button, a),
+.notistack-SnackbarContainer :is(button, a) * {
+  pointer-events: auto !important;
+}

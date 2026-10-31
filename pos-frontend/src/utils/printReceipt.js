@@ -301,8 +301,8 @@ export const printWithFeedback = async (what, run) => {
 
 /**
  * An automatic print that failed (the printer asleep, off or out of range)
- * stays on screen with Retry: staff wake the printer and still get the
- * ticket. It was a 3-second toast and the ticket was lost. When the browser
+ * shows Retry for UNPRINTED_SHOW_MS: staff wake the printer and still get
+ * the ticket. It used to stay until dismissed, covering the buttons under it. When the browser
  * forgot a Bluetooth printer, the same tap shows its chooser again.
  * `again` reprints with the printer saved now, so a printer fixed in Device
  * Configuration meanwhile is the one used.
@@ -312,6 +312,7 @@ export const printWithFeedback = async (what, run) => {
  * for the next toast, Retry and all, so a rush lost tickets again.
  */
 const unprinted = []; // { what, err, again }, oldest first
+const UNPRINTED_SHOW_MS = 5000;
 let unprintedKey = null;
 
 const showUnprinted = () => {
@@ -325,7 +326,13 @@ const showUnprinted = () => {
     unprinted.length === 1 ? `${what} not printed: ${reason}` : `${unprinted.length} tickets not printed (${unprinted.map((u) => u.what).join(", ")}): ${reason}`;
   unprintedKey = enqueueSnackbar(message, {
     variant: "warning",
-    persist: true,
+    // A few seconds, then out of the way (owner, 2026-10-31: it sat over
+    // Settings until dismissed). Gone unanswered, it counts as Dismiss: the
+    // tickets are not reprinted by a later Retry, long after the moment.
+    autoHideDuration: UNPRINTED_SHOW_MS,
+    onClose: (event, reason, key) => {
+      if (reason === "timeout") dismissUnprinted(key);
+    },
     action: (key) =>
       createElement(
         Fragment,

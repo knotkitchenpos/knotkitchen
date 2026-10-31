@@ -746,7 +746,7 @@ return claim;`)(localStorage);
   assert.doesNotMatch(screen, /gets the e-bill instead/);
 });
 
-test("REGRESSION: a failed automatic print stays on screen with Retry (printer asleep)", async () => {
+test("REGRESSION: a failed automatic print shows Retry for a few seconds (printer asleep)", async () => {
   // Owner, 2026-10-16 (POS58 "keeps disconnecting"): an Auto KOT or receipt to a
   // printer that had switched itself off was a 3-second toast, and the ticket was lost.
   const hook = SRC("src/hooks/useAutoReceiptPrint.js");
@@ -781,7 +781,9 @@ test("REGRESSION: a failed automatic print stays on screen with Retry (printer a
   a.warnNotPrinted("KOT", new Error("Could not reach the Bluetooth printer."), async () => { tries += 1; });
   assert.equal(a.shown[0].msg, "KOT not printed: Could not reach the Bluetooth printer.");
   assert.equal(a.shown[0].variant, "warning");
-  assert.equal(a.shown[0].persist, true);
+  // 5 s, then out of the way: it used to stay over Settings until dismissed (owner, 2026-10-31).
+  assert.equal(a.shown[0].autoHideDuration, 5000);
+  assert.equal(a.shown[0].persist, undefined);
   assert.ok(a.button(0, "Dismiss"), "a Dismiss too");
   a.button(0, "Retry").props.onClick();
   await settle();
@@ -806,6 +808,17 @@ test("REGRESSION: a failed automatic print stays on screen with Retry (printer a
   c.button(0, "Dismiss").props.onClick();
   await settle();
   assert.deepEqual([c.closed, never], [["k0"], 0]);
+
+  // Left alone, it goes by itself and counts as Dismiss: nothing reprints later.
+  const t = make();
+  let late = 0;
+  t.warnNotPrinted("KOT", new Error("x"), async () => { late += 1; });
+  t.shown[0].onClose(null, "timeout", "k0");
+  t.warnNotPrinted("Receipt", new Error("y"), async () => { late += 10; });
+  assert.equal(t.shown[1].msg, "Receipt not printed: y", "the timed-out KOT is not carried into the next warning");
+  t.button(1, "Retry").props.onClick();
+  await settle();
+  assert.equal(late, 10);
 
   // A browser that forgot the printer: the tap opens its chooser at once (it needs the tap), then prints.
   const printer = { type: "bluetooth", bluetooth: { id: "x", name: "POS58" } };
@@ -877,7 +890,7 @@ test("REGRESSION: a rush of failed prints is ONE warning, never dropped, and Ret
   warnNotPrinted("KOT", asleep, job("kot2"));
   warnNotPrinted("Receipt", asleep, job("receipt2"));
   assert.deepEqual(open(), ["k3"], "one warning on screen, whatever the count");
-  assert.ok(shown.every((s) => s.persist && s.variant === "warning"));
+  assert.ok(shown.every((s) => s.autoHideDuration === 5000 && s.variant === "warning"));
   assert.equal(shown[3].msg, "4 tickets not printed (KOT, Receipt, KOT, Receipt): asleep");
 
   // A replaced warning is still fading out: tapping it does nothing.
@@ -903,4 +916,12 @@ test("REGRESSION: bold prints at weight 600, so wide strokes print solid on a ba
   assert.equal(BOLD_WEIGHT, 600);
   assert.match(font(28, true), /^600 28px "KK Receipt"/);
   assert.match(font(20), /^20px "KK Receipt"/, "body text stays at the regular weight");
+});
+
+test("pop-ups never block the buttons under them: only their own buttons take taps", () => {
+  // Owner, 2026-10-31: Settings sat under the "KOT not printed" warning and could not be tapped.
+  const css = SRC("src/index.css");
+  // notistack's own wrappers set pointer-events: all, so the rule covers every one of them.
+  assert.match(css, /\.notistack-SnackbarContainer,\s*\.notistack-SnackbarContainer \* \{\s*pointer-events: none !important;/);
+  assert.match(css, /\.notistack-SnackbarContainer :is\(button, a\),\s*\.notistack-SnackbarContainer :is\(button, a\) \* \{\s*pointer-events: auto !important;/);
 });
