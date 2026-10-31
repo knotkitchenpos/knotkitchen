@@ -3,6 +3,7 @@ import { enqueueSnackbar } from "../../../utils/notify";
 import { groupEditorPayload, selectionTypeOf } from "../../../utils/modifierGroups";
 import { IconX } from "./icons";
 import { backdropClose } from "../../../utils/backdropClose";
+import { autoCase } from "../../../utils/autoCase";
 
 /**
  * The modifier-group slide-over: name, rule, components, assigned products.
@@ -88,7 +89,8 @@ const GroupDrawer = ({
               <label className="text-[12px] font-extrabold text-[#334155]">Group Name</label>
               <input
                 value={groupName}
-                onChange={(e) => setGroupName(e.target.value)}
+                onChange={autoCase("title", groupName, setGroupName)}
+                autoCapitalize="words"
                 placeholder="e.g. Extra Toppings"
                 className="w-full h-[40px] px-3 mt-1 rounded-xl border border-[#E2E8F0] font-bold text-[13.5px]"
               />
@@ -206,7 +208,8 @@ const GroupDrawer = ({
                   <label className="text-[11px] font-bold text-[#64748B] block mb-1">Component Name *</label>
                   <input
                     value={extraNameInput}
-                    onChange={(e) => setExtraNameInput(e.target.value)}
+                    onChange={autoCase("title", extraNameInput, setExtraNameInput)}
+                    autoCapitalize="words"
                     placeholder="e.g. Meat"
                     className="w-full h-[36px] px-3 rounded-xl border border-[#E2E8F0] font-bold text-[12.5px]"
                   />

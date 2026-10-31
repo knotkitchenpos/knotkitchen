@@ -6,6 +6,7 @@ import { groupForSave } from "../../../utils/modifierGroups";
 import RecipeSection from "./RecipeSection";
 import { recipeForSave } from "../../../utils/inventory";
 import { backdropClose } from "../../../utils/backdropClose";
+import { autoCase } from "../../../utils/autoCase";
 
 const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
 const TARGET_BYTES = 200 * 1024;
@@ -306,7 +307,8 @@ const ProductDrawer = ({
               <label className="text-[12px] font-extrabold text-[#334155]">Menu Name</label>
               <input
                 value={prodName}
-                onChange={(e) => setProdName(e.target.value)}
+                onChange={autoCase("title", prodName, setProdName)}
+                autoCapitalize="words"
                 placeholder="e.g. Margherita Pizza"
                 className="w-full h-[40px] px-3 mt-1 rounded-xl border border-[#E2E8F0] font-bold text-[13.5px]"
               />
@@ -321,7 +323,8 @@ const ProductDrawer = ({
                 maxLength={200}
                 rows={2}
                 value={prodDesc}
-                onChange={(e) => setProdDesc(e.target.value)}
+                onChange={autoCase("sentence", prodDesc, setProdDesc)}
+                autoCapitalize="sentences"
                 placeholder="Description..."
                 className="w-full p-3 mt-1 rounded-xl border border-[#E2E8F0] font-medium text-[13px] resize-none"
               />

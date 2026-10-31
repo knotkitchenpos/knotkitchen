@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { enqueueSnackbar } from "../../../utils/notify";
 import { IconX } from "./icons";
 import { backdropClose } from "../../../utils/backdropClose";
+import { autoCase } from "../../../utils/autoCase";
 
 /**
  * The category / subcategory slide-over. Owns its form; the page says what
@@ -153,7 +154,8 @@ const CategoryDrawer = ({
               </label>
               <input
                 value={catName}
-                onChange={(e) => setCatName(e.target.value)}
+                onChange={autoCase("title", catName, setCatName)}
+                autoCapitalize="words"
                 placeholder={showCreateSubcategory ? "e.g. Chicken Burgers" : "e.g. Burgers"}
                 className="w-full h-[40px] px-3 mt-1 rounded-xl border border-[#E2E8F0] font-bold text-[13.5px]"
               />
@@ -165,7 +167,8 @@ const CategoryDrawer = ({
                 maxLength={200}
                 rows={3}
                 value={catDesc}
-                onChange={(e) => setCatDesc(e.target.value)}
+                onChange={autoCase("sentence", catDesc, setCatDesc)}
+                autoCapitalize="sentences"
                 placeholder="Description..."
                 className="w-full p-3 mt-1 rounded-xl border border-[#E2E8F0] font-medium text-[13px] resize-none"
               />
