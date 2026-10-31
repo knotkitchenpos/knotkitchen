@@ -115,6 +115,10 @@ const renderInvoice = (invoice) => {
   * { box-sizing: border-box; }
   body { margin:0; padding:24px 16px 48px; background:#EEF3F9; color:var(--ink);
          font:14.5px/1.55 "Segoe UI",-apple-system,BlinkMacSystemFont,Roboto,"Noto Sans",sans-serif; }
+  .bar { max-width:800px; margin:0 auto 12px; display:flex; justify-content:flex-end; }
+  .dl { display:inline-flex; align-items:center; gap:6px; padding:9px 16px; border-radius:10px; background:var(--navy);
+        color:#fff; font-weight:700; font-size:14px; text-decoration:none; }
+  .dl:hover { background:#082C63; }
   .sheet { max-width:800px; margin:0 auto; background:#fff; padding:36px 40px 30px;
            border-radius:16px; box-shadow:0 2px 10px rgba(15,23,42,.08); }
   .top { display:flex; justify-content:space-between; align-items:flex-start; gap:24px; flex-wrap:wrap; }
@@ -167,10 +171,12 @@ const renderInvoice = (invoice) => {
   }
   @media print {
     body { background:#fff; padding:0; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .bar { display:none; }
     .sheet { box-shadow:none; border-radius:0; max-width:none; padding:0; }
   }
 </style>
 </head><body>
+<div class="bar"><a class="dl" href="?format=pdf" download>Download PDF</a></div>
 <div class="sheet">
   <div class="top">
     <div class="brand">${esc(invoice.seller?.name || "KnotKitchen")}

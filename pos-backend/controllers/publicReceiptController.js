@@ -168,9 +168,17 @@ const viewPublicReceipt = async (req, res) => {
       const invoice = await PlatformInvoice.findById(parsed.id).lean();
       if (!invoice) return res.status(404).type("html").send(notFound());
 
-      const { renderInvoice } = require("../services/invoiceDocument");
       res.set("Cache-Control", "no-store, private");
       res.set("X-Robots-Tag", "noindex, nofollow");
+      // ?format=pdf: the same invoice as a file (Download PDF on the page and in Billing).
+      if (req.query.format === "pdf") {
+        const { renderInvoicePdf } = require("../services/invoicePdf");
+        const pdf = await renderInvoicePdf(invoice);
+        const name = String(invoice.invoiceNumber || "invoice").replace(/[^A-Za-z0-9._-]/g, "_");
+        res.set("Content-Disposition", `attachment; filename="${name}.pdf"`);
+        return res.status(200).type("application/pdf").send(pdf);
+      }
+      const { renderInvoice } = require("../services/invoiceDocument");
       return res.status(200).type("html").send(renderInvoice(invoice));
     }
 

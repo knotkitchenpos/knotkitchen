@@ -24,6 +24,22 @@ import {
 import { loadCashfree } from "../utils/cashfree";
 import { isOwner } from "../utils/security";
 import { STORE_TZ, thumbUrl } from "../utils";
+import { saveBlob } from "../utils/saveImage";
+
+/**
+ * An invoice as a PDF file (owner, 2026-10-31): the invoice link with
+ * ?format=pdf, saved like any other file, so the phone app gets it too (its
+ * WebView ignores a plain download link).
+ */
+const downloadInvoicePdf = async (inv) => {
+  try {
+    const res = await fetch(`${inv.url}${inv.url.includes("?") ? "&" : "?"}format=pdf`);
+    if (!res.ok) throw new Error();
+    await saveBlob(await res.blob(), `${String(inv.number || "invoice").replace(/[^A-Za-z0-9._-]/g, "_")}.pdf`);
+  } catch {
+    enqueueSnackbar("Could not download the invoice. Try View, then Download PDF.", { variant: "error" });
+  }
+};
 
 /**
  * Settings → Billing & Subscription.
@@ -1078,7 +1094,7 @@ const Billing = () => {
                     <td className="py-2.5 text-right font-bold tabular-nums text-[#0F172A]">
                       {money(inv.total)}
                     </td>
-                    <td className="py-2.5 text-right">
+                    <td className="py-2.5 text-right whitespace-nowrap">
                       <a
                         href={inv.url}
                         target="_blank"
@@ -1087,6 +1103,13 @@ const Billing = () => {
                       >
                         View
                       </a>
+                      <button
+                        type="button"
+                        onClick={() => downloadInvoicePdf(inv)}
+                        className="ml-3 text-[12.5px] font-bold text-[#C2410C] underline underline-offset-2"
+                      >
+                        PDF
+                      </button>
                     </td>
                   </tr>
                 ))}
