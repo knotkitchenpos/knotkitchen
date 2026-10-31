@@ -32,6 +32,8 @@ export const impersonateWithSupportToken = (token) =>
 // Table Endpoints
 export const addTable = (data) => axiosWrapper.post("/api/table/", data);
 export const getTables = () => axiosWrapper.get("/api/table");
+// Every table's id in the order dragged on the Tables screen.
+export const reorderTables = (ids) => axiosWrapper.put("/api/table/order", { ids });
 
 // Table bookings from the restaurant website
 export const getTableBookings = () => axiosWrapper.get("/api/table-bookings");

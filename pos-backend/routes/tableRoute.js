@@ -2,7 +2,7 @@
 // (services/planFeatures tableQr); reading them and freeing one stay open.
 const { requireTableQrPlan } = require("../services/planFeatures");
 const express = require("express");
-const { addTable, getTables, getTableById, updateTable, deleteTable, regenerateQr, getTableSettings, updateTableSettings, releaseTable } = require("../controllers/tableController");
+const { addTable, getTables, reorderTables, getTableById, updateTable, deleteTable, regenerateQr, getTableSettings, updateTableSettings, releaseTable } = require("../controllers/tableController");
 const router = express.Router();
 const { isVerifiedUser } = require("../middlewares/tokenVerification");
 const { requireProtectedAction, requirePermission, requireTypedPin } = require("../middlewares/requirePermission");
@@ -11,6 +11,8 @@ router.route("/").post(isVerifiedUser, requireProtectedAction, requireTableQrPla
 router.route("/").get(isVerifiedUser, getTables);
 // Declared BEFORE /:id, or "settings" would be read as a table id.
 router.route("/settings").get(isVerifiedUser, getTableSettings);
+// Arranging the floor is everyday work, like releasing a table: no owner PIN.
+router.route("/order").put(isVerifiedUser, requirePermission("TABLE_UPDATE"), reorderTables);
 router.route("/settings").put(isVerifiedUser, requireTypedPin(), requireTableQrPlan, updateTableSettings); // N034: PIN typed for this save
 
 router.route("/:id").get(isVerifiedUser, getTableById);

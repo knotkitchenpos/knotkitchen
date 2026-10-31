@@ -65,6 +65,9 @@ const tableSchema = new mongoose.Schema(
     // in services/tableCooldownService flips it back to "available" once this
     // passes; null means the table is not waiting on anything.
     availableAt: { type: Date, default: null },
+    // Where the owner dragged this table on the Tables screen (0 = first).
+    // null: never arranged; it follows the arranged ones, by table number.
+    sortOrder: { type: Number, default: null },
 
     // Waiter calling
     waiterCallActive: { type: Boolean, default: false },

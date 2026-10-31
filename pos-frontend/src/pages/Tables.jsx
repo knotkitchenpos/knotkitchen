@@ -26,8 +26,10 @@ import {
   cancelTableSessionItem,
   releaseTable,
   getOrCreateTableQr,
+  reorderTables,
 } from "../https";
 import { enqueueSnackbar } from "../utils/notify";
+import { useHoldReorder } from "../hooks/useHoldReorder";
 // NOTE: `FiQrCode` does not exist in the `react-icons/fi` set — it was a
 // bad copy-paste (probably meant `FaQrcode` from `fa`). Rather than pull
 // in another icon package for a single glyph we render a small inline
@@ -594,6 +596,32 @@ const Tables = () => {
     return areaMatch && statusMatch;
   });
 
+  // Hold a table, drag it to a new place (owner, 2026-10-31). With a filter
+  // on, the shown tables swap among their own places in the full list.
+  const reorderMutation = useMutation({
+    mutationFn: (ids) => reorderTables(ids),
+    onError: (err) => {
+      queryClient.invalidateQueries({ queryKey: ["tables"] });
+      enqueueSnackbar(err?.response?.data?.message || "Could not save the table order.", { variant: "error" });
+    },
+  });
+  const { bind: holdToMove, dragId, order: dragOrder } = useHoldReorder({
+    ids: filteredTables.map((t) => t._id),
+    onDrop: (shown) => {
+      const slots = new Set(shown);
+      const queue = [...shown];
+      const ids = tables.map((t) => (slots.has(t._id) ? queue.shift() : t._id));
+      const byId = new Map(tables.map((t) => [t._id, t]));
+      queryClient.setQueryData(["tables"], (old) =>
+        old?.data?.data ? { ...old, data: { ...old.data, data: ids.map((id) => byId.get(id)) } } : old,
+      );
+      reorderMutation.mutate(ids);
+    },
+  });
+  const shownTables = dragOrder
+    ? dragOrder.map((id) => filteredTables.find((t) => t._id === id)).filter(Boolean)
+    : filteredTables;
+
   const availableCount = tables.filter((t) => !isOccupied(t) && t.isEnabled !== false).length;
   const bookedCount = tables.filter((t) => isOccupied(t)).length;
 
@@ -730,8 +758,14 @@ const Tables = () => {
         {/* Tables Grid */}
         {filteredTables.length > 0 ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-            {filteredTables.map((table) => (
-              <div key={table._id} className="relative group">
+            {shownTables.map((table) => (
+              <div
+                key={table._id}
+                {...holdToMove(table._id)}
+                className={`relative group select-none [-webkit-touch-callout:none] transition-transform ${
+                  dragId === table._id ? "z-30 scale-105 opacity-90 [&>.card]:ring-2 [&>.card]:ring-accent [&>.card]:shadow-xl" : ""
+                }`}
+              >
                 {/* Table Control Overlays */}
                 {/* Hidden-until-hover ONLY where a pointer can hover. A phone or
                     tablet has no hover state, so these controls were simply

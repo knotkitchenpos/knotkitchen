@@ -86,6 +86,38 @@ const addTable = async (req, res, next) => {
   }
 };
 
+/** The arranged order (sortOrder), then tables never arranged, by number. */
+const sortTables = (tables) => {
+  const at = (t) => (Number.isFinite(t.sortOrder) ? t.sortOrder : Infinity);
+  return [...tables].sort((a, b) => at(a) - at(b) || a.tableNumber - b.tableNumber);
+};
+
+/**
+ * PUT /api/table/order { ids }: the Tables screen's order after a drag
+ * (hold a card, move it). ids is every table in its new place; a table of
+ * another store is ignored.
+ */
+const reorderTables = async (req, res, next) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
+    if (ids.length === 0 || ids.length > 1000 || ids.some((id) => !mongoose.Types.ObjectId.isValid(id)) || new Set(ids).size !== ids.length) {
+      return next(createHttpError(400, "Send the tables in their new order."));
+    }
+    const scope = req.user?.restaurantId
+      ? { restaurantId: req.user.restaurantId, ...(req.user.outletId ? { outletId: req.user.outletId } : {}) }
+      : { createdBy: req.user._id };
+    await Table.bulkWrite(
+      ids.map((id, index) => ({
+        updateOne: { filter: { _id: id, ...scope, isDeleted: { $ne: true } }, update: { $set: { sortOrder: index } } },
+      })),
+      { ordered: false },
+    );
+    res.status(200).json({ success: true });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const getTables = async (req, res, next) => {
   try {
     const scopeQuery = req.user?.restaurantId
@@ -96,7 +128,7 @@ const getTables = async (req, res, next) => {
         }
       : { createdBy: req.user._id, isDeleted: { $ne: true } };
 
-    const tables = await Table.find(scopeQuery).sort({ tableNumber: 1 });
+    const tables = sortTables(await Table.find(scopeQuery).sort({ tableNumber: 1 }));
 
     // Attach active session info per table for the table grid UI
     const activeSessions = await TableSession.find({
@@ -552,4 +584,4 @@ const releaseTable = async (req, res, next) => {
 
 module.exports = {
   getTableSettings,
-  updateTableSettings, addTable, getTables, getTableById, updateTable, deleteTable, regenerateQr, releaseTable };
+  updateTableSettings, addTable, getTables, reorderTables, sortTables, getTableById, updateTable, deleteTable, regenerateQr, releaseTable };
