@@ -146,3 +146,20 @@ select:-webkit-autofill {
 .notistack-SnackbarContainer :is(button, a) * {
   pointer-events: auto !important;
 }
+
+/* The POS is an app, not a page to copy from (owner, 2026-10-31): a tap or
+   a long press never selects text or pops up the copy menu. What staff type
+   (search, prices, notes) still selects, so it can be edited. */
+body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+input,
+textarea,
+select,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}

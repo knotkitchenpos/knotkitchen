@@ -925,3 +925,10 @@ test("pop-ups never block the buttons under them: only their own buttons take ta
   assert.match(css, /\.notistack-SnackbarContainer,\s*\.notistack-SnackbarContainer \* \{\s*pointer-events: none !important;/);
   assert.match(css, /\.notistack-SnackbarContainer :is\(button, a\),\s*\.notistack-SnackbarContainer :is\(button, a\) \* \{\s*pointer-events: auto !important;/);
 });
+
+test("no text on the POS can be selected, except what staff type", () => {
+  // Owner, 2026-10-31.
+  const css = SRC("src/index.css");
+  assert.match(css, /body \{\s*-webkit-user-select: none;\s*user-select: none;\s*-webkit-touch-callout: none;\s*\}/);
+  assert.match(css, /input,\s*textarea,\s*select,\s*\[contenteditable="true"\] \{\s*-webkit-user-select: text;\s*user-select: text;/);
+});
