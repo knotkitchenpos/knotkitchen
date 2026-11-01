@@ -72,7 +72,7 @@ const SearchConsole = () => {
   const activeCount = Object.values(form).filter((v) => String(v).trim() !== "").length;
 
   return (
-    <div className="mx-auto max-w-7xl">
+    <div className="mx-auto max-w-[1600px]">
       <header className="mb-5">
         <h1 className="text-2xl font-bold text-navy-900">Search Console</h1>
         <p className="mt-1 text-sm text-navy-500">

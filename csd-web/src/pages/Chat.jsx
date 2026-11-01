@@ -213,7 +213,7 @@ const Chat = () => {
   let lastDay = null;
 
   return (
-    <div className="mx-auto max-w-7xl">
+    <div className="mx-auto max-w-[1600px]">
       <header className="mb-4 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-navy-900">Chat</h1>

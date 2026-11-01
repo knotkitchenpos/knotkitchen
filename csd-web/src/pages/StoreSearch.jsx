@@ -87,7 +87,7 @@ Type the Store ID to confirm:`,
   }, [q, status]);
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-[1600px]">
       <h1 className="text-2xl font-bold text-navy-900">Store Management</h1>
       <p className="mt-1 text-sm text-navy-500">
         Search by Store ID, restaurant name, owner phone or address.

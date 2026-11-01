@@ -118,7 +118,7 @@ const Dashboard = () => {
   const k = data.kpis;
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-[1600px]">
       <header className="mb-6">
         <h1 className="text-2xl font-extrabold tracking-tight text-navy-900">Dashboard</h1>
         <p className="mt-1 text-sm text-navy-500">
@@ -126,7 +126,7 @@ const Dashboard = () => {
         </p>
       </header>
 
-      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      <section className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
         <KpiCard
           icon={FiShoppingBag}
           label="Registered restaurants"

@@ -405,7 +405,7 @@ const KnotEats = () => {
   const go = (next) => setParams(next, { replace: true });
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-[1600px]">
       <header className="mb-5">
         <h1 className="text-2xl font-bold text-navy-900">Knot Eats</h1>
         <p className="mt-1 text-sm text-navy-500">

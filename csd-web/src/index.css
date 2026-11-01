@@ -27,7 +27,7 @@ body {
   }
 
   /* Each page eases in as it is opened. */
-  main > * { animation: fade-up 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+  main > * { animation: fade-up 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) backwards; }
 
   /* Tables: quiet header, row you can follow with the eye. */
   thead th {

@@ -60,7 +60,7 @@ const Reports = () => {
   if (!data) return <p className="text-sm text-navy-500">Loading reports…</p>;
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-[1600px]">
       <header className="mb-5 flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-navy-900">Reports</h1>

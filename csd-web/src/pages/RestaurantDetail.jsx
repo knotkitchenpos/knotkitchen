@@ -669,7 +669,7 @@ const RestaurantDetail = () => {
   );
 
   return (
-    <div className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-[1600px]">
       <Link to="/stores" className="inline-flex items-center gap-1.5 text-sm text-navy-600 hover:text-navy-900">
         <FiArrowLeft aria-hidden="true" /> Back to stores
       </Link>
@@ -712,7 +712,7 @@ const RestaurantDetail = () => {
         </div>
       </header>
 
-      <div className="mt-3 grid gap-3 lg:grid-cols-2">
+      <div className="mt-3 gap-3 lg:columns-2 2xl:columns-3 [&>*]:mb-3 [&>*]:break-inside-avoid">
         {/* ── Row 1 ─────────────────────────────────────────────────── */}
         <Card title="Basic information">
           <dl>
