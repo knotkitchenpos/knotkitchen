@@ -64,7 +64,13 @@ export const groupEditorPayload = ({ name, oldName, required, selectionType, max
     // Maximum Selection on.
     maxSelectionEnabled: single || maxEnabled === true,
     maxSelections: single ? 1 : Math.max(1, Number(max) || 1),
-    options: (options || []).map((e) => ({ name: String(e.name || "").trim(), price: Number(e.price) || 0 })),
+    // `oldName`: what a component was called when the editor opened, so its
+    // add-on recipe in Inventory follows a rename (owner, 2026-11-01).
+    options: (options || []).map((e) => ({
+      name: String(e.name || "").trim(),
+      price: Number(e.price) || 0,
+      ...(e.was && String(e.was).trim() !== String(e.name || "").trim() ? { oldName: String(e.was).trim() } : {}),
+    })),
     ...(dishIds && dishIds.size ? { dishIds: Array.from(dishIds) } : {}),
   };
 };

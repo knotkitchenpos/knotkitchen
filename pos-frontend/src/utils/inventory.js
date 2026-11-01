@@ -102,7 +102,11 @@ export const linesCost = (lines = [], ingredients = []) => {
   const missing = [];
   for (const l of lines || []) {
     const ing = byId.get(String(l.ingredientId));
-    if (!ing || !(Number(l.quantity) > 0)) continue;
+    if (!(Number(l.quantity) > 0)) continue;
+    if (!ing) {
+      if (ingredients.length && !missing.includes("a removed item")) missing.push("a removed item");
+      continue;
+    }
     const q = convertQty(l.quantity, l.unit || ing.unit, ing.unit);
     if (q === null) continue;
     if (!(Number(ing.costPerUnit) > 0)) missing.push(ing.name);

@@ -43,3 +43,14 @@ test("a stock count hides what the system expects until it is finished, and save
   assert.ok(!/expected/.test(count.slice(count.indexOf("const Counting"), count.indexOf("const CountTab"))), "no expected figure while counting");
   assert.match(count, /System said \{qty\(l\.expected\)\}/);
 });
+
+test("the Groups panel sends each component's old name and shows what it uses from stock", async () => {
+  const { groupEditorPayload } = await import("../src/utils/modifierGroups.js");
+  const p = groupEditorPayload({ name: "Crust", selectionType: "single", options: [{ name: "Cheese Burst Crust", price: 60, was: "Cheese Burst" }, { name: "Thin", price: 0, was: "Thin" }, { name: "New", price: 10 }] });
+  assert.deepEqual(p.options, [{ name: "Cheese Burst Crust", price: 60, oldName: "Cheese Burst" }, { name: "Thin", price: 0 }, { name: "New", price: 10 }]);
+  const drawer = SRC("src/components/dashboard/manageMenu/GroupDrawer.jsx");
+  assert.match(drawer, /was: o\?\.name \|\| ""/);
+  assert.match(drawer, /copy\[editingCompIndex\] = \{ \.\.\.copy\[editingCompIndex\], name: extraNameInput\.trim\(\), price: String\(numPrice\) \};/);
+  assert.match(drawer, /navigate\("\/settings\?view=inventory&tab=addons"\)/);
+  assert.match(SRC("src/components/settings/InventoryView.jsx"), /TABS\.some\(\(\[k\]\) => k === params\.get\("tab"\)\)/);
+});

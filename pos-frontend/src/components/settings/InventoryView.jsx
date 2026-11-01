@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "../../utils/notify";
 import {
@@ -10,6 +11,7 @@ import {
   getRecipes,
   getStockMovements,
   makePreparedBatch,
+  saveInventorySettings,
   recordStockMovement,
   updateIngredient,
   upsertRecipe,
@@ -376,7 +378,27 @@ const ItemActions = ({ item, setMove, setEditing, setMaking }) => (
   </>
 );
 
-const DashboardTab = ({ ingredients, refresh }) => {
+/** How many days before a use-by date the dashboard warns: the owner's setting. */
+const ExpirySetting = ({ days, refresh }) => {
+  const [value, setValue] = useState(String(days ?? 2));
+  const saveMut = useMutation({
+    mutationFn: () => saveInventorySettings({ expiryAlertDays: Number(value) }),
+    onSuccess: () => { enqueueSnackbar("Saved", { variant: "success" }); refresh(); },
+    onError: (e) => enqueueSnackbar(e.response?.data?.message || "Could not save", { variant: "error" }),
+  });
+  return (
+    <div className="flex flex-wrap items-center gap-2 text-[12.5px] text-[#475569]">
+      Warn about use-by dates
+      <input className={`${inputClass} h-[34px] w-[64px]`} type="number" min="0" max="60" value={value} onChange={(e) => setValue(e.target.value)} aria-label="Days ahead" />
+      day(s) ahead
+      {String(days ?? 2) !== value && (
+        <button type="button" className={`${btnGhost} h-[34px]`} disabled={saveMut.isPending || !(Number(value) >= 0)} onClick={() => saveMut.mutate()}>Save</button>
+      )}
+    </div>
+  );
+};
+
+const DashboardTab = ({ ingredients, refresh, settings }) => {
   const [filter, setFilter] = useState("all");
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState(null); // null | "new" | item
@@ -508,6 +530,8 @@ const DashboardTab = ({ ingredients, refresh }) => {
       </div>
         </>
       )}
+
+      {ingredients.some((i) => i.shelfLifeDays > 0 || (i.batches || []).length) && <ExpirySetting days={settings?.expiryAlertDays} refresh={refresh} />}
 
       {editing && <ItemModal item={editing === "new" ? null : editing} ingredients={ingredients} onClose={() => setEditing(null)} refresh={refresh} />}
       {move && <StockModal item={move.item} type={move.type} onClose={() => setMove(null)} refresh={refresh} />}
@@ -685,7 +709,9 @@ const LogTab = () => {
 
 const InventoryView = () => {
   const qc = useQueryClient();
-  const [tab, setTab] = useState("dashboard");
+  // ?tab=addons opens a tab directly (Manage Menu Groups: Set stock use).
+  const [params] = useSearchParams();
+  const [tab, setTab] = useState(() => (TABS.some(([k]) => k === params.get("tab")) ? params.get("tab") : "dashboard"));
   const [recipeFor, setRecipeFor] = useState(null); // a product opened from Dish costs
   const { data, isLoading } = useQuery({ queryKey: ["inventory", "ingredients"], queryFn: getIngredients });
   const ingredients = data?.data?.data || [];
@@ -704,7 +730,7 @@ const InventoryView = () => {
           </button>
         ))}
       </div>
-      {tab === "dashboard" && <DashboardTab ingredients={ingredients} refresh={refresh} />}
+      {tab === "dashboard" && <DashboardTab ingredients={ingredients} refresh={refresh} settings={data?.data?.settings} />}
       {tab === "costs" && <DishCostsTab onEditRecipe={(id) => { setRecipeFor(id); setTab("recipes"); }} />}
       {tab === "recipes" && <RecipesTab key={recipeFor || "all"} ingredients={ingredients} refresh={refresh} initialDish={recipeFor} target={target} />}
       {tab === "addons" && <AddonsTab ingredients={ingredients} />}

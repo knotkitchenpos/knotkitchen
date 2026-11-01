@@ -1,4 +1,8 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { getAddonRecipes, getIngredients, getSubscriptionStatus } from "../../../https";
+import { qty, rupees, unitLabel } from "../../../utils/inventory";
 import { enqueueSnackbar } from "../../../utils/notify";
 import { groupEditorPayload, selectionTypeOf } from "../../../utils/modifierGroups";
 import { IconX } from "./icons";
@@ -35,6 +39,29 @@ const GroupDrawer = ({
 
   const showManageGroup = open;
   const editingGroup = editing;
+  const navigate = useNavigate();
+
+  // What each component takes from inventory when sold (Inventory › Add-ons),
+  // on a plan with inventory. Read by the group's saved name.
+  const { data: subRes } = useQuery({ queryKey: ["subscription"], queryFn: getSubscriptionStatus, staleTime: 60_000, enabled: open });
+  const withInventory = Boolean(subRes) && subRes?.data?.data?.features?.pos !== false;
+  const { data: addonRes } = useQuery({ queryKey: ["inventory", "addon-recipes"], queryFn: getAddonRecipes, enabled: open && withInventory && Boolean(editing) });
+  const { data: ingRes } = useQuery({ queryKey: ["inventory", "ingredients"], queryFn: getIngredients, enabled: open && withInventory && Boolean(editing) });
+  const stockUse = useMemo(() => {
+    if (!withInventory || !editing || !addonRes) return null;
+    const names = new Map((ingRes?.data?.data || []).map((i) => [String(i._id), i]));
+    const group = String(editing.name || "").toLowerCase();
+    const recipes = (addonRes?.data?.data?.options || []).filter((o) => String(o.groupName).toLowerCase() === group);
+    return (option) => {
+      const r = recipes.find((o) => String(o.optionName).toLowerCase() === String(option || "").toLowerCase());
+      if (!r || !r.ingredients?.length) return "Uses no stock";
+      const parts = r.ingredients.map((l) => {
+        const ing = names.get(String(l.ingredientId));
+        return ing ? `${qty(l.quantity)} ${unitLabel(l.unit || ing.unit)} ${ing.name}` : null;
+      }).filter(Boolean);
+      return `Uses ${parts.join(", ")}${r.cost > 0 ? ` · ${rupees(r.cost)}` : ""}`;
+    };
+  }, [withInventory, editing, addonRes, ingRes]);
 
   // Load the form when the drawer opens, keyed on the group's name so a
   // background refetch (which rebuilds the group objects) does not wipe
@@ -49,7 +76,8 @@ const GroupDrawer = ({
       setGroupMax(String(editing.maxSelections || 1));
       setGroupMaxEnabled(editing.maxSelectionEnabled === true);
       setSelectionType(selectionTypeOf(editing));
-      setExtrasList((editing.options || []).map((o) => ({ name: o?.name || "", price: String(o?.price ?? "0") })));
+      // `was`: the saved name, so a renamed component's add-on recipe follows it.
+      setExtrasList((editing.options || []).map((o) => ({ name: o?.name || "", price: String(o?.price ?? "0"), was: o?.name || "" })));
       setAssignedDishIds(new Set(editing.dishIds));
     } else {
       setGroupName("");
@@ -240,7 +268,7 @@ const GroupDrawer = ({
                   }
                   if (editingCompIndex !== null) {
                     const copy = [...extrasList];
-                    copy[editingCompIndex] = { name: extraNameInput.trim(), price: String(numPrice) };
+                    copy[editingCompIndex] = { ...copy[editingCompIndex], name: extraNameInput.trim(), price: String(numPrice) };
                     setExtrasList(copy);
                     setEditingCompIndex(null);
                     enqueueSnackbar("Component updated!", { variant: "success" });
@@ -260,9 +288,22 @@ const GroupDrawer = ({
   
               {extrasList.length > 0 && (
                 <div className="space-y-1.5 pt-2 border-t border-[#E2E8F0]">
+                  {stockUse && editingGroup && (
+                    <p className="flex flex-wrap items-center justify-between gap-1 text-[11px] text-[#64748B]">
+                      <span>What each takes from inventory when sold.</span>
+                      <button type="button" className="font-bold text-[#C2410C] hover:underline" onClick={() => navigate("/settings?view=inventory&tab=addons")}>
+                        Set stock use →
+                      </button>
+                    </p>
+                  )}
                   {extrasList.map((extra, idx) => (
-                    <div key={idx} className="flex items-center justify-between p-2 rounded-lg bg-white border border-[#E2E8F0] text-[12.5px]">
-                      <span className="font-bold text-[#0F172A]">{extra.name} — ₹{extra.price}</span>
+                    <div key={idx} className="flex items-center justify-between gap-2 p-2 rounded-lg bg-white border border-[#E2E8F0] text-[12.5px]">
+                      <span className="min-w-0">
+                        <span className="block font-bold text-[#0F172A]">{extra.name} — ₹{extra.price}</span>
+                        {stockUse && (
+                          <span className="block text-[11px] text-[#64748B]">{stockUse(extra.was || extra.name)}</span>
+                        )}
+                      </span>
                       <div className="flex items-center gap-2">
                         <button
                           type="button"

@@ -114,7 +114,11 @@ const linesCost = (lines = [], items = new Map()) => {
   const missing = [];
   for (const l of lines || []) {
     const ing = items.get(String(l.ingredientId));
-    if (!ing) continue;
+    // A removed item still in a recipe: named, so the cost is not shown as complete.
+    if (!ing) {
+      if (!missing.includes("a removed item")) missing.push("a removed item");
+      continue;
+    }
     const qtyInUnit = convertQty(l.quantity, l.unit || ing.unit, ing.unit);
     if (qtyInUnit === null) continue;
     if (!(Number(ing.costPerUnit) > 0)) {
@@ -211,14 +215,83 @@ const variantKey = (menuItemId, variant) => `${String(menuItemId || "")}\u0000${
  * the option's own count, where the till kept one, is on the matching
  * modifiers entry.
  */
-const lineAddons = (it) => {
+const lineAddons = (it, dishGroups = new Map()) => {
   const counts = new Map();
   for (const m of it.modifiers || []) if (m?.name) counts.set(lower(m.name), Math.max(1, Math.floor(Number(m.quantity) || 1)));
   const options = (it.modifierSelections || [])
     .filter((m) => m?.optionName)
     .map((m) => ({ key: optionKey(m.groupName, m.optionName), times: counts.get(lower(m.optionName)) || 1, label: m.optionName }));
+  // Table and table-QR lines keep only each choice's name (modifiers[]): its
+  // group comes from the dish's own groups (`dishGroups`, dish id -> option
+  // name -> group name). Without this, add-ons on dine-in orders took no stock.
+  const seen = new Set(options.map((o) => lower(o.label)));
+  const groups = dishGroups.get(String(it.menuItemId || it.itemId || "")) || new Map();
+  for (const m of it.modifiers || []) {
+    const name = lower(m?.name);
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    options.push({ key: groups.has(name) ? optionKey(groups.get(name), m.name) : null, name, times: counts.get(name) || 1, label: m.name });
+  }
   const variant = it.variant?.name ? variantKey(it.menuItemId || it.itemId, it.variant.name) : null;
   return { options, variant };
+};
+
+const escapeRx = (s) => String(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const sameName = (s) => new RegExp(`^${escapeRx(String(s || "").trim())}$`, "i");
+
+/**
+ * A group or component renamed in Manage Menu takes its add-on recipes with
+ * it (owner, 2026-11-01). Add-on recipes are found by the names order lines
+ * record, so a rename used to leave the recipe behind and sales quietly took
+ * no stock for it.
+ *
+ * `options` are the components as the editor sent them; one carrying `oldName`
+ * was renamed from it. A recipe already under the new name wins: the old one
+ * is left, never merged.
+ */
+const carryAddonRecipes = async ({ restaurantId, oldGroup, newGroup, options = [] }) => {
+  if (!restaurantId || !newGroup || mongoose.connection?.readyState !== 1) return;
+  try {
+    await carryAddonRecipesNow({ restaurantId, oldGroup, newGroup, options });
+  } catch (e) {
+    // The group is saved either way; a recipe left behind can be set again in Inventory › Add-ons.
+    console.error("[inventory] add-on recipes not carried over:", e?.message || e);
+  }
+};
+
+const carryAddonRecipesNow = async ({ restaurantId, oldGroup, newGroup, options = [] }) => {
+  const { AddonRecipe } = require("../models/inventoryModel");
+  const move = async (from, to) => {
+    try {
+      await AddonRecipe.updateOne({ restaurantId, kind: "option", ...from }, { $set: to });
+    } catch (e) {
+      if (e?.code !== 11000) throw e; // the new name has its own recipe already
+    }
+  };
+  const group = String(newGroup).trim();
+  if (oldGroup && String(oldGroup).trim() && String(oldGroup).trim().toLowerCase() !== group.toLowerCase()) {
+    const rows = await AddonRecipe.find({ restaurantId, kind: "option", groupName: sameName(oldGroup) }).select("optionName").lean();
+    for (const r of rows) await move({ groupName: sameName(oldGroup), optionName: r.optionName }, { groupName: group });
+  }
+  for (const o of Array.isArray(options) ? options : []) {
+    const was = String(o?.oldName || "").trim();
+    const now = String(o?.name || "").trim();
+    if (!was || !now || was.toLowerCase() === now.toLowerCase()) continue;
+    await move({ groupName: sameName(group), optionName: sameName(was) }, { optionName: now });
+  }
+};
+
+/** Pure: dish id -> (option name -> group name), from the store's menu documents. */
+const dishGroupsOf = (menus = []) => {
+  const out = new Map();
+  for (const m of menus) {
+    for (const item of m.items || []) {
+      const byOption = new Map();
+      for (const g of item.modifierGroups || []) for (const o of g.options || []) if (o?.name && !byOption.has(lower(o.name))) byOption.set(lower(o.name), g.name);
+      out.set(String(item._id), byOption);
+    }
+  }
+  return out;
 };
 
 /**
@@ -227,14 +300,20 @@ const lineAddons = (it) => {
  * (owner, 2026-11-01: Extra Cheese used no cheese before).
  * @param {Array} addonRecipes  [{ kind: "option"|"variant", groupName, optionName, menuItemId, variantName, ingredients[] }]
  */
-const depletionPlan = (items = [], recipes = [], addonRecipes = []) => {
+const depletionPlan = (items = [], recipes = [], addonRecipes = [], dishGroups = new Map()) => {
   const byItem = new Map();
   for (const r of recipes) if (r?.menuItemId) byItem.set(String(r.menuItemId), r);
   const byOption = new Map();
   const byVariant = new Map();
+  // An option name used in only one group with a recipe: a choice whose group
+  // is not known (the dish's group was since removed) still finds it.
+  const byOptionName = new Map();
   for (const a of addonRecipes || []) {
-    if (a?.kind === "option") byOption.set(optionKey(a.groupName, a.optionName), a);
-    else if (a?.kind === "variant") byVariant.set(variantKey(a.menuItemId, a.variantName), a);
+    if (a?.kind === "option") {
+      byOption.set(optionKey(a.groupName, a.optionName), a);
+      const n = lower(a.optionName);
+      byOptionName.set(n, byOptionName.has(n) ? null : a);
+    } else if (a?.kind === "variant") byVariant.set(variantKey(a.menuItemId, a.variantName), a);
   }
   const lines = [];
   const take = [];
@@ -250,10 +329,10 @@ const depletionPlan = (items = [], recipes = [], addonRecipes = []) => {
     };
     const recipe = byItem.get(String(it.menuItemId || "")) || byItem.get(String(it.itemId || ""));
     if (recipe) add(recipe.ingredients, servings / Math.max(1, Number(recipe.yield) || 1), it.name || "");
-    const { options, variant } = lineAddons(it);
+    const { options, variant } = lineAddons(it, dishGroups);
     if (variant && byVariant.has(variant)) add(byVariant.get(variant).ingredients, servings, `${it.name || ""} · ${it.variant.name}`);
     for (const o of options) {
-      const a = byOption.get(o.key);
+      const a = (o.key && byOption.get(o.key)) || (!o.key && o.name ? byOptionName.get(o.name) : null);
       if (a) add(a.ingredients, servings * o.times, `${it.name || ""} · ${o.label}`);
     }
   });
@@ -273,7 +352,18 @@ const depleteOrder = async (order) => {
     Recipe.find({ restaurantId: order.restaurantId, isActive: { $ne: false }, isDeleted: { $ne: true } }).lean(),
     AddonRecipe ? AddonRecipe.find({ restaurantId: order.restaurantId }).lean() : [],
   ]);
-  const { lines, take } = depletionPlan(items, recipes, addonRecipes);
+  // Lines that kept only their choices' names need each dish's groups to find their recipes.
+  let dishGroups = new Map();
+  const needGroups = addonRecipes.length && items.some((it) => it && !it.stockDepleted && (it.modifiers || []).length > (it.modifierSelections || []).length);
+  if (needGroups) {
+    try {
+      const Menu = require("../models/menuModel");
+      dishGroups = dishGroupsOf(await Menu.find({ restaurantId: order.restaurantId, isDeleted: { $ne: true } }).select("items._id items.modifierGroups.name items.modifierGroups.options.name").lean());
+    } catch {
+      dishGroups = new Map();
+    }
+  }
+  const { lines, take } = depletionPlan(items, recipes, addonRecipes, dishGroups);
   if (!lines.length) return;
 
   // Claim each line before taking its stock, one atomic update apiece. Two
@@ -379,6 +469,8 @@ module.exports = {
   optionKey,
   variantKey,
   lineAddons,
+  dishGroupsOf,
+  carryAddonRecipes,
   UNITS,
   UNIT_CODES,
   STOCK_STATUS,

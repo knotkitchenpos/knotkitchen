@@ -4,7 +4,7 @@ const MenuGroup = require("../models/menuGroupModel");
 const createHttpError = require("http-errors");
 const mongoose = require("mongoose");
 const { logActivity } = require("../services/auditService");
-const { cleanRecipeLines, saveRecipe } = require("../services/inventory");
+const { cleanRecipeLines, saveRecipe, carryAddonRecipes } = require("../services/inventory");
 const {
   groupRules,
   cleanGroupOptions,
@@ -672,6 +672,8 @@ const saveMenuGroup = async (req, res, next) => {
     if (rules.required && !options.length) return next(createHttpError(400, "Add at least one option to this group."));
     await renameGroupRow(scope, old, name);
     await keepGroup(scope, name, { ...rules, options });
+    // Its add-on recipes (Inventory) follow a renamed group or component.
+    await carryAddonRecipes({ restaurantId: req.user?.restaurantId, oldGroup: old, newGroup: name, options: req.body.options });
     res.status(200).json({ success: true, message: `Group "${name}" saved.` });
   } catch (error) {
     next(error);
@@ -855,6 +857,7 @@ const saveModifierGroupToDishes = async (req, res, next) => {
       isActive: base.isActive !== false,
       options: validatedOptions,
     });
+    await carryAddonRecipes({ restaurantId: req.user?.restaurantId, oldGroup: old, newGroup: name, options: req.body.options });
 
     res.status(200).json({
       success: true,

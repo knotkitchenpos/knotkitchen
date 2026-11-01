@@ -118,3 +118,35 @@ test("report: food cost is stock used against sales before tax; settings are the
   assert.match(routes, /router\.route\("\/settings"\)\.get\(isVerifiedUser, c\.getSettings\)\.put\(isVerifiedUser, requireProtectedAction, c\.saveSettings\);/);
   assert.match(SRC("models/restaurantModel.js"), /targetFoodCostPct: \{ type: Number, default: 35, min: 1, max: 100 \},/);
 });
+
+test("REGRESSION: add-ons on dine-in and table-QR orders take stock too (lines keep only the choice's name)", () => {
+  // Table session lines are stored with modifiers: [{ name, price }] and no group,
+  // so the group is read from the dish's own groups.
+  const dishGroups = inv.dishGroupsOf([{ items: [{ _id: "pizza", modifierGroups: [{ name: "Crust", options: [{ name: "Cheese Burst" }, { name: "Thin" }] }] }] }]);
+  const plan = inv.depletionPlan(
+    [{ menuItemId: "pizza", name: "Pizza", quantity: 3, modifiers: [{ name: "Cheese Burst", price: 60 }] }],
+    [],
+    [{ kind: "option", groupName: "Crust", optionName: "Cheese Burst", ingredients: [{ ingredientId: "cheese", quantity: 60, unit: "g" }] }],
+    dishGroups,
+  );
+  assert.deepEqual(plan.take.map((t) => [t.ingredientId, t.quantity]), [["cheese", 180]]);
+  // A till line that sent both shapes is counted once.
+  const both = inv.depletionPlan(
+    [{ menuItemId: "pizza", name: "Pizza", quantity: 1, modifierSelections: [{ groupName: "Crust", optionName: "Cheese Burst" }], modifiers: [{ name: "Cheese Burst" }] }],
+    [], [{ kind: "option", groupName: "Crust", optionName: "Cheese Burst", ingredients: [{ ingredientId: "cheese", quantity: 60, unit: "g" }] }], dishGroups,
+  );
+  assert.equal(both.take.length, 1);
+  assert.match(SRC("services/inventory.js"), /\(it\.modifiers \|\| \[\]\)\.length > \(it\.modifierSelections \|\| \[\]\)\.length/, "the menu is read only when a line needs it");
+});
+
+test("a group or component renamed in Manage Menu takes its add-on recipe with it", () => {
+  const svc = SRC("services/inventory.js");
+  assert.match(svc, /const carryAddonRecipes = async \(\{ restaurantId, oldGroup, newGroup, options = \[\] \}\) => \{/);
+  assert.match(svc, /if \(e\?\.code !== 11000\) throw e; \/\/ the new name has its own recipe already/);
+  const menu = SRC("controllers/menuController.js");
+  assert.equal((menu.match(/await carryAddonRecipes\(\{ restaurantId: req\.user\?\.restaurantId, oldGroup: old, newGroup: name, options: req\.body\.options \}\);/g) || []).length, 2, "both group saves");
+  // Changing an item's unit is refused while any recipe kind measures it.
+  assert.match(SRC("controllers/inventoryController.js"), /"prep\.ingredients\.ingredientId": doc\._id/);
+  // A removed item still in a recipe is named, never silently left out of the cost.
+  assert.deepEqual(inv.linesCost([{ ingredientId: "gone", quantity: 1, unit: "pcs" }], items).missing, ["a removed item"]);
+});

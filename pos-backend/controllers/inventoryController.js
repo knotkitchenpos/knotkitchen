@@ -173,7 +173,13 @@ const updateIngredient = async (req, res, next) => {
     if (next_.unit !== doc.unit) {
       const factor = convertQty(1, doc.unit, next_.unit);
       if (factor === null) {
-        const used = await Recipe.countDocuments({ restaurantId: s.restaurantId, isDeleted: { $ne: true }, "ingredients.ingredientId": doc._id });
+        // Dish recipes, add-on and size recipes, and prepared items' batch recipes all measure it in its old unit.
+        const [dishes, addons, prepared] = await Promise.all([
+          Recipe.countDocuments({ restaurantId: s.restaurantId, isDeleted: { $ne: true }, "ingredients.ingredientId": doc._id }),
+          AddonRecipe.countDocuments({ restaurantId: s.restaurantId, "ingredients.ingredientId": doc._id }),
+          Ingredient.countDocuments({ restaurantId: s.restaurantId, isDeleted: { $ne: true }, "prep.ingredients.ingredientId": doc._id }),
+        ]);
+        const used = dishes + addons + prepared;
         if (used) throw createHttpError(400, `${doc.name} is in ${used} recipe(s). Remove it from them before counting it in ${UNITS[next_.unit].label}.`);
       } else {
         doc.stockQuantity = round3(doc.stockQuantity * factor);
@@ -465,6 +471,7 @@ const menuDishes = async (user) => {
   return menus.flatMap((m) => (m.items || []).map((it) => ({
     menuItemId: String(it._id), name: it.name, category: m.name, price: Number(it.price) || 0,
     variants: (it.variants || []).map((v) => ({ name: v.name, price: Number(v.price) || 0 })),
+    groups: (it.modifierGroups || []).map((g) => ({ name: g.name, options: (g.options || []).map((o) => ({ name: o.name, price: Number(o.price) || 0 })) })),
   })));
 };
 
@@ -519,6 +526,15 @@ const listAddonRecipes = async (req, res, next) => {
       const ingredients = recipe?.ingredients || [];
       return { ingredients, ...linesCost(ingredients, items) };
     };
+    // The store's group list, plus any group found only on products (older stores).
+    const known = new Set(groups.map((g) => lower(g.name)));
+    for (const d of dishes) {
+      for (const g of d.groups) {
+        if (known.has(lower(g.name))) continue;
+        known.add(lower(g.name));
+        groups.push(g);
+      }
+    }
     const options = groups.flatMap((g) => (g.options || []).map((o) => ({
       kind: "option", groupName: g.name, optionName: o.name, price: Number(o.price) || 0,
       ...withCost(find((r) => r.kind === "option" && lower(r.groupName) === lower(g.name) && lower(r.optionName) === lower(o.name))),
