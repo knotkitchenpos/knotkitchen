@@ -4,7 +4,7 @@ import { enqueueSnackbar } from "../../../utils/notify";
 import { cancelStockCount, finishStockCount, getStockCount, getStockCounts, saveStockCount, startStockCount } from "../../../https";
 import { dateTimeIN as when } from "../../../utils";
 import { qty, rupees, unitLabel } from "../../../utils/inventory";
-import { btnGhost, btnPrimary, card, inputClass } from "./ui";
+import { boxClass, btnGhost, btnPrimary, card, inputClass } from "./ui";
 
 /**
  * Stock count (owner, 2026-11-01). Staff count every item on a phone; what
@@ -147,7 +147,7 @@ const Counting = ({ countId, onDone, onBack }) => {
                 <li key={id} className="flex items-center gap-3 px-3 py-2">
                   <span className="flex-1 min-w-0 text-[13px] font-bold text-[#0F172A] truncate">{l.name}</span>
                   <input
-                    className={`${inputClass} w-[110px] text-right ${values[id] !== "" ? "border-[#86EFAC] bg-[#F0FDF4]" : ""}`}
+                    className={`${boxClass} w-[110px] text-right ${values[id] !== "" ? "border-[#86EFAC] bg-[#F0FDF4]" : ""}`}
                     type="number" min="0" step="any" inputMode="decimal" placeholder="Count"
                     value={values[id]}
                     onChange={(e) => { dirty.current = true; setValues({ ...values, [id]: e.target.value }); }}

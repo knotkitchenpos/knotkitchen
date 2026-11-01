@@ -18,7 +18,7 @@ import {
 } from "../../https";
 import { dateTimeIN as when } from "../../utils";
 import { STATUS, UNITS, foodCostTone, linesCost, qty, rupees, unitLabel, unitsLike } from "../../utils/inventory";
-import { LinesEditor, Modal, btnGhost, btnPrimary, cleanLines, inputClass, labelClass, toRows } from "./inventory/ui";
+import { LinesEditor, Modal, boxClass, btnGhost, btnPrimary, cleanLines, inputClass, labelClass, toRows } from "./inventory/ui";
 import DishCostsTab from "./inventory/DishCostsTab";
 import AddonsTab from "./inventory/AddonsTab";
 import CountTab from "./inventory/CountTab";
@@ -169,7 +169,7 @@ const ItemModal = ({ item, ingredients, onClose, refresh }) => {
             <input className={`${inputClass} flex-1 font-medium`} placeholder="Tray, Box, Bag…" maxLength={40} value={p.name}
               onChange={(e) => setPacks(packs.map((x, k) => (k === i ? { ...x, name: e.target.value } : x)))} />
             <span className="text-[12px] text-[#64748B]">=</span>
-            <input className={`${inputClass} w-[86px]`} type="number" min="0" step="any" inputMode="decimal" placeholder="30" value={p.size}
+            <input className={`${boxClass} w-[86px]`} type="number" min="0" step="any" inputMode="decimal" placeholder="30" value={p.size}
               onChange={(e) => setPacks(packs.map((x, k) => (k === i ? { ...x, size: e.target.value } : x)))} />
             <span className="w-[44px] text-[12px] font-bold text-[#64748B]">{u}</span>
             <button type="button" aria-label="Remove pack" className="text-[18px] text-[#94A3B8] hover:text-[#DC2626]" onClick={() => setPacks(packs.filter((_, k) => k !== i))}>&times;</button>
@@ -194,7 +194,7 @@ const ItemModal = ({ item, ingredients, onClose, refresh }) => {
           <>
             <label className="flex flex-wrap items-center gap-2 text-[12.5px] text-[#475569]">
               One batch makes
-              <input className={`${inputClass} w-[90px]`} type="number" min="0" step="any" inputMode="decimal" value={makes} onChange={(e) => setMakes(e.target.value)} placeholder="5" />
+              <input className={`${boxClass} w-[90px]`} type="number" min="0" step="any" inputMode="decimal" value={makes} onChange={(e) => setMakes(e.target.value)} placeholder="5" />
               {u}, using:
             </label>
             <LinesEditor ingredients={ingredients} rows={prepRows} setRows={setPrepRows} exclude={item?._id} costLabel="Batch cost" />
@@ -389,7 +389,7 @@ const ExpirySetting = ({ days, refresh }) => {
   return (
     <div className="flex flex-wrap items-center gap-2 text-[12.5px] text-[#475569]">
       Warn about use-by dates
-      <input className={`${inputClass} h-[34px] w-[64px]`} type="number" min="0" max="60" value={value} onChange={(e) => setValue(e.target.value)} aria-label="Days ahead" />
+      <input className={`${boxClass} h-[34px] w-[64px]`} type="number" min="0" max="60" value={value} onChange={(e) => setValue(e.target.value)} aria-label="Days ahead" />
       day(s) ahead
       {String(days ?? 2) !== value && (
         <button type="button" className={`${btnGhost} h-[34px]`} disabled={saveMut.isPending || !(Number(value) >= 0)} onClick={() => saveMut.mutate()}>Save</button>
@@ -626,7 +626,7 @@ const RecipesTab = ({ ingredients, refresh, initialDish, target = 35 }) => {
             <p className="text-[13px] font-extrabold text-[#0F172A]">{dish?.name}</p>
             <label className="flex items-center gap-2 text-[12.5px] text-[#475569] whitespace-nowrap">
               This recipe makes
-              <input className={`${inputClass} max-w-[80px]`} type="number" min="1" value={yieldN} onChange={(e) => setYieldN(e.target.value)} />
+              <input className={`${boxClass} w-[80px]`} type="number" min="1" value={yieldN} onChange={(e) => setYieldN(e.target.value)} />
               serving(s)
             </label>
             <LinesEditor ingredients={ingredients} rows={rows} setRows={setRows} divideBy={yieldN} costLabel="Cost per serving" />

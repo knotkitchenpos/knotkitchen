@@ -3,6 +3,8 @@ import { linesCost, rupees, unitsLike } from "../../../utils/inventory";
 
 /** Shared look of the Inventory Management screens (components/settings/InventoryView.jsx). */
 export const inputClass = "h-[40px] w-full rounded-xl border border-[#E2E8F0] bg-white px-3 text-[13px] font-bold text-[#0F172A] outline-none focus:border-[#FD5302]";
+/** A small fixed-width box (a count, a pack size): the field style without w-full, which would win over w-[..]. */
+export const boxClass = inputClass.replace(" w-full", " shrink-0");
 export const labelClass = "block text-[11.5px] font-bold text-[#64748B] mb-1";
 export const btnPrimary = "h-[40px] px-4 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold hover:bg-[#D64502] disabled:opacity-50";
 export const btnGhost = "h-[36px] px-3 rounded-xl border border-[#E2E8F0] text-[#334155] text-[12.5px] font-bold hover:bg-[#F8FAFC] disabled:opacity-50";

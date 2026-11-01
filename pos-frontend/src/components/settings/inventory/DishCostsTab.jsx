@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "../../../utils/notify";
 import { getDishCosts, saveInventorySettings } from "../../../https";
 import { foodCostTone, rupees } from "../../../utils/inventory";
-import { btnGhost, card, inputClass } from "./ui";
+import { boxClass, btnGhost, card, inputClass } from "./ui";
 
 /**
  * Cost and profit per dish (owner, 2026-11-01): what one plate costs at
@@ -68,7 +68,7 @@ const DishCostsTab = ({ onEditRecipe }) => {
             </button>
           ) : (
             <div className="mt-1 flex items-center gap-1.5">
-              <input className={`${inputClass} h-[34px] w-[70px]`} type="number" min="1" max="100" value={editTarget} onChange={(e) => setEditTarget(e.target.value)} autoFocus />
+              <input className={`${boxClass} h-[34px] w-[70px]`} type="number" min="1" max="100" value={editTarget} onChange={(e) => setEditTarget(e.target.value)} autoFocus />
               <button type="button" className={`${btnGhost} h-[34px]`} disabled={targetMut.isPending || !(Number(editTarget) >= 1)} onClick={() => targetMut.mutate()}>Save</button>
             </div>
           )}
