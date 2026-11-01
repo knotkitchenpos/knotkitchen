@@ -315,6 +315,53 @@ const permanentlyDeleteStore = async ({ req, store, storeId, reason }) => {
   return { agreementId };
 };
 
+/**
+ * DELETE /api/csd/stores/:storeId — erase a deleted store's record for good
+ * (owner, 2026-10-31: deleted stores filled the list). Admin only, and only
+ * for a store already deleted; the caller types the Store ID to confirm.
+ *
+ * The delete is run once more first: the purge is a sweep, so a store deleted
+ * before it existed loses whatever it still owns. Then the Store row goes.
+ * Kept on purpose: the signed agreement and our invoices (tax records), and
+ * the audit trail, which records this erase. The Store ID is never issued
+ * again while those carry it (services/storeIdGenerator).
+ */
+const eraseStoreRecord = async (req, res, next) => {
+  try {
+    const storeId = String(req.params.storeId || "").trim();
+    if (!/^\d{6}$/.test(storeId)) return next(createHttpError(400, "Invalid Store ID."));
+    if (String(req.body?.confirmStoreId || "").trim() !== storeId) {
+      return next(createHttpError(400, "Type the Store ID to confirm."));
+    }
+    const store = await Store.findOne({ storeId });
+    if (!store) return next(createHttpError(404, "Store not found."));
+    if (!(store.isDeleted && store.status === "deleted")) {
+      return next(createHttpError(409, "Delete the store first; only a deleted store's record can be erased."));
+    }
+
+    const { agreementId } = await permanentlyDeleteStore({ req, store, storeId, reason: store.closureReason || "Record erased" });
+    await Store.deleteOne({ _id: store._id });
+
+    await csdAudit({
+      req,
+      staff: req.csdStaff,
+      action: "CSD_STORE_RECORD_ERASED",
+      resource: "Store",
+      entityType: "Store",
+      entityId: store._id,
+      storeId,
+      description: `Store ${storeId} (${store.storeName}) record erased`,
+      previousValue: { storeName: store.storeName, ownerName: store.ownerName, ownerPhone: store.ownerPhone, status: store.status },
+      newValue: { erased: true, agreementId: agreementId || null },
+      severity: "CRITICAL",
+    });
+
+    res.status(200).json({ success: true, message: "Store record erased. Its signed agreement and invoices are kept." });
+  } catch (error) {
+    next(error);
+  }
+};
+
 /** The Restaurant behind a Store row (restaurantId is optional on it). */
 const restaurantIdOf = async (store, storeId) =>
   store.restaurantId || (await Restaurant.findOne({ storeId }).select("_id").lean())?._id || null;
@@ -477,4 +524,4 @@ const updateStoreStatus = async (req, res, next) => {
   }
 };
 
-module.exports = { searchStores, getStore, updateStoreStatus, ALLOWED_STATUS, syncSubscriptionWithStatus };
+module.exports = { searchStores, getStore, updateStoreStatus, eraseStoreRecord, ALLOWED_STATUS, syncSubscriptionWithStatus };

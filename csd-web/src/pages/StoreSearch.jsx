@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { FiSearch, FiLoader, FiAlertCircle } from "react-icons/fi";
 import { stores, errorMessage } from "../api";
 import StatusBadge from "../components/StatusBadge";
+import { useAuth } from "../context/AuthContext";
 
 // "deleted" is listed so staff can find stores that were removed before the
 // purge existed: those still own their restaurant, users and orders, and are
@@ -25,6 +26,35 @@ const StoreSearch = () => {
   const seq = useRef(0);
   const location = useLocation();
   const deniedFrom = location.state?.deniedFrom;
+  const { isAdmin } = useAuth();
+  const [erasing, setErasing] = useState("");
+
+  // A deleted store's record, gone for good (owner, 2026-10-31). Typing the
+  // Store ID confirms it; the server checks it again and that it is deleted.
+  const erase = async (r) => {
+    const typed = window.prompt(
+      `Delete ${r.restaurantName} (${r.storeId}) permanently?
+
+Its record is erased and it leaves this list for good. Its signed agreement and invoices are kept for tax records.
+
+Type the Store ID to confirm:`,
+    );
+    if (typed === null) return;
+    if (typed.trim() !== r.storeId) {
+      setError("The Store ID did not match. Nothing was deleted.");
+      return;
+    }
+    setErasing(r.storeId);
+    try {
+      await stores.erase(r.storeId);
+      setRows((list) => list.filter((x) => x.storeId !== r.storeId));
+      setError("");
+    } catch (err) {
+      setError(errorMessage(err, "Could not delete the store."));
+    } finally {
+      setErasing("");
+    }
+  };
 
   useEffect(() => {
     const term = q.trim();
@@ -140,7 +170,17 @@ const StoreSearch = () => {
                       {r.address || "—"}
                     </td>
                     <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
-                    <td className="px-4 py-3 text-right">
+                    <td className="whitespace-nowrap px-4 py-3 text-right">
+                      {isAdmin && r.status === "deleted" && (
+                        <button
+                          type="button"
+                          onClick={() => erase(r)}
+                          disabled={erasing === r.storeId}
+                          className="mr-4 font-semibold text-red-600 hover:text-red-700 disabled:opacity-50"
+                        >
+                          {erasing === r.storeId ? "Deleting…" : "Delete permanently"}
+                        </button>
+                      )}
                       <Link
                         to={`/stores/${r.storeId}`}
                         className="font-semibold text-brand-600 hover:text-brand-700"

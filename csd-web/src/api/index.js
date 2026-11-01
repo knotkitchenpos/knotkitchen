@@ -61,6 +61,8 @@ export const stores = {
   get: (storeId) => api.get(`/stores/${storeId}`).then((r) => r.data.data),
   updateStatus: (storeId, payload) =>
     api.patch(`/stores/${storeId}/status`, payload).then((r) => r.data.data),
+  // A deleted store's record, erased for good; its agreement and invoices are kept.
+  erase: (storeId) => api.delete(`/stores/${storeId}`, { data: { confirmStoreId: storeId } }).then((r) => r.data),
 };
 
 export const agreements = {

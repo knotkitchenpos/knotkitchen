@@ -4,7 +4,7 @@ const router = express.Router();
 const { rateLimit, clientIp } = require("../middlewares/rateLimiter");
 const { requireCsdAuth, requireCsdAdmin } = require("../middlewares/csdAuth");
 const { login, me, logout } = require("../controllers/csdAuthController");
-const { searchStores, getStore, updateStoreStatus } = require("../controllers/csdStoreController");
+const { searchStores, getStore, updateStoreStatus, eraseStoreRecord } = require("../controllers/csdStoreController");
 const { getDashboard } = require("../controllers/csdDashboardController");
 const { createStore, getOptions } = require("../controllers/csdOnboardingController");
 const { searchOrders, getOrder } = require("../controllers/csdSearchController");
@@ -157,6 +157,8 @@ router.post("/onboarding/stores", requireCsdAdmin, createStore);
 // Status decides whether the public storefront serves customers at all, so it
 // is admin-only even though viewing the store is not.
 router.patch("/stores/:storeId/status", requireCsdAdmin, updateStoreStatus);
+// Erase a deleted store's record (its agreement and invoices are kept).
+router.delete("/stores/:storeId", requireCsdAdmin, eraseStoreRecord);
 
 // Staff Management. This is what lets anyone beyond the two predefined admin
 // numbers sign in at all — sendOtp refuses phones with no active staff row.
