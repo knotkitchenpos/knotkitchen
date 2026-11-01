@@ -43,8 +43,24 @@ const KpiCard = ({ icon: Icon, label, value, hint, tone = "navy" }) => {
  */
 const MAX_BAR_PX = 130;
 
-const TrendChart = ({ trend }) => {
-  if (!trend?.length) return <p className="text-sm text-navy-500">No orders recorded yet.</p>;
+/**
+ * The last six months ending this one (Asia/Kolkata), each from the server's
+ * trend or zero. The server only returns months that had orders, so one busy
+ * month used to fill the whole chart as a single wide bar.
+ */
+const lastSixMonths = (trend) => {
+  const byMonth = new Map((trend || []).map((t) => [t.month, t]));
+  const [y, m] = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" }).split("-").map(Number);
+  return Array.from({ length: 6 }, (_, i) => {
+    const d = new Date(Date.UTC(y, m - 1 - (5 - i), 1));
+    const month = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+    return byMonth.get(month) || { month, revenue: 0, orders: 0 };
+  });
+};
+
+const TrendChart = ({ trend: raw }) => {
+  if (!raw?.length) return <p className="text-sm text-navy-500">No orders recorded yet.</p>;
+  const trend = lastSixMonths(raw);
   const max = Math.max(...trend.map((t) => t.revenue), 1);
 
   const monthLabel = (month) => {
@@ -57,11 +73,11 @@ const TrendChart = ({ trend }) => {
       <div className="flex items-end gap-3 sm:gap-5" style={{ height: MAX_BAR_PX + 20 }}>
         {trend.map((t) => (
           <div key={t.month} className="flex flex-1 flex-col items-center justify-end gap-1.5">
-            <span className="text-[11px] font-medium text-navy-600">{inr(t.revenue)}</span>
+            <span className="text-[11px] font-medium text-navy-600">{t.revenue ? inr(t.revenue) : ""}</span>
             <div
-              className="w-full origin-bottom rounded-t-lg bg-gradient-to-t from-brand-600 to-brand-400 animate-grow"
-              // Floor of 4px so a non-zero month is never invisible.
-              style={{ height: Math.max(Math.round((t.revenue / max) * MAX_BAR_PX), 4) }}
+              className={`w-full max-w-[56px] origin-bottom rounded-t-lg animate-grow ${t.revenue ? "bg-gradient-to-t from-brand-600 to-brand-400" : "bg-navy-100"}`}
+              // Floor of 4px so a non-zero month is never invisible; an empty month is a 2px baseline.
+              style={{ height: t.revenue ? Math.max(Math.round((t.revenue / max) * MAX_BAR_PX), 4) : 2 }}
               title={`${t.orders} orders · ${inr(t.revenue)}`}
             />
           </div>

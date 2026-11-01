@@ -146,7 +146,41 @@ Type the Store ID to confirm:`,
               Showing the first {rows.length} matches — refine your search to narrow it down.
             </p>
           )}
-          <div className="mt-4 overflow-x-auto rounded-2xl border border-navy-200 bg-white">
+          {/* Phones: one card per store. The table needed sideways scrolling to reach Status and View store. */}
+          <ul className="mt-4 space-y-2.5 sm:hidden">
+            {rows.map((r) => (
+              <li key={r.storeId} className="rounded-2xl border border-navy-200 bg-white p-3.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-navy-900">{r.restaurantName}</p>
+                    <p className="font-mono text-xs text-navy-500">{r.storeId}</p>
+                  </div>
+                  <StatusBadge status={r.status} />
+                </div>
+                <p className="mt-2 text-sm text-navy-700">
+                  {r.ownerName || "—"}
+                  {r.ownerPhone ? <span className="text-navy-500"> · {r.ownerPhone}</span> : null}
+                </p>
+                {r.address ? <p className="mt-0.5 line-clamp-2 text-xs text-navy-500">{r.address}</p> : null}
+                <div className="mt-3 flex items-center justify-end gap-4 text-sm">
+                  {isAdmin && r.status === "deleted" && (
+                    <button
+                      type="button"
+                      onClick={() => erase(r)}
+                      disabled={erasing === r.storeId}
+                      className="font-semibold text-red-600 disabled:opacity-50"
+                    >
+                      {erasing === r.storeId ? "Deleting…" : "Delete permanently"}
+                    </button>
+                  )}
+                  <Link to={`/stores/${r.storeId}`} className="font-semibold text-brand-600">
+                    View store
+                  </Link>
+                </div>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-4 hidden overflow-x-auto rounded-2xl border border-navy-200 bg-white sm:block">
             <table className="w-full min-w-[52rem] text-left text-sm">
               <thead className="border-b border-navy-200 bg-navy-50 text-xs uppercase tracking-wider text-navy-500">
                 <tr>

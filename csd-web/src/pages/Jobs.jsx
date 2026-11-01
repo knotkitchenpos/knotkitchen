@@ -102,7 +102,9 @@ const Jobs = () => {
 
       {data && data.results.length === 0 && (
         <p className="mt-6 rounded-2xl border border-navy-200 bg-white p-8 text-center text-sm text-navy-500">
-          No jobs match these filters.
+          {filters.status || filters.priority || filters.mine || filters.q.trim()
+            ? "No jobs match these filters."
+            : "No jobs yet. Use New job to create one."}
         </p>
       )}
 

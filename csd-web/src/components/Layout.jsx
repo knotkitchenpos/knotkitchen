@@ -124,7 +124,8 @@ const Layout = () => {
           </div>
         </NavLink>
 
-        <nav className="relative flex-1 overflow-y-auto overflow-x-hidden px-3 pb-4 lg:px-2">
+        {/* Still scrolls on a short screen, without a scrollbar drawn down the dark rail. */}
+        <nav className="relative flex-1 overflow-y-auto overflow-x-hidden px-3 pb-4 [scrollbar-width:none] lg:px-2 [&::-webkit-scrollbar]:hidden">
           {groups.map((group) => (
             <div key={group} className="mb-3 space-y-1">
               <p className={`px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-navy-500 ${LABEL}`}>{group}</p>

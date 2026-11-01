@@ -223,7 +223,46 @@ const StaffManagement = () => {
       {busy && rows.length === 0 && <p className="mt-6 text-sm text-navy-500">Loading staff…</p>}
 
       {rows.length > 0 && (
-        <div className="mt-4 overflow-x-auto rounded-2xl border border-navy-200 bg-white">
+        <>
+        {/* Phones: one card per person, so Edit and Disable are in reach without scrolling sideways. */}
+        <ul className="mt-4 space-y-2.5 sm:hidden">
+          {rows.map((m) => {
+            const isMe = m.id === currentUser?.id;
+            const locked = m.isPredefinedAdmin;
+            return (
+              <li key={m.id} className="rounded-2xl border border-navy-200 bg-white p-3.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-navy-900">
+                      {m.fullName}
+                      {isMe && <span className="ml-1.5 text-xs font-normal text-brand-600">(you)</span>}
+                    </p>
+                    <p className="font-mono text-xs text-navy-500">{m.staffId}</p>
+                  </div>
+                  <StatusBadge status={m.status} />
+                </div>
+                <p className="mt-2 break-all text-sm text-navy-700">{m.email}</p>
+                <p className="mt-1 inline-flex items-center gap-1.5 text-xs font-medium text-navy-600">
+                  {m.role === "admin" && <FiShield size={12} className="text-brand-600" aria-hidden="true" />}
+                  {m.role === "admin" ? "Administrator" : "CSD Staff"}
+                  {locked && <FiLock size={11} className="text-navy-400" aria-hidden="true" />}
+                  <span className="text-navy-400">· Last login {dt(m.lastLoginAt)}</span>
+                </p>
+                <div className="mt-3 flex justify-end gap-4 text-sm">
+                  {!locked && !isMe && (
+                    <button type="button" onClick={() => toggleStatus(m)} className="font-semibold text-navy-600">
+                      {m.status === "active" ? "Disable" : "Reactivate"}
+                    </button>
+                  )}
+                  <button type="button" onClick={() => setDialog(m)} className="font-semibold text-brand-600">
+                    Edit
+                  </button>
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+        <div className="mt-4 hidden overflow-x-auto rounded-2xl border border-navy-200 bg-white sm:block">
           <table className="w-full min-w-[56rem] text-left text-sm">
             <thead className="border-b border-navy-200 bg-navy-50 text-xs uppercase tracking-wider text-navy-500">
               <tr>
@@ -280,6 +319,7 @@ const StaffManagement = () => {
             </tbody>
           </table>
         </div>
+        </>
       )}
 
       <p className="mt-4 flex items-start gap-1.5 text-xs text-navy-500">

@@ -685,13 +685,14 @@ const RestaurantDetail = () => {
         )}
 
         <div className="min-w-0 flex-1">
-          <h1 className="text-2xl font-bold text-navy-900">{header.restaurantName}</h1>
+          <h1 className="break-words text-xl font-bold text-navy-900 sm:text-2xl">{header.restaurantName}</h1>
           <p className="mt-0.5 text-sm text-navy-500">
             Store ID: <span className="font-mono">{header.storeId}</span>
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Full width on a phone: beside the name they squeezed it to a letter per line. */}
+        <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
           <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-medium ring-1 ring-inset ${
             header.isActive ? "bg-emerald-50 text-emerald-700 ring-emerald-600/20" : "bg-red-50 text-red-700 ring-red-600/20"
           }`}>

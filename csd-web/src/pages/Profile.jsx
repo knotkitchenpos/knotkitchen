@@ -38,7 +38,7 @@ const Profile = () => {
         <dl>
           <Row label="Full name">{staff.fullName}</Row>
           <Row label="Staff ID"><span className="font-mono">{staff.staffId}</span></Row>
-          <Row label="Login phone number">+91 {staff.phone}</Row>
+          <Row label="Login phone number">{staff.phone ? `+91 ${staff.phone}` : "—"}</Row>
           <Row label="Personal email">{staff.personalEmail || "—"}</Row>
           <Row label="Official email">{staff.officialEmail || "—"}</Row>
           <Row label="Role">
