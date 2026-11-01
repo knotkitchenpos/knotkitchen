@@ -150,3 +150,11 @@ test("a group or component renamed in Manage Menu takes its add-on recipe with i
   // A removed item still in a recipe is named, never silently left out of the cost.
   assert.deepEqual(inv.linesCost([{ ingredientId: "gone", quantity: 1, unit: "pcs" }], items).missing, ["a removed item"]);
 });
+
+test("a prepared item moved to grams keeps its batch size right: 5 kg of gravy is 5000 g", () => {
+  const ctrl = SRC("controllers/inventoryController.js");
+  assert.match(ctrl, /if \(doc\.prep\?\.makes && \(prepIn\?\.makes === undefined \|\| Number\(prepIn\.makes\) === Number\(doc\.prep\.makes\)\)\) \{/);
+  assert.match(ctrl, /const makes = round3\(doc\.prep\.makes \* factor\);/);
+  // The report reads a purchase's cost for movements saved before values were.
+  assert.match(ctrl, /\.select\("ingredientId ingredientName type quantity value cost unit reason"\)/);
+});

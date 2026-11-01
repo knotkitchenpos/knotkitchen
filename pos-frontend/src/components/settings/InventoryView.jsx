@@ -205,7 +205,7 @@ const ItemModal = ({ item, ingredients, onClose, refresh }) => {
         )}
       </div>
       {item && item.unit !== form.unit && (
-        <p className="text-[12px] text-[#64748B]">Stock, minimum, maximum and cost are converted to {u} where the units are the same kind of measure.</p>
+        <p className="text-[12px] text-[#64748B]">Stock, minimum, maximum, cost, packs and batch size are converted to {u} where the units are the same kind of measure.</p>
       )}
       <div className="flex gap-2 pt-1">
         {item && (
@@ -639,7 +639,7 @@ const RecipesTab = ({ ingredients, refresh, initialDish, target = 35 }) => {
               </div>
             )}
             <div className="flex gap-2 pt-2">
-              {byDish.has(dishId) && <button type="button" className={`${btnGhost} h-[40px] flex-1 sm:flex-none`} onClick={() => delMut.mutate()}>Remove recipe</button>}
+              {byDish.has(dishId) && <button type="button" className={`${btnGhost} h-[40px] flex-1 sm:flex-none`} onClick={() => { if (window.confirm(`Remove the recipe for ${dish?.name || "this product"}? Its sales stop taking stock.`)) delMut.mutate(); }}>Remove recipe</button>}
               <button type="button" className={`${btnPrimary} flex-1 sm:flex-none`} disabled={saveMut.isPending} onClick={() => saveMut.mutate()}>{saveMut.isPending ? "Saving…" : "Save recipe"}</button>
             </div>
           </div>
@@ -652,6 +652,12 @@ const RecipesTab = ({ ingredients, refresh, initialDish, target = 35 }) => {
 /* -------------------------------------------------------------------- log */
 
 const TYPE_LABEL = { purchase: "Stock added", sale: "Sold", waste: "Wastage", adjustment: "Correction", transfer: "Transfer", production: "Batch made", count: "Stock count" };
+
+/** What a movement was worth: a purchase at what it cost, anything else at the cost price then. */
+const worthOf = (m) => {
+  const v = m.type === "purchase" && m.cost ? m.cost : Math.abs(Number(m.value) || 0);
+  return v ? rupees(v) : "";
+};
 
 const LogTab = () => {
   const { data } = useQuery({ queryKey: ["inventory", "movements"], queryFn: () => getStockMovements({ limit: 200 }) });
@@ -677,14 +683,14 @@ const LogTab = () => {
               </div>
               <div className="flex items-baseline justify-between gap-2 text-[11.5px] text-[#64748B]">
                 <span className="truncate">{TYPE_LABEL[m.type] || m.type}{m.reason ? ` · ${m.reason}` : ""}</span>
-                <span className="whitespace-nowrap">{m.cost ? `₹${qty(m.cost)} · ` : ""}{when(m.createdAt)}</span>
+                <span className="whitespace-nowrap">{worthOf(m) ? `${worthOf(m)} · ` : ""}{when(m.createdAt)}</span>
               </div>
             </li>
           ))}
         </ul>
         <table className="hidden md:table w-full min-w-[560px] text-[12.5px]">
           <thead className="bg-[#F8FAFC] text-[11px] uppercase tracking-wide text-[#94A3B8]">
-            <tr><th className="px-3 py-2 text-left">When</th><th className="px-3 py-2 text-left">Item</th><th className="px-3 py-2 text-left">Type</th><th className="px-3 py-2 text-right">Qty</th><th className="px-3 py-2 text-right">Cost</th><th className="px-3 py-2 text-left">Note</th></tr>
+            <tr><th className="px-3 py-2 text-left">When</th><th className="px-3 py-2 text-left">Item</th><th className="px-3 py-2 text-left">Type</th><th className="px-3 py-2 text-right">Qty</th><th className="px-3 py-2 text-right">Value</th><th className="px-3 py-2 text-left">Note</th></tr>
           </thead>
           <tbody className="divide-y divide-[#F1F5F9]">
             {rows.map((m) => (
@@ -693,7 +699,7 @@ const LogTab = () => {
                 <td className="px-3 py-2 font-bold text-[#0F172A]">{m.ingredientName}</td>
                 <td className="px-3 py-2">{TYPE_LABEL[m.type] || m.type}</td>
                 <td className="px-3 py-2 text-right">{amount(m)}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{m.cost ? `₹${qty(m.cost)}` : ""}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{worthOf(m)}</td>
                 <td className="px-3 py-2 text-[#64748B]">{m.reason}</td>
               </tr>
             ))}

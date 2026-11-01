@@ -166,6 +166,7 @@ const updateIngredient = async (req, res, next) => {
     const doc = await Ingredient.findOne({ _id: oid(req.params.id), ...s });
     if (!doc) throw createHttpError(404, "Ingredient not found!");
     const next_ = ingredientBody({ ...doc.toObject(), ...req.body });
+    let prepIn = req.body?.prep;
 
     // A new unit of the same kind re-states every amount in it (2 kg becomes
     // 2000 g), so the shelf does not jump. Another kind of unit would make
@@ -188,13 +189,19 @@ const updateIngredient = async (req, res, next) => {
         if (req.body?.costPerUnit === undefined) next_.costPerUnit = round3(doc.costPerUnit / factor);
         if (req.body?.packs === undefined) next_.packs = (doc.packs || []).map((p) => ({ name: p.name, size: round3(p.size * factor) }));
         doc.batches = (doc.batches || []).map((b) => ({ ...(b.toObject ? b.toObject() : b), quantity: round3(b.quantity * factor) }));
+        // A prepared item's batch size is in its own unit too: 5 kg of gravy is 5000 g. One typed in anew stands.
+        if (doc.prep?.makes && (prepIn?.makes === undefined || Number(prepIn.makes) === Number(doc.prep.makes))) {
+          const makes = round3(doc.prep.makes * factor);
+          if (prepIn) prepIn = { ...prepIn, makes };
+          else doc.prep.makes = makes;
+        }
       }
     }
     // Packs are sized in the unit; a unit of another kind leaves them meaningless.
     if (next_.unit !== doc.unit && convertQty(1, doc.unit, next_.unit) === null && req.body?.packs === undefined) next_.packs = [];
     if (req.body?.isPrepared === undefined) next_.isPrepared = doc.isPrepared;
-    if (next_.isPrepared && (req.body?.prep !== undefined || req.body?.isPrepared === true)) {
-      doc.prep = await prepBody(s.restaurantId, { ...req.body, isPrepared: true, prep: req.body?.prep || doc.prep }, doc._id);
+    if (next_.isPrepared && (prepIn !== undefined || req.body?.isPrepared === true)) {
+      doc.prep = await prepBody(s.restaurantId, { ...req.body, isPrepared: true, prep: prepIn || doc.prep }, doc._id);
     }
     Object.assign(doc, next_);
     refreshFlag(doc);
@@ -727,7 +734,7 @@ const inventoryReport = async (req, res, next) => {
     const { netAmount, orderTotal } = require("../services/refunds");
     const [items, moves, orders] = await Promise.all([
       Ingredient.find(s).select("_id name unit category stockQuantity costPerUnit").lean(),
-      StockMovement.find({ restaurantId: s.restaurantId, createdAt: { $gte: start, $lt: end } }).select("ingredientId ingredientName type quantity value unit reason").lean(),
+      StockMovement.find({ restaurantId: s.restaurantId, createdAt: { $gte: start, $lt: end } }).select("ingredientId ingredientName type quantity value cost unit reason").lean(),
       Order.find({ restaurantId: s.restaurantId, createdAt: { $gte: start, $lt: end }, isDeleted: { $ne: true } }).select("orderStatus bills refunds paymentData totalAmount").lean(),
     ]);
     const byId = new Map(items.map((i) => [String(i._id), i]));
