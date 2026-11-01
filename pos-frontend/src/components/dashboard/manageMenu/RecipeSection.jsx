@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getIngredients, getRecipes, getSubscriptionStatus } from "../../../https";
-import { unitLabel, unitsLike } from "../../../utils/inventory";
+import { foodCostTone, linesCost, rupees, unitLabel, unitsLike } from "../../../utils/inventory";
 
 /**
  * The product form's Recipe section: the inventory items one serving uses,
@@ -14,7 +14,7 @@ import { unitLabel, unitsLike } from "../../../utils/inventory";
  * Loaded once per product opened, so a background refetch never wipes what
  * is being typed. Hidden on a plan without inventory.
  */
-const RecipeSection = ({ open, productId, value, onChange }) => {
+const RecipeSection = ({ open, productId, value, onChange, price = 0 }) => {
   const { data: subRes } = useQuery({ queryKey: ["subscription"], queryFn: getSubscriptionStatus, staleTime: 60_000, enabled: open });
   // Only once the plan is known: an inventory call on the Billing plan is refused, and pops "Upgrade to the POS plan".
   const available = Boolean(subRes) && subRes?.data?.data?.features?.pos !== false;
@@ -52,6 +52,9 @@ const RecipeSection = ({ open, productId, value, onChange }) => {
 
   if (!available || !value) return null;
   const setRows = (rows) => onChange({ ...value, rows });
+  // What one serving costs at today's cost prices, against the price above (owner, 2026-11-01).
+  const { cost, missing } = linesCost(value.rows.filter((r) => r.ingredientId && Number(r.quantity) > 0), ingredients);
+  const pct = price > 0 && cost > 0 ? Math.round((cost / price) * 1000) / 10 : null;
   const setRow = (i, patch) => setRows(value.rows.map((r, k) => (k === i ? { ...r, ...patch } : r)));
 
   return (
@@ -126,6 +129,18 @@ const RecipeSection = ({ open, productId, value, onChange }) => {
             >
               + Add inventory item
             </button>
+            {cost > 0 && (
+              <p className="text-[12px] tabular-nums text-[#334155]">
+                Costs <b>{rupees(cost)}</b> to make
+                {pct !== null && (
+                  <>
+                    {" "}· profit <b className={price - cost < 0 ? "text-[#B91C1C]" : ""}>{rupees(price - cost)}</b> · food cost{" "}
+                    <b className={foodCostTone(pct)}>{pct}%</b>
+                  </>
+                )}
+                {missing.length > 0 && <span className="block text-[11px] text-[#B45309]">No cost price yet for {missing.join(", ")}.</span>}
+              </p>
+            )}
             {value.rows.some((r) => r.ingredientId && r.unit && r.unit !== unitOf(r.ingredientId)) && (
               <p className="text-[11px] text-[#94A3B8]">
                 Converted to each item&apos;s stock unit on sale (for example Gram to {unitLabel("kg")}).

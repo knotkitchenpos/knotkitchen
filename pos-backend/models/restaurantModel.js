@@ -85,6 +85,12 @@ const restaurantSchema = new mongoose.Schema(
     // Printer choice, paper size and Auto Receipt Print are per DEVICE and
     // live on the till itself (pos-frontend utils/printerDevice.js): two
     // tablets with their own printers must not both print every order.
+    // Inventory (owner, 2026-11-01): a dish whose food cost is above the
+    // target is flagged; batches this many days from their use-by date alert.
+    inventorySettings: {
+      targetFoodCostPct: { type: Number, default: 35, min: 1, max: 100 },
+      expiryAlertDays: { type: Number, default: 2, min: 0, max: 60 },
+    },
     posSettings: {
       autoPrintReceipt: { type: Boolean, default: true }, // legacy, unread
       autoEBill: { type: Boolean, default: false },

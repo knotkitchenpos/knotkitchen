@@ -90,3 +90,29 @@ export const recipeForSave = (recipe) =>
           .map((r) => ({ ingredientId: r.ingredientId, quantity: Number(r.quantity), unit: r.unit })),
       }
     : undefined;
+
+/**
+ * What recipe lines cost at the items' cost prices, as the server works it out
+ * (services/inventory.js linesCost): each line converted to its item's unit.
+ * Items with no cost price are named in `missing`.
+ */
+export const linesCost = (lines = [], ingredients = []) => {
+  const byId = new Map(ingredients.map((i) => [String(i._id), i]));
+  let cost = 0;
+  const missing = [];
+  for (const l of lines || []) {
+    const ing = byId.get(String(l.ingredientId));
+    if (!ing || !(Number(l.quantity) > 0)) continue;
+    const q = convertQty(l.quantity, l.unit || ing.unit, ing.unit);
+    if (q === null) continue;
+    if (!(Number(ing.costPerUnit) > 0)) missing.push(ing.name);
+    else cost += q * Number(ing.costPerUnit);
+  }
+  return { cost: Math.round(cost * 100) / 100, missing };
+};
+
+export const rupees = (n) => `₹${Number(n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2, minimumFractionDigits: Number(n) % 1 ? 2 : 0 })}`;
+
+/** Food cost % colour: within target green, up to 10 points over amber, beyond red. */
+export const foodCostTone = (pct, target = 35) =>
+  pct === null || pct === undefined ? "text-[#94A3B8]" : pct <= target ? "text-[#15803D]" : pct <= target + 10 ? "text-[#B45309]" : "text-[#B91C1C]";

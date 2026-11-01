@@ -16,4 +16,17 @@ router.route("/movements").get(isVerifiedUser, c.listMovements).post(isVerifiedU
 router.route("/recipes").get(isVerifiedUser, c.listRecipes);
 router.route("/recipes/:menuItemId").put(isVerifiedUser, c.upsertRecipe).delete(isVerifiedUser, c.deleteRecipe);
 
+// Owner, 2026-11-01: dish costing, add-on recipes, prepared items, stock
+// counts, reports and their settings.
+router.route("/dish-costs").get(isVerifiedUser, c.dishCosts);
+router.route("/addon-recipes").get(isVerifiedUser, c.listAddonRecipes).put(isVerifiedUser, c.saveAddonRecipe);
+router.route("/ingredients/:id/make").post(isVerifiedUser, c.makeBatch);
+router.route("/counts").get(isVerifiedUser, c.listCounts).post(isVerifiedUser, c.startCount);
+router.route("/counts/:id").get(isVerifiedUser, c.getCount).put(isVerifiedUser, c.saveCount);
+router.route("/counts/:id/finish").post(isVerifiedUser, c.finishCount);
+router.route("/counts/:id/cancel").post(isVerifiedUser, c.cancelCount);
+router.route("/report").get(isVerifiedUser, c.inventoryReport);
+// The target food cost and expiry warning are the owner's to set.
+router.route("/settings").get(isVerifiedUser, c.getSettings).put(isVerifiedUser, requireProtectedAction, c.saveSettings);
+
 module.exports = router;

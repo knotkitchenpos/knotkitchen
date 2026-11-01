@@ -84,6 +84,20 @@ export const getStockMovements = (params) => axiosWrapper.get("/api/inventory/mo
 export const getRecipes = () => axiosWrapper.get("/api/inventory/recipes");
 export const upsertRecipe = (menuItemId, d) => axiosWrapper.put(`/api/inventory/recipes/${menuItemId}`, d);
 export const deleteRecipe = (menuItemId) => axiosWrapper.delete(`/api/inventory/recipes/${menuItemId}`);
+// Owner, 2026-11-01: dish costing, add-on recipes, prepared items, stock counts, reports.
+export const getDishCosts = () => axiosWrapper.get("/api/inventory/dish-costs");
+export const getAddonRecipes = () => axiosWrapper.get("/api/inventory/addon-recipes");
+export const saveAddonRecipe = (d) => axiosWrapper.put("/api/inventory/addon-recipes", d);
+export const makePreparedBatch = (id, d) => axiosWrapper.post(`/api/inventory/ingredients/${id}/make`, d);
+export const getStockCounts = () => axiosWrapper.get("/api/inventory/counts");
+export const startStockCount = () => axiosWrapper.post("/api/inventory/counts");
+export const getStockCount = (id) => axiosWrapper.get(`/api/inventory/counts/${id}`);
+export const saveStockCount = (id, d) => axiosWrapper.put(`/api/inventory/counts/${id}`, d);
+export const finishStockCount = (id) => axiosWrapper.post(`/api/inventory/counts/${id}/finish`);
+export const cancelStockCount = (id) => axiosWrapper.post(`/api/inventory/counts/${id}/cancel`);
+export const getInventoryReport = (params) => axiosWrapper.get("/api/inventory/report", { params });
+export const getInventorySettings = () => axiosWrapper.get("/api/inventory/settings");
+export const saveInventorySettings = (d) => axiosWrapper.put("/api/inventory/settings", d);
 
 /* ---------- Shifts & day-end ---------- */
 export const getCurrentShift = () => axiosWrapper.get("/api/shift/current");

@@ -753,6 +753,7 @@ const ProductDrawer = ({
               productId={editingProduct?._id ? String(editingProduct._id) : ""}
               value={recipe}
               onChange={setRecipe}
+              price={Number(prodPrice) || 0}
             />
           </div>
 

@@ -9,7 +9,13 @@ const {
   stockStatus,
   needsRestock,
   saveRecipe,
+  cleanRecipeLines,
+  trimBatches,
+  expiryOf,
+  linesCost,
+  dishCost,
 } = require("../services/inventory");
+const { AddonRecipe, StockCount } = require("../models/inventoryModel");
 const { countOnSale, turnOffFor, backInStock, answerBackInStock } = require("../services/stockProducts");
 
 /**
@@ -45,9 +51,16 @@ const backSummary = ({ products = [], ingredients = [] } = {}) => ({ products: p
 const CATEGORIES = ["produce", "meat", "seafood", "dairy", "dry_goods", "beverage", "other"];
 
 /** An item as the screens read it: with its status worked out by the one rule. */
-const view = (doc) => {
+const view = (doc, { days = 2 } = {}) => {
   const o = doc?.toObject ? doc.toObject() : doc;
-  return { ...o, status: stockStatus(o) };
+  // Use-by: how much has gone past its date, how much goes within `days`, and the next date.
+  const batches = expiryOf(o.batches, { days });
+  const sum = (state) => round3(batches.filter((b) => b.state === state).reduce((n, b) => n + b.quantity, 0));
+  return {
+    ...o,
+    status: stockStatus(o),
+    expiry: batches.length ? { expired: sum("expired"), soon: sum("soon"), next: batches[0].expiryDate } : null,
+  };
 };
 const refreshFlag = (doc) => {
   doc.isLowStock = needsRestock(stockStatus(doc));
@@ -64,15 +77,47 @@ const ingredientBody = (body = {}) => {
     throw createHttpError(400, "Maximum stock must be more than the minimum stock.");
   }
   const costPerUnit = num(body.costPerUnit) ?? 0;
-  return { name, unit, category, reorderLevel, maxLevel, costPerUnit };
+  // Packs it is bought in, each a size in the item's own unit (tray = 30 pcs).
+  const packs = (Array.isArray(body.packs) ? body.packs : [])
+    .map((p) => ({ name: text(p?.name, 40), size: round3(num(p?.size, { min: 0, max: 1e6 }) ?? 0) }))
+    .filter((p) => p.name && p.size > 0)
+    .slice(0, 10);
+  // Days it keeps after it is bought or made: a purchase with no date of its own gets one from this.
+  const shelfLifeDays = Math.round(num(body.shelfLifeDays, { min: 0, max: 3650 }) ?? 0);
+  return { name, unit, category, reorderLevel, maxLevel, costPerUnit, packs, shelfLifeDays, isPrepared: body.isPrepared === true };
+};
+
+/** A prepared item's recipe as sent: how much one batch makes, and what it uses. */
+const prepBody = async (restaurantId, body = {}, selfId = null) => {
+  const makes = round3(num(body?.prep?.makes, { min: 0, max: 1e6 }) ?? 0);
+  const lines = await cleanRecipeLines(restaurantId, body?.prep?.ingredients || []);
+  if (selfId && lines.some((l) => String(l.ingredientId) === String(selfId))) {
+    throw createHttpError(400, "A prepared item cannot use itself.");
+  }
+  if (body.isPrepared === true && !(makes > 0)) throw createHttpError(400, "Say how much one batch makes.");
+  return { makes: makes || 1, ingredients: lines };
+};
+
+/** ₹ worth of `quantity` of an item at its cost price now, signed like the quantity. */
+const worth = (ing, quantity) => Math.round((Number(quantity) || 0) * (Number(ing?.costPerUnit) || 0) * 100) / 100;
+
+/** The store's inventory settings, with their defaults. */
+const settingsOf = async (restaurantId) => {
+  const Restaurant = require("../models/restaurantModel");
+  const r = await Restaurant.findById(restaurantId).select("inventorySettings").lean();
+  return {
+    targetFoodCostPct: Number(r?.inventorySettings?.targetFoodCostPct) || 35,
+    expiryAlertDays: Number.isFinite(Number(r?.inventorySettings?.expiryAlertDays)) ? Number(r.inventorySettings.expiryAlertDays) : 2,
+  };
 };
 
 /* ------------------------------------------------------------------ items */
 
 const listIngredients = async (req, res, next) => {
   try {
-    const data = await Ingredient.find(scope(req)).sort({ name: 1 }).lean();
-    res.status(200).json({ success: true, data: data.map(view) });
+    const s = scope(req);
+    const [data, settings] = await Promise.all([Ingredient.find(s).sort({ name: 1 }).lean(), settingsOf(s.restaurantId)]);
+    res.status(200).json({ success: true, data: data.map((d) => view(d, { days: settings.expiryAlertDays })), settings });
   } catch (e) { next(e); }
 };
 
@@ -97,6 +142,7 @@ const createIngredient = async (req, res, next) => {
     const stockQuantity = round3(num(req.body?.stockQuantity) ?? 0);
     const doc = new Ingredient({
       ...fields,
+      prep: fields.isPrepared ? await prepBody(s.restaurantId, req.body) : undefined,
       stockQuantity,
       restaurantId: s.restaurantId,
       outletId: req.user.outletId || undefined,
@@ -107,7 +153,7 @@ const createIngredient = async (req, res, next) => {
       await StockMovement.create({
         restaurantId: s.restaurantId, outletId: req.user.outletId || undefined,
         ingredientId: doc._id, ingredientName: doc.name, type: "adjustment",
-        quantity: stockQuantity, unit: doc.unit, reason: "Opening stock", createdBy: req.user._id,
+        quantity: stockQuantity, value: worth(doc, stockQuantity), unit: doc.unit, reason: "Opening stock", createdBy: req.user._id,
       });
     }
     res.status(201).json({ success: true, data: view(doc) });
@@ -134,7 +180,15 @@ const updateIngredient = async (req, res, next) => {
         if (req.body?.reorderLevel === undefined) next_.reorderLevel = round3(doc.reorderLevel * factor);
         if (req.body?.maxLevel === undefined) next_.maxLevel = round3((doc.maxLevel || 0) * factor);
         if (req.body?.costPerUnit === undefined) next_.costPerUnit = round3(doc.costPerUnit / factor);
+        if (req.body?.packs === undefined) next_.packs = (doc.packs || []).map((p) => ({ name: p.name, size: round3(p.size * factor) }));
+        doc.batches = (doc.batches || []).map((b) => ({ ...(b.toObject ? b.toObject() : b), quantity: round3(b.quantity * factor) }));
       }
+    }
+    // Packs are sized in the unit; a unit of another kind leaves them meaningless.
+    if (next_.unit !== doc.unit && convertQty(1, doc.unit, next_.unit) === null && req.body?.packs === undefined) next_.packs = [];
+    if (req.body?.isPrepared === undefined) next_.isPrepared = doc.isPrepared;
+    if (next_.isPrepared && (req.body?.prep !== undefined || req.body?.isPrepared === true)) {
+      doc.prep = await prepBody(s.restaurantId, { ...req.body, isPrepared: true, prep: req.body?.prep || doc.prep }, doc._id);
     }
     Object.assign(doc, next_);
     refreshFlag(doc);
@@ -171,8 +225,11 @@ const recordMovement = async (req, res, next) => {
     const ing = await Ingredient.findOne({ _id: oid(req.body?.ingredientId), ...s });
     if (!ing) throw createHttpError(404, "Ingredient not found!");
 
-    const unit = UNIT_CODES.includes(req.body?.unit) ? req.body.unit : ing.unit;
-    const quantity = convertQty(entered, unit, ing.unit);
+    // Bought by the pack (2 Trays of a 30-piece tray is 60 pieces), or in a unit of the item's kind.
+    const pack = req.body?.pack ? (ing.packs || []).find((p) => p.name === req.body.pack) : null;
+    if (req.body?.pack && !pack) throw createHttpError(400, `${ing.name} has no pack called ${text(req.body.pack, 40)}.`);
+    const unit = pack ? ing.unit : UNIT_CODES.includes(req.body?.unit) ? req.body.unit : ing.unit;
+    const quantity = pack ? round3(entered * pack.size) : convertQty(entered, unit, ing.unit);
     if (quantity === null) {
       throw createHttpError(400, `${ing.name} is counted in ${UNITS[ing.unit]?.label || ing.unit}; it cannot take ${UNITS[unit]?.label || unit}.`);
     }
@@ -184,14 +241,26 @@ const recordMovement = async (req, res, next) => {
       throw createHttpError(400, `Only ${round3(Math.max(0, before))} ${UNITS[ing.unit]?.label || ing.unit} of ${ing.name} in stock.`);
     }
     const delta = type === "purchase" ? quantity : type === "waste" ? -quantity : quantity - before;
+    // Valued at the cost price before this entry; a purchase at what it cost.
+    const value = type === "purchase" && cost > 0 ? cost : worth(ing, delta);
     ing.stockQuantity = round3(before + delta);
     if (type === "purchase" && cost > 0 && quantity > 0) ing.costPerUnit = round3(cost / quantity);
+    // A use-by date: the one given, or the item's shelf life from today.
+    if (type === "purchase") {
+      const given = req.body?.expiryDate ? new Date(req.body.expiryDate) : null;
+      const expiryDate = given && !Number.isNaN(given.getTime())
+        ? given
+        : ing.shelfLifeDays > 0 ? new Date(Date.now() + ing.shelfLifeDays * 86400000) : null;
+      if (expiryDate) ing.batches = [...(ing.batches || []), { quantity, expiryDate, receivedAt: new Date() }];
+    }
+    // Whatever left the shelf left the batch that expires first.
+    if (delta < 0 && (ing.batches || []).length) ing.batches = trimBatches(ing.batches, ing.stockQuantity);
     refreshFlag(ing);
     await ing.save();
-    const unitNote = unit !== ing.unit ? `${entered} ${UNITS[unit].label}` : "";
+    const unitNote = pack ? `${entered} ${pack.name}` : unit !== ing.unit ? `${entered} ${UNITS[unit].label}` : "";
     const movement = await StockMovement.create({
       restaurantId: s.restaurantId, outletId: req.user.outletId || undefined,
-      ingredientId: ing._id, ingredientName: ing.name, type, quantity: round3(delta), unit: ing.unit, cost,
+      ingredientId: ing._id, ingredientName: ing.name, type, quantity: round3(delta), value, unit: ing.unit, cost,
       reason: [unitNote, text(req.body?.reason, 200)].filter(Boolean).join(" · "), createdBy: req.user._id,
     });
     if (type === "waste") {
@@ -309,7 +378,421 @@ const deleteRecipe = async (req, res, next) => {
   } catch (e) { next(e); }
 };
 
+/* -------------------------------------------------------- prepared items */
+
+/**
+ * Make a batch of a prepared item (owner, 2026-11-01): 5 kg of gravy takes its
+ * recipe, scaled, off the shelf and puts 5 kg of gravy on it, at what those
+ * items cost. Short of an item, it says so and asks; `force` makes it anyway
+ * (the shelf count is often behind the kitchen).
+ */
+const makeBatch = async (req, res, next) => {
+  try {
+    const s = scope(req);
+    const ing = await Ingredient.findOne({ _id: oid(req.params.id), ...s });
+    if (!ing) throw createHttpError(404, "Ingredient not found!");
+    if (!ing.isPrepared || !(ing.prep?.ingredients || []).length) throw createHttpError(400, `${ing.name} has no batch recipe. Set what one batch uses first.`);
+    const quantity = round3(num(req.body?.quantity, { min: 0, max: 1e6 }) ?? 0);
+    if (!(quantity > 0)) throw createHttpError(400, "Say how much was made.");
+    const scale = quantity / Math.max(1e-9, Number(ing.prep.makes) || 1);
+
+    const raws = await Ingredient.find({ _id: { $in: ing.prep.ingredients.map((l) => l.ingredientId) }, ...s });
+    const byId = new Map(raws.map((r) => [String(r._id), r]));
+    const plan = ing.prep.ingredients
+      .map((l) => {
+        const raw = byId.get(String(l.ingredientId));
+        const need = raw ? convertQty((Number(l.quantity) || 0) * scale, l.unit || raw.unit, raw.unit) : null;
+        return raw && need ? { raw, need: round3(need) } : null;
+      })
+      .filter(Boolean);
+    const short = plan.filter((p) => p.need > round3(p.raw.stockQuantity));
+    if (short.length && req.body?.force !== true) {
+      return res.status(409).json({
+        success: false,
+        code: "STOCK_SHORT",
+        message: `Not enough ${short.map((p) => `${p.raw.name} (needs ${qtyText(p.need, p.raw.unit)}, has ${qtyText(p.raw.stockQuantity, p.raw.unit)})`).join(", ")}.`,
+      });
+    }
+
+    const why = `Made ${qtyText(quantity, ing.unit)} ${ing.name}`;
+    let batchCost = 0;
+    for (const { raw, need } of plan) {
+      batchCost += need * (Number(raw.costPerUnit) || 0);
+      const had = Number(raw.stockQuantity) || 0;
+      const taken = round3(Math.min(had, need));
+      raw.stockQuantity = round3(had - taken);
+      if ((raw.batches || []).length) raw.batches = trimBatches(raw.batches, raw.stockQuantity);
+      refreshFlag(raw);
+      await raw.save();
+      if (taken > 0) {
+        await StockMovement.create({
+          restaurantId: s.restaurantId, outletId: req.user.outletId || undefined, ingredientId: raw._id, ingredientName: raw.name,
+          type: "production", quantity: -taken, value: -worth(raw, taken), unit: raw.unit, reason: why, createdBy: req.user._id,
+        });
+      }
+    }
+    batchCost = Math.round(batchCost * 100) / 100;
+    ing.stockQuantity = round3((Number(ing.stockQuantity) || 0) + quantity);
+    if (batchCost > 0) ing.costPerUnit = round3(batchCost / quantity);
+    if (ing.shelfLifeDays > 0) ing.batches = [...(ing.batches || []), { quantity, expiryDate: new Date(Date.now() + ing.shelfLifeDays * 86400000), receivedAt: new Date() }];
+    refreshFlag(ing);
+    await ing.save();
+    await StockMovement.create({
+      restaurantId: s.restaurantId, outletId: req.user.outletId || undefined, ingredientId: ing._id, ingredientName: ing.name,
+      type: "production", quantity, value: batchCost, unit: ing.unit, reason: short.length ? `${why} (short of ${short.map((p) => p.raw.name).join(", ")})` : why,
+      createdBy: req.user._id,
+    });
+    const back = await backInStock(s.restaurantId);
+    emit(s.restaurantId, "inventory:stock", {});
+    if (back.products.length) emit(s.restaurantId, "inventory:back", backSummary(back));
+    res.status(201).json({ success: true, data: { ingredient: view(ing), batchCost } });
+  } catch (e) { next(e); }
+};
+
+const qtyText = (n, unit) => `${round3(n)} ${UNITS[unit]?.label || unit}`;
+
+/* ----------------------------------------------------------- dish costing */
+
+/** Every item as costing reads it: name, unit, cost price. */
+const costItems = async (restaurantId) =>
+  new Map((await Ingredient.find({ restaurantId, isDeleted: { $ne: true } }).select("_id name unit costPerUnit").lean()).map((i) => [String(i._id), i]));
+
+/** The store's products from its menu: id, name, category, price and sizes. */
+const menuDishes = async (user) => {
+  const Menu = require("../models/menuModel");
+  const { userScope } = require("../services/tenantContext");
+  const menus = await Menu.find({ ...userScope(user), isDeleted: { $ne: true } }).select("name items").lean();
+  return menus.flatMap((m) => (m.items || []).map((it) => ({
+    menuItemId: String(it._id), name: it.name, category: m.name, price: Number(it.price) || 0,
+    variants: (it.variants || []).map((v) => ({ name: v.name, price: Number(v.price) || 0 })),
+  })));
+};
+
+/**
+ * Cost per plate, profit and food-cost % of every product with a recipe
+ * (owner, 2026-11-01: "Paneer Tikka costs ₹92 to make, sells for ₹220, food
+ * cost 42%"). Above the store's target is flagged.
+ */
+const dishCosts = async (req, res, next) => {
+  try {
+    const s = scope(req);
+    const [dishes, recipes, items, settings] = await Promise.all([
+      menuDishes(req.user),
+      Recipe.find({ restaurantId: s.restaurantId, isDeleted: { $ne: true } }).lean(),
+      costItems(s.restaurantId),
+      settingsOf(s.restaurantId),
+    ]);
+    const byDish = new Map(recipes.map((r) => [String(r.menuItemId), r]));
+    const data = dishes.map((d) => {
+      const recipe = byDish.get(d.menuItemId);
+      const hasRecipe = Boolean(recipe && (recipe.ingredients || []).length);
+      return {
+        menuItemId: d.menuItemId, name: d.name, category: d.category, price: d.price, hasRecipe,
+        recipeOn: hasRecipe && recipe.isActive !== false,
+        ...(hasRecipe ? dishCost({ recipe, price: d.price, items, targetPct: settings.targetFoodCostPct }) : {}),
+      };
+    });
+    res.status(200).json({ success: true, data, settings });
+  } catch (e) { next(e); }
+};
+
+/* ---------------------------------------------------------- add-on recipes */
+
+/**
+ * Every add-on option (from the store's groups) and every product size, with
+ * what one portion uses and costs. Extra Cheese, Large.
+ */
+const listAddonRecipes = async (req, res, next) => {
+  try {
+    const s = scope(req);
+    const MenuGroup = require("../models/menuGroupModel");
+    const { userScope } = require("../services/tenantContext");
+    const [groups, dishes, saved, items] = await Promise.all([
+      MenuGroup.find({ ...userScope(req.user) }).select("name options").sort({ sortOrder: 1, name: 1 }).lean(),
+      menuDishes(req.user),
+      AddonRecipe.find({ restaurantId: s.restaurantId }).lean(),
+      costItems(s.restaurantId),
+    ]);
+    const lower = (v) => String(v || "").trim().toLowerCase();
+    const find = (pred) => saved.find(pred);
+    const withCost = (recipe) => {
+      const ingredients = recipe?.ingredients || [];
+      return { ingredients, ...linesCost(ingredients, items) };
+    };
+    const options = groups.flatMap((g) => (g.options || []).map((o) => ({
+      kind: "option", groupName: g.name, optionName: o.name, price: Number(o.price) || 0,
+      ...withCost(find((r) => r.kind === "option" && lower(r.groupName) === lower(g.name) && lower(r.optionName) === lower(o.name))),
+    })));
+    const variants = dishes.flatMap((d) => d.variants.map((v) => ({
+      kind: "variant", menuItemId: d.menuItemId, productName: d.name, variantName: v.name, price: v.price,
+      ...withCost(find((r) => r.kind === "variant" && String(r.menuItemId) === d.menuItemId && lower(r.variantName) === lower(v.name))),
+    })));
+    res.status(200).json({ success: true, data: { options, variants } });
+  } catch (e) { next(e); }
+};
+
+/** Save what one portion of an add-on or size uses; no lines removes it. */
+const saveAddonRecipe = async (req, res, next) => {
+  try {
+    const s = scope(req);
+    const kind = req.body?.kind === "variant" ? "variant" : req.body?.kind === "option" ? "option" : null;
+    if (!kind) throw createHttpError(400, "Say whether this is an add-on option or a size.");
+    const key = kind === "option"
+      ? { groupName: text(req.body.groupName, 120), optionName: text(req.body.optionName, 120), menuItemId: null, variantName: "" }
+      : { groupName: "", optionName: "", menuItemId: oid(req.body.menuItemId), variantName: text(req.body.variantName, 120) };
+    if (kind === "option" ? !key.groupName || !key.optionName : !key.variantName) throw createHttpError(400, "Which add-on is this?");
+    const ingredients = await cleanRecipeLines(s.restaurantId, req.body?.ingredients || []);
+    const filter = { restaurantId: s.restaurantId, kind, ...key };
+    if (!ingredients.length) {
+      await AddonRecipe.deleteOne(filter);
+      return res.status(200).json({ success: true, data: null });
+    }
+    const doc = await AddonRecipe.findOneAndUpdate(filter, { $set: { ingredients } }, { new: true, upsert: true });
+    res.status(200).json({ success: true, data: doc });
+  } catch (e) { next(e); }
+};
+
+/* ------------------------------------------------------------ stock count */
+
+/** A count's totals: items counted, and the ₹ of what was missing and over. */
+const countTotals = (lines = []) => {
+  let missing = 0;
+  let extra = 0;
+  let counted = 0;
+  for (const l of lines) {
+    if (l.counted === null || l.counted === undefined) continue;
+    counted += 1;
+    const v = (Number(l.counted) - Number(l.expected)) * (Number(l.costPerUnit) || 0);
+    if (v < 0) missing += -v;
+    else extra += v;
+  }
+  return { counted, missing: Math.round(missing * 100) / 100, extra: Math.round(extra * 100) / 100 };
+};
+
+/** A count as the screens read it; an open one shows each item's stock now as expected. */
+const countView = async (count, restaurantId) => {
+  const o = count.toObject ? count.toObject() : count;
+  if (o.status === "open") {
+    const live = new Map((await Ingredient.find({ restaurantId, isDeleted: { $ne: true } }).select("_id stockQuantity costPerUnit").lean()).map((i) => [String(i._id), i]));
+    o.lines = o.lines.map((l) => ({ ...l, expected: round3(live.get(String(l.ingredientId))?.stockQuantity), costPerUnit: Number(live.get(String(l.ingredientId))?.costPerUnit) || 0 }));
+  }
+  return { ...o, totals: countTotals(o.lines) };
+};
+
+const listCounts = async (req, res, next) => {
+  try {
+    const s = scope(req);
+    const rows = await StockCount.find({ restaurantId: s.restaurantId, status: { $ne: "cancelled" } }).sort({ number: -1 }).limit(30).lean();
+    res.status(200).json({
+      success: true,
+      data: rows.map((c) => ({ _id: c._id, number: c.number, status: c.status, createdAt: c.createdAt, finishedAt: c.finishedAt, items: c.lines.length, totals: countTotals(c.lines) })),
+    });
+  } catch (e) { next(e); }
+};
+
+/** Start a count of every item, or carry on with the one already open. */
+const startCount = async (req, res, next) => {
+  try {
+    const s = scope(req);
+    let count = await StockCount.findOne({ restaurantId: s.restaurantId, status: "open" });
+    if (!count) {
+      const items = await Ingredient.find(s).sort({ category: 1, name: 1 }).lean();
+      if (!items.length) throw createHttpError(400, "Add inventory items before counting them.");
+      const last = await StockCount.findOne({ restaurantId: s.restaurantId }).sort({ number: -1 }).select("number").lean();
+      count = await StockCount.create({
+        restaurantId: s.restaurantId, number: (last?.number || 0) + 1, startedBy: req.user._id,
+        lines: items.map((i) => ({ ingredientId: i._id, name: i.name, unit: i.unit, category: i.category, counted: null })),
+      });
+    }
+    res.status(201).json({ success: true, data: await countView(count, s.restaurantId) });
+  } catch (e) { next(e); }
+};
+
+const getCount = async (req, res, next) => {
+  try {
+    const s = scope(req);
+    const count = await StockCount.findOne({ _id: oid(req.params.id), restaurantId: s.restaurantId });
+    if (!count) throw createHttpError(404, "Count not found.");
+    res.status(200).json({ success: true, data: await countView(count, s.restaurantId) });
+  } catch (e) { next(e); }
+};
+
+/** Save what has been counted so far (a count can take a while, on several phones). */
+const saveCount = async (req, res, next) => {
+  try {
+    const s = scope(req);
+    const count = await StockCount.findOne({ _id: oid(req.params.id), restaurantId: s.restaurantId, status: "open" });
+    if (!count) throw createHttpError(404, "No open count.");
+    const given = new Map((Array.isArray(req.body?.lines) ? req.body.lines : []).map((l) => [String(l?.ingredientId), l?.counted]));
+    for (const line of count.lines) {
+      if (!given.has(String(line.ingredientId))) continue;
+      const v = given.get(String(line.ingredientId));
+      line.counted = v === null || v === "" || v === undefined ? null : round3(num(v, { min: 0, max: 1e7 }) ?? 0);
+    }
+    if (req.body?.note !== undefined) count.note = text(req.body.note, 300);
+    await count.save();
+    res.status(200).json({ success: true, data: await countView(count, s.restaurantId) });
+  } catch (e) { next(e); }
+};
+
+/**
+ * Finish: every counted item is set to what was counted; the difference from
+ * the stock at this moment is recorded as a "count" movement, in quantity and
+ * ₹. Items left blank are not touched.
+ */
+const finishCount = async (req, res, next) => {
+  try {
+    const s = scope(req);
+    const count = await StockCount.findOneAndUpdate(
+      { _id: oid(req.params.id), restaurantId: s.restaurantId, status: "open" },
+      { $set: { status: "done", finishedAt: new Date(), finishedBy: req.user._id } },
+      { new: true },
+    );
+    if (!count) throw createHttpError(404, "No open count.");
+    for (const line of count.lines) {
+      const ing = await Ingredient.findOne({ _id: line.ingredientId, ...s });
+      if (!ing) continue;
+      line.expected = round3(ing.stockQuantity);
+      line.costPerUnit = Number(ing.costPerUnit) || 0;
+      if (line.counted === null || line.counted === undefined) continue;
+      const diff = round3(line.counted - line.expected);
+      if (diff === 0) continue;
+      ing.stockQuantity = round3(line.counted);
+      if (diff < 0 && (ing.batches || []).length) ing.batches = trimBatches(ing.batches, ing.stockQuantity);
+      refreshFlag(ing);
+      await ing.save();
+      await StockMovement.create({
+        restaurantId: s.restaurantId, outletId: req.user.outletId || undefined, ingredientId: ing._id, ingredientName: ing.name,
+        type: "count", quantity: diff, value: worth(ing, diff), unit: ing.unit, reason: `Stock count #${count.number}`,
+        referenceId: String(count._id), createdBy: req.user._id,
+      });
+    }
+    await count.save();
+    const totals = countTotals(count.lines);
+    await logActivity({ req, action: "Stock Count", resource: "Inventory", resourceId: count._id,
+      newValue: `#${count.number}`, description: `Stock count #${count.number}: ${totals.counted} item(s), ₹${totals.missing} missing, ₹${totals.extra} over` });
+    emit(s.restaurantId, "inventory:stock", {});
+    res.status(200).json({ success: true, data: await countView(count, s.restaurantId) });
+  } catch (e) { next(e); }
+};
+
+const cancelCount = async (req, res, next) => {
+  try {
+    const s = scope(req);
+    const count = await StockCount.findOneAndUpdate({ _id: oid(req.params.id), restaurantId: s.restaurantId, status: "open" }, { $set: { status: "cancelled" } }, { new: true });
+    if (!count) throw createHttpError(404, "No open count.");
+    res.status(200).json({ success: true });
+  } catch (e) { next(e); }
+};
+
+/* ---------------------------------------------------------------- reports */
+
+const IST = "Asia/Kolkata";
+/** A YYYY-MM-DD day in India as the instant it starts. */
+const istDayStart = (day) => new Date(`${day}T00:00:00+05:30`);
+const istToday = () => new Date().toLocaleDateString("en-CA", { timeZone: IST });
+
+/**
+ * Inventory report for a period (owner, 2026-11-01): stock value now, what was
+ * used, wasted, bought and found missing in counts, in ₹, and the real food
+ * cost: stock used against sales before tax.
+ */
+const inventoryReport = async (req, res, next) => {
+  try {
+    const s = scope(req);
+    const day = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(String(v || "")) ? String(v) : null);
+    const to = day(req.query.to) || istToday();
+    const from = day(req.query.from) || new Date(istDayStart(to).getTime() - 29 * 86400000).toLocaleDateString("en-CA", { timeZone: IST });
+    const start = istDayStart(from);
+    const end = new Date(istDayStart(to).getTime() + 86400000);
+    if (!(start < end) || end - start > 400 * 86400000) throw createHttpError(400, "Pick a period of up to 400 days.");
+
+    const Order = require("../models/orderModel");
+    const { netAmount, orderTotal } = require("../services/refunds");
+    const [items, moves, orders] = await Promise.all([
+      Ingredient.find(s).select("_id name unit category stockQuantity costPerUnit").lean(),
+      StockMovement.find({ restaurantId: s.restaurantId, createdAt: { $gte: start, $lt: end } }).select("ingredientId ingredientName type quantity value unit reason").lean(),
+      Order.find({ restaurantId: s.restaurantId, createdAt: { $gte: start, $lt: end }, isDeleted: { $ne: true } }).select("orderStatus bills refunds paymentData totalAmount").lean(),
+    ]);
+    const byId = new Map(items.map((i) => [String(i._id), i]));
+    // Movements from before values were recorded are valued at today's cost price.
+    const valueOf = (m) => (m.value ? Number(m.value) : (Number(m.quantity) || 0) * (Number(byId.get(String(m.ingredientId))?.costPerUnit) || 0));
+
+    const per = new Map();
+    const bucket = (m) => {
+      const k = String(m.ingredientId);
+      if (!per.has(k)) per.set(k, { ingredientId: k, name: m.ingredientName, unit: byId.get(k)?.unit || m.unit, used: 0, usedValue: 0, wasted: 0, wastedValue: 0, bought: 0, boughtValue: 0, countDiff: 0, countValue: 0 });
+      return per.get(k);
+    };
+    for (const m of moves) {
+      const b = bucket(m);
+      const q = Number(m.quantity) || 0;
+      const v = valueOf(m);
+      if (m.type === "sale") { b.used += -q; b.usedValue += -v; }
+      else if (m.type === "waste") { b.wasted += -q; b.wastedValue += -v; }
+      else if (m.type === "purchase") { b.bought += q; b.boughtValue += Number(m.value) || Number(m.cost) || v; }
+      else if (m.type === "count" || (m.type === "adjustment" && m.reason !== "Opening stock")) { b.countDiff += q; b.countValue += v; }
+    }
+    const r2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
+    const rows = [...per.values()].map((b) => ({
+      ...b, used: round3(b.used), usedValue: r2(b.usedValue), wasted: round3(b.wasted), wastedValue: r2(b.wastedValue),
+      bought: round3(b.bought), boughtValue: r2(b.boughtValue), countDiff: round3(b.countDiff), countValue: r2(b.countValue),
+    }));
+    const sum = (k) => r2(rows.reduce((n, r) => n + r[k], 0));
+
+    // Sales before tax: what an order took after refunds, less its share of tax.
+    let sales = 0;
+    for (const o of orders) {
+      const net = netAmount(o);
+      if (!(net > 0)) continue;
+      const total = orderTotal(o) || net;
+      const tax = Number(o.bills?.tax) || 0;
+      sales += net * (total > 0 ? Math.max(0, 1 - tax / total) : 1);
+    }
+    sales = r2(sales);
+    const used = sum("usedValue");
+    const settings = await settingsOf(s.restaurantId);
+    res.status(200).json({
+      success: true,
+      data: {
+        from, to,
+        stockValue: r2(items.reduce((n, i) => n + Math.max(0, Number(i.stockQuantity) || 0) * (Number(i.costPerUnit) || 0), 0)),
+        used, wasted: sum("wastedValue"), bought: sum("boughtValue"), countDifference: sum("countValue"),
+        sales, foodCostPct: sales > 0 ? Math.round((used / sales) * 1000) / 10 : null,
+        targetFoodCostPct: settings.targetFoodCostPct,
+        items: rows.sort((a, b) => b.usedValue - a.usedValue),
+        noCostPrice: items.filter((i) => !(Number(i.costPerUnit) > 0)).map((i) => i.name),
+      },
+    });
+  } catch (e) { next(e); }
+};
+
+/* --------------------------------------------------------------- settings */
+
+const getSettings = async (req, res, next) => {
+  try {
+    res.status(200).json({ success: true, data: await settingsOf(scope(req).restaurantId) });
+  } catch (e) { next(e); }
+};
+
+const saveSettings = async (req, res, next) => {
+  try {
+    const s = scope(req);
+    const Restaurant = require("../models/restaurantModel");
+    const set = {};
+    const pct = num(req.body?.targetFoodCostPct, { min: 1, max: 100 });
+    if (pct !== null) set["inventorySettings.targetFoodCostPct"] = Math.round(pct);
+    const days = num(req.body?.expiryAlertDays, { min: 0, max: 60 });
+    if (days !== null) set["inventorySettings.expiryAlertDays"] = Math.round(days);
+    if (Object.keys(set).length) await Restaurant.updateOne({ _id: s.restaurantId }, { $set: set });
+    res.status(200).json({ success: true, data: await settingsOf(s.restaurantId) });
+  } catch (e) { next(e); }
+};
+
 module.exports = {
+  makeBatch, dishCosts, listAddonRecipes, saveAddonRecipe,
+  listCounts, startCount, getCount, saveCount, finishCount, cancelCount,
+  inventoryReport, getSettings, saveSettings,
   listIngredients, listRestockAlerts, createIngredient, updateIngredient, deleteIngredient,
   recordMovement, listMovements, listRecipes, upsertRecipe, deleteRecipe,
   stockAvailability, turnOffProducts, answerBack,

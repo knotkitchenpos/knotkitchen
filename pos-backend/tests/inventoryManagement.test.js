@@ -331,8 +331,8 @@ test("stock in a unit the item cannot take is refused, naming both", async () =>
 test("maximum stock must be above the minimum, and every listed item carries its status", () => {
   const src = SRC("controllers/inventoryController.js");
   assert.match(src, /if \(maxLevel > 0 && maxLevel <= reorderLevel\) \{\s*throw createHttpError\(400, "Maximum stock must be more than the minimum stock\."\);/);
-  assert.match(src, /res\.status\(200\)\.json\(\{ success: true, data: data\.map\(view\) \}\);/);
-  assert.match(src, /return \{ \.\.\.o, status: stockStatus\(o\) \};/);
+  assert.match(src, /res\.status\(200\)\.json\(\{ success: true, data: data\.map\(\(d\) => view\(d, \{ days: settings\.expiryAlertDays \}\)\), settings \}\);/);
+  assert.match(src, /\.\.\.o,\s*status: stockStatus\(o\),/);
   assert.match(SRC("models/inventoryModel.js"), /maxLevel: \{ type: Number, default: 0 \},/);
 });
 
