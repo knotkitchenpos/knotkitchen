@@ -305,3 +305,41 @@ test("recovery from the server's terminal: a lost phone or lockout never locks K
   const ok = await call("POST", "/api/auth/login", { body: { email: "super@test.local", password: "Recovered-Admin-Pw-1" } });
   assert.strictEqual(ok.status, 200);
 });
+
+test("single sign-on from CSD: a signed assertion signs in once; roles map; wiping still needs a fresh confirm", async () => {
+  const crypto = require("crypto");
+  const jwt = require("jsonwebtoken");
+  const csdKey = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const otherKey = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const pub = csdKey.publicKey.export({ type: "spki", format: "pem" });
+  // CSD's public key, served the way pos-api serves it.
+  const keyServer = http.createServer((q, r) => { r.setHeader("Content-Type", "application/json"); r.end(JSON.stringify({ publicKey: pub })); });
+  await new Promise((ok) => keyServer.listen(0, ok));
+  const before = config.csdSsoKeyUrl;
+  config.csdSsoKeyUrl = `http://127.0.0.1:${keyServer.address().port}/key`;
+  const assertion = (claims, key = csdKey.privateKey) =>
+    jwt.sign({ staffId: "KK-ST-009", name: "CSD Person", jti: crypto.randomUUID(), ...claims }, key, { algorithm: "ES256", audience: "kkmdm", issuer: "csd", expiresIn: 60 });
+  try {
+    const csdId = "6ae000000000000000000001";
+    const a = assertion({ sub: csdId, role: "admin" });
+    const ok = await call("POST", "/api/auth/sso", { body: { assertion: a } });
+    assert.strictEqual(ok.status, 200, JSON.stringify(ok.body));
+    assert.strictEqual(ok.body.admin.role, "super_admin");
+    assert.strictEqual(ok.body.admin.sso, "csd");
+    assert.strictEqual((await call("GET", "/api/devices", { cookie: ok.cookie })).status, 200);
+    // Used once; another key's signature never.
+    assert.strictEqual((await call("POST", "/api/auth/sso", { body: { assertion: a } })).status, 401);
+    assert.strictEqual((await call("POST", "/api/auth/sso", { body: { assertion: assertion({ sub: csdId, role: "admin" }, otherKey.privateKey) } })).status, 401);
+    // An ordinary sign-in is not a recent one: wiping asks to confirm first; a "reauth" assertion is.
+    assert.strictEqual((await call("POST", `/api/devices/${deviceId}/commands`, { cookie: ok.cookie, body: { type: "wipe" } })).status, 428);
+    const re = await call("POST", "/api/auth/sso", { body: { assertion: assertion({ sub: csdId, role: "admin", reauth: true }) } });
+    assert.strictEqual(re.status, 200);
+    assert.strictEqual((await call("POST", `/api/devices/${deviceId}/commands`, { cookie: re.cookie, body: { type: "wipe" } })).status, 201);
+    // CSD staff (not admins) come in as Support.
+    const staff = await call("POST", "/api/auth/sso", { body: { assertion: assertion({ sub: "6ae000000000000000000002", role: "staff" }) } });
+    assert.strictEqual(staff.body.admin.role, "support");
+  } finally {
+    config.csdSsoKeyUrl = before;
+    keyServer.close();
+  }
+});

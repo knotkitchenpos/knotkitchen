@@ -3,8 +3,9 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   FiGrid, FiUserPlus, FiUsers, FiShoppingBag, FiSearch, FiMessageSquare,
   FiCheckSquare, FiBarChart2, FiSettings, FiLogOut, FiMenu, FiX, FiBell, FiFileText,
-  FiDollarSign, FiPackage, FiMapPin,
+  FiDollarSign, FiPackage, FiMapPin, FiTablet, FiChevronDown,
 } from "react-icons/fi";
+import { menuFor } from "../kkmdm/menu";
 import { useAuth } from "../context/AuthContext";
 import { hardwareRequests } from "../api";
 import GlobalSearch from "./GlobalSearch";
@@ -56,9 +57,16 @@ const Layout = () => {
   }, [pathname]);
   const badges = { hardware: newRequests };
   const items = NAV.filter((n) => !n.adminOnly || isAdmin);
+  // KKMDM (tablet management) as one entry with its screens in a sub-menu (owner, 2026-11-03).
+  const mdmItems = menuFor(isAdmin);
+  const inMdm = pathname.startsWith("/mdm");
+  const [mdmOpen, setMdmOpen] = useState(inMdm);
+  useEffect(() => { if (inMdm) setMdmOpen(true); }, [inMdm]);
   const groups = [...new Set(items.map((n) => n.group))];
   // The header names the screen you are on.
-  const here = NAV.find((n) => pathname.startsWith(n.to)) || (pathname.startsWith("/profile") ? { label: "My Profile" } : null);
+  const here = NAV.find((n) => pathname.startsWith(n.to))
+    || (inMdm ? { label: `Device management · ${(mdmItems.find((m) => m.key && pathname.startsWith(`/mdm/${m.key}`)) || { label: "Overview" }).label}` } : null)
+    || (pathname.startsWith("/profile") ? { label: "My Profile" } : null);
   const today = new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" });
 
   // Active: a lit pill with an orange bar on its leading edge.
@@ -147,6 +155,39 @@ const Layout = () => {
                 ))}
             </div>
           ))}
+
+          {/* Device management: KKMDM's screens as a sub-menu. */}
+          <div className="mb-3 space-y-1">
+            <p className={`px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-navy-500 ${LABEL}`}>Devices</p>
+            <button
+              type="button"
+              onClick={() => setMdmOpen((v) => !v)}
+              title="Device management"
+              aria-expanded={mdmOpen}
+              className={`relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium ${inMdm ? "text-white" : "text-navy-300 hover:bg-white/5 hover:text-white"}`}
+            >
+              <FiTablet size={17} className="shrink-0" aria-hidden="true" />
+              <span className={`flex-1 ${LABEL}`}>Device management</span>
+              <FiChevronDown size={15} className={`shrink-0 transition-transform ${mdmOpen ? "rotate-180" : ""} ${LABEL}`} aria-hidden="true" />
+            </button>
+            {mdmOpen && (
+              <div className="space-y-0.5 lg:hidden lg:group-hover:block">
+                {mdmItems.map(({ key, label, icon: Icon }) => (
+                  <NavLink
+                    key={key || "overview"}
+                    to={`/mdm${key ? `/${key}` : ""}`}
+                    end={!key}
+                    onClick={() => setOpen(false)}
+                    title={label}
+                    className={({ isActive }) => `${linkClass({ isActive })} ml-4 py-2 text-[13px]`}
+                  >
+                    <Icon size={15} className="shrink-0" aria-hidden="true" />
+                    <span className={LABEL}>{label}</span>
+                  </NavLink>
+                ))}
+              </div>
+            )}
+          </div>
         </nav>
 
         <div className="relative border-t border-white/10 p-3 lg:p-2">

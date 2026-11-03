@@ -68,3 +68,17 @@ test("recheck: a request that changes something must come from one of our own si
   assert.ok(app.includes("if (allowedOrigins.has(clean) || (host && host === req.headers.host) || (isWildcardMatch(clean) && isPublicPath(req.path))) return next();"));
   assert.match(app, /code: "CROSS_SITE"/);
 });
+
+test("KKMDM inside CSD: CSD signs one-minute ES256 assertions; KKMDM can only verify them", () => {
+  const svc = SRC("services/kkmdmSso.js");
+  assert.ok(svc.includes(`{ algorithm: "ES256", audience: "kkmdm", issuer: "csd", expiresIn: 60 }`));
+  assert.ok(svc.includes(`privateKey: seal(pair.privateKey.export({ type: "pkcs8", format: "pem" }))`), "the private half is sealed at rest");
+  const routes = SRC("routes/csdRoute.js");
+  // The public key is public; the assertions need a CSD session, which needs 2FA.
+  assert.ok(routes.indexOf('router.get("/kkmdm/sso-key", kkmdmKey);') < routes.indexOf("router.use(requireCsdAuth);"));
+  assert.ok(routes.indexOf('router.post("/kkmdm/sso", kkmdmAssertion);') > routes.indexOf("router.use(requireCsdAuth);"));
+  assert.ok(!SRC("middlewares/csdAuth.js").includes('"/api/csd/kkmdm/sso"'), "not reachable before two-factor sign-in is on");
+  // A mistyped password in the confirm step is a 400: CSD's screens sign out on a 401.
+  const ctrl = SRC("controllers/csdAuthController.js");
+  assert.ok(ctrl.includes(`return next(createHttpError(400, "That password is not right."));`));
+});

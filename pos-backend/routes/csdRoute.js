@@ -3,7 +3,7 @@ const router = express.Router();
 
 const { rateLimit, clientIp } = require("../middlewares/rateLimiter");
 const { requireCsdAuth, requireCsdAdmin } = require("../middlewares/csdAuth");
-const { login, me, logout, mfaSetup, mfaEnable, resetStaffMfa } = require("../controllers/csdAuthController");
+const { login, me, logout, mfaSetup, mfaEnable, resetStaffMfa, kkmdmKey, kkmdmAssertion, kkmdmReauth } = require("../controllers/csdAuthController");
 const { searchStores, getStore, updateStoreStatus, eraseStoreRecord, issueOwnerResetCode } = require("../controllers/csdStoreController");
 const { getDashboard } = require("../controllers/csdDashboardController");
 const { createStore, getOptions } = require("../controllers/csdOnboardingController");
@@ -82,6 +82,9 @@ const loginLimiter = rateLimit({
 
 router.post('/auth/login', loginLimiter, login);
 
+// The public key KKMDM checks CSD's single sign-on with (owner, 2026-11-03). Public by nature.
+router.get("/kkmdm/sso-key", kkmdmKey);
+
 // ---------------------------------------------------------------------------
 // 2. Everything below requires a valid, active session
 // ---------------------------------------------------------------------------
@@ -92,6 +95,11 @@ router.post("/auth/logout", logout);
 // Two-factor sign-in, required for every account (security audit, 2026-11-03).
 router.post("/auth/mfa/setup", mfaSetup);
 router.post("/auth/mfa/enable", mfaEnable);
+
+// KKMDM inside CSD: sign in to it, and confirm identity before a destructive action.
+const kkmdmReauthLimiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, keyGenerator: (req) => "csd-kkmdm-reauth:" + String(req.csdStaff?._id || clientIp(req)) });
+router.post("/kkmdm/sso", kkmdmAssertion);
+router.post("/kkmdm/sso/reauth", kkmdmReauthLimiter, kkmdmReauth);
 
 // ---------------------------------------------------------------------------
 // 3. Shared — staff and admin

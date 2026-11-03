@@ -39,6 +39,9 @@ export const AuthProvider = ({ children }) => {
 
   const signOut = useCallback(async () => {
     try {
+      // Signing out of CSD signs out of KKMDM in this browser too (KKMDM inside CSD).
+      const { KKMDM_URL } = await import("../kkmdm/api.js");
+      await fetch(`${KKMDM_URL}/api/auth/logout`, { method: "POST", credentials: "include", headers: { "X-KKMDM": "1" } }).catch(() => {});
       await auth.logout();
     } finally {
       setStaff(null);

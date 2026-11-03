@@ -328,7 +328,9 @@ services:
       KKMDM_DB_NAME: ${KKMDM_DB_NAME:-kkmdm}
       KNOTKITCHEN_MONGODB_URI: ${MONGODB_URI}
       PUBLIC_URL: https://mdm.${BASE_DOMAIN}
-      DASHBOARD_ORIGINS: https://mdm.${BASE_DOMAIN}
+      # CSD shows KKMDM's screens too (single sign-on from CSD, 2026-11-03).
+      DASHBOARD_ORIGINS: https://mdm.${BASE_DOMAIN},https://csd.${BASE_DOMAIN}
+      CSD_SSO_KEY_URL: http://pos-api:8000/api/csd/kkmdm/sso-key
       ADMIN_JWT_SECRET: ${KKMDM_ADMIN_JWT_SECRET:-}
       DATA_ENCRYPTION_KEY: ${KKMDM_DATA_ENCRYPTION_KEY:-}
       SUPERADMIN_EMAIL: ${KKMDM_SUPERADMIN_EMAIL:-admin@knotkitchen.com}

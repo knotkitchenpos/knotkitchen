@@ -7,6 +7,7 @@ const { issueSession, startSession, endSession, clearSession, requireAdmin } = r
 const { permissionsFor, ROLES } = require("../lib/rbac");
 const { encrypt, decrypt, verifyTotp, newTotpSecret } = require("../lib/crypto");
 const { audit } = require("../lib/audit");
+const { verifyAssertion, roleFor } = require("../lib/csdSso");
 
 const router = express.Router();
 const loginLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, name: "login" });
@@ -24,7 +25,9 @@ function publicAdmin(a) {
     storeIds: a.storeIds,
     totpEnabled: a.totpEnabled,
     // Required in production (lib/adminAuth.js): the dashboard shows only the 2FA setup until it is on.
-    twoFactorRequired: config.isProduction && !a.totpEnabled,
+    // An account from CSD signed in with CSD's 2FA.
+    twoFactorRequired: config.isProduction && !a.totpEnabled && a.ssoProvider !== "csd",
+    sso: a.ssoProvider || null,
     permissions: permissionsFor(a.role),
   };
 }
@@ -74,6 +77,42 @@ router.post("/login", loginLimit, wrap(async (req, res) => {
   req.admin = admin;
   await audit(req, "auth.login", { targetType: "admin", targetId: admin._id });
   res.json({ admin: publicAdmin(admin), mustEnable2fa: !admin.totpEnabled && config.isProduction });
+}));
+
+/**
+ * POST /api/auth/sso { assertion } — signed in from CSD (lib/csdSso.js). The
+ * CSD account's KKMDM account is created on its first visit and kept in step
+ * (name, role) on every one after. An assertion made just after the person
+ * confirmed their CSD password and code ("reauth") also counts as a recent
+ * sign-in, for destructive actions; an ordinary one does not.
+ */
+router.post("/sso", loginLimit, wrap(async (req, res) => {
+  const claims = await verifyAssertion(req.body?.assertion);
+  if (!claims) throw new HttpError(401, "sso_invalid");
+  const { Company } = require("../models");
+  const subject = `csd:${claims.sub}`;
+  let admin = await AdminUser.findOne({ ssoSubject: subject });
+  if (!admin) {
+    const company = await Company.findOne({}).lean();
+    admin = new AdminUser({
+      email: `csd-${String(claims.sub).toLowerCase()}@sso.knotkitchen.invalid`,
+      ssoSubject: subject,
+      ssoProvider: "csd",
+      companyId: company?._id,
+      // No password anyone holds: these accounts sign in only through CSD.
+      passwordHash: await bcrypt.hash(require("crypto").randomBytes(32).toString("hex"), 12),
+      role: roleFor(claims.role),
+    });
+  }
+  if (admin.disabled) throw new HttpError(403, "disabled");
+  admin.name = String(claims.name || claims.staffId || "CSD").slice(0, 80);
+  admin.role = roleFor(claims.role);
+  admin.lastLoginAt = new Date();
+  admin.lastLoginIp = req.ip;
+  await startSession(req, res, admin, { authAt: claims.reauth ? Date.now() : 0 });
+  req.admin = admin;
+  await audit(req, claims.reauth ? "auth.sso_reauth" : "auth.sso", { targetType: "admin", targetId: admin._id, details: { csdStaffId: claims.staffId, role: admin.role } });
+  res.json({ admin: publicAdmin(admin) });
 }));
 
 router.post("/logout", requireAdmin(), wrap(async (req, res) => {

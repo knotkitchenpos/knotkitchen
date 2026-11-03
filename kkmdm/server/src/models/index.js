@@ -375,6 +375,8 @@ const AdminUser = mongoose.model("AdminUser", new Schema({
     default: [],
   },
   ssoSubject: String,
+  // "csd": signed in from the Customer Support Desk (lib/csdSso.js); no KKMDM password or 2FA of its own.
+  ssoProvider: String,
 }, opts));
 
 const Role = mongoose.model("Role", new Schema({

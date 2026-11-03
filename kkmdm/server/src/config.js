@@ -57,6 +57,8 @@ const config = {
   // Production shares the POS cluster's connection string; this keeps KKMDM in its own database.
   mongoDbName: env.KKMDM_DB_NAME || undefined,
   knotkitchenMongoUri: env.KNOTKITCHEN_MONGODB_URI || "",
+  // Single sign-on from CSD (lib/csdSso.js): where CSD publishes the public key its assertions are signed with.
+  csdSsoKeyUrl: env.CSD_SSO_KEY_URL || (isProduction ? "http://pos-api:8000/api/csd/kkmdm/sso-key" : "http://localhost:8000/api/csd/kkmdm/sso-key"),
   adminJwtSecret: secret("ADMIN_JWT_SECRET"),
   dataKey: encryptionKey(),
   publicUrl: (env.PUBLIC_URL || "http://localhost:8100").replace(/\/$/, ""),

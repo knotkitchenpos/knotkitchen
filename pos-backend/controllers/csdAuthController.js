@@ -291,4 +291,67 @@ const resetStaffMfa = async (req, res, next) => {
   }
 };
 
-module.exports = { login, me, logout, seedSuperAdmin, mfaSetup, mfaEnable, resetStaffMfa };
+/* ------------------------------------------------ KKMDM inside CSD */
+
+const kkmdmSso = require("../services/kkmdmSso");
+
+/** GET /api/csd/kkmdm/sso-key — the public key KKMDM checks CSD's assertions with. Public by nature. */
+const kkmdmKey = async (req, res, next) => {
+  try {
+    res.status(200).json({ publicKey: await kkmdmSso.publicKey() });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** POST /api/csd/kkmdm/sso — a one-minute assertion that signs this staff member in to KKMDM. */
+const kkmdmAssertion = async (req, res, next) => {
+  try {
+    res.status(200).json({ success: true, data: { assertion: await kkmdmSso.assertionFor(req.csdStaff), url: kkmdmSso.kkmdmUrl() } });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/csd/kkmdm/sso/reauth { password, code } — before a destructive
+ * KKMDM action (wiping a tablet), the person confirms their CSD password and
+ * authenticator code; the assertion then counts as a fresh sign-in. Wrong
+ * tries count towards the same lockout as signing in.
+ */
+const kkmdmReauth = async (req, res, next) => {
+  try {
+    const staff = await CsdStaff.findById(req.csdStaff._id).select("+password +mfa.secret");
+    if (!staff) return next(createHttpError(401, "Not signed in."));
+    if (staff.lockedUntil && staff.lockedUntil > new Date()) {
+      const mins = Math.ceil((staff.lockedUntil - Date.now()) / 60000);
+      return next(createHttpError(429, `Too many failed tries. Try again in ${mins} minute${mins === 1 ? "" : "s"}.`));
+    }
+    const password = typeof req.body?.password === "string" ? req.body.password : "";
+    if (!(await staff.comparePassword(password))) {
+      await failedSignIn(staff);
+      // 400, not 401: CSD's screens sign out on a 401, and a mistyped password must not do that.
+      return next(createHttpError(400, "That password is not right."));
+    }
+    if (staff.mfa?.enabled) {
+      const step = matchStep(open(staff.mfa.secret), req.body?.code);
+      if (step === null || step <= (staff.mfa.lastStep || 0)) {
+        await failedSignIn(staff);
+        return next(createHttpError(400, "That code is not right. Use the current code from your authenticator app."));
+      }
+      staff.mfa.lastStep = step;
+    }
+    staff.failedLogins = 0;
+    staff.lockedUntil = undefined;
+    await staff.save();
+    await csdAudit({
+      req, staff, action: "CSD_KKMDM_REAUTH", resource: "CsdAuth", entityType: "CsdStaff", entityId: staff._id,
+      description: `${staff.staffId} confirmed their identity for a KKMDM action`,
+    });
+    res.status(200).json({ success: true, data: { assertion: await kkmdmSso.assertionFor(staff, { reauth: true }), url: kkmdmSso.kkmdmUrl() } });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { login, me, logout, seedSuperAdmin, mfaSetup, mfaEnable, resetStaffMfa, kkmdmKey, kkmdmAssertion, kkmdmReauth };

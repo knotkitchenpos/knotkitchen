@@ -21,6 +21,7 @@ import Billing from "./pages/Billing";
 import HardwareRequests from "./pages/HardwareRequests";
 import HardwareRequestDetail from "./pages/HardwareRequestDetail";
 import KnotEats from "./pages/KnotEats";
+import KkmdmShell from "./kkmdm/KkmdmShell";
 
 const Splash = () => (
   <div className="flex min-h-screen items-center justify-center bg-navy-950 text-navy-300">
@@ -71,6 +72,8 @@ const App = () => (
           <Route path="/profile" element={<Profile />} />
           <Route path="/stores" element={<StoreSearch />} />
           <Route path="/stores/:storeId" element={<RestaurantDetail />} />
+          {/* KKMDM, tablet management, inside CSD (owner, 2026-11-03). */}
+          <Route path="/mdm/*" element={<KkmdmShell />} />
           <Route path="/search" element={<SearchConsole />} />
           <Route path="/chat" element={<Chat />} />
           <Route path="/jobs" element={<Jobs />} />

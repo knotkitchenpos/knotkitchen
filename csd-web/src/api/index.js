@@ -160,6 +160,12 @@ export const orders = {
   get: (id) => api.get(`/orders/${id}`).then((r) => r.data.data),
 };
 
+// KKMDM inside CSD (owner, 2026-11-03): one-minute sign-in assertions from the CSD server.
+export const kkmdm = {
+  sso: () => api.post("/kkmdm/sso").then((r) => r.data.data),
+  reauth: (payload) => api.post("/kkmdm/sso/reauth", payload).then((r) => r.data.data),
+};
+
 export const staffAdmin = {
   list: (params) => api.get("/staff", { params }).then((r) => r.data.data),
   get: (id) => api.get(`/staff/${id}`).then((r) => r.data.data),

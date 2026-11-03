@@ -64,4 +64,4 @@ async function syncStores() {
   return { created, updated, archived: archived + removed.modifiedCount, active, total: seen.size };
 }
 
-module.exports = { syncStores };
+module.exports = { syncStores, source };
