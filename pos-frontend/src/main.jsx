@@ -9,14 +9,23 @@ import { SnackbarProvider } from "notistack";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { registerServiceWorker } from "./pwa/registerServiceWorker";
 import FullScreenLoader from "./components/shared/FullScreenLoader";
+import { isStaleBuildError, reloadForNewBuild } from "./utils/staleBuild";
+
+// A screen's file from before a deploy is gone: load the new version (utils/staleBuild.js).
+window.addEventListener("vite:preloadError", (event) => {
+  if (reloadForNewBuild()) event.preventDefault();
+});
 
 class ErrorBoundary extends Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null, where: "" };
+    this.state = { hasError: false, error: null, where: "", updating: false };
   }
 
   static getDerivedStateFromError(error) {
+    // A tab open across a deploy asked for a file the new build removed: not a
+    // fault to show, just reload for the new version (once; utils/staleBuild.js).
+    if (isStaleBuildError(error) && reloadForNewBuild()) return { hasError: false, error: null, updating: true };
     return { hasError: true, error };
   }
 
@@ -37,6 +46,13 @@ class ErrorBoundary extends Component {
   }
 
   render() {
+    if (this.state.updating) {
+      return (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#080F1F] p-4 text-sm font-semibold text-[#AEB8CA]">
+          Updating KnotKitchen POS to the latest version…
+        </div>
+      );
+    }
     if (this.state.hasError) {
       return (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-[#080F1F] p-4 text-white">
