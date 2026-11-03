@@ -10,8 +10,9 @@ test("a scanner types into the box and Enter sends it; the camera loads ZXing on
   const s = SRC("src/components/settings/inventory/Scanner.jsx");
   assert.match(s, /if \(e\.key !== "Enter"\) return;/);
   assert.match(s, /if \("BarcodeDetector" in window\)/, "the phone's own reader first");
-  assert.match(s, /await import\("@zxing\/browser"\)/, "ZXing only when the camera opens");
-  assert.match(s, /code === last\.current\.code && now - last\.current\.at < 1500/, "one packet held up is one scan");
+  assert.match(s, /await Promise\.all\(\[import\("@zxing\/browser"\), import\("@zxing\/library"\)\]\)/, "ZXing only when the camera opens");
+  assert.match(s, /const code = gate\.feed\(raw \? normalizeBarcode\(raw\) : null\);/, "every frame goes through the scan gate");
+  assert.doesNotMatch(s, /"itf"|"code_39"|"qr_code"/, "formats that misread parts of an EAN are off");
 });
 
 test("Scan to add stock: packets add up, a new barcode comes filled in, everything goes in at once", () => {

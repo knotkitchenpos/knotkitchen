@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { btnGhost, inputClass } from "./ui";
+import { createScanGate } from "../../../utils/scanGate";
 
 /**
  * Barcode scanning (owner, 2026-11-03), two ways:
@@ -19,7 +20,11 @@ export const normalizeBarcode = (v) => {
   return /^\d{12}$/.test(c) ? `0${c}` : c;
 };
 
-const FORMATS = ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "itf", "qr_code"];
+// Packet barcodes, and Code 128 for a store's own labels. ITF, Code 39 and QR
+// were dropped: they read parts of an EAN as a barcode of their own.
+const FORMATS = ["ean_13", "ean_8", "upc_a", "upc_e", "code_128"];
+// Sharp enough for a small barcode, with continuous focus where the camera has it.
+const VIDEO = { facingMode: { ideal: "environment" }, width: { ideal: 1280 }, height: { ideal: 720 }, advanced: [{ focusMode: "continuous" }] };
 
 /** A short beep and a buzz: the scan was read. */
 export const scanned = () => {
@@ -40,11 +45,15 @@ export const scanned = () => {
   try { navigator.vibrate?.(40); } catch { /* no vibration here */ }
 };
 
-/** The camera, reading codes until closed. The same code twice within 1.5 s is one scan. */
+/**
+ * The camera, reading codes until closed. What counts as a scan is
+ * utils/scanGate: a right check digit, the same code in consecutive frames,
+ * and a packet held in front of the camera counting once.
+ */
 const CameraScanner = ({ onCode, onClose, paused }) => {
   const video = useRef(null);
   const [error, setError] = useState("");
-  const last = useRef({ code: "", at: 0 });
+  const [flash, setFlash] = useState(""); // the code just counted, shown for a moment
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
   // The camera starts once; each read goes to the screen as it is now, not as it was when the camera opened.
@@ -54,13 +63,28 @@ const CameraScanner = ({ onCode, onClose, paused }) => {
   useEffect(() => {
     let stop = () => {};
     let alive = true;
-    const hit = (code) => {
+    const gate = createScanGate();
+    let flashTimer = null;
+    // Every frame goes through the gate, nothing read included: that is how it knows a packet has left.
+    const frame = (raw) => {
+      const code = gate.feed(raw ? normalizeBarcode(raw) : null);
       if (!code || pausedRef.current) return;
-      const now = Date.now();
-      if (code === last.current.code && now - last.current.at < 1500) return;
-      last.current = { code, at: now };
       scanned();
+      setFlash(code);
+      clearTimeout(flashTimer);
+      flashTimer = setTimeout(() => alive && setFlash(""), 900);
       onCodeRef.current(code);
+    };
+    /** Of the barcodes in a frame, the one nearest the middle: the packet being held up, not the one behind it. */
+    const nearest = (found) => {
+      const v = video.current;
+      const cx = (v?.videoWidth || 0) / 2;
+      const cy = (v?.videoHeight || 0) / 2;
+      const dist = (b) => {
+        const r = b.boundingBox;
+        return r ? (r.x + r.width / 2 - cx) ** 2 + (r.y + r.height / 2 - cy) ** 2 : 0;
+      };
+      return [...found].sort((a, b) => dist(a) - dist(b))[0];
     };
     (async () => {
       try {
@@ -69,7 +93,7 @@ const CameraScanner = ({ onCode, onClose, paused }) => {
           const supported = await window.BarcodeDetector.getSupportedFormats?.().catch(() => []) || [];
           const formats = FORMATS.filter((f) => supported.includes(f));
           if (formats.length) {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: "environment" } }, audio: false });
+            const stream = await navigator.mediaDevices.getUserMedia({ video: VIDEO, audio: false });
             if (!alive) return stream.getTracks().forEach((t) => t.stop());
             video.current.srcObject = stream;
             await video.current.play();
@@ -78,24 +102,25 @@ const CameraScanner = ({ onCode, onClose, paused }) => {
             const tick = async () => {
               try {
                 const found = await detector.detect(video.current);
-                if (found[0]?.rawValue) hit(found[0].rawValue);
+                frame(found.length ? nearest(found).rawValue : null);
               } catch { /* a frame it could not read */ }
-              if (alive) timer = setTimeout(tick, 180);
+              if (alive) timer = setTimeout(tick, 120);
             };
             tick();
-            stop = () => { clearTimeout(timer); stream.getTracks().forEach((t) => t.stop()); };
+            stop = () => { clearTimeout(timer); clearTimeout(flashTimer); stream.getTracks().forEach((t) => t.stop()); };
             return;
           }
         }
-        const { BrowserMultiFormatReader } = await import("@zxing/browser");
+        const [{ BrowserMultiFormatReader }, { BarcodeFormat, DecodeHintType }] = await Promise.all([import("@zxing/browser"), import("@zxing/library")]);
         if (!alive) return;
-        const reader = new BrowserMultiFormatReader();
+        const hints = new Map([[DecodeHintType.POSSIBLE_FORMATS, [BarcodeFormat.EAN_13, BarcodeFormat.EAN_8, BarcodeFormat.UPC_A, BarcodeFormat.UPC_E, BarcodeFormat.CODE_128]]]);
+        const reader = new BrowserMultiFormatReader(hints, { delayBetweenScanAttempts: 120, delayBetweenScanSuccess: 120 });
         const controls = await reader.decodeFromConstraints(
-          { video: { facingMode: { ideal: "environment" } }, audio: false },
+          { video: VIDEO, audio: false },
           video.current,
-          (result) => { if (result) hit(result.getText()); },
+          (result) => frame(result ? result.getText() : null),
         );
-        stop = () => controls.stop();
+        stop = () => { clearTimeout(flashTimer); controls.stop(); };
         if (!alive) stop();
       } catch (e) {
         setError(e?.name === "NotAllowedError"
@@ -115,7 +140,10 @@ const CameraScanner = ({ onCode, onClose, paused }) => {
         <>
           <video ref={video} className="w-full max-h-[260px] object-cover" muted playsInline />
           {/* Where to hold the barcode. */}
-          <div className="pointer-events-none absolute inset-x-8 top-1/2 h-[70px] -translate-y-1/2 rounded-lg border-2 border-[#FD5302]/90" />
+          <div className={`pointer-events-none absolute inset-x-8 top-1/2 h-[70px] -translate-y-1/2 rounded-lg border-2 transition-colors ${flash ? "border-[#22C55E] bg-[#22C55E]/15" : "border-[#FD5302]/90"}`} />
+          <p className="pointer-events-none absolute inset-x-0 bottom-2 text-center text-[11.5px] font-bold text-white drop-shadow">
+            {flash ? `✓ ${flash}` : "Hold one barcode inside the box. Each packet counts once; take it away before the next."}
+          </p>
           {paused && <div className="absolute inset-0 flex items-center justify-center bg-black/60 text-[12.5px] font-bold text-white">Finish this product first</div>}
         </>
       )}
