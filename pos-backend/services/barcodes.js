@@ -73,7 +73,7 @@ const productView = (p) =>
 
 /** Ask Open Food Facts. null when it has nothing; throws when it could not be reached. */
 const askOpenFoodFacts = async (code) => {
-  const res = await fetch(OFF_URL(code), { headers: { "User-Agent": USER_AGENT, Accept: "application/json" }, signal: AbortSignal.timeout(6000) });
+  const res = await fetch(OFF_URL(code), { headers: { "User-Agent": USER_AGENT, Accept: "application/json" }, signal: globalThis.AbortSignal.timeout(6000) });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error(`Open Food Facts answered ${res.status}`);
   const body = await res.json();

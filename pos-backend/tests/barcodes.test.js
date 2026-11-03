@@ -38,7 +38,7 @@ test("lookups: our list first, then Open Food Facts, its answer kept; only the b
   const svc = SRC("services/barcodes.js");
   assert.match(svc, /const known = await BarcodeProduct\.findOne\(\{ code \}\)\.lean\(\);\n  if \(known\?\.name\) return productView\(known\);/);
   assert.match(svc, /"User-Agent": USER_AGENT/);
-  assert.match(svc, /signal: AbortSignal\.timeout\(6000\)/);
+  assert.match(svc, /signal: globalThis\.AbortSignal\.timeout\(6000\)/);
   // Not found is remembered for a week; a failed lookup is not remembered at all.
   assert.match(svc, /Date\.now\(\) - new Date\(known\.checkedAt\)\.getTime\(\) < RECHECK_MS\) return null;/);
   // A store's name never overwrites one already known.
