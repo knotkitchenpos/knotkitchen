@@ -23,10 +23,14 @@ app.use(helmet({
 app.use(cors({
   origin: (origin, callback) => {
     if (!origin) return callback(null, true); // same-origin / curl / server-to-server
-    if (allowedOrigins.length === 0 || allowedOrigins.includes(origin.replace(/\/$/, ''))) {
+    // No allow-list trusts every origin only in development; in production it
+    // fails closed (security audit, 2026-11-03).
+    const open = allowedOrigins.length === 0 && process.env.NODE_ENV !== 'production';
+    if (open || allowedOrigins.includes(origin.replace(/\/$/, ''))) {
       return callback(null, true);
     }
-    return callback(new Error('Not allowed by CORS'));
+    // Not ours: no CORS headers, so the browser keeps the reply from it (not a 500).
+    return callback(null, false);
   },
   credentials: true,
 }));

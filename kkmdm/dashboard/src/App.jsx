@@ -58,10 +58,13 @@ export default function App() {
   if (!admin) return <Login onLogin={setAdmin} />;
 
   const [section, ...rest] = hash.split("?")[0].split("/");
-  const entry = NAV.find(([k]) => k === section) || NAV[0];
+  // Two-factor sign-in first, in production (security audit, 2026-11-03): the
+  // server refuses everything else until it is on, so only Settings shows.
+  const needs2fa = admin.twoFactorRequired && !admin.totpEnabled;
+  const entry = needs2fa ? NAV.find(([k]) => k === "settings") : NAV.find(([k]) => k === section) || NAV[0];
   let Page = entry[3];
-  if (section === "devices" && rest[0]) Page = DeviceDetail;
-  const allowed = can(admin, entry[2]);
+  if (!needs2fa && section === "devices" && rest[0]) Page = DeviceDetail;
+  const allowed = needs2fa || can(admin, entry[2]);
 
   const logout = async () => {
     await api.post("/auth/logout").catch(() => {});
@@ -85,6 +88,7 @@ export default function App() {
           </div>
         </nav>
         <main className="main">
+          {needs2fa && <div className="note">Set up two-factor sign-in below to use KKMDM. Everything else opens once it is on.</div>}
           {allowed ? <Page params={rest} /> : <div className="card">You don&apos;t have access to this page.</div>}
         </main>
       </div>

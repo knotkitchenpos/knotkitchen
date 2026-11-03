@@ -109,6 +109,27 @@ app.use(
 );
 
 /**
+ * Cross-site request forgery (security audit, 2026-11-03). Session cookies are
+ * SameSite=None in production, so a browser attaches them to a form POST that
+ * any other website starts; CORS only stops the reply being read, not the
+ * request running. So a request that changes something (anything but
+ * GET/HEAD/OPTIONS) and says where it came from must come from one of ours:
+ * a named site, this same host (the bill. and pay. pages), or a store's own
+ * website on the diner-side API. No Origin at all is a server or the app
+ * (webhooks, the Android shell), which cookies-by-browser cannot be.
+ */
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (SAFE_METHODS.has(req.method) || !origin) return next();
+    const clean = origin.replace(/\/$/, "");
+    let host = "";
+    try { host = new URL(clean).host; } catch { /* "null" and the like: not ours */ }
+    if (allowedOrigins.has(clean) || (host && host === req.headers.host) || (isWildcardMatch(clean) && isPublicPath(req.path))) return next();
+    res.status(403).json({ success: false, message: "Cross-site request refused.", code: "CROSS_SITE" });
+});
+
+/**
  * MongoDB operators never come from a request (security audit, 2026-11-03).
  * A body like { "phone": { "$ne": null } } would otherwise turn a lookup by
  * value into "match anything" wherever a handler forgets to String() it. Keys

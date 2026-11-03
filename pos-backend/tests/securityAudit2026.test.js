@@ -60,3 +60,10 @@ test("Caddy: no other site can frame KnotKitchen pages; the POS site may use its
   const deploy = fs.readFileSync(path.join(__dirname, "..", "..", ".github", "workflows", "deploy.yml"), "utf8");
   assert.ok(deploy.indexOf("adapt --config /etc/caddy/Caddyfile") < deploy.indexOf("up -d --remove-orphans"), "checked before anything restarts");
 });
+
+test("recheck: a request that changes something must come from one of our own sites (CSRF)", () => {
+  const app = SRC("app.js");
+  assert.ok(app.includes(`const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);`));
+  assert.ok(app.includes("if (allowedOrigins.has(clean) || (host && host === req.headers.host) || (isWildcardMatch(clean) && isPublicPath(req.path))) return next();"));
+  assert.match(app, /code: "CROSS_SITE"/);
+});

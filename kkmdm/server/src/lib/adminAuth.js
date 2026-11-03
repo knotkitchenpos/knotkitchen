@@ -4,6 +4,8 @@ const { AdminUser } = require("../models");
 const { can } = require("./rbac");
 
 const COOKIE = "kkmdm_session";
+// What an admin without two-factor sign-in may reach in production.
+const TWO_FA_SETUP_PATHS = ["/api/auth/me", "/api/auth/logout", "/api/auth/2fa/setup", "/api/auth/2fa/enable", "/api/settings"];
 
 function issueSession(res, admin, { authAt = Date.now() } = {}) {
   const token = jwt.sign(
@@ -50,6 +52,12 @@ function requireAdmin() {
       // which a cross-site form cannot set.
       if (!["GET", "HEAD", "OPTIONS"].includes(req.method) && req.get("X-KKMDM") !== "1") {
         return res.status(403).json({ error: "csrf_header_missing" });
+      }
+      // Two-factor sign-in is required in production (security audit,
+      // 2026-11-03): KKMDM can install apps on every tablet, so an account
+      // without it reaches only itself and the 2FA setup until it is on.
+      if (config.isProduction && !admin.totpEnabled && !TWO_FA_SETUP_PATHS.includes(req.originalUrl.split("?")[0])) {
+        return res.status(403).json({ error: "2fa_required" });
       }
       req.admin = admin;
       req.authAt = claims.authAt;

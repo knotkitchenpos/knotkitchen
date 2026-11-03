@@ -23,6 +23,8 @@ function publicAdmin(a) {
     roleName: ROLES[a.role]?.name,
     storeIds: a.storeIds,
     totpEnabled: a.totpEnabled,
+    // Required in production (lib/adminAuth.js): the dashboard shows only the 2FA setup until it is on.
+    twoFactorRequired: config.isProduction && !a.totpEnabled,
     permissions: permissionsFor(a.role),
   };
 }
