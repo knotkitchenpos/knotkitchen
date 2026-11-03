@@ -284,3 +284,24 @@ test("store sync mirrors CSD: restaurant names, statuses, deleted and removed st
     await src.close();
   }
 });
+
+test("recovery from the server's terminal: a lost phone or lockout never locks KKMDM out", async () => {
+  const { recover } = require("../src/reset-admin");
+  const AdminUser = mongoose.model("AdminUser");
+  const admin = await AdminUser.findOne({ email: "super@test.local" });
+  admin.totpEnabled = true;
+  admin.totpSecretEnc = "sealed";
+  admin.lockedUntil = new Date(Date.now() + 3600e3);
+  admin.sessions = [{ sid: "lost-phone-device", createdAt: new Date() }];
+  const sv = admin.sessionVersion;
+  await admin.save();
+  await assert.rejects(recover("super@test.local", "short"), /12 characters/);
+  await recover("super@test.local", "Recovered-Admin-Pw-1");
+  const after = await AdminUser.findOne({ email: "super@test.local" });
+  assert.strictEqual(after.totpEnabled, false);
+  assert.strictEqual(after.lockedUntil, undefined);
+  assert.strictEqual(after.sessions.length, 0, "signed out everywhere");
+  assert.strictEqual(after.sessionVersion, sv + 1);
+  const ok = await call("POST", "/api/auth/login", { body: { email: "super@test.local", password: "Recovered-Admin-Pw-1" } });
+  assert.strictEqual(ok.status, 200);
+});

@@ -34,3 +34,15 @@ Tests: `kkmdm\server> npm test`. They use a throwaway `kkmdm_test` database on t
 * **Return a test tablet to normal:** Device → Remote Actions → "Release (dev: remove MDM)". This is disabled in production.
 
 Test tablets should use the **"Test tablet (ADB allowed)"** policy. The company default blocks USB debugging, which would cut off ADB.
+
+## Admin sign-in and recovery
+
+* Two-factor sign-in (an authenticator app) is required in production. An admin without it sees only Settings until it is set up.
+* A device stays signed in until it signs out. Signing out ends only that device; a password change, a 2FA reset or disabling the account ends every device.
+* Lost phone, locked out or forgotten password, from the server's terminal (asks for the new password twice, hidden):
+
+  ```
+  docker compose -f deploy/docker-compose.yml exec kkmdm node src/reset-admin.js <email>
+  ```
+
+  This turns 2FA off for that account (set it up again at the next sign-in), unlocks and re-enables it, and signs it out everywhere.
