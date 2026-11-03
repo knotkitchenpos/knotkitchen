@@ -77,6 +77,41 @@ const Layout = () => {
         : "text-navy-300 hover:bg-white/5 hover:text-white"
     }`;
 
+
+  // Device management (KKMDM) with its screens as a sub-menu, under Store Management (owner, 2026-11-03).
+  const mdmBlock = (
+    <div key="mdm" className="space-y-1">
+      <button
+        type="button"
+        onClick={() => setMdmOpen((v) => !v)}
+        title="Device management"
+        aria-expanded={mdmOpen}
+        className={`relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium ${inMdm ? "text-white" : "text-navy-300 hover:bg-white/5 hover:text-white"}`}
+      >
+        <FiTablet size={17} className="shrink-0" aria-hidden="true" />
+        <span className={`flex-1 ${LABEL}`}>Device management</span>
+        <FiChevronDown size={15} className={`shrink-0 transition-transform ${mdmOpen ? "rotate-180" : ""} ${LABEL}`} aria-hidden="true" />
+      </button>
+      {mdmOpen && (
+        <div className="space-y-0.5 lg:hidden lg:group-hover:block">
+          {mdmItems.map(({ key, label, icon: Icon }) => (
+            <NavLink
+              key={key || "overview"}
+              to={`/mdm${key ? `/${key}` : ""}`}
+              end={!key}
+              onClick={() => setOpen(false)}
+              title={label}
+              className={({ isActive }) => `${linkClass({ isActive })} ml-4 py-2 text-[13px]`}
+            >
+              <Icon size={15} className="shrink-0" aria-hidden="true" />
+              <span className={LABEL}>{label}</span>
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
   const handleSignOut = async () => {
     await signOut();
     navigate("/", { replace: true });
@@ -140,7 +175,8 @@ const Layout = () => {
               {items
                 .filter((n) => n.group === group)
                 .map(({ to, label, icon: Icon, badge }) => (
-                  <NavLink key={to} to={to} onClick={() => setOpen(false)} title={label} className={linkClass}>
+                  <React.Fragment key={to}>
+                  <NavLink to={to} onClick={() => setOpen(false)} title={label} className={linkClass}>
                     <span className="relative shrink-0">
                       <Icon size={17} aria-hidden="true" />
                       {badges[badge] > 0 && (
@@ -152,42 +188,11 @@ const Layout = () => {
                     </span>
                     <span className={LABEL}>{label}</span>
                   </NavLink>
+                  {to === "/stores" && mdmBlock}
+                  </React.Fragment>
                 ))}
             </div>
           ))}
-
-          {/* Device management: KKMDM's screens as a sub-menu. */}
-          <div className="mb-3 space-y-1">
-            <p className={`px-3 pb-1 pt-2 text-[10px] font-bold uppercase tracking-[0.14em] text-navy-500 ${LABEL}`}>Devices</p>
-            <button
-              type="button"
-              onClick={() => setMdmOpen((v) => !v)}
-              title="Device management"
-              aria-expanded={mdmOpen}
-              className={`relative flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-medium ${inMdm ? "text-white" : "text-navy-300 hover:bg-white/5 hover:text-white"}`}
-            >
-              <FiTablet size={17} className="shrink-0" aria-hidden="true" />
-              <span className={`flex-1 ${LABEL}`}>Device management</span>
-              <FiChevronDown size={15} className={`shrink-0 transition-transform ${mdmOpen ? "rotate-180" : ""} ${LABEL}`} aria-hidden="true" />
-            </button>
-            {mdmOpen && (
-              <div className="space-y-0.5 lg:hidden lg:group-hover:block">
-                {mdmItems.map(({ key, label, icon: Icon }) => (
-                  <NavLink
-                    key={key || "overview"}
-                    to={`/mdm${key ? `/${key}` : ""}`}
-                    end={!key}
-                    onClick={() => setOpen(false)}
-                    title={label}
-                    className={({ isActive }) => `${linkClass({ isActive })} ml-4 py-2 text-[13px]`}
-                  >
-                    <Icon size={15} className="shrink-0" aria-hidden="true" />
-                    <span className={LABEL}>{label}</span>
-                  </NavLink>
-                ))}
-              </div>
-            )}
-          </div>
         </nav>
 
         <div className="relative border-t border-white/10 p-3 lg:p-2">
