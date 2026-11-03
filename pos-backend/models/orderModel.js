@@ -212,6 +212,8 @@ const orderSchema = new mongoose.Schema({
   storeId: { type: String, default: "", index: true },
   // Human-friendly reference shown to the customer, e.g. "W-482193-0007".
   orderNumber: { type: String, default: "" },
+  // Its stock went back to inventory when it was cancelled (services/inventory.js returnOrderStock).
+  stockReturned: { type: Boolean, default: false },
   // Idempotency key for online checkout (§32 double-click protection).
   idempotencyKey: { type: String, default: "" },
   // Scheduled/pre-orders (§21). Null = ASAP.
@@ -321,9 +323,12 @@ orderSchema.index({ tableSessionId: 1 });
 orderSchema.post("save", function depleteStock(doc) {
   if (!doc || doc.isDeleted) return;
   const run = () => setImmediate(() => {
-    require("../services/inventory")
+    const inventory = require("../services/inventory");
+    // A cancelled order soon after it was placed puts back what its sale took.
+    inventory
       .depleteOrder(doc)
-      .catch((err) => console.warn("[inventory] depletion failed for order", String(doc._id), err.message));
+      .then(() => inventory.returnOrderStock(doc))
+      .catch((err) => console.warn("[inventory] stock update failed for order", String(doc._id), err.message));
   });
   // N014: in a transaction (a table round) only once it commits (isCommitted is true for an abort too).
   const tx = doc.$session();

@@ -342,6 +342,7 @@ const depletionPlan = (items = [], recipes = [], addonRecipes = [], dishGroups =
 /** Apply the plan: decrement stock, log a "sale" movement, mark the lines. */
 const depleteOrder = async (order) => {
   if (!order || !order.restaurantId || mongoose.connection?.readyState !== 1) return;
+  if (require("../constants/orderStatus").isCancelled(order.orderStatus)) return;
   const items = order.items || [];
   if (!items.some((it) => it && !it.stockDepleted && it.status !== "cancelled")) return;
 
@@ -461,7 +462,78 @@ const depleteOrder = async (order) => {
   }
 };
 
+/** Minutes after it is placed that a cancelled order still puts its stock back: the store's setting, 3 by default. */
+const cancelReturnMinutesOf = (restaurant) => {
+  const n = Number(restaurant?.inventorySettings?.cancelReturnMinutes);
+  return Number.isFinite(n) && n >= 0 ? n : 3;
+};
+
+/**
+ * An order cancelled within the store's window of being placed (owner,
+ * 2026-11-03: 3 minutes by default, set in Inventory › Stock count) puts back
+ * the stock its sale took: a mis-punch or a guest who changed their mind
+ * before the kitchen started. Later than that the food is taken as made, and
+ * stays out of stock. Once per order, whichever save sees the cancel first.
+ */
+const returnOrderStock = async (order) => {
+  const { isCancelled } = require("../constants/orderStatus");
+  if (!order?.restaurantId || order.stockReturned || !isCancelled(order.orderStatus) || mongoose.connection?.readyState !== 1) return null;
+  const Restaurant = require("../models/restaurantModel");
+  const minutes = cancelReturnMinutesOf(await Restaurant.findById(order.restaurantId).select("inventorySettings").lean());
+  const age = Date.now() - new Date(order.createdAt || 0).getTime();
+  if (!(minutes > 0) || !(age >= 0) || age > minutes * 60000) return null;
+
+  const { Ingredient, StockMovement } = require("../models/inventoryModel");
+  const Order = require("../models/orderModel");
+  const claim = await Order.updateOne({ _id: order._id, stockReturned: { $ne: true } }, { $set: { stockReturned: true } });
+  if (!claim?.modifiedCount) return null;
+
+  // What the sale took, per item: its movements carry the quantity and what it was worth.
+  const sales = await StockMovement.find({ restaurantId: order.restaurantId, referenceId: String(order._id), type: "sale" }).lean();
+  const per = new Map();
+  for (const m of sales) {
+    const k = String(m.ingredientId);
+    const p = per.get(k) || { ingredientId: m.ingredientId, name: m.ingredientName, unit: m.unit, quantity: 0, value: 0 };
+    p.quantity += -(Number(m.quantity) || 0);
+    p.value += -(Number(m.value) || 0);
+    per.set(k, p);
+  }
+  const label = order.orderNumber ? `Order #${order.orderNumber} cancelled` : "Order cancelled";
+  const back = [];
+  for (const p of per.values()) {
+    const quantity = round3(p.quantity);
+    if (!(quantity > 0)) continue;
+    const ing = await Ingredient.findOneAndUpdate(
+      { _id: p.ingredientId, restaurantId: order.restaurantId, isDeleted: { $ne: true } },
+      [{ $set: { stockQuantity: { $round: [{ $add: [{ $ifNull: ["$stockQuantity", 0] }, quantity] }, 3] } } }],
+      { new: true },
+    );
+    if (!ing) continue;
+    const low = needsRestock(stockStatus(ing));
+    if (ing.isLowStock !== low) await Ingredient.updateOne({ _id: ing._id }, { $set: { isLowStock: low } });
+    await StockMovement.create({
+      restaurantId: order.restaurantId, outletId: order.outletId || undefined, ingredientId: ing._id, ingredientName: ing.name,
+      type: "return", quantity, value: Math.round(p.value * 100) / 100, unit: p.unit || ing.unit, reason: label, referenceId: String(order._id),
+    });
+    back.push(ing.name);
+  }
+  if (back.length) {
+    try {
+      const { emitToRestaurant } = require("./socket");
+      emitToRestaurant(String(order.restaurantId), "inventory:stock", {});
+      // Stock back may free products switched off for want of it.
+      const freed = await require("./stockProducts").backInStock(order.restaurantId);
+      if (freed.products.length) emitToRestaurant(String(order.restaurantId), "inventory:back", { products: freed.products.length, ingredients: freed.ingredients || [] });
+    } catch {
+      /* no socket in this process: the tills catch up on their next load */
+    }
+  }
+  return back;
+};
+
 module.exports = {
+  cancelReturnMinutesOf,
+  returnOrderStock,
   trimBatches,
   expiryOf,
   linesCost,

@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "../../../utils/notify";
-import { cancelStockCount, finishStockCount, getStockCount, getStockCounts, saveStockCount, startStockCount } from "../../../https";
+import { cancelStockCount, finishStockCount, getInventorySettings, getStockCount, getStockCounts, saveInventorySettings, saveStockCount, startStockCount } from "../../../https";
 import { dateTimeIN as when } from "../../../utils";
 import { qty, rupees, unitLabel } from "../../../utils/inventory";
 import { boxClass, btnGhost, btnPrimary, card, inputClass } from "./ui";
@@ -176,6 +176,48 @@ const Counting = ({ countId, onDone, onBack }) => {
   );
 };
 
+/**
+ * How soon a cancelled order puts its stock back (owner, 2026-11-03): within
+ * this many minutes of being placed, what its sale took returns to the shelf;
+ * later, the food is taken as made. 0 never puts it back.
+ */
+const CancelReturnSetting = () => {
+  const qc = useQueryClient();
+  const { data } = useQuery({ queryKey: ["inventory", "settings"], queryFn: getInventorySettings });
+  const saved = data?.data?.data?.cancelReturnMinutes;
+  const [value, setValue] = useState(null);
+  const shown = value ?? (saved === undefined ? "" : String(saved));
+  const saveMut = useMutation({
+    mutationFn: () => saveInventorySettings({ cancelReturnMinutes: Number(shown) }),
+    onSuccess: () => { enqueueSnackbar("Saved", { variant: "success" }); setValue(null); qc.invalidateQueries({ queryKey: ["inventory"] }); },
+    onError: (e) => enqueueSnackbar(e.response?.data?.message || "Could not save", { variant: "error" }),
+  });
+  if (saved === undefined) return null;
+  const n = Number(shown);
+  const valid = shown !== "" && Number.isInteger(n) && n >= 0 && n <= 1440;
+  return (
+    <div className={`${card} p-4 space-y-2`}>
+      <p className="text-[14px] font-extrabold text-[#0F172A]">Cancelled orders</p>
+      <div className="flex flex-wrap items-center gap-2 text-[12.5px] text-[#475569]">
+        Put the stock back when an order is cancelled within
+        <input className={`${boxClass} h-[34px] w-[70px] text-right`} type="number" min="0" max="1440" step="1" inputMode="numeric"
+          value={shown} onChange={(e) => setValue(e.target.value)} aria-label="Minutes after the order is placed" />
+        minute(s) of placing it
+        {shown !== String(saved) && (
+          <button type="button" className={`${btnGhost} h-[34px]`} disabled={!valid || saveMut.isPending} onClick={() => saveMut.mutate()}>
+            {saveMut.isPending ? "Saving…" : "Save"}
+          </button>
+        )}
+      </div>
+      <p className="text-[11.5px] text-[#94A3B8]">
+        {n > 0
+          ? `Cancelled later than ${n} minute(s), the food is taken as made and its stock stays used. Record anything thrown away under Waste.`
+          : "0: a cancelled order never puts its stock back."}
+      </p>
+    </div>
+  );
+};
+
 const CountTab = () => {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({ queryKey: ["inventory", "counts"], queryFn: getStockCounts });
@@ -210,6 +252,8 @@ const CountTab = () => {
           {open ? "Continue counting" : startMut.isPending ? "Starting…" : "Start a stock count"}
         </button>
       </div>
+
+      <CancelReturnSetting />
 
       {counts.filter((c) => c.status === "done").length > 0 && (
         <div className={card}>

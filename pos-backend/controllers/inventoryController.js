@@ -14,6 +14,7 @@ const {
   expiryOf,
   linesCost,
   dishCost,
+  cancelReturnMinutesOf,
 } = require("../services/inventory");
 const { AddonRecipe, StockCount } = require("../models/inventoryModel");
 const { countOnSale, turnOffFor, backInStock, answerBackInStock } = require("../services/stockProducts");
@@ -108,6 +109,7 @@ const settingsOf = async (restaurantId) => {
   return {
     targetFoodCostPct: Number(r?.inventorySettings?.targetFoodCostPct) || 35,
     expiryAlertDays: Number.isFinite(Number(r?.inventorySettings?.expiryAlertDays)) ? Number(r.inventorySettings.expiryAlertDays) : 2,
+    cancelReturnMinutes: cancelReturnMinutesOf(r),
   };
 };
 
@@ -751,7 +753,8 @@ const inventoryReport = async (req, res, next) => {
       const b = bucket(m);
       const q = Number(m.quantity) || 0;
       const v = valueOf(m);
-      if (m.type === "sale") { b.used += -q; b.usedValue += -v; }
+      // A cancelled order's stock put back is a sale undone.
+      if (m.type === "sale" || m.type === "return") { b.used += -q; b.usedValue += -v; }
       else if (m.type === "waste") { b.wasted += -q; b.wastedValue += -v; }
       else if (m.type === "purchase") { b.bought += q; b.boughtValue += Number(m.value) || Number(m.cost) || v; }
       else if (m.type === "count" || (m.type === "adjustment" && m.reason !== "Opening stock")) { b.countDiff += q; b.countValue += v; }
@@ -807,6 +810,8 @@ const saveSettings = async (req, res, next) => {
     if (pct !== null) set["inventorySettings.targetFoodCostPct"] = Math.round(pct);
     const days = num(req.body?.expiryAlertDays, { min: 0, max: 60 });
     if (days !== null) set["inventorySettings.expiryAlertDays"] = Math.round(days);
+    const minutes = num(req.body?.cancelReturnMinutes, { min: 0, max: 1440 });
+    if (minutes !== null) set["inventorySettings.cancelReturnMinutes"] = Math.round(minutes);
     if (Object.keys(set).length) await Restaurant.updateOne({ _id: s.restaurantId }, { $set: set });
     res.status(200).json({ success: true, data: await settingsOf(s.restaurantId) });
   } catch (e) { next(e); }

@@ -90,6 +90,8 @@ const restaurantSchema = new mongoose.Schema(
     inventorySettings: {
       targetFoodCostPct: { type: Number, default: 35, min: 1, max: 100 },
       expiryAlertDays: { type: Number, default: 2, min: 0, max: 60 },
+      // An order cancelled within this many minutes of being placed puts its stock back (0: never).
+      cancelReturnMinutes: { type: Number, default: 3, min: 0, max: 1440 },
     },
     posSettings: {
       autoPrintReceipt: { type: Boolean, default: true }, // legacy, unread

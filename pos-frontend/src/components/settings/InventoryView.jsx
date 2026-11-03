@@ -651,7 +651,7 @@ const RecipesTab = ({ ingredients, refresh, initialDish, target = 35 }) => {
 
 /* -------------------------------------------------------------------- log */
 
-const TYPE_LABEL = { purchase: "Stock added", sale: "Sold", waste: "Wastage", adjustment: "Correction", transfer: "Transfer", production: "Batch made", count: "Stock count" };
+const TYPE_LABEL = { purchase: "Stock added", sale: "Sold", waste: "Wastage", adjustment: "Correction", transfer: "Transfer", production: "Batch made", count: "Stock count", return: "Returned" };
 
 /** What a movement was worth: a purchase at what it cost, anything else at the cost price then. */
 const worthOf = (m) => {

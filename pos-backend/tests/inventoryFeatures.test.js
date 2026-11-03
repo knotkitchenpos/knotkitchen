@@ -158,3 +158,20 @@ test("a prepared item moved to grams keeps its batch size right: 5 kg of gravy i
   // The report reads a purchase's cost for movements saved before values were.
   assert.match(ctrl, /\.select\("ingredientId ingredientName type quantity value cost unit reason"\)/);
 });
+
+test("an order cancelled within the store's minutes of being placed puts its stock back (owner, 2026-11-03)", () => {
+  assert.equal(inv.cancelReturnMinutesOf({}), 3, "3 minutes unless the store says otherwise");
+  assert.equal(inv.cancelReturnMinutesOf({ inventorySettings: { cancelReturnMinutes: 0 } }), 0, "0: never");
+  assert.equal(inv.cancelReturnMinutesOf({ inventorySettings: { cancelReturnMinutes: 10 } }), 10);
+  const svc = SRC("services/inventory.js");
+  assert.match(svc, /if \(!\(minutes > 0\) \|\| !\(age >= 0\) \|\| age > minutes \* 60000\) return null;/);
+  // Once per order, whichever save sees the cancel first; a cancelled order takes no stock.
+  assert.match(svc, /Order\.updateOne\(\{ _id: order\._id, stockReturned: \{ \$ne: true \} \}, \{ \$set: \{ stockReturned: true \} \}\)/);
+  assert.match(svc, /if \(require\("\.\.\/constants\/orderStatus"\)\.isCancelled\(order\.orderStatus\)\) return;/);
+  assert.match(SRC("models/orderModel.js"), /\.then\(\(\) => inventory\.returnOrderStock\(doc\)\)/);
+  // The report counts it as a sale undone; the setting is the owner's, with the PIN.
+  const ctrl = SRC("controllers/inventoryController.js");
+  assert.match(ctrl, /if \(m\.type === "sale" \|\| m\.type === "return"\) \{ b\.used \+= -q; b\.usedValue \+= -v; \}/);
+  assert.match(ctrl, /set\["inventorySettings\.cancelReturnMinutes"\] = Math\.round\(minutes\);/);
+  assert.match(SRC("models/inventoryModel.js"), /"production", "count", "return"\]/);
+});

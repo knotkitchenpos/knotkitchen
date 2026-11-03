@@ -157,7 +157,8 @@ const stockMovementSchema = new mongoose.Schema(
       type: String,
       // production: a prepared item made (in) or the items it used (out).
       // count: a stock count's correction.
-      enum: ["purchase", "sale", "waste", "adjustment", "transfer", "production", "count"],
+      // return: a sale's stock put back, its order cancelled soon after it was placed.
+      enum: ["purchase", "sale", "waste", "adjustment", "transfer", "production", "count", "return"],
       required: true,
     },
     quantity: { type: Number, required: true }, // positive for in, negative for out

@@ -54,3 +54,11 @@ test("the Groups panel sends each component's old name and shows what it uses fr
   assert.match(drawer, /navigate\("\/settings\?view=inventory&tab=addons"\)/);
   assert.match(SRC("src/components/settings/InventoryView.jsx"), /TABS\.some\(\(\[k\]\) => k === params\.get\("tab"\)\)/);
 });
+
+test("Stock count sets how soon a cancelled order puts its stock back", () => {
+  const count = SRC("src/components/settings/inventory/CountTab.jsx");
+  assert.match(count, /saveInventorySettings\(\{ cancelReturnMinutes: Number\(shown\) \}\)/);
+  assert.match(count, /Put the stock back when an order is cancelled within/);
+  assert.match(count, /<CancelReturnSetting \/>/);
+  assert.match(SRC("src/components/settings/InventoryView.jsx"), /return: "Returned" \};/);
+});
