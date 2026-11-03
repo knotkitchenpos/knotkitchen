@@ -3,7 +3,7 @@ import { enqueueSnackbar } from "../../../utils/notify";
 import { createIngredient, lookupBarcode, recordStockMovement, updateIngredient } from "../../../https";
 import { UNITS, convertQty, qty, rupees, unitLabel } from "../../../utils/inventory";
 import { Modal, boxClass, btnGhost, btnPrimary, inputClass, labelClass } from "./ui";
-import { BarcodeField } from "./Scanner";
+import { BarcodeField, useScannerKeys } from "./Scanner";
 
 /**
  * Scan to add stock (owner, 2026-11-03). A delivery comes in: scan each
@@ -145,6 +145,12 @@ const ScanStockModal = ({ ingredients, onClose, refresh }) => {
       enqueueSnackbar(e.response?.data?.message || "Could not read that barcode", { variant: "error" });
     }
   };
+  // A scanner used while a quantity or cost box has focus: the box gets back what it had, and the scan counts.
+  useScannerKeys((code, { target, before }) => {
+    const { line, field } = target.dataset;
+    if (line && field) setLines((prev) => prev.map((l) => (l.item._id === line ? { ...l, [field]: before } : l)));
+    onCode(code);
+  });
   const setLine = (i, patch) => setLines(lines.map((l, k) => (k === i ? { ...l, ...patch } : l)));
   const ready = lines.filter((l) => Number(l.quantity) > 0);
   const total = ready.reduce((n, l) => n + (Number(l.cost) || 0), 0);
@@ -195,10 +201,10 @@ const ScanStockModal = ({ ingredients, onClose, refresh }) => {
               <div key={l.item._id} className="flex flex-wrap items-center gap-2 px-3 py-2">
                 <span className="flex-1 min-w-[140px] text-[13px] font-bold text-[#0F172A] truncate">{l.item.name}</span>
                 <input className={`${boxClass} h-[34px] w-[80px] text-right`} type="number" min="0" step="any" inputMode="decimal" value={l.quantity}
-                  onChange={(e) => setLine(i, { quantity: e.target.value })} aria-label={`${l.item.name} quantity`} />
+                  onChange={(e) => setLine(i, { quantity: e.target.value })} aria-label={`${l.item.name} quantity`} data-scan="" data-line={l.item._id} data-field="quantity" />
                 <span className="w-[40px] text-[12px] font-bold text-[#64748B]">{unitLabel(l.item.unit)}</span>
                 <input className={`${boxClass} h-[34px] w-[100px] text-right font-medium`} type="number" min="0" step="any" inputMode="decimal" placeholder="₹ total" value={l.cost}
-                  onChange={(e) => setLine(i, { cost: e.target.value })} aria-label={`${l.item.name} total cost`} />
+                  onChange={(e) => setLine(i, { cost: e.target.value })} aria-label={`${l.item.name} total cost`} data-scan="" data-line={l.item._id} data-field="cost" />
                 <button type="button" aria-label="Remove" className="w-7 text-[18px] text-[#94A3B8] hover:text-[#DC2626]" onClick={() => setLines(lines.filter((_, k) => k !== i))}>&times;</button>
               </div>
             );

@@ -54,3 +54,14 @@ test("a barcode is on one item per store, and the scan endpoint finds it", () =>
   assert.match(SRC("routes/inventoryRoute.js"), /router\.route\("\/barcodes\/:code"\)\.get\(isVerifiedUser, c\.scanBarcode\);/);
   assert.match(SRC("models/inventoryModel.js"), /barcodeProductSchema\.index\(\{ code: 1 \}, \{ unique: true \}\);/);
 });
+
+test("recheck: one barcode however it was read, the camera allowed on the POS site, own codes kept to our list", () => {
+  assert.equal(b.normalizeCode("012345678905"), "0012345678905", "a 12-digit UPC-A is kept as its EAN-13");
+  assert.equal(b.normalizeCode("0012345678905"), "0012345678905");
+  assert.ok(SRC("services/barcodes.js").includes("if (!/^\\d{8,14}$/.test(code)) return null;"), "own codes never go to Open Food Facts");
+  // Caddy's shared headers deny the camera; the POS site writes its own with camera=(self).
+  const caddy = fs.readFileSync(path.join(__dirname, "..", "..", "deploy", "Caddyfile"), "utf8");
+  const pos = caddy.slice(caddy.indexOf("business.{$BASE_DOMAIN} {"), caddy.indexOf("csd.{$BASE_DOMAIN} {"));
+  assert.match(pos, /Permissions-Policy\s+"camera=\(self\), microphone=\(\), geolocation=\(\), payment=\(\)"/);
+  assert.doesNotMatch(pos, /import security_headers/);
+});

@@ -27,7 +27,7 @@ test("Scan to add stock: packets add up, a new barcode comes filled in, everythi
 
 test("a stock count adds one packet per scan to that item", () => {
   const c = SRC("src/components/settings/inventory/CountTab.jsx");
-  assert.match(c, /const now = Math\.round\(\(\(Number\(values\[hit\.id\]\) \|\| 0\) \+ hit\.size\) \* 1000\) \/ 1000;/);
+  assert.match(c, /const now = Math\.round\(\(\(Number\(base\[hit\.id\]\) \|\| 0\) \+ hit\.size\) \* 1000\) \/ 1000;/);
   assert.match(c, /<BarcodeField onCode=\{onCode\} placeholder="Scan each packet on the shelf" \/>/);
 });
 
@@ -35,4 +35,14 @@ test("the Android app may use the camera, asked for only when it is opened", () 
   const m = SRC("android/app/src/main/AndroidManifest.xml");
   assert.match(m, /<uses-permission android:name="android\.permission\.CAMERA" \/>/);
   assert.match(m, /<uses-feature android:name="android\.hardware\.camera" android:required="false" \/>/);
+});
+
+test("recheck: camera reads reach the screen as it is now; a scan typed into a count or cost box is put right", async () => {
+  const s = SRC("src/components/settings/inventory/Scanner.jsx");
+  assert.match(s, /onCodeRef\.current\(code\);/);
+  assert.match(s, /const burst = buf && buf\.target === t && buf\.chars\.length >= 6 && !buf\.slow && now - buf\.last < 80;/);
+  assert.match(SRC("src/components/settings/inventory/CountTab.jsx"), /placeholder="Count" data-scan="" data-line=\{id\}/);
+  assert.match(SRC("src/components/settings/inventory/ScanStock.jsx"), /data-scan="" data-line=\{l\.item\._id\} data-field="cost"/);
+  // An item's Edit checks a new barcode at once.
+  assert.match(SRC("src/components/settings/InventoryView.jsx"), /enqueueSnackbar\(`Barcode \$\{d\.code\} is already on \$\{d\.item\.name\}\.`, \{ variant: "error" \}\);/);
 });

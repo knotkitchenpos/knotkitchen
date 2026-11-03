@@ -5,7 +5,7 @@ import { cancelStockCount, finishStockCount, getIngredients, getInventorySetting
 import { dateTimeIN as when } from "../../../utils";
 import { qty, rupees, unitLabel } from "../../../utils/inventory";
 import { boxClass, btnGhost, btnPrimary, card, inputClass } from "./ui";
-import { BarcodeField } from "./Scanner";
+import { BarcodeField, useScannerKeys } from "./Scanner";
 
 /**
  * Stock count (owner, 2026-11-01). Staff count every item on a phone; what
@@ -78,18 +78,26 @@ const Counting = ({ countId, onDone, onBack }) => {
     return m;
   }, [itemsRes]);
   /** A packet scanned on the shelf: its item's count goes up by one packet. */
-  const onCode = (code) => {
+  // `base`: the counts to add to; a scan typed into a count box first puts that box back.
+  const onCode = (code, base = values) => {
     const hit = byCode.get(code);
     const line = hit && count?.lines.find((l) => String(l.ingredientId) === hit.id);
+    if (base !== values) { dirty.current = true; setValues(base); }
     if (!line) {
       enqueueSnackbar(hit ? "That item was added after this count started." : `Barcode ${code} is not on any item. Add it in the item's Edit, then scan again.`, { variant: "warning" });
       return;
     }
     dirty.current = true;
-    const now = Math.round(((Number(values[hit.id]) || 0) + hit.size) * 1000) / 1000;
-    setValues({ ...values, [hit.id]: String(now) });
+    const now = Math.round(((Number(base[hit.id]) || 0) + hit.size) * 1000) / 1000;
+    setValues({ ...base, [hit.id]: String(now) });
     enqueueSnackbar(`${line.name}: ${qty(now)} ${unitLabel(line.unit)}`, { variant: "success", autoHideDuration: 1200 });
   };
+
+  // A scanner used while a count box has focus: the box gets back what it had, and the scan counts.
+  useScannerKeys((code, { target, before }) => {
+    const id = target.dataset.line;
+    onCode(code, id && values ? { ...values, [id]: before } : values);
+  }, Boolean(values));
 
   useEffect(() => {
     if (count && values === null) {
@@ -179,7 +187,7 @@ const Counting = ({ countId, onDone, onBack }) => {
                   <span className="flex-1 min-w-0 text-[13px] font-bold text-[#0F172A] truncate">{l.name}</span>
                   <input
                     className={`${boxClass} w-[110px] text-right ${values[id] !== "" ? "border-[#86EFAC] bg-[#F0FDF4]" : ""}`}
-                    type="number" min="0" step="any" inputMode="decimal" placeholder="Count"
+                    type="number" min="0" step="any" inputMode="decimal" placeholder="Count" data-scan="" data-line={id}
                     value={values[id]}
                     onChange={(e) => { dirty.current = true; setValues({ ...values, [id]: e.target.value }); }}
                     aria-label={`${l.name} counted`}

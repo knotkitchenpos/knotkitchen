@@ -9,6 +9,16 @@ import { btnGhost, inputClass } from "./ui";
  *   where the WebView has one, else ZXing, loaded only when the camera opens.
  */
 
+/**
+ * A barcode as the server keeps it (pos-backend services/barcodes.js
+ * normalizeCode): no spaces, and a 12-digit UPC-A as its EAN-13, so a packet
+ * read either way finds the same item.
+ */
+export const normalizeBarcode = (v) => {
+  const c = String(v ?? "").trim().replace(/\s+/g, "");
+  return /^\d{12}$/.test(c) ? `0${c}` : c;
+};
+
 const FORMATS = ["ean_13", "ean_8", "upc_a", "upc_e", "code_128", "code_39", "itf", "qr_code"];
 
 /** A short beep and a buzz: the scan was read. */
@@ -37,6 +47,9 @@ const CameraScanner = ({ onCode, onClose, paused }) => {
   const last = useRef({ code: "", at: 0 });
   const pausedRef = useRef(paused);
   pausedRef.current = paused;
+  // The camera starts once; each read goes to the screen as it is now, not as it was when the camera opened.
+  const onCodeRef = useRef(onCode);
+  onCodeRef.current = onCode;
 
   useEffect(() => {
     let stop = () => {};
@@ -47,7 +60,7 @@ const CameraScanner = ({ onCode, onClose, paused }) => {
       if (code === last.current.code && now - last.current.at < 1500) return;
       last.current = { code, at: now };
       scanned();
-      onCode(code);
+      onCodeRef.current(code);
     };
     (async () => {
       try {
@@ -112,6 +125,45 @@ const CameraScanner = ({ onCode, onClose, paused }) => {
 };
 
 /**
+ * A scanner used while another box has focus (a count, a cost): its digits
+ * would land in that box. Scanners type far faster than people, a key every
+ * few milliseconds, so a fast burst of 6+ keys ending in Enter, typed into a
+ * box marked `data-scan`, is taken as a scan: `onScan(code, { target, before })`
+ * gets it, with what the box held before, to put back.
+ */
+export const useScannerKeys = (onScan, enabled = true) => {
+  const ref = useRef(onScan);
+  ref.current = onScan;
+  useEffect(() => {
+    if (!enabled) return undefined;
+    let buf = null; // { chars, target, before, last, slow }
+    const down = (e) => {
+      const t = e.target;
+      if (!(t instanceof HTMLInputElement) || t.dataset.scan === undefined) { buf = null; return; }
+      const now = performance.now();
+      if (e.key === "Enter") {
+        const burst = buf && buf.target === t && buf.chars.length >= 6 && !buf.slow && now - buf.last < 80;
+        const hit = burst ? buf : null;
+        buf = null;
+        if (!hit) return;
+        e.preventDefault();
+        scanned();
+        ref.current(normalizeBarcode(hit.chars), { target: t, before: hit.before });
+        return;
+      }
+      if (e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey) { buf = null; return; }
+      // Keydown comes before the key reaches the box: its value now is what it held before the burst.
+      if (!buf || buf.target !== t || now - buf.last > 60) buf = { chars: "", target: t, before: t.value, last: now, slow: false };
+      else if (now - buf.last > 35) buf.slow = true;
+      buf.chars += e.key;
+      buf.last = now;
+    };
+    window.addEventListener("keydown", down, true);
+    return () => window.removeEventListener("keydown", down, true);
+  }, [enabled]);
+};
+
+/**
  * A box a scanner types into, and a camera button. `onCode` gets each
  * barcode; `keepOpen` leaves the camera on for scan after scan.
  */
@@ -120,7 +172,7 @@ export const BarcodeField = ({ onCode, placeholder = "Scan or type a barcode", k
   const [camera, setCamera] = useState(false);
   const box = useRef(null);
   const send = (code) => {
-    const c = String(code || "").trim();
+    const c = normalizeBarcode(code);
     if (!c) return;
     onCode(c);
     if (!keepOpen) setCamera(false);

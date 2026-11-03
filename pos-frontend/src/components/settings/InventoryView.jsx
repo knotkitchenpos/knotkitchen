@@ -10,6 +10,7 @@ import {
   getMenus,
   getRecipes,
   getStockMovements,
+  lookupBarcode,
   makePreparedBatch,
   saveInventorySettings,
   recordStockMovement,
@@ -17,14 +18,14 @@ import {
   upsertRecipe,
 } from "../../https";
 import { dateTimeIN as when } from "../../utils";
-import { STATUS, UNITS, foodCostTone, linesCost, qty, rupees, unitLabel, unitsLike } from "../../utils/inventory";
+import { STATUS, UNITS, convertQty, foodCostTone, linesCost, qty, rupees, unitLabel, unitsLike } from "../../utils/inventory";
 import { LinesEditor, Modal, boxClass, btnGhost, btnPrimary, cleanLines, inputClass, labelClass, toRows } from "./inventory/ui";
 import DishCostsTab from "./inventory/DishCostsTab";
 import AddonsTab from "./inventory/AddonsTab";
 import CountTab from "./inventory/CountTab";
 import ReportsTab from "./inventory/ReportsTab";
 import ScanStockModal from "./inventory/ScanStock";
-import { BarcodeField } from "./inventory/Scanner";
+import { BarcodeField, normalizeBarcode } from "./inventory/Scanner";
 
 /**
  * Settings > Inventory Management.
@@ -91,6 +92,31 @@ const ItemModal = ({ item, ingredients, onClose, refresh }) => {
   const [prepRows, setPrepRows] = useState(() => toRows(item?.prep?.ingredients || [], ingredients));
   const [barcodes, setBarcodes] = useState(() => (item?.barcodes || []).map((b) => ({ code: b.code, size: String(b.size || 1), label: b.label || "" })));
   const [scanning, setScanning] = useState(false);
+  /**
+   * A barcode added here: refused at once when another item has it; else its
+   * packet size comes from what the product is (a 500 g packet of a KG item
+   * is 0.5), where the product lists know it.
+   */
+  const addBarcode = async (code) => {
+    setScanning(false);
+    if (barcodes.some((b) => b.code === code)) return;
+    let size = "1";
+    let label = "";
+    try {
+      const d = (await lookupBarcode(code)).data.data;
+      if (d.item && d.item._id !== item?._id) {
+        enqueueSnackbar(`Barcode ${d.code} is already on ${d.item.name}.`, { variant: "error" });
+        return;
+      }
+      const asItem = d.product ? convertQty(d.product.size, d.product.unit, form.unit) : null;
+      if (asItem) { size = String(asItem); label = "Pack"; }
+      code = d.code;
+    } catch (e) {
+      if (e.response?.status === 400) { enqueueSnackbar(e.response.data?.message || "That is not a barcode.", { variant: "error" }); return; }
+      /* offline or the lookup failed: keep it, one packet = 1 */
+    }
+    setBarcodes((prev) => (prev.some((b) => b.code === code) ? prev : [...prev, { code, size, label }]));
+  };
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
   const done = (msg) => { enqueueSnackbar(msg, { variant: "success" }); refresh(); onClose(); };
   const fail = (e) => enqueueSnackbar(e.response?.data?.message || "Could not save", { variant: "error" });
@@ -204,11 +230,7 @@ const ItemModal = ({ item, ingredients, onClose, refresh }) => {
         ))}
         {scanning ? (
           <BarcodeField keepOpen={false} placeholder="Scan the packet, or type its barcode"
-            onCode={(code) => {
-              setScanning(false);
-              if (barcodes.some((b) => b.code === code)) return;
-              setBarcodes([...barcodes, { code, size: "1", label: "" }]);
-            }} />
+            onCode={addBarcode} />
         ) : (
           <button type="button" className="text-[12.5px] font-bold text-[#C2410C] hover:underline" onClick={() => setScanning(true)}>+ Add a barcode</button>
         )}
@@ -444,7 +466,7 @@ const DashboardTab = ({ ingredients, refresh, settings }) => {
   const expiring = ingredients.filter((i) => i.expiry && (i.expiry.expired || i.expiry.soon));
   const rows = ingredients
     .filter((i) => filter === "all" || (filter === "expiring" ? expiring.includes(i) : i.status === filter))
-    .filter((i) => i.name.toLowerCase().includes(search.trim().toLowerCase()) || (search.trim().length >= 6 && (i.barcodes || []).some((b) => b.code === search.trim())));
+    .filter((i) => i.name.toLowerCase().includes(search.trim().toLowerCase()) || (search.trim().length >= 6 && (i.barcodes || []).some((b) => b.code === normalizeBarcode(search))));
   const stockValue = ingredients.reduce((n, i) => n + Math.max(0, Number(i.stockQuantity) || 0) * (Number(i.costPerUnit) || 0), 0);
   const actions = { setMove, setEditing, setMaking };
 

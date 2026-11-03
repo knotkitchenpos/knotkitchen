@@ -15,10 +15,18 @@ const USER_AGENT = "KnotKitchen POS/1.0 (support@knotkitchen.com)";
 // "Not on Open Food Facts" is asked again after this long: products get added.
 const RECHECK_MS = 7 * 86400000;
 
-/** A barcode as scanned or typed, or null: EAN/UPC digits, or a store's own code. */
+/**
+ * A barcode as scanned or typed, or null: EAN/UPC digits, or a store's own
+ * code. A 12-digit UPC-A is the same barcode as the EAN-13 with a 0 in front,
+ * and readers report it either way, so it is kept as the EAN-13: one packet,
+ * one code, whichever scanner read it (pos-frontend Scanner.jsx does the same).
+ */
 const normalizeCode = (v) => {
-  const code = String(v ?? "").trim().replace(/\s+/g, "");
-  if (/^\d+$/.test(code)) return code.length >= 6 && code.length <= 14 ? code : null;
+  let code = String(v ?? "").trim().replace(/\s+/g, "");
+  if (/^\d+$/.test(code)) {
+    if (code.length === 12) code = `0${code}`;
+    return code.length >= 6 && code.length <= 14 ? code : null;
+  }
   return /^[0-9A-Za-z.\-_/]{4,32}$/.test(code) ? code : null;
 };
 
@@ -91,6 +99,8 @@ const lookupProduct = async (code, { ask = askOpenFoodFacts } = {}) => {
   const { BarcodeProduct } = require("../models/inventoryModel");
   const known = await BarcodeProduct.findOne({ code }).lean();
   if (known?.name) return productView(known);
+  // Open Food Facts knows retail barcodes (EAN/UPC); a store's own code is only ever in our list.
+  if (!/^\d{8,14}$/.test(code)) return null;
   if (known?.notFound && known.checkedAt && Date.now() - new Date(known.checkedAt).getTime() < RECHECK_MS) return null;
   let found;
   try {

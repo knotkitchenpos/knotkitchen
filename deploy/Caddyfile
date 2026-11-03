@@ -81,8 +81,19 @@ api.{$BASE_DOMAIN} {
 # that surface. Also delete the `onboard` A record from Cloudflare — a stale
 # DNS entry would still be presented a cert here on renewal and 502 forever.
 # =============================================================================
+# The headers are (security_headers) written out because one value differs:
+# camera=(self). Inventory scans packets' barcodes with the camera (owner,
+# 2026-11-03), on this site and in the Android and Windows apps that load it;
+# the shared snippet's camera=() would leave the camera silently unavailable.
 business.{$BASE_DOMAIN} {
-	import security_headers
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options    "nosniff"
+		Referrer-Policy           "strict-origin-when-cross-origin"
+		Permissions-Policy        "camera=(self), microphone=(), geolocation=(), payment=()"
+		-Server
+		-X-Powered-By
+	}
 
 	encode zstd gzip
 	reverse_proxy pos-web:80 {
