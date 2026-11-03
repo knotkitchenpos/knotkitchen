@@ -59,6 +59,12 @@
       const v = kind === "plan" ? plan(code)[field] : kind === "charge" ? (p.charges || {})[code] : undefined;
       if (Number.isFinite(v)) e.textContent = rupees(v);
     });
+    // A plan's limited-time offer note ("Regular price ₹699"): gone once the catalogue price reaches it.
+    $$("[data-offer]").forEach((e) => {
+      const price = plan(e.dataset.offer).price;
+      const regular = Number(((e.querySelector && e.querySelector("[data-price]")) || {}).textContent?.replace(/[^\d.]/g, ""));
+      if (Number.isFinite(price) && Number.isFinite(regular) && price >= regular) e.hidden = true;
+    });
     $$("[data-gst]").forEach((e) => { e.hidden = (p.taxable || {})[e.dataset.gst.split(":")[1]] === false; });
     if (Number.isFinite(p.periodDays)) $$("[data-period]").forEach((e) => { e.textContent = p.periodDays; });
     const addons = $("#addon-list");

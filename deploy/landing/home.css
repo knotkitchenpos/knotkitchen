@@ -245,6 +245,8 @@
 .lines em{flex:none;text-align:right;font:700 1.4rem/1.1 var(--display);font-style:normal;letter-spacing:-.03em;color:var(--text);font-variant-numeric:tabular-nums}
 .lines em small{display:block;margin-top:3px;font:500 .78rem var(--display);letter-spacing:0;color:var(--muted)}
 .plan-card .price b{font-weight:inherit}
+.plan-card .offer-note{margin:-12px 0 20px;font-size:.92rem;font-weight:600}
+.plan-card .offer-note s{opacity:.8}
 /* devices as home.js draws them from the catalogue (the .lines list is the no-script fallback) */
 .devices{list-style:none;margin:0 0 22px;padding:0;display:grid;gap:16px;grid-template-columns:repeat(auto-fill,minmax(min(100%,14rem),1fr))}
 .devices li{display:flex;flex-direction:column;gap:8px;padding:14px;border:1px solid var(--line);border-radius:18px;background:var(--bg)}

@@ -88,10 +88,10 @@ test("landing copy matches what is sold", () => {
   assert.equal(a, b);
 });
 
-test("wallet minimums: first recharge ₹3,000, then ₹1,000 (owner's prices)", () => {
+test("wallet minimums: POS first recharge ₹5,000, then ₹1,000 (owner's prices, CSD catalogue 2026-11-03)", () => {
   assert.doesNotMatch(INDEX, /₹2,500/);
   // Changed 2026-10-16 (was plain text): wrapped so home.js can put today's catalogue amount in.
-  assert.match(INDEX, /<span data-price="plan:POS:firstRechargeMin">₹3,000<\/span> or more in one payment/);
+  assert.match(INDEX, /<span data-price="plan:POS:firstRechargeMin">₹5,000<\/span> or more in one payment/);
   assert.match(INDEX, /each top-up is <span data-price="plan:POS:topUpMin">₹1,000<\/span> or more/);
   assert.match(INDEX, /<b>Website<\/b><span>Your own ordering website and table booking\.<\/span>/);
 });
@@ -262,8 +262,8 @@ test("the pricing HTML is the no-script fallback: every amount written in, each 
   assert.ok(js.indexOf("/api/public/pricing") < js.indexOf("if (still) return;"), "fetched before the reduced-motion return");
   const pricing = INDEX.slice(INDEX.indexOf('id="pricing"'), INDEX.indexOf('id="contact"'));
   for (const [key, text] of [
-    ["plan:POS", "₹499"], ["plan:BILLING", "₹199"], ["plan:POS:firstRechargeMin", "₹3,000"], ["plan:POS:topUpMin", "₹1,000"],
-    ["plan:BILLING:firstRechargeMin", "₹3,000"], ["plan:BILLING:topUpMin", "₹1,500"],
+    ["plan:POS", "₹599"], ["plan:BILLING", "₹249"], ["plan:POS:firstRechargeMin", "₹5,000"], ["plan:POS:topUpMin", "₹1,000"],
+    ["plan:BILLING:firstRechargeMin", "₹3,000"], ["plan:BILLING:topUpMin", "₹1,000"],
     ["charge:website", "₹3"], ["charge:qr", "₹1"], ["charge:knotEats", "₹9"], ["charge:ebill", "₹0.25"],
   ]) {
     assert.ok(pricing.includes(`data-price="${key}">${text}<`), key);
@@ -280,5 +280,5 @@ test("the pricing HTML is the no-script fallback: every amount written in, each 
   assert.match(INDEX, /<dialog class="dev-dialog" id="device-dialog"/);
   // Visitors without an account: no guest checkout, a way to sign up instead.
   assert.match(INDEX, /New to KnotKitchen\? <a href="#contact">Sign up: book a demo<\/a>/);
-  assert.match(INDEX, /<script src="home\.js\?v=6" defer><\/script>/);
+  assert.match(INDEX, /<script src="home\.js\?v=7" defer><\/script>/);
 });
