@@ -48,7 +48,8 @@ api.interceptors.response.use(
 );
 
 export const auth = {
-  login: (email, password, code) => api.post("/auth/login", { email, password, ...(code ? { code } : {}) }).then((r) => r.data.data),
+  // `login` is the phone number (or an email for an account with no phone yet); the server tells them apart.
+  login: (login, password, code) => api.post("/auth/login", { phone: login, password, ...(code ? { code } : {}) }).then((r) => r.data.data),
   me: () => api.get("/auth/me").then((r) => r.data.data),
   logout: () => api.post("/auth/logout").then((r) => r.data),
   // Two-factor sign-in (security audit, 2026-11-03).

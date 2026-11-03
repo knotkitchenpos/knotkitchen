@@ -8,6 +8,7 @@ import { dtOrNever as dt } from "../lib/format";
 
 const EMPTY = {
   fullName: "",
+  phone: "",
   email: "",
   password: "",
   personalEmail: "",
@@ -43,6 +44,7 @@ const StaffDialog = ({ member, onClose, onSaved }) => {
     editing
       ? {
           fullName: member.fullName,
+          phone: member.phone || "",
           email: member.email || "",
           // password is only set on create, or when the admin explicitly resets one on edit
           password: "",
@@ -102,8 +104,21 @@ const StaffDialog = ({ member, onClose, onSaved }) => {
 
         <form onSubmit={submit} className="space-y-4">
           <Field label="Full name" name="fullName" required {...fieldProps} />
+          {/* Staff sign in with this number (owner, 2026-11-03). */}
           <Field
-            label="Login email"
+            label="Login phone number"
+            name="phone"
+            type="tel"
+            inputMode="numeric"
+            autoComplete="tel"
+            maxLength={10}
+            pattern="[0-9]{10}"
+            placeholder="10-digit mobile number"
+            required={!editing || !member?.phone}
+            {...fieldProps}
+          />
+          <Field
+            label="Account email"
             name="email"
             type="email"
             autoComplete="email"
@@ -114,8 +129,8 @@ const StaffDialog = ({ member, onClose, onSaved }) => {
           {editing && (
             <p className="-mt-2 flex items-start gap-1.5 text-xs text-navy-500">
               <FiInfo className="mt-0.5 shrink-0" aria-hidden="true" />
-              The login email identifies this account across the audit log and cannot be changed.
-              Disable this record and create a new one instead.
+              The account email identifies this person across the audit log and cannot be changed.
+              They sign in with the phone number above.
             </p>
           )}
           <Field
@@ -216,7 +231,7 @@ const StaffManagement = () => {
         <div>
           <h1 className="text-2xl font-bold text-navy-900">Staff Management</h1>
           <p className="mt-1 text-sm text-navy-500">
-            Only people listed here can sign in — an unlisted email cannot log in.
+            Only people listed here can sign in, with their phone number and password.
           </p>
         </div>
         <button type="button" onClick={() => setDialog({})}
@@ -226,7 +241,7 @@ const StaffManagement = () => {
       </header>
 
       <input value={q} onChange={(e) => setQ(e.target.value)}
-        placeholder="Search name, Staff ID or email…"
+        placeholder="Search name, Staff ID, phone or email…"
         aria-label="Search staff"
         className="w-full rounded-xl border border-navy-200 px-3.5 py-2.5 text-sm outline-none focus:border-brand-500" />
 
@@ -252,7 +267,7 @@ const StaffManagement = () => {
                   </div>
                   <StatusBadge status={m.status} />
                 </div>
-                <p className="mt-2 break-all text-sm text-navy-700">{m.email}</p>
+                <p className="mt-2 break-all text-sm text-navy-700">{m.phone || "No phone yet"} · {m.email}</p>
                 <p className="mt-1 inline-flex items-center gap-1.5 text-xs font-medium text-navy-600">
                   {m.role === "admin" && <FiShield size={12} className="text-brand-600" aria-hidden="true" />}
                   {m.role === "admin" ? "Administrator" : "CSD Staff"}
@@ -284,7 +299,7 @@ const StaffManagement = () => {
               <tr>
                 <th scope="col" className="px-4 py-3">Staff ID</th>
                 <th scope="col" className="px-4 py-3">Name</th>
-                <th scope="col" className="px-4 py-3">Email</th>
+                <th scope="col" className="px-4 py-3">Login phone · email</th>
                 <th scope="col" className="px-4 py-3">Role</th>
                 <th scope="col" className="px-4 py-3">Last login</th>
                 <th scope="col" className="px-4 py-3">Status</th>
@@ -305,7 +320,10 @@ const StaffManagement = () => {
                       </div>
                       {m.officialEmail && <div className="text-xs text-navy-400">{m.officialEmail}</div>}
                     </td>
-                    <td className="px-4 py-3 text-navy-700">{m.email}</td>
+                    <td className="px-4 py-3 text-navy-700">
+                      <span className="block font-medium">{m.phone || <span className="text-amber-600">No phone yet</span>}</span>
+                      <span className="block text-xs text-navy-500">{m.email}</span>
+                    </td>
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center gap-1.5 text-xs font-medium text-navy-700">
                         {m.role === "admin" && <FiShield size={12} className="text-brand-600" aria-hidden="true" />}

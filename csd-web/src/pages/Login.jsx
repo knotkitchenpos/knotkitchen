@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { FiArrowRight, FiAlertCircle, FiMail, FiLock, FiShield, FiHeadphones, FiActivity } from "react-icons/fi";
+import { FiArrowRight, FiAlertCircle, FiPhone, FiLock, FiShield, FiHeadphones, FiActivity } from "react-icons/fi";
 import { auth, errorMessage } from "../api";
 import { useAuth } from "../context/AuthContext";
 import markUrl from "../assets/knotkitchen-mark.png";
@@ -8,8 +8,9 @@ import markUrl from "../assets/knotkitchen-mark.png";
  * CSD sign-in.
  *
  * Two halves on a wide screen: the brand panel (the same navy, glow and grid
- * as knotkitchen.com) and the form. On a phone only the form shows. Same
- * fields as ever: email + password, no self-signup.
+ * as knotkitchen.com) and the form. On a phone only the form shows. Phone
+ * number + password (owner, 2026-11-03; an email still works for an account
+ * with no phone yet), no self-signup.
  */
 const POINTS = [
   [FiHeadphones, "Every store, one console", "Orders, menus, billing and chat for each restaurant you support."],
@@ -22,7 +23,7 @@ const field =
 
 const Login = () => {
   const { setStaff } = useAuth();
-  const [email, setEmail] = useState("");
+  const [login, setLogin] = useState(""); // phone number, or an email for an account with no phone yet
   const [password, setPassword] = useState("");
   // Two-factor sign-in (security audit, 2026-11-03): asked for once the password is right.
   const [needCode, setNeedCode] = useState(false);
@@ -35,7 +36,7 @@ const Login = () => {
     setError("");
     setBusy(true);
     try {
-      setStaff(await auth.login(email.trim().toLowerCase(), password, needCode ? code : undefined));
+      setStaff(await auth.login(login.trim(), password, needCode ? code : undefined));
     } catch (err) {
       if (err?.response?.data?.code === "MFA_REQUIRED") {
         // The first time this only asks for the code; after that the message says it was wrong.
@@ -43,7 +44,7 @@ const Login = () => {
         setNeedCode(true);
         setCode("");
       } else {
-        setError(errorMessage(err, "Invalid email or password."));
+        setError(errorMessage(err, "Invalid phone number or password."));
       }
     } finally {
       setBusy(false);
@@ -113,18 +114,19 @@ const Login = () => {
             )}
 
             <label className="block">
-              <span className="text-sm font-semibold text-navy-800">Email</span>
+              <span className="text-sm font-semibold text-navy-800">Phone number</span>
               <div className={field}>
-                <FiMail className="mx-3 text-navy-400" aria-hidden="true" />
+                <FiPhone className="mx-3 text-navy-400" aria-hidden="true" />
                 <input
-                  type="email"
+                  type="text"
+                  inputMode="tel"
                   autoComplete="username"
                   required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  value={login}
+                  onChange={(e) => setLogin(e.target.value)}
                   disabled={busy}
                   className="w-full border-0 bg-transparent py-3 pr-3 text-navy-900 placeholder-navy-300 !shadow-none focus:outline-none"
-                  placeholder="you@knotkitchen.com"
+                  placeholder="10-digit mobile number"
                 />
               </div>
             </label>
@@ -172,7 +174,7 @@ const Login = () => {
 
             <button
               type="submit"
-              disabled={busy || !email || !password || (needCode && code.length !== 6)}
+              disabled={busy || !login || !password || (needCode && code.length !== 6)}
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-brand-600 py-3.5 font-semibold text-white shadow-glow hover:brightness-110 disabled:opacity-60 disabled:shadow-none"
             >
               {busy ? "Signing in…" : "Sign in"}

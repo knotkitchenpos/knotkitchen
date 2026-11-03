@@ -3,6 +3,9 @@ const CsdStaff = require("../models/csdStaffModel");
 const config = require("../config/config");
 const { startSession, clearSessionCookie } = require("../middlewares/csdAuth");
 const { csdAudit } = require("../services/csdAuditService");
+const { normalizePhone } = require("../services/otpService");
+
+const BAD_LOGIN = "Invalid phone number or password.";
 const { newSecret, matchStep, otpauthUrl } = require("../services/totp");
 const { seal, open } = require("../services/secretBox");
 
@@ -105,30 +108,39 @@ const seedSuperAdmin = async () => {
 };
 
 /**
- * POST /api/csd/auth/login  { email, password }
+ * POST /api/csd/auth/login  { phone, password }  (or { email, password })
  *
- * A single generic error for every failure — bad email, bad password,
+ * Staff sign in with their phone number (owner, 2026-11-03). An email still
+ * works, for an account with no phone set yet: whatever contains an "@" is
+ * taken as one.
+ *
+ * A single generic error for every failure — bad phone, bad password,
  * disabled account, malformed input — so this endpoint cannot be used to
  * enumerate staff.
  */
 const login = async (req, res, next) => {
   try {
-    const rawEmail = req.body?.email;
+    const rawId = req.body?.phone ?? req.body?.email;
     const rawPassword = req.body?.password;
-    if (typeof rawEmail !== "string" || typeof rawPassword !== "string") {
-      return next(createHttpError(400, "Email and password are required."));
+    if (typeof rawId !== "string" || typeof rawPassword !== "string") {
+      return next(createHttpError(400, "Phone number and password are required."));
     }
-    const email = rawEmail.trim().toLowerCase();
+    const id = rawId.trim();
     const password = rawPassword; // do NOT trim — trailing spaces are legal password characters
-    if (!email || !password) {
-      return next(createHttpError(400, "Email and password are required."));
+    if (!id || !password) {
+      return next(createHttpError(400, "Phone number and password are required."));
+    }
+    const byEmail = id.includes("@");
+    const phone = byEmail ? "" : normalizePhone(id);
+    if (!byEmail && !/^\d{10}$/.test(phone)) {
+      return next(createHttpError(401, BAD_LOGIN));
     }
 
     // .select("+password") because the schema hides it by default.
-    const staff = await CsdStaff.findOne({ email }).select("+password +mfa.secret");
+    const staff = await CsdStaff.findOne(byEmail ? { email: id.toLowerCase() } : { phone }).select("+password +mfa.secret");
     // Same message for "no such user" and "wrong password" — no enumeration.
     if (!staff || staff.status !== "active") {
-      return next(createHttpError(401, "Invalid email or password."));
+      return next(createHttpError(401, BAD_LOGIN));
     }
 
     // Locked after too many wrong passwords or codes in a row (security audit, 2026-11-03).
@@ -140,7 +152,7 @@ const login = async (req, res, next) => {
     const ok = await staff.comparePassword(password);
     if (!ok) {
       await failedSignIn(staff);
-      return next(createHttpError(401, "Invalid email or password."));
+      return next(createHttpError(401, BAD_LOGIN));
     }
 
     // The second factor: a current code from the authenticator app, each used once.

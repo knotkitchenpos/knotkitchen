@@ -40,6 +40,7 @@ const CsdStaff = {
     for (const doc of staffById.values()) {
       for (const c of clauses) {
         if (c?.email && doc.email === c.email) { found = doc; break; }
+        if (c?.phone && doc.phone === c.phone) { found = doc; break; }
         if (c?.isPredefined === true && doc.isPredefined === true) { found = doc; break; }
       }
       if (found) break;
@@ -182,5 +183,30 @@ test("login refuses missing fields with 400 (not 401 — separate error class)",
   for (const body of [{}, { email: "x@y.z" }, { password: "abc" }, { email: 1, password: "" }]) {
     const { err } = await run(authCtrl.login, { body, headers: {}, ip: "127.0.0.1" });
     assert.equal(err?.status, 400, `body=${JSON.stringify(body)} should be 400`);
+  }
+});
+
+test("owner, 2026-11-03: staff sign in with their phone number (+91 and spaces are fine)", async () => {
+  const boss = [...staffById.values()].find((d) => d.email === "boss@example.com");
+  boss.phone = "8646826709";
+  try {
+    for (const phone of ["8646826709", "+91 86468 26709"]) {
+      const { res, err } = await run(authCtrl.login, { body: { phone, password: "TestSuperSecret_123" }, headers: {}, ip: "127.0.0.1" });
+      assert.equal(err, null, phone);
+      assert.equal(res.statusCode, 200);
+      assert.ok(res.cookies.csdToken);
+    }
+    // A wrong password, an unknown number and a non-number all get the same answer.
+    for (const body of [{ phone: "8646826709", password: "WRONG" }, { phone: "9999999999", password: "x" }, { phone: "12", password: "x" }]) {
+      const { err } = await run(authCtrl.login, { body, headers: {}, ip: "127.0.0.1" });
+      assert.equal(err?.status, 401, JSON.stringify(body));
+      assert.equal(err.message, "Invalid phone number or password.");
+    }
+    // An email typed in the phone box still signs in an account (one with no phone yet).
+    const { err } = await run(authCtrl.login, { body: { phone: "boss@example.com", password: "TestSuperSecret_123" }, headers: {}, ip: "127.0.0.1" });
+    assert.equal(err, null);
+  } finally {
+    boss.failedLogins = 0;
+    boss.lockedUntil = undefined;
   }
 });

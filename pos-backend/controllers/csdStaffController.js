@@ -56,7 +56,7 @@ const listStaff = async (req, res, next) => {
     if (str(q.role)) filters.role = str(q.role);
     if (str(q.q)) {
       const rx = new RegExp(escapeRegex(str(q.q)), "i");
-      filters.$or = [{ fullName: rx }, { staffId: rx }, { email: rx }, { officialEmail: rx }];
+      filters.$or = [{ fullName: rx }, { staffId: rx }, { phone: rx }, { email: rx }, { officialEmail: rx }];
     }
 
     const staff = await CsdStaff.find(filters).sort({ staffId: 1 }).lean();
@@ -137,6 +137,8 @@ const createStaff = async (req, res, next) => {
     const phone = b.phone ? normalizePhone(b.phone) : "";
     const role = str(b.role) || "staff";
     const fieldErrors = {};
+    // Staff sign in with their phone (owner, 2026-11-03), so a new account needs one.
+    if (!phone) fieldErrors.phone = "Enter the 10-digit mobile number they will sign in with.";
 
     if (fullName.length < 2) fieldErrors.fullName = "Enter the staff member's full name.";
     if (!EMAIL_RE.test(email)) fieldErrors.email = "Enter a valid email address.";
@@ -289,6 +291,21 @@ const updateStaff = async (req, res, next) => {
       return next(
         createHttpError(400, "A staff member's login email cannot be changed. Disable this record and create a new one.")
       );
+    }
+
+    // The phone they sign in with (owner, 2026-11-03). One account per number.
+    if (b.phone !== undefined) {
+      const phone = b.phone ? normalizePhone(b.phone) : "";
+      if (phone && !PHONE_RE.test(phone)) {
+        return next(createHttpError(400, "Phone must be a 10-digit number.", { fieldErrors: { phone: "Phone must be a 10-digit number." } }));
+      }
+      if (phone !== (staff.phone || "")) {
+        if (phone && (await CsdStaff.exists({ phone, _id: { $ne: staff._id } }))) {
+          return next(createHttpError(409, "A staff member with that phone number already exists.", { fieldErrors: { phone: "This number is already registered." } }));
+        }
+        // Left out entirely when cleared: the phone index is sparse, so an empty value would collide.
+        staff.phone = phone || undefined;
+      }
     }
 
     // Optional password reset. 8+ chars enforced consistently with create.

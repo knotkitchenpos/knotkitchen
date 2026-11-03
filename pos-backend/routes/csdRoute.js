@@ -77,7 +77,7 @@ const {
 const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 20,
-  keyGenerator: (req) => 'csd-login:'+clientIp(req)+':'+String(req.body?.email||'').toLowerCase().slice(0,64),
+  keyGenerator: (req) => 'csd-login:'+clientIp(req)+':'+String(req.body?.phone||req.body?.email||'').toLowerCase().slice(0,64),
 });
 
 router.post('/auth/login', loginLimiter, login);
