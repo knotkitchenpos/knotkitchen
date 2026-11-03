@@ -49,12 +49,21 @@ function spend(jti, expMs) {
  */
 async function verifyAssertion(token, { getKey = csdPublicKey } = {}) {
   const check = (pem) => jwt.verify(String(token || ""), pem, { algorithms: ["ES256"], audience: "kkmdm", issuer: "csd" });
+  // CSD's key not reachable: an error of its own (503), not "invalid".
+  const keyOf = async (fresh) => {
+    try {
+      return await getKey(fresh);
+    } catch (e) {
+      throw Object.assign(new Error(`CSD could not be reached: ${e.message}`), { unreachable: true });
+    }
+  };
   let claims;
   try {
-    claims = check(await getKey());
+    claims = check(await keyOf(false));
   } catch (e) {
+    if (e?.unreachable) throw e;
     if (e?.name !== "JsonWebTokenError") return null;
-    try { claims = check(await getKey(true)); } catch { return null; } // CSD may have a new key
+    try { claims = check(await keyOf(true)); } catch (e2) { if (e2?.unreachable) throw e2; return null; } // CSD may have a new key
   }
   if (!claims?.sub || !claims.exp || !claims.iat || claims.exp - claims.iat > MAX_LIFE_S) return null;
   if (!spend(claims.jti, claims.exp * 1000)) return null;
@@ -63,23 +72,25 @@ async function verifyAssertion(token, { getKey = csdPublicKey } = {}) {
 
 const roleFor = (csdRole) => (csdRole === "admin" ? "super_admin" : "support");
 
-const status = new Map(); // csd staff _id -> { active, at }
+const status = new Map(); // csd staff _id -> { active, role, at }
 /**
- * Is the linked CSD account still active? Read from KnotKitchen's database
- * (the same read-only link the store sync uses), cached a few minutes. True
- * where that link is not configured (development), so it never locks out.
+ * The linked CSD account as it is now: { active, role } (role: the KKMDM role
+ * it maps to). Read from KnotKitchen's database (the same read-only link the
+ * store sync uses), cached a few minutes, so a CSD account disabled or demoted
+ * since signing in is caught even though KKMDM sessions last until sign-out.
+ * Where that link is not configured (development): active, role unchanged.
  */
-async function csdStaffActive(csdId, { now = Date.now() } = {}) {
+async function csdStaffNow(csdId, { now = Date.now() } = {}) {
   const hit = status.get(csdId);
-  if (hit && now - hit.at < STATUS_TTL_MS) return hit.active;
+  if (hit && now - hit.at < STATUS_TTL_MS) return hit;
   const conn = await source();
-  if (!conn) return true;
+  if (!conn) return { active: true, role: null };
   const mongoose = require("mongoose");
-  if (!mongoose.Types.ObjectId.isValid(csdId)) return false;
-  const row = await conn.collection("csdstaffs").findOne({ _id: new mongoose.Types.ObjectId(csdId) }, { projection: { status: 1 } });
-  const active = row?.status === "active";
-  status.set(csdId, { active, at: now });
-  return active;
+  if (!mongoose.Types.ObjectId.isValid(csdId)) return { active: false, role: null };
+  const row = await conn.collection("csdstaffs").findOne({ _id: new mongoose.Types.ObjectId(csdId) }, { projection: { status: 1, role: 1 } });
+  const out = { active: row?.status === "active", role: row ? roleFor(row.role) : null, at: now };
+  status.set(csdId, out);
+  return out;
 }
 
-module.exports = { verifyAssertion, roleFor, csdStaffActive, csdPublicKey };
+module.exports = { verifyAssertion, roleFor, csdStaffNow, csdPublicKey };

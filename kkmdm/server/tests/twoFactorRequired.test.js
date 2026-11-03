@@ -23,3 +23,12 @@ test("sessions last until signed out, one per device", () => {
   const routes = fs.readFileSync(path.join(__dirname, "..", "src", "routes", "auth.js"), "utf8");
   assert.match(routes, /await endSession\(req\.admin, req\.sessionId\);/);
 });
+
+/** Recheck, 2026-11-03: a CSD account demoted or disabled since signing in is caught within minutes. */
+test("an account from CSD follows its CSD status and role", () => {
+  const auth = fs.readFileSync(path.join(__dirname, "..", "src", "lib", "adminAuth.js"), "utf8");
+  assert.ok(auth.includes("if (now.role && now.role !== admin.role) {"));
+  assert.ok(auth.includes("if (!now.active) {"));
+  const sso = fs.readFileSync(path.join(__dirname, "..", "src", "lib", "csdSso.js"), "utf8");
+  assert.ok(sso.includes("projection: { status: 1, role: 1 }"));
+});

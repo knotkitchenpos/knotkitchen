@@ -9,6 +9,18 @@ const { encrypt, decrypt, verifyTotp, newTotpSecret } = require("../lib/crypto")
 const { audit } = require("../lib/audit");
 const { verifyAssertion, roleFor } = require("../lib/csdSso");
 
+/** This browser's own valid session of `admin`, if it has one: { sid, authAt }. */
+function currentSession(req, admin) {
+  try {
+    const jwt = require("jsonwebtoken");
+    const c = jwt.verify(req.cookies?.kkmdm_session || "", config.adminJwtSecret, { algorithms: ["HS256"] });
+    const listed = c.sid && (admin.sessions || []).some((s) => s.sid === c.sid);
+    return String(c.sub) === String(admin._id) && c.sv === admin.sessionVersion && listed ? { sid: c.sid, authAt: c.authAt || 0 } : null;
+  } catch {
+    return null;
+  }
+}
+
 const router = express.Router();
 const loginLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 20, name: "login" });
 
@@ -87,7 +99,13 @@ router.post("/login", loginLimit, wrap(async (req, res) => {
  * sign-in, for destructive actions; an ordinary one does not.
  */
 router.post("/sso", loginLimit, wrap(async (req, res) => {
-  const claims = await verifyAssertion(req.body?.assertion);
+  let claims;
+  try {
+    claims = await verifyAssertion(req.body?.assertion);
+  } catch (e) {
+    if (e?.unreachable) throw new HttpError(503, "csd_unreachable", e.message);
+    throw e;
+  }
   if (!claims) throw new HttpError(401, "sso_invalid");
   const { Company } = require("../models");
   const subject = `csd:${claims.sub}`;
@@ -109,7 +127,16 @@ router.post("/sso", loginLimit, wrap(async (req, res) => {
   admin.role = roleFor(claims.role);
   admin.lastLoginAt = new Date();
   admin.lastLoginIp = req.ip;
-  await startSession(req, res, admin, { authAt: claims.reauth ? Date.now() : 0 });
+  // This browser already signed in to this account (a confirm before a
+  // destructive action): its device session carries on, newly confirmed,
+  // instead of another one pushing the account's other devices out.
+  const current = currentSession(req, admin);
+  if (current) {
+    await admin.save();
+    issueSession(res, admin, { authAt: claims.reauth ? Date.now() : current.authAt, sid: current.sid });
+  } else {
+    await startSession(req, res, admin, { authAt: claims.reauth ? Date.now() : 0 });
+  }
   req.admin = admin;
   await audit(req, claims.reauth ? "auth.sso_reauth" : "auth.sso", { targetType: "admin", targetId: admin._id, details: { csdStaffId: claims.staffId, role: admin.role } });
   res.json({ admin: publicAdmin(admin) });

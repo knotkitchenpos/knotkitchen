@@ -81,11 +81,19 @@ function requireAdmin() {
       if (config.isProduction && !admin.totpEnabled && admin.ssoProvider !== "csd" && !TWO_FA_SETUP_PATHS.includes(req.originalUrl.split("?")[0])) {
         return res.status(403).json({ error: "2fa_required" });
       }
-      // A CSD account disabled since: KKMDM goes with it (checked every few minutes).
-      if (admin.ssoProvider === "csd" && !(await require("./csdSso").csdStaffActive(String(admin.ssoSubject || "").replace(/^csd:/, "")))) {
-        await endSession(admin, claims.sid);
-        clearSession(res);
-        return res.status(401).json({ error: "session_revoked" });
+      // A CSD account disabled since: KKMDM goes with it; demoted or promoted:
+      // its KKMDM role follows (checked every few minutes, lib/csdSso.js).
+      if (admin.ssoProvider === "csd") {
+        const now = await require("./csdSso").csdStaffNow(String(admin.ssoSubject || "").replace(/^csd:/, ""));
+        if (!now.active) {
+          await endSession(admin, claims.sid);
+          clearSession(res);
+          return res.status(401).json({ error: "session_revoked" });
+        }
+        if (now.role && now.role !== admin.role) {
+          admin.role = now.role;
+          await AdminUser.updateOne({ _id: admin._id }, { $set: { role: now.role } });
+        }
       }
       req.admin = admin;
       req.authAt = claims.authAt;

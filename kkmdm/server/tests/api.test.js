@@ -343,3 +343,38 @@ test("single sign-on from CSD: a signed assertion signs in once; roles map; wipi
     keyServer.close();
   }
 });
+
+test("recheck: a confirm in a signed-in browser keeps its device session; CSD unreachable is its own error", async () => {
+  const crypto = require("crypto");
+  const jwt = require("jsonwebtoken");
+  const csdKey = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+  const pub = csdKey.publicKey.export({ type: "spki", format: "pem" });
+  const keyServer = http.createServer((q, r) => { r.setHeader("Content-Type", "application/json"); r.end(JSON.stringify({ publicKey: pub })); });
+  await new Promise((ok) => keyServer.listen(0, ok));
+  const before = config.csdSsoKeyUrl;
+  config.csdSsoKeyUrl = `http://127.0.0.1:${keyServer.address().port}/key`;
+  const assertion = (claims) => jwt.sign({ staffId: "KK-ST-010", name: "Confirmer", jti: crypto.randomUUID(), ...claims }, csdKey.privateKey, { algorithm: "ES256", audience: "kkmdm", issuer: "csd", expiresIn: 60 });
+  const AdminUser = mongoose.model("AdminUser");
+  try {
+    const csdId = "6ae000000000000000000003";
+    const first = await call("POST", "/api/auth/sso", { body: { assertion: assertion({ sub: csdId, role: "admin" }) } });
+    assert.strictEqual(first.status, 200);
+    const count = async () => (await AdminUser.findOne({ ssoSubject: `csd:${csdId}` })).sessions.length;
+    const n = await count();
+    for (let i = 0; i < 3; i += 1) {
+      const re = await call("POST", "/api/auth/sso", { cookie: first.cookie, body: { assertion: assertion({ sub: csdId, role: "admin", reauth: true }) } });
+      assert.strictEqual(re.status, 200);
+    }
+    assert.strictEqual(await count(), n, "confirming again and again adds no device sessions");
+    // A cached key keeps working while CSD is briefly away; a new key that cannot be fetched is a 503, not "invalid".
+    config.csdSsoKeyUrl = "http://127.0.0.1:1/unreachable";
+    const newKey = crypto.generateKeyPairSync("ec", { namedCurve: "prime256v1" });
+    const signedWithNewKey = jwt.sign({ sub: csdId, role: "admin", staffId: "KK-ST-010", jti: crypto.randomUUID() }, newKey.privateKey, { algorithm: "ES256", audience: "kkmdm", issuer: "csd", expiresIn: 60 });
+    const down = await call("POST", "/api/auth/sso", { body: { assertion: signedWithNewKey } });
+    assert.strictEqual(down.status, 503);
+    assert.strictEqual(down.body.error, "csd_unreachable");
+  } finally {
+    config.csdSsoKeyUrl = before;
+    keyServer.close();
+  }
+});

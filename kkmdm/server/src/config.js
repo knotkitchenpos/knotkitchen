@@ -72,7 +72,8 @@ const config = {
   dashboardDir: env.DASHBOARD_DIR || "",
   superAdminEmail: env.SUPERADMIN_EMAIL || "admin@knotkitchen.com",
   superAdminPassword: env.SUPERADMIN_PASSWORD || "",
-  dashboardOrigins: (env.DASHBOARD_ORIGINS || "http://localhost:5177").split(",").map((s) => s.trim()).filter(Boolean),
+  // Local CSD (5175) shows KKMDM too.
+  dashboardOrigins: (env.DASHBOARD_ORIGINS || "http://localhost:5177,http://localhost:5175").split(",").map((s) => s.trim()).filter(Boolean),
   alertWebhookUrl: env.ALERT_WEBHOOK_URL || "",
   // Hosts the Applications "import from URL" may download from.
   importHosts: (env.KKMDM_IMPORT_HOSTS || "github.com").split(",").map((s) => s.trim()).filter(Boolean),
