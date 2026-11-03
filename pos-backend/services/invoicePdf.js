@@ -17,11 +17,11 @@ const { taxColumns } = require("./invoiceDocument");
 const FONT = path.join(__dirname, "..", "assets", "fonts");
 const C = {
   ink: "#0F172A",
-  navy: "#0B3A82",
-  blue: "#1E5A8A",
-  tint: "#DCE9FA",
-  tint2: "#EEF5FD",
-  tintLine: "#9DBDE6",
+  navy: "#C2410C",
+  blue: "#9A3412",
+  tint: "#FFE8D9",
+  tint2: "#FFF5EE",
+  tintLine: "#FDBA8C",
   line: "#E2E8F0",
   dash: "#CBD5E1",
   red: "#B91C1C",

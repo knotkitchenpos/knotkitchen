@@ -110,15 +110,15 @@ const renderInvoice = (invoice) => {
 <title>${esc(invoice.invoiceNumber)} — ${registered ? "Tax Invoice" : "Commercial Invoice"}</title>
 <style>
   /* Laid out after the owner's reference invoice (2026-10-31). */
-  :root { color-scheme: light; --ink:#0F172A; --navy:#0B3A82; --blue:#1E5A8A;
-          --tint:#DCE9FA; --tint-2:#EEF5FD; --line:#E2E8F0; --muted:#475569; }
+  :root { color-scheme: light; --ink:#0F172A; --navy:#C2410C; --blue:#9A3412; --brand:#FD5302;
+          --tint:#FFE8D9; --tint-2:#FFF5EE; --line:#E2E8F0; --muted:#475569; }
   * { box-sizing: border-box; }
-  body { margin:0; padding:24px 16px 48px; background:#EEF3F9; color:var(--ink);
+  body { margin:0; padding:24px 16px 48px; background:#FBF3EE; color:var(--ink);
          font:14.5px/1.55 "Segoe UI",-apple-system,BlinkMacSystemFont,Roboto,"Noto Sans",sans-serif; }
   .bar { max-width:800px; margin:0 auto 12px; display:flex; justify-content:flex-end; }
-  .dl { display:inline-flex; align-items:center; gap:6px; padding:9px 16px; border-radius:10px; background:var(--navy);
+  .dl { display:inline-flex; align-items:center; gap:6px; padding:9px 16px; border-radius:10px; background:var(--brand);
         color:#fff; font-weight:700; font-size:14px; text-decoration:none; }
-  .dl:hover { background:#082C63; }
+  .dl:hover { background:#D64502; }
   .sheet { max-width:800px; margin:0 auto; background:#fff; padding:36px 40px 30px;
            border-radius:16px; box-shadow:0 2px 10px rgba(15,23,42,.08); }
   .top { display:flex; justify-content:space-between; align-items:flex-start; gap:24px; flex-wrap:wrap; }
@@ -156,7 +156,7 @@ const renderInvoice = (invoice) => {
   .words { margin-top:22px; font-size:14.5px; }
   .words b { font-weight:700; }
   .note { margin-top:20px; display:flex; align-items:center; gap:14px; padding:14px 22px; border-radius:12px;
-          border:1.5px solid #9DBDE6; background:var(--tint-2); font-weight:700; font-size:14.5px; }
+          border:1.5px solid #FDBA8C; background:var(--tint-2); font-weight:700; font-size:14.5px; }
   .note .i { flex:none; width:26px; height:26px; border-radius:50%; border:2.5px solid var(--navy); color:var(--navy);
              display:flex; align-items:center; justify-content:center; font:800 15px/1 Georgia,serif; }
   .foot { margin-top:28px; padding-top:16px; border-top:1.5px dashed #CBD5E1;
