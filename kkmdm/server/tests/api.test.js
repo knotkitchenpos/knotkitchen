@@ -186,7 +186,9 @@ test("wipe needs a fresh re-auth even for a Super Admin", async () => {
   // Push the session's authAt outside the re-auth window by issuing an old token.
   const jwt = require("jsonwebtoken");
   const admin = await mongoose.model("AdminUser").findOne({ email: "super@test.local" });
-  const old = jwt.sign({ sub: String(admin._id), sv: admin.sessionVersion, authAt: Date.now() - 3600e3 }, config.adminJwtSecret, { algorithm: "HS256", expiresIn: "10m" });
+  // The device session from signing in (each device has one; a token without a listed one is refused).
+  const sid = admin.sessions[admin.sessions.length - 1].sid;
+  const old = jwt.sign({ sub: String(admin._id), sv: admin.sessionVersion, sid, authAt: Date.now() - 3600e3 }, config.adminJwtSecret, { algorithm: "HS256", expiresIn: "10m" });
   const cookie = `kkmdm_session=${old}`;
   const r = await call("POST", `/api/devices/${deviceId}/commands`, { cookie, body: { type: "wipe" } });
   assert.strictEqual(r.status, 428);

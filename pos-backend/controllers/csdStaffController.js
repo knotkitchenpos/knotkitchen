@@ -299,6 +299,9 @@ const updateStaff = async (req, res, next) => {
         }));
       }
       staff.password = b.password; // pre-save hook hashes it
+      // A new password signs this account out on every device.
+      staff.tokenVersion = (staff.tokenVersion || 0) + 1;
+      staff.sessions = [];
     }
 
     await staff.save();

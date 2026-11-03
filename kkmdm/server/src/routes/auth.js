@@ -3,7 +3,7 @@ const bcrypt = require("bcrypt");
 const config = require("../config");
 const { AdminUser } = require("../models");
 const { wrap, rateLimit, HttpError } = require("../lib/http");
-const { issueSession, clearSession, requireAdmin } = require("../lib/adminAuth");
+const { issueSession, startSession, endSession, clearSession, requireAdmin } = require("../lib/adminAuth");
 const { permissionsFor, ROLES } = require("../lib/rbac");
 const { encrypt, decrypt, verifyTotp, newTotpSecret } = require("../lib/crypto");
 const { audit } = require("../lib/audit");
@@ -70,8 +70,7 @@ router.post("/login", loginLimit, wrap(async (req, res) => {
   admin.lockedUntil = undefined;
   admin.lastLoginAt = new Date();
   admin.lastLoginIp = req.ip;
-  await admin.save();
-  issueSession(res, admin);
+  await startSession(req, res, admin);
   req.admin = admin;
   await audit(req, "auth.login", { targetType: "admin", targetId: admin._id });
   res.json({ admin: publicAdmin(admin), mustEnable2fa: !admin.totpEnabled && config.isProduction });
@@ -79,6 +78,8 @@ router.post("/login", loginLimit, wrap(async (req, res) => {
 
 router.post("/logout", requireAdmin(), wrap(async (req, res) => {
   await audit(req, "auth.logout", { targetType: "admin", targetId: req.admin._id });
+  // Only this device signs out; the others stay signed in.
+  await endSession(req.admin, req.sessionId);
   clearSession(res);
   res.json({ ok: true });
 }));
@@ -94,7 +95,7 @@ router.post("/reauth", loginLimit, requireAdmin(), wrap(async (req, res) => {
     await audit(req, "auth.reauth_failed", { targetType: "admin", targetId: req.admin._id, details: { reason: problem } });
     return res.status(401).json({ error: problem });
   }
-  issueSession(res, req.admin, { authAt: Date.now() });
+  issueSession(res, req.admin, { authAt: Date.now(), sid: req.sessionId });
   await audit(req, "auth.reauth", { targetType: "admin", targetId: req.admin._id });
   res.json({ ok: true, validForMinutes: config.reauthWindowMinutes });
 }));
@@ -123,9 +124,10 @@ router.post("/password", requireAdmin(), wrap(async (req, res) => {
   const weak = checkPassword(req.body.newPassword);
   if (weak) throw new HttpError(400, "weak_password", weak);
   req.admin.passwordHash = await bcrypt.hash(req.body.newPassword, 12);
+  // Every other device is signed out; this one carries on with a new session.
   req.admin.sessionVersion += 1;
-  await req.admin.save();
-  issueSession(res, req.admin);
+  req.admin.sessions = [];
+  await startSession(req, res, req.admin);
   await audit(req, "auth.password_changed", { targetType: "admin", targetId: req.admin._id });
   res.json({ ok: true });
 }));

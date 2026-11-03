@@ -1,7 +1,7 @@
 const createHttpError = require("http-errors");
 const CsdStaff = require("../models/csdStaffModel");
 const config = require("../config/config");
-const { issueSessionCookie, clearSessionCookie } = require("../middlewares/csdAuth");
+const { startSession, clearSessionCookie } = require("../middlewares/csdAuth");
 const { csdAudit } = require("../services/csdAuditService");
 const { newSecret, matchStep, otpauthUrl } = require("../services/totp");
 const { seal, open } = require("../services/secretBox");
@@ -94,6 +94,7 @@ const seedSuperAdmin = async () => {
       seeded.failedLogins = 0;
       seeded.lockedUntil = undefined;
       seeded.tokenVersion = (seeded.tokenVersion || 0) + 1;
+      seeded.sessions = [];
       dirty = true;
     }
     if (dirty) await seeded.save();
@@ -166,9 +167,8 @@ const login = async (req, res, next) => {
     if (staff.loginHistory.length > 50) {
       staff.loginHistory = staff.loginHistory.slice(-50);
     }
-    await staff.save();
-
-    issueSessionCookie(res, staff);
+    // A session of its own for this device, kept until it signs out (saves the row too).
+    await startSession(req, res, staff);
 
     await csdAudit({
       req,
@@ -192,12 +192,12 @@ const me = async (req, res) => {
 };
 
 /**
- * POST /api/csd/auth/logout — ends the session on the server too: the
- * tokenVersion moves on, so a copied cookie stops working with it. That signs
- * this account out on every device, which for a support panel is the point.
+ * POST /api/csd/auth/logout — this device signs out, on the server too: its
+ * session row goes, so its cookie, even a copy, stops working. The account's
+ * other devices stay signed in (owner, 2026-11-03).
  */
 const logout = async (req, res) => {
-  await CsdStaff.updateOne({ _id: req.csdStaff._id }, { $inc: { tokenVersion: 1 } });
+  if (req.csdSessionId) await CsdStaff.updateOne({ _id: req.csdStaff._id }, { $pull: { sessions: { sid: req.csdSessionId } } });
   clearSessionCookie(res);
   res.status(200).json({ success: true });
 };
@@ -267,6 +267,7 @@ const resetStaffMfa = async (req, res, next) => {
     staff.failedLogins = 0;
     staff.lockedUntil = undefined;
     staff.tokenVersion = (staff.tokenVersion || 0) + 1;
+    staff.sessions = [];
     await staff.save();
     await csdAudit({
       req, staff: req.csdStaff, action: "CSD_MFA_RESET", resource: "CsdStaff", entityType: "CsdStaff", entityId: staff._id,

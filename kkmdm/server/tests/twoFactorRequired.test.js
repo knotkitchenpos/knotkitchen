@@ -11,3 +11,14 @@ test("an admin without 2FA reaches only the 2FA setup in production", () => {
   const dash = fs.readFileSync(path.join(__dirname, "..", "..", "dashboard", "src", "App.jsx"), "utf8");
   assert.match(dash, /const needs2fa = admin\.twoFactorRequired && !admin\.totpEnabled;/);
 });
+
+/** Owner, 2026-11-03: a device stays signed in until it signs out; signing out ends only that device. */
+test("sessions last until signed out, one per device", () => {
+  const auth = fs.readFileSync(path.join(__dirname, "..", "src", "lib", "adminAuth.js"), "utf8");
+  const cfg = fs.readFileSync(path.join(__dirname, "..", "src", "config.js"), "utf8");
+  assert.match(cfg, /adminSessionDays: 400,/);
+  assert.match(auth, /if \(age > config\.adminSessionRenewHours \* 3600\) issueSession\(res, admin, \{ authAt: claims\.authAt, sid: claims\.sid \}\);/);
+  assert.match(auth, /await AdminUser\.updateOne\(\{ _id: admin\._id \}, \{ \$pull: \{ sessions: \{ sid \} \} \}\);/);
+  const routes = fs.readFileSync(path.join(__dirname, "..", "src", "routes", "auth.js"), "utf8");
+  assert.match(routes, /await endSession\(req\.admin, req\.sessionId\);/);
+});

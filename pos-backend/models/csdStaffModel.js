@@ -120,6 +120,12 @@ const csdStaffSchema = new mongoose.Schema(
     // In every session token; raising it signs every session out (sign-out,
     // 2FA reset), since a CSD session would otherwise live its 12 hours.
     tokenVersion: { type: Number, default: 0 },
+    // One per signed-in device (owner, 2026-11-03: stay signed in until signed
+    // out). Signing out removes that device's row; a session not listed is over.
+    sessions: {
+      type: [{ sid: String, createdAt: Date, ip: String, userAgent: String, _id: false }],
+      default: [],
+    },
 
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "CsdStaff" },
   },

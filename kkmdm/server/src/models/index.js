@@ -368,6 +368,12 @@ const AdminUser = mongoose.model("AdminUser", new Schema({
   lastLoginIp: String,
   // Bumped to invalidate every session of the user.
   sessionVersion: { type: Number, default: 1 },
+  // One per signed-in device (owner, 2026-11-03: stay signed in until signed
+  // out). Signing out removes that device's row; a session not listed is over.
+  sessions: {
+    type: [{ sid: String, createdAt: Date, ip: String, userAgent: String, _id: false }],
+    default: [],
+  },
   ssoSubject: String,
 }, opts));
 

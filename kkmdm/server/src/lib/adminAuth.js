@@ -1,3 +1,4 @@
+const crypto = require("crypto");
 const jwt = require("jsonwebtoken");
 const config = require("../config");
 const { AdminUser } = require("../models");
@@ -7,19 +8,38 @@ const COOKIE = "kkmdm_session";
 // What an admin without two-factor sign-in may reach in production.
 const TWO_FA_SETUP_PATHS = ["/api/auth/me", "/api/auth/logout", "/api/auth/2fa/setup", "/api/auth/2fa/enable", "/api/settings"];
 
-function issueSession(res, admin, { authAt = Date.now() } = {}) {
+const MAX_DEVICES = 20;
+
+/** The session cookie for one device (sid), renewed with the same sid. */
+function issueSession(res, admin, { authAt = Date.now(), sid } = {}) {
   const token = jwt.sign(
-    { sub: String(admin._id), sv: admin.sessionVersion, authAt },
+    { sub: String(admin._id), sv: admin.sessionVersion, sid, authAt },
     config.adminJwtSecret,
-    { algorithm: "HS256", expiresIn: `${config.adminSessionMinutes}m` },
+    { algorithm: "HS256", expiresIn: `${config.adminSessionDays}d` },
   );
   res.cookie(COOKIE, token, {
     httpOnly: true,
     sameSite: "strict",
     secure: config.isProduction,
-    maxAge: config.adminSessionMinutes * 60 * 1000,
+    maxAge: config.adminSessionDays * 86400 * 1000,
     path: "/",
   });
+}
+
+/** A new signed-in device: its own session row, kept until it signs out (the oldest go past MAX_DEVICES). */
+async function startSession(req, res, admin, { authAt = Date.now() } = {}) {
+  const sid = crypto.randomBytes(18).toString("base64url");
+  admin.sessions = [...(admin.sessions || []), {
+    sid, createdAt: new Date(), ip: String(req.ip || "").slice(0, 64), userAgent: String(req.get?.("user-agent") || "").slice(0, 200),
+  }].slice(-MAX_DEVICES);
+  await admin.save();
+  issueSession(res, admin, { authAt, sid });
+}
+
+/** This device signs out: its row goes, so its cookie, even a copy, stops working. */
+async function endSession(admin, sid) {
+  if (!sid) return;
+  await AdminUser.updateOne({ _id: admin._id }, { $pull: { sessions: { sid } } });
 }
 
 function clearSession(res) {
@@ -44,7 +64,8 @@ function requireAdmin() {
         return res.status(401).json({ error: "session_expired" });
       }
       const admin = await AdminUser.findById(claims.sub);
-      if (!admin || admin.disabled || admin.sessionVersion !== claims.sv) {
+      const listed = claims.sid && (admin?.sessions || []).some((s) => s.sid === claims.sid);
+      if (!admin || admin.disabled || admin.sessionVersion !== claims.sv || !listed) {
         clearSession(res);
         return res.status(401).json({ error: "session_revoked" });
       }
@@ -61,8 +82,10 @@ function requireAdmin() {
       }
       req.admin = admin;
       req.authAt = claims.authAt;
+      req.sessionId = claims.sid;
+      // Renewed once a day while used, so a device in use never runs out.
       const age = Date.now() / 1000 - claims.iat;
-      if (age > (config.adminSessionMinutes * 60) / 2) issueSession(res, admin, { authAt: claims.authAt });
+      if (age > config.adminSessionRenewHours * 3600) issueSession(res, admin, { authAt: claims.authAt, sid: claims.sid });
       next();
     } catch (err) {
       next(err);
@@ -94,4 +117,4 @@ function scopeFilter(req, { field = "storeId", company = true } = {}) {
   return { companyId: a.companyId };
 }
 
-module.exports = { issueSession, clearSession, requireAdmin, requirePerm, requireRecentAuth, scopeFilter, COOKIE };
+module.exports = { startSession, endSession, issueSession, clearSession, requireAdmin, requirePerm, requireRecentAuth, scopeFilter, COOKIE };

@@ -59,12 +59,13 @@ const run = async (mw, req, res) =>
     mw(req, res, (err) => resolve(err || null));
   });
 
-const tokenFor = (id, secret = SECRET) =>
-  jwt.sign({ sub: id, staffId: "KK-ST-001" }, secret, { algorithm: "HS256", expiresIn: "12h" });
+// sid: the device's session row, which every session token names (owner, 2026-11-03).
+const tokenFor = (id, secret = SECRET, sid = "device-1") =>
+  jwt.sign({ sub: id, staffId: "KK-ST-001", sid }, secret, { algorithm: "HS256", expiresIn: "12h" });
 
 // Two-factor sign-in on, as every account needs it to reach the panel (security audit, 2026-11-03).
-const activeAdmin = { _id: "aaa", staffId: "KK-ST-001", role: "admin", status: "active", mfa: { enabled: true } };
-const activeStaff = { _id: "bbb", staffId: "KK-ST-002", role: "staff", status: "active", mfa: { enabled: true } };
+const activeAdmin = { _id: "aaa", staffId: "KK-ST-001", role: "admin", status: "active", mfa: { enabled: true }, sessions: [{ sid: "device-1" }] };
+const activeStaff = { _id: "bbb", staffId: "KK-ST-002", role: "staff", status: "active", mfa: { enabled: true }, sessions: [{ sid: "device-1" }] };
 
 // ---------------------------------------------------------------------------
 
@@ -176,10 +177,20 @@ test("security audit: an account without two-factor sign-in reaches only its 2FA
   }
 });
 
-test("security audit: signing out ends a session for good (token version moved on)", async () => {
+test("security audit: a 2FA reset or new password ends every device's session (token version moved on)", async () => {
   staffInDb = { ...activeStaff, tokenVersion: 1 };
-  const old = jwt.sign({ sub: "bbb", staffId: "KK-ST-002", tv: 0 }, SECRET, { algorithm: "HS256", expiresIn: "12h" });
+  const old = jwt.sign({ sub: "bbb", staffId: "KK-ST-002", tv: 0, sid: "device-1" }, SECRET, { algorithm: "HS256", expiresIn: "12h" });
   assert.equal((await run(requireCsdAuth, makeReq(old), makeRes()))?.status, 401);
-  const fresh = jwt.sign({ sub: "bbb", staffId: "KK-ST-002", tv: 1 }, SECRET, { algorithm: "HS256", expiresIn: "12h" });
+  const fresh = jwt.sign({ sub: "bbb", staffId: "KK-ST-002", tv: 1, sid: "device-1" }, SECRET, { algorithm: "HS256", expiresIn: "12h" });
   assert.equal(await run(requireCsdAuth, makeReq(fresh), makeRes()), null);
+});
+
+test("owner, 2026-11-03: signing out on one device leaves the others signed in", async () => {
+  // device-1 signed out (its row is gone); device-2 still has one.
+  staffInDb = { ...activeStaff, sessions: [{ sid: "device-2" }] };
+  assert.equal((await run(requireCsdAuth, makeReq(tokenFor("bbb", SECRET, "device-1")), makeRes()))?.status, 401);
+  assert.equal(await run(requireCsdAuth, makeReq(tokenFor("bbb", SECRET, "device-2")), makeRes()), null);
+  // A token naming no device session at all (from before this change) is refused.
+  const noSid = jwt.sign({ sub: "bbb", staffId: "KK-ST-002" }, SECRET, { algorithm: "HS256", expiresIn: "12h" });
+  assert.equal((await run(requireCsdAuth, makeReq(noSid), makeRes()))?.status, 401);
 });

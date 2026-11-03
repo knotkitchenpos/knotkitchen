@@ -198,7 +198,6 @@ services:
 
       # === CSD panel ===
       CSD_JWT_SECRET: ${CSD_JWT_SECRET:-}
-      CSD_TOKEN_EXPIRY: ${CSD_TOKEN_EXPIRY:-12h}
       # Seeds the CSD super-administrator on first pos-api start. Previously
       # only piped into admin-api (which we deleted); csdAuthController now
       # reads them here too, so they MUST be declared for the container to

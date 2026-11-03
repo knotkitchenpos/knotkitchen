@@ -176,8 +176,9 @@ router.patch("/admins/:id", requirePerm("admins.manage"), wrap(async (req, res) 
     a.passwordHash = await bcrypt.hash(b.password, 12);
   }
   if (b.reset2fa) { a.totpEnabled = false; a.totpSecretEnc = undefined; }
-  // Any change to access ends the user's sessions.
+  // Any change to access ends the user's sessions, on every device.
   a.sessionVersion += 1;
+  a.sessions = [];
   await a.save();
   await audit(req, "admin.updated", { targetType: "admin", targetId: a._id, details: { ...b, password: b.password ? "***" : undefined } });
   res.json({ admin: publicAdmin(a) });

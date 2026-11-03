@@ -44,7 +44,8 @@ test("CSD: lockout after repeated failures, a code used once, sign-out ends the 
   const ctrl = SRC("controllers/csdAuthController.js");
   assert.match(ctrl, /const MAX_FAILED = 5;/);
   assert.match(ctrl, /if \(step === null \|\| step <= \(staff\.mfa\.lastStep \|\| 0\)\) \{/);
-  assert.match(ctrl, /\$inc: \{ tokenVersion: 1 \}/);
+  // Sign-out ends this device's session row; the others stay signed in (owner, 2026-11-03).
+  assert.ok(ctrl.includes("$pull: { sessions: { sid: req.csdSessionId } }"));
   assert.match(SRC("middlewares/csdAuth.js"), /\(decoded\.tv \|\| 0\) !== \(staff\.tokenVersion \|\| 0\)/);
 });
 

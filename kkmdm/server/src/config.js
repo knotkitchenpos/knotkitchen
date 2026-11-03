@@ -74,7 +74,11 @@ const config = {
   alertWebhookUrl: env.ALERT_WEBHOOK_URL || "",
   // Hosts the Applications "import from URL" may download from.
   importHosts: (env.KKMDM_IMPORT_HOSTS || "github.com").split(",").map((s) => s.trim()).filter(Boolean),
-  adminSessionMinutes: 60,
+  // A device stays signed in until it signs out (owner, 2026-11-03): the
+  // session is renewed daily while used, and only a device left unopened for
+  // the browsers' longest cookie life (400 days) is signed out.
+  adminSessionDays: 400,
+  adminSessionRenewHours: 24,
   reauthWindowMinutes: 5,
   enrollTokenDefaultTtlHours: 24,
   heartbeatSeconds: 60,

@@ -7,7 +7,12 @@ const CsdStaff = require("../models/csdStaffModel");
 const COOKIE_NAME = "csdToken";
 // What an account without two-factor sign-in yet may reach: itself, signing out, and setting it up.
 const MFA_SETUP_PATHS = ["/api/csd/auth/me", "/api/csd/auth/logout", "/api/csd/auth/mfa/setup", "/api/csd/auth/mfa/enable"];
-const TOKEN_TTL = process.env.CSD_TOKEN_EXPIRY || "12h";
+// A device stays signed in until it signs out (owner, 2026-11-03): the cookie
+// is renewed daily while used, and only a device left unopened for the
+// browsers' longest cookie life (400 days) is signed out.
+const SESSION_DAYS = 400;
+const RENEW_AFTER_S = 24 * 3600;
+const MAX_DEVICES = 20;
 
 /**
  * Resolve the CSD signing secret LAZILY rather than at module load.
@@ -46,23 +51,38 @@ const getSecret = () => {
   return cachedSecret;
 };
 
-const issueSessionCookie = (res, staff) => {
+/** The session cookie for one device (sid), renewed with the same sid. */
+const issueSessionCookie = (res, staff, sid) => {
   const token = jwt.sign(
-    // tv: the staff row's tokenVersion; raising it ends every session (sign-out, 2FA reset).
-    { sub: String(staff._id), staffId: staff.staffId, tv: staff.tokenVersion || 0 },
+    // tv: the staff row's tokenVersion; raising it ends every device's session (2FA reset, password).
+    // sid: this device's session row; signing out removes it.
+    { sub: String(staff._id), staffId: staff.staffId, tv: staff.tokenVersion || 0, sid },
     getSecret(),
-    { algorithm: "HS256", expiresIn: TOKEN_TTL }
+    { algorithm: "HS256", expiresIn: `${SESSION_DAYS}d` }
   );
 
   res.cookie(COOKIE_NAME, token, {
     httpOnly: true,
     secure: config.cookieSecure,
     sameSite: config.cookieSameSite,
-    maxAge: 12 * 60 * 60 * 1000,
+    maxAge: SESSION_DAYS * 86400 * 1000,
     path: "/",
   });
 
   return token;
+};
+
+/** A newly signed-in device: its own session row (the oldest go past MAX_DEVICES). Saves the staff row. */
+const startSession = async (req, res, staff) => {
+  const sid = crypto.randomBytes(18).toString("base64url");
+  staff.sessions = [...(staff.sessions || []), {
+    sid,
+    createdAt: new Date(),
+    ip: String(req.headers?.["x-real-ip"] || req.ip || "").slice(0, 64),
+    userAgent: String(req.headers?.["user-agent"] || "").slice(0, 200),
+  }].slice(-MAX_DEVICES);
+  await staff.save();
+  return issueSessionCookie(res, staff, sid);
 };
 
 const clearSessionCookie = (res) =>
@@ -102,8 +122,9 @@ const requireCsdAuth = async (req, res, next) => {
     }
 
     const staff = await CsdStaff.findById(decoded.sub);
-    // A session from before a sign-out or 2FA reset (tokenVersion moved on) is over.
-    if (!staff || staff.status !== "active" || (decoded.tv || 0) !== (staff.tokenVersion || 0)) {
+    // Over: a device that signed out (its row is gone), or every device after a 2FA reset or password change (tokenVersion moved on).
+    const listed = decoded.sid && (staff?.sessions || []).some((s) => s.sid === decoded.sid);
+    if (!staff || staff.status !== "active" || (decoded.tv || 0) !== (staff.tokenVersion || 0) || !listed) {
       clearSessionCookie(res);
       return next(createHttpError(401, "Not signed in."));
     }
@@ -115,6 +136,9 @@ const requireCsdAuth = async (req, res, next) => {
     }
 
     req.csdStaff = staff;
+    req.csdSessionId = decoded.sid;
+    // Renewed once a day while used, so a device in use never runs out.
+    if (Date.now() / 1000 - decoded.iat > RENEW_AFTER_S) issueSessionCookie(res, staff, decoded.sid);
     next();
   } catch (err) {
     if (err.status === 503) return next(err);
@@ -142,6 +166,7 @@ module.exports = {
   COOKIE_NAME,
   getSecret,
   issueSessionCookie,
+  startSession,
   clearSessionCookie,
   requireCsdAuth,
   requireCsdAdmin,
