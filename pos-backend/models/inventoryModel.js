@@ -51,6 +51,13 @@ const ingredientSchema = new mongoose.Schema(
       type: [{ quantity: Number, expiryDate: Date, receivedAt: { type: Date, default: Date.now }, _id: false }],
       default: [],
     },
+    // The barcodes on its packets (owner, 2026-11-03): scanning one finds the
+    // item, and adds `size` of it (in the item's unit) to a delivery or a
+    // count. A crate and a single bottle are two barcodes of one item.
+    barcodes: {
+      type: [{ code: { type: String, trim: true }, size: { type: Number, min: 0, default: 1 }, label: { type: String, trim: true, default: "" }, _id: false }],
+      default: [],
+    },
     restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: "Restaurant", required: true },
     outletId: { type: mongoose.Schema.Types.ObjectId, ref: "Outlet" },
     isDeleted: { type: Boolean, default: false },
@@ -59,6 +66,7 @@ const ingredientSchema = new mongoose.Schema(
 );
 
 ingredientSchema.index({ restaurantId: 1, name: 1 });
+ingredientSchema.index({ restaurantId: 1, "barcodes.code": 1 });
 ingredientSchema.index({ restaurantId: 1, isLowStock: 1 });
 ingredientSchema.index({ "batch.expiryDate": 1 });
 
@@ -230,7 +238,32 @@ const stockCountSchema = new mongoose.Schema(
 );
 stockCountSchema.index({ restaurantId: 1, number: -1 });
 
+// ===== Barcode product (shared by every store) =====
+// What a packet's barcode is (owner, 2026-11-03): from Open Food Facts, or
+// named by a KnotKitchen store when it linked the barcode to one of its
+// items. One store naming a product helps every other store that scans it.
+// `notFound` remembers that Open Food Facts had nothing, so it is not asked
+// again on every scan.
+const barcodeProductSchema = new mongoose.Schema(
+  {
+    code: { type: String, required: true, trim: true },
+    name: { type: String, default: "" },
+    brand: { type: String, default: "" },
+    quantityText: { type: String, default: "" },
+    unit: { type: String, default: "" },
+    size: { type: Number, default: 0 },
+    category: { type: String, default: "" },
+    source: { type: String, enum: ["openfoodfacts", "knotkitchen", ""], default: "" },
+    notFound: { type: Boolean, default: false },
+    checkedAt: Date,
+    stores: { type: Number, default: 0 }, // stores that linked it to an item
+  },
+  { timestamps: true }
+);
+barcodeProductSchema.index({ code: 1 }, { unique: true });
+
 module.exports = {
+  BarcodeProduct: mongoose.model("BarcodeProduct", barcodeProductSchema),
   AddonRecipe: mongoose.model("AddonRecipe", addonRecipeSchema),
   StockCount: mongoose.model("StockCount", stockCountSchema),
   Ingredient: mongoose.model("Ingredient", ingredientSchema),

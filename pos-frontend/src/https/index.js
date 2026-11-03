@@ -97,6 +97,8 @@ export const finishStockCount = (id) => axiosWrapper.post(`/api/inventory/counts
 export const cancelStockCount = (id) => axiosWrapper.post(`/api/inventory/counts/${id}/cancel`);
 export const getInventoryReport = (params) => axiosWrapper.get("/api/inventory/report", { params });
 export const getInventorySettings = () => axiosWrapper.get("/api/inventory/settings");
+// A packet's barcode: the item it is on, or what the product is (owner, 2026-11-03).
+export const lookupBarcode = (code) => axiosWrapper.get(`/api/inventory/barcodes/${encodeURIComponent(code)}`);
 export const saveInventorySettings = (d) => axiosWrapper.put("/api/inventory/settings", d);
 
 /* ---------- Shifts & day-end ---------- */

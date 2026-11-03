@@ -26,6 +26,8 @@ router.route("/counts/:id").get(isVerifiedUser, c.getCount).put(isVerifiedUser, 
 router.route("/counts/:id/finish").post(isVerifiedUser, c.finishCount);
 router.route("/counts/:id/cancel").post(isVerifiedUser, c.cancelCount);
 router.route("/report").get(isVerifiedUser, c.inventoryReport);
+// Owner, 2026-11-03: a packet's barcode, scanned to add stock or count it.
+router.route("/barcodes/:code").get(isVerifiedUser, c.scanBarcode);
 // The target food cost and expiry warning are the owner's to set.
 router.route("/settings").get(isVerifiedUser, c.getSettings).put(isVerifiedUser, requireProtectedAction, c.saveSettings);
 

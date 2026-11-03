@@ -23,6 +23,8 @@ import DishCostsTab from "./inventory/DishCostsTab";
 import AddonsTab from "./inventory/AddonsTab";
 import CountTab from "./inventory/CountTab";
 import ReportsTab from "./inventory/ReportsTab";
+import ScanStockModal from "./inventory/ScanStock";
+import { BarcodeField } from "./inventory/Scanner";
 
 /**
  * Settings > Inventory Management.
@@ -87,6 +89,8 @@ const ItemModal = ({ item, ingredients, onClose, refresh }) => {
   const [prepared, setPrepared] = useState(Boolean(item?.isPrepared));
   const [makes, setMakes] = useState(item?.prep?.makes ? String(item.prep.makes) : "");
   const [prepRows, setPrepRows] = useState(() => toRows(item?.prep?.ingredients || [], ingredients));
+  const [barcodes, setBarcodes] = useState(() => (item?.barcodes || []).map((b) => ({ code: b.code, size: String(b.size || 1), label: b.label || "" })));
+  const [scanning, setScanning] = useState(false);
   const set = (k) => (e) => setForm({ ...form, [k]: e.target.value });
   const done = (msg) => { enqueueSnackbar(msg, { variant: "success" }); refresh(); onClose(); };
   const fail = (e) => enqueueSnackbar(e.response?.data?.message || "Could not save", { variant: "error" });
@@ -99,6 +103,7 @@ const ItemModal = ({ item, ingredients, onClose, refresh }) => {
     costPerUnit: Number(form.costPerUnit) || 0,
     shelfLifeDays: Number(form.shelfLifeDays) || 0,
     packs: packs.filter((p) => p.name.trim() && Number(p.size) > 0).map((p) => ({ name: p.name.trim(), size: Number(p.size) })),
+    barcodes: barcodes.filter((b) => b.code.trim()).map((b) => ({ code: b.code.trim(), size: Number(b.size) || 1, label: b.label.trim() })),
     isPrepared: prepared,
     ...(prepared ? { prep: { makes: Number(makes) || 0, ingredients: cleanLines(prepRows, ingredients) } } : {}),
   });
@@ -179,6 +184,35 @@ const ItemModal = ({ item, ingredients, onClose, refresh }) => {
           + Add a pack
         </button>
         {!packs.length && <p className="text-[11.5px] text-[#94A3B8]">Optional. Then stock can be added as &quot;2 Trays&quot; while recipes keep using {u}.</p>}
+      </div>
+
+      {/* The barcodes on its packets: scanning one adds that much of it. */}
+      <div className="rounded-xl border border-[#E2E8F0] p-3 space-y-2">
+        <p className="text-[12.5px] font-extrabold text-[#0F172A]">Barcodes</p>
+        {barcodes.map((b, i) => (
+          <div key={b.code} className="flex flex-wrap items-center gap-2 text-[12.5px] text-[#475569]">
+            <span className="font-mono font-bold text-[#0F172A]">{b.code}</span>
+            <span>· one</span>
+            <input className={`${boxClass} h-[34px] w-[96px] font-medium`} value={b.label} placeholder="Pack" maxLength={30} aria-label="Packet name"
+              onChange={(e) => setBarcodes(barcodes.map((x, k) => (k === i ? { ...x, label: e.target.value } : x)))} />
+            <span>is</span>
+            <input className={`${boxClass} h-[34px] w-[76px] text-right`} type="number" min="0" step="any" inputMode="decimal" value={b.size} aria-label="Packet size"
+              onChange={(e) => setBarcodes(barcodes.map((x, k) => (k === i ? { ...x, size: e.target.value } : x)))} />
+            <span>{u}</span>
+            <button type="button" aria-label="Remove barcode" className="ml-auto text-[18px] text-[#94A3B8] hover:text-[#DC2626]" onClick={() => setBarcodes(barcodes.filter((_, k) => k !== i))}>&times;</button>
+          </div>
+        ))}
+        {scanning ? (
+          <BarcodeField keepOpen={false} placeholder="Scan the packet, or type its barcode"
+            onCode={(code) => {
+              setScanning(false);
+              if (barcodes.some((b) => b.code === code)) return;
+              setBarcodes([...barcodes, { code, size: "1", label: "" }]);
+            }} />
+        ) : (
+          <button type="button" className="text-[12.5px] font-bold text-[#C2410C] hover:underline" onClick={() => setScanning(true)}>+ Add a barcode</button>
+        )}
+        {!barcodes.length && !scanning && <p className="text-[11.5px] text-[#94A3B8]">Optional. Scan the packet once; then scanning it adds stock or counts it.</p>}
       </div>
 
       {/* Prepared items: made in batches from other items. */}
@@ -404,12 +438,13 @@ const DashboardTab = ({ ingredients, refresh, settings }) => {
   const [editing, setEditing] = useState(null); // null | "new" | item
   const [move, setMove] = useState(null); // { item, type }
   const [making, setMaking] = useState(null); // a prepared item
+  const [scanIn, setScanIn] = useState(false); // Scan to add stock
 
   const count = (s) => ingredients.filter((i) => i.status === s).length;
   const expiring = ingredients.filter((i) => i.expiry && (i.expiry.expired || i.expiry.soon));
   const rows = ingredients
     .filter((i) => filter === "all" || (filter === "expiring" ? expiring.includes(i) : i.status === filter))
-    .filter((i) => i.name.toLowerCase().includes(search.trim().toLowerCase()));
+    .filter((i) => i.name.toLowerCase().includes(search.trim().toLowerCase()) || (search.trim().length >= 6 && (i.barcodes || []).some((b) => b.code === search.trim())));
   const stockValue = ingredients.reduce((n, i) => n + Math.max(0, Number(i.stockQuantity) || 0) * (Number(i.costPerUnit) || 0), 0);
   const actions = { setMove, setEditing, setMaking };
 
@@ -441,6 +476,7 @@ const DashboardTab = ({ ingredients, refresh, settings }) => {
 
       <div className="flex items-center gap-2">
         <input className={`${inputClass} font-medium flex-1 min-w-0`} placeholder="Search items…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        <button type="button" className={`${btnGhost} h-[40px] shrink-0 whitespace-nowrap`} onClick={() => setScanIn(true)} title="Scan packets to add stock">Scan</button>
         <button type="button" className={`${btnPrimary} shrink-0 whitespace-nowrap`} onClick={() => setEditing("new")}>+ Add item</button>
       </div>
 
@@ -536,6 +572,7 @@ const DashboardTab = ({ ingredients, refresh, settings }) => {
       {editing && <ItemModal item={editing === "new" ? null : editing} ingredients={ingredients} onClose={() => setEditing(null)} refresh={refresh} />}
       {move && <StockModal item={move.item} type={move.type} onClose={() => setMove(null)} refresh={refresh} />}
       {making && <MakeModal item={making} ingredients={ingredients} onClose={() => setMaking(null)} refresh={refresh} />}
+      {scanIn && <ScanStockModal ingredients={ingredients} onClose={() => setScanIn(false)} refresh={refresh} />}
     </div>
   );
 };

@@ -18,6 +18,7 @@ const {
 } = require("../services/inventory");
 const { AddonRecipe, StockCount } = require("../models/inventoryModel");
 const { countOnSale, turnOffFor, backInStock, answerBackInStock } = require("../services/stockProducts");
+const { normalizeCode, lookupProduct, learnProduct } = require("../services/barcodes");
 
 /**
  * Inventory: items on the shelf, their stock, the recipes that tie products to
@@ -63,6 +64,26 @@ const view = (doc, { days = 2 } = {}) => {
     expiry: batches.length ? { expired: sum("expired"), soon: sum("soon"), next: batches[0].expiryDate } : null,
   };
 };
+/** A barcode is on one item per store: another item already holding one is refused, naming it. */
+const checkBarcodes = async (restaurantId, barcodes = [], selfId = null) => {
+  if (!barcodes.length) return;
+  const other = await Ingredient.findOne({
+    restaurantId, isDeleted: { $ne: true }, "barcodes.code": { $in: barcodes.map((b) => b.code) },
+    ...(selfId ? { _id: { $ne: selfId } } : {}),
+  }).select("name barcodes").lean();
+  if (other) {
+    const code = other.barcodes.find((b) => barcodes.some((x) => x.code === b.code))?.code;
+    throw createHttpError(409, `Barcode ${code} is already on ${other.name}.`);
+  }
+};
+/** KnotKitchen's shared list learns what each barcode is, from the item it was linked to. */
+const teachBarcodes = (doc, before = []) => {
+  for (const b of doc.barcodes || []) {
+    if (before.includes(b.code)) continue;
+    learnProduct({ code: b.code, name: doc.name, unit: doc.unit, size: b.size, category: doc.category });
+  }
+};
+
 const refreshFlag = (doc) => {
   doc.isLowStock = needsRestock(stockStatus(doc));
 };
@@ -85,7 +106,14 @@ const ingredientBody = (body = {}) => {
     .slice(0, 10);
   // Days it keeps after it is bought or made: a purchase with no date of its own gets one from this.
   const shelfLifeDays = Math.round(num(body.shelfLifeDays, { min: 0, max: 3650 }) ?? 0);
-  return { name, unit, category, reorderLevel, maxLevel, costPerUnit, packs, shelfLifeDays, isPrepared: body.isPrepared === true };
+  // Its packets' barcodes, each adding `size` of the item when scanned.
+  const barcodes = [];
+  for (const b of Array.isArray(body.barcodes) ? body.barcodes : []) {
+    const code = normalizeCode(b?.code);
+    if (!code || barcodes.some((x) => x.code === code)) continue;
+    barcodes.push({ code, size: round3(num(b?.size, { min: 0, max: 1e6 }) || 1), label: text(b?.label, 30) });
+  }
+  return { name, unit, category, reorderLevel, maxLevel, costPerUnit, packs, shelfLifeDays, barcodes: barcodes.slice(0, 20), isPrepared: body.isPrepared === true };
 };
 
 /** A prepared item's recipe as sent: how much one batch makes, and what it uses. */
@@ -141,6 +169,7 @@ const createIngredient = async (req, res, next) => {
   try {
     const s = scope(req);
     const fields = ingredientBody(req.body);
+    await checkBarcodes(s.restaurantId, fields.barcodes);
     const stockQuantity = round3(num(req.body?.stockQuantity) ?? 0);
     const doc = new Ingredient({
       ...fields,
@@ -158,6 +187,7 @@ const createIngredient = async (req, res, next) => {
         quantity: stockQuantity, value: worth(doc, stockQuantity), unit: doc.unit, reason: "Opening stock", createdBy: req.user._id,
       });
     }
+    teachBarcodes(doc);
     res.status(201).json({ success: true, data: view(doc) });
   } catch (e) { next(e); }
 };
@@ -190,6 +220,7 @@ const updateIngredient = async (req, res, next) => {
         if (req.body?.maxLevel === undefined) next_.maxLevel = round3((doc.maxLevel || 0) * factor);
         if (req.body?.costPerUnit === undefined) next_.costPerUnit = round3(doc.costPerUnit / factor);
         if (req.body?.packs === undefined) next_.packs = (doc.packs || []).map((p) => ({ name: p.name, size: round3(p.size * factor) }));
+        if (req.body?.barcodes === undefined) next_.barcodes = (doc.barcodes || []).map((b) => ({ code: b.code, label: b.label, size: round3(b.size * factor) }));
         doc.batches = (doc.batches || []).map((b) => ({ ...(b.toObject ? b.toObject() : b), quantity: round3(b.quantity * factor) }));
         // A prepared item's batch size is in its own unit too: 5 kg of gravy is 5000 g. One typed in anew stands.
         if (doc.prep?.makes && (prepIn?.makes === undefined || Number(prepIn.makes) === Number(doc.prep.makes))) {
@@ -201,6 +232,10 @@ const updateIngredient = async (req, res, next) => {
     }
     // Packs are sized in the unit; a unit of another kind leaves them meaningless.
     if (next_.unit !== doc.unit && convertQty(1, doc.unit, next_.unit) === null && req.body?.packs === undefined) next_.packs = [];
+    // A barcode's packet size in another kind of unit means nothing: one scan adds one until it is set again.
+    if (next_.unit !== doc.unit && convertQty(1, doc.unit, next_.unit) === null && req.body?.barcodes === undefined) next_.barcodes = next_.barcodes.map((b) => ({ ...b, size: 1 }));
+    await checkBarcodes(s.restaurantId, next_.barcodes, doc._id);
+    const barcodesBefore = (doc.barcodes || []).map((b) => b.code);
     if (req.body?.isPrepared === undefined) next_.isPrepared = doc.isPrepared;
     if (next_.isPrepared && (prepIn !== undefined || req.body?.isPrepared === true)) {
       doc.prep = await prepBody(s.restaurantId, { ...req.body, isPrepared: true, prep: prepIn || doc.prep }, doc._id);
@@ -208,6 +243,7 @@ const updateIngredient = async (req, res, next) => {
     Object.assign(doc, next_);
     refreshFlag(doc);
     await doc.save();
+    teachBarcodes(doc, barcodesBefore);
     res.status(200).json({ success: true, data: view(doc) });
   } catch (e) { next(e); }
 };
@@ -217,6 +253,25 @@ const deleteIngredient = async (req, res, next) => {
     const doc = await Ingredient.findOneAndUpdate({ _id: oid(req.params.id), ...scope(req) }, { isDeleted: true }, { new: true });
     if (!doc) throw createHttpError(404, "Ingredient not found!");
     res.status(200).json({ success: true, message: "Ingredient removed." });
+  } catch (e) { next(e); }
+};
+
+/**
+ * A scanned barcode (owner, 2026-11-03): the store's item it is on, with what
+ * one scan adds; or, when no item has it yet, what the product is (KnotKitchen's
+ * list, then Open Food Facts) so a new item comes filled in.
+ */
+const scanBarcode = async (req, res, next) => {
+  try {
+    const s = scope(req);
+    const code = normalizeCode(req.params.code);
+    if (!code) throw createHttpError(400, "That is not a barcode.");
+    const [ing, settings] = await Promise.all([Ingredient.findOne({ ...s, "barcodes.code": code }), settingsOf(s.restaurantId)]);
+    if (ing) {
+      const b = ing.barcodes.find((x) => x.code === code);
+      return res.status(200).json({ success: true, data: { code, item: view(ing, { days: settings.expiryAlertDays }), size: b?.size || 1, label: b?.label || "" } });
+    }
+    res.status(200).json({ success: true, data: { code, item: null, product: await lookupProduct(code) } });
   } catch (e) { next(e); }
 };
 
@@ -818,6 +873,7 @@ const saveSettings = async (req, res, next) => {
 };
 
 module.exports = {
+  scanBarcode,
   makeBatch, dishCosts, listAddonRecipes, saveAddonRecipe,
   listCounts, startCount, getCount, saveCount, finishCount, cancelCount,
   inventoryReport, getSettings, saveSettings,

@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "../../../utils/notify";
-import { cancelStockCount, finishStockCount, getInventorySettings, getStockCount, getStockCounts, saveInventorySettings, saveStockCount, startStockCount } from "../../../https";
+import { cancelStockCount, finishStockCount, getIngredients, getInventorySettings, getStockCount, getStockCounts, saveInventorySettings, saveStockCount, startStockCount } from "../../../https";
 import { dateTimeIN as when } from "../../../utils";
 import { qty, rupees, unitLabel } from "../../../utils/inventory";
 import { boxClass, btnGhost, btnPrimary, card, inputClass } from "./ui";
+import { BarcodeField } from "./Scanner";
 
 /**
  * Stock count (owner, 2026-11-01). Staff count every item on a phone; what
@@ -67,7 +68,28 @@ const Counting = ({ countId, onDone, onBack }) => {
   const [values, setValues] = useState(null); // ingredientId -> string
   const [search, setSearch] = useState("");
   const [onlyLeft, setOnlyLeft] = useState(false);
+  const [scan, setScan] = useState(false);
   const dirty = useRef(false);
+  // Barcode -> the item and what one packet is, from the items' barcodes.
+  const { data: itemsRes } = useQuery({ queryKey: ["inventory", "ingredients"], queryFn: getIngredients });
+  const byCode = useMemo(() => {
+    const m = new Map();
+    for (const i of itemsRes?.data?.data || []) for (const b of i.barcodes || []) m.set(b.code, { id: String(i._id), size: Number(b.size) || 1 });
+    return m;
+  }, [itemsRes]);
+  /** A packet scanned on the shelf: its item's count goes up by one packet. */
+  const onCode = (code) => {
+    const hit = byCode.get(code);
+    const line = hit && count?.lines.find((l) => String(l.ingredientId) === hit.id);
+    if (!line) {
+      enqueueSnackbar(hit ? "That item was added after this count started." : `Barcode ${code} is not on any item. Add it in the item's Edit, then scan again.`, { variant: "warning" });
+      return;
+    }
+    dirty.current = true;
+    const now = Math.round(((Number(values[hit.id]) || 0) + hit.size) * 1000) / 1000;
+    setValues({ ...values, [hit.id]: String(now) });
+    enqueueSnackbar(`${line.name}: ${qty(now)} ${unitLabel(line.unit)}`, { variant: "success", autoHideDuration: 1200 });
+  };
 
   useEffect(() => {
     if (count && values === null) {
@@ -135,7 +157,16 @@ const Counting = ({ countId, onDone, onBack }) => {
           <input type="checkbox" className="w-4 h-4 accent-[#FD5302]" checked={onlyLeft} onChange={(e) => setOnlyLeft(e.target.checked)} />
           Not counted yet
         </label>
+        {byCode.size > 0 && (
+          <button type="button" className={`${btnGhost} h-[40px]`} onClick={() => setScan((x) => !x)}>{scan ? "Stop scanning" : "Scan packets"}</button>
+        )}
       </div>
+      {scan && (
+        <div className={`${card} p-3 space-y-1`}>
+          <BarcodeField onCode={onCode} placeholder="Scan each packet on the shelf" />
+          <p className="text-[11.5px] text-[#94A3B8]">Each scan adds one packet to that item&apos;s count. Loose items are typed in below.</p>
+        </div>
+      )}
 
       {groups.map(([category, lines]) => (
         <div key={category} className={card}>
