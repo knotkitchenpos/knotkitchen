@@ -199,6 +199,17 @@ const StaffManagement = () => {
     }
   };
 
+  // A lost or new phone: they set two-factor sign-in up again at their next sign-in.
+  const resetMfa = async (m) => {
+    if (!window.confirm(`Reset two-factor sign-in for ${m.fullName}?\n\nThey are signed out and set it up again with their phone at the next sign-in. Only do this once you know it is really them asking.`)) return;
+    try {
+      await staffAdmin.resetMfa(m.id);
+      load();
+    } catch (err) {
+      setError(errorMessage(err, "Could not reset two-factor sign-in."));
+    }
+  };
+
   return (
     <div className="mx-auto max-w-[1600px]">
       <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
@@ -249,6 +260,11 @@ const StaffManagement = () => {
                   <span className="text-navy-400">· Last login {dt(m.lastLoginAt)}</span>
                 </p>
                 <div className="mt-3 flex justify-end gap-4 text-sm">
+                  {m.mfaEnabled && !isMe && (
+                    <button type="button" onClick={() => resetMfa(m)} className="font-semibold text-navy-600">
+                      Reset 2FA
+                    </button>
+                  )}
                   {!locked && !isMe && (
                     <button type="button" onClick={() => toggleStatus(m)} className="font-semibold text-navy-600">
                       {m.status === "active" ? "Disable" : "Reactivate"}
@@ -306,6 +322,12 @@ const StaffManagement = () => {
                       </button>
                       {/* Hidden where the server would refuse anyway, so the
                           UI never offers an action that cannot succeed. */}
+                      {m.mfaEnabled && !isMe && (
+                        <button type="button" onClick={() => resetMfa(m)}
+                          className="ml-3 font-semibold text-navy-600 hover:text-navy-900">
+                          Reset 2FA
+                        </button>
+                      )}
                       {!locked && !isMe && (
                         <button type="button" onClick={() => toggleStatus(m)}
                           className="ml-3 font-semibold text-navy-600 hover:text-navy-900">

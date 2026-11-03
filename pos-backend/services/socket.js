@@ -47,7 +47,7 @@ const authenticateSocket = async (socket, next) => {
     // names: still on the user, not revoked, not past its own expiry. That is
     // also stricter than before in the way that matters, since signing out or
     // revoking a session now shuts its socket out too.
-    const claims = jwt.verify(token, config.accessTokenSecret, { ignoreExpiration: true });
+    const claims = jwt.verify(token, config.accessTokenSecret, { ignoreExpiration: true, algorithms: ["HS256"] });
     const user = await User.findById(claims._id);
     if (!user || user.isDeleted || !user.isActive) {
       return next(new Error("Authentication required"));

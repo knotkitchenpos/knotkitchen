@@ -77,6 +77,7 @@ const listStaff = async (req, res, next) => {
         dateJoined: s.dateJoined,
         lastLoginAt: s.lastLoginAt,
         loginCount: (s.loginHistory || []).length,
+        mfaEnabled: s.mfa?.enabled === true,
         // Surfaced so the UI can explain why this row's controls are locked.
         isPredefinedAdmin: s.isPredefined === true,
       })),

@@ -62,8 +62,9 @@ const run = async (mw, req, res) =>
 const tokenFor = (id, secret = SECRET) =>
   jwt.sign({ sub: id, staffId: "KK-ST-001" }, secret, { algorithm: "HS256", expiresIn: "12h" });
 
-const activeAdmin = { _id: "aaa", staffId: "KK-ST-001", role: "admin", status: "active" };
-const activeStaff = { _id: "bbb", staffId: "KK-ST-002", role: "staff", status: "active" };
+// Two-factor sign-in on, as every account needs it to reach the panel (security audit, 2026-11-03).
+const activeAdmin = { _id: "aaa", staffId: "KK-ST-001", role: "admin", status: "active", mfa: { enabled: true } };
+const activeStaff = { _id: "bbb", staffId: "KK-ST-002", role: "staff", status: "active", mfa: { enabled: true } };
 
 // ---------------------------------------------------------------------------
 
@@ -160,3 +161,25 @@ test("a deleted staff row cannot authenticate even with a valid token", async ()
 // to email+password auth. The equivalent guarantee is now enforced by the
 // `isPredefined` flag on the seeded CsdStaff row and covered by the seed and
 // Staff Management tests below.
+
+test("security audit: an account without two-factor sign-in reaches only its 2FA setup", async () => {
+  staffInDb = { ...activeStaff, mfa: { enabled: false } };
+  const blocked = makeReq(tokenFor("bbb"));
+  blocked.originalUrl = "/api/csd/stores/search";
+  const err = await run(requireCsdAuth, blocked, makeRes());
+  assert.equal(err?.status, 403);
+  assert.equal(err?.code, "MFA_SETUP_REQUIRED");
+  for (const path of ["/api/csd/auth/me", "/api/csd/auth/mfa/setup", "/api/csd/auth/mfa/enable", "/api/csd/auth/logout"]) {
+    const req = makeReq(tokenFor("bbb"));
+    req.originalUrl = path;
+    assert.equal(await run(requireCsdAuth, req, makeRes()), null, path);
+  }
+});
+
+test("security audit: signing out ends a session for good (token version moved on)", async () => {
+  staffInDb = { ...activeStaff, tokenVersion: 1 };
+  const old = jwt.sign({ sub: "bbb", staffId: "KK-ST-002", tv: 0 }, SECRET, { algorithm: "HS256", expiresIn: "12h" });
+  assert.equal((await run(requireCsdAuth, makeReq(old), makeRes()))?.status, 401);
+  const fresh = jwt.sign({ sub: "bbb", staffId: "KK-ST-002", tv: 1 }, SECRET, { algorithm: "HS256", expiresIn: "12h" });
+  assert.equal(await run(requireCsdAuth, makeReq(fresh), makeRes()), null);
+});

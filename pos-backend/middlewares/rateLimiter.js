@@ -33,9 +33,14 @@ const sweep = (now) => {
  * reached from tests and from internal calls that pass a bare object, and a
  * crash here would take down the endpoint it was added to protect.
  */
+// req.ip first: Express works it out from X-Forwarded-For under `trust proxy 1`
+// (app.js), taking the address Caddy saw. The header's FIRST entry is whatever
+// the client typed, so keying a limit on it let anyone reset their own login
+// limit by changing one header (security audit, 2026-11-03).
 const clientIp = (req) =>
-  (req?.headers?.["x-forwarded-for"] || "").split(",")[0].trim() ||
   req?.ip ||
+  req?.headers?.["x-real-ip"] ||
+  (req?.headers?.["x-forwarded-for"] || "").split(",").pop().trim() ||
   req?.socket?.remoteAddress ||
   "unknown";
 

@@ -119,6 +119,18 @@ jobs:
 
             echo "==> Building + starting containers"
             docker compose -f deploy/docker-compose.yml --env-file deploy/.env build --pull
+
+            # Parse the Caddyfile in a throwaway container before anything
+            # restarts: a file caddy cannot read would take every site down.
+            # On a failure nothing is restarted and the sites keep running.
+            echo "==> Checking the Caddyfile parses"
+            if ! docker compose -f deploy/docker-compose.yml --env-file deploy/.env \
+                 run --rm --no-deps -T --entrypoint caddy caddy \
+                 adapt --config /etc/caddy/Caddyfile --adapter caddyfile > /dev/null; then
+              echo "::error::deploy/Caddyfile does not parse; nothing was restarted"
+              exit 1
+            fi
+
             docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d --remove-orphans
 
             # The Caddyfile is bind-mounted as a FILE, so the mount is pinned to

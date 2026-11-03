@@ -65,15 +65,56 @@ const cleanWebsiteLink = (value) => {
   return /^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(\/\S*)?$/i.test(v) ? `https://${v}` : "";
 };
 
-const DEFAULT_PIN = "8796";
+/**
+ * The Security PIN (security audit, 2026-11-03). There is no default: a
+ * store's PIN is the one its owner set, and until then no PIN opens anything
+ * (the default 8796 was in the code, so it opened every store that kept it).
+ *
+ * Wrong PINs are counted per store and person: after PIN_MAX_FAILS within
+ * PIN_WINDOW_MS that person's PIN is refused for PIN_LOCK_MS, so a 4-digit PIN
+ * cannot be tried through 10,000 times.
+ */
+const PIN_MAX_FAILS = 5;
+const PIN_WINDOW_MS = 15 * 60 * 1000;
+const PIN_LOCK_MS = 15 * 60 * 1000;
+const pinFails = new Map(); // `${restaurantId}:${userId}` -> { count, firstAt, lockedUntil }
 
-const verifyPinHelper = async (restaurant, pinInput) => {
-  const inputPin = String(pinInput || "").trim();
-  if (!inputPin) return false;
-  if (restaurant.securityPin) {
-    return await bcrypt.compare(inputPin, restaurant.securityPin);
+const NO_PIN_MESSAGE = "No Security PIN is set for this store yet. The owner can set one in Settings › Store Properties.";
+const noPinError = () => createHttpError(409, NO_PIN_MESSAGE, { code: "NO_PIN_SET" });
+
+/** Refuses (429) while this person's PIN is locked; returns the key to count against. */
+const pinGuard = (restaurant, user) => {
+  const key = `${restaurant._id}:${user?._id || "?"}`;
+  const now = Date.now();
+  const f = pinFails.get(key);
+  if (f?.lockedUntil > now) {
+    const mins = Math.ceil((f.lockedUntil - now) / 60000);
+    throw createHttpError(429, `Too many wrong PINs. Try again in ${mins} minute${mins === 1 ? "" : "s"}.`, { code: "PIN_LOCKED" });
   }
-  return inputPin === DEFAULT_PIN;
+  return key;
+};
+const pinResult = (key, ok) => {
+  if (ok) { pinFails.delete(key); return true; }
+  const now = Date.now();
+  let f = pinFails.get(key);
+  if (!f || now - f.firstAt > PIN_WINDOW_MS) f = { count: 0, firstAt: now, lockedUntil: 0 };
+  f.count += 1;
+  if (f.count >= PIN_MAX_FAILS) { f.lockedUntil = now + PIN_LOCK_MS; f.count = 0; f.firstAt = now; }
+  pinFails.set(key, f);
+  if (pinFails.size > 5000) for (const [k, v] of pinFails) if (v.lockedUntil < now && now - v.firstAt > PIN_WINDOW_MS) pinFails.delete(k);
+  return false;
+};
+
+/**
+ * Is `pinInput` this store's PIN? Pass the signed-in user so wrong tries are
+ * counted against them; throws 429 while they are locked out. False when the
+ * store has no PIN (callers that need one say so with noPinError).
+ */
+const verifyPinHelper = async (restaurant, pinInput, user = null) => {
+  const inputPin = String(pinInput || "").trim();
+  if (!inputPin || !restaurant?.securityPin) return false;
+  const key = pinGuard(restaurant, user);
+  return pinResult(key, await bcrypt.compare(inputPin, restaurant.securityPin));
 };
 
 // Module 7 §1 — Get Store Properties
@@ -133,9 +174,8 @@ const verifyPin = async (req, res, next) => {
     });
     if (!restaurant) return next(createHttpError(404, "Restaurant not found!"));
 
-    const ok = await verifyPinHelper(restaurant, pin);
-    // Never name the default in a FAILURE response: that hands the value
-    // gating every protected action to whoever is guessing at it.
+    if (!restaurant.securityPin) return next(noPinError());
+    const ok = await verifyPinHelper(restaurant, pin, req.user);
     if (!ok) return next(createHttpError(401, "Invalid Security PIN."));
 
     const jwt = require("jsonwebtoken");
@@ -175,10 +215,13 @@ const changePin = async (req, res, next) => {
     });
     if (!restaurant) return next(createHttpError(404, "Restaurant not found!"));
 
-    const ok = await verifyPinHelper(restaurant, currentPin);
-    if (!ok) return next(createHttpError(401, "Current PIN is invalid."));
+    // The first PIN is set by the signed-in owner alone; after that the current one is needed.
+    if (restaurant.securityPin) {
+      const ok = await verifyPinHelper(restaurant, currentPin, req.user);
+      if (!ok) return next(createHttpError(401, "Current PIN is invalid."));
+    }
 
-    const salt = await bcrypt.genSalt(10);
+    const salt = await bcrypt.genSalt(12);
     restaurant.securityPin = await bcrypt.hash(String(newPin).trim(), salt);
     await restaurant.save();
 
@@ -208,7 +251,8 @@ const updateStoreProperties = async (req, res, next) => {
     });
     if (!restaurant) return next(createHttpError(404, "Restaurant not found!"));
 
-    const ok = await verifyPinHelper(restaurant, pin);
+    if (!restaurant.securityPin) return next(noPinError());
+    const ok = await verifyPinHelper(restaurant, pin, req.user);
     if (!ok) return next(createHttpError(401, "PIN verification required to update Store Properties."));
 
     // Owner-Only Action check: changing owner contact details
@@ -527,7 +571,6 @@ const addStaffMember = async (req, res, next) => {
     // so it was neither guessable nor knowable, and staff could not sign in
     // at all.
     const randomPassword = require("crypto").randomBytes(32).toString("hex");
-    const defaultPinHash = bcrypt.hashSync(DEFAULT_PIN, 10);
 
     const staff = await User.create({
       name,
@@ -648,6 +691,7 @@ module.exports = {
   getStaffMembers,
   deleteStaffMember,
   verifyPinHelper,
+  noPinError,
 };
 
 

@@ -524,4 +524,34 @@ const updateStoreStatus = async (req, res, next) => {
   }
 };
 
-module.exports = { searchStores, getStore, updateStoreStatus, eraseStoreRecord, ALLOWED_STATUS, syncSubscriptionWithStatus };
+/**
+ * POST /api/csd/stores/:storeId/owner-reset-code — a one-time code the owner
+ * needs to set or reset their POS password (security audit, 2026-11-03).
+ * Support checks who is calling first, then reads the code to the owner. The
+ * code is returned once and never stored in the clear (services/ownerResetCode.js).
+ */
+const issueOwnerResetCode = async (req, res, next) => {
+  try {
+    const storeId = String(req.params.storeId || "").trim();
+    if (!/^\d{6}$/.test(storeId)) return next(createHttpError(400, "Invalid Store ID."));
+    const store = await Store.findOne({ storeId, isDeleted: { $ne: true } });
+    if (!store) return next(createHttpError(404, "Store not found."));
+    const { issueResetCode, CODE_TTL_MS } = require("../services/ownerResetCode");
+    const { code, expiresAt } = await issueResetCode(store, req.csdStaff?._id);
+    await csdAudit({
+      req,
+      staff: req.csdStaff,
+      action: "CSD_OWNER_RESET_CODE",
+      resource: "Store",
+      entityType: "Store",
+      entityId: store._id,
+      storeId,
+      description: `Owner password reset code issued for store ${storeId}`,
+    });
+    res.status(201).json({ success: true, data: { code, expiresAt, minutes: Math.round(CODE_TTL_MS / 60000), ownerPhoneEnd: String(store.ownerPhone || "").slice(-4) } });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { searchStores, getStore, updateStoreStatus, eraseStoreRecord, issueOwnerResetCode, ALLOWED_STATUS, syncSubscriptionWithStatus };

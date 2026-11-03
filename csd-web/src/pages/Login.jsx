@@ -24,6 +24,9 @@ const Login = () => {
   const { setStaff } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  // Two-factor sign-in (security audit, 2026-11-03): asked for once the password is right.
+  const [needCode, setNeedCode] = useState(false);
+  const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -32,9 +35,16 @@ const Login = () => {
     setError("");
     setBusy(true);
     try {
-      setStaff(await auth.login(email.trim().toLowerCase(), password));
+      setStaff(await auth.login(email.trim().toLowerCase(), password, needCode ? code : undefined));
     } catch (err) {
-      setError(errorMessage(err, "Invalid email or password."));
+      if (err?.response?.data?.code === "MFA_REQUIRED") {
+        // The first time this only asks for the code; after that the message says it was wrong.
+        if (needCode) setError(errorMessage(err, "That code is not right."));
+        setNeedCode(true);
+        setCode("");
+      } else {
+        setError(errorMessage(err, "Invalid email or password."));
+      }
     } finally {
       setBusy(false);
     }
@@ -137,9 +147,32 @@ const Login = () => {
               </div>
             </label>
 
+            {needCode && (
+              <label className="block">
+                <span className="text-sm font-semibold text-navy-800">Code from your authenticator app</span>
+                <div className={field}>
+                  <FiShield className="mx-3 text-navy-400" aria-hidden="true" />
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    autoFocus
+                    required
+                    maxLength={6}
+                    value={code}
+                    onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    disabled={busy}
+                    className="w-full border-0 bg-transparent py-3 pr-3 font-mono tracking-[0.3em] text-navy-900 placeholder-navy-300 !shadow-none focus:outline-none"
+                    placeholder="6-digit code"
+                  />
+                </div>
+                <span className="mt-1 block text-xs text-navy-500">Lost your phone? Ask an administrator to reset your two-factor sign-in.</span>
+              </label>
+            )}
+
             <button
               type="submit"
-              disabled={busy || !email || !password}
+              disabled={busy || !email || !password || (needCode && code.length !== 6)}
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-brand-600 py-3.5 font-semibold text-white shadow-glow hover:brightness-110 disabled:opacity-60 disabled:shadow-none"
             >
               {busy ? "Signing in…" : "Sign in"}

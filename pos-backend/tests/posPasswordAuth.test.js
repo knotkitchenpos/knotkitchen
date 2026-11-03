@@ -67,6 +67,15 @@ function makeUserDoc(props) {
 
 const StoreMock = {
   findOne: async (q = {}) => (q.storeId ? stores[q.storeId] || null : null),
+  // Owner reset codes (services/ownerResetCode.js): wrong tries counted, the code used up once.
+  updateOne: async (filter, update) => {
+    const s = Object.values(stores).find((x) => x._id === filter._id);
+    if (!s) return { modifiedCount: 0 };
+    if (filter["passwordReset.codeHash"] !== undefined && s.passwordReset?.codeHash !== filter["passwordReset.codeHash"]) return { modifiedCount: 0 };
+    if (update.$inc) s.passwordReset.attempts = (s.passwordReset.attempts || 0) + update.$inc["passwordReset.attempts"];
+    if (update.$set?.passwordReset) s.passwordReset = { ...update.$set.passwordReset };
+    return { modifiedCount: 1 };
+  },
   create: async (d) => {
     const s = { ...d, _id: "store_" + d.storeId, save: async function () { return this; } };
     stores[d.storeId] = s;
@@ -194,6 +203,9 @@ const call = async (fn, body) => {
 
 // ---------- Test fixtures ----------
 
+/** What support issues from CSD for the owner (services/ownerResetCode.js). */
+const issueCode = (storeId) => require("../services/ownerResetCode").issueResetCode(stores[storeId]);
+
 const seedFreshStore = (storeId, ownerPhone = "9876543210") => {
   stores[storeId] = {
     _id: "store_" + storeId,
@@ -299,9 +311,11 @@ test("setup: wrong owner phone is rejected (the knowledge-factor gate)", async (
 
 test("setup: correct owner phone creates the User and issues a session", async () => {
   seedFreshStore("200011", "9876543210");
+  const { code } = await issueCode("200011");
   const { res, err } = await call(userCtrl.setupStorePassword, {
     storeId: "200011",
     ownerPhone: "9876543210",
+    resetCode: code,
     password: "long-enough-password",
   });
   assert.ifError(err);
@@ -332,9 +346,11 @@ test("setup as reset: existing user's password rotates and prior sessions die", 
   user.sessions = [{ _id: "sess_old", refreshToken: "old-rt" }];
   await user.save();
 
+  const { code } = await issueCode("200013");
   const { res, err } = await call(userCtrl.setupStorePassword, {
     storeId: "200013",
     ownerPhone: "9876543210",
+    resetCode: code,
     password: "brand-new-password",
   });
   assert.ifError(err);
@@ -447,9 +463,11 @@ test("setup: the manager can claim a placeholder store, and it then reads as cla
   const { user } = await seedStoreWithPlaceholderOwner("300033");
   const seededHash = user.password;
 
+  const { code } = await issueCode("300033");
   const { res, err } = await call(userCtrl.setupStorePassword, {
     storeId: "300033",
     ownerPhone: "9876543210",
+    resetCode: code,
     password: "manager-chosen-pw",
   });
   assert.equal(err, null);
@@ -471,4 +489,32 @@ test("setup: the manager can claim a placeholder store, and it then reads as cla
   });
   assert.equal(login.err, null);
   assert.equal(login.res.statusCode, 200);
+});
+
+test("security audit: store ID + owner phone alone can no longer reset the owner's password", async () => {
+  await seedStoreWithOwner("400041", "9876543210", "owners-real-password");
+  const noCode = await call(userCtrl.setupStorePassword, { storeId: "400041", ownerPhone: "9876543210", password: "attacker-password" });
+  assert.equal(noCode.err?.status, 400);
+  assert.equal(noCode.err?.code, "RESET_CODE_REQUIRED");
+
+  const { code } = await issueCode("400041");
+  const wrong = String((Number(code) + 1) % 1000000).padStart(6, "0");
+  for (let i = 0; i < 4; i += 1) {
+    const r = await call(userCtrl.setupStorePassword, { storeId: "400041", ownerPhone: "9876543210", resetCode: wrong, password: "attacker-password" });
+    assert.equal(r.err?.code, "RESET_CODE_INVALID");
+  }
+  // The fifth wrong try voids the code: even the right one is refused now.
+  await call(userCtrl.setupStorePassword, { storeId: "400041", ownerPhone: "9876543210", resetCode: wrong, password: "attacker-password" });
+  const after = await call(userCtrl.setupStorePassword, { storeId: "400041", ownerPhone: "9876543210", resetCode: code, password: "attacker-password" });
+  assert.match(after.err?.message || "", /Too many wrong reset codes/);
+});
+
+test("security audit: a reset code works once", async () => {
+  await seedStoreWithOwner("400042", "9876543210", "owners-real-password");
+  const { code } = await issueCode("400042");
+  const first = await call(userCtrl.setupStorePassword, { storeId: "400042", ownerPhone: "9876543210", resetCode: code, password: "owner-new-password" });
+  assert.ifError(first.err);
+  const again = await call(userCtrl.setupStorePassword, { storeId: "400042", ownerPhone: "9876543210", resetCode: code, password: "someone-else-pw" });
+  assert.match(again.err?.message || "", /expired or was already used/);
+  assert.equal(stores["400042"].passwordReset.codeHash, "", "only an empty slot is left");
 });

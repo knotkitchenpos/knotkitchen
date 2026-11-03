@@ -38,7 +38,9 @@ import { getManagedDevice } from "../../utils/managedDevice";
  *
  * There is deliberately NO self-service reset here. Recovery goes through
  * KnotKitchen support / CSD, so the owner phone is not a standing
- * password-change gate on a public form.
+ * password-change gate on a public form. Setting or resetting the owner's
+ * password needs a one-time reset code that support issues from CSD
+ * (security audit, 2026-11-03: the store ID and owner phone are often public).
  *
  * No SMS. No OTP.
  */
@@ -60,6 +62,8 @@ const Login = () => {
   const [password, setPassword] = useState("");
   const [ownerPhone, setOwnerPhone] = useState("");
   const [confirmPw, setConfirmPw] = useState("");
+  const [resetCode, setResetCode] = useState("");
+  const [resetting, setResetting] = useState(false); // the owner had a password and is resetting it
   const [errorMessage, setErrorMessage] = useState("");
 
   // A tablet KKMDM manages already knows its store: fill the Store ID in,
@@ -76,6 +80,8 @@ const Login = () => {
     setPassword("");
     setOwnerPhone("");
     setConfirmPw("");
+    setResetCode("");
+    setResetting(false);
     setStep("storeId");
   };
 
@@ -263,6 +269,10 @@ const Login = () => {
       setErrorMessage("Enter the store owner's 10-digit phone number.");
       return;
     }
+    if (!/^\d{6}$/.test(resetCode)) {
+      setErrorMessage("Enter the 6-digit reset code from KnotKitchen support.");
+      return;
+    }
     if (password.length < 8) {
       setErrorMessage("Password must be at least 8 characters.");
       return;
@@ -271,7 +281,7 @@ const Login = () => {
       setErrorMessage("The two passwords do not match.");
       return;
     }
-    setupMutation.mutate({ storeId: storeId.trim(), ownerPhone: cleanPhone, password });
+    setupMutation.mutate({ storeId: storeId.trim(), ownerPhone: cleanPhone, resetCode, password });
   };
 
   const busy =
@@ -469,7 +479,14 @@ const Login = () => {
 
             <p className="text-[11px] text-[#77839A] text-center">
               Forgot your password? Contact KnotKitchen support on{" "}
-              <a href={SUPPORT_TEL} className="font-bold underline">{SUPPORT_PHONE}</a>.
+              <a href={SUPPORT_TEL} className="font-bold underline">{SUPPORT_PHONE}</a> for a reset code.{" "}
+              <button
+                type="button"
+                onClick={() => { setErrorMessage(""); setPassword(""); setResetting(true); setStep("setup"); }}
+                className="font-bold text-[#FF5A00] hover:underline"
+              >
+                I have a reset code
+              </button>
             </p>
           </motion.form>
         )}
@@ -566,9 +583,9 @@ const Login = () => {
             className="space-y-5"
           >
             <div className="p-3 bg-[#1E293B]/60 border border-[#26344B] rounded-xl">
-              <div className="text-xs text-[#F5F7FA] font-semibold">First-time setup</div>
+              <div className="text-xs text-[#F5F7FA] font-semibold">{resetting ? "Reset the owner password" : "First-time setup"}</div>
               <div className="text-xs text-[#77839A] mt-1">
-                {`Set the password for ${storeInfo?.storeName || "your store"}. You will use it every day to sign in.`}
+                {`Set the password for ${storeInfo?.storeName || "your store"}. You will need the 6-digit reset code KnotKitchen support gives you.`}
               </div>
               {storeInfo?.ownerPhoneHint && (
                 <div className="text-[11px] text-[#77839A] mt-1.5">
@@ -600,6 +617,25 @@ const Login = () => {
                   disabled={busy}
                   placeholder="10-digit registered phone"
                   className="w-full bg-transparent text-[#F5F7FA] text-base font-mono tracking-wider placeholder:text-[#77839A] placeholder:font-sans placeholder:tracking-normal outline-none"
+                />
+              </div>
+            </label>
+
+            <label className="block">
+              <span className="text-xs font-semibold text-[#AEB8CA] uppercase tracking-wider">Reset code from support</span>
+              <div className="mt-2.5 flex items-center gap-3 bg-[#0D1526] border-[#26344B] focus-within:border-[#FF5A00] group rounded-xl px-4 py-3.5 border transition-all duration-200 shadow-sm focus-within:shadow-[0_0_0_3px_rgba(255,90,0,0.15)]">
+                <FiKey size={18} className="text-[#77839A] group-focus-within:text-[#FF5A00] transition-colors shrink-0" />
+                <input
+                  type="text"
+                  autoComplete="one-time-code"
+                  inputMode="numeric"
+                  required
+                  maxLength={6}
+                  value={resetCode}
+                  onChange={(e) => setResetCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  disabled={busy}
+                  placeholder="6-digit code"
+                  className="w-full bg-transparent text-[#F5F7FA] text-base font-mono tracking-[0.3em] placeholder:text-[#77839A] placeholder:font-sans placeholder:tracking-normal outline-none"
                 />
               </div>
             </label>
@@ -644,10 +680,10 @@ const Login = () => {
 
             <button
               type="submit"
-              disabled={busy || !ownerPhone || !password || !confirmPw}
+              disabled={busy || !ownerPhone || resetCode.length !== 6 || !password || !confirmPw}
               className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-[#FF5A00] py-3.5 font-semibold text-white disabled:opacity-60 hover:bg-[#FF7A2A] transition"
             >
-              {setupMutation.isPending ? "Saving…" : "Create password & sign in"}
+              {setupMutation.isPending ? "Saving…" : resetting ? "Reset password & sign in" : "Create password & sign in"}
               {!setupMutation.isPending && <FiArrowRight aria-hidden="true" />}
             </button>
 

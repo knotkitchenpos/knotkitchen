@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import {
   FiArrowLeft, FiExternalLink, FiMapPin, FiGlobe, FiMonitor, FiEdit2,
-  FiUsers, FiClock, FiAlertTriangle, FiCheck, FiX,
+  FiUsers, FiClock, FiAlertTriangle, FiCheck, FiX, FiKey,
 } from "react-icons/fi";
 import {
   restaurants as api, stores as storesApi, billingConfig as billingApi, knotEats as eatsApi, errorMessage, fieldErrors,
@@ -476,6 +476,8 @@ const RestaurantDetail = () => {
   const [changingPlan, setChangingPlan] = useState(false);
   const [activityOpen, setActivityOpen] = useState(false);
   const [openingPos, setOpeningPos] = useState(false);
+  const [resetCode, setResetCode] = useState(null); // { code, minutes, ownerPhoneEnd }
+  const [issuingCode, setIssuingCode] = useState(false);
   const [gbpUrl, setGbpUrl] = useState("");
   const [gbpErr, setGbpErr] = useState("");
   const [savingGbp, setSavingGbp] = useState(false);
@@ -806,6 +808,49 @@ const RestaurantDetail = () => {
                 </span>
               </span>
             </button>
+
+            {/* The owner's password is set or reset at the POS with a one-time
+                code from here, read to them once support knows who is calling. */}
+            {isAdmin && (
+              <div className="rounded-xl border border-navy-200 p-2.5">
+                <button
+                  type="button"
+                  disabled={issuingCode}
+                  onClick={async () => {
+                    if (!window.confirm("Issue a password reset code for this store's owner?\n\nOnly give it to the owner after confirming who is calling. Any earlier code stops working.")) return;
+                    setIssuingCode(true);
+                    try {
+                      setResetCode(await storesApi.ownerResetCode(storeId));
+                    } catch (err) {
+                      window.alert(errorMessage(err, "Could not issue a reset code."));
+                    } finally {
+                      setIssuingCode(false);
+                    }
+                  }}
+                  className="flex w-full items-center gap-3 text-left disabled:cursor-wait disabled:opacity-60"
+                >
+                  <FiKey className="shrink-0 text-brand-600" size={20} aria-hidden="true" />
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-sm font-semibold text-navy-900">
+                      {issuingCode ? "Issuing code…" : "Owner password reset code"}
+                    </span>
+                    <span className="block text-xs text-navy-500">
+                      For the owner to set or reset their POS password. Recorded against your name.
+                    </span>
+                  </span>
+                </button>
+                {resetCode && (
+                  <div className="mt-2 rounded-lg bg-brand-50 p-2.5 text-center">
+                    <p className="font-mono text-2xl font-black tracking-[0.3em] text-navy-900">{resetCode.code}</p>
+                    <p className="text-xs text-navy-600">
+                      Valid {resetCode.minutes} minutes, once. Read it only to the owner
+                      {resetCode.ownerPhoneEnd ? ` (phone ending ${resetCode.ownerPhoneEnd})` : ""}. They enter it at the POS under
+                      &quot;I have a reset code&quot;.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Open to staff as well as admin -- the dialog is read-only
                 unless the server says otherwise, and support needs to be able

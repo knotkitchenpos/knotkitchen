@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate, useLocation } from "react-route
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import Layout from "./components/Layout";
 import Login from "./pages/Login";
+import MfaSetup from "./pages/MfaSetup";
 import Profile from "./pages/Profile";
 import StoreSearch from "./pages/StoreSearch";
 import RestaurantDetail from "./pages/RestaurantDetail";
@@ -31,7 +32,9 @@ const Splash = () => (
 const RequireAuth = ({ children }) => {
   const { staff, loading } = useAuth();
   if (loading) return <Splash />;
-  return staff ? children : <Login />;
+  if (!staff) return <Login />;
+  // Two-factor sign-in first (security audit, 2026-11-03); the server enforces it too.
+  return staff.mfaEnabled ? children : <MfaSetup />;
 };
 
 /**
@@ -48,6 +51,7 @@ const RequireAdmin = ({ children }) => {
   const location = useLocation();
   if (loading) return <Splash />;
   if (!staff) return <Login />;
+  if (!staff.mfaEnabled) return <MfaSetup />;
   if (!isAdmin) return <Navigate to="/stores" replace state={{ deniedFrom: location.pathname }} />;
   return children;
 };

@@ -41,6 +41,10 @@
 		X-Content-Type-Options    "nosniff"
 		Referrer-Policy           "strict-origin-when-cross-origin"
 		Permissions-Policy        "camera=(), microphone=(), geolocation=(), payment=()"
+		# No other site may show these pages in a frame (clickjacking; security
+		# audit 2026-11-03). "?" only fills it in where the app sent none, so the
+		# API's and POS's own DENY stays as it is.
+		?X-Frame-Options          "SAMEORIGIN"
 		-Server
 		-X-Powered-By
 	}

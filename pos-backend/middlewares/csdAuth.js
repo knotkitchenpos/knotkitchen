@@ -5,6 +5,8 @@ const config = require("../config/config");
 const CsdStaff = require("../models/csdStaffModel");
 
 const COOKIE_NAME = "csdToken";
+// What an account without two-factor sign-in yet may reach: itself, signing out, and setting it up.
+const MFA_SETUP_PATHS = ["/api/csd/auth/me", "/api/csd/auth/logout", "/api/csd/auth/mfa/setup", "/api/csd/auth/mfa/enable"];
 const TOKEN_TTL = process.env.CSD_TOKEN_EXPIRY || "12h";
 
 /**
@@ -46,7 +48,8 @@ const getSecret = () => {
 
 const issueSessionCookie = (res, staff) => {
   const token = jwt.sign(
-    { sub: String(staff._id), staffId: staff.staffId },
+    // tv: the staff row's tokenVersion; raising it ends every session (sign-out, 2FA reset).
+    { sub: String(staff._id), staffId: staff.staffId, tv: staff.tokenVersion || 0 },
     getSecret(),
     { algorithm: "HS256", expiresIn: TOKEN_TTL }
   );
@@ -99,9 +102,16 @@ const requireCsdAuth = async (req, res, next) => {
     }
 
     const staff = await CsdStaff.findById(decoded.sub);
-    if (!staff || staff.status !== "active") {
+    // A session from before a sign-out or 2FA reset (tokenVersion moved on) is over.
+    if (!staff || staff.status !== "active" || (decoded.tv || 0) !== (staff.tokenVersion || 0)) {
       clearSessionCookie(res);
       return next(createHttpError(401, "Not signed in."));
+    }
+
+    // Two-factor sign-in is required (security audit, 2026-11-03): until it is
+    // set up, an account reaches only its own session and the 2FA setup.
+    if (!staff.mfa?.enabled && !MFA_SETUP_PATHS.some((p) => req.originalUrl.split("?")[0] === p)) {
+      return next(createHttpError(403, "Set up two-factor sign-in to continue.", { code: "MFA_SETUP_REQUIRED" }));
     }
 
     req.csdStaff = staff;

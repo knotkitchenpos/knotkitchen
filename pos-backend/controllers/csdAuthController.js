@@ -3,6 +3,8 @@ const CsdStaff = require("../models/csdStaffModel");
 const config = require("../config/config");
 const { issueSessionCookie, clearSessionCookie } = require("../middlewares/csdAuth");
 const { csdAudit } = require("../services/csdAuditService");
+const { newSecret, matchStep, otpauthUrl } = require("../services/totp");
+const { seal, open } = require("../services/secretBox");
 
 /**
  * CSD authentication — email + password.
@@ -85,8 +87,13 @@ const seedSuperAdmin = async () => {
     if (seeded.status !== "active") { seeded.status = "active"; dirty = true; }
     if (process.env.RESET_SUPERADMIN_PASSWORD === "true") {
       // eslint-disable-next-line no-console
-      console.warn(`[SECURITY] RESET_SUPERADMIN_PASSWORD=true — resetting ${email}.`);
+      console.warn(`[SECURITY] RESET_SUPERADMIN_PASSWORD=true — resetting ${email} (password, two-factor sign-in and lockout).`);
       seeded.password = rawPassword;
+      // The recovery path also clears a lost authenticator: set up again at the next sign-in.
+      seeded.mfa = { enabled: false, secret: "", pendingSecret: "", lastStep: 0 };
+      seeded.failedLogins = 0;
+      seeded.lockedUntil = undefined;
+      seeded.tokenVersion = (seeded.tokenVersion || 0) + 1;
       dirty = true;
     }
     if (dirty) await seeded.save();
@@ -117,14 +124,37 @@ const login = async (req, res, next) => {
     }
 
     // .select("+password") because the schema hides it by default.
-    const staff = await CsdStaff.findOne({ email }).select("+password");
+    const staff = await CsdStaff.findOne({ email }).select("+password +mfa.secret");
     // Same message for "no such user" and "wrong password" — no enumeration.
     if (!staff || staff.status !== "active") {
       return next(createHttpError(401, "Invalid email or password."));
     }
 
+    // Locked after too many wrong passwords or codes in a row (security audit, 2026-11-03).
+    if (staff.lockedUntil && staff.lockedUntil > new Date()) {
+      const mins = Math.ceil((staff.lockedUntil - Date.now()) / 60000);
+      return next(createHttpError(429, `Too many failed sign-ins. Try again in ${mins} minute${mins === 1 ? "" : "s"}.`));
+    }
+
     const ok = await staff.comparePassword(password);
-    if (!ok) return next(createHttpError(401, "Invalid email or password."));
+    if (!ok) {
+      await failedSignIn(staff);
+      return next(createHttpError(401, "Invalid email or password."));
+    }
+
+    // The second factor: a current code from the authenticator app, each used once.
+    if (staff.mfa?.enabled) {
+      const code = String(req.body?.code || "").replace(/\s/g, "");
+      if (!code) return next(createHttpError(401, "Enter the 6-digit code from your authenticator app.", { code: "MFA_REQUIRED" }));
+      const step = matchStep(open(staff.mfa.secret), code);
+      if (step === null || step <= (staff.mfa.lastStep || 0)) {
+        await failedSignIn(staff);
+        return next(createHttpError(401, "That code is not right. Use the current code from your authenticator app.", { code: "MFA_REQUIRED" }));
+      }
+      staff.mfa.lastStep = step;
+    }
+    staff.failedLogins = 0;
+    staff.lockedUntil = undefined;
 
     staff.lastLoginAt = new Date();
     staff.loginHistory.push({
@@ -161,10 +191,91 @@ const me = async (req, res) => {
   res.status(200).json({ success: true, data: req.csdStaff.toSafeJSON() });
 };
 
-/** POST /api/csd/auth/logout */
+/**
+ * POST /api/csd/auth/logout — ends the session on the server too: the
+ * tokenVersion moves on, so a copied cookie stops working with it. That signs
+ * this account out on every device, which for a support panel is the point.
+ */
 const logout = async (req, res) => {
+  await CsdStaff.updateOne({ _id: req.csdStaff._id }, { $inc: { tokenVersion: 1 } });
   clearSessionCookie(res);
   res.status(200).json({ success: true });
 };
 
-module.exports = { login, me, logout, seedSuperAdmin };
+/* ------------------------------------------------ two-factor sign-in */
+
+const MAX_FAILED = 5;
+const LOCK_MS = 15 * 60 * 1000;
+
+/** A wrong password or code: counted, and at MAX_FAILED in a row the account locks for LOCK_MS. */
+const failedSignIn = async (staff) => {
+  const failed = (staff.failedLogins || 0) + 1;
+  const set = failed >= MAX_FAILED
+    ? { failedLogins: 0, lockedUntil: new Date(Date.now() + LOCK_MS) }
+    : { failedLogins: failed };
+  await CsdStaff.updateOne({ _id: staff._id }, { $set: set });
+};
+
+/**
+ * POST /api/csd/auth/mfa/setup — a new authenticator secret for this account,
+ * kept pending until a code from it is entered (enable). Only while 2FA is not
+ * on yet: an admin resets it for a lost phone.
+ */
+const mfaSetup = async (req, res, next) => {
+  try {
+    if (req.csdStaff.mfa?.enabled) return next(createHttpError(409, "Two-factor sign-in is already on."));
+    const secret = newSecret();
+    await CsdStaff.updateOne({ _id: req.csdStaff._id }, { $set: { "mfa.pendingSecret": seal(secret) } });
+    res.status(200).json({ success: true, data: { secret, otpauthUrl: otpauthUrl(secret, req.csdStaff.email) } });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** POST /api/csd/auth/mfa/enable { code } — the first code from the app turns 2FA on. */
+const mfaEnable = async (req, res, next) => {
+  try {
+    const staff = await CsdStaff.findById(req.csdStaff._id).select("+mfa.pendingSecret");
+    const pending = open(staff?.mfa?.pendingSecret || "");
+    if (!pending) return next(createHttpError(400, "Start the setup again."));
+    const step = matchStep(pending, req.body?.code);
+    if (step === null) return next(createHttpError(400, "That code is not right. Enter the current 6-digit code from the app."));
+    staff.mfa = { enabled: true, secret: seal(pending), pendingSecret: "", lastStep: step, enabledAt: new Date() };
+    await staff.save();
+    await csdAudit({
+      req, staff, action: "CSD_MFA_ENABLED", resource: "CsdAuth", entityType: "CsdStaff", entityId: staff._id,
+      description: `${staff.staffId} turned on two-factor sign-in`,
+    });
+    res.status(200).json({ success: true, data: staff.toSafeJSON() });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/csd/staff/:id/reset-mfa — an admin clears another account's 2FA
+ * (a lost or new phone). It is set up again at that person's next sign-in,
+ * and their current sessions end.
+ */
+const resetStaffMfa = async (req, res, next) => {
+  try {
+    const mongoose = require("mongoose");
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return next(createHttpError(404, "Staff member not found."));
+    const staff = await CsdStaff.findById(req.params.id);
+    if (!staff) return next(createHttpError(404, "Staff member not found."));
+    staff.mfa = { enabled: false, secret: "", pendingSecret: "", lastStep: 0 };
+    staff.failedLogins = 0;
+    staff.lockedUntil = undefined;
+    staff.tokenVersion = (staff.tokenVersion || 0) + 1;
+    await staff.save();
+    await csdAudit({
+      req, staff: req.csdStaff, action: "CSD_MFA_RESET", resource: "CsdStaff", entityType: "CsdStaff", entityId: staff._id,
+      description: `${req.csdStaff.staffId} reset two-factor sign-in for ${staff.staffId}`,
+    });
+    res.status(200).json({ success: true, data: staff.toSafeJSON() });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { login, me, logout, seedSuperAdmin, mfaSetup, mfaEnable, resetStaffMfa };

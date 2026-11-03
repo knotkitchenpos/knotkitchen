@@ -90,6 +90,8 @@ const StorePropertiesView = () => {
   const [showChangePin, setShowChangePin] = useState(false);
   const [currentPinInput, setCurrentPinInput] = useState("");
   const [newPinInput, setNewPinInput] = useState("");
+  // No default PIN (security audit, 2026-11-03): until the owner sets one, nothing unlocks with a PIN.
+  const hasPin = storeData.hasCustomPin === true;
 
   const [formData, setFormData] = useState({});
   const [pickerOpen, setPickerOpen] = useState(false);
@@ -145,7 +147,8 @@ const StorePropertiesView = () => {
   const changePinMutation = useMutation({
     mutationFn: (data) => changePin(data),
     onSuccess: () => {
-      enqueueSnackbar("Protection PIN changed successfully!", { variant: "success" });
+      enqueueSnackbar(hasPin ? "Protection PIN changed successfully!" : "Security PIN set. Staff can now use it to approve protected actions.", { variant: "success" });
+      qc.invalidateQueries({ queryKey: ["store-properties"] });
       setShowChangePin(false);
       setCurrentPinInput("");
       setNewPinInput("");
@@ -167,7 +170,11 @@ const StorePropertiesView = () => {
           <div className="min-w-0">
             <h4 className="text-[16px] font-extrabold text-[#0F172A]">Store Properties</h4>
           </div>
-          {!pinVerified ? (
+          {!pinVerified && !hasPin ? (
+            <span className="px-3 py-1 rounded-full bg-[#FEF3C7] text-[#92400E] text-[12px] font-bold">
+              Set a Security PIN below to edit
+            </span>
+          ) : !pinVerified ? (
             <div className="flex items-center gap-2">
               <input
                 type="password"
@@ -373,18 +380,23 @@ const StorePropertiesView = () => {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="min-w-0">
               <h4 className="text-[15px] font-extrabold text-[#0F172A]">Protection PIN Management</h4>
+              {!hasPin && (
+                <p className="text-[12px] text-[#B45309] font-bold mt-0.5">
+                  No Security PIN is set. Until you set one, only you can approve refunds, cancellations and other protected actions.
+                </p>
+              )}
             </div>
             <button
               onClick={() => setShowChangePin(!showChangePin)}
-              className="h-[36px] px-3.5 rounded-xl border border-[#E2E8F0] text-[#334155] text-[12.5px] font-bold hover:bg-[#F8FAFC]"
+              className={`h-[36px] px-3.5 rounded-xl text-[12.5px] font-bold ${!hasPin && !showChangePin ? "bg-[#FD5302] text-white hover:bg-[#D64502]" : "border border-[#E2E8F0] text-[#334155] hover:bg-[#F8FAFC]"}`}
             >
-              {showChangePin ? "Cancel" : "Change PIN"}
+              {showChangePin ? "Cancel" : hasPin ? "Change PIN" : "Set PIN"}
             </button>
           </div>
 
           {showChangePin && (
             <div className="pt-3 border-t border-[#E2E8F0] grid grid-cols-1 md:grid-cols-2 gap-3 text-[13px]">
-              <div>
+              {hasPin && <div>
                 <label className="text-[11.5px] font-bold text-[#94A3B8]">Current PIN</label>
                 <input
                   type="password"
@@ -394,7 +406,7 @@ const StorePropertiesView = () => {
                   placeholder="Current PIN"
                   className="w-full h-[38px] px-3 mt-1 rounded-xl border border-[#E2E8F0] font-bold"
                 />
-              </div>
+              </div>}
               <div>
                 <label className="text-[11.5px] font-bold text-[#94A3B8]">New PIN (4-8 digits)</label>
                 <input
@@ -412,7 +424,7 @@ const StorePropertiesView = () => {
                   disabled={changePinMutation.isPending}
                   className="h-[38px] px-5 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold hover:bg-[#D64502] disabled:opacity-50"
                 >
-                  {changePinMutation.isPending ? "Updating…" : "Update PIN"}
+                  {changePinMutation.isPending ? "Saving…" : hasPin ? "Update PIN" : "Set PIN"}
                 </button>
               </div>
             </div>

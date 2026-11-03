@@ -30,13 +30,19 @@ const hasPinAuthorization = async (req, { typedOnly = false } = {}) => {
   }
   const rawPin = req.headers["x-staff-pin"] || req.body?.pin;
   if (!rawPin) return false;
-  const { verifyPinHelper } = require("../controllers/restaurantController");
+  const { verifyPinHelper, noPinError } = require("../controllers/restaurantController");
   const restaurant = await Restaurant.findOne({
     ...(req.user.restaurantId ? { _id: req.user.restaurantId } : { ownerId: req.user._id }),
     isDeleted: false,
   });
-  return Boolean(restaurant && (await verifyPinHelper(restaurant, rawPin)));
+  // No PIN set: nothing typed would work, so say why rather than "wrong PIN".
+  if (restaurant && !restaurant.securityPin) throw isOwnerUser(req.user) ? noPinError() : noPinForStaff();
+  return Boolean(restaurant && (await verifyPinHelper(restaurant, rawPin, req.user)));
 };
+
+/** A staff member asked for the PIN where the owner never set one (security audit, 2026-11-03: no default PIN). */
+const noPinForStaff = () =>
+  createHttpError(403, "The owner has not set a Security PIN yet, so this needs the owner. They can set one in Settings › Store Properties.", { code: "NO_PIN_SET" });
 
 /** The POS asks for the PIN and retries when it sees this code (https/axiosWrapper.js). */
 const pinRequired = () => createHttpError(403, "PIN authorization required for this action.", { code: "PIN_REQUIRED" });

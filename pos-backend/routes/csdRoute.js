@@ -3,8 +3,8 @@ const router = express.Router();
 
 const { rateLimit, clientIp } = require("../middlewares/rateLimiter");
 const { requireCsdAuth, requireCsdAdmin } = require("../middlewares/csdAuth");
-const { login, me, logout } = require("../controllers/csdAuthController");
-const { searchStores, getStore, updateStoreStatus, eraseStoreRecord } = require("../controllers/csdStoreController");
+const { login, me, logout, mfaSetup, mfaEnable, resetStaffMfa } = require("../controllers/csdAuthController");
+const { searchStores, getStore, updateStoreStatus, eraseStoreRecord, issueOwnerResetCode } = require("../controllers/csdStoreController");
 const { getDashboard } = require("../controllers/csdDashboardController");
 const { createStore, getOptions } = require("../controllers/csdOnboardingController");
 const { searchOrders, getOrder } = require("../controllers/csdSearchController");
@@ -89,6 +89,9 @@ router.use(requireCsdAuth);
 
 router.get("/auth/me", me);
 router.post("/auth/logout", logout);
+// Two-factor sign-in, required for every account (security audit, 2026-11-03).
+router.post("/auth/mfa/setup", mfaSetup);
+router.post("/auth/mfa/enable", mfaEnable);
 
 // ---------------------------------------------------------------------------
 // 3. Shared — staff and admin
@@ -159,10 +162,14 @@ router.post("/onboarding/stores", requireCsdAdmin, createStore);
 router.patch("/stores/:storeId/status", requireCsdAdmin, updateStoreStatus);
 // Erase a deleted store's record (its agreement and invoices are kept).
 router.delete("/stores/:storeId", requireCsdAdmin, eraseStoreRecord);
+// A one-time code for the owner to set or reset their POS password (security audit, 2026-11-03).
+router.post("/stores/:storeId/owner-reset-code", requireCsdAdmin, issueOwnerResetCode);
 
 // Staff Management. This is what lets anyone beyond the two predefined admin
 // numbers sign in at all — sendOtp refuses phones with no active staff row.
 router.get("/staff", requireCsdAdmin, listStaff);
+// A lost or new phone: an admin clears that account's two-factor sign-in to set up again.
+router.post("/staff/:id/reset-mfa", requireCsdAdmin, resetStaffMfa);
 router.post("/staff", requireCsdAdmin, createStaff);
 router.get("/staff/:id", requireCsdAdmin, getStaff);
 router.patch("/staff/:id", requireCsdAdmin, updateStaff);

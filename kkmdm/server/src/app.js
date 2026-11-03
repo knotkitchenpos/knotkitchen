@@ -30,6 +30,14 @@ function createApp() {
   app.use(cookieParser());
   // APK uploads parse their own raw body; everything else is JSON.
   app.use((req, res, next) => (req.path === "/api/apps/upload" || req.path === "/device/logs" || req.path.startsWith("/upload/") ? next() : express.json({ limit: "1mb" })(req, res, next)));
+  // MongoDB operators never come from a request (security audit, 2026-11-03):
+  // keys starting with "$" are dropped from the body and query, so a value can
+  // never become { "$ne": null } in a lookup.
+  const stripOperators = (v, depth = 0) => {
+    if (!v || typeof v !== "object" || Buffer.isBuffer(v) || depth > 20) return;
+    for (const k of Object.keys(v)) (k.startsWith("$") ? delete v[k] : stripOperators(v[k], depth + 1));
+  };
+  app.use((req, res, next) => { stripOperators(req.body); stripOperators(req.query); next(); });
 
   app.get("/healthz", (req, res) => res.json({ ok: true, service: "kkmdm" }));
 

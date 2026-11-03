@@ -36,6 +36,15 @@ const storeSchema = new mongoose.Schema(
     closureReason: { type: String, default: "" },
     restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: "Restaurant" },
 
+    // A one-time code from KnotKitchen support, needed to set or reset the
+    // owner's password (services/ownerResetCode.js). Only its HMAC is kept.
+    passwordReset: {
+      codeHash: { type: String, default: "" },
+      expiresAt: { type: Date },
+      attempts: { type: Number, default: 0 },
+      issuedBy: { type: mongoose.Schema.Types.ObjectId, ref: "CsdStaff" },
+    },
+
     isDeleted: { type: Boolean, default: false },
   },
   { timestamps: true }

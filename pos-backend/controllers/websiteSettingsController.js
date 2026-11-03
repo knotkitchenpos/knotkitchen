@@ -956,7 +956,9 @@ const GATEWAY_PIN_MESSAGE = "Enter your PIN to change the payment gateway.";
 const gatewayPinOk = async (req) => {
   const restaurant = await Restaurant.findOne({ _id: req.user?.restaurantId, isDeleted: { $ne: true } }, { securityPin: 1 });
   if (!restaurant) return false;
-  return require("./restaurantController").verifyPinHelper(restaurant, req.body?.pin);
+  // No PIN set yet: the owner is asked to set one first (restaurantController.noPinError).
+  if (!restaurant.securityPin) throw require("./restaurantController").noPinError();
+  return require("./restaurantController").verifyPinHelper(restaurant, req.body?.pin, req.user);
 };
 
 const validateGatewayCredentials = async (req, res, next) => {

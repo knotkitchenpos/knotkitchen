@@ -1,4 +1,5 @@
 const createHttpError = require("http-errors");
+const { useResetCode, RESET_CODE_MESSAGES } = require("../services/ownerResetCode");
 const User = require("../models/userModel");
 const Restaurant = require("../models/restaurantModel");
 const Store = require("../models/storeModel");
@@ -438,7 +439,12 @@ const checkStoreStatus = async (req, res, next) => {
 };
 
 /**
- * POST /api/user/store/setup-password  { storeId, ownerPhone, password }  — public
+ * POST /api/user/store/setup-password  { storeId, ownerPhone, resetCode, password }  — public
+ *
+ * Security audit, 2026-11-03: the store ID and owner phone alone are printed on
+ * bills and websites, so they also need a one-time reset code that KnotKitchen
+ * support issues from CSD (services/ownerResetCode.js). Without it anyone could
+ * reset an owner's password and take the store over.
  *
  * Serves both first-time setup (no User yet) and password reset (User
  * exists). Same request shape, same code path, same audit event. The
@@ -470,6 +476,15 @@ const setupStorePassword = async (req, res, next) => {
     const ownerPhone = await resolveStoreOwnerPhone(initialRestaurant, store);
     if (!ownerPhone || ownerPhone !== rawPhone) {
       return next(createHttpError(400, "Owner phone number does not match the Store ID."));
+    }
+
+    const resetCode = toSafeString(req.body.resetCode).replace(/\D/g, "");
+    if (!/^\d{6}$/.test(resetCode)) {
+      return next(createHttpError(400, RESET_CODE_MESSAGES.missing, { code: "RESET_CODE_REQUIRED" }));
+    }
+    const codeResult = await useResetCode(store, resetCode);
+    if (codeResult !== "ok") {
+      return next(createHttpError(400, RESET_CODE_MESSAGES[codeResult], { code: "RESET_CODE_INVALID" }));
     }
 
     // Materialise the restaurant/user pair the way completeStoreSignup did,

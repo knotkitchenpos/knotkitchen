@@ -48,9 +48,12 @@ api.interceptors.response.use(
 );
 
 export const auth = {
-  login: (email, password) => api.post("/auth/login", { email, password }).then((r) => r.data.data),
+  login: (email, password, code) => api.post("/auth/login", { email, password, ...(code ? { code } : {}) }).then((r) => r.data.data),
   me: () => api.get("/auth/me").then((r) => r.data.data),
   logout: () => api.post("/auth/logout").then((r) => r.data),
+  // Two-factor sign-in (security audit, 2026-11-03).
+  mfaSetup: () => api.post("/auth/mfa/setup").then((r) => r.data.data),
+  mfaEnable: (code) => api.post("/auth/mfa/enable", { code }).then((r) => r.data.data),
 };
 
 /** Per-field messages from a 400, for highlighting form inputs. */
@@ -63,6 +66,8 @@ export const stores = {
     api.patch(`/stores/${storeId}/status`, payload).then((r) => r.data.data),
   // A deleted store's record, erased for good; its agreement and invoices are kept.
   erase: (storeId) => api.delete(`/stores/${storeId}`, { data: { confirmStoreId: storeId } }).then((r) => r.data),
+  // A one-time code the owner needs to set or reset their POS password (security audit, 2026-11-03).
+  ownerResetCode: (storeId) => api.post(`/stores/${storeId}/owner-reset-code`).then((r) => r.data.data),
 };
 
 export const agreements = {
@@ -159,6 +164,7 @@ export const staffAdmin = {
   get: (id) => api.get(`/staff/${id}`).then((r) => r.data.data),
   create: (payload) => api.post("/staff", payload).then((r) => r.data.data),
   update: (id, payload) => api.patch(`/staff/${id}`, payload).then((r) => r.data.data),
+  resetMfa: (id) => api.post(`/staff/${id}/reset-mfa`).then((r) => r.data.data),
 };
 
 export const chat = {

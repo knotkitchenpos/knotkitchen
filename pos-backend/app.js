@@ -85,21 +85,50 @@ const isWildcardMatch = (origin) => {
     );
 };
 
+// What a store's own website (any https://<slug>.<base>) may call: the diner
+// side only. The POS, CSD and the rest stay with the named FRONTEND_URLS, so a
+// script on one store's site can never reach staff or support APIs with the
+// cookies of a POS user who happens to open it (security audit, 2026-11-03).
+const WILDCARD_PATHS = ["/api/storefront", "/api/public", "/api/eats", "/api/qr", "/api/table-qr", "/api/payment-link", "/api/receipts"];
+const isPublicPath = (path) => WILDCARD_PATHS.some((p) => path === p || path.startsWith(`${p}/`));
+
 app.use(
-    cors({
-        credentials: true,
-        origin: (origin, callback) => {
-            if (!origin) return callback(null, true); // same-origin / native app
+    cors((req, callback) => {
+        const origin = req.headers.origin;
+        let allow = false;
+        if (!origin) allow = true; // same-origin / native app
+        else {
             const clean = origin.replace(/\/$/, "");
-            if (allowedOrigins.has(clean)) return callback(null, true);
-            if (isWildcardMatch(clean)) return callback(null, true);
-            // Do NOT set a permissive header for unknown origins; browsers will
-            // then correctly block the response. We still return null so the
-            // route runs (and returns whatever data) without leaking cookies.
-            return callback(null, false);
-        },
+            allow = allowedOrigins.has(clean) || (isWildcardMatch(clean) && isPublicPath(req.path));
+        }
+        // Do NOT set a permissive header for unknown origins; browsers will
+        // then correctly block the response. The route still runs (and returns
+        // whatever data) without leaking cookies.
+        callback(null, { credentials: true, origin: allow });
     })
 );
+
+/**
+ * MongoDB operators never come from a request (security audit, 2026-11-03).
+ * A body like { "phone": { "$ne": null } } would otherwise turn a lookup by
+ * value into "match anything" wherever a handler forgets to String() it. Keys
+ * starting with "$" are dropped from the body, query and params before any
+ * route sees them; no client of ours sends one. req.rawBody, which webhook
+ * signatures are checked against, is left exactly as received.
+ */
+const stripOperators = (value, depth = 0) => {
+    if (!value || typeof value !== "object" || depth > 20) return value;
+    for (const key of Object.keys(value)) {
+        if (key.startsWith("$")) delete value[key];
+        else stripOperators(value[key], depth + 1);
+    }
+    return value;
+};
+app.use((req, _res, next) => {
+    stripOperators(req.query);
+    stripOperators(req.params);
+    next();
+});
 
 /**
  * Basic security headers on every response (§22).
@@ -137,6 +166,10 @@ app.use(
         },
     })
 ); // parse incoming request in json format
+app.use((req, _res, next) => {
+    stripOperators(req.body);
+    next();
+});
 app.use(cookieParser());
 
 /**

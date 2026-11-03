@@ -183,7 +183,8 @@ test("Backend Enforcement: Staff cannot modify owner info in store properties", 
   const RestaurantMock = {
     findOne: async () => ({
       _id: RESTAURANT_ID,
-      securityPin: null,
+      // The store's own PIN, 4321 (no default PIN since the security audit, 2026-11-03).
+      securityPin: require("bcrypt").hashSync("4321", 4),
       save: async () => {},
     }),
   };
@@ -202,7 +203,7 @@ test("Backend Enforcement: Staff cannot modify owner info in store properties", 
   let errorCaught = null;
   const req = {
     user: staffUser,
-    body: { pin: "8796", ownerName: "Hacked Owner" },
+    body: { pin: "4321", ownerName: "Hacked Owner" },
   };
 
   try {

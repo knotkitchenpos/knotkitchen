@@ -103,6 +103,24 @@ const csdStaffSchema = new mongoose.Schema(
     // view for Staff Management, not the audit log of record (that's AuditLog).
     loginHistory: { type: [loginEventSchema], default: [] },
 
+    // Two-factor sign-in with an authenticator app (security audit,
+    // 2026-11-03): required for every CSD account. Secrets are sealed
+    // (services/secretBox); lastStep stops one code being used twice.
+    mfa: {
+      enabled: { type: Boolean, default: false },
+      secret: { type: String, default: "", select: false },
+      pendingSecret: { type: String, default: "", select: false },
+      lastStep: { type: Number, default: 0 },
+      enabledAt: { type: Date },
+    },
+    // Wrong passwords or codes in a row; at the limit the account is locked
+    // for a while (controllers/csdAuthController.js).
+    failedLogins: { type: Number, default: 0 },
+    lockedUntil: { type: Date },
+    // In every session token; raising it signs every session out (sign-out,
+    // 2FA reset), since a CSD session would otherwise live its 12 hours.
+    tokenVersion: { type: Number, default: 0 },
+
     createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "CsdStaff" },
   },
   { timestamps: true }
@@ -117,7 +135,7 @@ csdStaffSchema.index({ fullName: 1 });
  */
 csdStaffSchema.pre("save", async function hashPassword(next) {
   if (!this.isModified("password")) return next();
-  const salt = await bcrypt.genSalt(10);
+  const salt = await bcrypt.genSalt(12);
   this.password = await bcrypt.hash(this.password, salt);
   next();
 });
@@ -144,6 +162,7 @@ csdStaffSchema.methods.toSafeJSON = function () {
     permissions: this.permissions,
     dateJoined: this.dateJoined,
     lastLoginAt: this.lastLoginAt,
+    mfaEnabled: this.mfa?.enabled === true,
   };
 };
 

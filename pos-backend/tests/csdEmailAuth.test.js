@@ -57,6 +57,13 @@ const CsdStaff = {
     return n;
   },
   async nextStaffId() { return "KK-ST-" + String(staffById.size + 1).padStart(3, "0"); },
+  // Failed sign-ins are counted with an update (security audit, 2026-11-03).
+  async updateOne(filter, update) {
+    const d = staffById.get(String(filter._id));
+    if (d && update.$set) Object.assign(d, update.$set);
+    if (d && update.$inc) for (const [k, v] of Object.entries(update.$inc)) d[k] = (d[k] || 0) + v;
+    return { modifiedCount: d ? 1 : 0 };
+  },
 };
 
 // The controller calls `.select("+password")` on the query, then hits await.
