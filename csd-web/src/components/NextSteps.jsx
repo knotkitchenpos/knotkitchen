@@ -8,8 +8,9 @@ const NextSteps = ({ storeId }) => (
       creates a password using the owner phone.
     </li>
     <li>
-      Recharges at least ₹3,000 in one payment, so the POS Plan (₹499 + GST where applicable, 30 days)
-      starts and the rest stays in the wallet. Later top-ups are ₹1,000 or more.
+      Recharges the plan's first-recharge minimum (set in CSD Billing) in one payment, so their
+      plan (POS or Billing, + GST where applicable, 30 days) starts and the rest stays in the wallet.
+      Later top-ups follow the plan's top-up minimum.
     </li>
     <li>
       Adds add-ons (Website yearly, GMB Management) and buys tablets or

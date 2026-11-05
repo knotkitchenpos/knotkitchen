@@ -368,15 +368,16 @@ test("SOURCE: GST cannot be switched on without a start date", () => {
   assert.match(src, /if \(c\.enabled && !asDate\(c\.effectiveFrom\)\)/, "same for the order charge");
 });
 
-test("SOURCE: CSD edits both top-up minimums, and its copy says ₹3,000 first", () => {
+test("SOURCE: CSD edits both top-up minimums, and the new-store steps point at the catalogue, not a fixed amount", () => {
   const web = (rel) => fs.readFileSync(path.join(__dirname, "..", "..", "csd-web", "src", rel), "utf8");
   const billing = web("pages/Billing.jsx");
   assert.match(billing, /label="Later top-up minimum \(₹\)"/);
   assert.match(billing, /value=\{config\.topUpMin\} onChange=\{\(v\) => set\(\{ topUpMin: v \}\)\}/);
   assert.match(billing, /const gstLive = config\.gst\.registered && config\.gst\.effectiveFrom && config\.gst\.gstin && Number\(config\.gst\.percent\) > 0;/);
   const steps = web("components/NextSteps.jsx");
-  assert.match(steps, /Recharges at least ₹3,000 in one payment/);
-  assert.ok(!steps.includes("₹2,500"));
+  // 2026-11-05: prices change in CSD Billing (POS ₹599 offer, Billing ₹249), so this copy names no amounts.
+  assert.match(steps, /first-recharge minimum \(set in CSD Billing\)/);
+  assert.doesNotMatch(steps, /₹\s?\d/);
 });
 
 test("SOURCE: changing a price is admin-only and audited", () => {

@@ -280,5 +280,14 @@ test("the pricing HTML is the no-script fallback: every amount written in, each 
   assert.match(INDEX, /<dialog class="dev-dialog" id="device-dialog"/);
   // Visitors without an account: no guest checkout, a way to sign up instead.
   assert.match(INDEX, /New to KnotKitchen\? <a href="#contact">Sign up: book a demo<\/a>/);
-  assert.match(INDEX, /<script src="home\.js\?v=7" defer><\/script>/);
+  assert.match(INDEX, /<script src="home\.js\?v=8" defer><\/script>/);
+  // 2026-11-05: the hero reel: four real clips with the KnotKitchen cards, run by its own script after home.js
+  assert.match(INDEX, /<script src="heroreel\.js\?v=3" defer><\/script>/);
+  for (const clip of ["1-cashier", "2-kitchen", "3-waiter", "4-guests"]) {
+    assert.ok(INDEX.includes(`<video src="assets/video/${clip}.mp4" poster="assets/video/${clip}.jpg"`), clip);
+    assert.ok(fs.existsSync(path.join(LANDING, "assets", "video", clip + ".mp4")), clip + ".mp4 is in the repo");
+    assert.ok(fs.existsSync(path.join(LANDING, "assets", "video", clip + ".jpg")), clip + ".jpg is in the repo");
+  }
+  // only the first clip may fetch before it plays; the rest wait their turn
+  assert.equal((INDEX.match(/preload="none"/g) || []).length, 3);
 });

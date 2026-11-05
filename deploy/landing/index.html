@@ -18,7 +18,7 @@
 <meta name="twitter:card" content="summary_large_image">
 <script type="application/ld+json">
 {"@context":"https://schema.org","@graph":[
- {"@type":"Organization","@id":"https://knotkitchen.com/#org","name":"KnotKitchen","url":"https://knotkitchen.com/","logo":"https://knotkitchen.com/assets/icon-512.png","email":"support@knotkitchen.com","telephone":"+91-8062177510","address":{"@type":"PostalAddress","streetAddress":"J/183 Baishnabghata Patuli","addressLocality":"Kolkata","addressRegion":"West Bengal","postalCode":"700094","addressCountry":"IN"}},
+ {"@type":"Organization","@id":"https://knotkitchen.com/#org","name":"KnotKitchen","url":"https://knotkitchen.com/","logo":"https://knotkitchen.com/assets/icon-512.png","email":"support@knotkitchen.com","telephone":"+91-8062177510","address":{"@type":"PostalAddress","streetAddress":"J/183 Baishnabghata Patuli","addressLocality":"Kolkata","addressRegion":"West Bengal","postalCode":"700094","addressCountry":"IN"},"sameAs":["https://www.facebook.com/profile.php?id=61594669620688","https://www.instagram.com/knotkitchen_official/"]},
  {"@type":"SoftwareApplication","name":"KnotKitchen POS","applicationCategory":"BusinessApplication","operatingSystem":"Web, Android, Windows","url":"https://knotkitchen.com/","publisher":{"@id":"https://knotkitchen.com/#org"},"offers":{"@type":"Offer","price":"599","priceCurrency":"INR","description":"POS plan: ₹599 + GST per 30 days, prepaid from the KnotKitchen wallet"}}
 ]}
 </script>
@@ -29,8 +29,8 @@
 <link rel="apple-touch-icon" href="assets/icon-180.png">
 <link rel="preload" href="assets/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="assets/fonts/bricolage-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?v=7">
-<link rel="stylesheet" href="home.css?v=8">
+<link rel="stylesheet" href="style.css?v=8">
+<link rel="stylesheet" href="home.css?v=11">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -64,42 +64,61 @@
 <section class="kk-hero">
   <span class="orb"></span>
   <div class="wrap kk-hero-grid">
-    <div>
-      <span class="kk-pill fade" style="--i:0"><i></i>Smart POS for every kitchen</span>
+    <div class="hero-copy">
+      <span class="kk-pill fade" style="--i:0"><i></i>Restaurant POS · Billing · QR ordering</span>
       <h1>
         <span class="line"><span style="--i:0">Run the whole</span></span>
         <span class="line"><span style="--i:1">restaurant from</span></span>
         <span class="line"><span style="--i:2" class="grad">one screen.</span></span>
       </h1>
-      <p class="lede fade" style="--i:1">KnotKitchen is a point-of-sale and management platform for restaurants, cafes and cloud kitchens: billing, orders, menus and payments in a single system your staff can learn in an afternoon. Tables, dine-in and QR Table Ordering are included in the POS plan.</p>
-      <div class="kk-cta fade" style="--i:2">
-        <a class="btn" href="#contact">Book a demo</a>
-        <a class="link-arrow" href="#features">See what's inside <span aria-hidden="true">&rarr;</span></a>
+      <p class="lede fade" style="--i:1">Take the order at the counter or the table, send the KOT to the kitchen, serve faster and get paid by UPI, card or cash. One system for restaurants, cafes and cloud kitchens that your staff learn in an afternoon. Tables, dine-in and QR Table Ordering are included in the POS plan.</p>
+      <ul class="hero-points fade" style="--i:2">
+        <li>GST-ready billing &amp; KOT</li>
+        <li>QR table ordering</li>
+        <li>UPI, card &amp; cash</li>
+        <li>Android, Windows &amp; web</li>
+      </ul>
+      <div class="kk-cta fade" style="--i:3">
+        <a class="btn" href="#contact">Book a free demo</a>
+        <a class="btn btn-wa" href="https://wa.me/918062177510?text=Hi%20KnotKitchen%2C%20I%27d%20like%20a%20free%20demo.%20Restaurant%20name%3A%20%20City%3A%20" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.6a9.3 9.3 0 0 0-8 14.1L2.7 21.4l4.8-1.3A9.3 9.3 0 1 0 12 2.6z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M8.6 7.6c.3-.6.6-.6.9-.6h.6c.2 0 .4 0 .6.5l.8 1.9c.1.2.1.4 0 .6l-.5.7c-.1.2-.2.4 0 .6.5.9 1.2 1.6 2.1 2.1.2.1.4.1.6-.1l.7-.8c.2-.2.4-.2.6-.1l1.8.9c.3.1.4.3.4.5 0 .7-.4 1.6-1.5 1.9-.9.3-2.6.1-4.6-1.6-1.6-1.3-2.6-3-2.9-4-.3-1 0-1.9.4-2.5z" fill="currentColor"/></svg>WhatsApp us</a>
       </div>
-      <p class="kk-note fade" style="--i:3">Works on tablets and computers · Support from a real team</p>
+      <p class="kk-note fade" style="--i:4">Plans from <b data-price="plan:BILLING">₹249</b> + GST a month · No installation fee · Support from a real team in Kolkata</p>
     </div>
 
-    <div class="stage fade" style="--i:2" aria-hidden="true">
-      <div class="chip k">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#f4620a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="7" rx="1"/></svg>
-        <span>KOT sent<small>Kitchen printer</small></span>
+    <figure class="scene-card fade" style="--i:2">
+      <div class="reel" id="reel" aria-label="Video: a cashier takes the order on KnotKitchen, the kitchen gets the KOT, the waiter serves the table and the guests enjoy their meal and pay by UPI." role="img">
+        <video src="assets/video/1-cashier.mp4" poster="assets/video/1-cashier.jpg" data-start="0" data-rate="0.85" muted playsinline preload="metadata" aria-hidden="true"></video>
+        <video src="assets/video/2-kitchen.mp4" poster="assets/video/2-kitchen.jpg" data-start="3" muted playsinline preload="none" aria-hidden="true"></video>
+        <video src="assets/video/3-waiter.mp4" poster="assets/video/3-waiter.jpg" data-start="1" muted playsinline preload="none" aria-hidden="true"></video>
+        <video src="assets/video/4-guests.mp4" poster="assets/video/4-guests.jpg" data-start="3" muted playsinline preload="none" aria-hidden="true"></video>
+        <div class="reel-card rc-order" aria-hidden="true">
+          <p class="rc-head"><span class="rc-dot"></span>New order<em>Table 7 · Dine-in</em></p>
+          <ul><li><span>Paneer Butter Masala × 2</span><b>₹520</b></li><li><span>Garlic Naan × 4</span><b>₹240</b></li><li><span>Masala Chai × 3</span><b>₹150</b></li><li><span>Gulab Jamun × 2</span><b>₹130</b></li></ul>
+          <p class="rc-total"><span>Total</span><b>₹1,040</b></p>
+        </div>
+        <div class="reel-card rc-kot" aria-hidden="true">
+          <span class="rc-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"/><path d="M6 18H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="7" rx="1"/></svg></span><p><b>KOT #A12 printed</b><small>Table 7 · 4 items · sent to the kitchen</small></p>
+        </div>
+        <div class="reel-card rc-serve" aria-hidden="true">
+          <span class="rc-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11h18a9 9 0 0 1-18 0z"/><path d="M12 4v3M8 6l1 2M16 6l-1 2"/></svg></span><p><b>Order ready · Table 7</b><small>Marked Ready in Orders</small></p>
+        </div>
+        <div class="reel-card rc-paid" aria-hidden="true">
+          <span class="rc-ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.6 2.6L16 9.5"/></svg></span><p><b>Paid · UPI ₹1,040</b><small>Reconciled to the order</small></p>
+        </div>
+        <div class="rc-hearts" aria-hidden="true"><i>❤</i><i>❤</i><i>❤</i><i>❤</i></div>
+        <span class="reel-tag" aria-hidden="true">Stock footage · illustrative</span>
       </div>
-      <div class="till">
-        <div class="till-bar"><b></b><b></b><b></b><span>KnotKitchen POS</span></div>
-        <div class="till-head"><strong>Table 07 · Dine-in</strong><span class="status" id="till-status">Preparing</span></div>
-        <ul class="rows">
-          <li data-amt="520"><span>Paneer Butter Masala × 2</span><span>₹ 520</span></li>
-          <li data-amt="240"><span>Garlic Naan × 4</span><span>₹ 240</span></li>
-          <li data-amt="150"><span>Masala Chai × 3</span><span>₹ 150</span></li>
-          <li data-amt="130"><span>Gulab Jamun × 2</span><span>₹ 130</span></li>
-        </ul>
-        <div class="till-total"><span>Total</span><b id="till-total">₹ 1,040</b></div>
-      </div>
-      <div class="chip p">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#15803d" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.6 2.6L16 9.5"/></svg>
-        <span>Payment received<small>Reconciled to the order</small></span>
-      </div>
-    </div>
+      <figcaption class="scene-cap">
+        <ol class="scene-steps">
+          <li class="on"><b>1</b>Cashier takes the order on KnotKitchen</li>
+          <li><b>2</b>KOT reaches the kitchen instantly</li>
+          <li><b>3</b>Waiter serves Table 7</li>
+          <li><b>4</b>Happy guests pay by UPI</li>
+        </ol>
+        <button class="scene-toggle" type="button" aria-pressed="false" aria-label="Pause video"><span aria-hidden="true"></span></button>
+        <span class="scene-progress" aria-hidden="true"><i></i></span>
+      </figcaption>
+    </figure>
   </div>
 </section>
 
@@ -357,6 +376,11 @@
         </a>
         <p class="f-about">Technology for restaurants and food businesses — POS, billing, order management, online ordering and restaurant management tools.</p>
         <p class="f-about"><a href="mailto:support@knotkitchen.com">support@knotkitchen.com</a><br><a href="tel:+918062177510">+91 8062177510</a></p>
+        <ul class="social" aria-label="KnotKitchen on social media">
+          <li><a class="s-wa" href="https://wa.me/918062177510?text=Hi%20KnotKitchen%2C%20I%27d%20like%20a%20free%20demo.%20Restaurant%20name%3A%20%20City%3A%20" target="_blank" rel="noopener" aria-label="Chat on WhatsApp"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.6a9.3 9.3 0 0 0-8 14.1L2.7 21.4l4.8-1.3A9.3 9.3 0 1 0 12 2.6z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M8.6 7.6c.3-.6.6-.6.9-.6h.6c.2 0 .4 0 .6.5l.8 1.9c.1.2.1.4 0 .6l-.5.7c-.1.2-.2.4 0 .6.5.9 1.2 1.6 2.1 2.1.2.1.4.1.6-.1l.7-.8c.2-.2.4-.2.6-.1l1.8.9c.3.1.4.3.4.5 0 .7-.4 1.6-1.5 1.9-.9.3-2.6.1-4.6-1.6-1.6-1.3-2.6-3-2.9-4-.3-1 0-1.9.4-2.5z" fill="currentColor"/></svg></a></li>
+          <li><a class="s-fb" href="https://www.facebook.com/profile.php?id=61594669620688" target="_blank" rel="noopener" aria-label="KnotKitchen on Facebook"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M13.5 21v-7.6h2.6l.4-3h-3V8.5c0-.9.3-1.5 1.5-1.5h1.6V4.3c-.3 0-1.2-.1-2.3-.1-2.3 0-3.9 1.4-3.9 4v2.2H7.8v3h2.6V21z"/></svg></a></li>
+          <li><a class="s-ig" href="https://www.instagram.com/knotkitchen_official/" target="_blank" rel="noopener" aria-label="KnotKitchen on Instagram"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="17" height="17" rx="5" fill="none" stroke="currentColor" stroke-width="1.9"/><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="1.9"/><circle cx="17.3" cy="6.7" r="1.2" fill="currentColor"/></svg></a></li>
+        </ul>
         <p class="f-founder"><strong>Supratim Karmakar</strong><br>Founder &amp; CEO, KnotKitchen<br><span>Building Restaurant Technology &amp; POS Solutions</span></p>
       </div>
       <div>
@@ -391,6 +415,8 @@
   </div>
 </footer>
 
-<script src="home.js?v=7" defer></script>
+<a class="wa-float" href="https://wa.me/918062177510?text=Hi%20KnotKitchen%2C%20I%27d%20like%20a%20free%20demo.%20Restaurant%20name%3A%20%20City%3A%20" target="_blank" rel="noopener" aria-label="Chat with KnotKitchen on WhatsApp"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.6a9.3 9.3 0 0 0-8 14.1L2.7 21.4l4.8-1.3A9.3 9.3 0 1 0 12 2.6z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M8.6 7.6c.3-.6.6-.6.9-.6h.6c.2 0 .4 0 .6.5l.8 1.9c.1.2.1.4 0 .6l-.5.7c-.1.2-.2.4 0 .6.5.9 1.2 1.6 2.1 2.1.2.1.4.1.6-.1l.7-.8c.2-.2.4-.2.6-.1l1.8.9c.3.1.4.3.4.5 0 .7-.4 1.6-1.5 1.9-.9.3-2.6.1-4.6-1.6-1.6-1.3-2.6-3-2.9-4-.3-1 0-1.9.4-2.5z" fill="currentColor"/></svg><span>Chat with us</span></a>
+<script src="home.js?v=8" defer></script>
+<script src="heroreel.js?v=3" defer></script>
 </body>
 </html>

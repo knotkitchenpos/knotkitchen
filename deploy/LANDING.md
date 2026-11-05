@@ -16,6 +16,7 @@ no container. `home.js` adds motion, and fills the pricing section from the CSD 
 | `shipping.html` | Shipping Policy |
 | `style.css` | Shared stylesheet (light-only — see below) |
 | `home.css`, `home.js` | Landing page only: the animated hero, feature grid, pricing cards (live from the API) and scroll reveals |
+| `heroreel.js`, `assets/video/` | Hero only: four real clips played as one 20 s story (cashier takes the order → kitchen gets the KOT → waiter serves → happy guests pay), with KnotKitchen order/KOT/served/paid cards over them. Clips are Pexels stock (free for commercial use, no attribution needed): #26798535, #4253352, #33462592, #9761222, 540p, about 11 MB together. Only the first clip preloads; each next one is fetched as the previous starts. Pause button; reduced motion shows the first frame still. To use your own restaurant footage, replace the four files and keep the names |
 | `robots.txt`, `sitemap.xml` | Crawler hints |
 | `assets/` | Brand artwork — see below |
 
@@ -129,7 +130,7 @@ Media queries are now reserved for things `clamp()` cannot express:
 | --- | --- |
 | `min-width:1080px` | Nav switches between disclosure menu and desktop bar (the bar, with "Sign in to POS", needs about 1030px) |
 | `max-width:700px` | Hero CTAs go full-width; footer lockup slims |
-| `max-width:360px` | Folded/small phones — CTAs stack, logo and chips shrink |
+| `max-width:360px` | Folded/small phones — CTAs stack, logo shrinks |
 | `max-height:560px` + landscape | Header un-sticks (`position:relative`, so the phone menu still opens under it), hero padding cut — a sticky bar eats a short screen |
 | `min-width:1600 / 2200px` | `--max` grows to 1240/1360px so content is not stranded on a large monitor |
 | `prefers-reduced-motion`, `print` | Transitions and smooth scroll disabled, every reveal shown; print keeps the dark fills |

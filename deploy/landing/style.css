@@ -310,3 +310,24 @@ footer ul a:hover{color:var(--text)}
 @media(max-width:420px){.nav{gap:10px}.brand{flex:0 1 174px;min-width:0}.brand-logo{width:100%;height:auto}}
 @media(min-width:1080px){.nav-cta{display:none}}
 @media(max-width:360px){.nav-cta{padding:7px 10px;font-size:.8rem}}
+
+/* ---------- social buttons and the floating WhatsApp button ---------- */
+.social,.legal ul.social,footer ul.social{list-style:none;display:flex;flex-wrap:wrap;gap:10px;margin:14px 0 0;padding:0}
+.social a{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:42px;height:42px;border-radius:50%;color:#fff;
+  transition:transform .2s ease,box-shadow .2s ease}
+.social a:hover{transform:translateY(-2px);text-decoration:none;box-shadow:0 8px 18px -6px rgba(10,27,69,.45)}
+.social svg{width:22px;height:22px;flex:none}
+.s-wa{background:#128c4a}
+.s-fb{background:#1877f2}
+.s-ig{background:radial-gradient(circle at 30% 107%,#fdf497 0%,#fd5949 45%,#d6249f 60%,#285aeb 90%)}
+.social-lg a{width:auto;height:auto;padding:10px 16px;border-radius:12px;font-weight:600}
+.wa-float{position:fixed;right:18px;bottom:18px;z-index:50;display:inline-flex;align-items:center;gap:10px;padding:12px;border-radius:999px;
+  background:#128c4a;color:#fff;font-weight:600;box-shadow:0 14px 30px -8px rgba(5,60,30,.55);transition:transform .2s ease}
+.wa-float:hover{transform:translateY(-2px);text-decoration:none;color:#fff}
+.wa-float svg{width:28px;height:28px;flex:none}
+.wa-float span{padding-right:6px}
+@media(max-width:700px){.wa-float span{display:none}.wa-float{right:14px;bottom:14px}}
+@media print{.wa-float{display:none}}
+/* keep the last footer line clear of the floating WhatsApp button */
+.f-bottom,.legal-foot{padding-right:170px}
+@media(max-width:700px){.f-bottom,.legal-foot{padding-right:64px}}

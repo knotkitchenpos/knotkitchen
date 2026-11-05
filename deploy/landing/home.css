@@ -83,34 +83,84 @@
 .kk-hero .link-arrow,.kk-close .link-arrow{color:#fff}
 .kk-note{color:var(--on-dark-muted);font-size:.9rem;margin:0}
 
-/* ---------- hero: the live till ---------- */
-.stage{position:relative;perspective:1200px;padding:40px 0 66px}
-.till{position:relative;border-radius:20px;overflow:hidden;color:#0a1b45;background:#fff;
-  box-shadow:0 40px 90px -20px rgba(2,8,26,.7),0 0 0 1px rgba(255,255,255,.12);
-  transform:rotateX(var(--rx,6deg)) rotateY(var(--ry,-10deg));transition:transform .4s var(--ease);will-change:transform}
-.till-bar{display:flex;align-items:center;gap:7px;padding:12px 16px;background:#f3f5fa;border-bottom:1px solid #e6e9f2}
-.till-bar b{width:10px;height:10px;border-radius:50%;background:#d5dae6}
-.till-bar span{margin-left:auto;font-size:.75rem;font-weight:600;color:#7a86a3}
-.till-head{display:flex;justify-content:space-between;align-items:center;padding:16px 18px 10px}
-.till-head strong{font-size:1rem;font-weight:600}
-.status{font-size:.74rem;font-weight:600;padding:5px 11px;border-radius:8px;background:#fff1e6;color:#c9490a;transition:background .4s,color .4s}
-.status.ready{background:#dcfce7;color:#15803d}
-.status.paid{background:#e0e7ff;color:#3730a3}
-.rows{list-style:none;margin:0;padding:0 18px;min-height:176px}
-.rows li{display:flex;justify-content:space-between;gap:12px;padding:10px 0;border-bottom:1px dashed #e6e9f2;font-size:.95rem;
-  opacity:0;transform:translateX(-14px);transition:opacity .45s var(--ease),transform .45s var(--ease)}
-.rows li.on{opacity:1;transform:none}
-.rows li span:last-child,.till-total b,.price{font-variant-numeric:tabular-nums}
-.rows li span:last-child{font-weight:600}
-.till-total{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;margin-top:6px;background:#0a1b45;color:#fff}
-.till-total b{font-size:1.35rem;font-weight:600}
-.chip{position:absolute;z-index:2;display:flex;align-items:center;gap:10px;padding:10px 14px;border-radius:14px;font-size:.84rem;font-weight:600;
-  color:#0a1b45;background:rgba(255,255,255,.97);box-shadow:0 18px 40px -8px rgba(2,8,26,.55);animation:bob 6s ease-in-out infinite;will-change:transform}
-.chip svg{width:20px;height:20px;flex:none}
-.chip small{display:block;font-weight:500;color:#6b7896;font-size:.74rem}
-.chip.k{left:-18px;top:0;animation-delay:-2s}
-.chip.p{right:-10px;bottom:0}
-@keyframes bob{50%{transform:translateY(-12px)}}
+/* ---------- hero: copy ---------- */
+.hero-points{list-style:none;display:grid;grid-template-columns:repeat(2,minmax(0,max-content));gap:10px 26px;margin:6px 0 0;padding:0;color:#dbe4f7;font-size:.97rem}
+.hero-points li{display:flex;align-items:center;gap:9px}
+.hero-points li::before{content:"";flex:none;width:18px;height:18px;border-radius:50%;
+  background:#22c55e url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23fff' stroke-width='3.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 12.5l4 4 8-9'/%3E%3C/svg%3E") center/12px no-repeat}
+.kk-note b{color:#fff;font-weight:700}
+/* the WhatsApp button: WhatsApp's own green, white text (5.0:1) */
+.btn-wa{display:inline-flex;align-items:center;gap:9px;background:#128c4a;box-shadow:0 12px 30px -8px rgba(18,140,74,.6)!important}
+.btn-wa:hover{background:#0f7a40}
+.btn-wa svg{width:20px;height:20px;flex:none}
+.kk-hero .btn-wa::after{display:none}
+
+/* ---------- hero: the real-footage reel (heroreel.js runs it) ---------- */
+.scene-card{position:relative;margin:0;border-radius:26px;padding:10px;
+  background:linear-gradient(160deg,rgba(255,255,255,.16),rgba(255,255,255,.04));
+  border:1px solid rgba(255,255,255,.16);box-shadow:0 50px 100px -30px rgba(2,8,26,.85)}
+.reel{container-type:inline-size;position:relative;aspect-ratio:16/11;border-radius:18px;overflow:hidden;background:#0b1530;isolation:isolate}
+.reel video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;opacity:0;transform:scale(1.04);
+  transition:opacity .7s var(--ease),transform 6s linear}
+.reel video.on{opacity:1;transform:scale(1.1)}
+.reel video:nth-of-type(2){object-position:50% 62%}
+/* a soft fade at the bottom so the cards always read */
+.reel::after{content:"";position:absolute;inset:0;z-index:1;pointer-events:none;
+  background:linear-gradient(180deg,rgba(6,15,38,0) 45%,rgba(6,15,38,.55) 100%)}
+.reel-card{position:absolute;z-index:2;color:#0a1b45;background:rgba(255,255,255,.96);border-radius:14px;
+  box-shadow:0 18px 40px -10px rgba(2,8,26,.6);opacity:0;transform:translateY(14px) scale(.98);
+  transition:opacity .45s var(--ease),transform .45s var(--ease);font-size:clamp(.66rem,2.5cqw,.82rem)}
+.reel-card p{margin:0}
+.reel-card small{display:block;color:#5b6886;font-size:.9em;font-weight:500}
+.rc-order{left:3.5cqw;bottom:3.5cqw;width:min(232px,52cqw);padding:2.4cqw 2.8cqw}
+.rc-head{display:flex;align-items:center;gap:6px;font-weight:700;white-space:nowrap;margin-bottom:4px!important}
+.rc-head em{margin-left:auto;font-style:normal;font-weight:600;font-size:.88em;color:#c9490a;background:#fff1e6;padding:2px 7px;border-radius:7px}
+.rc-dot{width:8px;height:8px;border-radius:50%;background:#22c55e}
+.rc-order ul{list-style:none;margin:0;padding:0}
+.rc-order li{display:flex;justify-content:space-between;gap:8px;padding:.32em 0;white-space:nowrap;border-bottom:1px dashed #e3e7f0;
+  opacity:0;transform:translateX(-10px);transition:opacity .35s var(--ease),transform .35s var(--ease)}
+.rc-order li b,.rc-total b{font-variant-numeric:tabular-nums}
+.rc-total{display:flex;justify-content:space-between;margin-top:.5em!important;padding:.5em .7em;border-radius:9px;background:#0a1b45;color:#fff;font-weight:600;
+  opacity:0;transition:opacity .35s var(--ease)}
+.rc-kot,.rc-serve,.rc-paid{display:flex;align-items:center;gap:2cqw;padding:2.2cqw 2.8cqw;right:3.5cqw;bottom:3.5cqw;max-width:72%}
+.rc-ico{flex:none;display:grid;place-items:center;width:clamp(26px,7cqw,34px);height:clamp(26px,7cqw,34px);border-radius:10px}
+.rc-ico svg{width:20px;height:20px}
+.rc-kot .rc-ico{background:#dcfce7;color:#15803d}
+.rc-serve .rc-ico{background:#fff1e6;color:#c9490a}
+.rc-paid .rc-ico{background:#e0e7ff;color:#3730a3}
+.rc-hearts{position:absolute;z-index:2;left:18%;bottom:22%;pointer-events:none}
+.rc-hearts i{position:absolute;font-style:normal;color:#fb7185;font-size:22px;opacity:0;text-shadow:0 4px 12px rgba(0,0,0,.25)}
+.reel-tag{position:absolute;z-index:2;right:3cqw;top:2.6cqw;font-size:.66rem;color:rgba(255,255,255,.7);letter-spacing:.02em}
+/* step 1: the order fills in line by line */
+.reel[data-step="0"] .rc-order{opacity:1;transform:none;transition-delay:.25s}
+.reel[data-step="0"] .rc-order li{opacity:1;transform:none}
+.reel[data-step="0"] .rc-order li:nth-child(1){transition-delay:.7s}
+.reel[data-step="0"] .rc-order li:nth-child(2){transition-delay:1.3s}
+.reel[data-step="0"] .rc-order li:nth-child(3){transition-delay:1.9s}
+.reel[data-step="0"] .rc-order li:nth-child(4){transition-delay:2.5s}
+.reel[data-step="0"] .rc-total{opacity:1;transition-delay:3.1s}
+/* steps 2-4: one card each */
+.reel[data-step="1"] .rc-kot,.reel[data-step="2"] .rc-serve,.reel[data-step="3"] .rc-paid{opacity:1;transform:none;transition-delay:.5s}
+.reel[data-step="3"] .rc-hearts i{animation:float 2.6s ease-out infinite}
+.rc-hearts i:nth-child(2){left:26px;animation-delay:.6s!important}
+.rc-hearts i:nth-child(3){left:-18px;animation-delay:1.2s!important}
+.rc-hearts i:nth-child(4){left:46px;animation-delay:1.8s!important}
+@keyframes float{0%{opacity:0;transform:translateY(0) scale(.7)}25%{opacity:1}100%{opacity:0;transform:translateY(-90px) scale(1.15)}}
+.scene-cap{display:grid;grid-template-columns:1fr auto;align-items:center;gap:10px 14px;padding:14px 8px 4px 10px}
+.scene-steps{list-style:none;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px 14px;margin:0;padding:0;font-size:.86rem;color:var(--on-dark-muted)}
+.scene-steps li{display:flex;align-items:center;gap:8px;transition:color .3s var(--ease)}
+.scene-steps b{flex:none;display:grid;place-items:center;width:22px;height:22px;border-radius:50%;font-size:.74rem;
+  background:rgba(255,255,255,.1);color:#cdd8f0;transition:background .3s var(--ease),color .3s var(--ease)}
+.scene-steps li.on{color:#fff}
+.scene-steps li.on b{background:var(--glow);color:#1b0b02}
+.scene-toggle{width:40px;height:40px;border-radius:50%;border:1px solid rgba(255,255,255,.22);background:rgba(255,255,255,.08);color:#fff;cursor:pointer;display:grid;place-items:center}
+.scene-toggle:hover{background:rgba(255,255,255,.16)}
+.scene-toggle span{width:12px;height:12px;background:linear-gradient(90deg,currentColor 0 35%,transparent 35% 65%,currentColor 65%)}
+.scene-toggle[data-state="paused"] span{background:currentColor;clip-path:polygon(15% 0,100% 50%,15% 100%)}
+.scene-progress{grid-column:1/-1;height:3px;border-radius:3px;background:rgba(255,255,255,.1);overflow:hidden}
+.scene-progress i{display:block;height:100%;background:linear-gradient(90deg,var(--glow),var(--glow-2));transform-origin:left;transform:scaleX(0)}
+@media(max-width:520px){.scene-steps{grid-template-columns:1fr}.hero-points{grid-template-columns:1fr}}
+
 
 /* ---------- marquee ---------- */
 .marquee{position:relative;overflow:hidden;background:var(--ink);border-block:1px solid var(--hair);padding:20px 0}
@@ -301,8 +351,6 @@
 @media(max-width:860px){
   .bento{grid-template-columns:1fr 1fr}
   .tile,.tile.w3,.tile.w4{grid-column:span 2}
-  .till{transform:none}
-  .chip.k{left:4px}.chip.p{right:4px}
 }
 
 /* ---------- no motion, on request, and on paper ---------- */
@@ -310,13 +358,18 @@
   *,*::before,*::after{animation:none!important;transition:none!important}
   /* the hero and closing card are white text on a dark fill: print the fill */
   body{-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .reveal,.rows li,.kk-hero .fade{opacity:1;transform:none}
+  .reveal,.kk-hero .fade{opacity:1;transform:none}
   .kk-hero h1 .line>span,.bars-art i{transform:none}
   .pay circle,.pay path{stroke-dashoffset:0}
-  .till{transform:none}
+  .reel video{transform:none}
 }
 
 /* No script (off, blocked or failed to load): nothing waits for home.js to appear. */
-.no-js .reveal,.no-js .rows li{opacity:1;transform:none}
+.no-js .reveal{opacity:1;transform:none}
+/* without heroreel.js the first clip's poster stands still and the captions tell the story */
+.no-js .reel video:first-of-type{opacity:1}
+.no-js .scene-toggle,.no-js .scene-progress{display:none}
 .no-js .bars-art i{transform:none}
 .no-js .pay circle,.no-js .pay path{stroke-dashoffset:0}
+/* phones: a shorter order card, so the people stay in view */
+@container (max-width:420px){.rc-order li:nth-child(n+3){display:none}.rc-order{width:56cqw}}
