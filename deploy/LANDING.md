@@ -8,7 +8,7 @@ no container. `home.js` adds motion, and fills the pricing section from the CSD 
 
 | File | Purpose |
 | --- | --- |
-| `index.html` | Landing page (hero, features, how it works, platform, FAQ, contact) |
+| `index.html` | Landing page (hero, features, how it works, platform, FAQ, contact). The Android app button links to `KnotKitchen-POS.apk` on the `android-latest` GitHub release, which every Android build overwrites, so it is always the newest |
 | `terms.html` | Terms & Conditions |
 | `privacy.html` | Privacy Policy |
 | `refund.html` | Refund & Cancellation Policy |
@@ -16,7 +16,7 @@ no container. `home.js` adds motion, and fills the pricing section from the CSD 
 | `shipping.html` | Shipping Policy |
 | `style.css` | Shared stylesheet (light-only — see below) |
 | `home.css`, `home.js` | Landing page only: the animated hero, feature grid, pricing cards (live from the API) and scroll reveals |
-| `heroreel.js`, `assets/video/` | Hero only: four real clips played as one 20 s story (cashier takes the order → kitchen gets the KOT → waiter serves → happy guests pay), with KnotKitchen order/KOT/served/paid cards over them. Clips are Pexels stock (free for commercial use, no attribution needed): #26798535, #4253352, #33462592, #9761222, 540p, about 11 MB together. Only the first clip preloads; each next one is fetched as the previous starts. Pause button; reduced motion shows the first frame still. To use your own restaurant footage, replace the four files and keep the names |
+| `heroreel.js`, `assets/video/` | Hero only: four real clips played as one 20 s story (cashier takes the order → kitchen gets the KOT → waiter serves → happy guests pay), with KnotKitchen order/KOT/served/paid cards over them. Clips are Pexels stock (free for commercial use, no attribution needed): #26798535, #4253352, #33462592, #9761222, 540p, about 11 MB together. Only the first clip loads with the page; the next is fetched while the current one plays and starts rolling 1 s before its cut, so the 1.4 s cross-fade blends two moving shots. No player controls; it rests off screen and in background tabs. Reduced motion shows the first poster still and fetches no video. To use your own restaurant footage, replace the four files and keep the names |
 | `robots.txt`, `sitemap.xml` | Crawler hints |
 | `assets/` | Brand artwork — see below |
 
@@ -29,7 +29,7 @@ transparency, trimmed, resized and re-encoded. Whole set is ~540 KB.
 | Asset | Source | Used on |
 | --- | --- | --- |
 | `logo-horizontal.webp` | `LOGO2.png`, recomposed | Header brand lockup |
-| `logo-stacked.webp` | `LOGO2.png` | Footer brand lockup |
+| `logo-stacked.webp` | `LOGO2.png` | Not used since the compact footer (2026-11-05); kept as source art |
 | `hero-bg.webp` | `BACKGROUND2.png` | Hero background |
 | `cta-bg.webp` | `BACKGROUND.png` | Contact block background |
 | `og-image.png` | `APP LOGO.png` on navy | Social preview (1200x630) |
@@ -122,14 +122,14 @@ Grids use `auto-fit` + `minmax` with a column cap:
 The inner `max()` floors each track at 1/N of the row, which caps the count at N
 — without it six feature cards sit 4+2 on a wide monitor. The outer `min(100%,…)`
 stops a track overflowing a screen narrower than that floor. Features cap at 3,
-steps at 4, footer at 3, hero at 2.
+steps at 4, hero at 2. The home-page footer is three short flex rows (brand + about + app download + social; links; bottom line), not a grid.
 
 Media queries are now reserved for things `clamp()` cannot express:
 
 | Query | Why |
 | --- | --- |
 | `min-width:1080px` | Nav switches between disclosure menu and desktop bar (the bar, with "Sign in to POS", needs about 1030px) |
-| `max-width:700px` | Hero CTAs go full-width; footer lockup slims |
+| `max-width:700px` | Hero CTAs go full-width; footer about text takes a full row |
 | `max-width:360px` | Folded/small phones — CTAs stack, logo shrinks |
 | `max-height:560px` + landscape | Header un-sticks (`position:relative`, so the phone menu still opens under it), hero padding cut — a sticky bar eats a short screen |
 | `min-width:1600 / 2200px` | `--max` grows to 1240/1360px so content is not stranded on a large monitor |

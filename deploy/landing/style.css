@@ -58,12 +58,10 @@ header{position:sticky;top:0;z-index:50;background:color-mix(in srgb,var(--bg) 9
 .nav{display:flex;align-items:center;justify-content:space-between;gap:16px;height:64px}
 .brand{display:flex;align-items:center;flex:none;min-height:44px}
 .brand:hover{text-decoration:none}
-.brand-mark{display:inline-block;margin-bottom:16px}
 /* The wordmark is part of the artwork — never re-typed in a UI font, and the
    artwork itself is never recoloured. The lockup ships transparent and sits
    directly on the page. */
 .brand-logo{height:28px;width:auto;display:block}
-.brand-stack{display:block;height:auto;width:190px}
 
 .btn{display:inline-block;padding:12px 22px;border-radius:999px;font-weight:600;font-size:.98rem;text-align:center;
   /* darker than the logo orange so white button text passes WCAG AA (5.2:1 or more) */
@@ -215,13 +213,6 @@ section{padding:var(--section-y) 0;scroll-margin-top:calc(var(--nav-h,64px) + 8p
 
 /* footer */
 footer{border-top:1px solid var(--line);background:var(--bg-2);padding:clamp(40px,5vw,56px) 0 clamp(30px,4vw,40px);font-size:.93rem}
-.f-grid{display:grid;--f-gap:clamp(24px,3vw,32px);gap:var(--f-gap);
-  grid-template-columns:repeat(auto-fit,minmax(min(100%,max(210px,(100% - 2*var(--f-gap))/3)),1fr))}
-footer h4{font-size:.95rem;letter-spacing:-.01em;color:var(--text);margin:0 0 14px;font-weight:600}
-.f-about{color:var(--muted);max-width:30em}
-.f-founder{color:var(--muted);max-width:30em;margin-top:18px;line-height:1.55}
-.f-founder strong{color:var(--text);font-weight:600}
-.f-founder span{font-size:.88rem}
 footer ul{list-style:none;margin:0;padding:0;display:grid;gap:9px}
 footer ul a{color:var(--muted)}
 footer ul a:hover{color:var(--text)}
@@ -255,7 +246,6 @@ footer ul a:hover{color:var(--text)}
   .cta-row{gap:10px}
   .step{padding-left:50px}
   .legal h2{margin:1.6em 0 .5em}
-  .brand-stack{width:clamp(140px,42vw,190px)}
   .legal-nav{gap:10px}
   .legal-nav a{padding:11px 16px}   /* 44px tap target */
 }
@@ -331,3 +321,29 @@ footer ul a:hover{color:var(--text)}
 /* keep the last footer line clear of the floating WhatsApp button */
 .f-bottom,.legal-foot{padding-right:170px}
 @media(max-width:700px){.f-bottom,.legal-foot{padding-right:64px}}
+
+/* ---------- compact footer (home page): three short rows, nothing dropped ---------- */
+footer.f-compact{padding:22px 0 16px;font-size:.88rem}
+.fc-top{display:flex;flex-wrap:wrap;align-items:center;gap:12px 22px}
+.fc-brand img{display:block;width:150px;height:auto}
+.fc-about{flex:1 1 300px;margin:0;color:var(--muted);font-size:.86rem;max-width:44em}
+.fc-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+footer ul.fc-social{margin:0;gap:8px}
+.fc-social a{width:36px;height:36px}
+.fc-social svg{width:19px;height:19px}
+.btn-apk{display:inline-flex;align-items:center;gap:9px;padding:7px 14px 7px 11px;border-radius:12px;background:#0a1b45;color:#fff;font-weight:600;line-height:1.15;
+  box-shadow:0 8px 20px -10px rgba(10,27,69,.6);transition:transform .2s ease,background .2s ease}
+.btn-apk:hover{background:#13285f;color:#fff;text-decoration:none;transform:translateY(-1px)}
+.btn-apk svg{width:22px;height:22px;flex:none;color:#3ddc84}
+.btn-apk small{display:block;font-size:.72rem;font-weight:500;color:#b9c6e4}
+.fc-links{display:flex;flex-wrap:wrap;gap:6px 22px;margin:14px 0 0;padding:12px 0 0;border-top:1px solid var(--line)}
+footer .fc-links ul{display:flex;flex-wrap:wrap;gap:4px 16px}
+.fc-links ul+ul a{color:var(--muted);opacity:.85}
+.fc-links a{font-size:.86rem}
+.fc-bottom{display:flex;flex-wrap:wrap;gap:4px 18px;margin-top:12px;padding-top:12px;font-size:.8rem;color:var(--muted)}
+.fc-bottom strong{color:var(--text);font-weight:600}
+@media(max-width:700px){.fc-about{flex-basis:100%}}
+/* the hero's quiet app link */
+.hero-apk{display:inline-flex;align-items:center;gap:8px;margin:-6px 0 16px;color:#dbe4f7;font-weight:600;font-size:.94rem}
+.hero-apk:hover{color:#fff}
+.hero-apk svg{width:20px;height:20px;color:#3ddc84}

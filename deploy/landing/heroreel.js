@@ -1,60 +1,79 @@
 /* KnotKitchen hero: four real clips played as one 20 s story, with the
    KnotKitchen cards laid over them.
      1 cashier takes the order (order card fills in)
-     2 the kitchen gets it      (KOT card prints)
-     3 the waiter serves        (served card)
+     2 the kitchen gets it      (KOT card)
+     3 the waiter serves        (ready card)
      4 happy guests pay         (paid card, hearts)
-   One clock drives everything: the clips cross-fade on its beat, the cards
-   follow data-step on the reel, the bar shows its progress. The next clip is
-   fetched only when the one before it starts, so a visitor who never scrolls
-   to the hero, or leaves early, downloads one clip, not four. Reduced motion:
-   the first frame and its card, standing still, until Play is pressed. */
+   One clock drives everything. About a second before each cut the next clip
+   is already rolling underneath, so the 1.4 s cross-fade blends two moving
+   pictures instead of revealing a still frame; the outgoing clip keeps
+   playing until it has faded out. The next clip is fetched only while the
+   reel plays, so a visitor who never reaches the hero downloads one clip.
+   Off screen or in a background tab it rests; with reduced motion it shows
+   the first frame and its card, still. */
 (() => {
   const reel = document.getElementById("reel");
   if (!reel) return;
   const vids = [...reel.querySelectorAll("video")];
   const steps = [...document.querySelectorAll(".scene-steps li")];
-  const toggle = document.querySelector(".scene-toggle");
   const bar = document.querySelector(".scene-progress i");
   const SEG = 5; // seconds per clip
+  const LEAD = 1.0; // the next clip starts rolling this long before its cut
+  const FADE_MS = 1400; // keep in step with the .reel video transition in home.css
   const T = SEG * vids.length;
-  const start = (v) => Number(v.dataset.start || 0);
-  const rate = (v) => Number(v.dataset.rate || 1);
+  const playing = !matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-  let playing = !matchMedia("(prefers-reduced-motion: reduce)").matches;
   let visible = false;
   let elapsed = 0;
   let last = 0;
   let raf = 0;
   let step = -1;
+  let primed = -1;
 
+  const start = (v) => Number(v.dataset.start || 0);
   const warm = (v) => { if (v && v.preload !== "auto") { v.preload = "auto"; v.load(); } };
+  // Put a clip at its first frame and set it rolling (or ready to roll).
+  const cue = (v, roll) => {
+    const go = () => {
+      try { v.currentTime = start(v); } catch (e) { /* plays from 0 */ }
+      v.playbackRate = Number(v.dataset.rate || 1);
+      if (roll) v.play().catch(() => {});
+    };
+    warm(v);
+    if (v.readyState >= 1) go(); else v.addEventListener("loadedmetadata", go, { once: true });
+  };
+
   const show = (i) => {
     if (i === step) return;
     const prev = vids[step];
     step = i;
     const v = vids[i];
+    // Reduced motion: the poster is the picture, so the clip is never fetched.
+    if (!playing) {
+      vids.forEach((el, k) => el.classList.toggle("on", k === i));
+      reel.dataset.step = String(i);
+      steps.forEach((li, k) => li.classList.toggle("on", k === i));
+      return;
+    }
+    if (primed !== i) cue(v, visible);
+    // a clip cued ahead can have been paused since (scrolled away, tab hidden): it must not fade in frozen
+    else if (visible && v.paused) v.play().catch(() => {});
+    primed = -1;
     vids.forEach((el, k) => el.classList.toggle("on", k === i));
     reel.dataset.step = String(i);
     steps.forEach((li, k) => li.classList.toggle("on", k === i));
-    warm(v);
-    // a clip that was never fetched cannot seek yet: seek once it knows its length
-    const seek = () => { try { v.currentTime = start(v); } catch (e) { /* plays from 0 */ } };
-    if (v.readyState >= 1) seek(); else v.addEventListener("loadedmetadata", seek, { once: true });
-    v.playbackRate = rate(v);
-    if (playing && visible) {
-      v.play().catch(() => {});
-      warm(vids[(i + 1) % vids.length]); // fetch the next clip only while the reel actually plays
-    }
-    if (prev && prev !== v) setTimeout(() => prev.pause(), 700);
+    if (playing && visible) warm(vids[(i + 1) % vids.length]);
+    if (prev && prev !== v) setTimeout(() => { if (!prev.classList.contains("on")) prev.pause(); }, FADE_MS + 200);
   };
 
   const tick = (now) => {
-    // a throttled or background tab must not skip a whole step: at most 0.1 s per frame
-    // and never backwards: a frame's timestamp can be a little older than the performance.now() run() took
+    // never backwards (a frame's timestamp can predate run()) and never a jump of more than 0.1 s
     elapsed = (elapsed + Math.max(0, Math.min(0.1, (now - last) / 1000))) % T;
     last = now;
-    show(Math.min(vids.length - 1, Math.max(0, Math.floor(elapsed / SEG))));
+    const i = Math.min(vids.length - 1, Math.max(0, Math.floor(elapsed / SEG)));
+    show(i);
+    const next = (i + 1) % vids.length;
+    if (primed !== next && SEG - (elapsed % SEG) <= LEAD) { primed = next; cue(vids[next], true); }
     if (bar) bar.style.transform = `scaleX(${(elapsed / T).toFixed(4)})`;
     raf = requestAnimationFrame(tick);
   };
@@ -74,19 +93,6 @@
 
   show(0);
   reel.classList.add("ready");
-  if (toggle) {
-    const label = () => {
-      toggle.setAttribute("aria-pressed", String(!playing));
-      toggle.setAttribute("aria-label", playing ? "Pause video" : "Play video");
-      toggle.dataset.state = playing ? "playing" : "paused";
-    };
-    label();
-    toggle.addEventListener("click", () => {
-      playing = !playing;
-      label();
-      playing ? run() : halt();
-    });
-  }
   new IntersectionObserver((e) => {
     visible = e[0].isIntersecting;
     visible ? run() : halt();
