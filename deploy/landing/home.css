@@ -131,7 +131,6 @@
 .rc-paid .rc-ico{background:#e0e7ff;color:#3730a3}
 .rc-hearts{position:absolute;z-index:2;left:18%;bottom:22%;pointer-events:none}
 .rc-hearts i{position:absolute;font-style:normal;color:#fb7185;font-size:22px;opacity:0;text-shadow:0 4px 12px rgba(0,0,0,.25)}
-.reel-tag{position:absolute;z-index:2;right:3cqw;top:2.6cqw;font-size:.66rem;color:rgba(255,255,255,.7);letter-spacing:.02em}
 /* step 1: the order fills in line by line */
 .reel[data-step="0"] .rc-order{opacity:1;transform:none;transition-delay:.25s}
 .reel[data-step="0"] .rc-order li{opacity:1;transform:none}
