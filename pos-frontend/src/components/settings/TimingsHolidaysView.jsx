@@ -243,6 +243,13 @@ const TimingsHolidaysView = () => {
           </div>
         </div>
 
+        {/* What Restaurant Time covers (owner, 2026-11-06): table booking only. */}
+        {activeChannel === "table" && (
+          <p className="text-[12.5px] text-[#64748B]">
+            For booking a table on your website and Knot Eats. Ordering from a table&apos;s QR code is not limited by these hours.
+          </p>
+        )}
+
         {/* Nothing saved for this channel: the website already runs on the
             times shown (pos-backend websiteAvailability DEFAULT_HOURS). */}
         {!(channelData.weekly || []).length && (

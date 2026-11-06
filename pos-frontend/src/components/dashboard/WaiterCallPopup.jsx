@@ -35,18 +35,28 @@ const WaiterCallPopup = () => {
   const [anchored, setAnchored] = useState(null);
   useEffect(() => {
     if (!calls.length || movedTo) return undefined;
+    // Where the grid/list buttons put it, kept while they are scrolled out of view,
+    // so the card does not ride up and off the screen with the menu.
+    let base = null;
     const place = () => {
       const el = document.querySelector("[data-waiter-anchor]");
       const r = el?.getBoundingClientRect();
-      if (!r || !r.width) return setAnchored(null);
+      if (!r || !r.width) {
+        base = null;
+        return setAnchored(null);
+      }
       const w = Math.min(330, window.innerWidth - 32);
-      const left = Math.max(16, r.right - w);
+      if (r.top >= 0 && r.bottom <= window.innerHeight) base = { top: r.bottom + 8, left: Math.max(16, r.right - w) };
+      if (!base) return;
+      const { left } = base;
       // Below any other alert in that corner (the restock alert), so neither hides the other's buttons.
-      let top = r.bottom + 8;
+      let top = base.top;
       for (const other of document.querySelectorAll("[data-waiter-avoid]")) {
         const o = other.getBoundingClientRect();
         if (o.width && o.left < left + w && o.right > left && o.bottom + 8 > top && o.top < top + 120) top = o.bottom + 8;
       }
+      // Always on screen, with room for the card.
+      top = Math.max(8, Math.min(top, window.innerHeight - 140));
       setAnchored((prev) => (prev && prev.top === top && prev.left === left ? prev : { top, left, right: "auto", bottom: "auto" }));
     };
     place();
