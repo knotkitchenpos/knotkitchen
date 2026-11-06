@@ -145,7 +145,8 @@ const RestockAlert = () => {
 
   const out = items.filter((i) => i.status === "out");
   return (
-    <div className="fixed top-3 right-3 z-[65] w-[330px] max-w-[calc(100vw-1.5rem)]">
+    // data-waiter-avoid: the waiter-call card sits below this while it shows (WaiterCallPopup).
+    <div data-waiter-avoid className="fixed top-3 right-3 z-[65] w-[330px] max-w-[calc(100vw-1.5rem)]">
       <div role="alert" className={`rounded-2xl border-2 ${out.length ? "border-[#DC2626]" : "border-[#F59E0B]"} bg-white shadow-2xl p-4`}>
         <p className={`text-[11px] font-bold uppercase tracking-wide ${out.length ? "text-[#B91C1C]" : "text-[#B45309]"}`}>
           Restock needed

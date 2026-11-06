@@ -619,7 +619,8 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
           )}
         </div>
 
-        <div className="ml-auto flex items-center rounded-xl border border-[#E2E8F0] overflow-hidden h-[40px]">
+        {/* data-waiter-anchor: the waiter-call card appears just below this (WaiterCallPopup). */}
+        <div data-waiter-anchor className="ml-auto flex items-center rounded-xl border border-[#E2E8F0] overflow-hidden h-[40px]">
           <button
             onClick={() => setView("grid")}
             className={`w-[40px] h-full flex items-center justify-center transition-colors ${

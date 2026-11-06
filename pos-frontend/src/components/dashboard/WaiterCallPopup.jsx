@@ -26,8 +26,38 @@ const WaiterCallPopup = () => {
   const restaurantId = useSelector((s) => s.user?.restaurantId);
   const [calls, setCalls] = useState([]);
   const [busyId, setBusyId] = useState(null);
-  // Hold the alert and drag it off whatever it covers (owner, 2026-10-31).
-  const { bind: holdToMove, style: movedTo, dragging } = useHoldDrag("kk.waiterCallPos.v1");
+  // Press and drag it anywhere, no hold (owner, 2026-11-06). v2: the default
+  // spot changed, so earlier saved spots are not kept.
+  const { bind: holdToMove, style: movedTo, dragging } = useHoldDrag("kk.waiterCallPos.v2", { immediate: true });
+  // Until moved, it sits just below the menu's grid/list buttons, on every
+  // screen size (owner, 2026-11-06); where those are not on screen, its
+  // usual corner (the classes below).
+  const [anchored, setAnchored] = useState(null);
+  useEffect(() => {
+    if (!calls.length || movedTo) return undefined;
+    const place = () => {
+      const el = document.querySelector("[data-waiter-anchor]");
+      const r = el?.getBoundingClientRect();
+      if (!r || !r.width) return setAnchored(null);
+      const w = Math.min(330, window.innerWidth - 32);
+      const left = Math.max(16, r.right - w);
+      // Below any other alert in that corner (the restock alert), so neither hides the other's buttons.
+      let top = r.bottom + 8;
+      for (const other of document.querySelectorAll("[data-waiter-avoid]")) {
+        const o = other.getBoundingClientRect();
+        if (o.width && o.left < left + w && o.right > left && o.bottom + 8 > top && o.top < top + 120) top = o.bottom + 8;
+      }
+      setAnchored((prev) => (prev && prev.top === top && prev.left === left ? prev : { top, left, right: "auto", bottom: "auto" }));
+    };
+    place();
+    // That other alert comes and goes, so look again now and then while a call shows.
+    const timer = setInterval(place, 1000);
+    window.addEventListener("resize", place);
+    return () => {
+      clearInterval(timer);
+      window.removeEventListener("resize", place);
+    };
+  }, [calls.length, movedTo]);
 
   // Beeps while anything is outstanding, and stops the moment the list empties.
   useAlertBeep(calls.length > 0);
@@ -126,8 +156,8 @@ const WaiterCallPopup = () => {
     // Held and dragged, it stays where it was left on this device.
     <div
       {...holdToMove}
-      style={movedTo || undefined}
-      className={`fixed top-[136px] lg:top-4 right-4 lg:right-[396px] z-[70] flex flex-col gap-2 w-[330px] max-w-[calc(100vw-2rem)] select-none [-webkit-touch-callout:none] transition-transform ${
+      style={movedTo || anchored || undefined}
+      className={`fixed top-[136px] lg:top-4 right-4 lg:right-[396px] z-[70] flex flex-col gap-2 w-[330px] max-w-[calc(100vw-2rem)] select-none touch-none [-webkit-touch-callout:none] transition-transform ${
         dragging ? "scale-[1.03] cursor-grabbing [&>div]:ring-2 [&>div]:ring-[#F59E0B]/60" : ""
       }`}
     >

@@ -24,12 +24,14 @@ export const clampPos = (pos, w, h, vw, vh) => ({
 /**
  * Hold a floating box, then drag it anywhere on screen (owner, 2026-10-31).
  * Where it was left is kept on this device under `storageKey`.
+ * `immediate`: no hold, the box follows as soon as the press moves past a
+ * few pixels (owner, 2026-11-06, the waiter call); a tap still taps.
  *
  * bind goes on the box. Buttons inside it keep working: a press on one never
  * lifts it. `style` is null until the box has been moved; spread it after the
  * box's own position classes so it wins.
  */
-export const useHoldDrag = (storageKey) => {
+export const useHoldDrag = (storageKey, { immediate = false } = {}) => {
   const [pos, setPos] = useState(() => readPos(storageKey));
   const [dragging, setDragging] = useState(false);
   const hold = useRef(null);
@@ -41,6 +43,13 @@ export const useHoldDrag = (storageKey) => {
       hold.current = null;
     };
     const onMove = (e) => {
+      if (!drag.current && hold.current?.box && Math.hypot(e.clientX - hold.current.x, e.clientY - hold.current.y) > SLOP_PX) {
+        // Press-and-drag: moving past the slop is what lifts the box.
+        const { x, y, box } = hold.current;
+        hold.current = null;
+        drag.current = { dx: x - box.left, dy: y - box.top, w: box.width, h: box.height, pos: { x: box.left, y: box.top } };
+        setDragging(true);
+      }
       const d = drag.current;
       if (!d) {
         if (hold.current && Math.hypot(e.clientX - hold.current.x, e.clientY - hold.current.y) > SLOP_PX) cancelHold();
@@ -90,6 +99,10 @@ export const useHoldDrag = (storageKey) => {
       const x = e.clientX;
       const y = e.clientY;
       clearTimeout(hold.current?.timer);
+      if (immediate) {
+        hold.current = { x, y, box };
+        return;
+      }
       const timer = setTimeout(() => {
         hold.current = null;
         drag.current = { dx: x - box.left, dy: y - box.top, w: box.width, h: box.height, pos: { x: box.left, y: box.top } };
