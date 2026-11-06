@@ -16,7 +16,6 @@ const getSocket = () => require("../services/socket");
 const accountLock = () => require("../services/accountLock");
 const crypto = require("crypto");
 const { CANCELLED_STATUSES, canonicalStatus } = require("../constants/orderStatus");
-const { availabilityAt } = require("../services/websiteAvailability");
 const { AUDIENCES, ORDER_TYPES, projectMenus, allowsOrderType } = require("../services/menuCache");
 const { resolveGateway, isOnlinePaymentEnabled, PROVIDERS } = require("../services/paymentGateway");
 const config = require("../config/config");
@@ -114,25 +113,13 @@ const sanitizeSession = (session, extra = {}) => {
 // it; the page reads nothing else from it.
 const publicOrder = (o) => (o ? { _id: o._id, orderStatus: o.orderStatus } : null);
 
-/**
- * Why the table QR is not taking orders right now ("" when it is).
- *
- * The same hours as table bookings: the POS "Restaurant Time" tab, with
- * Holiday and Close for Today first, and the default hours when nothing was
- * saved. Without it a scan at 4 a.m. placed an order. Closing time is last
- * orders, so a seated table cannot add after it either. Till orders are not
- * restricted.
+/*
+ * Table QR ordering does not follow Restaurant Time (owner, 2026-11-06):
+ * those hours, with Holiday and Close for Today, are for booking a table on
+ * the website and Knot Eats. A diner at a table orders whenever the
+ * restaurant has them seated; what stops it is the table's own QR switch and
+ * the store being paused or locked (services/accountLock).
  */
-const tableOrderingClosed = async (restaurantId, now = new Date()) => {
-  // Lazy for the same reason as resolveBrandLogo below.
-  const WebsiteSettings = require("../models/websiteSettingsModel");
-  const [settings, restaurant] = await Promise.all([
-    WebsiteSettings.findOne({ restaurantId, isDeleted: { $ne: true } }).select("channelHours holidays closedForToday").lean(),
-    Restaurant.findById(restaurantId).select("timezone").lean(),
-  ]);
-  const a = availabilityAt(settings, "table", now, restaurant?.timezone);
-  return a.open ? "" : a.reason.replace(/Table booking/g, "Ordering at the table");
-};
 
 /**
  * The diner's claim on one session, and why the QR alone is not one.
@@ -305,8 +292,6 @@ const getTableByToken = async (req, res, next) => {
     }
     const brandLogo = restaurant ? await resolveBrandLogo(restaurantId, restaurant) : "";
     const onlinePaymentEnabled = await isOnlinePaymentEnabled({ restaurantId });
-    const closed = await tableOrderingClosed(restaurantId);
-
     res.status(200).json({
       success: true,
       data: {
@@ -370,8 +355,8 @@ const getTableByToken = async (req, res, next) => {
         // Locked for non-payment, or outside Restaurant Time: the menu still
         // shows and a seated party can still call a waiter and pay, but no new
         // orders go in.
-        orderingPaused: await accountLock().isOrderingLocked(restaurantId) || Boolean(closed),
-        orderingPausedMessage: closed || accountLock().CUSTOMER_PAUSED_MESSAGE,
+        orderingPaused: await accountLock().isOrderingLocked(restaurantId),
+        orderingPausedMessage: accountLock().CUSTOMER_PAUSED_MESSAGE,
         // Say so explicitly rather than quietly returning a different party's
         // session: the page must stop, not adopt whoever is here now.
         sessionExpired: expired,
@@ -417,10 +402,6 @@ const addSessionItems = async (req, res, next) => {
     if (await accountLock().isOrderingLocked(restaurantId)) {
       return res.status(409).json({ success: false, code: "ORDERING_PAUSED", message: accountLock().CUSTOMER_PAUSED_MESSAGE });
     }
-    // 403, not 409: the diner's page reads every 409 as "this session is
-    // over" and would drop their claim on the table.
-    const closed = await tableOrderingClosed(restaurantId);
-    if (closed) return res.status(403).json({ success: false, code: "ORDERING_CLOSED", message: closed });
     if (!items || !items.length) return res.status(400).json({ success: false, message: "items required!" });
 
     // A retried submit returns the order it already placed; the unique
@@ -1045,7 +1026,6 @@ const dismissWaiterCall = async (req, res, next) => {
 };
 
 module.exports = {
-  tableOrderingClosed,
   generateTableQr,
   getTableByToken,
   getSessionByToken,
