@@ -29,8 +29,8 @@
 <link rel="apple-touch-icon" href="assets/icon-180.png">
 <link rel="preload" href="assets/fonts/geist-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="assets/fonts/bricolage-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="style.css?v=10">
-<link rel="stylesheet" href="home.css?v=13">
+<link rel="stylesheet" href="style.css?v=11">
+<link rel="stylesheet" href="home.css?v=15">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -40,7 +40,7 @@
     <a class="brand" href="/" aria-label="KnotKitchen — home">
       <img class="brand-logo" src="assets/logo-horizontal.webp" alt="KnotKitchen" width="624" height="90">
     </a>
-    <a class="btn nav-cta" href="#contact">Book a demo</a>
+    <a class="btn nav-cta magnet" href="#contact">Book a demo</a>
     <details class="menu">
       <summary aria-label="Open menu"><span class="bars" aria-hidden="true"></span></summary>
       <div class="menu-panel">
@@ -57,6 +57,7 @@
       </div>
     </details>
   </div>
+  <span class="progress" aria-hidden="true"><i></i></span>
 </header>
 
 <main id="main">
@@ -128,49 +129,49 @@
   </ul>
 </div>
 
-<section class="kk-sec kk-alt" id="features">
+<section class="kk-sec kk-alt" id="features" data-par>
   <div class="wrap">
     <div class="kk-head reveal">
       <span class="tag">Features</span>
-      <h2>Everything the floor and the kitchen need</h2>
+      <h2>Everything the floor and <em>the kitchen</em> need</h2>
       <p>One platform instead of four disconnected tools. Take the order, fire it to the kitchen, take payment, print the bill.</p>
     </div>
     <div class="bento">
-      <article class="tile w4 reveal" style="--i:0">
-        <div class="art bars-art">
+      <article data-tilt class="tile w4 reveal" style="--i:0">
+        <div class="art bars-art"><span class="chip"><i></i>Today</span>
           <i style="--h:34%;--n:0"></i><i style="--h:52%;--n:1"></i><i style="--h:41%;--n:2"></i><i style="--h:68%;--n:3"></i><i style="--h:58%;--n:4"></i><i style="--h:82%;--n:5"></i><i style="--h:74%;--n:6"></i><i style="--h:96%;--n:7"></i>
         </div>
         <h3>Sales reports</h3>
         <p>Sales, orders and payments for today or any date range, so you always know how the business is doing.</p>
       </article>
-      <article class="tile reveal" style="--i:1">
+      <article data-tilt class="tile reveal" style="--i:1">
         <div class="art tix"><b style="--n:0">#A12</b><b style="--n:1">#A13</b><b style="--n:2">#A14</b></div>
         <h3>Order management</h3>
         <p>Create, track and update takeaway, delivery and dine-in orders in real time across every station.</p>
       </article>
-      <article class="tile reveal" style="--i:0">
+      <article data-tilt class="tile reveal" style="--i:0">
         <div class="art floor"><i></i><i class="busy"></i><i></i><i class="busy"></i><i></i><i class="busy"></i><i></i><i></i><i class="busy"></i><i></i></div>
         <h3>Table management</h3>
         <p>Set up your tables and run dine-in service from a floor view that shows what is occupied at a glance.</p>
       </article>
-      <article class="tile reveal" style="--i:1">
+      <article data-tilt class="tile reveal" style="--i:1">
         <div class="art qr">
           <svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3zm2 2v4h4V5zm8-2h8v8h-8zm2 2v4h4V5zM3 13h8v8H3zm2 2v4h4v-4zm8-2h3v3h-3zm5 0h3v3h-3zm-5 5h3v3h-3zm5 0h3v3h-3zm-2.5-2.5h2v2h-2z"/></svg>
         </div>
         <h3>Menu, cart &amp; table QR</h3>
         <p>Update the menu yourself, no support ticket required. Guests scan the table QR and order from their phone.</p>
       </article>
-      <article class="tile reveal" style="--i:2">
+      <article data-tilt class="tile reveal" style="--i:2">
         <div class="art pay"><svg viewBox="0 0 64 64"><circle cx="32" cy="32" r="27"/><path d="M21 33l8 8 15-17"/></svg></div>
         <h3>Payments</h3>
         <p>Cash, UPI and card at the counter, and online payments straight into your own Cashfree or PhonePe account, reconciled against every order.</p>
       </article>
-      <article class="tile w3 reveal" style="--i:0">
+      <article data-tilt class="tile w3 reveal" style="--i:0">
         <div class="art rcpt"><b></b></div>
         <h3>Receipts &amp; billing</h3>
         <p>Print or download receipts on demand, with a clean record of every bill you have raised.</p>
       </article>
-      <article class="tile w3 reveal" style="--i:1">
+      <article data-tilt class="tile w3 reveal" style="--i:1">
         <div class="art tix"><b style="--n:0">Website</b><b style="--n:1">Table</b><b style="--n:2">Counter</b></div>
         <h3>Every channel, one queue</h3>
         <p>Counter, table QR and website orders land in the same list, so the kitchen works one queue instead of three. Website ordering is an add-on.</p>
@@ -179,14 +180,40 @@
   </div>
 </section>
 
-<section class="kk-sec" id="how">
+<section class="kk-sec showcase" id="tour" aria-labelledby="tour-h">
+  <div class="wrap">
+    <div class="kk-head center reveal">
+      <span class="tag">Inside the app</span>
+      <h2 id="tour-h">What your staff see. <em>What your guests see.</em></h2>
+      <p>These are real KnotKitchen screens. The cashier taps dishes into the cart on the counter tablet, while guests at Table 3 build their own order from the QR menu on their phone.</p>
+    </div>
+    <div class="stage" data-stage data-tilt>
+      <div class="stage-floor" aria-hidden="true"></div>
+      <div class="stage-glow" aria-hidden="true"></div>
+      <figure class="dev-tab">
+        <div class="tab-frame"><img src="assets/shots/pos-order.webp" width="1280" height="844" loading="lazy" decoding="async" alt="The KnotKitchen POS order screen: dishes with photos and prices on the left, and an order cart of four dishes totalling ₹1,026 on the right"></div>
+      </figure>
+      <figure class="dev-phone">
+        <div class="phone-frame"><img src="assets/shots/qr-menu.webp" width="420" height="840" loading="lazy" decoding="async" alt="A guest's phone showing the table QR menu for Table 3, with a Call Waiter button and a Review and Send button"></div>
+      </figure>
+      <ul class="callouts">
+        <li class="callout co-1"><b>The cart adds itself up</b>Subtotal and total change as you tap.</li>
+        <li class="callout co-2"><b>Every dish, with its photo</b>Your own menu, edited by you.</li>
+        <li class="callout co-3"><b>Guests order from the table</b>Their order joins the same queue, and Call Waiter alerts your staff.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="kk-sec" id="how" data-par>
   <div class="wrap">
     <div class="kk-head reveal">
       <span class="tag">How it works</span>
-      <h2>Live in days, not months</h2>
+      <h2>Live in days, <em>not months</em></h2>
       <p>We handle setup with you (menu, devices and staff) so the first shift on KnotKitchen is a normal shift.</p>
     </div>
     <div class="track">
+      <i class="track-dot" aria-hidden="true"></i>
       <div class="stop reveal" data-n="1" style="--i:0"><h3>Talk to us</h3><p>Tell us how your restaurant runs today and which plan fits.</p></div>
       <div class="stop reveal" data-n="2" style="--i:1"><h3>We set it up</h3><p>Menu, pricing, users and your tables configured for your outlet.</p></div>
       <div class="stop reveal" data-n="3" style="--i:2"><h3>Devices ready</h3><p>Tablets and receipt printers, if you buy them from us, delivered and set up.</p></div>
@@ -195,11 +222,11 @@
   </div>
 </section>
 
-<section class="kk-sec kk-alt" id="platform">
+<section class="kk-sec kk-alt" id="platform" data-par>
   <div class="wrap split">
     <div class="kk-head reveal">
       <span class="tag">Platform</span>
-      <h2>Built to keep running through service</h2>
+      <h2>Built to keep running <em>through service</em></h2>
       <p>A modern web platform your staff open in a browser. Nothing to install on every device, and updates arrive on their own.</p>
       <ul class="kk-tags">
         <li>Dine-in &amp; table QR</li><li>Takeaway</li><li>Delivery</li><li>Cloud kitchens</li>
@@ -223,15 +250,16 @@
   </div>
 </section>
 
-<section class="kk-sec" id="pricing">
+<section class="kk-sec" id="pricing" data-par>
   <div class="wrap">
     <div class="kk-head reveal">
       <span class="tag">Pricing</span>
-      <h2>Two plans.<br>Add only what you need.</h2>
+      <h2>Two plans.<br>Add only <em>what you need</em>.</h2>
       <p>Plans and add-ons are prepaid from your KnotKitchen wallet; tablets and printers are bought once, online. Standard prices per outlet in Indian Rupees (INR); the app shows the exact amount before you pay. No installation fee.</p>
     </div>
     <div class="price-grid">
-      <div class="plan-card featured reveal" style="--i:0">
+      <div class="plan-card featured reveal" data-tilt style="--i:0">
+        <span class="plan-badge">Tables &amp; QR ordering included</span>
         <h3>POS plan</h3>
         <p class="price"><b data-price="plan:POS">₹599</b> <span>+ GST / <span data-period>30</span> days</span></p>
         <p class="offer-note" data-offer="POS">Limited-time offer. Regular price <s data-price="offer:POS">₹699</s> + GST.</p>
@@ -245,9 +273,9 @@
         </ul>
         <p class="small">Start by recharging your wallet with <span data-price="plan:POS:firstRechargeMin">₹5,000</span> or more in one payment: <span data-price="plan:POS">₹599</span> + GST is taken from it and the rest stays in your wallet. The plan and your <span data-period>30</span>-day add-ons then renew together from the wallet every <span data-period>30</span> days. After that, each top-up is <span data-price="plan:POS:topUpMin">₹1,000</span> or more.</p>
         <p class="small">If the balance can&rsquo;t cover a renewal, or runs out, you have 24 hours to recharge before the POS locks. While it is locked, staff can&rsquo;t take orders or settle bills, and your website and table QR stop taking new orders. The owner can still sign in and recharge in Settings &rarr; Billing &amp; Subscription, and everything unlocks as soon as the payment lands.</p>
-        <a class="btn" href="#contact">Book a demo</a>
+        <a class="btn magnet" href="#contact">Book a demo</a>
       </div>
-      <div class="plan-card reveal" style="--i:1">
+      <div class="plan-card reveal" data-tilt style="--i:1">
         <h3>Billing plan</h3>
         <p class="price"><b data-price="plan:BILLING">₹199</b> <span>+ GST / <span data-period>30</span> days</span></p>
         <p class="offer-note" data-offer="BILLING">Limited-time offer. Regular price <s data-price="offer:BILLING">₹249</s> + GST.</p>
@@ -258,9 +286,9 @@
           <li>Staff accounts with roles</li>
         </ul>
         <p class="small">For counters that only bill: no tables or QR table ordering. Start by recharging your wallet with <span data-price="plan:BILLING:firstRechargeMin">₹3,000</span> or more in one payment; after that each top-up is <span data-price="plan:BILLING:topUpMin">₹1,000</span> or more. Move up to the POS plan any time from Billing in the app.</p>
-        <a class="btn ghost" href="#contact">Book a demo</a>
+        <a class="btn ghost magnet" href="#contact">Book a demo</a>
       </div>
-      <div class="plan-card reveal" style="--i:2">
+      <div class="plan-card reveal" data-tilt style="--i:2">
         <h3>Add-ons</h3>
         <p>Switch on what you need. A <span data-period>30</span>-day add-on added mid-period costs only the days left; the Website add-on is charged for a full year from the day you add it and renews on its own date.</p>
         <ul class="lines" id="addon-list">
@@ -312,7 +340,7 @@
   </div>
 </section>
 
-<section class="kk-sec kk-alt" id="faq">
+<section class="kk-sec kk-alt" id="faq" data-par>
   <div class="wrap split">
     <div class="kk-head reveal">
       <span class="tag">FAQ</span>
@@ -351,12 +379,17 @@
 <section class="kk-sec" id="contact">
   <div class="wrap">
     <div class="kk-close reveal">
+      <div class="close-float" aria-hidden="true">
+        <span class="fl fl-1"><span><span class="rc-ico" style="background:#dcfce7;color:#15803d"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V3h12v6"/><path d="M6 18H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="7" rx="1"/></svg></span><b>KOT #A12 printed<small>Table 7 · 4 items</small></b></span></span>
+        <span class="fl fl-2"><span><span class="rc-ico" style="background:#e0e7ff;color:#3730a3"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.6 2.6L16 9.5"/></svg></span><b>Paid · UPI ₹1,040<small>Reconciled to the order</small></b></span></span>
+        <span class="fl fl-3"><span><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 3h8v8H3zm2 2v4h4V5zm8-2h8v8h-8zm2 2v4h4V5zM3 13h8v8H3zm2 2v4h4v-4zm8-2h3v3h-3zm5 0h3v3h-3zm-5 5h3v3h-3zm5 0h3v3h-3zm-2.5-2.5h2v2h-2z"/></svg></span></span>
+      </div>
       <div>
-        <h2>See KnotKitchen on your menu</h2>
+        <h2>See KnotKitchen on <em>your menu</em></h2>
         <p>Message us on WhatsApp or call with your restaurant name and city, and we will walk you through a live demo built around how you actually work.</p>
       </div>
       <div class="kk-close-act">
-        <a class="btn" href="https://wa.me/918062177510?text=Hi%20KnotKitchen%2C%20I%27d%20like%20a%20demo.%20Restaurant%20name%3A%20%20City%3A%20" target="_blank" rel="noopener">WhatsApp us for a demo</a>
+        <a class="btn magnet" href="https://wa.me/918062177510?text=Hi%20KnotKitchen%2C%20I%27d%20like%20a%20demo.%20Restaurant%20name%3A%20%20City%3A%20" target="_blank" rel="noopener">WhatsApp us for a demo</a>
         <a class="link-arrow" href="tel:+918062177510">Call +91 8062177510 <span aria-hidden="true">&rarr;</span></a>
         <a class="link-arrow" href="mailto:support@knotkitchen.com?subject=KnotKitchen%20demo%20request">Email us <span aria-hidden="true">&rarr;</span></a>
         <small>We usually reply within one business day.</small>
@@ -394,7 +427,7 @@
 </footer>
 
 <a class="wa-float" href="https://wa.me/918062177510?text=Hi%20KnotKitchen%2C%20I%27d%20like%20a%20free%20demo.%20Restaurant%20name%3A%20%20City%3A%20" target="_blank" rel="noopener" aria-label="Chat with KnotKitchen on WhatsApp"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.6a9.3 9.3 0 0 0-8 14.1L2.7 21.4l4.8-1.3A9.3 9.3 0 1 0 12 2.6z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="M8.6 7.6c.3-.6.6-.6.9-.6h.6c.2 0 .4 0 .6.5l.8 1.9c.1.2.1.4 0 .6l-.5.7c-.1.2-.2.4 0 .6.5.9 1.2 1.6 2.1 2.1.2.1.4.1.6-.1l.7-.8c.2-.2.4-.2.6-.1l1.8.9c.3.1.4.3.4.5 0 .7-.4 1.6-1.5 1.9-.9.3-2.6.1-4.6-1.6-1.6-1.3-2.6-3-2.9-4-.3-1 0-1.9.4-2.5z" fill="currentColor"/></svg><span>Chat with us</span></a>
-<script src="home.js?v=8" defer></script>
+<script src="home.js?v=9" defer></script>
 <script src="heroreel.js?v=4" defer></script>
 </body>
 </html>

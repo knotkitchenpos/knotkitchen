@@ -236,6 +236,27 @@ footer ul a:hover{color:var(--text)}
 .legal-nav a:hover{color:var(--text);text-decoration:none;border-color:var(--accent)}
 .legal-nav a[aria-current]{background:var(--accent-soft);color:var(--accent);border-color:transparent}
 
+/* legal pages: the same quiet depth as the home page, CSS only (these pages carry no script) */
+.legal{position:relative;isolation:isolate}
+.legal::before{content:"";position:absolute;z-index:-1;pointer-events:none;top:-120px;right:0;width:min(560px,100%);aspect-ratio:1;border-radius:50%;
+  background:radial-gradient(closest-side,rgba(244,98,10,.10),transparent)}
+.legal h1{font-weight:700;letter-spacing:-.04em;line-height:1.05;margin-bottom:.45em}
+.legal h2{position:relative;letter-spacing:-.02em}
+.legal h2::before{content:"";display:block;width:26px;height:3px;border-radius:3px;margin-bottom:12px;background:linear-gradient(90deg,var(--orange),#ffb15c)}
+.back{transition:color .25s}
+.back:hover{color:var(--text);text-decoration:none}
+.legal-nav a{transition:transform .3s cubic-bezier(.2,.7,.2,1),border-color .3s,color .3s}
+.legal-nav a:hover{transform:translateY(-2px)}
+header{-webkit-backdrop-filter:saturate(1.5) blur(14px);backdrop-filter:saturate(1.5) blur(14px)}
+@media(min-width:1080px){
+  .menu-panel ul a{position:relative}
+  .menu-panel ul a::after{content:"";position:absolute;left:0;right:0;bottom:-6px;height:2px;border-radius:2px;background:var(--orange);
+    transform:scaleX(0);transform-origin:right;transition:transform .35s cubic-bezier(.2,.7,.2,1)}
+  .menu-panel ul a:hover::after,.menu-panel ul a[aria-current]::after{transform:scaleX(1);transform-origin:left}
+  .menu-panel ul a[aria-current]{color:var(--text)}
+}
+@media(prefers-reduced-motion:reduce){.legal-nav a,.menu-panel ul a::after{transition:none}}
+
 /* --- Size-specific adjustments -------------------------------------------
    Spacing and type are fluid above; these handle things a clamp() cannot
    express — layout switches, and viewports that are extreme in one axis. */
@@ -325,7 +346,7 @@ footer ul a:hover{color:var(--text)}
 /* ---------- compact footer (home page): three short rows, nothing dropped ---------- */
 footer.f-compact{padding:22px 0 16px;font-size:.88rem}
 .fc-top{display:flex;flex-wrap:wrap;align-items:center;gap:12px 22px}
-.fc-brand img{display:block;width:150px;height:auto}
+.fc-brand{display:inline-flex;align-items:center;min-height:44px}.fc-brand img{display:block;width:150px;height:auto}
 .fc-about{flex:1 1 300px;margin:0;color:var(--muted);font-size:.86rem;max-width:44em}
 .fc-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
 footer ul.fc-social{margin:0;gap:8px}
