@@ -39,7 +39,7 @@
     $("#dd-desc").textContent = d.description;
     $("#dd-order").href = orderUrl(d.code);
     $("#dd-demo").href = "https://wa.me/918062177510?text=" +
-      encodeURIComponent(`Hi KnotKitchen, I'd like a demo and the ${d.name} (${rupees(d.price)}). Restaurant name:  City: `);
+      encodeURIComponent(`Hi KnotKitchen, I'd like a free demo and the ${d.name} (${rupees(d.price)}).\n*Restaurant name:* \n*City:* `);
     dialog.showModal();
   };
   const deviceCard = (d) => {
