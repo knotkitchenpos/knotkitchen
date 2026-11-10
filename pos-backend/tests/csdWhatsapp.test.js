@@ -277,3 +277,79 @@ test("the MyOperator webhook refuses a wrong token before reading anything", asy
     assert.equal(r.statusCode, 404);
   });
 });
+
+/* ---------------------------------------------------------- Fast2SMS (2026-11-10) */
+
+const F2S = {
+  WHATSAPP_PROVIDER: "fast2sms",
+  FAST2SMS_API_KEY: "f2s-key",
+  FAST2SMS_WA_PHONE_NUMBER_ID: "1122334455",
+  FAST2SMS_WEBHOOK_SECRET: "x".repeat(40),
+};
+
+test("Fast2SMS incoming messages (its documented samples) become customer messages", async () => {
+  await withEnv(F2S, () => {
+    const [t] = wa.parseFast2sms({ webhook_type: "incoming_message", from: "919999999999", message_type: "text", body: "Where is my order?", message_id: "wamid.HBgMOTE5", phone_number_id: "1122334455", status: "received", timestamp: "1753604100", media_url: "", mime_type: "", caption: "" });
+    assert.equal(t.kind, "message");
+    assert.equal(t.direction, "in");
+    assert.equal(t.waId, "919999999999");
+    assert.equal(t.body, "Where is my order?");
+    assert.equal(t.providerMessageId, "wamid.HBgMOTE5");
+    assert.equal(t.media, undefined);
+    assert.equal(t.at.toISOString(), new Date(1753604100 * 1000).toISOString());
+
+    const [img] = wa.parseFast2sms({ webhook_type: "incoming_message", status: "received", phone_number_id: "1122334455", from: "919999999999", message_id: "wamid.2", message_type: "image", body: "Here is the payment screenshot", media_url: "https://media.example.com/wa/img_8f3a2c.jpg", mime_type: "image/jpeg", caption: "Paid via UPI", timestamp: "1753604100" });
+    assert.equal(img.media.url, "https://media.example.com/wa/img_8f3a2c.jpg");
+    assert.equal(img.body, "Here is the payment screenshot");
+
+    assert.deepEqual(wa.parseFast2sms({ webhook_type: "incoming_message", phone_number_id: "999", from: "919999999999", message_id: "w", body: "x" }), [], "another number on the account is ignored");
+  });
+});
+
+test("Fast2SMS receipts match by WhatsApp message id and carry the failure reason", async () => {
+  await withEnv(F2S, () => {
+    const [r] = wa.parseFast2sms({ webhook_type: "status_update", status: "read", message_id: "wamid.out", phone_number_id: "1122334455", recipient_id: "919999999999", error_message: "", timestamp: "1753603800" });
+    assert.deepEqual([r.kind, r.status, r.providerMessageId, r.error], ["status", "read", "wamid.out", ""]);
+    const [f] = wa.parseFast2sms({ webhook_type: "status_update", status: "failed", message_id: "wamid.f", error_message: "Re-engagement message" });
+    assert.equal(f.error, "Re-engagement message");
+    assert.deepEqual(wa.parseFast2sms({ webhook_type: "status_update", status: "", message_id: "" }), []);
+  });
+});
+
+test("Fast2SMS sends through its Meta-format endpoint with the account key; the webhook needs its secret header", async () => {
+  const savedFetch = global.fetch;
+  try {
+    await withEnv(F2S, async () => {
+      assert.equal(wa.isConfigured(), true);
+      let sent;
+      global.fetch = async (url, init) => {
+        sent = { url, init };
+        return new Response(JSON.stringify({ messaging_product: "whatsapp", messages: [{ id: "wamid.sent" }] }), { status: 200 });
+      };
+      const r = await wa.send({ waId: "919876543210", text: "Hello" });
+      assert.equal(r.providerMessageId, "wamid.sent", "the id the read receipts will carry");
+      assert.equal(sent.url, "https://www.fast2sms.com/dev/whatsapp/v26.0/1122334455/messages");
+      assert.equal(sent.init.headers.Authorization, "f2s-key");
+      assert.deepEqual(JSON.parse(sent.init.body), { messaging_product: "whatsapp", recipient_type: "individual", to: "919876543210", type: "text", text: { body: "Hello", preview_url: false } });
+
+      global.fetch = async (url) => {
+        sent = { url };
+        return new Response(JSON.stringify({ success: "true", data: [{ phone_number_id: "1122334455", templates: [
+          { template_name: "support_followup", language: "en", status: "APPROVED", phone_number_id: "1122334455", components: [{ type: "BODY", text: "Hi {{1}}, KnotKitchen support here." }] },
+          { template_name: "draft_one", language: "en", status: "PENDING", phone_number_id: "1122334455", components: [] },
+        ] }] }), { status: 200 });
+      };
+      const list = await wa.listTemplates();
+      assert.match(sent.url, /\/dev\/dlt_manager\/whatsapp\?type=template&phone_number_id=1122334455$/);
+      assert.deepEqual(list.map((t) => [t.name, t.variables]), [["support_followup", ["1"]]]);
+
+      assert.equal(wa.verifyFast2smsSecret("x".repeat(40)), true);
+      assert.equal(wa.verifyFast2smsSecret("y".repeat(40)), false);
+      const r401 = res();
+      await ctl.fast2smsWebhook({ get: () => "wrong", body: {} }, r401);
+      assert.equal(r401.statusCode, 401);
+    });
+  } finally {
+    global.fetch = savedFetch;
+  }
+});

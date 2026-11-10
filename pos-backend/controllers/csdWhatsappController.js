@@ -84,7 +84,10 @@ const getStatus = async (req, res) => {
         webhooks: {
           myoperator: "/api/whatsapp/webhook/myoperator/<WHATSAPP_WEBHOOK_TOKEN>",
           meta: "/api/whatsapp/webhook/meta",
+          fast2sms: "/api/whatsapp/webhook/fast2sms",
         },
+        // Fast2SMS: the body to paste into its WhatsApp webhook.
+        fast2smsPayload: wa.FAST2SMS_WEBHOOK_PAYLOAD,
       } : {}),
     },
   });
@@ -445,6 +448,22 @@ const myoperatorWebhook = async (req, res) => {
   }
 };
 
+/**
+ * POST /api/whatsapp/webhook/fast2sms — checked against the 40-character
+ * secret Fast2SMS sends as the webhook_secret_key header (Dev API → signing).
+ */
+const fast2smsWebhook = async (req, res) => {
+  if (!wa.verifyFast2smsSecret(req.get("webhook_secret_key"))) return res.status(401).json({ success: false });
+  try {
+    await ingest(wa.parseFast2sms(req.body));
+    res.status(200).json({ success: true });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[whatsapp] Fast2SMS webhook failed:", err?.message);
+    res.status(500).json({ success: false }); // Fast2SMS retries up to 3 times
+  }
+};
+
 /** GET /api/whatsapp/webhook/meta — Meta's subscribe handshake. */
 const metaVerify = (req, res) => {
   const want = String(process.env.WHATSAPP_META_VERIFY_TOKEN || "");
@@ -478,6 +497,7 @@ module.exports = {
   listTemplates,
   getMedia,
   myoperatorWebhook,
+  fast2smsWebhook,
   metaVerify,
   metaWebhook,
 };

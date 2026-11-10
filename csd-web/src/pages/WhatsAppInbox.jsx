@@ -250,11 +250,29 @@ const NotConnected = ({ status, isAdmin }) => (
       {isAdmin ? "" : " Ask an admin to connect it."}
     </p>
     {isAdmin && status?.webhooks && (
-      <ol className="mt-2 list-decimal space-y-1 pl-5 text-amber-900/90">
-        <li>Heyo is app-only; the support number’s WhatsApp API is MyOperator’s (Heyo’s parent company). Get API access on the number (MyOperator panel → API &amp; Webhook → WhatsApp APIs).</li>
-        <li>Put <code>WHATSAPP_PROVIDER=myoperator</code>, the API key, company id, phone number id and a random <code>WHATSAPP_WEBHOOK_TOKEN</code> in the server’s <code>.env</code> (see <code>deploy/.env.production.example</code>).</li>
-        <li>In MyOperator, send the message.received / sent / delivered / read / failed webhooks to <code>https://api.knotkitchen.com{status.webhooks.myoperator}</code>.</li>
-      </ol>
+      <>
+        <p className="mt-3 font-semibold">Connect it with Fast2SMS</p>
+        <ol className="mt-1 list-decimal space-y-1 pl-5 text-amber-900/90">
+          <li>In Fast2SMS, connect the support number under WhatsApp, and note its phone number id.</li>
+          <li>Dev API → turn on webhook signing and copy the 40-character secret.</li>
+          <li>
+            In the server’s <code>.env</code>: <code>WHATSAPP_PROVIDER=fast2sms</code>, <code>FAST2SMS_WA_PHONE_NUMBER_ID</code> and{" "}
+            <code>FAST2SMS_WEBHOOK_SECRET</code> (the existing <code>FAST2SMS_API_KEY</code> is reused).
+          </li>
+          <li>
+            Webhooks → WhatsApp → Add webhook: event <b>All</b>, POST, JSON, URL{" "}
+            <code className="break-all">https://api.knotkitchen.com{status.webhooks.fast2sms}</code>, and this payload:
+            {status.fast2smsPayload && (
+              <pre className="mt-1 max-w-full overflow-x-auto rounded-lg bg-white/70 p-2 text-[11px] leading-snug text-navy-800">
+                {JSON.stringify(status.fast2smsPayload, null, 2)}
+              </pre>
+            )}
+          </li>
+        </ol>
+        <p className="mt-2 text-xs text-amber-900/80">
+          MyOperator (Heyo’s parent company) and Meta’s own Cloud API also work: see <code>deploy/.env.production.example</code>.
+        </p>
+      </>
     )}
   </div>
 );

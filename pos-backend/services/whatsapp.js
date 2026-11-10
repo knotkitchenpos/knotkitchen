@@ -22,6 +22,12 @@ const crypto = require("crypto");
  *     WHATSAPP_META_APP_SECRET (checks X-Hub-Signature-256),
  *     WHATSAPP_META_VERIFY_TOKEN (the subscribe handshake),
  *     WHATSAPP_META_GRAPH_VERSION (default v23.0)
+ *   WHATSAPP_PROVIDER=fast2sms  (Fast2SMS's WhatsApp Business API, the
+ *     account the SMS code already uses; its "META Format" endpoints)
+ *     FAST2SMS_API_KEY (or FAST2SMS_WA_API_KEY), FAST2SMS_WA_PHONE_NUMBER_ID,
+ *     FAST2SMS_WEBHOOK_SECRET (Dev API → webhook signing; sent back as the
+ *     webhook_secret_key header), optional FAST2SMS_WA_WABA_ID,
+ *     FAST2SMS_WA_GRAPH_VERSION (default v26.0)
  *   WHATSAPP_WEBHOOK_TOKEN  the secret in the webhook URL. MyOperator signs
  *     nothing ("no auth required from your side"), so the unguessable path is
  *     what stops anyone else posting fake customer messages into the inbox.
@@ -39,6 +45,7 @@ const isConfigured = () => {
   const p = providerName();
   if (p === "myoperator") return !!(env("MYOPERATOR_API_KEY") && env("MYOPERATOR_COMPANY_ID") && env("MYOPERATOR_PHONE_NUMBER_ID") && env("WHATSAPP_WEBHOOK_TOKEN"));
   if (p === "meta") return !!(env("WHATSAPP_META_TOKEN") && env("WHATSAPP_META_PHONE_NUMBER_ID") && env("WHATSAPP_META_APP_SECRET") && env("WHATSAPP_META_VERIFY_TOKEN"));
+  if (p === "fast2sms") return !!(fast2smsKey() && env("FAST2SMS_WA_PHONE_NUMBER_ID") && env("FAST2SMS_WEBHOOK_SECRET"));
   return false;
 };
 
@@ -260,8 +267,26 @@ const myopTemplates = async () => {
 
 /* --------------------------------------------------------------------- Meta */
 
-const graph = (path) => `https://graph.facebook.com/${env("WHATSAPP_META_GRAPH_VERSION") || "v23.0"}/${path}`;
-const metaHeaders = () => ({ Authorization: `Bearer ${env("WHATSAPP_META_TOKEN")}` });
+/**
+ * Where Meta-format calls go. Fast2SMS runs the same WhatsApp Cloud API
+ * behind its own URL and API key (docs.fast2sms.com, "META Format"), so
+ * sending and templates are shared; only the address and the key differ.
+ */
+const cloud = () => (providerName() === "fast2sms"
+  ? {
+      base: `https://www.fast2sms.com/dev/whatsapp/${env("FAST2SMS_WA_GRAPH_VERSION") || "v26.0"}`,
+      headers: { Authorization: fast2smsKey() },
+      phoneId: env("FAST2SMS_WA_PHONE_NUMBER_ID"),
+      wabaId: env("FAST2SMS_WA_WABA_ID"),
+    }
+  : {
+      base: `https://graph.facebook.com/${env("WHATSAPP_META_GRAPH_VERSION") || "v23.0"}`,
+      headers: { Authorization: `Bearer ${env("WHATSAPP_META_TOKEN")}` },
+      phoneId: env("WHATSAPP_META_PHONE_NUMBER_ID"),
+      wabaId: env("WHATSAPP_META_WABA_ID"),
+    });
+const graph = (path) => `${cloud().base}/${path}`;
+const metaHeaders = () => cloud().headers;
 
 const metaContent = (m) => {
   const type = String(m.type || "text");
@@ -325,7 +350,7 @@ const metaSend = async ({ waId, text, template }) => {
         },
       }
     : { type: "text", text: { body: text, preview_url: false } };
-  const r = await request(graph(`${env("WHATSAPP_META_PHONE_NUMBER_ID")}/messages`), {
+  const r = await request(graph(`${cloud().phoneId}/messages`), {
     method: "POST",
     headers: metaHeaders(),
     body: { messaging_product: "whatsapp", recipient_type: "individual", to: waId, ...payload },
@@ -342,8 +367,8 @@ const metaSend = async ({ waId, text, template }) => {
 };
 
 const metaTemplates = async () => {
-  if (!env("WHATSAPP_META_WABA_ID")) return [];
-  const r = await request(graph(`${env("WHATSAPP_META_WABA_ID")}/message_templates?status=APPROVED&limit=100&fields=name,language,status,components,category`), { headers: metaHeaders() });
+  if (!cloud().wabaId) return [];
+  const r = await request(graph(`${cloud().wabaId}/message_templates?status=APPROVED&limit=100&fields=name,language,status,components,category`), { headers: metaHeaders() });
   if (!r.ok) throw new ProviderError(r.json?.error?.message || `Could not load WhatsApp templates (${r.status}).`);
   return (r.json?.data || []).map((t) => normaliseTemplate(t));
 };
@@ -370,6 +395,93 @@ const verifyMetaSignature = (rawBody, header) => {
   const a = Buffer.from(String(header));
   const b = Buffer.from(expected);
   return a.length === b.length && crypto.timingSafeEqual(a, b);
+};
+
+/* ----------------------------------------------------------------- Fast2SMS */
+
+/** The account's Dev API key; the same one the SMS code already uses, unless WhatsApp has its own. */
+const fast2smsKey = () => env("FAST2SMS_WA_API_KEY") || env("FAST2SMS_API_KEY");
+
+/**
+ * Fast2SMS lets you write the webhook body yourself, filling {{placeholders}}
+ * per event (fast2sms.com/help/how-webhooks-work). This is the body to paste
+ * into Dashboard → Webhooks → WhatsApp → Add webhook (event: All).
+ */
+const FAST2SMS_WEBHOOK_PAYLOAD = {
+  webhook_type: "{{webhook_type}}",
+  status: "{{status}}",
+  message_id: "{{message_id}}",
+  phone_number_id: "{{phone_number_id}}",
+  from: "{{from}}",
+  recipient_id: "{{recipient_id}}",
+  message_type: "{{message_type}}",
+  body: "{{body}}",
+  media_url: "{{media_url}}",
+  mime_type: "{{mime_type}}",
+  caption: "{{caption}}",
+  error_message: "{{error_message}}",
+  timestamp: "{{timestamp}}",
+};
+
+/** One Fast2SMS WhatsApp webhook → events. Unfilled placeholders arrive as "". */
+const parseFast2sms = (b) => {
+  if (!b || typeof b !== "object") return [];
+  const phoneId = env("FAST2SMS_WA_PHONE_NUMBER_ID");
+  if (phoneId && b.phone_number_id && String(b.phone_number_id) !== phoneId) return [];
+  const id = clip(b.message_id, 200);
+  const at = toDate(b.timestamp);
+  const kind = String(b.webhook_type || "").toLowerCase();
+
+  if (kind === "incoming_message" || String(b.status).toLowerCase() === "received") {
+    const waId = digits(b.from);
+    if (!waId || !id) return [];
+    const type = String(b.message_type || "text").toLowerCase();
+    const media = ["image", "video", "audio", "document", "sticker"].includes(type);
+    return [{
+      kind: "message",
+      direction: "in",
+      waId,
+      profileName: "",
+      providerMessageId: id,
+      at,
+      type,
+      body: clip(b.body || b.caption || (media ? "" : `[${type} message]`)),
+      ...(media ? { media: { url: httpsOnly(b.media_url), mimeType: clip(b.mime_type, 100), filename: "" } } : {}),
+    }];
+  }
+
+  const status = myopStatus(b.status);
+  if (!status || !id) return [];
+  return [{
+    kind: "status",
+    providerMessageId: id,
+    status,
+    error: status === "failed" ? clip(b.error_message || "WhatsApp could not deliver this message.", 500) : "",
+    at,
+  }];
+};
+
+/** Fast2SMS sends the 40-character secret from Dev API settings as a header. */
+const verifyFast2smsSecret = (header) => {
+  const want = env("FAST2SMS_WEBHOOK_SECRET");
+  if (!want || !header) return false;
+  const a = crypto.createHash("sha256").update(String(header)).digest();
+  const b = crypto.createHash("sha256").update(want).digest();
+  return crypto.timingSafeEqual(a, b);
+};
+
+/** Approved templates for the number, from Fast2SMS's own WABA listing. */
+const fast2smsTemplates = async () => {
+  if (cloud().wabaId) return metaTemplates();
+  const q = new URLSearchParams({ type: "template", phone_number_id: cloud().phoneId });
+  const r = await request(`https://www.fast2sms.com/dev/dlt_manager/whatsapp?${q}`, { headers: { Authorization: fast2smsKey() } });
+  if (!r.ok) throw new ProviderError(r.json?.message || `Could not load WhatsApp templates (${r.status}).`);
+  const rows = [];
+  for (const n of r.json?.data || []) for (const t of n.templates || (n.template_name ? [n] : [])) rows.push(t);
+  return rows
+    .filter((t) => !t.status || /^approved$/i.test(String(t.status)))
+    .filter((t) => !t.phone_number_id || !cloud().phoneId || String(t.phone_number_id) === cloud().phoneId)
+    .map((t) => normaliseTemplate({ ...t, name: t.template_name || t.name }));
 };
 
 /* ---------------------------------------------------------------- templates */
@@ -403,15 +515,20 @@ const normaliseTemplate = (t) => {
 const send = async (args) => {
   const p = providerName();
   if (!isConfigured()) throw new ProviderError("WhatsApp is not connected on this server yet.", { status: 503, code: "WHATSAPP_NOT_CONFIGURED" });
-  return p === "meta" ? metaSend(args) : myopSend(args);
+  return p === "meta" || p === "fast2sms" ? metaSend(args) : myopSend(args);
 };
 
 const listTemplates = async () => {
   if (!isConfigured()) return [];
-  return providerName() === "meta" ? metaTemplates() : myopTemplates();
+  const p = providerName();
+  if (p === "fast2sms") return fast2smsTemplates();
+  return p === "meta" ? metaTemplates() : myopTemplates();
 };
 
-const parseWebhook = (provider, body) => (provider === "meta" ? parseMeta(body) : parseMyOperator(body));
+const parseWebhook = (provider, body) => {
+  if (provider === "fast2sms") return parseFast2sms(body);
+  return provider === "meta" ? parseMeta(body) : parseMyOperator(body);
+};
 
 const webhookTokenMatches = (token) => {
   const want = env("WHATSAPP_WEBHOOK_TOKEN");
@@ -429,6 +546,9 @@ module.exports = {
   parseWebhook,
   parseMyOperator,
   parseMeta,
+  parseFast2sms,
+  verifyFast2smsSecret,
+  FAST2SMS_WEBHOOK_PAYLOAD,
   metaMedia,
   verifyMetaSignature,
   webhookTokenMatches,
