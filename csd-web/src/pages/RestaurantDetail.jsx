@@ -993,7 +993,7 @@ const RestaurantDetail = () => {
         </Card>
 
         {/* ── Row 5 ─────────────────────────────────────────────────── */}
-        <Card
+        {!charges.hidden && (<Card
           title="Store charges"
           action={
             // §29 — Edit is admin-only. Staff see the figures, no controls.
@@ -1035,10 +1035,10 @@ const RestaurantDetail = () => {
               Only an administrator can change charges or the subscription.
             </p>
           )}
-        </Card>
+        </Card>)}
 
         {/* The POS plan as the restaurant's Billing page sees it. */}
-        <PosPlanCard
+        {!charges.hidden && <PosPlanCard
           sub={charges.subscription}
           storeClosed={basic.status === "closed"}
           isAdmin={isAdmin}
@@ -1046,7 +1046,7 @@ const RestaurantDetail = () => {
           onReinstate={reinstate}
           onAdjust={openAdjust}
           onChangePlan={openPlan}
-        />
+        />}
 
         <Card title="Restaurant staff">
           {staff.length === 0 ? (

@@ -49,7 +49,7 @@ const Profile = () => {
           <Row label="Account status"><StatusBadge status={staff.status} /></Row>
           <Row label="Date joined">{fmt(staff.dateJoined)}</Row>
           <Row label="Last login">{fmt(staff.lastLoginAt)}</Row>
-          <Row label="Permissions">
+          <Row label="Access">
             {staff.permissions?.length ? (
               <div className="flex flex-wrap gap-1.5">
                 {staff.permissions.map((p) => (

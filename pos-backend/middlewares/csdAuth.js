@@ -3,6 +3,7 @@ const jwt = require("jsonwebtoken");
 const createHttpError = require("http-errors");
 const config = require("../config/config");
 const CsdStaff = require("../models/csdStaffModel");
+const { hasSection, sectionsForPath } = require("../constants/csdSections");
 
 const COOKIE_NAME = "csdToken";
 // What an account without two-factor sign-in yet may reach: itself, signing out, and setting it up.
@@ -162,7 +163,19 @@ const requireCsdAdmin = (req, res, next) => {
   next();
 };
 
+/**
+ * Limits a staff member to the sections an admin gave them. Sits in front of
+ * every route, keyed by path (constants/csdSections), so a new route under a
+ * guarded path is covered without remembering to add anything.
+ */
+const requireCsdSection = (req, res, next) => {
+  const any = sectionsForPath(req.path);
+  if (!any || any.some((s) => hasSection(req.csdStaff, s))) return next();
+  next(createHttpError(403, "You do not have access to this section.", { code: "SECTION_DENIED" }));
+};
+
 module.exports = {
+  requireCsdSection,
   COOKIE_NAME,
   getSecret,
   issueSessionCookie,

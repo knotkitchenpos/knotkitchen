@@ -18,6 +18,7 @@ const { csdAudit } = require("../services/csdAuditService");
 const config = require("../config/config");
 const { formatAddress } = require("../services/address");
 const { statusFor } = require("../services/subscription");
+const { hasSection } = require("../constants/csdSections");
 const { featuresOf, effectiveOrderToggles } = require("../services/planFeatures");
 
 const str = (v) => String(v ?? "").trim();
@@ -190,7 +191,8 @@ const getRestaurant = async (req, res, next) => {
           },
         },
 
-        charges: {
+        // A staff member limited away from Billing sees no plan or wallet here either.
+        charges: !hasSection(req.csdStaff, "billing") ? { hidden: true, canEdit: false, planPrices: [], subscription: null, restaurantId: null } : {
           // null = the platform amount and start date (CSD → Billing). The
           // platform fee: website orders, then table-QR orders, then Knot Eats.
           onlinePaidOrderCharge: charges.onlinePaidOrderCharge ?? null,

@@ -366,6 +366,10 @@ try {
     // touching it. Only candidates are read, never every restaurant.
     const { startLockSweeper } = require("./services/accountLock");
     startLockSweeper();
+
+    // Proactive WhatsApp alerts to store owners. Does nothing until an admin
+    // switches automatic sending on in CSD → Store Health.
+    require("./services/storeAlerts").startAlertScheduler();
 } catch (err) {
     console.warn("Auto-ready scheduler failed to start:", err.message);
 }

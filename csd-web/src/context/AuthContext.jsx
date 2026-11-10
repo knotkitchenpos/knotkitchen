@@ -60,6 +60,9 @@ export const AuthProvider = ({ children }) => {
       // Convenience flag for rendering. NOT a security boundary — every
       // admin-only capability is enforced by requireCsdAdmin on the server.
       isAdmin: staff?.role === "admin",
+      // Display only, like isAdmin; the server's section guard is the real check.
+      // Admins have everything; no sections set means every staff section.
+      can: (section) => staff?.role === "admin" || !staff?.permissions?.length || staff.permissions.includes(section),
       setStaff,
       refresh,
       signOut,

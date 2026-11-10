@@ -3,6 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { FiPlus, FiSend, FiSearch, FiX, FiPaperclip, FiHash, FiShoppingBag } from "react-icons/fi";
 import { chat, stores as storesApi, whatsapp, errorMessage } from "../api";
 import WhatsAppInbox from "./WhatsAppInbox";
+import { useAuth } from "../context/AuthContext";
 
 const time = (d) => new Date(d).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
 const day = (d) => new Date(d).toLocaleDateString("en-IN", { dateStyle: "medium" });
@@ -396,18 +397,21 @@ const TeamChat = () => {
  */
 const Chat = () => {
   const [params, setParams] = useSearchParams();
-  const tab = params.get("tab") === "whatsapp" ? "whatsapp" : "team";
+  const { can } = useAuth();
+  const canTeam = can("chat");
+  const canWa = can("whatsapp");
+  const tab = !canTeam || (canWa && params.get("tab") === "whatsapp") ? "whatsapp" : "team";
   const [waUnread, setWaUnread] = useState(0);
 
   // The WhatsApp tab's unread count while the team tab is showing.
   useEffect(() => {
-    if (tab === "whatsapp") return undefined;
+    if (tab === "whatsapp" || !canWa) return undefined;
     let alive = true;
     const poll = () => whatsapp.unread().then((d) => alive && setWaUnread(d.unread || 0)).catch(() => {});
     poll();
     const t = setInterval(poll, POLL_MS * 3);
     return () => { alive = false; clearInterval(t); };
-  }, [tab]);
+  }, [tab, canWa]);
 
   // The inbox knows first; tell the sidebar badge too, so the two never disagree.
   const onWaUnread = useCallback((n) => {
@@ -416,8 +420,8 @@ const Chat = () => {
   }, []);
 
   const tabs = [
-    { key: "team", label: "Team chat" },
-    { key: "whatsapp", label: "WhatsApp", badge: waUnread },
+    ...(canTeam ? [{ key: "team", label: "Team chat" }] : []),
+    ...(canWa ? [{ key: "whatsapp", label: "WhatsApp", badge: waUnread }] : []),
   ];
 
   return (

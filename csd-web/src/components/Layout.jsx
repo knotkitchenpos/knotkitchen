@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   FiGrid, FiUserPlus, FiUsers, FiShoppingBag, FiSearch, FiMessageSquare,
   FiCheckSquare, FiBarChart2, FiSettings, FiLogOut, FiMenu, FiX, FiBell, FiFileText,
-  FiDollarSign, FiPackage, FiMapPin, FiTablet, FiChevronDown,
+  FiDollarSign, FiPackage, FiMapPin, FiTablet, FiChevronDown, FiActivity, FiBookOpen,
 } from "react-icons/fi";
 import { menuFor } from "../kkmdm/menu";
 import { useAuth } from "../context/AuthContext";
@@ -21,14 +21,16 @@ import markUrl from "../assets/knotkitchen-mark.png";
 const NAV = [
   { to: "/dashboard", label: "Dashboard", icon: FiGrid, adminOnly: true, group: "Overview" },
   { to: "/reports", label: "Reports", icon: FiBarChart2, adminOnly: true, group: "Overview" },
-  { to: "/stores", label: "Store Management", icon: FiShoppingBag, adminOnly: false, group: "Stores" },
+  { to: "/stores", label: "Store Management", icon: FiShoppingBag, adminOnly: false, group: "Stores", section: "stores" },
+  { to: "/health", label: "Store Health", icon: FiActivity, adminOnly: false, group: "Stores", section: "health" },
   { to: "/onboarding", label: "Store Onboarding", icon: FiUserPlus, adminOnly: true, group: "Stores" },
   { to: "/agreements", label: "Agreements", icon: FiFileText, adminOnly: true, group: "Stores" },
-  { to: "/eats", label: "Knot Eats", icon: FiMapPin, adminOnly: false, group: "Stores" },
-  { to: "/search", label: "Search Console", icon: FiSearch, adminOnly: false, group: "Support" },
-  { to: "/chat", label: "Chat", icon: FiMessageSquare, adminOnly: false, group: "Support", badge: "whatsapp" },
-  { to: "/jobs", label: "Jobs", icon: FiCheckSquare, adminOnly: false, group: "Support" },
-  { to: "/hardware", label: "Hardware requests", icon: FiPackage, adminOnly: false, group: "Support", badge: "hardware" },
+  { to: "/eats", label: "Knot Eats", icon: FiMapPin, adminOnly: false, group: "Stores", section: "eats" },
+  { to: "/search", label: "Search Console", icon: FiSearch, adminOnly: false, group: "Support", section: "search" },
+  { to: "/chat", label: "Chat", icon: FiMessageSquare, adminOnly: false, group: "Support", badge: "whatsapp", section: ["chat", "whatsapp"] },
+  { to: "/jobs", label: "Jobs", icon: FiCheckSquare, adminOnly: false, group: "Support", section: "jobs" },
+  { to: "/knowledge", label: "Knowledge base", icon: FiBookOpen, adminOnly: false, group: "Support", section: "knowledge" },
+  { to: "/hardware", label: "Hardware requests", icon: FiPackage, adminOnly: false, group: "Support", badge: "hardware", section: "hardware" },
   { to: "/billing", label: "Billing", icon: FiDollarSign, adminOnly: true, group: "Admin" },
   { to: "/staff", label: "Staff Management", icon: FiUsers, adminOnly: true, group: "Admin" },
   { to: "/settings", label: "Settings", icon: FiSettings, adminOnly: true, group: "Admin" },
@@ -38,7 +40,9 @@ const NAV = [
 const LABEL = "whitespace-nowrap opacity-100 transition-opacity duration-150 lg:opacity-0 lg:group-hover:opacity-100";
 
 const Layout = () => {
-  const { staff, isAdmin, signOut } = useAuth();
+  const { staff, isAdmin, signOut, can } = useAuth();
+  const canWhatsApp = can("whatsapp");
+  const canHardware = can("hardware");
   const [open, setOpen] = useState(false);
   const navigate = useNavigate();
 
@@ -47,6 +51,7 @@ const Layout = () => {
   // not on the socket, so this polls; a minute is fresh enough for a delivery.
   const [newRequests, setNewRequests] = useState(0);
   useEffect(() => {
+    if (!canHardware) return undefined;
     let alive = true;
     const poll = () =>
       hardwareRequests.counts().then((c) => alive && setNewRequests(c.REQUESTED || 0)).catch(() => {});
@@ -56,11 +61,12 @@ const Layout = () => {
       alive = false;
       clearInterval(t);
     };
-  }, [pathname]);
+  }, [pathname, canHardware]);
   // WhatsApp chats with unread customer messages, on Chat. Polled often:
   // a customer is waiting on these.
   const [waUnread, setWaUnread] = useState(0);
   useEffect(() => {
+    if (!canWhatsApp) return undefined;
     let alive = true;
     const poll = () => whatsapp.unread().then((d) => alive && setWaUnread(d.unread || 0)).catch(() => {});
     poll();
@@ -69,7 +75,7 @@ const Layout = () => {
       alive = false;
       clearInterval(t);
     };
-  }, [pathname]);
+  }, [pathname, canWhatsApp]);
   useEffect(() => {
     const on = (e) => setWaUnread(Number(e.detail) || 0);
     window.addEventListener("kk:wa-unread", on);
@@ -114,7 +120,7 @@ const Layout = () => {
     return () => navigator.serviceWorker.removeEventListener("message", on);
   }, [navigate]);
   const badges = { hardware: newRequests, whatsapp: waUnread };
-  const items = NAV.filter((n) => !n.adminOnly || isAdmin);
+  const items = NAV.filter((n) => (!n.adminOnly || isAdmin) && (!n.section || [].concat(n.section).some(can)));
   // KKMDM (tablet management) as one entry with its screens in a sub-menu (owner, 2026-11-03).
   const mdmItems = menuFor(isAdmin);
   const inMdm = pathname.startsWith("/mdm");
@@ -246,7 +252,7 @@ const Layout = () => {
                     </span>
                     <span className={LABEL}>{label}</span>
                   </NavLink>
-                  {to === "/stores" && mdmBlock}
+                  {to === "/stores" && can("devices") && mdmBlock}
                   </React.Fragment>
                 ))}
             </div>
@@ -300,7 +306,7 @@ const Layout = () => {
           ) : null}
 
           <div className="flex-1">
-            <GlobalSearch />
+            {can("stores") && <GlobalSearch />}
           </div>
 
           <button
@@ -324,7 +330,7 @@ const Layout = () => {
 
         <main className="p-3 sm:p-5">
           <Outlet />
-          <NotificationsPrompt />
+          {canWhatsApp && <NotificationsPrompt />}
         </main>
       </div>
     </div>

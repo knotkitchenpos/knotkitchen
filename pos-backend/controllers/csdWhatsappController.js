@@ -4,7 +4,8 @@ const { WaConversation, WaMessage } = require("../models/waChatModel");
 const CsdStaff = require("../models/csdStaffModel");
 const Store = require("../models/storeModel");
 const wa = require("../services/whatsapp");
-const { ingest, preview } = require("../services/whatsappInbox");
+const { ingest, sendOutbound } = require("../services/whatsappInbox");
+const ai = require("../services/aiReply");
 
 /**
  * CSD → Chat → WhatsApp: the team inbox for the support number.
@@ -79,6 +80,7 @@ const getStatus = async (req, res) => {
     data: {
       configured: wa.isConfigured(),
       provider: wa.providerName() || null,
+      aiEnabled: ai.isEnabled(),
       // For the admin setting it up: where the provider must post events.
       ...(isAdmin ? {
         webhooks: {
@@ -219,48 +221,39 @@ const resolveTemplate = async (t) => {
   return { ...tpl, values };
 };
 
-/** Send one outbound message on a conversation: saved first, so a receipt can never beat it. */
+/** Send as the signed-in agent; provider errors become readable HTTP errors. */
 const sendOut = async (req, conv, { text, template }) => {
-  const mine = me(req);
-  const msg = await WaMessage.create({
-    conversationId: conv._id,
-    direction: "out",
-    type: template ? "template" : "text",
-    body: template ? wa.fillTemplate([template.header, template.body, template.footer].filter(Boolean).join("\n\n"), template.values) : text,
-    template: template ? { name: template.name, language: template.language } : undefined,
-    status: "pending",
-    staffId: mine.id,
-    staffName: mine.name,
-    sentAt: new Date(),
-  });
-
-  let failure = null;
   try {
-    const r = await wa.send({ waId: conv.waId, countryCode: "", refId: String(msg._id), text, template });
-    const set = { status: "sent" };
-    if (r.providerMessageId) set.providerMessageId = r.providerMessageId;
-    // A receipt may already have moved it past "sent"; never move it back.
-    await WaMessage.updateOne({ _id: msg._id, status: "pending" }, { $set: set });
-    if (r.providerMessageId) await WaMessage.updateOne({ _id: msg._id, providerMessageId: { $exists: false } }, { $set: { providerMessageId: r.providerMessageId } }).catch(() => {});
-    if (r.providerConversationId && !conv.providerConversationId) {
-      await WaConversation.updateOne({ _id: conv._id }, { $set: { providerConversationId: r.providerConversationId } });
-    }
+    return await sendOutbound({ conv, text, template, actor: me(req) });
   } catch (err) {
-    failure = err;
-    await WaMessage.updateOne({ _id: msg._id }, { $set: { status: "failed", error: String(err.message || "Not sent").slice(0, 500) } });
+    throw providerFail(err);
   }
+};
 
-  const update = {
-    $set: { lastMessageAt: msg.sentAt, lastMessagePreview: preview(msg), lastMessageDirection: "out", unreadCount: 0 },
-  };
-  // Replying to an unassigned chat takes it, so two agents do not both answer.
-  if (!conv.assignedToId && !failure) {
-    Object.assign(update.$set, { assignedToId: mine.id, assignedToName: mine.name, assignedAt: new Date() });
+/**
+ * POST /api/csd/whatsapp/conversations/:id/suggest
+ * A draft reply from the knowledge base. It only fills the agent's text box.
+ */
+const suggestReply = async (req, res, next) => {
+  try {
+    const id = str(req.params.id);
+    if (!mongoose.Types.ObjectId.isValid(id)) return next(createHttpError(400, "Invalid conversation id."));
+    const conv = await WaConversation.findById(id).lean();
+    if (!conv) return next(createHttpError(404, "Conversation not found."));
+    const [page, stores] = await Promise.all([
+      WaMessage.find({ conversationId: conv._id, direction: { $in: ["in", "out"] } }).sort({ sentAt: -1, _id: -1 }).limit(40).lean(),
+      storesFor(conv.waId),
+    ]);
+    const draft = await ai.suggestReply({
+      messages: page.reverse(),
+      customerName: conv.customName || conv.profileName || "",
+      storeNames: stores.map((s) => s.storeName),
+    });
+    res.status(200).json({ success: true, data: draft });
+  } catch (error) {
+    if (error instanceof ai.AiError) return next(createHttpError(error.status, error.message, { expose: true }));
+    next(error);
   }
-  await WaConversation.updateOne({ _id: conv._id }, update);
-
-  if (failure) throw providerFail(failure);
-  return WaMessage.findById(msg._id).lean();
 };
 
 /**
@@ -496,6 +489,7 @@ module.exports = {
   postMessage,
   startConversation,
   updateConversation,
+  suggestReply,
   listTemplates,
   getMedia,
   myoperatorWebhook,

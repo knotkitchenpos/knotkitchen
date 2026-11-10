@@ -201,6 +201,9 @@ services:
       # WhatsApp support inbox in CSD → Chat (services/whatsapp.js). Unset =
       # the inbox shows "not connected"; nothing else is affected.
       WHATSAPP_PROVIDER: ${WHATSAPP_PROVIDER:-}
+      # AI reply suggestions in the inbox. Unset = no suggest button.
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      KKMDM_DB_NAME: ${KKMDM_DB_NAME:-kkmdm}
       WHATSAPP_WEBHOOK_TOKEN: ${WHATSAPP_WEBHOOK_TOKEN:-}
       # WHATSAPP_PROVIDER=fast2sms reuses FAST2SMS_API_KEY above.
       FAST2SMS_WA_API_KEY: ${FAST2SMS_WA_API_KEY:-}

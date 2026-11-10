@@ -2,9 +2,9 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Link, useSearchParams } from "react-router-dom";
 import {
   FiSearch, FiSend, FiX, FiPlus, FiCheck, FiClock, FiAlertCircle, FiArrowLeft,
-  FiEdit2, FiFileText, FiPaperclip, FiLock, FiUser, FiShoppingBag,
+  FiEdit2, FiFileText, FiPaperclip, FiLock, FiUser, FiShoppingBag, FiZap,
 } from "react-icons/fi";
-import { whatsapp, jobs, errorMessage } from "../api";
+import { whatsapp, jobs, knowledge, errorMessage } from "../api";
 import { useAuth } from "../context/AuthContext";
 
 /**
@@ -305,6 +305,10 @@ const WhatsAppInbox = ({ onUnread }) => {
   const [newChat, setNewChat] = useState(false);
   const [templateFor, setTemplateFor] = useState(false);
   const [editingName, setEditingName] = useState(null);
+  const [replies, setReplies] = useState([]);
+  const [pick, setPick] = useState(0);
+  const [drafting, setDrafting] = useState(false);
+  const [aiDraft, setAiDraft] = useState(false); // the text box holds an unreviewed AI draft
   const bottomRef = useRef(null);
   const scrollRef = useRef(null);
   const lastIdRef = useRef(null);
@@ -316,6 +320,7 @@ const WhatsAppInbox = ({ onUnread }) => {
   useEffect(() => {
     whatsapp.status().then(setStatus).catch(() => setStatus({ configured: false }));
     jobs.assignees().then(setStaffList).catch(() => {});
+    knowledge.quickReplies().then(setReplies).catch(() => setReplies([]));
   }, []);
 
   useEffect(() => {
@@ -405,6 +410,7 @@ const WhatsAppInbox = ({ onUnread }) => {
     setSending(true);
     setError("");
     setDraft("");
+    setAiDraft(false);
     try {
       await whatsapp.send(conv.id, mode === "note" ? { note: true, text } : { text });
     } catch (err) {
@@ -423,6 +429,40 @@ const WhatsAppInbox = ({ onUnread }) => {
     } catch (err) {
       setError(errorMessage(err, "Could not update the chat."));
     }
+  };
+
+  // Typing "/" at the start of a reply offers the knowledge base's quick replies.
+  const slash = mode === "reply" && /^\/[^\s]*$/.test(draft) ? draft.slice(1).toLowerCase() : null;
+  const matches = useMemo(() => {
+    if (slash === null) return [];
+    return replies.filter((r) => r.shortcut.includes(slash) || r.title.toLowerCase().includes(slash)).slice(0, 6);
+  }, [slash, replies]);
+  useEffect(() => { setPick(0); }, [slash]);
+  const insertReply = (r) => { setDraft(r.text); setAiDraft(false); };
+
+  const suggest = async () => {
+    if (!conv || drafting) return;
+    setDrafting(true);
+    setError("");
+    try {
+      const r = await whatsapp.suggest(conv.id);
+      setDraft(r.text);
+      setAiDraft(true);
+    } catch (err) {
+      setError(errorMessage(err, "Could not draft a reply."));
+    } finally {
+      setDrafting(false);
+    }
+  };
+
+  const onComposerKey = (e) => {
+    if (matches.length) {
+      if (e.key === "ArrowDown") { e.preventDefault(); setPick((p) => (p + 1) % matches.length); return; }
+      if (e.key === "ArrowUp") { e.preventDefault(); setPick((p) => (p - 1 + matches.length) % matches.length); return; }
+      if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); insertReply(matches[pick]); return; }
+      if (e.key === "Escape") { e.preventDefault(); setDraft(""); return; }
+    }
+    if (e.key === "Enter" && !e.shiftKey) send(e);
   };
 
   const configured = status ? status.configured : true;
@@ -686,13 +726,32 @@ const WhatsAppInbox = ({ onUnread }) => {
                     </button>
                   </div>
                 ) : (
-                  <div className="flex items-end gap-2">
-                    <textarea value={draft} onChange={(e) => setDraft(e.target.value)} rows={2}
+                  <div className="relative flex items-end gap-2">
+                    {matches.length > 0 && (
+                      <ul role="listbox" aria-label="Quick replies" className="absolute bottom-full left-0 z-20 mb-2 w-full max-w-md overflow-hidden rounded-xl border border-navy-200 bg-white shadow-xl">
+                        {matches.map((r, i) => (
+                          <li key={r.id} role="option" aria-selected={i === pick}>
+                            <button type="button" onMouseDown={(e) => { e.preventDefault(); insertReply(r); }}
+                              className={`block w-full px-3 py-2 text-left ${i === pick ? "bg-emerald-50" : "hover:bg-navy-50"}`}>
+                              <span className="text-sm font-semibold text-navy-900">{r.shortcut ? `/${r.shortcut}` : r.title}</span>
+                              <span className="block truncate text-xs text-navy-500">{r.text}</span>
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    <textarea value={draft} onChange={(e) => { setDraft(e.target.value); if (!e.target.value) setAiDraft(false); }} rows={aiDraft ? 4 : 2}
                       maxLength={mode === "note" ? 4000 : 4096}
                       placeholder={mode === "note" ? "A note for the team (the customer never sees it)…" : "Type a WhatsApp reply…"}
                       aria-label={mode === "note" ? "Internal note" : "WhatsApp reply"}
-                      onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) send(e); }}
+                      onKeyDown={onComposerKey}
                       className={`flex-1 resize-none rounded-xl border px-3.5 py-2.5 text-sm outline-none ${mode === "note" ? "border-amber-200 bg-amber-50/40 focus:border-amber-400" : "border-navy-200 focus:border-emerald-500"}`} />
+                    {mode === "reply" && status?.aiEnabled && (
+                      <button type="button" onClick={suggest} disabled={drafting} title="Draft a reply with AI"
+                        className="rounded-xl border border-navy-200 p-2.5 text-brand-600 hover:bg-navy-50 disabled:opacity-40" aria-label="Draft a reply with AI">
+                        <FiZap className={drafting ? "animate-pulse" : ""} />
+                      </button>
+                    )}
                     {mode === "reply" && (
                       <button type="button" onClick={() => setTemplateFor(true)} disabled={!configured} title="Send a template"
                         className="rounded-xl border border-navy-200 p-2.5 text-navy-500 hover:bg-navy-50 disabled:opacity-40" aria-label="Send a template">
@@ -706,7 +765,9 @@ const WhatsAppInbox = ({ onUnread }) => {
                     </button>
                   </div>
                 )}
-                <p className="mt-1.5 text-[11px] text-navy-400">Enter sends · Shift+Enter for a new line</p>
+                <p className={`mt-1.5 text-[11px] ${aiDraft ? "font-semibold text-amber-700" : "text-navy-400"}`}>
+                  {aiDraft ? "AI draft: read and correct it before sending." : `Enter sends · Shift+Enter for a new line${replies.length ? " · / for quick replies" : ""}`}
+                </p>
               </form>
             </>
           )}

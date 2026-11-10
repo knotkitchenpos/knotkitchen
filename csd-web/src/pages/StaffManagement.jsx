@@ -14,7 +14,16 @@ const EMPTY = {
   personalEmail: "",
   officialEmail: "",
   role: "staff",
+  permissions: [],
 };
+
+/** Ready-made access sets; each is just a list of sections. */
+const PRESETS = [
+  { key: "full", label: "Full support", sections: [] },
+  { key: "sales", label: "Sales", sections: ["stores", "whatsapp", "chat", "jobs", "health", "knowledge"] },
+  { key: "support", label: "Support without billing", sections: ["stores", "search", "whatsapp", "chat", "jobs", "hardware", "eats", "devices", "health", "knowledge"] },
+];
+const sameSet = (a, b) => a.length === b.length && a.every((x) => b.includes(x));
 
 /**
  * Defined at module scope, NOT inside StaffDialog. A component declared inside
@@ -51,12 +60,22 @@ const StaffDialog = ({ member, onClose, onSaved }) => {
           personalEmail: member.personalEmail || "",
           officialEmail: member.officialEmail || "",
           role: member.role,
+          permissions: member.permissions || [],
         }
       : EMPTY
   );
   const [errors, setErrors] = useState({});
   const [banner, setBanner] = useState("");
   const [busy, setBusy] = useState(false);
+  const [sections, setSections] = useState([]);
+  useEffect(() => { staffAdmin.sections().then(setSections).catch(() => setSections([])); }, []);
+  const custom = form.permissions.length > 0 && !PRESETS.some((p) => sameSet(p.sections, form.permissions));
+  const toggleSection = (key) => setForm((f) => {
+    // "Full support" stores no list, so unticking one starts from every section.
+    const from = f.permissions.length ? f.permissions : sections.map((s) => s.key);
+    const next = from.includes(key) ? from.filter((k) => k !== key) : [...from, key];
+    return { ...f, permissions: next.length === sections.length ? [] : next };
+  });
 
   const set = (e) => {
     const { name, value } = e.target;
@@ -154,6 +173,34 @@ const StaffDialog = ({ member, onClose, onSaved }) => {
               <option value="admin">Administrator</option>
             </select>
           </label>
+
+          {form.role === "staff" && sections.length > 0 && (
+            <fieldset>
+              <legend className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-navy-600">Access</legend>
+              <div className="mb-2 flex flex-wrap gap-1.5">
+                {PRESETS.map((p) => (
+                  <button key={p.key} type="button" onClick={() => setForm((f) => ({ ...f, permissions: p.sections }))}
+                    aria-pressed={sameSet(p.sections, form.permissions)}
+                    className={`rounded-full px-3 py-1 text-xs font-semibold ${sameSet(p.sections, form.permissions) ? "bg-navy-900 text-white" : "bg-navy-50 text-navy-600 hover:bg-navy-100"}`}>
+                    {p.label}
+                  </button>
+                ))}
+                {custom && <span className="rounded-full bg-navy-900 px-3 py-1 text-xs font-semibold text-white">Custom</span>}
+              </div>
+              <div className="grid gap-1 sm:grid-cols-2">
+                {sections.map((s) => {
+                  const on = form.permissions.length === 0 || form.permissions.includes(s.key);
+                  const last = on && form.permissions.length === 1;
+                  return (
+                    <label key={s.key} className="flex items-center gap-2 text-sm text-navy-800">
+                      <input type="checkbox" checked={on} disabled={last} onChange={() => toggleSection(s.key)} />
+                      {s.label}
+                    </label>
+                  );
+                })}
+              </div>
+            </fieldset>
+          )}
 
           {form.role === "admin" && (
             <p className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">

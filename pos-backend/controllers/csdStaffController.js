@@ -1,4 +1,5 @@
 const createHttpError = require("http-errors");
+const { knownSections } = require("../constants/csdSections");
 const mongoose = require("mongoose");
 const CsdStaff = require("../models/csdStaffModel");
 const { csdAudit } = require("../services/csdAuditService");
@@ -186,7 +187,7 @@ const createStaff = async (req, res, next) => {
           role,
           status: "active",
           isPredefined: false,
-          permissions: Array.isArray(b.permissions) ? b.permissions.map(str).filter(Boolean) : [],
+          permissions: Array.isArray(b.permissions) ? knownSections(b.permissions) : [],
           createdBy: req.csdStaff._id,
         };
         if (phone) payload.phone = phone;
@@ -281,7 +282,7 @@ const updateStaff = async (req, res, next) => {
     if (nextRole !== undefined) staff.role = nextRole;
     if (nextStatus !== undefined) staff.status = nextStatus;
     if (b.permissions !== undefined && Array.isArray(b.permissions)) {
-      staff.permissions = b.permissions.map(str).filter(Boolean);
+      staff.permissions = knownSections(b.permissions);
     }
 
     // Login email is the identity this account authenticates with and is

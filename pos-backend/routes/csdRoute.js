@@ -2,7 +2,7 @@ const express = require("express");
 const router = express.Router();
 
 const { rateLimit, clientIp } = require("../middlewares/rateLimiter");
-const { requireCsdAuth, requireCsdAdmin } = require("../middlewares/csdAuth");
+const { requireCsdAuth, requireCsdAdmin, requireCsdSection } = require("../middlewares/csdAuth");
 const { login, me, logout, mfaSetup, mfaEnable, resetStaffMfa, kkmdmKey, kkmdmAssertion, kkmdmReauth } = require("../controllers/csdAuthController");
 const { searchStores, getStore, updateStoreStatus, eraseStoreRecord, issueOwnerResetCode } = require("../controllers/csdStoreController");
 const { getDashboard } = require("../controllers/csdDashboardController");
@@ -89,6 +89,8 @@ router.get("/kkmdm/sso-key", kkmdmKey);
 // 2. Everything below requires a valid, active session
 // ---------------------------------------------------------------------------
 router.use(requireCsdAuth);
+// A staff member limited to some sections cannot reach the others.
+router.use(requireCsdSection);
 
 router.get("/auth/me", me);
 router.post("/auth/logout", logout);
@@ -172,7 +174,28 @@ router.post("/whatsapp/conversations", waSendLimiter, wa.startConversation);
 router.get("/whatsapp/conversations/:id/messages", wa.listMessages);
 router.post("/whatsapp/conversations/:id/messages", waSendLimiter, wa.postMessage);
 router.patch("/whatsapp/conversations/:id", wa.updateConversation);
+// Each one is a paid AI call, so a stuck key or a script cannot run up a bill.
+const aiLimiter = rateLimit({ windowMs: 60 * 1000, max: 15, keyGenerator: (req) => "csd-ai:" + String(req.csdStaff?._id || clientIp(req)) });
+router.post("/whatsapp/conversations/:id/suggest", aiLimiter, wa.suggestReply);
 router.get("/whatsapp/messages/:id/media", wa.getMedia);
+
+// Store Health: which active stores need attention. Sending an alert is a paid
+// WhatsApp message to a customer, so it is capped per agent; switching
+// automatic sending on is the admin's decision.
+const health = require("../controllers/csdHealthController");
+const alertLimiter = rateLimit({ windowMs: 60 * 1000, max: 20, keyGenerator: (req) => "csd-alert:" + String(req.csdStaff?._id || clientIp(req)) });
+router.get("/health", health.getHealth);
+router.post("/health/stores/:storeId/alerts", alertLimiter, health.sendStoreAlert);
+router.patch("/health/alerts", requireCsdAdmin, health.updateAlertSettings);
+
+// Knowledge base. Anyone with the section reads and writes (support writes the
+// answers); archiving is the admin's. Nothing is ever hard-deleted.
+const kb = require("../controllers/csdKnowledgeController");
+router.get("/knowledge/quick-replies", kb.listQuickReplies);
+router.get("/knowledge", kb.listArticles);
+router.post("/knowledge", kb.createArticle);
+router.patch("/knowledge/:id", kb.updateArticle);
+router.delete("/knowledge/:id", requireCsdAdmin, kb.archiveArticle);
 
 // Push notifications on the signed-in staff member's own devices.
 const pushCtl = require("../controllers/csdPushController");
@@ -201,6 +224,7 @@ router.post("/stores/:storeId/owner-reset-code", requireCsdAdmin, issueOwnerRese
 
 // Staff Management. This is what lets anyone beyond the two predefined admin
 // numbers sign in at all — sendOtp refuses phones with no active staff row.
+router.get("/staff/meta/sections", requireCsdAdmin, (_req, res) => res.status(200).json({ success: true, data: require("../constants/csdSections").SECTIONS }));
 router.get("/staff", requireCsdAdmin, listStaff);
 // A lost or new phone: an admin clears that account's two-factor sign-in to set up again.
 router.post("/staff/:id/reset-mfa", requireCsdAdmin, resetStaffMfa);

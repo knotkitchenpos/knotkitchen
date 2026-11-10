@@ -1,4 +1,5 @@
 const mongoose = require("mongoose");
+const { knownSections } = require("../constants/csdSections");
 const bcrypt = require("bcrypt");
 
 /**
@@ -165,7 +166,8 @@ csdStaffSchema.methods.toSafeJSON = function () {
     role: this.role,
     isPredefined: this.isPredefined === true,
     status: this.status,
-    permissions: this.permissions,
+    // Only real sections, so an old value cannot read as a restriction in the UI.
+    permissions: knownSections(this.permissions),
     dateJoined: this.dateJoined,
     lastLoginAt: this.lastLoginAt,
     mfaEnabled: this.mfa?.enabled === true,

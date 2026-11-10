@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const { WaConversation, WaMessage } = require("../models/waChatModel");
 const { notifyWhatsApp } = require("./csdPush");
+const wa = require("./whatsapp");
 
 /**
  * Writes provider events (services/whatsapp.js parse*) into the inbox:
@@ -118,4 +119,52 @@ const ingest = async (events) => {
   return n;
 };
 
-module.exports = { ingest, preview, advances, findOrCreateConversation };
+/**
+ * Send one outbound message on a conversation: saved first, so a receipt can
+ * never beat it. `actor` is { id, name }. `claim`: a reply to an unassigned
+ * chat takes it, so two agents do not both answer; an automatic alert does not.
+ * Throws what the provider threw, after recording the failure on the message.
+ */
+const sendOutbound = async ({ conv, text, template, actor, claim = true }) => {
+  const msg = await WaMessage.create({
+    conversationId: conv._id,
+    direction: "out",
+    type: template ? "template" : "text",
+    body: template ? wa.fillTemplate([template.header, template.body, template.footer].filter(Boolean).join("\n\n"), template.values) : text,
+    template: template ? { name: template.name, language: template.language } : undefined,
+    status: "pending",
+    staffId: actor.id || null,
+    staffName: actor.name,
+    sentAt: new Date(),
+  });
+
+  let failure = null;
+  try {
+    const r = await wa.send({ waId: conv.waId, countryCode: "", refId: String(msg._id), text, template });
+    const set = { status: "sent" };
+    if (r.providerMessageId) set.providerMessageId = r.providerMessageId;
+    // A receipt may already have moved it past "sent"; never move it back.
+    await WaMessage.updateOne({ _id: msg._id, status: "pending" }, { $set: set });
+    if (r.providerMessageId) await WaMessage.updateOne({ _id: msg._id, providerMessageId: { $exists: false } }, { $set: { providerMessageId: r.providerMessageId } }).catch(() => {});
+    if (r.providerConversationId && !conv.providerConversationId) {
+      await WaConversation.updateOne({ _id: conv._id }, { $set: { providerConversationId: r.providerConversationId } });
+    }
+  } catch (err) {
+    failure = err;
+    await WaMessage.updateOne({ _id: msg._id }, { $set: { status: "failed", error: String(err.message || "Not sent").slice(0, 500) } });
+  }
+
+  const update = {
+    $set: { lastMessageAt: msg.sentAt, lastMessagePreview: preview(msg), lastMessageDirection: "out" },
+  };
+  if (claim) update.$set.unreadCount = 0;
+  if (claim && !conv.assignedToId && !failure && actor.id) {
+    Object.assign(update.$set, { assignedToId: actor.id, assignedToName: actor.name, assignedAt: new Date() });
+  }
+  await WaConversation.updateOne({ _id: conv._id }, update);
+
+  if (failure) throw failure;
+  return WaMessage.findById(msg._id).lean();
+};
+
+module.exports = { ingest, preview, advances, findOrCreateConversation, sendOutbound };

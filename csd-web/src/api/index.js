@@ -167,6 +167,7 @@ export const kkmdm = {
 };
 
 export const staffAdmin = {
+  sections: () => api.get("/staff/meta/sections").then((r) => r.data.data),
   list: (params) => api.get("/staff", { params }).then((r) => r.data.data),
   get: (id) => api.get(`/staff/${id}`).then((r) => r.data.data),
   create: (payload) => api.post("/staff", payload).then((r) => r.data.data),
@@ -194,6 +195,7 @@ export const whatsapp = {
   messages: (id, params) => api.get(`/whatsapp/conversations/${id}/messages`, { params }).then((r) => r.data.data),
   send: (id, payload) => api.post(`/whatsapp/conversations/${id}/messages`, payload).then((r) => r.data.data),
   update: (id, payload) => api.patch(`/whatsapp/conversations/${id}`, payload).then((r) => r.data.data),
+  suggest: (id) => api.post(`/whatsapp/conversations/${id}/suggest`, {}, { timeout: 60000 }).then((r) => r.data.data),
   mediaUrl: (messageId) => `${api.defaults.baseURL}/whatsapp/messages/${messageId}/media`,
 };
 
@@ -208,6 +210,22 @@ export const push = {
   subscribe: (subscription) => api.post("/push/subscribe", { subscription }).then((r) => r.data.data),
   unsubscribe: (endpoint) => api.post("/push/unsubscribe", { endpoint }).then((r) => r.data.data),
   test: () => api.post("/push/test").then((r) => r.data.data),
+};
+
+/** Store Health and owner alerts. */
+export const health = {
+  get: () => api.get("/health", { timeout: 45000 }).then((r) => r.data.data),
+  sendAlert: (storeId, kind) => api.post(`/health/stores/${storeId}/alerts`, { kind }).then((r) => r.data.data),
+  setAuto: (autoEnabled) => api.patch("/health/alerts", { autoEnabled }).then((r) => r.data.data),
+};
+
+/** Knowledge base and the quick replies it feeds. */
+export const knowledge = {
+  list: (params) => api.get("/knowledge", { params }).then((r) => r.data.data),
+  quickReplies: () => api.get("/knowledge/quick-replies").then((r) => r.data.data),
+  create: (payload) => api.post("/knowledge", payload).then((r) => r.data.data),
+  update: (id, payload) => api.patch(`/knowledge/${id}`, payload).then((r) => r.data.data),
+  archive: (id) => api.delete(`/knowledge/${id}`).then((r) => r.data.data),
 };
 
 export const reports = {
