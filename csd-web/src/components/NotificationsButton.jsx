@@ -98,7 +98,7 @@ const NotificationsButton = () => {
 
       {open && (
         <div role="dialog" aria-label="Notifications"
-          className="absolute right-0 z-40 mt-2 w-[min(20rem,calc(100vw-2rem))] rounded-2xl border border-navy-200 bg-white p-4 text-sm shadow-xl">
+          className="absolute left-0 sm:left-auto sm:right-0 z-40 mt-2 w-[min(20rem,calc(100vw-2rem))] rounded-2xl border border-navy-200 bg-white p-4 text-sm shadow-xl">
           <button type="button" onClick={() => setOpen(false)} aria-label="Close" className="absolute right-3 top-3 text-navy-400 hover:text-navy-700">
             <FiX />
           </button>
@@ -124,7 +124,7 @@ const NotificationsButton = () => {
           )}
         </div>
       )}
-      {!open && message && !on && <p className="absolute right-0 mt-1 whitespace-nowrap text-xs text-navy-500">{message}</p>}
+      {!open && message && !on && <p className="absolute left-0 sm:left-auto sm:right-0 mt-1 whitespace-nowrap text-xs text-navy-500">{message}</p>}
     </div>
   );
 };
