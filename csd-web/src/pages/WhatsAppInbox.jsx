@@ -184,7 +184,7 @@ const NewChatDialog = ({ onClose, onStarted }) => {
           <label className="block">
             <span className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-navy-600">WhatsApp number</span>
             <input value={phone} onChange={(e) => setPhone(e.target.value)} required inputMode="tel" autoComplete="off"
-              placeholder="98765 43210 or +44…"
+              placeholder="98765 43210"
               className="w-full rounded-xl border border-navy-200 px-3.5 py-2.5 text-sm outline-none focus:border-brand-500" />
           </label>
           <label className="block">
