@@ -403,24 +403,33 @@ const verifyMetaSignature = (rawBody, header) => {
 const fast2smsKey = () => env("FAST2SMS_WA_API_KEY") || env("FAST2SMS_API_KEY");
 
 /**
- * Fast2SMS lets you write the webhook body yourself, filling {{placeholders}}
- * per event (fast2sms.com/help/how-webhooks-work). This is the body to paste
- * into Dashboard → Webhooks → WhatsApp → Add webhook (event: All).
+ * The webhook body. Fast2SMS fills @{{placeholders}} per event; the default
+ * body its new panel offers for a WhatsApp webhook (seen 2026-11-11) already
+ * carries every field below, so leaving it as it is works. This is the
+ * smallest body that does, for reference.
  */
 const FAST2SMS_WEBHOOK_PAYLOAD = {
-  webhook_type: "{{webhook_type}}",
-  status: "{{status}}",
-  message_id: "{{message_id}}",
-  phone_number_id: "{{phone_number_id}}",
-  from: "{{from}}",
-  recipient_id: "{{recipient_id}}",
-  message_type: "{{message_type}}",
-  body: "{{body}}",
-  media_url: "{{media_url}}",
-  mime_type: "{{mime_type}}",
-  caption: "{{caption}}",
-  error_message: "{{error_message}}",
-  timestamp: "{{timestamp}}",
+  webhook_type: "@{{webhook_type}}",
+  status: "@{{status}}",
+  message_id: "@{{message_id}}",
+  request_id: "@{{request_id}}",
+  phone_number_id: "@{{phone_number_id}}",
+  from: "@{{from}}",
+  message_type: "@{{message_type}}",
+  body: "@{{body}}",
+  media_url: "@{{media_url}}",
+  mime_type: "@{{mime_type}}",
+  caption: "@{{caption}}",
+  failure_reason: "@{{failure_reason}}",
+  errors: "@{{errors}}",
+  timestamp: "@{{timestamp}}",
+};
+
+/** WhatsApp's reason for a failed message, whichever field this panel version filled. */
+const fast2smsError = (b) => {
+  const e = b.failure_reason || b.error_message || b.errors || "";
+  const text = typeof e === "string" ? e : (() => { try { return JSON.stringify(e); } catch { return ""; } })();
+  return clip(text && text !== "[]" && text !== "{}" ? text : b.status_description || "WhatsApp could not deliver this message.", 500);
 };
 
 /** One Fast2SMS WhatsApp webhook → events. Unfilled placeholders arrive as "". */
@@ -428,12 +437,12 @@ const parseFast2sms = (b) => {
   if (!b || typeof b !== "object") return [];
   const phoneId = env("FAST2SMS_WA_PHONE_NUMBER_ID");
   if (phoneId && b.phone_number_id && String(b.phone_number_id) !== phoneId) return [];
-  const id = clip(b.message_id, 200);
+  const id = clip(b.message_id || b.request_id, 200);
   const at = toDate(b.timestamp);
   const kind = String(b.webhook_type || "").toLowerCase();
 
   if (kind === "incoming_message" || String(b.status).toLowerCase() === "received") {
-    const waId = digits(b.from);
+    const waId = digits(b.from || b.mobile);
     if (!waId || !id) return [];
     const type = String(b.message_type || "text").toLowerCase();
     const media = ["image", "video", "audio", "document", "sticker"].includes(type);
@@ -456,7 +465,7 @@ const parseFast2sms = (b) => {
     kind: "status",
     providerMessageId: id,
     status,
-    error: status === "failed" ? clip(b.error_message || "WhatsApp could not deliver this message.", 500) : "",
+    error: status === "failed" ? fast2smsError(b) : "",
     at,
   }];
 };

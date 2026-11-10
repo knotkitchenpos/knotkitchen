@@ -310,8 +310,10 @@ test("Fast2SMS receipts match by WhatsApp message id and carry the failure reaso
   await withEnv(F2S, () => {
     const [r] = wa.parseFast2sms({ webhook_type: "status_update", status: "read", message_id: "wamid.out", phone_number_id: "1122334455", recipient_id: "919999999999", error_message: "", timestamp: "1753603800" });
     assert.deepEqual([r.kind, r.status, r.providerMessageId, r.error], ["status", "read", "wamid.out", ""]);
-    const [f] = wa.parseFast2sms({ webhook_type: "status_update", status: "failed", message_id: "wamid.f", error_message: "Re-engagement message" });
+    const [f] = wa.parseFast2sms({ webhook_type: "status_update", status: "failed", message_id: "wamid.f", failure_reason: "Re-engagement message", errors: "" });
     assert.equal(f.error, "Re-engagement message");
+    const [g] = wa.parseFast2sms({ webhook_type: "status_update", status: "failed", message_id: "wamid.g", failure_reason: "", errors: "", status_description: "Message undeliverable" });
+    assert.equal(g.error, "Message undeliverable");
     assert.deepEqual(wa.parseFast2sms({ webhook_type: "status_update", status: "", message_id: "" }), []);
   });
 });
