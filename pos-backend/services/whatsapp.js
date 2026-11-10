@@ -26,7 +26,7 @@ const crypto = require("crypto");
  *     account the SMS code already uses; its "META Format" endpoints)
  *     FAST2SMS_API_KEY (or FAST2SMS_WA_API_KEY), FAST2SMS_WA_PHONE_NUMBER_ID,
  *     FAST2SMS_WEBHOOK_SECRET (Dev API → webhook signing; sent back as the
- *     webhook_secret_key header), optional FAST2SMS_WA_WABA_ID,
+ *     x-webhook-secret header on the Fast2SMS webhook), optional FAST2SMS_WA_WABA_ID,
  *     FAST2SMS_WA_GRAPH_VERSION (default v26.0)
  *   WHATSAPP_WEBHOOK_TOKEN  the secret in the webhook URL. MyOperator signs
  *     nothing ("no auth required from your side"), so the unguessable path is

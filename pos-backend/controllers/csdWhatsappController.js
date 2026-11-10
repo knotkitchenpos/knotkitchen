@@ -450,10 +450,12 @@ const myoperatorWebhook = async (req, res) => {
 
 /**
  * POST /api/whatsapp/webhook/fast2sms — checked against the 40-character
- * secret Fast2SMS sends as the webhook_secret_key header (Dev API → signing).
+ * secret the webhook carries as a header. Caddy drops header names with an
+ * underscore, so it is x-webhook-secret; webhook_secret_key (Fast2SMS's own
+ * signing name) is still read for a proxy that keeps it.
  */
 const fast2smsWebhook = async (req, res) => {
-  if (!wa.verifyFast2smsSecret(req.get("webhook_secret_key"))) return res.status(401).json({ success: false });
+  if (!wa.verifyFast2smsSecret(req.get("x-webhook-secret") || req.get("webhook_secret_key"))) return res.status(401).json({ success: false });
   try {
     await ingest(wa.parseFast2sms(req.body));
     res.status(200).json({ success: true });

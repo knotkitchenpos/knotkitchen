@@ -350,6 +350,11 @@ test("Fast2SMS sends through its Meta-format endpoint with the account key; the 
       const r401 = res();
       await ctl.fast2smsWebhook({ get: () => "wrong", body: {} }, r401);
       assert.equal(r401.statusCode, 401);
+      // The secret travels as x-webhook-secret: Caddy drops underscore header names.
+      const ok = res();
+      const headers = { "x-webhook-secret": "x".repeat(40) };
+      await ctl.fast2smsWebhook({ get: (h) => headers[h], body: { webhook_type: "status_update", status: "", message_id: "" } }, ok);
+      assert.equal(ok.statusCode, 200);
     });
   } finally {
     global.fetch = savedFetch;

@@ -262,7 +262,7 @@ const NotConnected = ({ status, isAdmin }) => (
           <li>
             Webhook → WhatsApp → Add Webhook: all events, that number, POST, JSON, URL{" "}
             <code className="break-all">https://api.knotkitchen.com{status.webhooks.fast2sms}</code>; keep the default Body; under
-            Headers add <code>webhook_secret_key</code> = the same secret.
+            Headers add <code>x-webhook-secret</code> = the same secret (not an underscore name: the proxy drops those).
           </li>
         </ol>
         <p className="mt-2 text-xs text-amber-900/80">
