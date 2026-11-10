@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   FiGrid, FiUserPlus, FiUsers, FiShoppingBag, FiSearch, FiMessageSquare,
@@ -8,6 +8,7 @@ import {
 import { menuFor } from "../kkmdm/menu";
 import { useAuth } from "../context/AuthContext";
 import { hardwareRequests, whatsapp } from "../api";
+import { chime } from "../lib/push";
 import GlobalSearch from "./GlobalSearch";
 import markUrl from "../assets/knotkitchen-mark.png";
 
@@ -73,6 +74,38 @@ const Layout = () => {
     window.addEventListener("kk:wa-unread", on);
     return () => window.removeEventListener("kk:wa-unread", on);
   }, []);
+  // More chats waiting than a moment ago: a chime (at most every few seconds,
+  // so a push and the next poll do not both ring for the same message).
+  const lastUnread = useRef(null);
+  const lastChime = useRef(0);
+  const ring = () => {
+    if (Date.now() - lastChime.current < 5000) return;
+    lastChime.current = Date.now();
+    chime();
+  };
+  useEffect(() => {
+    if (lastUnread.current !== null && waUnread > lastUnread.current) ring();
+    lastUnread.current = waUnread;
+    // The count in the browser tab, so a waiting customer shows from any tab.
+    document.title = waUnread > 0 ? `(${waUnread}) KnotKitchen Business` : "KnotKitchen Business";
+  }, [waUnread]);
+  // From the push service worker: a message arrived (refresh the count and
+  // chime now), or a notification was tapped (go to that chat).
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return undefined;
+    const on = (e) => {
+      const m = e.data || {};
+      if (m.type === "kk:push") {
+        ring();
+        whatsapp.unread().then((d) => setWaUnread(d.unread || 0)).catch(() => {});
+      } else if (m.type === "kk:open" && typeof m.url === "string") {
+        const u = new URL(m.url, window.location.origin);
+        if (u.origin === window.location.origin) navigate(u.pathname + u.search);
+      }
+    };
+    navigator.serviceWorker.addEventListener("message", on);
+    return () => navigator.serviceWorker.removeEventListener("message", on);
+  }, [navigate]);
   const badges = { hardware: newRequests, whatsapp: waUnread };
   const items = NAV.filter((n) => !n.adminOnly || isAdmin);
   // KKMDM (tablet management) as one entry with its screens in a sub-menu (owner, 2026-11-03).

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import {
   FiSearch, FiSend, FiX, FiPlus, FiCheck, FiClock, FiAlertCircle, FiArrowLeft,
   FiEdit2, FiFileText, FiPaperclip, FiLock, FiUser, FiShoppingBag,
@@ -286,7 +286,13 @@ const WhatsAppInbox = ({ onUnread }) => {
   const [query, setQuery] = useState("");
   const [list, setList] = useState({ conversations: [], counts: {} });
   const [listLoaded, setListLoaded] = useState(false);
-  const [activeId, setActiveId] = useState(null);
+  const [params] = useSearchParams();
+  // ?c=<id> opens that chat: a tapped notification lands here.
+  const [activeId, setActiveId] = useState(() => (/^[a-f0-9]{24}$/.test(params.get("c") || "") ? params.get("c") : null));
+  const linked = params.get("c");
+  useEffect(() => {
+    if (/^[a-f0-9]{24}$/.test(linked || "")) setActiveId(linked);
+  }, [linked]);
   const [thread, setThread] = useState(null);
   const [older, setOlder] = useState([]);
   const [hasMore, setHasMore] = useState(false);

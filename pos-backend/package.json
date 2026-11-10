@@ -29,7 +29,8 @@
     "mongoose": "^8.24.4",
     "pdfkit": "^0.15.2",
     "sharp": "0.35.5",
-    "socket.io": "^4.8.3"
+    "socket.io": "^4.8.3",
+    "web-push": "3.6.7"
   },
   "devDependencies": {
     "eslint": "^9.39.5"

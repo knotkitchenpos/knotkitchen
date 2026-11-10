@@ -197,6 +197,14 @@ export const whatsapp = {
   mediaUrl: (messageId) => `${api.defaults.baseURL}/whatsapp/messages/${messageId}/media`,
 };
 
+/** Push notifications on this device. */
+export const push = {
+  get: (endpoint) => api.get("/push", { params: endpoint ? { endpoint } : {} }).then((r) => r.data.data),
+  subscribe: (subscription) => api.post("/push/subscribe", { subscription }).then((r) => r.data.data),
+  unsubscribe: (endpoint) => api.post("/push/unsubscribe", { endpoint }).then((r) => r.data.data),
+  test: () => api.post("/push/test").then((r) => r.data.data),
+};
+
 export const reports = {
   get: (params) => api.get("/reports", { params }).then((r) => r.data.data),
   audit: (params) => api.get("/reports/audit", { params }).then((r) => r.data.data),

@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 const { WaConversation, WaMessage } = require("../models/waChatModel");
+const { notifyWhatsApp } = require("./csdPush");
 
 /**
  * Writes provider events (services/whatsapp.js parse*) into the inbox:
@@ -101,6 +102,9 @@ const addMessage = async (e) => {
     { _id: conv._id, lastMessageAt: { $lte: at } },
     { $set: { lastMessagePreview: preview(e), lastMessageDirection: e.direction } }
   );
+  // A customer wrote: alert the agents' devices. Not awaited, so a slow push
+  // service never holds up the provider's webhook (it would retry).
+  if (e.direction === "in") notifyWhatsApp(conv, e);
   return true;
 };
 

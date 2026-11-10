@@ -174,6 +174,14 @@ router.post("/whatsapp/conversations/:id/messages", waSendLimiter, wa.postMessag
 router.patch("/whatsapp/conversations/:id", wa.updateConversation);
 router.get("/whatsapp/messages/:id/media", wa.getMedia);
 
+// Push notifications on the signed-in staff member's own devices.
+const pushCtl = require("../controllers/csdPushController");
+const pushTestLimiter = rateLimit({ windowMs: 60 * 1000, max: 5, keyGenerator: (req) => "csd-push-test:" + String(req.csdStaff?._id || clientIp(req)) });
+router.get("/push", pushCtl.getPush);
+router.post("/push/subscribe", pushCtl.subscribe);
+router.post("/push/unsubscribe", pushCtl.unsubscribe);
+router.post("/push/test", pushTestLimiter, pushCtl.test);
+
 // ---------------------------------------------------------------------------
 // 4. Admin only
 // ---------------------------------------------------------------------------
