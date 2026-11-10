@@ -197,6 +197,9 @@ export const whatsapp = {
   mediaUrl: (messageId) => `${api.defaults.baseURL}/whatsapp/messages/${messageId}/media`,
 };
 
+/** The CSD API root, for the service worker (it calls the API without axios). */
+export const API_BASE = api.defaults.baseURL;
+
 /** Push notifications on this device. */
 export const push = {
   get: () => api.get("/push").then((r) => r.data.data),

@@ -33,6 +33,49 @@ self.addEventListener("push", (event) => {
   })());
 });
 
+/**
+ * The browser replaced this device's push subscription (Firefox does it now
+ * and then; others after a key or service change). Re-register the new one
+ * with the API straight away, so alerts keep coming without anyone having to
+ * open CSD first. The old one is dropped by the server when it next 410s.
+ */
+const apiBase = (() => {
+  try {
+    const u = new URL(new URL(self.location.href).searchParams.get("api") || "");
+    const local = u.hostname === "localhost" || u.hostname === "127.0.0.1";
+    return u.protocol === "https:" || local ? u.href.replace(/\/$/, "") : "";
+  } catch {
+    return "";
+  }
+})();
+
+const keyBytes = (b64) => {
+  const raw = atob((b64 + "=".repeat((4 - (b64.length % 4)) % 4)).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+};
+
+self.addEventListener("pushsubscriptionchange", (event) => {
+  if (!apiBase) return;
+  event.waitUntil((async () => {
+    let sub = event.newSubscription;
+    if (!sub) {
+      let key = event.oldSubscription?.options?.applicationServerKey;
+      if (!key) {
+        const r = await fetch(`${apiBase}/push`, { credentials: "include" });
+        if (!r.ok) return; // signed out on this device: nothing to keep on
+        key = keyBytes((await r.json()).data.publicKey);
+      }
+      sub = await self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key });
+    }
+    await fetch(`${apiBase}/push/subscribe`, {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ subscription: sub.toJSON() }),
+    });
+  })().catch(() => {}));
+});
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
   const url = new URL(event.notification.data?.url || "/chat?tab=whatsapp", self.location.origin).href;

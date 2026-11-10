@@ -1,4 +1,4 @@
-import { push as pushApi } from "../api";
+import { push as pushApi, API_BASE } from "../api";
 
 /**
  * Web push on this device: register the service worker (public/sw.js),
@@ -26,7 +26,10 @@ export const registerWorker = async () => {
   if (!("serviceWorker" in navigator)) return null;
   if (registration) return registration;
   // updateViaCache "none": always fetch sw.js fresh, so a new release reaches every device.
-  registration = await navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" });
+  // The worker is told where the API is, so it can re-register this device
+  // by itself when the browser replaces its push subscription.
+  const api = new URL(API_BASE, window.location.origin).href;
+  registration = await navigator.serviceWorker.register(`/sw.js?api=${encodeURIComponent(api)}`, { scope: "/", updateViaCache: "none" });
   return registration;
 };
 
