@@ -9,6 +9,7 @@ import { menuFor } from "../kkmdm/menu";
 import { useAuth } from "../context/AuthContext";
 import { hardwareRequests, whatsapp } from "../api";
 import { chime } from "../lib/push";
+import NotificationsPrompt from "./NotificationsPrompt";
 import GlobalSearch from "./GlobalSearch";
 import markUrl from "../assets/knotkitchen-mark.png";
 
@@ -323,6 +324,7 @@ const Layout = () => {
 
         <main className="p-3 sm:p-5">
           <Outlet />
+          <NotificationsPrompt />
         </main>
       </div>
     </div>

@@ -3,7 +3,6 @@ import { Link, useSearchParams } from "react-router-dom";
 import { FiPlus, FiSend, FiSearch, FiX, FiPaperclip, FiHash, FiShoppingBag } from "react-icons/fi";
 import { chat, stores as storesApi, whatsapp, errorMessage } from "../api";
 import WhatsAppInbox from "./WhatsAppInbox";
-import NotificationsButton from "../components/NotificationsButton";
 
 const time = (d) => new Date(d).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
 const day = (d) => new Date(d).toLocaleDateString("en-IN", { dateStyle: "medium" });
@@ -425,8 +424,6 @@ const Chat = () => {
     <div className="mx-auto max-w-[1600px]">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <h1 className="text-2xl font-bold text-navy-900">Chat</h1>
-        <div className="flex flex-wrap items-center gap-2">
-        <NotificationsButton />
         <div className="flex rounded-xl bg-navy-100 p-1" role="tablist" aria-label="Chat">
           {tabs.map((t) => (
             <button key={t.key} type="button" role="tab" aria-selected={tab === t.key}
@@ -442,7 +439,6 @@ const Chat = () => {
               )}
             </button>
           ))}
-        </div>
         </div>
       </div>
       {tab === "whatsapp" ? <WhatsAppInbox onUnread={onWaUnread} /> : <TeamChat />}
