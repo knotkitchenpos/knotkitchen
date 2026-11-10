@@ -290,9 +290,10 @@ const WhatsAppInbox = ({ onUnread }) => {
   // ?c=<id> opens that chat: a tapped notification lands here.
   const [activeId, setActiveId] = useState(() => (/^[a-f0-9]{24}$/.test(params.get("c") || "") ? params.get("c") : null));
   const linked = params.get("c");
+  const linkedAt = params.get("at");
   useEffect(() => {
     if (/^[a-f0-9]{24}$/.test(linked || "")) setActiveId(linked);
-  }, [linked]);
+  }, [linked, linkedAt]);
   const [thread, setThread] = useState(null);
   const [older, setOlder] = useState([]);
   const [hasMore, setHasMore] = useState(false);

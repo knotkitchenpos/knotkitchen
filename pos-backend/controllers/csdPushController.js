@@ -7,16 +7,28 @@ const push = require("../services/csdPush");
  * staff member's own devices only.
  */
 
-/** GET /api/csd/push — the server's public key, and whether this device is subscribed. */
+/** GET /api/csd/push — the server's public key, and how many devices of yours are on. */
 const getPush = async (req, res, next) => {
   try {
-    const endpoint = String(req.query.endpoint || "");
-    const [publicKey, devices, thisDevice] = await Promise.all([
+    const [publicKey, devices] = await Promise.all([
       push.publicKey(),
       CsdPushSubscription.countDocuments({ staffId: req.csdStaff._id }),
-      endpoint ? CsdPushSubscription.exists({ staffId: req.csdStaff._id, endpoint }) : null,
     ]);
-    res.status(200).json({ success: true, data: { publicKey, devices, subscribed: !!thisDevice } });
+    res.status(200).json({ success: true, data: { publicKey, devices } });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * POST /api/csd/push/status { endpoint } — is this device on for you? A POST
+ * so the device's push address never sits in a URL (access logs keep those).
+ */
+const status = async (req, res, next) => {
+  try {
+    const endpoint = String(req.body?.endpoint || "").slice(0, 2000);
+    const subscribed = endpoint ? !!(await CsdPushSubscription.exists({ staffId: req.csdStaff._id, endpoint })) : false;
+    res.status(200).json({ success: true, data: { subscribed } });
   } catch (error) {
     next(error);
   }
@@ -70,4 +82,4 @@ const test = async (req, res, next) => {
   }
 };
 
-module.exports = { getPush, subscribe, unsubscribe, test };
+module.exports = { getPush, status, subscribe, unsubscribe, test };

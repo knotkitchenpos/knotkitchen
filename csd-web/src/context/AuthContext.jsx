@@ -39,6 +39,11 @@ export const AuthProvider = ({ children }) => {
 
   const signOut = useCallback(async () => {
     try {
+      // This device stops getting customer messages: a shared desk computer must
+      // not keep showing them to whoever sits down next. Before the session ends,
+      // because telling the server needs it.
+      const { disablePush } = await import("../lib/push");
+      await disablePush().catch(() => {});
       // Signing out of CSD signs out of KKMDM in this browser too (KKMDM inside CSD).
       const { KKMDM_URL } = await import("../kkmdm/api.js");
       await fetch(`${KKMDM_URL}/api/auth/logout`, { method: "POST", credentials: "include", headers: { "X-KKMDM": "1" } }).catch(() => {});

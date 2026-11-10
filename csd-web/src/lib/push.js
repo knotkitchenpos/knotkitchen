@@ -43,7 +43,7 @@ export const pushState = async () => {
   const reg = await registerWorker();
   const sub = await reg.pushManager.getSubscription();
   if (!sub) return { state: "off" };
-  const server = await pushApi.get(sub.endpoint);
+  const server = await pushApi.status(sub.endpoint);
   // The browser still has it but the server dropped it (or another key): re-send it.
   if (!server.subscribed) {
     try { await pushApi.subscribe(sub.toJSON()); } catch { return { state: "off" }; }
@@ -76,7 +76,7 @@ export const enablePush = async () => {
 
 export const disablePush = async () => {
   const reg = await registerWorker();
-  const sub = await reg?.pushManager.getSubscription();
+  const sub = await reg?.pushManager?.getSubscription();
   if (sub) {
     try { await pushApi.unsubscribe(sub.endpoint); } finally { await sub.unsubscribe(); }
   }

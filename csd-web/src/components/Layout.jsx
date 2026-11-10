@@ -100,10 +100,16 @@ const Layout = () => {
         whatsapp.unread().then((d) => setWaUnread(d.unread || 0)).catch(() => {});
       } else if (m.type === "kk:open" && typeof m.url === "string") {
         const u = new URL(m.url, window.location.origin);
-        if (u.origin === window.location.origin) navigate(u.pathname + u.search);
+        // A fresh "at" each time, so tapping the same chat's alert again still opens it.
+        if (u.origin === window.location.origin) {
+          u.searchParams.set("at", String(Date.now()));
+          navigate(u.pathname + u.search);
+        }
       }
     };
     navigator.serviceWorker.addEventListener("message", on);
+    // addEventListener (unlike onmessage) does not start delivery by itself.
+    navigator.serviceWorker.startMessages();
     return () => navigator.serviceWorker.removeEventListener("message", on);
   }, [navigate]);
   const badges = { hardware: newRequests, whatsapp: waUnread };

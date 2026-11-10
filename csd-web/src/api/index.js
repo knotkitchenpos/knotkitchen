@@ -199,7 +199,9 @@ export const whatsapp = {
 
 /** Push notifications on this device. */
 export const push = {
-  get: (endpoint) => api.get("/push", { params: endpoint ? { endpoint } : {} }).then((r) => r.data.data),
+  get: () => api.get("/push").then((r) => r.data.data),
+  // POST so the device's push address stays out of URLs (and access logs).
+  status: (endpoint) => api.post("/push/status", { endpoint }).then((r) => r.data.data),
   subscribe: (subscription) => api.post("/push/subscribe", { subscription }).then((r) => r.data.data),
   unsubscribe: (endpoint) => api.post("/push/unsubscribe", { endpoint }).then((r) => r.data.data),
   test: () => api.post("/push/test").then((r) => r.data.data),

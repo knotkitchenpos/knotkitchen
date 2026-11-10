@@ -178,6 +178,7 @@ router.get("/whatsapp/messages/:id/media", wa.getMedia);
 const pushCtl = require("../controllers/csdPushController");
 const pushTestLimiter = rateLimit({ windowMs: 60 * 1000, max: 5, keyGenerator: (req) => "csd-push-test:" + String(req.csdStaff?._id || clientIp(req)) });
 router.get("/push", pushCtl.getPush);
+router.post("/push/status", pushCtl.status);
 router.post("/push/subscribe", pushCtl.subscribe);
 router.post("/push/unsubscribe", pushCtl.unsubscribe);
 router.post("/push/test", pushTestLimiter, pushCtl.test);
