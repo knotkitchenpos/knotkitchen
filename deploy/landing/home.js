@@ -38,7 +38,7 @@
     $("#dd-price").textContent = `${rupees(d.price)} incl. GST, one time`;
     $("#dd-desc").textContent = d.description;
     $("#dd-order").href = orderUrl(d.code);
-    $("#dd-demo").href = "https://wa.me/918062177510?text=" +
+    $("#dd-demo").href = "https://wa.me/919477623682?text=" +
       encodeURIComponent(`Hi KnotKitchen, I'd like a free demo and the ${d.name} (${rupees(d.price)}).\n*Restaurant name:* \n*City:* `);
     dialog.showModal();
   };

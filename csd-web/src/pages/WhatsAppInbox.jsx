@@ -75,9 +75,12 @@ const TemplatePicker = ({ templates, loading, error, value, onChange }) => {
     <div className="space-y-3">
       {loading && <p className="text-sm text-navy-500">Loading approved templates…</p>}
       {error && <p className="rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
-      {!loading && !error && templates.length === 0 && (
+      {!loading && !error && !templates.some((t) => t.supported) && (
         <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800">
-          No approved templates on the WhatsApp account yet. Create one in the provider’s panel and wait for WhatsApp to approve it.
+          {templates.length === 0
+            ? "No approved WhatsApp templates yet."
+            : "None of the approved WhatsApp templates can be sent from here (they need a picture or a link filled in)."}{" "}
+          Ask an admin to create a plain text template (Fast2SMS → WhatsApp Manager → Templates) and wait for WhatsApp to approve it.
         </p>
       )}
       {templates.length > 0 && (

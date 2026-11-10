@@ -10,7 +10,9 @@ const { myoperatorWebhook, fast2smsWebhook, metaVerify, metaWebhook } = require(
  */
 const router = express.Router();
 
-const limiter = rateLimit({ windowMs: 60 * 1000, max: 600, keyGenerator: (req) => "wa-webhook:" + clientIp(req) });
+// Generous: Fast2SMS sends a minute of events at once, and e-bill receipts on
+// the same number arrive here too. Each post is still checked for the secret.
+const limiter = rateLimit({ windowMs: 60 * 1000, max: 3000, keyGenerator: (req) => "wa-webhook:" + clientIp(req) });
 
 router.post("/webhook/myoperator/:token", limiter, myoperatorWebhook);
 router.post("/webhook/fast2sms", limiter, fast2smsWebhook);
