@@ -184,6 +184,19 @@ export const chat = {
   search: (q) => api.get("/chat/search", { params: { q } }).then((r) => r.data.data),
 };
 
+/** WhatsApp support inbox (the support number, via the WhatsApp API). */
+export const whatsapp = {
+  status: () => api.get("/whatsapp/status").then((r) => r.data.data),
+  unread: () => api.get("/whatsapp/unread").then((r) => r.data.data),
+  templates: () => api.get("/whatsapp/templates").then((r) => r.data.data),
+  conversations: (params) => api.get("/whatsapp/conversations", { params }).then((r) => r.data.data),
+  start: (payload) => api.post("/whatsapp/conversations", payload).then((r) => r.data.data),
+  messages: (id, params) => api.get(`/whatsapp/conversations/${id}/messages`, { params }).then((r) => r.data.data),
+  send: (id, payload) => api.post(`/whatsapp/conversations/${id}/messages`, payload).then((r) => r.data.data),
+  update: (id, payload) => api.patch(`/whatsapp/conversations/${id}`, payload).then((r) => r.data.data),
+  mediaUrl: (messageId) => `${api.defaults.baseURL}/whatsapp/messages/${messageId}/media`,
+};
+
 export const reports = {
   get: (params) => api.get("/reports", { params }).then((r) => r.data.data),
   audit: (params) => api.get("/reports/audit", { params }).then((r) => r.data.data),

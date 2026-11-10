@@ -7,7 +7,7 @@ import {
 } from "react-icons/fi";
 import { menuFor } from "../kkmdm/menu";
 import { useAuth } from "../context/AuthContext";
-import { hardwareRequests } from "../api";
+import { hardwareRequests, whatsapp } from "../api";
 import GlobalSearch from "./GlobalSearch";
 import markUrl from "../assets/knotkitchen-mark.png";
 
@@ -24,7 +24,7 @@ const NAV = [
   { to: "/agreements", label: "Agreements", icon: FiFileText, adminOnly: true, group: "Stores" },
   { to: "/eats", label: "Knot Eats", icon: FiMapPin, adminOnly: false, group: "Stores" },
   { to: "/search", label: "Search Console", icon: FiSearch, adminOnly: false, group: "Support" },
-  { to: "/chat", label: "Chat", icon: FiMessageSquare, adminOnly: false, group: "Support" },
+  { to: "/chat", label: "Chat", icon: FiMessageSquare, adminOnly: false, group: "Support", badge: "whatsapp" },
   { to: "/jobs", label: "Jobs", icon: FiCheckSquare, adminOnly: false, group: "Support" },
   { to: "/hardware", label: "Hardware requests", icon: FiPackage, adminOnly: false, group: "Support", badge: "hardware" },
   { to: "/billing", label: "Billing", icon: FiDollarSign, adminOnly: true, group: "Admin" },
@@ -55,7 +55,25 @@ const Layout = () => {
       clearInterval(t);
     };
   }, [pathname]);
-  const badges = { hardware: newRequests };
+  // WhatsApp chats with unread customer messages, on Chat. Polled often:
+  // a customer is waiting on these.
+  const [waUnread, setWaUnread] = useState(0);
+  useEffect(() => {
+    let alive = true;
+    const poll = () => whatsapp.unread().then((d) => alive && setWaUnread(d.unread || 0)).catch(() => {});
+    poll();
+    const t = setInterval(poll, 15 * 1000);
+    return () => {
+      alive = false;
+      clearInterval(t);
+    };
+  }, [pathname]);
+  useEffect(() => {
+    const on = (e) => setWaUnread(Number(e.detail) || 0);
+    window.addEventListener("kk:wa-unread", on);
+    return () => window.removeEventListener("kk:wa-unread", on);
+  }, []);
+  const badges = { hardware: newRequests, whatsapp: waUnread };
   const items = NAV.filter((n) => !n.adminOnly || isAdmin);
   // KKMDM (tablet management) as one entry with its screens in a sub-menu (owner, 2026-11-03).
   const mdmItems = menuFor(isAdmin);

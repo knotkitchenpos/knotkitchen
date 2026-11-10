@@ -157,6 +157,23 @@ router.post("/chat/conversations", createConversation);
 router.get("/chat/conversations/:id/messages", listMessages);
 router.post("/chat/conversations/:id/messages", postMessage);
 
+// WhatsApp support inbox (the Heyo support number, via MyOperator's or Meta's
+// WhatsApp API — services/whatsapp.js). Shared by every CSD member like the
+// chat above; assignment says who is handling a customer, it hides nothing.
+const wa = require("../controllers/csdWhatsappController");
+// Each send is a paid WhatsApp message: a cap per agent stops a stuck key or a
+// script from emptying the balance.
+const waSendLimiter = rateLimit({ windowMs: 60 * 1000, max: 30, keyGenerator: (req) => "csd-wa-send:" + String(req.csdStaff?._id || clientIp(req)) });
+router.get("/whatsapp/status", wa.getStatus);
+router.get("/whatsapp/unread", wa.unreadCount);
+router.get("/whatsapp/templates", wa.listTemplates);
+router.get("/whatsapp/conversations", wa.listConversations);
+router.post("/whatsapp/conversations", waSendLimiter, wa.startConversation);
+router.get("/whatsapp/conversations/:id/messages", wa.listMessages);
+router.post("/whatsapp/conversations/:id/messages", waSendLimiter, wa.postMessage);
+router.patch("/whatsapp/conversations/:id", wa.updateConversation);
+router.get("/whatsapp/messages/:id/media", wa.getMedia);
+
 // ---------------------------------------------------------------------------
 // 4. Admin only
 // ---------------------------------------------------------------------------

@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { FiPlus, FiSend, FiSearch, FiX, FiPaperclip, FiHash, FiShoppingBag } from "react-icons/fi";
-import { chat, stores as storesApi, errorMessage } from "../api";
+import { chat, stores as storesApi, whatsapp, errorMessage } from "../api";
+import WhatsAppInbox from "./WhatsAppInbox";
 
 const time = (d) => new Date(d).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
 const day = (d) => new Date(d).toLocaleDateString("en-IN", { dateStyle: "medium" });
@@ -134,7 +135,7 @@ const NewConversationDialog = ({ onClose, onCreated }) => {
   );
 };
 
-const Chat = () => {
+const TeamChat = () => {
   const [conversations, setConversations] = useState([]);
   const [activeId, setActiveId] = useState(null);
   const [thread, setThread] = useState(null);
@@ -213,11 +214,10 @@ const Chat = () => {
   let lastDay = null;
 
   return (
-    <div className="mx-auto max-w-[1600px]">
+    <div>
       <header className="mb-4 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-navy-900">Chat</h1>
-          <p className="mt-1 text-sm text-navy-500">
+          <p className="text-sm text-navy-500">
             Internal conversations. Every CSD member can read these — a colleague picking up a
             ticket needs the history.
           </p>
@@ -386,6 +386,62 @@ const Chat = () => {
           onCreated={(id) => { setCreating(false); loadConversations(); setActiveId(id); }}
         />
       )}
+    </div>
+  );
+};
+
+/**
+ * Chat: the team's internal conversations, and the WhatsApp inbox for the
+ * support number (?tab=whatsapp, so a link or a refresh keeps the tab).
+ */
+const Chat = () => {
+  const [params, setParams] = useSearchParams();
+  const tab = params.get("tab") === "whatsapp" ? "whatsapp" : "team";
+  const [waUnread, setWaUnread] = useState(0);
+
+  // The WhatsApp tab's unread count while the team tab is showing.
+  useEffect(() => {
+    if (tab === "whatsapp") return undefined;
+    let alive = true;
+    const poll = () => whatsapp.unread().then((d) => alive && setWaUnread(d.unread || 0)).catch(() => {});
+    poll();
+    const t = setInterval(poll, POLL_MS * 3);
+    return () => { alive = false; clearInterval(t); };
+  }, [tab]);
+
+  // The inbox knows first; tell the sidebar badge too, so the two never disagree.
+  const onWaUnread = useCallback((n) => {
+    setWaUnread(n);
+    window.dispatchEvent(new CustomEvent("kk:wa-unread", { detail: n }));
+  }, []);
+
+  const tabs = [
+    { key: "team", label: "Team chat" },
+    { key: "whatsapp", label: "WhatsApp", badge: waUnread },
+  ];
+
+  return (
+    <div className="mx-auto max-w-[1600px]">
+      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+        <h1 className="text-2xl font-bold text-navy-900">Chat</h1>
+        <div className="flex rounded-xl bg-navy-100 p-1" role="tablist" aria-label="Chat">
+          {tabs.map((t) => (
+            <button key={t.key} type="button" role="tab" aria-selected={tab === t.key}
+              onClick={() => setParams(t.key === "team" ? {} : { tab: t.key }, { replace: true })}
+              className={`inline-flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-sm font-semibold ${
+                tab === t.key ? "bg-white text-navy-900 shadow-sm" : "text-navy-500 hover:text-navy-800"
+              }`}>
+              {t.label}
+              {t.badge > 0 && (
+                <span className="rounded-full bg-emerald-600 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white">
+                  {t.badge > 99 ? "99+" : t.badge}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      </div>
+      {tab === "whatsapp" ? <WhatsAppInbox onUnread={onWaUnread} /> : <TeamChat />}
     </div>
   );
 };

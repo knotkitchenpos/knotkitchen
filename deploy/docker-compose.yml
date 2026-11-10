@@ -198,6 +198,20 @@ services:
 
       # === CSD panel ===
       CSD_JWT_SECRET: ${CSD_JWT_SECRET:-}
+      # WhatsApp support inbox in CSD → Chat (services/whatsapp.js). Unset =
+      # the inbox shows "not connected"; nothing else is affected.
+      WHATSAPP_PROVIDER: ${WHATSAPP_PROVIDER:-}
+      WHATSAPP_WEBHOOK_TOKEN: ${WHATSAPP_WEBHOOK_TOKEN:-}
+      MYOPERATOR_API_KEY: ${MYOPERATOR_API_KEY:-}
+      MYOPERATOR_COMPANY_ID: ${MYOPERATOR_COMPANY_ID:-}
+      MYOPERATOR_PHONE_NUMBER_ID: ${MYOPERATOR_PHONE_NUMBER_ID:-}
+      MYOPERATOR_WABA_ID: ${MYOPERATOR_WABA_ID:-}
+      WHATSAPP_META_TOKEN: ${WHATSAPP_META_TOKEN:-}
+      WHATSAPP_META_PHONE_NUMBER_ID: ${WHATSAPP_META_PHONE_NUMBER_ID:-}
+      WHATSAPP_META_WABA_ID: ${WHATSAPP_META_WABA_ID:-}
+      WHATSAPP_META_APP_SECRET: ${WHATSAPP_META_APP_SECRET:-}
+      WHATSAPP_META_VERIFY_TOKEN: ${WHATSAPP_META_VERIFY_TOKEN:-}
+      WHATSAPP_META_GRAPH_VERSION: ${WHATSAPP_META_GRAPH_VERSION:-}
       # Seeds the CSD super-administrator on first pos-api start. Previously
       # only piped into admin-api (which we deleted); csdAuthController now
       # reads them here too, so they MUST be declared for the container to

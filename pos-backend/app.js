@@ -287,6 +287,8 @@ app.use("/api/public", require("./routes/publicStoreRoute"));
 // cookie from the POS session above, so a CSD token can never authenticate a
 // POS request or vice versa.
 app.use("/api/csd", require("./routes/csdRoute"));
+// WhatsApp provider webhooks for the CSD support inbox (public, verified per provider).
+app.use("/api/whatsapp", require("./routes/whatsappWebhookRoute"));
 
 // ===== Multi-tenant storefront (customer website) =====
 // Public, unauthenticated customer website API
