@@ -113,7 +113,7 @@ const App = () => (
             element={<RequireAdmin><Billing /></RequireAdmin>}
           />
 
-          {/* Admins land on the dashboard, staff on store search. */}
+          {/* Everyone lands on the WhatsApp inbox (owner, 2026-11-11): customers are waiting there. */}
           <Route path="/" element={<LandingRedirect />} />
           <Route path="*" element={<LandingRedirect />} />
         </Route>
@@ -122,9 +122,6 @@ const App = () => (
   </AuthProvider>
 );
 
-const LandingRedirect = () => {
-  const { isAdmin } = useAuth();
-  return <Navigate to={isAdmin ? "/dashboard" : "/stores"} replace />;
-};
+const LandingRedirect = () => <Navigate to="/chat?tab=whatsapp" replace />;
 
 export default App;
