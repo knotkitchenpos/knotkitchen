@@ -43,7 +43,13 @@ test("Book a demo offers WhatsApp and a call", () => {
   const contact = INDEX.slice(INDEX.indexOf('id="contact"'));
   assert.match(contact, /href="https:\/\/wa\.me\/918062177510/);
   assert.match(contact, /href="tel:\+918062177510"/);
-  assert.match(page("contact.html"), /href="https:\/\/wa\.me\/918062177510"/);
+  // 2026-11-09: every WhatsApp link opens with the demo request already typed (owner's wording).
+  const DEMO = "Hi KnotKitchen, I'd like a free demo.\n*Restaurant name:* \n*City:* ";
+  for (const html of [INDEX, page("contact.html")]) {
+    const links = [...html.matchAll(/href="https:\/\/wa\.me\/918062177510([^"]*)"/g)].map((m) => m[1]);
+    assert.ok(links.length > 0);
+    for (const q of links) assert.equal(decodeURIComponent(q.replace(/^\?text=/, "")), DEMO);
+  }
 });
 
 test("content shows without script and in print", () => {
@@ -196,6 +202,9 @@ const runHome = async (fetch) => {
     document,
     matchMedia: () => ({ matches: true }), // reduced motion: home.js returns before the motion code
     addEventListener() {},
+    // The header's scroll state runs under reduced motion too (2026-11-08).
+    scrollY: 0,
+    innerHeight: 800,
     IntersectionObserver: class { observe() {} },
     AbortController,
     setTimeout: () => 0,
@@ -234,7 +243,7 @@ test("home.js puts today's catalogue on the page, reduced motion or not", async 
   assert.equal(dom["#dd-media"].children[0].src, PRICING.devices[0].imageUrl);
   assert.deepEqual([dom["#dd-name"].textContent, dom["#dd-desc"].textContent], ["Tablet", "10-inch"]);
   assert.equal(dom["#dd-order"].href, "https://business.knotkitchen.com/settings/billing?device=TABLET");
-  assert.match(decodeURIComponent(dom["#dd-demo"].href), /^https:\/\/wa\.me\/918062177510\?text=Hi KnotKitchen, I'd like a demo and the Tablet \(₹10,000\)/);
+  assert.match(decodeURIComponent(dom["#dd-demo"].href), /^https:\/\/wa\.me\/918062177510\?text=Hi KnotKitchen, I'd like a free demo and the Tablet \(₹10,000\)\.\n\*Restaurant name:\* \n\*City:\* $/);
 
   const ld = JSON.parse(dom['script[type="application/ld+json"]'].textContent);
   assert.deepEqual(ld["@graph"][1].offers, { price: "549", description: "POS plan: ₹549 + GST per 28 days, prepaid from the KnotKitchen wallet" });
@@ -262,7 +271,7 @@ test("the pricing HTML is the no-script fallback: every amount written in, each 
   assert.ok(js.indexOf("/api/public/pricing") < js.indexOf("if (still) return;"), "fetched before the reduced-motion return");
   const pricing = INDEX.slice(INDEX.indexOf('id="pricing"'), INDEX.indexOf('id="contact"'));
   for (const [key, text] of [
-    ["plan:POS", "₹599"], ["plan:BILLING", "₹249"], ["plan:POS:firstRechargeMin", "₹5,000"], ["plan:POS:topUpMin", "₹1,000"],
+    ["plan:POS", "₹599"], ["plan:BILLING", "₹199"], ["plan:POS:firstRechargeMin", "₹5,000"], ["plan:POS:topUpMin", "₹1,000"],
     ["plan:BILLING:firstRechargeMin", "₹3,000"], ["plan:BILLING:topUpMin", "₹1,000"],
     ["charge:website", "₹3"], ["charge:qr", "₹1"], ["charge:knotEats", "₹9"], ["charge:ebill", "₹0.25"],
   ]) {
@@ -280,7 +289,7 @@ test("the pricing HTML is the no-script fallback: every amount written in, each 
   assert.match(INDEX, /<dialog class="dev-dialog" id="device-dialog"/);
   // Visitors without an account: no guest checkout, a way to sign up instead.
   assert.match(INDEX, /New to KnotKitchen\? <a href="#contact">Sign up: book a demo<\/a>/);
-  assert.match(INDEX, /<script src="home\.js\?v=8" defer><\/script>/);
+  assert.match(INDEX, /<script src="home\.js\?v=10" defer><\/script>/);
   // 2026-11-05: the hero reel: four real clips with the KnotKitchen cards, run by its own script after home.js
   assert.match(INDEX, /<script src="heroreel\.js\?v=4" defer><\/script>/);
   // 2026-11-05: the Android app download: the android-latest release always carries the newest build
