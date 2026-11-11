@@ -677,8 +677,12 @@ const updateWebsiteSettings = async (req, res, next) => {
         }
       }
       if (rulesEdit && o.minOrderConfig !== undefined) {
+        // Written on the channel's own subdocument, not as one dotted path:
+        // mongoose 8.24.7+ silently drops a dotted set that runs through
+        // ordering (embedded) -> minOrderConfig (nested) -> channel (embedded).
         for (const [ch, fields] of Object.entries(readMinOrder(o.minOrderConfig, ruleErrors))) {
-          for (const [key, value] of Object.entries(fields)) settings.set(`ordering.minOrderConfig.${ch}.${key}`, value);
+          if (!settings.ordering.minOrderConfig[ch]) settings.ordering.minOrderConfig[ch] = {};
+          for (const [key, value] of Object.entries(fields)) settings.ordering.minOrderConfig[ch][key] = value;
         }
       }
     }
