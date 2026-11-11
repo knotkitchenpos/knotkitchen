@@ -588,7 +588,14 @@ const listTemplates = async (req, res, next) => {
   }
 };
 
-/** GET /api/csd/whatsapp/messages/:id/media — a file the customer sent. */
+/**
+ * A file must not be able to run anything in our origin. Sandbox does that,
+ * but Chrome will not open a PDF in a sandbox, so a PDF gets the same
+ * nothing-allowed policy as the store documents route.
+ */
+const fileCsp = (mimeType) => (mimeType === "application/pdf" ? "default-src 'none'; img-src 'self' data:; object-src 'none'" : "default-src 'none'; sandbox");
+
+/** GET /api/csd/whatsapp/messages/:id/media — a file in this chat. */
 const getMedia = async (req, res, next) => {
   try {
     const id = str(req.params.id);
@@ -598,19 +605,25 @@ const getMedia = async (req, res, next) => {
     if (!url) return next(createHttpError(404, "No file on this message."));
     if (url.startsWith("local:")) {
       // A file an agent sent, kept privately for the history.
-      const buffer = await storage.read(url.slice(6));
+      let buffer;
+      try {
+        buffer = await storage.read(url.slice(6));
+      } catch {
+        return next(createHttpError(410, "This file is no longer available on the server."));
+      }
       res.setHeader("Content-Type", m.media.mimeType || "application/octet-stream");
       res.setHeader("Content-Disposition", "inline");
-      res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
-      res.setHeader("Cache-Control", "private, max-age=3600");
+      res.setHeader("Content-Security-Policy", fileCsp(m.media.mimeType));
+      // Invoices and the like: not kept in the browser of a shared computer.
+      res.setHeader("Cache-Control", "private, no-store");
       return res.status(200).send(buffer);
     }
     if (url.startsWith("meta:")) {
       const file = await wa.metaMedia(url.slice(5));
       res.setHeader("Content-Type", file.mimeType);
       res.setHeader("Content-Disposition", "inline");
-      res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
-      res.setHeader("Cache-Control", "private, max-age=3600");
+      res.setHeader("Content-Security-Policy", fileCsp(file.mimeType));
+      res.setHeader("Cache-Control", "private, no-store");
       return res.status(200).send(file.buffer);
     }
     if (/^https:\/\//i.test(url)) return res.redirect(302, url);

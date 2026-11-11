@@ -1,6 +1,7 @@
 const webpush = require("web-push");
 const { CsdPushSubscription, WebPushKey } = require("../models/csdPushModel");
 const CsdStaff = require("../models/csdStaffModel");
+const { hasSection } = require("../constants/csdSections");
 
 /**
  * Sends CSD web push notifications (the browser's own push service: Google's
@@ -45,13 +46,14 @@ const clip = (s, n) => String(s ?? "").replace(/\s+/g, " ").trim().slice(0, n);
  * when staffIds is omitted). Devices the push service says are gone are
  * removed. Never throws: a notification failing must not fail what caused it.
  */
-const notify = async ({ title, body, url = "/", tag = "" }, { staffIds } = {}) => {
+const notify = async ({ title, body, url = "/", tag = "" }, { staffIds, section } = {}) => {
   try {
     const keys = await getKeys();
-    const active = await CsdStaff.find(
+    const found = await CsdStaff.find(
       { status: "active", ...(staffIds ? { _id: { $in: staffIds } } : {}) },
-      { _id: 1 }
+      { _id: 1, role: 1, permissions: 1 }
     ).lean();
+    const active = section ? found.filter((s) => hasSection(s, section)) : found;
     if (!active.length) return { sent: 0, removed: 0 };
     const subs = await CsdPushSubscription.find({ staffId: { $in: active.map((s) => s._id) } }).lean();
     if (!subs.length) return { sent: 0, removed: 0 };
@@ -94,7 +96,7 @@ const notifyWhatsApp = (conv, message) => {
     body: label ? (text ? `${label}: ${text}` : label) : text || "New message",
     url: `/chat?tab=whatsapp&c=${conv._id}`,
     tag: `wa-${conv._id}`, // a newer message from the same customer replaces the older alert
-  });
+  }, { section: "whatsapp" }); // someone limited away from the inbox must not get its messages
 };
 
 /**

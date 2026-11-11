@@ -108,7 +108,7 @@ const addMessage = async (e) => {
   const at = e.at || new Date();
 
   // The answer to a rating request: recorded, and not a new problem to work on.
-  const score = e.direction === "in" && (!e.type || e.type === "text") && conv.ratingRequestedAt && at - new Date(conv.ratingRequestedAt) < RATING_WINDOW_MS ? ratingFrom(e.body) : null;
+  const score = e.direction === "in" && (!e.type || e.type === "text") && conv.ratingRequestedAt && at >= new Date(conv.ratingRequestedAt) && at - new Date(conv.ratingRequestedAt) < RATING_WINDOW_MS ? ratingFrom(e.body) : null;
   if (score) {
     await WaRating.create({ conversationId: conv._id, waId: conv.waId, score, agentId: conv.ratingForId || null, agentName: conv.ratingForName || "", at });
     await WaConversation.updateOne({ _id: conv._id }, { $set: { ratingRequestedAt: null, lastMessagePreview: preview(e), lastMessageDirection: "in" }, $max: { lastMessageAt: at, lastInboundAt: at } });

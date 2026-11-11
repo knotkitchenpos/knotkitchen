@@ -86,6 +86,30 @@ test("a new WhatsApp message goes to every subscribed active agent; gone devices
   }
 });
 
+test("customer messages only go to staff who have the WhatsApp section", async () => {
+  const saved = { send: webpush.sendNotification, key: WebPushKey.findById, staff: CsdStaff.find, subs: CsdPushSubscription.find, upd: CsdPushSubscription.updateMany };
+  const keys = webpush.generateVAPIDKeys();
+  const allowed = new mongoose.Types.ObjectId();
+  const limited = new mongoose.Types.ObjectId();
+  const admin = new mongoose.Types.ObjectId();
+  let asked;
+  push._reset();
+  WebPushKey.findById = () => ({ lean: async () => ({ _id: "csd-vapid", ...keys }) });
+  CsdStaff.find = () => ({ lean: async () => [
+    { _id: allowed, role: "staff", permissions: ["whatsapp"] },
+    { _id: limited, role: "staff", permissions: ["jobs"] },
+    { _id: admin, role: "admin", permissions: [] },
+  ] });
+  CsdPushSubscription.find = (q) => { asked = q.staffId.$in.map(String); return { lean: async () => [] }; };
+  try {
+    await push.notifyWhatsApp({ _id: new mongoose.Types.ObjectId(), waId: "919812345678" }, { type: "text", body: "hi" });
+    assert.deepEqual(asked.sort(), [String(allowed), String(admin)].sort());
+  } finally {
+    webpush.sendNotification = saved.send; WebPushKey.findById = saved.key; CsdStaff.find = saved.staff; CsdPushSubscription.find = saved.subs; CsdPushSubscription.updateMany = saved.upd;
+    push._reset();
+  }
+});
+
 test("the key pair is made once and reused (a new key would cut off every subscribed device)", async () => {
   const saved = { find: WebPushKey.findById, create: WebPushKey.create };
   let row = null;

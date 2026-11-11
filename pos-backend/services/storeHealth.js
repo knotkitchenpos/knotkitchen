@@ -3,6 +3,7 @@ const Store = require("../models/storeModel");
 const Order = require("../models/orderModel");
 const { BusinessBalance } = require("../models/businessBalanceModel");
 const { PlatformSubscription } = require("../models/platformSubscriptionModel");
+const CsdStoreCharges = require("../models/csdStoreChargesModel");
 
 /**
  * Which active stores need attention, and why. Read-only; everything is one
@@ -54,7 +55,7 @@ const readDevices = async (storeIds) => {
 };
 
 /** The problems with one store. Pure, so the rules can be tested on their own. */
-const issuesFor = ({ store, lastOrderAt, balancePaise, sub, devices, now = new Date() }) => {
+const issuesFor = ({ store, lastOrderAt, balancePaise, sub, devices, exempt = false, now = new Date() }) => {
   const issues = [];
   const add = (kind, severity, title, detail, extra = {}) => issues.push({ kind, severity, title, detail, ...extra });
 
@@ -69,14 +70,18 @@ const issuesFor = ({ store, lastOrderAt, balancePaise, sub, devices, now = new D
     add("no_orders", ageDays >= LIMITS.noOrdersCriticalDays ? "critical" : "warning", "No orders yet", `Onboarded ${Math.floor(ageDays)} days ago`);
   }
 
-  // Wallet.
+  // Wallet. Only for a store that is billed: a demo store never is, and a store
+  // that has not started a plan yet has nothing that could stop working.
   const balance = balancePaise || 0;
-  if (sub?.status !== "CANCELLED" && balance < LIMITS.walletLowPaise) {
+  const billed = !exempt && ["ACTIVE", "EXPIRED"].includes(sub?.status);
+  if (billed && balance < LIMITS.walletLowPaise) {
     add("wallet_low", balance < LIMITS.walletCriticalPaise ? "critical" : "warning", "Wallet nearly empty", `${rupees(balance)} left`, { balancePaise: balance });
   }
 
   // Subscription. A plan that will renew from the wallet is not a problem.
-  if (sub?.status === "EXPIRED") {
+  if (exempt) {
+    // A demo store's plan is never charged.
+  } else if (sub?.status === "EXPIRED") {
     add("subscription_ending", "critical", "Subscription expired", sub.currentPeriodEnd ? `Ended ${dateIST(sub.currentPeriodEnd)}` : "Renewal failed", { endsAt: sub.currentPeriodEnd });
   } else if (sub?.status === "ACTIVE" && sub.currentPeriodEnd) {
     const days = (new Date(sub.currentPeriodEnd) - now) / DAY;
@@ -110,7 +115,7 @@ const computeHealth = async (now = new Date()) => {
   ).lean();
   const restaurantIds = stores.map((s) => s.restaurantId).filter(Boolean);
 
-  const [lastOrders, balances, subs, devices] = await Promise.all([
+  const [lastOrders, balances, subs, devices, exemptRows] = await Promise.all([
     Order.aggregate([
       { $match: { restaurantId: { $in: restaurantIds } } },
       { $sort: { restaurantId: 1, createdAt: -1 } },
@@ -119,7 +124,9 @@ const computeHealth = async (now = new Date()) => {
     BusinessBalance.find({ restaurantId: { $in: restaurantIds } }, { restaurantId: 1, balancePaise: 1 }).lean(),
     PlatformSubscription.find({ restaurantId: { $in: restaurantIds } }, { restaurantId: 1, status: 1, currentPeriodEnd: 1, lastPaidPricePaise: 1, planName: 1 }).lean(),
     readDevices(stores.map((s) => s.storeId)),
+    CsdStoreCharges.find({ storeId: { $in: stores.map((s) => s.storeId) }, billingExempt: true }, { storeId: 1 }).lean(),
   ]);
+  const exemptIds = new Set(exemptRows.map((r) => r.storeId));
   const byId = (rows, pick) => new Map(rows.map((r) => [String(r.restaurantId ?? r._id), pick(r)]));
   const orderAt = byId(lastOrders, (r) => r.last);
   const balance = byId(balances, (r) => r.balancePaise);
@@ -134,6 +141,7 @@ const computeHealth = async (now = new Date()) => {
       balancePaise: balance.get(rid) || 0,
       sub: sub.get(rid) || null,
       devices: devices?.get(store.storeId) || [],
+      exempt: exemptIds.has(store.storeId),
       now,
     });
     if (!issues.length) continue;

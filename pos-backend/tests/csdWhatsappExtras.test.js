@@ -125,6 +125,34 @@ test("a number sent long after the request is just a message", () => ratingStubs
   assert.equal(log.conv[0].$set.status, "open");
 }));
 
+test("a number the customer sent before the question is not the answer", () => ratingStubs(async (log) => {
+  const conv = { _id: new mongoose.Types.ObjectId(), waId: "919876543210", status: "closed", ratingRequestedAt: new Date() };
+  WaConversation.findOneAndUpdate = async () => conv;
+  await inbox.ingest([{ kind: "message", direction: "in", waId: conv.waId, providerMessageId: "r4", type: "text", body: "2", at: new Date(Date.now() - 30000) }]);
+  assert.equal(log.ratings.length, 0, "Fast2SMS delivers in batches, so this can arrive after we asked");
+}));
+
+test("a PDF can be opened; anything else stays sandboxed", async () => {
+  const storage = require("../services/csdDocumentStorage");
+  const saved = { find: WaMessage.findById, read: storage.read };
+  const id = new mongoose.Types.ObjectId();
+  storage.read = async () => Buffer.from("x");
+  const open = async (mimeType) => {
+    WaMessage.findById = () => ({ lean: async () => ({ media: { url: "local:whatsapp/a", mimeType } }) });
+    const headers = {};
+    const r = { setHeader: (k, v) => { headers[k] = v; }, status: () => r, send: () => r };
+    await ctl.getMedia({ params: { id: String(id) } }, r, (e) => { throw e; });
+    return headers;
+  };
+  try {
+    const pdf = await open("application/pdf");
+    assert.doesNotMatch(pdf["Content-Security-Policy"], /sandbox/, "Chrome will not show a PDF in a sandbox");
+    assert.match(pdf["Content-Security-Policy"], /default-src 'none'/);
+    assert.equal(pdf["Cache-Control"], "private, no-store");
+    assert.match((await open("image/png"))["Content-Security-Policy"], /sandbox/);
+  } finally { WaMessage.findById = saved.find; storage.read = saved.read; }
+});
+
 test("a rating is only asked for when an agent answered, inside 24 hours, once a week", () => ratingStubs(async (log) => {
   const base = { _id: new mongoose.Types.ObjectId(), waId: "919876543210", lastInboundAt: new Date(Date.now() - 3600000), assignedToId: new mongoose.Types.ObjectId(), assignedToName: "Rahul" };
   assert.equal(await inbox.requestRating(base, { id: null, name: "x" }), false, "nobody answered");

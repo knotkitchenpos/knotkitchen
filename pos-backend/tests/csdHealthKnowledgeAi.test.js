@@ -66,6 +66,14 @@ test("health: wallet", () => {
   assert.deepEqual(kinds({ balancePaise: 1000, sub: { status: "CANCELLED" } }), [], "a store that left is not chased for its wallet");
 });
 
+test("health: no billing warnings for a demo store or one that never started a plan", () => {
+  const ending = { status: "ACTIVE", currentPeriodEnd: new Date(NOW.getTime() + DAY), lastPaidPricePaise: 59900 };
+  assert.deepEqual(kinds({ balancePaise: 0, sub: ending, exempt: true }), [], "demo stores are never billed");
+  assert.deepEqual(kinds({ balancePaise: 0, sub: { status: "EXPIRED" }, exempt: true }), []);
+  assert.deepEqual(kinds({ balancePaise: 0, sub: { status: "NONE" } }), [], "nothing to run out yet");
+  assert.deepEqual(kinds({ balancePaise: 0, sub: null }), []);
+});
+
 test("health: only a renewal that will fail is a problem", () => {
   const ending = { status: "ACTIVE", currentPeriodEnd: new Date(NOW.getTime() + 5 * DAY), lastPaidPricePaise: 59900 };
   assert.deepEqual(kinds({ sub: ending }), [], "wallet covers it");
