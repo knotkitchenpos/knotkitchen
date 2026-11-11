@@ -108,7 +108,9 @@ const Layout = () => {
       } else if (m.type === "kk:open" && typeof m.url === "string") {
         const u = new URL(m.url, window.location.origin);
         // A fresh "at" each time, so tapping the same chat's alert again still opens it.
-        if (u.origin === window.location.origin) {
+        // Only a path in CSD: "//host" or a backslash form would leave the site
+        // (React Router's open-redirect advisory GHSA-wrjc-x8rr-h8h6).
+        if (u.origin === window.location.origin && /^\/(?![/\\])/.test(u.pathname) && !u.pathname.includes("\\")) {
           u.searchParams.set("at", String(Date.now()));
           navigate(u.pathname + u.search);
         }
