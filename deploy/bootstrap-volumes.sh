@@ -26,6 +26,7 @@ VOLUMES=(
   knotkitchen_onboard_data
   knotkitchen_onboard_uploads
   knotkitchen_kkmdm_storage
+  knotkitchen_mongo_data
 )
 
 created=0

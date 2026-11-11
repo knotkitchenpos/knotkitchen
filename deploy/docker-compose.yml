@@ -1,7 +1,7 @@
 # =============================================================================
 # Knot Kitchen — production docker-compose
 # =============================================================================
-# One VPS. Six services. All application containers are on an internal Docker
+# One VPS. Seven services, MongoDB included. All application containers are on an internal Docker
 # network and only reachable through Caddy on the host's 80/443 ports.
 #
 # Usage on the VPS:
@@ -66,8 +66,62 @@ volumes:
   kkmdm_storage:   # KKMDM: uploaded APKs, the agent APK, device logs, its generated secrets
     external: true
     name: knotkitchen_kkmdm_storage
+  mongo_data:      # the MongoDB database itself (orders, menus, stores, users, payments)
+    external: true
+    name: knotkitchen_mongo_data
 
 services:
+  # ---------------------------------------------------------------------------
+  # MongoDB, on this VPS (moved off Atlas 2026-11-11).
+  #
+  # Internal only: on the `knot` network, no published port, so nothing outside
+  # these containers can reach it. Password-protected anyway.
+  #
+  # A one-node replica set, because the backend uses transactions (payments,
+  # the ledger, table sessions), which MongoDB only allows on a replica set.
+  # A replica set with a password also needs a shared key file; it is written
+  # from MONGO_KEYFILE_SECRET at start so it never sits in the repo.
+  #
+  # Cache capped at 1 GB so MongoDB leaves memory for everything else here.
+  #
+  # Connection string for the apps (in deploy/.env):
+  #   MONGODB_URI=mongodb://<MONGO_ROOT_USER>:<MONGO_ROOT_PASSWORD>@mongo:27017/<db>?authSource=admin&replicaSet=rs0
+  # Backups: deploy/backup.sh dumps it nightly.
+  # ---------------------------------------------------------------------------
+  mongo:
+    image: mongo:7.0
+    restart: unless-stopped
+    networks: [knot]
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-knot}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:?set MONGO_ROOT_PASSWORD in deploy/.env}
+      MONGO_KEYFILE_SECRET: ${MONGO_KEYFILE_SECRET:?set MONGO_KEYFILE_SECRET in deploy/.env}
+    entrypoint:
+      - bash
+      - -c
+      - |
+        set -e
+        printf '%s' "$$MONGO_KEYFILE_SECRET" > /etc/mongo-keyfile
+        chmod 400 /etc/mongo-keyfile
+        chown 999:999 /etc/mongo-keyfile
+        exec docker-entrypoint.sh mongod --replSet rs0 --bind_ip_all \
+          --keyFile /etc/mongo-keyfile --wiredTigerCacheSizeGB 1
+    volumes:
+      - mongo_data:/data/db
+    # Becomes a one-node replica set the first time; healthy once it answers.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - >-
+          mongosh --quiet -u "$$MONGO_INITDB_ROOT_USERNAME" -p "$$MONGO_INITDB_ROOT_PASSWORD"
+          --authenticationDatabase admin --eval
+          "try { rs.status().ok } catch (e) { rs.initiate({ _id: 'rs0', members: [{ _id: 0, host: 'mongo:27017' }] }).ok }"
+          | grep -q 1
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 30s
+
   # ---------------------------------------------------------------------------
   # POS backend  →  api.${BASE_DOMAIN}
   # ---------------------------------------------------------------------------

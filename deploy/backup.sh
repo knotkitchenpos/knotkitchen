@@ -13,7 +13,8 @@
 #                                 datastore with no Atlas equivalent; if this
 #                                 volume is lost, the data is simply gone
 #   6. knotkitchen_onboard_uploads  KYC documents uploaded via the portal
-#   7. MongoDB                    full mongodump of the Atlas cluster
+#   7. MongoDB                    full mongodump of the database (the
+#                                 "mongo" container on this VPS)
 #
 # Volumes 4-6 and the MongoDB dump were missing from this script until
 # 2026-08-30, which meant every restaurant compliance document, the whole
@@ -140,15 +141,6 @@ done
 if [[ "${KNOT_BACKUP_SKIP_MONGO:-false}" == "true" ]]; then
   echo "[$(date -Is)] WARNING: KNOT_BACKUP_SKIP_MONGO=true — database NOT backed up."
 else
-  if ! command -v mongodump >/dev/null 2>&1; then
-    echo "mongodump is not installed, so the database would NOT be in this backup." >&2
-    echo "Install the MongoDB Database Tools:" >&2
-    echo "  https://www.mongodb.com/docs/database-tools/installation/" >&2
-    echo "  (Ubuntu: apt-get install -y mongodb-database-tools)" >&2
-    echo "Or set KNOT_BACKUP_SKIP_MONGO=true if the cluster has its own snapshots." >&2
-    exit 1
-  fi
-
   MONGODB_URI="$(sed -n 's/^MONGODB_URI=//p' "$REPO_ROOT/deploy/.env" | head -1)"
   # Tolerate MONGODB_URI="..." / MONGODB_URI='...' in the env file.
   MONGODB_URI="${MONGODB_URI%\"}"; MONGODB_URI="${MONGODB_URI#\"}"
@@ -162,8 +154,17 @@ else
   echo "[$(date -Is)] dumping MongoDB"
   # --archive + --gzip produce one file. Errors are surfaced but the URI is
   # scrubbed from anything mongodump prints, since it embeds the password.
-  if ! mongodump --uri="$MONGODB_URI" --archive="$TMP/mongodump.archive.gz" --gzip \
-       2> >(sed -E 's#mongodb(\+srv)?://[^ ]*#mongodb://<redacted>#g' >&2); then
+  #
+  # mongodump runs in a throwaway mongo:7.0 container on the app network, so
+  # it reaches the internal "mongo" host (and Atlas, for an old .env) and needs
+  # nothing installed on the VPS. The URI goes in through the environment, not
+  # the command line, so `ps` never shows the password.
+  if ! MONGODB_URI="$MONGODB_URI" docker run --rm -i --network "${KNOT_DOCKER_NETWORK:-knotkitchen_knot}" \
+       -e MONGODB_URI mongo:7.0 \
+       sh -c 'umask 077; printf "uri: \"%s\"\n" "$MONGODB_URI" > /tmp/dump.yml; exec mongodump --config=/tmp/dump.yml --archive --gzip --quiet' \
+       > "$TMP/mongodump.archive.gz" \
+       2> >(sed -E 's#mongodb(\+srv)?://[^ ]*#mongodb://<redacted>#g' >&2) \
+     || [[ ! -s "$TMP/mongodump.archive.gz" ]]; then
     echo "mongodump FAILED — refusing to write a backup without the database." >&2
     exit 1
   fi

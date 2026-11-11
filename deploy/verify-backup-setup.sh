@@ -44,10 +44,8 @@ command -v docker    >/dev/null 2>&1 && ok "docker installed" || bad "docker mis
 if [[ "${KNOT_BACKUP_SKIP_MONGO:-false}" == "true" ]]; then
   warn "KNOT_BACKUP_SKIP_MONGO=true — the database is NOT in the backup."
   warn "  Correct ONLY if the Atlas cluster has its own verified snapshots."
-elif command -v mongodump >/dev/null 2>&1; then
-  ok "mongodump installed"
 else
-  bad "mongodump missing — apt-get install -y mongodb-database-tools"
+  ok "mongodump runs in a mongo:7.0 container (nothing to install)"
 fi
 
 echo
