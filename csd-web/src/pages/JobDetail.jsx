@@ -162,6 +162,9 @@ const JobDetail = () => {
             <h2 className="mb-2 text-sm font-bold uppercase tracking-wider text-navy-700">Details</h2>
             <dl>
               <Row label="Restaurant">
+                {job.waConversationId && (
+                  <Link to={`/chat?tab=whatsapp&c=${job.waConversationId}`} className="mb-1 block text-sm font-semibold text-emerald-700 hover:text-emerald-800">Open the WhatsApp chat</Link>
+                )}
                 {job.storeId ? (
                   <Link to={`/stores/${job.storeId}`} className="text-brand-600 hover:text-brand-700">
                     {job.restaurantName || job.storeId}

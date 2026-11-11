@@ -174,6 +174,9 @@ router.post("/whatsapp/conversations", waSendLimiter, wa.startConversation);
 router.get("/whatsapp/conversations/:id/messages", wa.listMessages);
 router.post("/whatsapp/conversations/:id/messages", waSendLimiter, wa.postMessage);
 router.patch("/whatsapp/conversations/:id", wa.updateConversation);
+router.post("/whatsapp/conversations/:id/media", waSendLimiter, wa.postMedia);
+router.get("/whatsapp/conversations/:id/context", wa.getContext);
+router.post("/whatsapp/conversations/:id/job", wa.createJobFromChat);
 // Each one is a paid AI call, so a stuck key or a script cannot run up a bill.
 const aiLimiter = rateLimit({ windowMs: 60 * 1000, max: 15, keyGenerator: (req) => "csd-ai:" + String(req.csdStaff?._id || clientIp(req)) });
 router.post("/whatsapp/conversations/:id/suggest", aiLimiter, wa.suggestReply);

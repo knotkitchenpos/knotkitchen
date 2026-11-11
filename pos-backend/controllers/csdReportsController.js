@@ -5,6 +5,7 @@ const CsdJob = require("../models/csdJobModel");
 const CsdStaff = require("../models/csdStaffModel");
 const AuditLog = require("../models/auditLogModel");
 const { istMonthStart } = require("./csdDashboardController");
+const { whatsappReport } = require("../services/whatsappReports");
 
 /**
  * GET /api/csd/reports — admin only.
@@ -26,7 +27,7 @@ const getReports = async (req, res, next) => {
 
     const orderMatch = { isDeleted: { $ne: true }, orderDate: { $gte: from, $lt: to }, ...NOT_CANCELLED };
 
-    const [topStores, byOrderType, bySource, jobStats, jobsByAssignee, staffActivity, cancelled] =
+    const [topStores, byOrderType, bySource, jobStats, jobsByAssignee, staffActivity, cancelled, whatsapp] =
       await Promise.all([
         // Revenue leaderboard, per restaurant: orders from before every channel
         // stamped storeId (orderModel) carry a blank one and would share a row.
@@ -86,6 +87,9 @@ const getReports = async (req, res, next) => {
           },
           { $group: { _id: null, orders: { $sum: 1 }, value: REVENUE } },
         ]),
+
+        // A problem here must not take the rest of Reports down with it.
+        whatsappReport({ from, to }).catch((err) => { console.error("[reports] whatsapp:", err?.message); return null; }), // eslint-disable-line no-console
       ]);
 
     // Resolve store + staff names for just the rows being returned.
@@ -109,6 +113,7 @@ const getReports = async (req, res, next) => {
       success: true,
       data: {
         period: { from, to, months, timezone: "Asia/Kolkata" },
+        whatsapp,
         topStores: topStores.map((s) => {
           const restaurant = restaurantById.get(String(s._id));
           const store = storeById.get(restaurant?.storeId);

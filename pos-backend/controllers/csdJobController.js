@@ -54,6 +54,7 @@ const shape = (j) => ({
 
 const shapeFull = (j) => ({
   ...shape(j),
+  waConversationId: j.waConversationId ? String(j.waConversationId) : "",
   comments: (j.comments || []).map((c) => ({
     id: String(c._id),
     body: c.body,

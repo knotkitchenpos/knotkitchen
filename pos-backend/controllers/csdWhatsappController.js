@@ -1,10 +1,18 @@
 const createHttpError = require("http-errors");
 const mongoose = require("mongoose");
-const { WaConversation, WaMessage } = require("../models/waChatModel");
+const { WaConversation, WaMessage, WaRating } = require("../models/waChatModel");
 const CsdStaff = require("../models/csdStaffModel");
 const Store = require("../models/storeModel");
 const wa = require("../services/whatsapp");
-const { ingest, sendOutbound } = require("../services/whatsappInbox");
+const { ingest, sendOutbound, requestRating } = require("../services/whatsappInbox");
+const storage = require("../services/csdDocumentStorage");
+const CsdJob = require("../models/csdJobModel");
+const Order = require("../models/orderModel");
+const { BusinessBalance } = require("../models/businessBalanceModel");
+const { PlatformSubscription } = require("../models/platformSubscriptionModel");
+const { readDevices } = require("../services/storeHealth");
+const { createJob } = require("./csdJobController");
+const { hasSection } = require("../constants/csdSections");
 const ai = require("../services/aiReply");
 
 /**
@@ -38,6 +46,7 @@ const viewConversation = (c, myId) => ({
   waId: c.waId,
   phone: `+${c.waId}`,
   name: c.customName || c.profileName || "",
+  linkedStoreId: c.linkedStoreId || "",
   profileName: c.profileName || "",
   customName: c.customName || "",
   status: c.status,
@@ -156,9 +165,12 @@ const unreadCount = async (req, res, next) => {
 };
 
 /** Restaurants whose owner phone is this number, so the agent knows who is writing. */
-const storesFor = async (waId) => {
-  if (!/^91\d{10}$/.test(waId)) return [];
-  const rows = await Store.find({ ownerPhone: waId.slice(2), isDeleted: { $ne: true } }, { storeId: 1, storeName: 1 }).limit(5).lean();
+const storesFor = async (waId, linkedStoreId = "") => {
+  const or = [];
+  if (/^91\d{10}$/.test(waId)) or.push({ ownerPhone: waId.slice(2) });
+  if (linkedStoreId) or.push({ storeId: linkedStoreId });
+  if (!or.length) return [];
+  const rows = await Store.find({ $or: or, isDeleted: { $ne: true } }, { storeId: 1, storeName: 1 }).limit(5).lean();
   return rows.map((s) => ({ storeId: s.storeId, storeName: s.storeName }));
 };
 
@@ -180,7 +192,7 @@ const listMessages = async (req, res, next) => {
 
     const [page, stores] = await Promise.all([
       WaMessage.find(filters).sort({ sentAt: -1, _id: -1 }).limit(limit + 1).lean(),
-      storesFor(conv.waId),
+      storesFor(conv.waId, conv.linkedStoreId),
     ]);
     const hasMore = page.length > limit;
 
@@ -219,6 +231,165 @@ const resolveTemplate = async (t) => {
     values[v] = val;
   }
   return { ...tpl, values };
+};
+
+// WhatsApp's own limits: pictures 5 MB (JPEG or PNG); the proxy caps a request at 12 MB.
+const MEDIA_RULES = { "image/jpeg": { kind: "image", max: 5 }, "image/png": { kind: "image", max: 5 }, "application/pdf": { kind: "document", max: 10 } };
+const MAX_UPLOAD = 10 * 1024 * 1024;
+
+const readBody = (req) => new Promise((resolve, reject) => {
+  const chunks = [];
+  let size = 0;
+  req.on("data", (c) => {
+    size += c.length;
+    if (size > MAX_UPLOAD) { req.destroy(); reject(createHttpError(413, "The file is larger than 10 MB.")); return; }
+    chunks.push(c);
+  });
+  req.on("end", () => resolve(Buffer.concat(chunks)));
+  req.on("error", reject);
+});
+
+/** POST /api/csd/whatsapp/conversations/:id/media?filename=&caption= (the file is the body) */
+const postMedia = async (req, res, next) => {
+  try {
+    const id = str(req.params.id);
+    if (!mongoose.Types.ObjectId.isValid(id)) return next(createHttpError(400, "Invalid conversation id."));
+    const conv = await WaConversation.findById(id).lean();
+    if (!conv) return next(createHttpError(404, "Conversation not found."));
+    if (!windowOpen(conv)) {
+      const e = createHttpError(409, "More than 24 hours have passed since the customer last wrote. WhatsApp only allows an approved template now.");
+      e.code = "WHATSAPP_WINDOW_CLOSED";
+      return next(e);
+    }
+    const buffer = await readBody(req);
+    if (!buffer.length) return next(createHttpError(400, "The file is empty."));
+    // The real type from the bytes; what the browser declared is not trusted.
+    const mimeType = storage.sniffMime(buffer);
+    const rule = MEDIA_RULES[mimeType];
+    if (!rule) return next(createHttpError(400, "WhatsApp accepts JPEG, PNG or PDF files here."));
+    if (buffer.length > rule.max * 1024 * 1024) return next(createHttpError(400, `Pictures can be at most ${rule.max} MB on WhatsApp.`));
+
+    const filename = str(req.query.filename).replace(/[\\/\r\n"]/g, "_").slice(0, 120) || (rule.kind === "document" ? "document.pdf" : "photo");
+    const caption = str(req.query.caption).slice(0, 1024);
+    const saved = await storage.save({ buffer, storeId: "whatsapp" });
+    let m;
+    try {
+      m = await sendOutbound({ conv, media: { buffer, mimeType, filename, kind: rule.kind, caption, storageKey: saved.storageKey }, actor: me(req) });
+    } catch (err) {
+      throw providerFail(err);
+    }
+    res.status(201).json({ success: true, data: viewMessage(m, me(req).id) });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** What an agent wants beside the chat: the restaurant, its plan, tablets and open jobs. */
+const getContext = async (req, res, next) => {
+  try {
+    const id = str(req.params.id);
+    if (!mongoose.Types.ObjectId.isValid(id)) return next(createHttpError(400, "Invalid conversation id."));
+    const conv = await WaConversation.findById(id).lean();
+    if (!conv) return next(createHttpError(404, "Conversation not found."));
+    const or = [];
+    if (/^91\d{10}$/.test(conv.waId)) or.push({ ownerPhone: conv.waId.slice(2) });
+    if (conv.linkedStoreId) or.push({ storeId: conv.linkedStoreId });
+    const rows = or.length ? await Store.find({ $or: or, isDeleted: { $ne: true } }, { storeId: 1, storeName: 1, ownerName: 1, status: 1, restaurantId: 1 }).limit(3).lean() : [];
+
+    const canBilling = hasSection(req.csdStaff, "billing");
+    const canJobs = hasSection(req.csdStaff, "jobs");
+    const canDevices = hasSection(req.csdStaff, "devices");
+    const rids = rows.map((s) => s.restaurantId).filter(Boolean);
+    const ids = rows.map((s) => s.storeId);
+    const [balances, subs, orders, devices, jobs, chatJobs, ratings] = await Promise.all([
+      canBilling ? BusinessBalance.find({ restaurantId: { $in: rids } }, { restaurantId: 1, balancePaise: 1 }).lean() : [],
+      canBilling ? PlatformSubscription.find({ restaurantId: { $in: rids } }, { restaurantId: 1, status: 1, planName: 1, currentPeriodEnd: 1 }).lean() : [],
+      Promise.all(rids.map((r) => Order.findOne({ restaurantId: r }, { createdAt: 1, restaurantId: 1 }).sort({ createdAt: -1 }).lean())),
+      canDevices && ids.length ? readDevices(ids) : null,
+      canJobs && ids.length ? CsdJob.find({ storeId: { $in: ids }, status: { $ne: "closed" } }, { jobId: 1, title: 1, priority: 1, status: 1, storeId: 1 }).sort({ createdAt: -1 }).limit(20).lean() : [],
+      canJobs ? CsdJob.find({ waConversationId: conv._id }, { jobId: 1, title: 1, priority: 1, status: 1 }).sort({ createdAt: -1 }).limit(10).lean() : [],
+      WaRating.find({ conversationId: conv._id }, { score: 1 }).lean(),
+    ]);
+    const by = (list) => new Map(list.filter(Boolean).map((x) => [String(x.restaurantId), x]));
+    const balance = by(balances);
+    const sub = by(subs);
+    const order = by(orders);
+    const shapeJob = (j) => ({ id: String(j._id), jobId: j.jobId, title: j.title, priority: j.priority, status: j.status });
+
+    res.status(200).json({
+      success: true,
+      data: {
+        stores: rows.map((s) => {
+          const rid = String(s.restaurantId || "");
+          return {
+            storeId: s.storeId,
+            storeName: s.storeName,
+            ownerName: s.ownerName,
+            status: s.status,
+            linked: s.storeId === conv.linkedStoreId,
+            lastOrderAt: order.get(rid)?.createdAt || null,
+            billing: canBilling ? { balancePaise: balance.get(rid)?.balancePaise ?? 0, plan: sub.get(rid)?.planName || "", planStatus: sub.get(rid)?.status || "", periodEnd: sub.get(rid)?.currentPeriodEnd || null } : null,
+            devices: devices ? (devices.get(s.storeId) || []).map((d) => ({ name: d.name || "Tablet", online: !!d.online, lastSeenAt: d.lastSeenAt || null })) : null,
+            jobs: jobs.filter((j) => j.storeId === s.storeId).map(shapeJob),
+          };
+        }),
+        chatJobs: chatJobs.map(shapeJob),
+        canJobs,
+        ratings: { count: ratings.length, average: ratings.length ? Math.round((ratings.reduce((a, r) => a + r.score, 0) / ratings.length) * 10) / 10 : null },
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+const stamp = (d) => new Date(d).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true });
+
+/** The recent chat as plain text, for a job's description. Pure, so it can be tested. */
+const transcript = (conv, messages) => {
+  const who = conv.customName || conv.profileName || "Customer";
+  const lines = messages
+    .filter((m) => ["in", "out", "note"].includes(m.direction))
+    .map((m) => {
+      const speaker = m.direction === "in" ? who : m.direction === "note" ? `${m.staffName} (internal note)` : m.staffName || "KnotKitchen";
+      const file = m.media?.url || m.media?.filename ? `[${m.type}${m.media.filename ? `: ${m.media.filename}` : ""}] ` : "";
+      return `[${stamp(m.sentAt)}] ${speaker}: ${file}${m.body || ""}`.trim();
+    });
+  const head = `From WhatsApp: ${who} (+${conv.waId})\n\n`;
+  let body = lines.join("\n");
+  // Keep the newest part if it is too long for a job.
+  if (head.length + body.length > 7800) body = `…${body.slice(-(7800 - head.length))}`;
+  return head + body;
+};
+
+/**
+ * POST /api/csd/whatsapp/conversations/:id/job { title, priority, assignedToId, storeId, note }
+ * A Job from this chat, using the normal job rules and audit trail.
+ */
+const createJobFromChat = async (req, res, next) => {
+  try {
+    if (!hasSection(req.csdStaff, "jobs")) return next(createHttpError(403, "You do not have access to this section."));
+    const id = str(req.params.id);
+    if (!mongoose.Types.ObjectId.isValid(id)) return next(createHttpError(400, "Invalid conversation id."));
+    const conv = await WaConversation.findById(id).lean();
+    if (!conv) return next(createHttpError(404, "Conversation not found."));
+    const b = req.body || {};
+    const page = await WaMessage.find({ conversationId: conv._id }).sort({ sentAt: -1, _id: -1 }).limit(25).lean();
+    const note = str(b.note).slice(0, 1000);
+    const description = `${note ? `${note}\n\n` : ""}${transcript(conv, page.reverse())}`.slice(0, 8000);
+
+    const sub = Object.create(req);
+    sub.body = { title: b.title, priority: b.priority, assignedToId: b.assignedToId, storeId: b.storeId, description };
+    const job = await new Promise((resolve, reject) => {
+      const capture = { status() { return capture; }, json(payload) { resolve(payload.data); return capture; } };
+      createJob(sub, capture, (err) => reject(err));
+    });
+    await CsdJob.updateOne({ _id: job.id }, { $set: { waConversationId: conv._id } });
+    await logEvent(conv, `${me(req).name} created job ${job.jobId}`, req);
+    res.status(201).json({ success: true, data: { id: job.id, jobId: job.jobId } });
+  } catch (error) {
+    next(error);
+  }
 };
 
 /** Send as the signed-in agent; provider errors become readable HTTP errors. */
@@ -353,6 +524,7 @@ const updateConversation = async (req, res, next) => {
     const b = req.body || {};
     const mine = me(req);
     const events = [];
+    let closing = false;
 
     if (Object.prototype.hasOwnProperty.call(b, "assignedTo")) {
       if (b.assignedTo === null || b.assignedTo === "") {
@@ -378,6 +550,7 @@ const updateConversation = async (req, res, next) => {
     if (b.status !== undefined) {
       if (!["open", "closed"].includes(b.status)) return next(createHttpError(400, "Status is open or closed."));
       if (conv.status !== b.status) {
+        closing = b.status === "closed";
         events.push(b.status === "closed" ? `${mine.name} closed this chat` : `${mine.name} re-opened this chat`);
         conv.status = b.status;
         if (b.status === "closed") conv.unreadCount = 0;
@@ -386,8 +559,20 @@ const updateConversation = async (req, res, next) => {
 
     if (b.customName !== undefined) conv.customName = str(b.customName).slice(0, 200);
 
+    if (b.linkedStoreId !== undefined) {
+      const storeId = str(b.linkedStoreId);
+      if (storeId) {
+        if (!/^\d{6}$/.test(storeId)) return next(createHttpError(400, "Link a store using its 6-digit ID."));
+        const store = await Store.findOne({ storeId, isDeleted: { $ne: true } }, { storeName: 1 }).lean();
+        if (!store) return next(createHttpError(400, "No store with that ID."));
+        if (conv.linkedStoreId !== storeId) events.push(`${mine.name} linked this chat to ${store.storeName}`);
+      } else if (conv.linkedStoreId) events.push(`${mine.name} removed the store link`);
+      conv.linkedStoreId = storeId;
+    }
+
     await conv.save();
     for (const text of events) await logEvent(conv, text, req);
+    if (closing) await requestRating(conv.toObject(), mine);
     res.status(200).json({ success: true, data: viewConversation(conv.toObject(), mine.id) });
   } catch (error) {
     next(error);
@@ -411,6 +596,15 @@ const getMedia = async (req, res, next) => {
     const m = await WaMessage.findById(id, { media: 1 }).lean();
     const url = m?.media?.url || "";
     if (!url) return next(createHttpError(404, "No file on this message."));
+    if (url.startsWith("local:")) {
+      // A file an agent sent, kept privately for the history.
+      const buffer = await storage.read(url.slice(6));
+      res.setHeader("Content-Type", m.media.mimeType || "application/octet-stream");
+      res.setHeader("Content-Disposition", "inline");
+      res.setHeader("Content-Security-Policy", "default-src 'none'; sandbox");
+      res.setHeader("Cache-Control", "private, max-age=3600");
+      return res.status(200).send(buffer);
+    }
     if (url.startsWith("meta:")) {
       const file = await wa.metaMedia(url.slice(5));
       res.setHeader("Content-Type", file.mimeType);
@@ -489,6 +683,10 @@ module.exports = {
   postMessage,
   startConversation,
   updateConversation,
+  postMedia,
+  getContext,
+  createJobFromChat,
+  transcript,
   suggestReply,
   listTemplates,
   getMedia,

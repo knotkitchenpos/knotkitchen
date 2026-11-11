@@ -19,6 +19,7 @@ const CsdStaff = require("../models/csdStaffModel");
 const CsdJob = require("../models/csdJobModel");
 const AuditLog = require("../models/auditLogModel");
 const { getReports } = require("../controllers/csdReportsController");
+const { WaConversation, WaMessage, WaRating } = require("../models/waChatModel");
 
 const R1 = new mongoose.Types.ObjectId();
 const R2 = new mongoose.Types.ObjectId();
@@ -101,6 +102,11 @@ test("CSD Top restaurants groups by restaurant and staff activity by staff _id",
   Restaurant.find = lean([{ _id: R1, name: "Spice Garden", storeId: "111111" }, { _id: R2, name: "Tea House", storeId: "222222" }]);
   Store.find = lean([{ storeId: "111111", storeName: "Spice Garden", status: "active" }]);
   CsdStaff.find = lean([{ _id: S1, fullName: "Asha Rao", staffId: "KK001" }, { _id: S2, fullName: "Ravi Sen", staffId: "KK002" }]);
+  const realWa = [WaMessage.find, WaConversation.countDocuments, WaConversation.findOne, WaRating.find];
+  WaMessage.find = () => ({ sort: () => ({ limit: () => ({ lean: async () => [] }) }) });
+  WaConversation.countDocuments = async () => 0;
+  WaConversation.findOne = () => ({ sort: () => ({ lean: async () => null }) });
+  WaRating.find = () => ({ lean: async () => [] });
   try {
     const body = await new Promise((resolve, reject) => {
       getReports({ query: {} }, { status: () => ({ json: resolve }) }, reject);
@@ -111,6 +117,7 @@ test("CSD Top restaurants groups by restaurant and staff activity by staff _id",
     assert.deepEqual(staff, [["KK001", "Asha Rao", 2], ["KK002", "Ravi Sen", 1]]);
   } finally {
     [Order.aggregate, AuditLog.aggregate, CsdJob.aggregate, Restaurant.find, Store.find, CsdStaff.find] = real;
+    [WaMessage.find, WaConversation.countDocuments, WaConversation.findOne, WaRating.find] = realWa;
   }
 });
 

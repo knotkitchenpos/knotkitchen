@@ -33,6 +33,73 @@ const Split = ({ rows, empty }) => {
   );
 };
 
+const duration = (ms) => {
+  if (ms === null || ms === undefined) return "—";
+  const m = Math.round(ms / 60000);
+  if (m < 1) return "Under a minute";
+  if (m < 60) return `${m} min`;
+  const h = Math.floor(m / 60);
+  return h < 24 ? `${h} h ${m % 60} min` : `${Math.floor(h / 24)} d ${h % 24} h`;
+};
+
+const Stat = ({ label, value, hint }) => (
+  <div className="rounded-xl bg-navy-50 p-3">
+    <div className="text-xl font-bold text-navy-900">{value}</div>
+    <div className="text-xs text-navy-600">{label}</div>
+    {hint && <div className="mt-0.5 text-[11px] text-navy-400">{hint}</div>}
+  </div>
+);
+
+const hourLabel = (h) => `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? "am" : "pm"}`;
+
+/** WhatsApp support: how quickly and how well customers are answered. */
+const WhatsAppReport = ({ w }) => {
+  const peak = Math.max(...w.busiestHours, 1);
+  const top = w.busiestHours.indexOf(Math.max(...w.busiestHours));
+  return (
+    <>
+      <Card title="WhatsApp support" className="lg:col-span-3">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+          <Stat label="Median first response" value={duration(w.medianFirstResponseMs)} hint={w.answeredWithin15Min === null ? "" : `${w.answeredWithin15Min}% within 15 min`} />
+          <Stat label="Chats" value={num(w.chats)} hint={`${num(w.inbound)} messages in, ${num(w.outbound)} out`} />
+          <Stat label="Waiting for a reply now" value={num(w.unanswered)} hint={w.oldestUnansweredAt ? `Oldest ${dt(w.oldestUnansweredAt)}` : ""} />
+          <Stat label="Customer rating" value={w.ratings.average === null ? "—" : `${w.ratings.average} / 5`} hint={`${num(w.ratings.count)} rating${w.ratings.count === 1 ? "" : "s"}`} />
+        </div>
+      </Card>
+      <Card title="Chats per agent" className="lg:col-span-2">
+        {w.agents.length === 0 ? <p className="text-sm text-navy-400">No replies in this period.</p> : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm">
+              <thead><tr className="text-xs text-navy-500"><th className="py-1 font-medium">Agent</th><th className="py-1 font-medium">Chats</th><th className="py-1 font-medium">Replies</th><th className="py-1 font-medium">First response</th><th className="py-1 font-medium">Rating</th></tr></thead>
+              <tbody>
+                {w.agents.map((a) => (
+                  <tr key={a.id} className="border-t border-navy-100">
+                    <td className="py-1.5 text-navy-900">{a.name}</td><td className="py-1.5">{num(a.chats)}</td><td className="py-1.5">{num(a.replies)}</td>
+                    <td className="py-1.5">{duration(a.medianFirstResponseMs)}</td><td className="py-1.5">{a.rating === null ? "—" : `${a.rating} (${a.ratings})`}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </Card>
+      <Card title="Busiest hours">
+        {w.inbound === 0 ? <p className="text-sm text-navy-400">No customer messages in this period.</p> : (
+          <>
+            <div className="flex h-28 items-end gap-0.5" role="img" aria-label={`Customer messages by hour. Busiest around ${hourLabel(top)}.`}>
+              {w.busiestHours.map((n, h) => (
+                <div key={h} title={`${hourLabel(h)}: ${n}`} className="flex-1 rounded-t bg-emerald-500" style={{ height: `${Math.max((n / peak) * 100, n ? 4 : 0)}%` }} />
+              ))}
+            </div>
+            <div className="mt-1 flex justify-between text-[11px] text-navy-400"><span>12 am</span><span>6 am</span><span>12 pm</span><span>6 pm</span><span>11 pm</span></div>
+            <p className="mt-2 text-sm text-navy-600">Busiest around {hourLabel(top)} (India time).</p>
+          </>
+        )}
+      </Card>
+    </>
+  );
+};
+
 const Reports = () => {
   const [months, setMonths] = useState(6);
   const [data, setData] = useState(null);
@@ -78,6 +145,8 @@ const Reports = () => {
       </header>
 
       <div className="grid gap-5 lg:grid-cols-3">
+        {data.whatsapp && <WhatsAppReport w={data.whatsapp} />}
+
         <Card title="Top restaurants by revenue" className="lg:col-span-2">
           {data.topStores.length === 0 ? (
             <p className="text-sm text-navy-400">No orders in this period.</p>

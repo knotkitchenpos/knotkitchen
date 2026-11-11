@@ -1,5 +1,5 @@
 const mongoose = require("mongoose");
-const { WaConversation, WaMessage } = require("../models/waChatModel");
+const { WaConversation, WaMessage, WaRating } = require("../models/waChatModel");
 const { notifyWhatsApp } = require("./csdPush");
 const wa = require("./whatsapp");
 
@@ -11,6 +11,22 @@ const wa = require("./whatsapp");
  * keyed by the provider's message id (unique index), and a receipt only ever
  * moves a message's status forward.
  */
+
+const RATING_WINDOW_MS = 24 * 60 * 60 * 1000;
+const RATING_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000;
+const RATING_ASK = "Thank you for contacting KnotKitchen. How did we do? Please reply with a number from 1 (poor) to 5 (excellent).";
+const RATING_THANKS = "Thank you for your feedback!";
+const SYSTEM_ACTOR = { id: null, name: "Automatic message" };
+
+/** A reply that is only a 1-5 (Latin, Hindi or Bengali digits, or a keycap emoji). */
+const ratingFrom = (text) => {
+  const t = String(text || "")
+    .replace(/[\u0966-\u096F]/g, (d) => String(d.charCodeAt(0) - 0x0966))
+    .replace(/[\u09E6-\u09EF]/g, (d) => String(d.charCodeAt(0) - 0x09E6))
+    .replace(/[\uFE0F\u20E3\u2B50]/g, "")
+    .trim();
+  return /^[1-5]$/.test(t) ? Number(t) : null;
+};
 
 const RANK = { pending: 0, sent: 1, delivered: 2, read: 3 };
 
@@ -90,6 +106,16 @@ const addMessage = async (e) => {
   }
 
   const at = e.at || new Date();
+
+  // The answer to a rating request: recorded, and not a new problem to work on.
+  const score = e.direction === "in" && (!e.type || e.type === "text") && conv.ratingRequestedAt && at - new Date(conv.ratingRequestedAt) < RATING_WINDOW_MS ? ratingFrom(e.body) : null;
+  if (score) {
+    await WaRating.create({ conversationId: conv._id, waId: conv.waId, score, agentId: conv.ratingForId || null, agentName: conv.ratingForName || "", at });
+    await WaConversation.updateOne({ _id: conv._id }, { $set: { ratingRequestedAt: null, lastMessagePreview: preview(e), lastMessageDirection: "in" }, $max: { lastMessageAt: at, lastInboundAt: at } });
+    sendOutbound({ conv, text: RATING_THANKS, actor: SYSTEM_ACTOR, claim: false }).catch(() => {});
+    return true;
+  }
+
   const update = { $max: { lastMessageAt: at } };
   if (e.direction === "in") {
     update.$max.lastInboundAt = at;
@@ -125,12 +151,13 @@ const ingest = async (events) => {
  * chat takes it, so two agents do not both answer; an automatic alert does not.
  * Throws what the provider threw, after recording the failure on the message.
  */
-const sendOutbound = async ({ conv, text, template, actor, claim = true }) => {
+const sendOutbound = async ({ conv, text, template, media, actor, claim = true }) => {
   const msg = await WaMessage.create({
     conversationId: conv._id,
     direction: "out",
-    type: template ? "template" : "text",
-    body: template ? wa.fillTemplate([template.header, template.body, template.footer].filter(Boolean).join("\n\n"), template.values) : text,
+    type: media ? media.kind : template ? "template" : "text",
+    body: media ? media.caption || "" : template ? wa.fillTemplate([template.header, template.body, template.footer].filter(Boolean).join("\n\n"), template.values) : text,
+    media: media ? { url: `local:${media.storageKey}`, mimeType: media.mimeType, filename: media.filename || "" } : undefined,
     template: template ? { name: template.name, language: template.language } : undefined,
     status: "pending",
     staffId: actor.id || null,
@@ -140,7 +167,7 @@ const sendOutbound = async ({ conv, text, template, actor, claim = true }) => {
 
   let failure = null;
   try {
-    const r = await wa.send({ waId: conv.waId, countryCode: "", refId: String(msg._id), text, template });
+    const r = await wa.send({ waId: conv.waId, countryCode: "", refId: String(msg._id), text, template, media });
     const set = { status: "sent" };
     if (r.providerMessageId) set.providerMessageId = r.providerMessageId;
     // A receipt may already have moved it past "sent"; never move it back.
@@ -167,4 +194,26 @@ const sendOutbound = async ({ conv, text, template, actor, claim = true }) => {
   return WaMessage.findById(msg._id).lean();
 };
 
-module.exports = { ingest, preview, advances, findOrCreateConversation, sendOutbound };
+/**
+ * Ask for a 1-5 rating as a chat closes. Only when an agent actually answered
+ * the customer's last message, inside WhatsApp's 24-hour window, and not more
+ * than once a week per customer. Never throws: closing a chat must not fail.
+ */
+const requestRating = async (conv, agent) => {
+  try {
+    if (!wa.isConfigured() || !conv.lastInboundAt) return false;
+    const now = Date.now();
+    if (now - new Date(conv.lastInboundAt).getTime() >= RATING_WINDOW_MS) return false;
+    if (conv.lastRatingAskAt && now - new Date(conv.lastRatingAskAt).getTime() < RATING_COOLDOWN_MS) return false;
+    const answered = await WaMessage.exists({ conversationId: conv._id, direction: "out", staffId: { $ne: null }, status: { $ne: "failed" }, sentAt: { $gte: conv.lastInboundAt } });
+    if (!answered) return false;
+    await sendOutbound({ conv, text: RATING_ASK, actor: SYSTEM_ACTOR, claim: false });
+    await WaConversation.updateOne({ _id: conv._id }, { $set: { ratingRequestedAt: new Date(), lastRatingAskAt: new Date(), ratingForId: conv.assignedToId || agent?.id || null, ratingForName: conv.assignedToName || agent?.name || "" } });
+    return true;
+  } catch (err) {
+    console.error("[whatsapp] rating request failed:", err?.message); // eslint-disable-line no-console
+    return false;
+  }
+};
+
+module.exports = { ingest, preview, advances, findOrCreateConversation, sendOutbound, requestRating, ratingFrom, RATING_ASK };

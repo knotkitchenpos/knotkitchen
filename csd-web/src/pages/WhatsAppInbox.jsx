@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import {
   FiSearch, FiSend, FiX, FiPlus, FiCheck, FiClock, FiAlertCircle, FiArrowLeft,
-  FiEdit2, FiFileText, FiPaperclip, FiLock, FiUser, FiShoppingBag, FiZap,
+  FiEdit2, FiFileText, FiPaperclip, FiLock, FiUser, FiShoppingBag, FiZap, FiInfo,
 } from "react-icons/fi";
 import { whatsapp, jobs, knowledge, errorMessage } from "../api";
 import { useAuth } from "../context/AuthContext";
+import CustomerPanel from "../components/CustomerPanel";
 
 /**
  * CSD → Chat → WhatsApp: the support number's WhatsApp, as a team inbox.
@@ -243,6 +244,64 @@ const TemplateDialog = ({ onClose, onSend }) => {
   );
 };
 
+const JobDialog = ({ conv, staffList, storeId, onClose, onCreated }) => {
+  const [title, setTitle] = useState("");
+  const [priority, setPriority] = useState("normal");
+  const [assignee, setAssignee] = useState("");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const submit = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      const job = await whatsapp.createJob(conv.id, { title, priority, assignedToId: assignee || undefined, storeId: storeId || undefined, note });
+      onCreated(job);
+    } catch (err) {
+      setError(errorMessage(err, "Could not create the job."));
+      setBusy(false);
+    }
+  };
+  const field = "w-full rounded-xl border border-navy-200 bg-white px-3.5 py-2.5 text-sm outline-none focus:border-brand-500";
+  const label = "mb-1.5 block text-xs font-semibold uppercase tracking-wider text-navy-600";
+  return (
+    <Modal title="Create job from this chat" onClose={onClose}>
+      <p className="mb-4 text-sm text-navy-500">The customer{storeId ? `, store ${storeId}` : ""} and the recent messages are attached to the job.</p>
+      {error && <p className="mb-4 rounded-xl bg-red-50 p-3 text-sm text-red-700">{error}</p>}
+      <form onSubmit={submit} className="space-y-4">
+        <label className="block">
+          <span className={label}>Title</span>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} required minLength={3} maxLength={200} autoFocus placeholder="e.g. Replace KOT printer" className={field} />
+        </label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block">
+            <span className={label}>Priority</span>
+            <select value={priority} onChange={(e) => setPriority(e.target.value)} className={field}>
+              {["low", "normal", "high", "urgent"].map((p) => <option key={p} value={p}>{p[0].toUpperCase() + p.slice(1)}</option>)}
+            </select>
+          </label>
+          <label className="block">
+            <span className={label}>Assign to</span>
+            <select value={assignee} onChange={(e) => setAssignee(e.target.value)} className={field}>
+              <option value="">Unassigned</option>
+              {staffList.map((s) => <option key={s.id} value={s.id}>{s.fullName}</option>)}
+            </select>
+          </label>
+        </div>
+        <label className="block">
+          <span className={label}>Note (optional)</span>
+          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={1000} className={field} />
+        </label>
+        <div className="flex justify-end gap-3 pt-1">
+          <button type="button" onClick={onClose} disabled={busy} className="rounded-xl border border-navy-300 px-4 py-2.5 text-sm font-semibold text-navy-700 hover:bg-navy-50">Cancel</button>
+          <button type="submit" disabled={busy || title.trim().length < 3} className="rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-500 disabled:opacity-50">{busy ? "Creating…" : "Create job"}</button>
+        </div>
+      </form>
+    </Modal>
+  );
+};
+
 /* -------------------------------------------------------------- not set up */
 
 const NotConnected = ({ status, isAdmin }) => (
@@ -309,6 +368,12 @@ const WhatsAppInbox = ({ onUnread }) => {
   const [pick, setPick] = useState(0);
   const [drafting, setDrafting] = useState(false);
   const [aiDraft, setAiDraft] = useState(false); // the text box holds an unreviewed AI draft
+  const [file, setFile] = useState(null); // a picture or PDF waiting to be sent
+  const [details, setDetails] = useState(false); // the customer panel, on narrower screens
+  const [jobFor, setJobFor] = useState(null); // { storeId } while creating a job
+  const [panelKey, setPanelKey] = useState(0);
+  const fileRef = useRef(null);
+  const navigate = useNavigate();
   const bottomRef = useRef(null);
   const scrollRef = useRef(null);
   const lastIdRef = useRef(null);
@@ -370,6 +435,7 @@ const WhatsAppInbox = ({ onUnread }) => {
   useEffect(() => {
     setOlder([]);
     olderRef.current = [];
+    setFile(null);
     setThread(null);
     setHasMore(false);
     lastIdRef.current = null;
@@ -403,9 +469,37 @@ const WhatsAppInbox = ({ onUnread }) => {
 
   const refresh = async () => { await loadThread(activeId, { scroll: true }); loadList(); };
 
+  const pickFile = (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = ""; // so the same file can be chosen again
+    if (!f) return;
+    const limit = f.type === "application/pdf" ? 10 : 5;
+    if (!["image/jpeg", "image/png", "application/pdf"].includes(f.type)) return setError("WhatsApp accepts JPEG, PNG or PDF files here.");
+    if (f.size > limit * 1024 * 1024) return setError(`That file is too large: ${limit} MB at most.`);
+    setError("");
+    setFile(f);
+    return undefined;
+  };
+
   const send = async (e) => {
     e?.preventDefault();
     const text = draft.trim();
+    if (file && mode === "reply" && conv && !sending) {
+      setSending(true);
+      setError("");
+      try {
+        await whatsapp.sendMedia(conv.id, file, text);
+        setFile(null);
+        setDraft("");
+        setAiDraft(false);
+      } catch (err) {
+        setError(errorMessage(err, "Could not send the file."));
+      } finally {
+        setSending(false);
+        refresh();
+      }
+      return;
+    }
     if (!text || sending || !conv) return;
     setSending(true);
     setError("");
@@ -479,7 +573,7 @@ const WhatsAppInbox = ({ onUnread }) => {
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[22rem_1fr]">
+      <div className="grid gap-4 lg:grid-cols-[22rem_1fr] 2xl:grid-cols-[22rem_1fr_20rem]">
         {/* Conversation list */}
         <aside className={`min-w-0 flex-col rounded-2xl border border-navy-200 bg-white ${activeId ? "hidden lg:flex" : "flex"}`}>
           <div className="space-y-2.5 border-b border-navy-100 p-3">
@@ -595,6 +689,9 @@ const WhatsAppInbox = ({ onUnread }) => {
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
+                  <button type="button" onClick={() => setDetails(true)} className="inline-flex items-center gap-1.5 rounded-xl border border-navy-200 px-2.5 py-1.5 text-xs font-semibold text-navy-700 hover:bg-navy-50 2xl:hidden">
+                    <FiInfo aria-hidden="true" /> Details
+                  </button>
                   <label className="flex items-center gap-1.5 rounded-xl border border-navy-200 px-2.5 py-1.5 text-xs">
                     <FiUser className="text-navy-400" aria-hidden="true" />
                     <span className="sr-only">Assigned to</span>
@@ -740,12 +837,19 @@ const WhatsAppInbox = ({ onUnread }) => {
                         ))}
                       </ul>
                     )}
+                    <input ref={fileRef} type="file" accept="image/jpeg,image/png,application/pdf" onChange={pickFile} className="hidden" aria-label="Choose a picture or PDF" />
                     <textarea value={draft} onChange={(e) => { setDraft(e.target.value); if (!e.target.value) setAiDraft(false); }} rows={aiDraft ? 4 : 2}
                       maxLength={mode === "note" ? 4000 : 4096}
-                      placeholder={mode === "note" ? "A note for the team (the customer never sees it)…" : "Type a WhatsApp reply…"}
+                      placeholder={mode === "note" ? "A note for the team (the customer never sees it)…" : file ? "Add a caption (optional)…" : "Type a WhatsApp reply…"}
                       aria-label={mode === "note" ? "Internal note" : "WhatsApp reply"}
                       onKeyDown={onComposerKey}
                       className={`flex-1 resize-none rounded-xl border px-3.5 py-2.5 text-sm outline-none ${mode === "note" ? "border-amber-200 bg-amber-50/40 focus:border-amber-400" : "border-navy-200 focus:border-emerald-500"}`} />
+                    {mode === "reply" && (
+                      <button type="button" onClick={() => fileRef.current?.click()} disabled={!configured} title="Attach a picture or PDF"
+                        className="rounded-xl border border-navy-200 p-2.5 text-navy-500 hover:bg-navy-50 disabled:opacity-40" aria-label="Attach a picture or PDF">
+                        <FiPaperclip />
+                      </button>
+                    )}
                     {mode === "reply" && status?.aiEnabled && (
                       <button type="button" onClick={suggest} disabled={drafting} title="Draft a reply with AI"
                         className="rounded-xl border border-navy-200 p-2.5 text-brand-600 hover:bg-navy-50 disabled:opacity-40" aria-label="Draft a reply with AI">
@@ -758,11 +862,17 @@ const WhatsAppInbox = ({ onUnread }) => {
                         <FiFileText />
                       </button>
                     )}
-                    <button type="submit" disabled={sending || !draft.trim() || (mode === "reply" && !configured)}
+                    <button type="submit" disabled={sending || (!draft.trim() && !(file && mode === "reply")) || (mode === "reply" && !configured)}
                       className={`rounded-xl p-2.5 text-white disabled:opacity-50 ${mode === "note" ? "bg-amber-500 hover:bg-amber-400" : "bg-emerald-600 hover:bg-emerald-500"}`}
                       aria-label={mode === "note" ? "Add note" : "Send reply"}>
                       <FiSend />
                     </button>
+                  </div>
+                )}
+                {file && mode === "reply" && !replyBlocked && (
+                  <div className="mt-2 flex items-center justify-between gap-2 rounded-lg bg-navy-50 px-2.5 py-1.5 text-xs">
+                    <span className="flex min-w-0 items-center gap-1.5 text-navy-800"><FiPaperclip className="shrink-0" aria-hidden="true" /><span className="truncate">{file.name}</span></span>
+                    <button type="button" onClick={() => setFile(null)} aria-label="Remove the file" className="shrink-0 text-navy-400 hover:text-navy-700"><FiX /></button>
                   </div>
                 )}
                 <p className={`mt-1.5 text-[11px] ${aiDraft ? "font-semibold text-amber-700" : "text-navy-400"}`}>
@@ -772,7 +882,25 @@ const WhatsAppInbox = ({ onUnread }) => {
             </>
           )}
         </section>
+
+        {conv && (
+          <aside className="hidden min-w-0 self-start rounded-2xl border border-navy-200 bg-white 2xl:block">
+            <CustomerPanel conversationId={conv.id} refreshKey={panelKey} onCreateJob={(storeId) => setJobFor({ storeId })} />
+          </aside>
+        )}
       </div>
+
+      {details && conv && (
+        <div className="fixed inset-0 z-40 flex justify-end bg-black/40 2xl:hidden" onClick={(e) => { if (e.target === e.currentTarget) setDetails(false); }}>
+          <div role="dialog" aria-modal="true" aria-label="Customer details" className="h-full w-full max-w-sm overflow-y-auto bg-white shadow-2xl">
+            <CustomerPanel conversationId={conv.id} refreshKey={panelKey} onClose={() => setDetails(false)} onCreateJob={(storeId) => { setDetails(false); setJobFor({ storeId }); }} />
+          </div>
+        </div>
+      )}
+      {jobFor && conv && (
+        <JobDialog conv={conv} staffList={staffList} storeId={jobFor.storeId} onClose={() => setJobFor(null)}
+          onCreated={(job) => { setJobFor(null); setPanelKey((k) => k + 1); refresh(); setError(""); navigate(`/jobs/${job.id}`); }} />
+      )}
 
       {newChat && (
         <NewChatDialog onClose={() => setNewChat(false)}

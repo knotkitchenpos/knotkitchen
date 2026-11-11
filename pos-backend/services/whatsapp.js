@@ -1,4 +1,4 @@
-/* global AbortSignal */
+/* global AbortSignal, FormData, Blob */
 const crypto = require("crypto");
 
 /**
@@ -229,7 +229,8 @@ const parseMyOperator = (body) => {
   return [out];
 };
 
-const myopSend = async ({ waId, countryCode, refId, text, template }) => {
+const myopSend = async ({ waId, countryCode, refId, text, template, media }) => {
+  if (media) throw new ProviderError("Sending files is not available on the MyOperator connection.", { status: 409, code: "WHATSAPP_SEND_FAILED" });
   const { cc, number } = splitWaId(waId, countryCode);
   const data = template
     ? { type: "template", context: { template_name: template.name, language: template.language || "en", ...(template.values && Object.keys(template.values).length ? { body: template.values } : {}) } }
@@ -274,7 +275,7 @@ const myopTemplates = async () => {
  */
 const cloud = () => (providerName() === "fast2sms"
   ? {
-      base: `https://www.fast2sms.com/dev/whatsapp/${env("FAST2SMS_WA_GRAPH_VERSION") || "v26.0"}`,
+      base: `${fast2smsBase()}/dev/whatsapp/${env("FAST2SMS_WA_GRAPH_VERSION") || "v26.0"}`,
       headers: { Authorization: fast2smsKey() },
       phoneId: env("FAST2SMS_WA_PHONE_NUMBER_ID"),
       wabaId: env("FAST2SMS_WA_WABA_ID"),
@@ -337,8 +338,33 @@ const parseMeta = (body) => {
   return events;
 };
 
-const metaSend = async ({ waId, text, template }) => {
-  const payload = template
+/** Upload a file to WhatsApp; the answer is the id a message refers to. */
+const metaUpload = async ({ buffer, mimeType, filename }) => {
+  const form = new FormData();
+  form.append("messaging_product", "whatsapp");
+  form.append("type", mimeType);
+  form.append("file", new Blob([buffer], { type: mimeType }), filename || "file");
+  let res;
+  try {
+    res = await fetch(graph(`${cloud().phoneId}/media`), { method: "POST", headers: metaHeaders(), body: form, signal: AbortSignal.timeout(60000) });
+  } catch {
+    throw new ProviderError("Could not upload the file to WhatsApp. Try again.");
+  }
+  const json = await res.json().catch(() => null);
+  if (!res.ok || !json?.id) throw new ProviderError(json?.error?.message || `WhatsApp refused the file (${res.status}).`, { code: "WHATSAPP_SEND_FAILED" });
+  return String(json.id);
+};
+
+const metaSend = async ({ waId, text, template, media }) => {
+  let mediaPayload = null;
+  if (media) {
+    const id = await metaUpload(media);
+    mediaPayload = {
+      type: media.kind,
+      [media.kind]: { id, ...(media.caption ? { caption: media.caption } : {}), ...(media.kind === "document" && media.filename ? { filename: media.filename } : {}) },
+    };
+  }
+  const payload = mediaPayload || (template
     ? {
         type: "template",
         template: {
@@ -349,7 +375,7 @@ const metaSend = async ({ waId, text, template }) => {
             : {}),
         },
       }
-    : { type: "text", text: { body: text, preview_url: false } };
+    : { type: "text", text: { body: text, preview_url: false } });
   const r = await request(graph(`${cloud().phoneId}/messages`), {
     method: "POST",
     headers: metaHeaders(),
@@ -398,6 +424,9 @@ const verifyMetaSignature = (rawBody, header) => {
 };
 
 /* ----------------------------------------------------------------- Fast2SMS */
+
+// FAST2SMS_WA_BASE only for a local stand-in while testing.
+const fast2smsBase = () => (env("FAST2SMS_WA_BASE") || "https://www.fast2sms.com").replace(/\/+$/, "");
 
 /** The account's Dev API key; the same one the SMS code already uses, unless WhatsApp has its own. */
 const fast2smsKey = () => env("FAST2SMS_WA_API_KEY") || env("FAST2SMS_API_KEY");
@@ -483,7 +512,7 @@ const verifyFast2smsSecret = (header) => {
 const fast2smsTemplates = async () => {
   if (cloud().wabaId) return metaTemplates();
   const q = new URLSearchParams({ type: "template", phone_number_id: cloud().phoneId });
-  const r = await request(`https://www.fast2sms.com/dev/dlt_manager/whatsapp?${q}`, { headers: { Authorization: fast2smsKey() } });
+  const r = await request(`${fast2smsBase()}/dev/dlt_manager/whatsapp?${q}`, { headers: { Authorization: fast2smsKey() } });
   if (!r.ok) throw new ProviderError(r.json?.message || `Could not load WhatsApp templates (${r.status}).`);
   const rows = [];
   for (const n of r.json?.data || []) for (const t of n.templates || (n.template_name ? [n] : [])) rows.push(t);

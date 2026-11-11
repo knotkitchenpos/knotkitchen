@@ -156,4 +156,4 @@ const computeHealth = async (now = new Date()) => {
   return { rows, counts, activeStores: stores.length, devicesChecked: devices !== null, limits: LIMITS };
 };
 
-module.exports = { computeHealth, issuesFor, LIMITS, rupees, dateIST, dateTimeIST };
+module.exports = { computeHealth, issuesFor, readDevices, LIMITS, rupees, dateIST, dateTimeIST };

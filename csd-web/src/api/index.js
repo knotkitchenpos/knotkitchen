@@ -195,6 +195,14 @@ export const whatsapp = {
   messages: (id, params) => api.get(`/whatsapp/conversations/${id}/messages`, { params }).then((r) => r.data.data),
   send: (id, payload) => api.post(`/whatsapp/conversations/${id}/messages`, payload).then((r) => r.data.data),
   update: (id, payload) => api.patch(`/whatsapp/conversations/${id}`, payload).then((r) => r.data.data),
+  context: (id) => api.get(`/whatsapp/conversations/${id}/context`).then((r) => r.data.data),
+  createJob: (id, payload) => api.post(`/whatsapp/conversations/${id}/job`, payload).then((r) => r.data.data),
+  // The file is the request body, so its bytes are not re-encoded.
+  sendMedia: (id, file, caption) => api.post(`/whatsapp/conversations/${id}/media`, file, {
+    params: { filename: file.name, caption: caption || undefined },
+    headers: { "Content-Type": "application/octet-stream" },
+    timeout: 120000,
+  }).then((r) => r.data.data),
   suggest: (id) => api.post(`/whatsapp/conversations/${id}/suggest`, {}, { timeout: 60000 }).then((r) => r.data.data),
   mediaUrl: (messageId) => `${api.defaults.baseURL}/whatsapp/messages/${messageId}/media`,
 };

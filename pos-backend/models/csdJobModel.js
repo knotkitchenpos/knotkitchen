@@ -76,6 +76,9 @@ const csdJobSchema = new mongoose.Schema(
     storeId: { type: String, default: "", index: true },
     restaurantName: { type: String, default: "" },
 
+    // The WhatsApp chat this job came from, if any.
+    waConversationId: { type: mongoose.Schema.Types.ObjectId, ref: "WaConversation", default: null },
+
     status: { type: String, enum: JOB_STATUSES, default: "open", index: true },
     priority: { type: String, enum: JOB_PRIORITIES, default: "normal", index: true },
     deadline: { type: Date, default: null },

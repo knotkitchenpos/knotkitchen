@@ -37,6 +37,16 @@ const conversationSchema = new mongoose.Schema(
     // customer's last message; after that only an approved template.
     lastInboundAt: { type: Date, default: null },
     unreadCount: { type: Number, default: 0 },
+
+    // The restaurant an agent linked this chat to, when the number is not the
+    // owner's (a manager, a cashier).
+    linkedStoreId: { type: String, default: "" },
+
+    // A rating was asked for when this chat closed; a reply of 1-5 answers it.
+    ratingRequestedAt: { type: Date, default: null },
+    lastRatingAskAt: { type: Date, default: null },
+    ratingForId: { type: mongoose.Schema.Types.ObjectId, ref: "CsdStaff", default: null },
+    ratingForName: { type: String, default: "" },
   },
   { timestamps: true }
 );
@@ -83,7 +93,22 @@ messageSchema.index({ conversationId: 1, sentAt: -1 });
 messageSchema.index({ providerMessageId: 1 }, { unique: true, partialFilterExpression: { providerMessageId: { $type: "string" } } });
 messageSchema.index({ body: "text" });
 
+/** A customer's 1-5 answer when their chat closed. */
+const ratingSchema = new mongoose.Schema(
+  {
+    conversationId: { type: mongoose.Schema.Types.ObjectId, ref: "WaConversation", required: true, index: true },
+    waId: { type: String, default: "" },
+    score: { type: Number, required: true, min: 1, max: 5 },
+    agentId: { type: mongoose.Schema.Types.ObjectId, ref: "CsdStaff", default: null },
+    agentName: { type: String, default: "" },
+    at: { type: Date, default: Date.now, index: true },
+  },
+  { timestamps: true }
+);
+
 const WaConversation = mongoose.model("WaConversation", conversationSchema);
 const WaMessage = mongoose.model("WaMessage", messageSchema);
 
-module.exports = { WaConversation, WaMessage };
+const WaRating = mongoose.model("WaRating", ratingSchema);
+
+module.exports = { WaConversation, WaMessage, WaRating };
