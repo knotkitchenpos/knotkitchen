@@ -38,12 +38,7 @@ router.route("/orders/sync").post(isVerifiedUser, async (req, res, next) => {
           synced.push({ localId, serverId: created._id, orderNumber: created.orderNumber, duplicate: true });
           continue;
         }
-        const placedAt = new Date(entry.placedAt);
-        const sane = !Number.isNaN(placedAt.getTime()) && Date.now() - placedAt.getTime() < 7 * 86400000 && placedAt.getTime() <= Date.now();
-        await Order.updateOne(
-          { _id: created._id },
-          { $set: { isOffline: true, syncStatus: "synced", ...(sane ? { createdAt: placedAt, orderDate: placedAt } : {}) } },
-        );
+        await Order.collection.updateOne({ _id: created._id }, { $set: backdate(created, entry.placedAt) });
         synced.push({ localId, serverId: created._id, orderNumber: created.orderNumber });
       } catch (err) {
         failed.push({ localId, error: err.message || "failed" });
@@ -54,6 +49,31 @@ router.route("/orders/sync").post(isVerifiedUser, async (req, res, next) => {
     next(error);
   }
 });
+
+/**
+ * The sale happened when the till took it, not when it synced. Reports, the
+ * Orders day filter and the order's age all read createdAt, so a sale rung up
+ * at 23:55 and synced next morning belonged to the wrong day. Mongoose treats
+ * createdAt as immutable and silently dropped it from updateOne, so this is
+ * written straight to the collection. The auto-ready and auto-complete clocks
+ * and the timeline move back by the same amount: food handed over an hour ago
+ * is not "Preparing" for another 20 minutes.
+ */
+const backdate = (created, placedAtRaw) => {
+  const set = { isOffline: true, syncStatus: "synced" };
+  const placedAt = new Date(placedAtRaw);
+  const createdAt = new Date(created.createdAt || Date.now());
+  const sane = !Number.isNaN(placedAt.getTime()) && Date.now() - placedAt.getTime() < 7 * 86400000 && placedAt.getTime() <= Date.now();
+  if (!sane) return set;
+  const shift = createdAt.getTime() - placedAt.getTime();
+  set.createdAt = placedAt;
+  set.orderDate = placedAt;
+  for (const f of ["readyDueAt", "completeDueAt"]) if (created[f]) set[f] = new Date(new Date(created[f]).getTime() - shift);
+  (created.timeline || []).forEach((t, i) => {
+    if (t?.timestamp) set[`timeline.${i}.timestamp`] = new Date(new Date(t.timestamp).getTime() - shift);
+  });
+  return set;
+};
 
 /** Run the live addOrder against one queued order, capturing its result. */
 const runAddOrder = (req, body, idempotencyKey) =>
@@ -74,3 +94,4 @@ const runAddOrder = (req, body, idempotencyKey) =>
   });
 
 module.exports = router;
+module.exports.backdate = backdate;

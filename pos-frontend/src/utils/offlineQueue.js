@@ -10,7 +10,21 @@ import { COMPLETED, PREPARING } from "../constants/orderStatus.js";
 
 const KEY = "kk.offlineOrders.v1";
 
-export const isNetworkError = (err) => Boolean(err) && !err.response && (err.code === "ERR_NETWORK" || err.code === "ECONNABORTED" || err.message === "Network Error" || (typeof navigator !== "undefined" && navigator.onLine === false));
+/**
+ * The gateway answered for a server it could not reach (the API restarting or
+ * down): the order did not get in, or (504) may have and the idempotency key
+ * finds it. Either way the sale is kept on the device like a lost connection,
+ * instead of "Failed to complete order" with the customer at the counter.
+ */
+export const GATEWAY_DOWN = [502, 503, 504];
+
+export const isNetworkError = (err) =>
+  Boolean(err) &&
+  (GATEWAY_DOWN.includes(err.response?.status) ||
+    (!err.response && (err.code === "ERR_NETWORK" || err.code === "ECONNABORTED" || err.message === "Network Error" || (typeof navigator !== "undefined" && navigator.onLine === false))));
+
+/** The server may have saved it anyway (timed out, or the gateway gave up waiting): its live copy prints the KOT. */
+export const mayHaveReachedServer = (err) => err?.code === "ECONNABORTED" || err?.response?.status === 504;
 
 export const readQueue = () => {
   const q = readStoreScoped(KEY, []);
@@ -80,9 +94,23 @@ export const markRejected = (failedOrders) => {
   return fresh;
 };
 
+/**
+ * The payments the server will record for a paid queued order. The Orders
+ * screen reads "paid" from payments[], so a cash sale taken offline showed
+ * Payment Status "Pending" until it synced.
+ */
+const paymentsOf = (order) => {
+  if (!order?.paymentMethod || Array.isArray(order.payments)) return order?.payments;
+  if (Array.isArray(order.splits) && order.splits.length) {
+    return order.splits.map((s) => ({ method: String(s.method || "").toLowerCase(), amount: Number(s.amount) || 0, status: "paid" }));
+  }
+  return [{ method: String(order.paymentMethod).toLowerCase(), amount: Number(order.bills?.totalWithTax) || 0, status: "paid" }];
+};
+
 /** What the POS shows for a queued order: the payload dressed as an order. */
 export const localOrderView = (entry) => ({
   ...entry.order,
+  payments: paymentsOf(entry.order),
   _id: entry.localId,
   orderNumber: entry.localNumber,
   orderStatus: entry.order.paymentMethod ? COMPLETED : PREPARING,

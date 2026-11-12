@@ -43,7 +43,8 @@ import { getMyRestaurant } from "../../https";
 import { getWebsiteSettings } from "../../https/storefrontApi";
 import Invoice from "../invoice/Invoice";
 import { formatQty, toOrderItems, toQuantity, typedQty } from "../../utils/orderItems";
-import { enqueueOrder, isNetworkError, localOrderView, markKotPrinted, newLocalId } from "../../utils/offlineQueue";
+import { enqueueOrder, isNetworkError, localOrderView, markKotPrinted, mayHaveReachedServer, newLocalId } from "../../utils/offlineQueue";
+import useReachable from "../../hooks/useReachable";
 import { tableLabel } from "../../utils/orderLabels";
 import { deliveryFeeFor, deliveryMaxKm, hasDeliverySlabs } from "../../utils/rulesCharges";
 import { readStoreScoped, writeStoreScoped } from "../../utils/storeSession";
@@ -117,6 +118,10 @@ const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 /** The method picked at checkout, as addOrder takes it. None picked: no method, never a default. */
 const PAYMENT_METHODS = { cash: "Cash", upi: "UPI", card: "Card", split: "Split" };
 
+// A table order lives on the server (other tills, the QR menu and the kitchen
+// share it), so it cannot be kept on one device like a counter sale.
+const TABLE_OFFLINE = "No internet: table orders need the connection. Take it as a Collection order (it is saved and syncs), or try again when the internet is back.";
+
 /**
  * A settings fetch that keeps its last good answer on this device. A till
  * opened offline had no GST or charges at all and billed every order at 0%.
@@ -141,6 +146,7 @@ const withSavedCopy = (key, fetcher) => async () => {
 const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
   const dispatch = useDispatch();
   const qc = useQueryClient();
+  const online = useReachable();
   const cart = useSelector((s) => s.cart);
   // One more of a dish asks first when the shelf cannot cover it.
   const { guardStock, stockDialog } = useStockGuard();
@@ -370,7 +376,7 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
         // otherwise the kitchen device prints it when it syncs. Not after a timeout: the server may have the
         // sale, and that live copy prints on the kitchen device.
         // shortcut: an ERR_NETWORK raised after the server saved the sale still prints twice; tag the live attempt if that is seen.
-        if (loadPrinterConfig().kotPrint && err.code !== "ECONNABORTED")
+        if (loadPrinterConfig().kotPrint && !mayHaveReachedServer(err))
           printKot(localOrderView(entry), { auto: true })
             .then(() => markKotPrinted(localId))
             .catch((e) => warnNotPrinted("KOT", e, () => printKot(localOrderView(entry), { auto: true }).then(() => markKotPrinted(localId))));
@@ -435,7 +441,7 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
       dispatch(clearDiscount());
     },
     onError: (e) =>
-      enqueueSnackbar(e.response?.data?.message || "Failed to add items to the table.", { variant: "error" }),
+      enqueueSnackbar(isNetworkError(e) ? TABLE_OFFLINE : e.response?.data?.message || "Failed to add items to the table.", { variant: "error" }),
   });
 
   const sessionMutation = useMutation({
@@ -453,7 +459,7 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
       dispatch(clearDiscount());
     },
     onError: (e) =>
-      enqueueSnackbar(e.response?.data?.message || "Failed to attach order to table.", { variant: "error" }),
+      enqueueSnackbar(isNetworkError(e) ? TABLE_OFFLINE : e.response?.data?.message || "Failed to attach order to table.", { variant: "error" }),
   });
 
   const busy =
@@ -829,9 +835,19 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
             Store ID: {user?.storeId || "—"}
           </p>
         </div>
-        <span className="px-2 py-[3px] rounded-full bg-[#DCFCE7] text-[#15803D] text-[10.5px] font-bold flex items-center gap-1 shrink-0">
-          <span className="w-[5px] h-[5px] rounded-full bg-[#22C55E]" /> Online
-        </span>
+        {/* What the server says, not a fixed label: it read "Online" with the internet down. */}
+        {online ? (
+          <span className="px-2 py-[3px] rounded-full bg-[#DCFCE7] text-[#15803D] text-[10.5px] font-bold flex items-center gap-1 shrink-0">
+            <span className="w-[5px] h-[5px] rounded-full bg-[#22C55E]" /> Online
+          </span>
+        ) : (
+          <span
+            className="px-2 py-[3px] rounded-full bg-[#FEE2E2] text-[#B91C1C] text-[10.5px] font-bold flex items-center gap-1 shrink-0"
+            title="No internet. Orders are saved on this device and sync when it is back."
+          >
+            <span className="w-[5px] h-[5px] rounded-full bg-[#EF4444]" /> Offline
+          </span>
+        )}
         {battery && (
           <span
             className={`text-[11.5px] font-bold shrink-0 ${battery.level <= 15 && !battery.charging ? "text-[#DC2626]" : "text-[#475569]"}`}
@@ -1310,6 +1326,7 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
       {showTable && (
         <TableModal
           tables={tables}
+          offline={!online}
           busy={busy}
           // The table and head count chosen when seating from Manage Tables.
           initialTableId={customer.table?.tableId}

@@ -18,6 +18,7 @@ import TimingsHolidaysView from "../components/settings/TimingsHolidaysView";
 import ManageStaffView from "../components/settings/ManageStaffView";
 import RulesChargesView from "../components/settings/RulesChargesView";
 import KnotEatsView from "../components/settings/KnotEatsView";
+import { readQueue } from "../utils/offlineQueue";
 
 /** Which add-on unlocks a locked option (services/planFeatures on the server). */
 const ADDON_FOR = { website: "Website", websiteHours: "Website" };
@@ -92,6 +93,16 @@ const Settings = () => {
       return;
     }
     if (item.action === "logout") {
+      // Sales taken offline sync only while this store is signed in on this
+      // device: say so before they are left waiting.
+      const waiting = readQueue().length;
+      if (
+        waiting &&
+        !window.confirm(
+          `${waiting} order(s) taken offline have not synced yet. They stay on this device and sync the next time this store signs in here. Sign out anyway?`,
+        )
+      )
+        return;
       logoutMutation.mutate();
       return;
     }

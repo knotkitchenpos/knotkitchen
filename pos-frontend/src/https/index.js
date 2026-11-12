@@ -66,7 +66,9 @@ export const getOrders = (params) =>
 export const updateOrderStatus = ({ orderId, orderStatus }) =>
   axiosWrapper.put(`/api/order/${orderId}`, { orderStatus });
 /* ---------- Offline ---------- */
-export const syncOfflineOrders = (orders) => axiosWrapper.post("/api/offline/orders/sync", { orders });
+// A batch at a time with a time limit: on a line that connects but carries
+// nothing, an open-ended request held the sync up for minutes.
+export const syncOfflineOrders = (orders) => axiosWrapper.post("/api/offline/orders/sync", { orders }, { timeout: 30000 });
 
 /* ---------- Inventory ---------- */
 export const getIngredients = () => axiosWrapper.get("/api/inventory/ingredients");

@@ -33,6 +33,7 @@ const canAddTo = (t) => Boolean(sessionIdOf(t));
  */
 const TableModal = ({
   tables = [],
+  offline = false,
   busy,
   onClose,
   onConfirm,
@@ -139,9 +140,15 @@ const TableModal = ({
           </div>
         )}
 
+        {offline && (
+          <p role="alert" className="rounded-xl bg-[#FEF3C7] text-[#92400E] text-[13px] font-semibold px-3.5 py-2.5">
+            No internet. Table orders need the connection, because other tills and the kitchen share them. Take this
+            one as a Collection order (it is saved on this device and syncs), or wait for the internet.
+          </p>
+        )}
         {tables.length === 0 ? (
           <p className="text-center text-[13.5px] text-[#94A3B8] py-10">
-            No tables configured for this store yet.
+            {offline ? "The table list could not load without the internet." : "No tables configured for this store yet."}
           </p>
         ) : (
           <div className="grid grid-cols-3 sm:grid-cols-4 gap-2.5 max-h-[280px] overflow-y-auto pr-1">

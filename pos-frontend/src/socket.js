@@ -2,6 +2,7 @@ import { io } from "socket.io-client";
 import { getActiveStoreId } from "./utils/storeSession";
 import { SOCKET_URL } from "./config";
 import { axiosWrapper } from "./https/axiosWrapper";
+import { markReachable } from "./utils/connectivity";
 
 /**
  * The one socket.io connection for the signed-in POS.
@@ -83,6 +84,9 @@ export const acquireSocket = (restaurantId) => {
     socket.on("connect", () => {
       retryDelay = 2000;
       current.emit("joinRestaurant", { restaurantId });
+      // The socket reconnects on its own when the internet returns: that is
+      // the first sign the server is reachable again (utils/connectivity).
+      markReachable(true);
     });
     socket.on("connect_error", () => {
       // `active` is true while socket.io is still retrying on its own.

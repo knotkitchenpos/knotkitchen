@@ -38,7 +38,7 @@ const Menu = () => {
   const cartCount = useSelector((s) => formatQty(s.cart.reduce((n, i) => n + (i.quantity || 1), 0)));
   const cartSubtotal = useSelector(getTotalPrice);
 
-  const { data: menusRes } = useQuery({ queryKey: ["menus"], queryFn: getMenus });
+  const { data: menusRes } = useQuery({ queryKey: ["menus"], queryFn: () => getMenus() });
   const menus = menusRes?.data?.data || [];
 
   const addCategoryMutation = useMutation({

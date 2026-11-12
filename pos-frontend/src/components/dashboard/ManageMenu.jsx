@@ -133,7 +133,7 @@ const ManageMenu = () => {
   const [editingProduct, setEditingProduct] = useState(null);
   const [viewingProduct, setViewingProduct] = useState(null);
 
-  const { data: menusRes, isLoading } = useQuery({ queryKey: ["menus"], queryFn: getMenus });
+  const { data: menusRes, isLoading } = useQuery({ queryKey: ["menus"], queryFn: () => getMenus() });
   const menus = menusRes?.data?.data || [];
 
   // The store's group list, from the server, so every device shows the same

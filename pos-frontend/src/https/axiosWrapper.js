@@ -3,6 +3,7 @@ import { BACKEND_URL } from "../config";
 import { isPublicPath } from "../utils/publicRoutes";
 import { getActiveStoreId } from "../utils/storeSession";
 import { requestPin, typedPin } from "../utils/pinPrompt";
+import { markReachable } from "../utils/connectivity";
 
 const defaultHeader = {
   "Content-Type": "application/json",
@@ -53,8 +54,16 @@ const flushQueue = (error = null) => {
 };
 
 axiosWrapper.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    markReachable(true);
+    return response;
+  },
   async (error) => {
+    // Any reply, even an error, proves the server is reachable; no reply at
+    // all (not a request this tab cancelled itself) means it is not.
+    // A gateway answering for an API it cannot reach (502/503/504) is the server being down: offline too.
+    if (error?.response) markReachable(![502, 503, 504].includes(error.response.status));
+    else if (error?.code !== "ERR_CANCELED") markReachable(false);
     // A file download (responseType "blob": order and menu CSV) gets its JSON
     // error body as a Blob too. Read it as JSON first, or the checks below
     // never see e.g. PIN_REQUIRED and the PIN prompt never opens.
