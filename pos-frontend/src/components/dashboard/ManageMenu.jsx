@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useRef } from "react";
+import { opensFromLeft } from "../../utils/popoverSide";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "../../utils/notify";
 import { capOf, groupForSave, groupLibrary } from "../../utils/modifierGroups";
@@ -76,6 +77,8 @@ const ManageMenu = () => {
   // Selection state
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [showBulkMenu, setShowBulkMenu] = useState(false);
+  const bulkRef = useRef(null);
+  const [bulkFromLeft, setBulkFromLeft] = useState(false);
 
   // Drill-down navigation state
   const [activeCategory, setActiveCategory] = useState(null);
@@ -889,16 +892,19 @@ const ManageMenu = () => {
 
             {/* Bulk Manage Button — ONLY VISIBLE WHEN 1+ ITEMS ARE SELECTED */}
             {selectedIds.size > 0 && (
-              <div className="relative">
+              <div className="relative" ref={bulkRef}>
                 <button
-                  onClick={() => setShowBulkMenu((b) => !b)}
+                  onClick={() => {
+                    setBulkFromLeft(opensFromLeft(bulkRef.current, 224));
+                    setShowBulkMenu((b) => !b);
+                  }}
                   className="h-[38px] px-4 rounded-xl bg-[#0F172A] text-white text-[13px] font-bold flex items-center gap-1.5 shadow-md hover:bg-[#1E293B]"
                 >
                   Manage ({selectedIds.size})
                 </button>
 
                 {showBulkMenu && (
-                  <div className="absolute right-0 mt-2 w-56 bg-white border border-[#E2E8F0] rounded-xl shadow-xl z-50 py-1 text-[13px]">
+                  <div className={`absolute ${bulkFromLeft ? "left-0" : "right-0"} mt-2 w-56 max-w-[calc(100vw-2rem)] bg-white border border-[#E2E8F0] rounded-xl shadow-xl z-50 py-1 text-[13px]`}>
                     {/* Attaching or detaching a group only makes sense for a
                         selection of PRODUCTS. On the groups list those two
                         actions had nothing to act on. */}
@@ -1598,7 +1604,7 @@ const ManageMenu = () => {
                       <span className="text-3xl block mb-2">📦</span>
                       <p className="font-bold text-[14px] text-[#475569]">This subcategory is empty</p>
                       <p className="text-[12px] text-[#94A3B8] mt-1">
-                        No products added to "{activeSubcategory}" yet.
+                        No products added to “{activeSubcategory}” yet.
                       </p>
                     </div>
                   );
@@ -1620,7 +1626,7 @@ const ManageMenu = () => {
                     <span className="text-3xl block mb-2">📁</span>
                     <p className="font-bold text-[14px] text-[#475569]">This category is empty</p>
                     <p className="text-[12px] text-[#94A3B8] mt-1">
-                      No subcategories or products created in "{activeCategory?.name || "Category"}" yet.
+                      No subcategories or products created in “{activeCategory?.name || "Category"}” yet.
                     </p>
                   </div>
                 );

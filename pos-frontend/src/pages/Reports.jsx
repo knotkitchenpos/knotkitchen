@@ -13,6 +13,7 @@ import { receiptAddress } from "../utils/address";
 import { buildQuickDates } from "../utils/quickDates.js";
 import { formatQty, resolveItemAmounts } from "../utils/orderItems";
 import { money, localDay, cellDay, dateGB as fmtDate, time12 as fmtTime } from "../utils";
+import { opensFromLeft } from "../utils/popoverSide";
 
 /**
  * Module 5 — Reports.
@@ -649,8 +650,7 @@ const Reports = () => {
   // run off the left of the screen (a phone, where the toolbar wraps left).
   const [exportFromLeft, setExportFromLeft] = useState(false);
   const toggleExport = () => {
-    const r = exportRef.current?.getBoundingClientRect();
-    setExportFromLeft(Boolean(r) && r.right - 240 < 8);
+    setExportFromLeft(opensFromLeft(exportRef.current, 240));
     setExportOpen((v) => !v);
   };
   const [exporting, setExporting] = useState(false);
