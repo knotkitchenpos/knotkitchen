@@ -116,7 +116,12 @@ test("Manage Menu (draft) still shows every category", () => {
 });
 
 test("the table QR reads the same POS rule, not its own copy", () => {
-  assert.match(QR_ROUTE, /projectMenus\(docs, AUDIENCES\.SYSTEM\)/, "visibility comes from the published copy");
+  // Directly, or through services/projectedMenuCache (which runs projectMenus).
+  assert.match(
+    QR_ROUTE,
+    /projectMenus\(docs, AUDIENCES\.SYSTEM\)|projectedMenus\(\{[\s\S]{0,300}?audience: AUDIENCES\.SYSTEM/,
+    "visibility comes from the published copy",
+  );
   assert.ok(!/POS_VISIBLE_QUERY/.test(QR_ROUTE), "no live-flag filtering in the query");
   assert.ok(
     !/\$or: \[\{ published: true \}, \{ isPublished: true \}, \{ showOnPos: true \}\]/.test(QR_ROUTE),

@@ -156,16 +156,19 @@ jobs:
             echo "==> Waiting for backend to become ready"
             # Poll /health via the internal Docker network — no reliance on DNS
             # so a broken deploy doesn't cause a false green from cached DNS.
+            # Both API processes (pos-api and pos-api-2) must answer.
             for i in $(seq 1 30); do
               if docker compose -f deploy/docker-compose.yml exec -T pos-api \
+                   wget -qO- http://127.0.0.1:8000/health >/dev/null 2>&1 \
+                 && docker compose -f deploy/docker-compose.yml exec -T pos-api-2 \
                    wget -qO- http://127.0.0.1:8000/health >/dev/null 2>&1; then
-                echo "Backend healthy after ${i} attempts."
+                echo "Both backends healthy after ${i} attempts."
                 exit 0
               fi
               sleep 2
             done
-            echo "Backend never became healthy — check container logs."
-            docker compose -f deploy/docker-compose.yml logs --tail=200 pos-api
+            echo "A backend never became healthy — check container logs."
+            docker compose -f deploy/docker-compose.yml logs --tail=100 pos-api pos-api-2
             exit 1
 
       - name: Post-deploy smoke test

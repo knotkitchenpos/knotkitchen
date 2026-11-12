@@ -135,6 +135,9 @@ services:
     environment:
       NODE_ENV: production
       PORT: "8000"
+      # Two API processes share live updates through the database (see
+      # pos-api-2 below and services/socket.js).
+      SOCKET_SHARED_ADAPTER: mongo
 
       # === Secrets ===
       MONGODB_URI: ${MONGODB_URI}
@@ -302,6 +305,20 @@ services:
       # and customer KYC must never be reachable that way. Nothing serves this
       # directory — the files stream through an authenticated CSD route.
       - csd_documents:/app/csd-documents
+
+  # ---------------------------------------------------------------------------
+  # Second POS backend process (2026-11-12). The VPS has two cores and one
+  # Node process uses one, so Caddy spreads api traffic over pos-api and
+  # pos-api-2, keeping each visitor on the same one (lb_policy ip_hash), so
+  # the per-IP rate limits and a device's live-update connection stay put.
+  # Same image, settings and volumes; it runs no start-up seeds and no timers
+  # (RUN_SCHEDULERS=false), so owner alerts and sweeps happen once.
+  # ---------------------------------------------------------------------------
+  pos-api-2:
+    extends:
+      service: pos-api
+    environment:
+      RUN_SCHEDULERS: "false"
 
   # ---------------------------------------------------------------------------
   # POS SPA  →  business.${BASE_DOMAIN}

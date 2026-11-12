@@ -2,9 +2,10 @@ const createHttpError = require("http-errors");
 const WebsiteSettings = require("../models/websiteSettingsModel");
 const Store = require("../models/storeModel");
 const Restaurant = require("../models/restaurantModel");
-const Menu = require("../models/menuModel");
 const KnotEatsReview = require("../models/knotEatsReviewModel");
-const { AUDIENCES, projectMenus } = require("./menuCache");
+const { AUDIENCES } = require("./menuCache");
+const { projectedMenus } = require("./projectedMenuCache");
+const Menu = require("../models/menuModel");
 const { availabilityAt, orderingOpen } = require("./websiteAvailability");
 const { haversineKm, roadDistances, computeDeliveryFeeFromSlabs } = require("./distanceService");
 const { unavailableReason } = require("./storefrontResolver");
@@ -162,7 +163,7 @@ const median = (sorted) => {
 const buildStoreDishes = async ({ restaurantId, timezone }) => {
   const { toPublicProduct } = storefront();
   const menus = restaurantId
-    ? projectMenus(await Menu.find({ restaurantId, isDeleted: { $ne: true } }).sort({ createdAt: 1 }), AUDIENCES.WEBSITE)
+    ? await projectedMenus({ Menu, query: { restaurantId, isDeleted: { $ne: true } }, audience: AUDIENCES.WEBSITE, sort: { createdAt: 1 } })
     : [];
 
   const dishes = [];

@@ -118,7 +118,55 @@ const initSocket = (server, { corsOrigin = ["http://localhost:5173"] } = {}) => 
     socket.on("disconnect", () => {});
   });
 
+  for (const [event, fn] of pendingServerListeners) io.on(event, fn);
+  pendingServerListeners.length = 0;
+  if (process.env.SOCKET_SHARED_ADAPTER === "mongo") attachMongoAdapter();
+
   return io;
+};
+
+/**
+ * More than one API process (pos-api and pos-api-2 behind Caddy): a device's
+ * socket lives in one process, while the order that concerns it may be made
+ * in the other. The MongoDB adapter carries every room emit to the other
+ * processes, through a small collection whose rows expire after an hour.
+ * Uses change streams, so it needs the replica set the VPS database runs.
+ * Until it is attached (a second or two after start), emits reach this
+ * process's own sockets only.
+ */
+const ADAPTER_COLLECTION = "socket_io_events";
+const attachMongoAdapter = () => {
+  const mongoose = require("mongoose");
+  const { createAdapter } = require("@socket.io/mongo-adapter");
+  mongoose.connection
+    .asPromise()
+    .then(async (conn) => {
+      const col = conn.db.collection(ADAPTER_COLLECTION);
+      await col.createIndex({ createdAt: 1 }, { expireAfterSeconds: 3600 });
+      io.adapter(createAdapter(col, { addCreatedAtField: true }));
+      console.log("[socket] shared MongoDB adapter attached");
+    })
+    .catch((err) => console.error("[socket] shared adapter not attached:", err.message));
+};
+
+/**
+ * Messages between API processes that are not socket emits (the marketplace
+ * order stream is plain SSE). serverEmit reaches every OTHER process; the
+ * sender handles its own copy itself. Without the shared adapter there are no
+ * other processes, and serverEmit does nothing.
+ */
+const pendingServerListeners = [];
+const onServerEvent = (event, fn) => {
+  if (io) io.on(event, fn);
+  else pendingServerListeners.push([event, fn]);
+};
+const serverEmit = (event, ...args) => {
+  if (!io) return;
+  try {
+    io.serverSideEmit(event, ...args);
+  } catch (err) {
+    console.warn("[socket] serverEmit failed:", err.message);
+  }
 };
 
 /**
@@ -375,6 +423,8 @@ const emitTableSessionUpdated = ({ restaurantId, outletId, tableId, session, rea
 module.exports = {
   emitKitchenRound,
   initSocket,
+  onServerEvent,
+  serverEmit,
   authenticateSocket,
   emitEvent,
   emitToRestaurant,

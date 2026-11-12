@@ -19,6 +19,7 @@ const {
   dispatchLabel,
   effectiveVeg,
 } = require("../services/menuCache");
+const { projectedMenus } = require("../services/projectedMenuCache");
 const { getTheme } = require("../services/themeRegistry");
 const { buildLandingPayload } = require("../services/landingPayload");
 const { mergedContact, buildLegalPayload } = require("../services/websitePublicInfo");
@@ -178,10 +179,12 @@ const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezon
   // minus the ones hidden on the website. One rule, from services/menuCache,
   // shared with the checkout query below and with publicStoreController.
   const menus = restaurantId
-    ? projectMenus(
-        await Menu.find({ restaurantId, isDeleted: { $ne: true } }).sort({ createdAt: 1 }),
-        AUDIENCES.WEBSITE,
-      )
+    ? await projectedMenus({
+        Menu,
+        query: { restaurantId, isDeleted: { $ne: true } },
+        audience: AUDIENCES.WEBSITE,
+        sort: { createdAt: 1 },
+      })
     : [];
 
   const categories = [];

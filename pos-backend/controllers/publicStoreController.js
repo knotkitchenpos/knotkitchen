@@ -1,8 +1,9 @@
 const createHttpError = require("http-errors");
-const { AUDIENCES, projectMenus } = require("../services/menuCache");
+const { AUDIENCES } = require("../services/menuCache");
+const { projectedMenus } = require("../services/projectedMenuCache");
+const Menu = require("../models/menuModel");
 const Store = require("../models/storeModel");
 const Restaurant = require("../models/restaurantModel");
-const Menu = require("../models/menuModel");
 const { resolveStorefront, REASON_MESSAGES } = require("../services/storefrontResolver");
 const { buildLandingPayload } = require("../services/landingPayload");
 
@@ -73,18 +74,15 @@ const getPublicStoreMenu = async (req, res, next) => {
 
     // Strict multi-tenant query: ONLY menus belonging to this restaurantId
     // Visibility is decided by the PUBLISHED flags inside projectMenus.
-    const menuDocs = await Menu.find({
-      restaurantId: store.restaurantId,
-      isDeleted: { $ne: true },
-    });
-
     // Anonymous, customer-facing: serves the Website Published snapshot, the
     // same copy the storefront renders. Returning the raw documents here
     // published every unsaved draft edit to anyone who asked.
-    res.status(200).json({
-      success: true,
-      data: projectMenus(menuDocs, AUDIENCES.WEBSITE),
+    const data = await projectedMenus({
+      Menu,
+      query: { restaurantId: store.restaurantId, isDeleted: { $ne: true } },
+      audience: AUDIENCES.WEBSITE,
     });
+    res.status(200).json({ success: true, data });
   } catch (error) {
     next(error);
   }

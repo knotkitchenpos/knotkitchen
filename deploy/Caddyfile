@@ -56,11 +56,26 @@
 api.{$BASE_DOMAIN} {
 	import security_headers
 
+	# JSON only: a full menu is ~450 KB raw and a tenth of that compressed.
+	# Event streams and websockets are left alone so live updates are never
+	# held back in a compression buffer.
+	encode {
+		zstd
+		gzip
+		match {
+			header Content-Type application/json*
+		}
+	}
+
 	request_body {
 		max_size 12MB
 	}
 
-	reverse_proxy pos-api:8000 {
+	reverse_proxy pos-api:8000 pos-api-2:8000 {
+		# Same visitor, same process (per-IP limits, live-update sockets).
+		lb_policy ip_hash
+		lb_try_duration 5s
+		fail_duration 30s
 		header_up X-Real-IP           {remote_host}
 		header_up X-Forwarded-For     {remote_host}
 		header_up X-Forwarded-Proto   {scheme}
@@ -143,7 +158,11 @@ bill.{$BASE_DOMAIN} {
 	@token path_regexp tok ^/([ois]_[0-9a-fA-F]{24}_[A-Za-z0-9_-]{22})$
 	rewrite @token /r/{re.tok.1}
 
-	reverse_proxy pos-api:8000 {
+	reverse_proxy pos-api:8000 pos-api-2:8000 {
+		# Same visitor, same process (per-IP limits, live-update sockets).
+		lb_policy ip_hash
+		lb_try_duration 5s
+		fail_duration 30s
 		header_up X-Real-IP           {remote_host}
 		header_up X-Forwarded-For     {remote_host}
 		header_up X-Forwarded-Proto   {scheme}
@@ -169,7 +188,11 @@ pay.{$BASE_DOMAIN} {
 
 	@pay path /c/*
 	handle @pay {
-		reverse_proxy pos-api:8000 {
+		reverse_proxy pos-api:8000 pos-api-2:8000 {
+			# Same visitor, same process (per-IP limits, live-update sockets).
+			lb_policy ip_hash
+			lb_try_duration 5s
+			fail_duration 30s
 			header_up X-Real-IP           {remote_host}
 			header_up X-Forwarded-For     {remote_host}
 			header_up X-Forwarded-Proto   {scheme}

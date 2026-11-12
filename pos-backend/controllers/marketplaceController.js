@@ -10,9 +10,20 @@ const { AWAITING_ACCEPTANCE } = require("../constants/orderStatus");
 // A marketplace order is only ever announced to its own restaurant's tills.
 const sseClients = new Set(); // { res, restaurantId }
 
+// The till's stream may be held by the other API process (pos-api-2), so each
+// new order is also handed to the other processes, which tell their own tills.
+const SERVER_EVENT = "kk:marketplace-order";
+const socketService = () => require("../services/socket");
+
 const broadcastNewOrder = (order) => {
+  const plain = order && typeof order.toJSON === "function" ? order.toJSON() : order;
+  broadcastLocal(plain);
+  socketService().serverEmit(SERVER_EVENT, JSON.parse(JSON.stringify(plain)));
+};
+
+const broadcastLocal = (order) => {
   const payload = JSON.stringify({ type: "NEW_MARKETPLACE_ORDER", order });
-  const target = String(order.restaurantId || "");
+  const target = String(order?.restaurantId || "");
   sseClients.forEach((client) => {
     if (!target || String(client.restaurantId || "") !== target) return;
     try {
@@ -119,5 +130,12 @@ const markOrderSeen = async (req, res, next) => {
     next(error);
   }
 };
+
+// Orders made in another API process, for this process's own tills.
+try {
+  socketService().onServerEvent(SERVER_EVENT, (order) => broadcastLocal(order));
+} catch (err) {
+  console.warn("[marketplace] cross-process stream not wired:", err.message);
+}
 
 module.exports = { sseClients, broadcastNewOrder, streamNewOrders, webhookMarketplaceOrder, manualMarketplaceOrder, markOrderSeen };

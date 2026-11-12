@@ -13,6 +13,13 @@ const app = express();
 const PORT = config.port;
 connectDB();
 
+// With two API processes (pos-api, pos-api-2) only one runs the start-up
+// seeds and the timers further down: each would otherwise send every owner
+// alert twice and race the sweeps and seeds. The second process is started
+// with RUN_SCHEDULERS=false.
+const runSchedulers = process.env.RUN_SCHEDULERS !== "false";
+if (!runSchedulers) console.log("Seeds and schedulers off in this process (RUN_SCHEDULERS=false)");
+
 // Seed the CSD super-administrator on first Mongo ready. Deferred to the
 // "connected" event so it runs whether connectDB resolves synchronously or
 // after a reconnection, and it never blocks the HTTP listener coming up —
@@ -26,6 +33,7 @@ mongoose.connection.once("connected", () => {
             if (err) console.error(`[boot] index build FAILED for ${model.modelName}: ${err.message}`);
         });
     });
+    if (!runSchedulers) return;
     require("./controllers/csdAuthController")
         .seedSuperAdmin()
         .catch((err) => console.error("[boot] CSD seed failed:", err?.message || err));
@@ -355,7 +363,7 @@ if (config.socketEnabled !== false) {
  * without the scheduler having to import the socket module directly
  * (avoids a circular require chain).
  */
-try {
+if (runSchedulers) try {
     const { startAutoReadyScheduler } = require("./services/autoReadyService");
     const { emitOrderStatusChanged } = require("./services/socket");
     startAutoReadyScheduler({ onOrderReady: emitOrderStatusChanged });
@@ -379,7 +387,7 @@ try {
  * A sweep rather than a per-table timer, so a restart mid-service does not
  * strand tables in "cleaning" forever — the deadline lives on the row.
  */
-try {
+if (runSchedulers) try {
     const { startTableCooldownSweeper } = require("./services/tableCooldownService");
     startTableCooldownSweeper();
 } catch (err) {

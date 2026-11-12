@@ -3,7 +3,7 @@
 # Knot Kitchen — go back to MongoDB Atlas after deploy/move-db-to-vps.sh
 # =============================================================================
 # Points MONGODB_URI back at the Atlas address that move-db-to-vps.sh kept as
-# MONGODB_URI_ATLAS, and restarts pos-api and kkmdm.
+# MONGODB_URI_ATLAS, and restarts pos-api, pos-api-2 and kkmdm.
 #
 # WARNING: anything written since the move (orders, chats, edits) is only in
 # the VPS database, and Atlas does not have it. This script leaves the VPS
@@ -26,9 +26,9 @@ tmp="$(mktemp)"; chmod 600 "$tmp"
 grep -v '^MONGODB_URI=' "$ENV_FILE" > "$tmp" || true
 printf 'MONGODB_URI=%s\n' "$ATLAS_URI" >> "$tmp"
 cat "$tmp" > "$ENV_FILE"; rm -f "$tmp"
-echo "MONGODB_URI points at Atlas again; restarting pos-api and kkmdm"
+echo "MONGODB_URI points at Atlas again; restarting pos-api, pos-api-2 and kkmdm"
 
-$C up -d pos-api kkmdm
+$C up -d pos-api pos-api-2 kkmdm
 for i in $(seq 1 40); do
   if $C exec -T pos-api wget -qO- http://127.0.0.1:8000/health >/dev/null 2>&1; then
     echo "pos-api healthy on Atlas."

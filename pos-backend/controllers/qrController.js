@@ -1,7 +1,6 @@
 const createHttpError = require("http-errors");
 const { findActiveBlock, formatTimeOf } = require("./tableBookingController");
 const Table = require("../models/tableModel");
-const Menu = require("../models/menuModel");
 const Order = require("../models/orderModel");
 const TableSession = require("../models/tableSessionModel");
 const Bill = require("../models/billModel");
@@ -16,7 +15,9 @@ const getSocket = () => require("../services/socket");
 const accountLock = () => require("../services/accountLock");
 const crypto = require("crypto");
 const { CANCELLED_STATUSES, canonicalStatus } = require("../constants/orderStatus");
-const { AUDIENCES, ORDER_TYPES, projectMenus, allowsOrderType } = require("../services/menuCache");
+const { AUDIENCES, ORDER_TYPES, allowsOrderType } = require("../services/menuCache");
+const { projectedMenus } = require("../services/projectedMenuCache");
+const Menu = require("../models/menuModel");
 const { resolveGateway, isOnlinePaymentEnabled, PROVIDERS } = require("../services/paymentGateway");
 const config = require("../config/config");
 const { findOrCreate } = require("../services/idempotency");
@@ -46,14 +47,14 @@ const quotePlatformFee = (args) => require("../services/orderCharge").quotePlatf
  * draft plus both snapshots; projecting strips all of that.
  */
 const scopedMenu = async (restaurantId, outletId) => {
-  const docs = await Menu.find({
-    restaurantId,
-    outletId: { $in: [outletId, null] },
-    isDeleted: false,
-    // A table QR is served from the system snapshot, so it follows POS
-    // visibility -- the PUBLISHED flags, applied inside projectMenus.
+  // A table QR is served from the system snapshot, so it follows POS
+  // visibility -- the PUBLISHED flags, applied inside projectMenus.
+  const menus = await projectedMenus({
+    Menu,
+    query: { restaurantId, outletId: { $in: [outletId, null] }, isDeleted: false },
+    audience: AUDIENCES.SYSTEM,
   });
-  return projectMenus(docs, AUDIENCES.SYSTEM)
+  return menus
     // A table QR is unambiguously a TABLE order, so a category restricted to
     // collection and/or delivery has no business appearing on it.
     .filter((m) => allowsOrderType(m, ORDER_TYPES.TABLE))
