@@ -402,6 +402,7 @@ const Chat = () => {
   const canWa = can("whatsapp");
   const tab = !canTeam || (canWa && params.get("tab") === "whatsapp") ? "whatsapp" : "team";
   const [waUnread, setWaUnread] = useState(0);
+  const [waThread, setWaThread] = useState(false);
 
   // The WhatsApp tab's unread count while the team tab is showing.
   useEffect(() => {
@@ -424,9 +425,13 @@ const Chat = () => {
     ...(canWa ? [{ key: "whatsapp", label: "WhatsApp", badge: waUnread }] : []),
   ];
 
+  // WhatsApp fills the screen below the app header (measured by Layout into
+  // --app-header-h) so only its lists scroll, never the page. Team chat stacks
+  // its list above the thread on a phone, so it keeps the page scroll.
+  const fit = tab === "whatsapp";
   return (
-    <div className="mx-auto max-w-[1600px]">
-      <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+    <div className={`mx-auto max-w-[1600px] ${fit ? "flex h-[calc(100dvh-var(--app-header-h,4rem)-1.5rem)] flex-col sm:h-[calc(100dvh-var(--app-header-h,4rem)-2.5rem)]" : ""}`}>
+      <div className={`flex-wrap items-end justify-between gap-3 ${fit ? "mb-3 shrink-0 sm:mb-4" : "mb-4"} ${fit && waThread ? "hidden lg:flex" : "flex"}`}>
         <h1 className="text-2xl font-bold text-navy-900">Chat</h1>
         <div className="flex rounded-xl bg-navy-100 p-1" role="tablist" aria-label="Chat">
           {tabs.map((t) => (
@@ -445,7 +450,13 @@ const Chat = () => {
           ))}
         </div>
       </div>
-      {tab === "whatsapp" ? <WhatsAppInbox onUnread={onWaUnread} /> : <TeamChat />}
+      {tab === "whatsapp" ? (
+        <div className="min-h-0 flex-1">
+          <WhatsAppInbox onUnread={onWaUnread} onThreadOpen={setWaThread} />
+        </div>
+      ) : (
+        <TeamChat />
+      )}
     </div>
   );
 };

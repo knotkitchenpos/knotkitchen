@@ -337,7 +337,7 @@ const NotConnected = ({ status, isAdmin }) => (
 
 /* ------------------------------------------------------------------- inbox */
 
-const WhatsAppInbox = ({ onUnread }) => {
+const WhatsAppInbox = ({ onUnread, onThreadOpen }) => {
   const { staff, isAdmin } = useAuth();
   const [status, setStatus] = useState(null);
   const [filter, setFilter] = useState("open");
@@ -348,6 +348,11 @@ const WhatsAppInbox = ({ onUnread }) => {
   const [params] = useSearchParams();
   // ?c=<id> opens that chat: a tapped notification lands here.
   const [activeId, setActiveId] = useState(() => (/^[a-f0-9]{24}$/.test(params.get("c") || "") ? params.get("c") : null));
+  // Chat hides its title row on a phone while a thread is open: more room for the messages.
+  useEffect(() => {
+    onThreadOpen?.(Boolean(activeId));
+    return () => onThreadOpen?.(false);
+  }, [activeId, onThreadOpen]);
   const linked = params.get("c");
   const linkedAt = params.get("at");
   useEffect(() => {
@@ -374,7 +379,6 @@ const WhatsAppInbox = ({ onUnread }) => {
   const [panelKey, setPanelKey] = useState(0);
   const fileRef = useRef(null);
   const navigate = useNavigate();
-  const bottomRef = useRef(null);
   const scrollRef = useRef(null);
   const lastIdRef = useRef(null);
   const activeRef = useRef(null);
@@ -426,7 +430,8 @@ const WhatsAppInbox = ({ onUnread }) => {
       const atBottom = !el || el.scrollHeight - el.scrollTop - el.clientHeight < 120;
       setThread(data);
       if (!olderRef.current.length) setHasMore(data.hasMore);
-      if (scroll || (grew && atBottom)) setTimeout(() => bottomRef.current?.scrollIntoView({ block: "end" }), 30);
+      // The message box itself, not scrollIntoView: that also scrolled the page on a phone.
+      if (scroll || (grew && atBottom)) setTimeout(() => { const box = scrollRef.current; if (box) box.scrollTop = box.scrollHeight; }, 30);
     } catch (err) {
       setError(errorMessage(err, "Could not load the chat."));
     }
@@ -564,19 +569,21 @@ const WhatsAppInbox = ({ onUnread }) => {
   let lastDay = null;
 
   return (
-    <div>
-      {status && !status.configured && <NotConnected status={status} isAdmin={isAdmin} />}
+    // Fills the height Chat gives it: the page never scrolls, only the chat
+    // list and the messages do (a phone showed the whole page scrolling).
+    <div className="flex h-full min-h-0 flex-col">
+      {status && !status.configured && <div className="max-h-[40%] shrink-0 overflow-y-auto"><NotConnected status={status} isAdmin={isAdmin} /></div>}
       {error && (
-        <div className="mb-4 flex items-start justify-between gap-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">
+        <div className="mb-4 flex shrink-0 items-start justify-between gap-3 rounded-xl bg-red-50 p-3 text-sm text-red-700">
           <span>{error}</span>
           <button type="button" onClick={() => setError("")} aria-label="Dismiss" className="shrink-0"><FiX /></button>
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[22rem_1fr] 2xl:grid-cols-[22rem_1fr_20rem]">
+      <div className="grid min-h-0 flex-1 grid-rows-[minmax(0,1fr)] gap-4 lg:grid-cols-[22rem_1fr] 2xl:grid-cols-[22rem_1fr_20rem]">
         {/* Conversation list */}
-        <aside className={`min-w-0 flex-col rounded-2xl border border-navy-200 bg-white ${activeId ? "hidden lg:flex" : "flex"}`}>
-          <div className="space-y-2.5 border-b border-navy-100 p-3">
+        <aside className={`min-h-0 min-w-0 flex-col rounded-2xl border border-navy-200 bg-white ${activeId ? "hidden lg:flex" : "flex"}`}>
+          <div className="shrink-0 space-y-2.5 border-b border-navy-100 p-3">
             <div className="flex gap-2">
               <div className="flex flex-1 items-center gap-2 rounded-xl border border-navy-200 px-3 py-2">
                 <FiSearch className="shrink-0 text-navy-400" aria-hidden="true" />
@@ -603,7 +610,7 @@ const WhatsAppInbox = ({ onUnread }) => {
             </div>
           </div>
 
-          <ul className="max-h-[36rem] min-h-[12rem] flex-1 overflow-y-auto">
+          <ul className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
             {listLoaded && list.conversations.length === 0 && (
               <li className="p-6 text-center text-sm text-navy-500">
                 {query ? "No chats match." : filter === "open" ? "No open WhatsApp chats." : "Nothing here."}
@@ -649,7 +656,7 @@ const WhatsAppInbox = ({ onUnread }) => {
         </aside>
 
         {/* Thread */}
-        <section className={`min-h-[34rem] min-w-0 flex-col rounded-2xl border border-navy-200 bg-white ${activeId ? "flex" : "hidden lg:flex"}`}>
+        <section className={`min-h-0 min-w-0 flex-col overflow-hidden rounded-2xl border border-navy-200 bg-white ${activeId ? "flex" : "hidden lg:flex"}`}>
           {!conv ? (
             <div className="flex flex-1 flex-col items-center justify-center gap-2 p-8 text-center text-sm text-navy-500">
               <span className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-emerald-600"><FiSend aria-hidden="true" /></span>
@@ -657,7 +664,7 @@ const WhatsAppInbox = ({ onUnread }) => {
             </div>
           ) : (
             <>
-              <header className="flex flex-wrap items-center gap-3 border-b border-navy-200 p-3 sm:p-4">
+              <header className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-navy-200 p-2.5 sm:p-4">
                 <button type="button" onClick={() => setActiveId(null)} className="rounded-lg p-1.5 text-navy-500 hover:bg-navy-50 lg:hidden" aria-label="Back to chats">
                   <FiArrowLeft />
                 </button>
@@ -715,12 +722,12 @@ const WhatsAppInbox = ({ onUnread }) => {
               </header>
 
               {conv.assignedTo && !conv.assignedToMe && conv.status === "open" && (
-                <p className="border-b border-navy-100 bg-navy-50 px-4 py-1.5 text-xs text-navy-600">
+                <p className="shrink-0 border-b border-navy-100 bg-navy-50 px-4 py-1.5 text-xs text-navy-600">
                   {conv.assignedTo.name} is handling this chat. You can still reply.
                 </p>
               )}
 
-              <div ref={scrollRef} className="flex-1 space-y-2 overflow-y-auto bg-[#f4f1ec] p-4" style={{ maxHeight: "30rem" }}>
+              <div ref={scrollRef} className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain bg-[#f4f1ec] p-3 sm:p-4">
                 {hasMore && (
                   <div className="text-center">
                     <button type="button" onClick={loadOlder} className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-navy-600 shadow-sm hover:text-navy-900">
@@ -792,10 +799,9 @@ const WhatsAppInbox = ({ onUnread }) => {
                     </React.Fragment>
                   );
                 })}
-                <div ref={bottomRef} />
               </div>
 
-              <form onSubmit={send} className="border-t border-navy-200 p-3">
+              <form onSubmit={send} className="max-h-[55%] shrink-0 overflow-y-auto border-t border-navy-200 p-3">
                 <div className="mb-2 flex items-center justify-between gap-2">
                   <div className="flex gap-1" role="tablist" aria-label="Message type">
                     {[{ k: "reply", l: "Reply" }, { k: "note", l: "Internal note" }].map(({ k, l }) => (
@@ -875,7 +881,7 @@ const WhatsAppInbox = ({ onUnread }) => {
                     <button type="button" onClick={() => setFile(null)} aria-label="Remove the file" className="shrink-0 text-navy-400 hover:text-navy-700"><FiX /></button>
                   </div>
                 )}
-                <p className={`mt-1.5 text-[11px] ${aiDraft ? "font-semibold text-amber-700" : "text-navy-400"}`}>
+                <p className={`mt-1.5 text-[11px] ${aiDraft ? "font-semibold text-amber-700" : "hidden text-navy-400 sm:block"}`}>
                   {aiDraft ? "AI draft: read and correct it before sending." : `Enter sends · Shift+Enter for a new line${replies.length ? " · / for quick replies" : ""}`}
                 </p>
               </form>
@@ -884,7 +890,7 @@ const WhatsAppInbox = ({ onUnread }) => {
         </section>
 
         {conv && (
-          <aside className="hidden min-w-0 self-start rounded-2xl border border-navy-200 bg-white 2xl:block">
+          <aside className="hidden min-h-0 min-w-0 overflow-y-auto rounded-2xl border border-navy-200 bg-white 2xl:block">
             <CustomerPanel conversationId={conv.id} refreshKey={panelKey} onCreateJob={(storeId) => setJobFor({ storeId })} />
           </aside>
         )}

@@ -83,6 +83,18 @@ const Layout = () => {
   }, []);
   // More chats waiting than a moment ago: a chime (at most every few seconds,
   // so a push and the next poll do not both ring for the same message).
+  // The header height as --app-header-h, so a page that fills the screen
+  // (Chat → WhatsApp) sizes itself exactly and the page never scrolls.
+  const headerRef = useRef(null);
+  useEffect(() => {
+    const el = headerRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return undefined;
+    const set = () => document.documentElement.style.setProperty("--app-header-h", `${el.offsetHeight}px`);
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
   const lastUnread = useRef(null);
   const lastChime = useRef(0);
   const ring = () => {
@@ -290,7 +302,7 @@ const Layout = () => {
       {/* Main column — always offset by the COLLAPSED rail so content doesn't
           shift when the sidebar expands on hover. */}
       <div className="lg:pl-16">
-        <header className="sticky top-0 z-20 flex items-center gap-3 border-b border-navy-200/70 bg-white/95 px-4 py-3 sm:px-6">
+        <header ref={headerRef} className="sticky top-0 z-20 flex items-center gap-3 border-b border-navy-200/70 bg-white/95 px-4 py-3 sm:px-6">
           <button
             type="button"
             onClick={() => setOpen(true)}
