@@ -13,6 +13,7 @@
 #                                 datastore with no Atlas equivalent; if this
 #                                 volume is lost, the data is simply gone
 #   6. knotkitchen_onboard_uploads  KYC documents uploaded via the portal
+#      knotkitchen_kkmdm_storage  KKMDM APKs, device logs and its generated secrets
 #   7. MongoDB                    full mongodump of the database (the
 #                                 "mongo" container on this VPS)
 #
@@ -107,6 +108,7 @@ VOLUMES=(
   knotkitchen_csd_documents
   knotkitchen_onboard_data
   knotkitchen_onboard_uploads
+  knotkitchen_kkmdm_storage
 )
 
 for vol in "${VOLUMES[@]}"; do
@@ -150,6 +152,10 @@ else
     echo "MONGODB_URI not found in deploy/.env — cannot back up the database." >&2
     exit 1
   fi
+  # Take the database name off the URI (".../knotkitchen?..." -> ".../?..."):
+  # with a name in it mongodump copies only that one database, and KKMDM's
+  # database (and any other) would be silently left out of the backup.
+  MONGODB_URI="$(printf '%s' "$MONGODB_URI" | sed -E 's#^(mongodb(\+srv)?://[^/?]*)/?[^?]*#\1/#')"
 
   echo "[$(date -Is)] dumping MongoDB"
   # --archive + --gzip produce one file. Errors are surfaced but the URI is
