@@ -50,7 +50,7 @@ envset() { # replace or append KEY=VALUE without printing the value
 # Runs mongosh / mongodump / mongorestore in a throwaway container on the app
 # network. Connection strings go in through the environment, never the command
 # line, so they do not show in `ps`.
-tool() { docker run --rm -i --network "$NET" -e SRC -e DST -e WHICH mongo:7.0 "$@"; }
+tool() { docker run --rm -i --network "$NET" -e SRC -e DST -e WHICH mongo:8.0 "$@"; }
 
 # --- 0. Preflight ------------------------------------------------------------
 PREPARE=0; [[ "${1:-}" == "--prepare" ]] && PREPARE=1
@@ -69,7 +69,7 @@ DB_NAME="$(printf '%s' "$ATLAS_URI" | sed -E 's#^mongodb(\+srv)?://[^/]*/?##; s#
 DB_NAME="${DB_NAME:-test}"
 say "database name the apps use: $DB_NAME"
 mkdir -p "$BACKUP_DIR"; chmod 700 "$BACKUP_DIR"
-docker pull -q mongo:7.0 >/dev/null
+docker pull -q mongo:8.0 >/dev/null
 
 # --- 1. Secrets --------------------------------------------------------------
 cp -p "$ENV_FILE" "$ENV_FILE.before-db-move.$STAMP"; chmod 600 "$ENV_FILE.before-db-move.$STAMP"
@@ -107,7 +107,7 @@ counts() { WHICH="$1" tool mongosh --nodb --quiet --eval '
   const m = new Mongo(process.env[process.env.WHICH]);
   const out = [];
   for (const d of m.getDB("admin").adminCommand({ listDatabases: 1 }).databases) {
-    if (["admin","config","local"].includes(d.name)) continue;
+    if (["admin","config","local"].includes(d.name) || d.name.startsWith("sample_")) continue;
     const db = m.getDB(d.name);
     for (const c of db.getCollectionInfos({ type: "collection" })) {
       if (c.name.startsWith("system.")) continue;
@@ -129,7 +129,8 @@ $C stop pos-api kkmdm
 trap 'echo "FAILED — see above." >&2; restart_on_atlas' ERR
 
 # --- 4. Dump Atlas ------------------------------------------------------------
-# One database at a time (the POS one, KKMDM's, and any other), never the
+# One database at a time (the POS one, KKMDM's, and any other; not Atlas's
+# sample_* demo data), never the
 # admin/config/local system ones: Atlas does not let you dump those, and the
 # VPS database has its own. The path is taken off the URI because mongodump
 # would otherwise copy only the database it names.
@@ -139,14 +140,14 @@ DST_BASE="mongodb://${USER_}:${PASS_}@mongo:27017/?authSource=admin&replicaSet=r
 DBS="$(tool mongosh --nodb --quiet --eval '
   const m = new Mongo(process.env.SRC);
   print(m.getDB("admin").adminCommand({ listDatabases: 1, nameOnly: true }).databases
-    .map(d => d.name).filter(n => !["admin","config","local"].includes(n)).join(" "))')"
+    .map(d => d.name).filter(n => !["admin","config","local"].includes(n) && !n.startsWith("sample_")).join(" "))')"
 [[ -n "$DBS" ]] || { echo "Atlas lists no databases" >&2; false; }
 say "databases to copy: $DBS"
 DUMP_DIR="$BACKUP_DIR/atlas-final-$STAMP"
 mkdir -p "$DUMP_DIR"; chmod 700 "$DUMP_DIR"
 for db in $DBS; do
   say "copying $db from Atlas…"
-  docker run --rm -i --network "$NET" -e SRC_BASE -e DB="$db" mongo:7.0 sh -c \
+  docker run --rm -i --network "$NET" -e SRC_BASE -e DB="$db" mongo:8.0 sh -c \
     'umask 077; printf "uri: \"%s\"\n" "$SRC_BASE" > /tmp/c.yml; exec mongodump --config=/tmp/c.yml --db="$DB" --archive --gzip --quiet' \
     > "$DUMP_DIR/$db.archive.gz"
   [[ -s "$DUMP_DIR/$db.archive.gz" ]] || { echo "dump of $db is empty" >&2; false; }
@@ -157,11 +158,11 @@ say "dump OK ($(du -sh "$DUMP_DIR" | cut -f1)) in $DUMP_DIR"
 # --- 5. Restore and compare ---------------------------------------------------
 for db in $DBS; do
   say "restoring $db into the VPS database…"
-  OUT="$(docker run --rm -i --network "$NET" -e DST_BASE mongo:7.0 sh -c \
+  OUT="$(docker run --rm -i --network "$NET" -e DST_BASE mongo:8.0 sh -c \
     'umask 077; printf "uri: \"%s\"\n" "$DST_BASE" > /tmp/c.yml; exec mongorestore --config=/tmp/c.yml --archive --gzip' \
     < "$DUMP_DIR/$db.archive.gz" 2>&1 | sed -E 's#mongodb(\+srv)?://[^ ]*#mongodb://<redacted>#g')"
   SUMMARY="$(printf '%s\n' "$OUT" | grep -E 'document\(s\) restored successfully' | tail -1)"
-  say "  ${SUMMARY#*Z	}"
+  say "  $(printf "%s" "$SUMMARY" | sed -E "s/^[^[:space:]]+[[:space:]]+//")"
   if ! printf '%s' "$SUMMARY" | grep -q ' 0 document(s) failed'; then
     printf '%s\n' "$OUT" | tail -20 >&2
     echo "restore of $db reported failures" >&2

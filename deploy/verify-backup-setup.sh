@@ -45,7 +45,7 @@ if [[ "${KNOT_BACKUP_SKIP_MONGO:-false}" == "true" ]]; then
   warn "KNOT_BACKUP_SKIP_MONGO=true — the database is NOT in the backup."
   warn "  Correct ONLY if the Atlas cluster has its own verified snapshots."
 else
-  ok "mongodump runs in a mongo:7.0 container (nothing to install)"
+  ok "mongodump runs in a mongo:8.0 container (nothing to install)"
 fi
 
 echo

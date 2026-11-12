@@ -72,7 +72,7 @@ volumes:
 
 services:
   # ---------------------------------------------------------------------------
-  # MongoDB, on this VPS (moved off Atlas 2026-11-11).
+  # MongoDB 8.0 (same as Atlas was), on this VPS (moved off Atlas 2026-11-12).
   #
   # Internal only: on the `knot` network, no published port, so nothing outside
   # these containers can reach it. Password-protected anyway.
@@ -89,7 +89,7 @@ services:
   # Backups: deploy/backup.sh dumps it nightly.
   # ---------------------------------------------------------------------------
   mongo:
-    image: mongo:7.0
+    image: mongo:8.0
     restart: unless-stopped
     networks: [knot]
     environment:

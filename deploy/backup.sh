@@ -155,12 +155,12 @@ else
   # --archive + --gzip produce one file. Errors are surfaced but the URI is
   # scrubbed from anything mongodump prints, since it embeds the password.
   #
-  # mongodump runs in a throwaway mongo:7.0 container on the app network, so
+  # mongodump runs in a throwaway mongo:8.0 container on the app network, so
   # it reaches the internal "mongo" host (and Atlas, for an old .env) and needs
   # nothing installed on the VPS. The URI goes in through the environment, not
   # the command line, so `ps` never shows the password.
   if ! MONGODB_URI="$MONGODB_URI" docker run --rm -i --network "${KNOT_DOCKER_NETWORK:-knotkitchen_knot}" \
-       -e MONGODB_URI mongo:7.0 \
+       -e MONGODB_URI mongo:8.0 \
        sh -c 'umask 077; printf "uri: \"%s\"\n" "$MONGODB_URI" > /tmp/dump.yml; exec mongodump --config=/tmp/dump.yml --archive --gzip --quiet' \
        > "$TMP/mongodump.archive.gz" \
        2> >(sed -E 's#mongodb(\+srv)?://[^ ]*#mongodb://<redacted>#g' >&2) \
