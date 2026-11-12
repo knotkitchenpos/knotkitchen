@@ -55,6 +55,17 @@ const flushQueue = (error = null) => {
 axiosWrapper.interceptors.response.use(
   (response) => response,
   async (error) => {
+    // A file download (responseType "blob": order and menu CSV) gets its JSON
+    // error body as a Blob too. Read it as JSON first, or the checks below
+    // never see e.g. PIN_REQUIRED and the PIN prompt never opens.
+    const body = error?.response?.data;
+    if (typeof Blob !== "undefined" && body instanceof Blob && /json/i.test(body.type || "")) {
+      try {
+        error.response.data = JSON.parse(await body.text());
+      } catch {
+        /* not JSON after all: leave it as it was */
+      }
+    }
     const originalRequest = error?.config;
     const url = originalRequest?.url || "";
     // NOTE: only the endpoints that BOOTSTRAP a new session (login/register)

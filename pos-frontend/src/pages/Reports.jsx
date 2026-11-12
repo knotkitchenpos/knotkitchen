@@ -647,6 +647,15 @@ const Reports = () => {
   const [exportOpen, setExportOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
+  const exportRef = useRef(null);
+  useEffect(() => {
+    if (!exportOpen) return undefined;
+    const away = (e) => { if (exportRef.current && !exportRef.current.contains(e.target)) setExportOpen(false); };
+    const esc = (e) => { if (e.key === "Escape") setExportOpen(false); };
+    document.addEventListener("pointerdown", away);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("pointerdown", away); document.removeEventListener("keydown", esc); };
+  }, [exportOpen]);
   const fyStartYear = (() => {
     const [y, m] = today.split("-").map(Number);
     return m >= 4 ? y : y - 1;
@@ -704,7 +713,7 @@ const Reports = () => {
               </svg>
               Print
             </button>
-            <div className="relative">
+            <div className="relative" ref={exportRef}>
               <button
                 onClick={() => setExportOpen((v) => !v)}
                 disabled={exporting}
