@@ -118,6 +118,8 @@ jobs:
     needs: build-apk
     if: needs.build-apk.outputs.signed == 'true' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    # The VPS SSH secrets live in this environment (the same ones deploy.yml uses).
+    environment: production
     permissions:
       contents: write
     env:
@@ -143,3 +145,38 @@ jobs:
           # APK first, manifest last: the manifest never names an APK not uploaded yet.
           gh release upload "$TAG" KnotKitchen-POS.apk --clobber
           gh release upload "$TAG" android-update.json --clobber
+
+      # What the apps, KKMDM's import and the landing page download actually
+      # use: business.<base>/downloads/android on our VPS (Caddy serves
+      # deploy/downloads). The repository is private, so the GitHub release
+      # above needs a GitHub login and is kept only as the build history.
+      # Per-version APK first, then the fixed-name copy, the feed last; the
+      # three newest versions stay so a download in progress never loses its file.
+      - name: Publish to business.knotkitchen.com/downloads/android
+        env:
+          SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          APP_PATH: ${{ secrets.DEPLOY_APP_PATH }}
+          BASE_URL: https://business.knotkitchen.com/downloads/android
+        run: |
+          set -euo pipefail
+          V="1.0.$GITHUB_RUN_NUMBER"
+          APK="KnotKitchen-POS-$V.apk"
+          cp KnotKitchen-POS.apk "$APK"
+          printf '{"versionCode":%s,"versionName":"%s","apkUrl":"%s/%s","sha256":"%s"}\n' \
+            "$GITHUB_RUN_NUMBER" "$V" "$BASE_URL" "$APK" "$(sha256sum "$APK" | cut -d' ' -f1)" > feed.json
+          KEY="$RUNNER_TEMP/deploy_key"
+          install -m 600 /dev/null "$KEY"
+          printf '%s\n' "$SSH_KEY" > "$KEY"
+          OPTS=(-i "$KEY" -o StrictHostKeyChecking=no -o BatchMode=yes)
+          DIR="$APP_PATH/deploy/downloads/android"
+          ssh "${OPTS[@]}" "$SSH_USER@$SSH_HOST" "mkdir -p '$DIR/.incoming'"
+          scp "${OPTS[@]}" "$APK" feed.json "$SSH_USER@$SSH_HOST:$DIR/.incoming/"
+          ssh "${OPTS[@]}" "$SSH_USER@$SSH_HOST" "set -e; cd '$DIR'
+            mv .incoming/$APK $APK
+            cp $APK .incoming/latest.apk && mv .incoming/latest.apk KnotKitchen-POS.apk
+            mv .incoming/feed.json android-update.json
+            ls -1t KnotKitchen-POS-*.apk | tail -n +4 | xargs -r rm -f"
+          rm -f "$KEY"
+          curl -fsS "$BASE_URL/android-update.json"

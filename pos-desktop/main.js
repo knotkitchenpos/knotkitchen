@@ -291,7 +291,7 @@ ipcMain.handle("printers:lan", (event, host, data) => {
 
 /**
  * The POS pages update on every deploy; this updates the app around them.
- * Feed: the desktop-latest GitHub release (package.json build.publish), filled
+ * Feed: business.knotkitchen.com/downloads/windows (package.json build.publish), filled
  * by .github/workflows/build-windows-app.yml. A till stays open all day, so it
  * checks every few hours and offers a restart; "Later" installs silently the
  * next time the app is closed.

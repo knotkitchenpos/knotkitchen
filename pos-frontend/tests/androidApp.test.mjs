@@ -248,7 +248,7 @@ test("REGRESSION: a checkout's later pages stay in the app, and Back skips them"
 
 test("the app updates itself from the release channel CI publishes", () => {
   const updater = JAVA("ShellUpdater.java");
-  assert.match(updater, /releases\/download\/android-latest\/android-update\.json/);
+  assert.ok(updater.includes("\"https://business.knotkitchen.com/downloads/android/android-update.json\""), "the feed is on our own server");
   // Checksum before commit; an unverified download is abandoned.
   assert.ok(updater.indexOf('m.getString("sha256")') < updater.indexOf("session.commit("));
   assert.match(updater, /installer\.abandonSession\(id\)/);

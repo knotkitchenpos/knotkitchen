@@ -114,9 +114,26 @@ business.{$BASE_DOMAIN} {
 		-X-Powered-By
 	}
 
-	encode zstd gzip
-	reverse_proxy pos-web:80 {
-		header_up Host {host}
+	# App builds and their update feeds (deploy/downloads on the VPS, filled by
+	# the Android and Windows build workflows). The repository is private, so
+	# the GitHub release links stopped working for the apps' own updaters, for
+	# KKMDM's import and for the landing page download (2026-11-12). The feeds
+	# (.json, .yml) are never cached; the builds are named per version.
+	handle_path /downloads/* {
+		root * /srv/downloads
+		@feeds path *.json *.yml
+		header @feeds Cache-Control "no-cache"
+		# .incoming holds files still being copied in: never served.
+		file_server {
+			hide .incoming
+		}
+	}
+
+	handle {
+		encode zstd gzip
+		reverse_proxy pos-web:80 {
+			header_up Host {host}
+		}
 	}
 }
 

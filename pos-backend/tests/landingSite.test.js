@@ -293,8 +293,8 @@ test("the pricing HTML is the no-script fallback: every amount written in, each 
   assert.match(INDEX, /<script src="home\.js\?v=11" defer><\/script>/);
   // 2026-11-05: the hero reel: four real clips with the KnotKitchen cards, run by its own script after home.js
   assert.match(INDEX, /<script src="heroreel\.js\?v=4" defer><\/script>/);
-  // 2026-11-05: the Android app download: the android-latest release always carries the newest build
-  assert.ok(INDEX.includes('href="https://github.com/knotkitchenpos/knotkitchen/releases/download/android-latest/KnotKitchen-POS.apk"'), "APK link");
+  // 2026-11-12: the Android app download: our own server always carries the newest build (the repository is private)
+  assert.ok(INDEX.includes('href="https://business.knotkitchen.com/downloads/android/KnotKitchen-POS.apk"'), "APK link");
   for (const clip of ["1-cashier", "2-kitchen", "3-waiter", "4-guests"]) {
     assert.ok(INDEX.includes(`<video src="assets/video/${clip}.mp4" poster="assets/video/${clip}.jpg"`), clip);
     assert.ok(fs.existsSync(path.join(LANDING, "assets", "video", clip + ".mp4")), clip + ".mp4 is in the repo");

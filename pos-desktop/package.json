@@ -48,7 +48,7 @@
     },
     "publish": {
       "provider": "generic",
-      "url": "https://github.com/knotkitchenpos/knotkitchen/releases/download/desktop-latest",
+      "url": "https://business.knotkitchen.com/downloads/windows",
       "useMultipleRangeRequest": false
     }
   },

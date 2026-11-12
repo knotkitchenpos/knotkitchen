@@ -10,6 +10,8 @@ brag-output/
 # Production secrets, kept on the VPS only (deploy/.env.production.example is
 # the tracked template), and the copies taken before editing them.
 /deploy/.env
+# App builds served at business.<base>/downloads (filled by the build workflows)
+/deploy/downloads/
 /deploy/.env.bak*
 
 # The test environment's settings and its copy of secrets, on the VPS only.

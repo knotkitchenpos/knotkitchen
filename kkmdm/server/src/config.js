@@ -76,7 +76,7 @@ const config = {
   dashboardOrigins: (env.DASHBOARD_ORIGINS || "http://localhost:5177,http://localhost:5175").split(",").map((s) => s.trim()).filter(Boolean),
   alertWebhookUrl: env.ALERT_WEBHOOK_URL || "",
   // Hosts the Applications "import from URL" may download from.
-  importHosts: (env.KKMDM_IMPORT_HOSTS || "github.com").split(",").map((s) => s.trim()).filter(Boolean),
+  importHosts: (env.KKMDM_IMPORT_HOSTS || "github.com,business.knotkitchen.com").split(",").map((s) => s.trim()).filter(Boolean),
   // A device stays signed in until it signs out (owner, 2026-11-03): the
   // session is renewed daily while used, and only a device left unopened for
   // the browsers' longest cookie life (400 days) is signed out.

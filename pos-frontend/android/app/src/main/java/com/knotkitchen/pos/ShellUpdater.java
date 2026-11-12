@@ -50,8 +50,10 @@ import java.security.MessageDigest;
  */
 final class ShellUpdater {
 
+    // Our own server, not the GitHub release: the repository is private, so
+    // its release files no longer download without a GitHub login.
     static final String MANIFEST_URL =
-        "https://github.com/knotkitchenpos/knotkitchen/releases/download/android-latest/android-update.json";
+        "https://business.knotkitchen.com/downloads/android/android-update.json";
     // Calibration knob: how often a till looks (on start, and on coming back after this long).
     private static final long EVERY_MS = 6 * 60 * 60 * 1000L;
     private static final String STATUS = "com.knotkitchen.pos.UPDATE_STATUS";

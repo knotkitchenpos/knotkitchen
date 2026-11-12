@@ -76,6 +76,8 @@ jobs:
     needs: build-windows
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    # The VPS SSH secrets live in this environment (the same ones deploy.yml uses).
+    environment: production
     permissions:
       contents: write
     env:
@@ -97,3 +99,30 @@ jobs:
           # ponytail: installers accumulate (2 assets per build); prune old ones if the release gets unwieldy.
           gh release upload "$TAG" out/*.exe out/*.exe.blockmap --clobber
           gh release upload "$TAG" out/latest.yml --clobber
+
+      # What installed apps update from (pos-desktop/package.json build.publish):
+      # business.<base>/downloads/windows on our VPS. The repository is private,
+      # so the GitHub release above needs a GitHub login. Installers first,
+      # latest.yml last; the three newest installers stay.
+      - name: Publish to business.knotkitchen.com/downloads/windows
+        env:
+          SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          APP_PATH: ${{ secrets.DEPLOY_APP_PATH }}
+        run: |
+          set -euo pipefail
+          KEY="$RUNNER_TEMP/deploy_key"
+          install -m 600 /dev/null "$KEY"
+          printf '%s\n' "$SSH_KEY" > "$KEY"
+          OPTS=(-i "$KEY" -o StrictHostKeyChecking=no -o BatchMode=yes)
+          DIR="$APP_PATH/deploy/downloads/windows"
+          ssh "${OPTS[@]}" "$SSH_USER@$SSH_HOST" "mkdir -p '$DIR/.incoming'"
+          scp "${OPTS[@]}" out/*.exe out/*.exe.blockmap out/latest.yml "$SSH_USER@$SSH_HOST:$DIR/.incoming/"
+          # Single-quoted: the loop variables belong to the server's shell, not this one.
+          ssh "${OPTS[@]}" "$SSH_USER@$SSH_HOST" "cd '$DIR'"' && set -e
+            for f in .incoming/*.exe .incoming/*.exe.blockmap; do mv "$f" .; done
+            mv .incoming/latest.yml latest.yml
+            ls -1t *.exe | tail -n +4 | while read -r f; do rm -f "$f" "$f.blockmap"; done'
+          rm -f "$KEY"
+          curl -fsS https://business.knotkitchen.com/downloads/windows/latest.yml
