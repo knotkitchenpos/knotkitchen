@@ -517,7 +517,8 @@ const getActivity = async (req, res, next) => {
     const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 200);
 
     const [audits, sessions, jobs] = await Promise.all([
-      AuditLog.find({ storeId }).sort({ timestamp: -1 }).limit(limit).lean(),
+      // Newest first across the last 90 days and the archive.
+      require("../services/auditArchive").findAcrossArchive({ match: { storeId }, limit }),
       CsdPosSession.find({ storeId, usedAt: { $ne: null } }).sort({ usedAt: -1 }).limit(30).lean(),
       CsdJob.find({ storeId }).sort({ updatedAt: -1 }).limit(30).lean(),
     ]);

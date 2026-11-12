@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { getOrdersReport } from "../https";
+import { getOrdersReport, exportOrdersCsv } from "../https";
+import { saveBlob } from "../utils/saveImage";
 import { getMyRestaurant } from "../https";
 import { getWebsiteSettings } from "../https/storefrontApi";
 import { printHtmlDocument } from "../utils/printDocument";
@@ -640,6 +641,38 @@ const Reports = () => {
     printHtmlDocument(buildPrintHtml(input));
   };
 
+  // Export: the selected period, a financial year (1 April to 31 March), or
+  // everything, as CSV. The browser downloads it; the app saves it to
+  // Downloads/KnotKitchen (utils/saveImage).
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState("");
+  const fyStartYear = (() => {
+    const [y, m] = today.split("-").map(Number);
+    return m >= 4 ? y : y - 1;
+  })();
+  const exportChoices = [
+    { key: "period", label: "Selected period", params: apiParams },
+    { key: "fy", label: `This financial year (${fyStartYear}-${String(fyStartYear + 1).slice(2)})`, params: { from: `${fyStartYear}-04-01`, to: today } },
+    { key: "lastfy", label: `Last financial year (${fyStartYear - 1}-${String(fyStartYear).slice(2)})`, params: { from: `${fyStartYear - 1}-04-01`, to: `${fyStartYear}-03-31` } },
+    { key: "all", label: "Everything", params: { from: "2000-01-01", to: today } },
+  ];
+  const doExport = async (choice) => {
+    setExportOpen(false);
+    setExportError("");
+    setExporting(true);
+    try {
+      const res = await exportOrdersCsv(choice.params);
+      const p = choice.params;
+      const name = p.date ? `orders-${p.date}.csv` : `orders-${p.from === "2000-01-01" ? "all" : p.from}-to-${p.to}.csv`;
+      await saveBlob(new Blob([res.data], { type: "text/csv" }), name);
+    } catch (e) {
+      setExportError("Could not export the orders. Please try again.");
+    } finally {
+      setExporting(false);
+    }
+  };
+
   const selectedOrder = useMemo(
     () => orders.find((o) => o._id === selectedOrderId) || null,
     [orders, selectedOrderId]
@@ -671,6 +704,35 @@ const Reports = () => {
               </svg>
               Print
             </button>
+            <div className="relative">
+              <button
+                onClick={() => setExportOpen((v) => !v)}
+                disabled={exporting}
+                aria-haspopup="menu"
+                aria-expanded={exportOpen}
+                className="h-[40px] px-4 rounded-xl border border-[#E2E8F0] text-[#334155] text-[13px] font-bold flex items-center gap-1.5 hover:bg-white disabled:opacity-40"
+                title="Download orders as a CSV file"
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M12 3v12M7 10l5 5 5-5M5 21h14" />
+                </svg>
+                {exporting ? "Exporting…" : "Export"}
+              </button>
+              {exportOpen && (
+                <div role="menu" className="absolute right-0 z-20 mt-1 w-[240px] rounded-xl border border-[#E2E8F0] bg-white p-1 shadow-lg">
+                  {exportChoices.map((c) => (
+                    <button
+                      key={c.key}
+                      role="menuitem"
+                      onClick={() => doExport(c)}
+                      className="block w-full rounded-lg px-3 py-2 text-left text-[13px] font-semibold text-[#334155] hover:bg-[#F1F5F9]"
+                    >
+                      {c.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <button
               onClick={() => setShowCalendar(true)}
               className="h-[40px] px-4 rounded-xl bg-[#FD5302] text-white text-[13px] font-bold flex items-center gap-1.5 hover:bg-[#D64502]"
@@ -682,6 +744,10 @@ const Reports = () => {
             </button>
           </div>
         </div>
+
+        {exportError && (
+          <p role="alert" className="mt-2 text-[13px] font-semibold text-[#B91C1C]">{exportError}</p>
+        )}
 
         {/* ===== Quick date selector & Presets ===== */}
         <div className="mt-4 space-y-2">

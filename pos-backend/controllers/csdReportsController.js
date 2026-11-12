@@ -1,3 +1,4 @@
+const auditArchive = require("../services/auditArchive");
 const Store = require("../models/storeModel");
 const Order = require("../models/orderModel");
 const Restaurant = require("../models/restaurantModel");
@@ -68,8 +69,12 @@ const getReports = async (req, res, next) => {
         // Volume of recorded CSD actions per person — an activity signal, not
         // a performance metric; it counts audited actions only. Keyed on the
         // staff _id: CSD staff sign in by email and most have no phone.
+        // Entries older than 90 days sit in the archive (services/auditArchive).
         AuditLog.aggregate([
           { $match: { role: /^csd:/, timestamp: { $gte: from } } },
+          ...(from < auditArchive.cutoff()
+            ? [{ $unionWith: { coll: auditArchive.ARCHIVE, pipeline: [{ $match: { role: /^csd:/, timestamp: { $gte: from } } }] } }]
+            : []),
           { $group: { _id: "$userId", actions: { $sum: 1 } } },
           { $sort: { actions: -1 } },
           { $limit: 15 },
@@ -180,10 +185,11 @@ const getAuditLog = async (req, res, next) => {
     const page = Math.max(parseInt(q.page, 10) || 1, 1);
     const limit = Math.min(Math.max(parseInt(q.limit, 10) || 50, 1), 200);
 
+    // The last 90 days and the archive, read as one (services/auditArchive).
     const [total, entries, actions] = await Promise.all([
-      AuditLog.countDocuments(filters),
-      AuditLog.find(filters).sort({ timestamp: -1 }).skip((page - 1) * limit).limit(limit).lean(),
-      AuditLog.distinct("action", { role: /^csd:/ }),
+      auditArchive.countAcrossArchive({ match: filters }),
+      auditArchive.findAcrossArchive({ match: filters, skip: (page - 1) * limit, limit }),
+      auditArchive.distinctAcrossArchive({ field: "action", match: { role: /^csd:/ } }),
     ]);
 
     res.status(200).json({

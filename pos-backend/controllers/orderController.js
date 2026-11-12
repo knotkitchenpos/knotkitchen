@@ -1232,6 +1232,66 @@ const reportOrderView = (o) => {
 const { netAmount, orderTotal, refundedTotal, wasPaid, refundCancelledOrder, refundOnCancel, syncRefund, refundView, REFUND_STATUS } = require("../services/refunds");
 
 /**
+ * GET /api/order/report/export?from=YYYY-MM-DD&to=YYYY-MM-DD
+ *
+ * Every order in the period as CSV, so the owner can keep their own copy of
+ * the history (a financial year, or ten). Same window rules, tenant scope and
+ * protection as the reports screen; phones masked the same way. Streamed from
+ * a cursor, so a long period never sits in memory.
+ */
+// CSV line ending, and the byte-order mark that makes Excel read UTF-8.
+const CRLF = String.fromCharCode(13, 10);
+const BOM = String.fromCharCode(0xfeff);
+const exportOrdersCsv = async (req, res, next) => {
+  try {
+    const window = buildDateWindow(req.query);
+    const filter = {
+      ...tenantScopeFor(req.user),
+      isDeleted: { $ne: true },
+      createdAt: { $gte: window.start, $lte: window.end },
+    };
+    const { headerLine, orderRow } = require("../services/orderExport");
+    const timeFmt = new Intl.DateTimeFormat("en-GB", { timeZone: DEFAULT_TZ, hour: "2-digit", minute: "2-digit", hour12: false });
+    const helpers = {
+      localDate: (d) => localDate(d, DEFAULT_TZ),
+      localTime: (d) => timeFmt.format(d),
+      orderTotal,
+      refundedTotal,
+      netAmount,
+    };
+    const name = `orders-${localDate(window.start, DEFAULT_TZ)}-to-${localDate(window.end, DEFAULT_TZ)}.csv`;
+
+    await logActivity({
+      req,
+      action: "Exported Orders",
+      resource: "Reports",
+      description: `Exported orders as CSV for ${localDate(window.start, DEFAULT_TZ)} to ${localDate(window.end, DEFAULT_TZ)}`,
+    });
+
+    res.status(200);
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${name}"`);
+    res.setHeader("Cache-Control", "private, no-store");
+    // A byte-order mark, so Excel reads rupee amounts and names as UTF-8.
+    res.write(BOM + headerLine() + CRLF);
+
+    const cursor = Order.find(filter).sort({ createdAt: 1 }).lean().cursor();
+    for await (const o of cursor) {
+      if (!res.write(orderRow(reportOrderView(o), helpers) + CRLF)) {
+        await new Promise((resolve) => res.once("drain", resolve));
+      }
+    }
+    res.end();
+  } catch (error) {
+    if (res.headersSent) {
+      console.error("[export] orders CSV failed mid-stream:", error.message);
+      return res.end();
+    }
+    next(error);
+  }
+};
+
+/**
  * PUT /api/order/:id/cancel  { reason }
  *
  * A void with a reason on record. Same state change as PUT /:id with
@@ -1593,6 +1653,7 @@ module.exports = {
   syncOrderRefund,
   getPopularItems,
   getOrdersReport,
+  exportOrdersCsv,
   validateTableCapacityForOrder,
   // Exposed for other controllers/services that need consistent
   // canonicalisation (e.g. onlineOrderController projecting to the POS view).

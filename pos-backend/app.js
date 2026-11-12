@@ -378,6 +378,13 @@ if (runSchedulers) try {
     // Proactive WhatsApp alerts to store owners. Does nothing until an admin
     // switches automatic sending on in CSD → Store Health.
     require("./services/storeAlerts").startAlertScheduler();
+
+    // Audit entries older than 90 days move to the compressed archive
+    // (moved, never deleted; CSD's activity views read both).
+    require("./services/auditArchive").startAuditArchiveScheduler();
+
+    // Tells CSD admins once the server disk is 75% full.
+    require("./services/storageWatch").startStorageWatch();
 } catch (err) {
     console.warn("Auto-ready scheduler failed to start:", err.message);
 }

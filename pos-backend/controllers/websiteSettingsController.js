@@ -931,9 +931,19 @@ const updateWebsiteSettings = async (req, res, next) => {
         req,
         action: "Website Configuration Changed",
         resource: "Website Settings",
-        previousValue: prevSnapshot,
-        newValue: sanitizeSettings(settings),
-        description: "Website settings updated",
+        // Only what changed (services/auditDiff): the whole settings object
+        // twice was ~23 KB an entry, the largest thing in the audit log.
+        ...(() => {
+          const { changes, more } = require("../services/auditDiff").changedFields(prevSnapshot, sanitizeSettings(settings));
+          const names = changes.map((x) => x.field);
+          const extra = Math.max(0, names.length - 8) + more;
+          return {
+            newValue: { changes, more },
+            description: names.length
+              ? `Website settings updated: ${names.slice(0, 8).join(", ")}${extra ? ` and ${extra} more` : ""}`
+              : "Website settings saved (no changes)",
+          };
+        })(),
       });
     }
 

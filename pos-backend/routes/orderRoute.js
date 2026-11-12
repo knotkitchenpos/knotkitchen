@@ -10,6 +10,7 @@ const {
   syncOrderRefund,
   getPopularItems,
   getOrdersReport,
+  exportOrdersCsv,
 } = require("../controllers/orderController");
 const { isVerifiedUser } = require("../middlewares/tokenVerification");
 const { requireProtectedAction, requireManager } = require("../middlewares/requirePermission");
@@ -26,6 +27,8 @@ router.route("/popular-items").get(isVerifiedUser, getPopularItems);
 // Table / Pay-by-Link). Declared before "/:id" so "report" is never
 // interpreted as an order id.
 router.route("/report").get(isVerifiedUser, requireProtectedAction, getOrdersReport);
+// The same period as CSV, for the owner's own copy of the history.
+router.route("/report/export").get(isVerifiedUser, requireProtectedAction, exportOrdersCsv);
 router.route("/:id").get(isVerifiedUser, getOrderById);
 router.route("/:id").put(isVerifiedUser, updateOrder);
 // Module 4 §2 — dedicated "mark ready" action. Declared as a sub-path

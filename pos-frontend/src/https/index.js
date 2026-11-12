@@ -151,6 +151,11 @@ export const getPopularItems = (params = {}) =>
 export const getOrdersReport = (params) =>
   axiosWrapper.get("/api/order/report", params ? { params } : undefined);
 
+// Every order in a period as CSV ({ date } or { from, to }), for the owner's
+// own copy of the history. Same PIN protection as the report.
+export const exportOrdersCsv = (params) =>
+  axiosWrapper.get("/api/order/report/export", { params, responseType: "blob" });
+
 // Table Session Endpoints (EPOS table ordering)
 export const createTableSession = (data) =>
   axiosWrapper.post("/api/table-session/", data);
