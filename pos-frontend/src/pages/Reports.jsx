@@ -645,6 +645,14 @@ const Reports = () => {
   // everything, as CSV. The browser downloads it; the app saves it to
   // Downloads/KnotKitchen (utils/saveImage).
   const [exportOpen, setExportOpen] = useState(false);
+  // Which way the menu opens: from the button's right edge, unless that would
+  // run off the left of the screen (a phone, where the toolbar wraps left).
+  const [exportFromLeft, setExportFromLeft] = useState(false);
+  const toggleExport = () => {
+    const r = exportRef.current?.getBoundingClientRect();
+    setExportFromLeft(Boolean(r) && r.right - 240 < 8);
+    setExportOpen((v) => !v);
+  };
   const [exporting, setExporting] = useState(false);
   const [exportError, setExportError] = useState("");
   const exportRef = useRef(null);
@@ -715,7 +723,7 @@ const Reports = () => {
             </button>
             <div className="relative" ref={exportRef}>
               <button
-                onClick={() => setExportOpen((v) => !v)}
+                onClick={toggleExport}
                 disabled={exporting}
                 aria-haspopup="menu"
                 aria-expanded={exportOpen}
@@ -728,7 +736,7 @@ const Reports = () => {
                 {exporting ? "Exporting…" : "Export"}
               </button>
               {exportOpen && (
-                <div role="menu" className="absolute right-0 z-20 mt-1 w-[240px] rounded-xl border border-[#E2E8F0] bg-white p-1 shadow-lg">
+                <div role="menu" className={`absolute ${exportFromLeft ? "left-0" : "right-0"} z-20 mt-1 w-[240px] max-w-[calc(100vw-2rem)] rounded-xl border border-[#E2E8F0] bg-white p-1 shadow-lg`}>
                   {exportChoices.map((c) => (
                     <button
                       key={c.key}
