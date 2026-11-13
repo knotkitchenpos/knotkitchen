@@ -1,0 +1,13 @@
+{
+  "name": "KnotKitchen Partners",
+  "short_name": "KK Partners",
+  "start_url": "/partners/",
+  "scope": "/partners/",
+  "display": "standalone",
+  "background_color": "#F8FAFC",
+  "theme_color": "#0B1120",
+  "icons": [
+    { "src": "/partners/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/partners/icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

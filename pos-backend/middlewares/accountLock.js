@@ -74,6 +74,11 @@ const enforceAccountLock = async (req, res, next) => {
     // written as full paths, so it has to be matched against the full path --
     // matching req.path alone left Billing itself locked.
     if (isOpen(`${req.baseUrl || ""}${req.path}`)) return next();
+    // The owner READING a locked store's reports and orders on the Partners
+    // dashboard (only allow-listed paths get there: partnerPassthrough). The
+    // lock stops the store trading, not its owner seeing what it sold; the
+    // dashboard's own totals already include it.
+    if (req.user?.viaPartners && req.method === "GET") return next();
 
     let balance = await BusinessBalance.findOne({ restaurantId })
       .select("lockedAt lockedReason")
@@ -95,7 +100,7 @@ const enforceAccountLock = async (req, res, next) => {
       reason: balance.lockedReason === STORE_CLOSED_MESSAGE ? STORE_CLOSED : "UNPAID",
       message:
         balance.lockedReason ||
-        "This account is locked for non-payment. Settle the outstanding amount in Settings → Billing to continue.",
+        "This account is locked for non-payment. The store owner settles it on the Partners dashboard (knotkitchen.com/partners) to continue.",
       lockedAt: balance.lockedAt,
       billingPath: "/settings/billing",
     });

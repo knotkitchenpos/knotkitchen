@@ -261,6 +261,12 @@ app.get("/ready", (req, res) => {
     });
 });
 
+// Partners dashboard (knotkitchen.com/partners). The pass-through comes before
+// every route: it hands a linked store's Billing and Reports calls to that
+// store's own routes (middlewares/partnerPassthrough).
+app.use(require("./middlewares/partnerPassthrough").partnerPassthrough);
+app.use("/api/partners", require("./routes/partnerRoute"));
+
 // Other Endpoints
 app.use("/api/user", require("./routes/userRoute"));
 // A customer's phone number is shown in full on the day of the order only;

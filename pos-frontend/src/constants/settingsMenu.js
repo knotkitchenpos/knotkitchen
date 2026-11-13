@@ -30,7 +30,8 @@ export const MENU_ITEMS = [
     : []),
   // Reachable even when the account is locked -- it is the only screen that
   // can clear a lock, so it must never be gated. See middlewares/accountLock.js.
-  { id: "billing", title: "12. Billing & Subscription", desc: "Wallet, plan, add-ons, tablets, printers, their delivery and invoices.", Icon: I.fileText, path: "/settings/billing" },
+  // Moved to the owner's Partners dashboard (knotkitchen.com/partners); this opens the page that says so.
+  { id: "billing", title: "12. Billing & Subscription", desc: "Moved to the Partners dashboard at knotkitchen.com/partners.", Icon: I.fileText, path: "/settings/billing" },
 
   { id: "website", title: "13. Manage Website", desc: "Landing page, branding, colours and domain.", Icon: I.globe, path: "/website", feature: "website" },
   { id: "eats", title: "14. Knot Eats", desc: "List your restaurant on eats.knotkitchen.com.", Icon: I.store, mode: "view", feature: "pos" },

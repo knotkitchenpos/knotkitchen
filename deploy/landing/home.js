@@ -19,7 +19,6 @@
   /* ---- prices, add-ons and devices from the catalogue CSD edits (GET /api/public/pricing).
      The HTML already shows them, so a failed or slow request leaves the page as it is.
      Before the reduced-motion return below: everyone gets today's prices. ---- */
-  const POS_APP = "https://business.knotkitchen.com";
   const rupees = (n) => "₹" + Number(n).toLocaleString("en-IN", { maximumFractionDigits: 2 });
   const el = (tag, props, ...kids) => {
     const e = Object.assign(document.createElement(tag), props);
@@ -28,8 +27,9 @@
   };
   // Only a picture uploaded in CSD (the server checks the same when it is saved).
   const picture = (url) => (/^https:\/\/api\.knotkitchen\.com\/uploads\/platform\/devices\/[0-9a-f-]+\.webp$/.test(url || "") ? url : "");
-  // Sign in first; POS Billing then opens this device's request (pos-frontend Billing.jsx, ?device=).
-  const orderUrl = (code) => `${POS_APP}/settings/billing?device=${encodeURIComponent(code)}`;
+  // Billing is on the owner's Partners dashboard: sign in there, then its Billing opens this
+  // device's request (pos-frontend Billing.jsx, ?device=, kept through the sign-in).
+  const orderUrl = (code) => `https://knotkitchen.com/partners/billing?device=${encodeURIComponent(code)}`;
   const dialog = $("#device-dialog");
   const showDevice = (d) => {
     const src = picture(d.imageUrl);

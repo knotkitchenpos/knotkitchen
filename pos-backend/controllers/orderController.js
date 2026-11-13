@@ -1447,38 +1447,65 @@ const buildReportBuckets = (orders) => {
   return summary;
 };
 
+/**
+ * Takings per store day, by the same rule as the sales cards: a cancelled
+ * order is no sale unless money was taken and given back (N012).
+ */
+const buildDailySeries = (orders) => {
+  const days = new Map();
+  for (const o of orders) {
+    if (canonicalStatus(o.orderStatus) === CANCELLED && !refundedTotal(o)) continue;
+    const day = localDate(new Date(o.orderDate || o.createdAt), DEFAULT_TZ);
+    const d = days.get(day) || { day, count: 0, amount: 0 };
+    d.count += 1;
+    d.amount = Math.round((d.amount + netAmount(o)) * 100) / 100;
+    days.set(day, d);
+  }
+  return [...days.values()].sort((a, b) => a.day.localeCompare(b.day));
+};
+
+/**
+ * One store's sales report for a period: what GET /api/order/report shows,
+ * shared with the Partners dashboard (routes/partnerRoute.js), which runs it
+ * for each linked store so its numbers are the POS report's own.
+ */
+const reportFor = async (user, query = {}) => {
+  const window = buildDateWindow(query);
+  const filter = {
+    ...tenantScopeFor(user),
+    isDeleted: { $ne: true },
+    createdAt: { $gte: window.start, $lte: window.end },
+  };
+
+  // Every order in the period: the totals used to come from the newest
+  // 1,000 only, so a busy month silently dropped its oldest orders.
+  // ponytail: totals in memory; move them to a $group if one period ever runs to tens of thousands of orders.
+  const orders = await Order.find(filter)
+    .sort({ createdAt: -1 })
+    .populate("table")
+    .populate("createdBy", "name")
+    .lean();
+
+  // Canonical status (Preparing instead of legacy Pending / In Progress)
+  // so the frontend can drive its filters from a single vocabulary.
+  const projected = orders.map(reportOrderView);
+
+  const summary = buildReportBuckets(projected);
+
+  // By dish / category / hour / staff. Categories come from the tenant's
+  // menus: a line only carries the dish, not the category it sat in.
+  const { buildReportBreakdown, categoryLookup } = require("../services/reportBreakdown");
+  const menus = await getMenuModel()
+    .find(user?.restaurantId ? { restaurantId: user.restaurantId } : { createdBy: user?._id })
+    .select("name items._id items.name")
+    .lean();
+  const breakdown = buildReportBreakdown(projected, { categoryOf: categoryLookup(menus) });
+  return { window, summary, breakdown, projected, daily: buildDailySeries(projected) };
+};
+
 const getOrdersReport = async (req, res, next) => {
   try {
-    const window = buildDateWindow(req.query);
-    const filter = {
-      ...tenantScopeFor(req.user),
-      isDeleted: { $ne: true },
-      createdAt: { $gte: window.start, $lte: window.end },
-    };
-
-    // Every order in the period: the totals used to come from the newest
-    // 1,000 only, so a busy month silently dropped its oldest orders.
-    // ponytail: totals in memory; move them to a $group if one period ever runs to tens of thousands of orders.
-    const orders = await Order.find(filter)
-      .sort({ createdAt: -1 })
-      .populate("table")
-      .populate("createdBy", "name")
-      .lean();
-
-    // Canonical status (Preparing instead of legacy Pending / In Progress)
-    // so the frontend can drive its filters from a single vocabulary.
-    const projected = orders.map(reportOrderView);
-
-    const summary = buildReportBuckets(projected);
-
-    // By dish / category / hour / staff. Categories come from the tenant's
-    // menus: a line only carries the dish, not the category it sat in.
-    const { buildReportBreakdown, categoryLookup } = require("../services/reportBreakdown");
-    const menus = await getMenuModel()
-      .find(req.user?.restaurantId ? { restaurantId: req.user.restaurantId } : { createdBy: req.user?._id })
-      .select("name items._id items.name")
-      .lean();
-    const breakdown = buildReportBreakdown(projected, { categoryOf: categoryLookup(menus) });
+    const { window, summary, breakdown, projected } = await reportFor(req.user, req.query);
 
     await logActivity({
       req,
@@ -1675,6 +1702,7 @@ module.exports = {
   syncOrderRefund,
   getPopularItems,
   getOrdersReport,
+  reportFor,
   exportOrdersCsv,
   validateTableCapacityForOrder,
   // Exposed for other controllers/services that need consistent

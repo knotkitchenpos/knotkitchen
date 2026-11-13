@@ -235,7 +235,7 @@ test("home.js puts today's catalogue on the page, reduced motion or not", async 
   assert.equal(img.src, `${PRICING.devices[0].imageUrl}?w=640`);
   assert.equal(img.loading, "lazy");
   assert.equal(added.children[0].find("IMG"), undefined, "only a picture CSD uploaded is shown");
-  assert.equal(tablet.find("A").href, "https://business.knotkitchen.com/settings/billing?device=TABLET");
+  assert.equal(tablet.find("A").href, "https://knotkitchen.com/partners/billing?device=TABLET");
   assert.equal(added.find("EM").textContent, "₹2,999.5incl. GST, one time");
 
   // Tap the picture or name: the product, large, with Order and Sign up / Book a demo.
@@ -243,7 +243,7 @@ test("home.js puts today's catalogue on the page, reduced motion or not", async 
   assert.equal(dom["#device-dialog"].opened, true);
   assert.equal(dom["#dd-media"].children[0].src, PRICING.devices[0].imageUrl);
   assert.deepEqual([dom["#dd-name"].textContent, dom["#dd-desc"].textContent], ["Tablet", "10-inch"]);
-  assert.equal(dom["#dd-order"].href, "https://business.knotkitchen.com/settings/billing?device=TABLET");
+  assert.equal(dom["#dd-order"].href, "https://knotkitchen.com/partners/billing?device=TABLET");
   assert.match(decodeURIComponent(dom["#dd-demo"].href), /^https:\/\/wa\.me\/919477623682\?text=Hi KnotKitchen, I'd like a free demo and the Tablet \(₹10,000\)\.\n\*Restaurant name:\* \n\*City:\* $/);
 
   const ld = JSON.parse(dom['script[type="application/ld+json"]'].textContent);

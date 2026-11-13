@@ -129,7 +129,8 @@ test("no old plan names, installation or commitment is left in the POS", () => {
   }
   // Staff are asked for the PIN by the global popup; Billing has no modal of its own.
   assert.ok(!SRC("src/pages/Billing.jsx").includes("SecurityPinModal"));
-  assert.match(SRC("src/components/shared/AccountLock.jsx"), /recharge the wallet there and it unlocks by itself/);
+  // Billing moved to the owner's Partners dashboard: the lock banner says where to pay.
+  assert.match(SRC("src/components/shared/AccountLock.jsx"), /recharges the wallet on the Partners dashboard \(knotkitchen\.com\/partners\) and it unlocks by itself/);
 });
 
 test("a printer or tablet is requested to a delivery address, then priced and paid; the store follows and can cancel it", () => {

@@ -89,7 +89,7 @@ export const AccountLockBanner = ({ locked, locksAt, lockWarning }) => {
     return (
       <div role="alert" className="shrink-0 flex flex-wrap items-center justify-between gap-2 bg-[#B91C1C] px-4 py-2.5 text-white">
         <p className="text-[13px] font-bold">
-          The POS is locked. Only Billing &amp; Subscription is open: recharge the wallet there and it unlocks by itself.
+          The POS is locked. The store owner recharges the wallet on the Partners dashboard (knotkitchen.com/partners) and it unlocks by itself.
         </p>
         <div className="flex gap-2">
           <button
@@ -117,7 +117,7 @@ export const AccountLockBanner = ({ locked, locksAt, lockWarning }) => {
     <div role="status" className="shrink-0 flex flex-wrap items-center justify-between gap-2 bg-[#FEF3C7] border-b border-[#FDE68A] px-4 py-2.5">
       <p className="text-[13px] font-semibold text-[#92400E]">
         {lockWarning || "Payment is due."} Pay within <strong>{remaining(locksAt, now)}</strong> (by {at}) or every
-        POS feature except Billing will be locked.
+        POS feature will be locked. The store owner pays on the Partners dashboard.
       </p>
       <button
         type="button"

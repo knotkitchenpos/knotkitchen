@@ -10,6 +10,7 @@
 #
 # Public hostname map (BASE_DOMAIN = knotkitchen.com):
 #   knotkitchen.com            → static landing, else customer-web
+#   knotkitchen.com/partners/  → pos-web       (owners' Partners dashboard; API -> pos-api /api/partners)
 #   www.knotkitchen.com        → redirect to knotkitchen.com
 #   csd.knotkitchen.com        → csd-web       (Customer Support Desk)
 #   business.knotkitchen.com   → pos-web       (POS SPA)
@@ -265,6 +266,26 @@ order.{$BASE_DOMAIN} {
 	import security_headers
 
 	encode zstd gzip
+
+	# The owners' Partners dashboard: every store an owner links, their sales,
+	# and Billing (moved out of the POS). Its app is built into the POS image
+	# (pos-frontend vite.partners.config.js) at /partners/. Its API is forwarded
+	# here, same-origin, and only /api/partners/* of it: its session cookie
+	# lives on this host under /partners and never travels anywhere else.
+	# Two `handle` blocks: Caddy tries them longest path first, so the API one
+	# always wins over the app one.
+	redir /partners /partners/ 308
+	handle /partners/api/* {
+		uri replace /partners/api/ /api/partners/ 1
+		reverse_proxy pos-api:8000 {
+			header_up Host {host}
+		}
+	}
+	handle /partners/* {
+		reverse_proxy pos-web:80 {
+			header_up Host {host}
+		}
+	}
 
 	# Static marketing landing page + legal pages, served straight off disk
 	# from ./landing (bind-mounted into this container at /srv/landing).

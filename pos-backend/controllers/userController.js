@@ -687,20 +687,25 @@ const setStoreAccountPassword = async (req, res, next) => {
  * signTokensAndSetCookies primitive, so lockout and session issuance
  * behave exactly like the legacy Product-ID + password login.
  */
-const storeLoginWithPassword = async (req, res, next) => {
-  try {
-    const storeId = toSafeString(req.body.storeId).trim();
-    const phoneRaw = toSafeString(req.body.phone).replace(/\D/g, "").slice(-10);
-    const password = typeof req.body.password === "string" ? req.body.password : "";
+/**
+ * Store ID + phone + password, checked exactly as the POS sign-in checks them:
+ * the same generic failures, the same attempt counting and lockout. Returns
+ * the user; throws an http error. Shared with the Partners dashboard
+ * (routes/partnerRoute.js), which must accept nothing the POS would refuse.
+ */
+const verifyStoreCredentials = async (body = {}) => {
+    const storeId = toSafeString(body.storeId).trim();
+    const phoneRaw = toSafeString(body.phone).replace(/\D/g, "").slice(-10);
+    const password = typeof body.password === "string" ? body.password : "";
     if (!/^\d{6}$/.test(storeId) || !/^\d{10}$/.test(phoneRaw) || !password) {
-      return next(createHttpError(400, "Store ID, phone and password are required."));
+      throw createHttpError(400, "Store ID, phone and password are required.");
     }
 
     const { restaurant, store } = await findRestaurantOrStore(storeId);
-    if (!store) return next(createHttpError(401, "Invalid credentials."));
+    if (!store) throw createHttpError(401, "Invalid credentials.");
 
     const unavailable = getStoreUnavailableReason(restaurant, store);
-    if (unavailable) return next(createHttpError(400, unavailable));
+    if (unavailable) throw createHttpError(400, unavailable);
 
     // Anyone actually claimed this store yet? A store whose only rows are
     // system-seeded placeholders counts as unclaimed — same rule as
@@ -708,9 +713,7 @@ const storeLoginWithPassword = async (req, res, next) => {
     // operator between "set a password" and "wrong password".
     const anyUserExists = await findClaimedStoreUser({ storeId, restaurant });
     if (!anyUserExists) {
-      return next(
-        createHttpError(409, "This store has no password yet. Please set one up first.", { code: "STORE_NO_PASSWORD" })
-      );
+      throw createHttpError(409, "This store has no password yet. Please set one up first.", { code: "STORE_NO_PASSWORD" });
     }
 
     const user = await User.findOne({
@@ -721,20 +724,18 @@ const storeLoginWithPassword = async (req, res, next) => {
     });
     if (!user) {
       // Unknown phone for this store — same generic reply.
-      return next(createHttpError(401, "Invalid credentials."));
+      throw createHttpError(401, "Invalid credentials.");
     }
     if (user.isDeleted || !user.isActive) {
-      return next(createHttpError(401, "Invalid credentials."));
+      throw createHttpError(401, "Invalid credentials.");
     }
     // Never let a placeholder hash be guessed at: nobody holds it, so every
     // attempt would burn a login attempt toward lockout for no reason.
     if (user.passwordPlaceholder === true) {
-      return next(
-        createHttpError(409, "This account has no password yet. Please set one up first.", { code: "ACCOUNT_NO_PASSWORD" })
-      );
+      throw createHttpError(409, "This account has no password yet. Please set one up first.", { code: "ACCOUNT_NO_PASSWORD" });
     }
     if (user.lockedUntil && user.lockedUntil > new Date()) {
-      return next(createHttpError(423, "Account locked. Try again later."));
+      throw createHttpError(423, "Account locked. Try again later.");
     }
 
     const ok = user.password && (await bcrypt.compare(password, user.password));
@@ -744,15 +745,21 @@ const storeLoginWithPassword = async (req, res, next) => {
         user.lockedUntil = new Date(Date.now() + config.lockoutDurationMs);
         user.loginAttempts = 0;
         await user.save();
-        return next(createHttpError(423, "Too many attempts. Account locked for 15 minutes."));
+        throw createHttpError(423, "Too many attempts. Account locked for 15 minutes.");
       }
       await user.save();
-      return next(createHttpError(401, "Invalid credentials."));
+      throw createHttpError(401, "Invalid credentials.");
     }
 
     user.loginAttempts = 0;
     user.lockedUntil = undefined;
     user.lastLoginAt = new Date();
+    return user;
+};
+
+const storeLoginWithPassword = async (req, res, next) => {
+  try {
+    const user = await verifyStoreCredentials(req.body || {});
     await signTokensAndSetCookies(user, req, res);
 
     res.status(200).json({
@@ -934,6 +941,7 @@ module.exports = {
   setStoreAccountPassword,
   setupStorePassword,
   storeLoginWithPassword,
+  verifyStoreCredentials,
   changePassword,
   impersonateWithSupportToken,
 };

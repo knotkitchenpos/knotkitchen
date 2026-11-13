@@ -25,6 +25,19 @@ const { enforcePlan } = require("./planGate");
  */
 const isVerifiedUser = async (req, res, next) => {
   try {
+    // The Partners dashboard acting as one of its linked stores
+    // (routes/partnerRoute.js): the partner session, the link and this store's
+    // Owner were checked there, and only an allow-listed Billing or Reports
+    // path reaches here. Set on the server alone: no header or cookie can.
+    // The account lock and plan gate still apply exactly as for the POS.
+    if (req.partnerActingUser) {
+      req.user = req.partnerActingUser;
+      req.user.jti = null;
+      req.user.supportPosSessionId = null;
+      req.user.viaPartners = true;
+      return enforceAccountLock(req, res, () => enforcePlan(req, res, next));
+    }
+
     // Which takeaway is this tab acting as? Cookies are namespaced per
     // store, so the browser may be holding several sessions at once and
     // only the declared one may be used.

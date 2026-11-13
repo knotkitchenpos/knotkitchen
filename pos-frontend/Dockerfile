@@ -12,7 +12,8 @@ ENV VITE_BACKEND_URL=$VITE_BACKEND_URL \
 COPY package.json package-lock.json* ./
 RUN npm ci
 COPY . .
-RUN npm run build
+# The POS, then the Partners dashboard into dist/partners (served at /partners/).
+RUN npm run build && npm run build:partners
 
 FROM nginx:1.27-alpine AS runtime
 COPY nginx.conf /etc/nginx/conf.d/default.conf

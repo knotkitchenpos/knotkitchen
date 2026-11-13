@@ -4,6 +4,7 @@ import { isPublicPath } from "../utils/publicRoutes";
 import { getActiveStoreId } from "../utils/storeSession";
 import { requestPin, typedPin } from "../utils/pinPrompt";
 import { markReachable } from "../utils/connectivity";
+import { PARTNERS_APP, PARTNERS_API, activePartnerStore, partnersSignedOut } from "../partners/mode";
 
 const defaultHeader = {
   "Content-Type": "application/json",
@@ -19,6 +20,15 @@ export const axiosWrapper = axios.create({
 // Attach short-lived Staff Security PIN authorization token if active
 axiosWrapper.interceptors.request.use(
   (config) => {
+    // The Partners dashboard (knotkitchen.com/partners) reuses the POS's
+    // Billing and Reports screens: their calls go to the store picked there,
+    // through /api/partners/s/<storeId>/... (middlewares/partnerPassthrough).
+    if (PARTNERS_APP) {
+      config.baseURL = PARTNERS_API;
+      const url = String(config.url || "");
+      if (url.startsWith("/api/")) config.url = `/s/${activePartnerStore()}${url}`;
+      return config;
+    }
     // Tell the API which takeaway this tab is acting as, so it reads that
     // store's session cookie and not another one signed in from the same
     // browser. Without this every takeaway shares one session.
@@ -77,6 +87,11 @@ axiosWrapper.interceptors.response.use(
     }
     const originalRequest = error?.config;
     const url = originalRequest?.url || "";
+    // Partners: no POS refresh or PIN loop; a signed-out session goes to its sign-in.
+    if (PARTNERS_APP) {
+      if (error.response?.status === 401) partnersSignedOut();
+      return Promise.reject(error);
+    }
     // NOTE: only the endpoints that BOOTSTRAP a new session (login/register)
     // or the refresh endpoint itself are considered "auth endpoints" for the
     // purpose of skipping the 401 → refresh → retry loop. GET /api/user

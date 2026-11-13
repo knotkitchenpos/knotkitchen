@@ -45,13 +45,14 @@ const PAGE_LOADERS = {
   ManageMenuPage: () => import("./pages/ManageMenuPage.jsx"),
   Support: () => import("./pages/Support.jsx"),
   Impersonate: () => import("./pages/Impersonate.jsx"),
-  Billing: () => import("./pages/Billing.jsx"),
+  // Billing moved to the Partners dashboard; its route says where (pages/BillingMoved).
+  BillingMoved: () => import("./pages/BillingMoved.jsx"),
   WebsiteSettings: () => import("./pages/WebsiteSettings.jsx"),
 };
 const {
   Auth, Orders, Tables, Menu, OrderOnline, PaymentLink,
   Reports, Settings, ManageMenuPage, Support,
-  Impersonate, Billing, WebsiteSettings,
+  Impersonate, BillingMoved, WebsiteSettings,
 } = Object.fromEntries(Object.entries(PAGE_LOADERS).map(([name, load]) => [name, lazy(load)]));
 
 function ProtectedRoutes({ children }) {
@@ -127,7 +128,7 @@ function Layout() {
         <Route path="/tables" element={<ProtectedRoutes>{planLoading ? <FullScreenLoader /> : billingOnly ? <Navigate to="/settings?view=tables" replace /> : <Tables />}</ProtectedRoutes>} />
         <Route path="/settings" element={<ProtectedRoutes><Settings /></ProtectedRoutes>} />
         {/* Reachable even when the account is locked -- see middlewares/accountLock.js */}
-        <Route path="/settings/billing" element={<ProtectedRoutes><Billing /></ProtectedRoutes>} />
+        <Route path="/settings/billing" element={<ProtectedRoutes><BillingMoved /></ProtectedRoutes>} />
         <Route path="/support" element={<ProtectedRoutes><Support /></ProtectedRoutes>} />
         <Route path="/manage-menu" element={<ProtectedRoutes><ManageMenuPage /></ProtectedRoutes>} />
 

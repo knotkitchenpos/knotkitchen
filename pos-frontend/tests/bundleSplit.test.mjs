@@ -10,7 +10,8 @@ test("every page is lazy-loaded from one PAGE_LOADERS map, inside Suspense", () 
   const app = SRC("src/App.jsx");
   assert.doesNotMatch(app, /from "\.\/pages"/, "the barrel pulled every page into the first download");
   assert.doesNotMatch(app, /^import \w+ from "\.\/pages\//m, "a static page import defeats the split");
-  const pages = fs.readdirSync(new URL("../src/pages/", import.meta.url)).filter((f) => f.endsWith(".jsx"));
+  // Billing.jsx is the Partners dashboard's now (src/partners/pages/BillingPage.jsx), not a POS page.
+  const pages = fs.readdirSync(new URL("../src/pages/", import.meta.url)).filter((f) => f.endsWith(".jsx") && f !== "Billing.jsx");
   assert.ok(pages.length >= 13);
   for (const f of pages) {
     assert.match(app, new RegExp(`${f.replace(".jsx", "")}: \\(\\) => import\\("\\./pages/${f.replace(".", "\\.")}"\\),`), `${f} has no loader`);
