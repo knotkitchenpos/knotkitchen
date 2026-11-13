@@ -52,14 +52,15 @@ test("a new order is stamped with its restaurant's storeId, whatever the channel
         const order = new Order({ restaurantId: R1, source, orderStatus: "Pending" });
         await order.validate();
         assert.equal(order.storeId, "123456", source);
-        assert.match(order.billNumber, /^\d{4}\/0000\d\d$/, source);
+        if (source === "MARKETPLACE") assert.equal(order.billNumber, "", "Swiggy / Zomato invoice it themselves (section 9(5))");
+        else assert.match(order.billNumber, /^\d{4}\/0000\d\d$/, source);
       }
       // A website order already has it: no read, nothing changed.
       const site = new Order({ restaurantId: R1, source: "WEBSITE", storeId: "654321", orderStatus: "Pending" });
       await site.validate();
       assert.equal(site.storeId, "654321");
       assert.equal(asked.length, 3);
-      assert.equal(seq, 4, "every channel's new order took the next bill number");
+      assert.equal(seq, 3, "every channel but Swiggy / Zomato took the next bill number");
     });
     // No live connection (unit tests): the hook never waits on a read.
     const offline = new Order({ restaurantId: R1, orderStatus: "Pending" });

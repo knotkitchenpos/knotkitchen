@@ -8,6 +8,9 @@ import { sourceLabel, tableLabel } from "../../utils/orderLabels";
 import { formatQty, resolveItemAmounts } from "../../utils/orderItems";
 import { PeriodPicker, StoreFilter, rangeFor } from "../components/Filters";
 
+/** "13 Nov" in the store's time zone. */
+const shortDay = (d) => new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "Asia/Kolkata" });
+
 const typeLabel = (t) => ({ delivery: "Delivery", collection: "Collection", takeaway: "Collection", "dine-in": "Dine-in", dinein: "Dine-in" }[String(t || "").toLowerCase()] || t || "—");
 
 const OrderDetail = ({ row, onClose }) => {
@@ -131,8 +134,9 @@ const OrdersPage = ({ me }) => {
                   <span className="min-w-0 flex-1">
                     <span className="block text-[13.5px] font-extrabold truncate">#{o.orderNumber || String(o._id).slice(-6)} · {o.storeName}</span>
                     <span className="block text-[12px] text-[#64748B] truncate">
-                      {time12(o.createdAt)} · {tableLabel(o.table) || typeLabel(o.orderType)} · {statusLabel(o.orderStatus)}
+                      {range.from === range.to ? "" : `${shortDay(o.createdAt)}, `}{time12(o.createdAt)} · {tableLabel(o.table) || typeLabel(o.orderType)} · {statusLabel(o.orderStatus)}
                     </span>
+                    {o.billNumber && <span className="block text-[11.5px] text-[#94A3B8] truncate">Bill {o.billNumber}</span>}
                   </span>
                   <span className={`text-[14px] font-extrabold shrink-0 ${isCancelled(o.orderStatus) ? "line-through text-[#94A3B8]" : ""}`}>{inr(o.total)}</span>
                 </button>

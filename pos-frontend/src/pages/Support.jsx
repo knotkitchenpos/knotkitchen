@@ -197,7 +197,8 @@ const Support = () => {
       <header className="w-full px-4 sm:px-6 py-4 border-b border-[#E2E8F0] flex items-center justify-between bg-white shrink-0">
         <h1 className="text-[20px] font-bold text-[#0F172A] tracking-tight">Help & Support</h1>
         <button
-          onClick={() => navigate(-1)}
+          // Back, unless this page was the first one opened (a link, a bookmark): then home, never off the app.
+          onClick={() => (window.history.state?.idx > 0 ? navigate(-1) : navigate("/"))}
           className="w-9 h-9 rounded-full flex items-center justify-center text-[#64748B] hover:text-[#0F172A] hover:bg-[#F1F5F9] transition-colors"
           title="Close / Go Back"
         >

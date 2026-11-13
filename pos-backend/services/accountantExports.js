@@ -85,6 +85,8 @@ const billRows = (orders, { methodOf = () => "other" } = {}) =>
       serial: Boolean(parseBillNumber(o.billNumber)),
       day,
       channel: source === "MARKETPLACE" ? o.marketplace || "Swiggy/Zomato" : o.salesChannel === "KNOT_EATS" ? "Knot Eats" : source === "WEBSITE" ? "Website" : source === "QR" ? "Table QR" : "POS",
+      // Invoiced by Swiggy / Zomato (section 9(5)), cancelled or not: never in the restaurant's documents.
+      eco: source === "MARKETPLACE",
       kind: cancelled ? "cancelled" : source === "MARKETPLACE" ? "eco" : gstin && isValidGstin(gstin) ? "b2b" : "b2c",
       buyer: String(o.customerDetails?.company || o.customerDetails?.name || "").trim(),
       gstin: gstin && isValidGstin(gstin) ? gstin : "",
@@ -145,7 +147,7 @@ const gstr1 = ({ rows, store, from, to, voids = [] }) => {
   const gaps = [];
   const used = new Set(rows.map((r) => r.number));
   const series = new Map();
-  for (const r of rows.filter((x) => x.serial)) {
+  for (const r of rows.filter((x) => x.serial && !x.eco)) {
     const { fy, seq } = parseBillNumber(r.number);
     const g = series.get(fy) || { seqs: [], cancelled: 0 };
     g.seqs.push(seq);
@@ -168,7 +170,7 @@ const gstr1 = ({ rows, store, from, to, voids = [] }) => {
     const missing = last - first + 1 - seqs.length;
     if (missing > 0) gaps.push({ fy, missing, first, last });
   }
-  const legacy = rows.filter((r) => !r.serial).sort((a, b) => new Date(a.at) - new Date(b.at));
+  const legacy = rows.filter((r) => !r.serial && !r.eco).sort((a, b) => new Date(a.at) - new Date(b.at));
   if (legacy.length) {
     docs.push({ nature: "Invoices for outward supply (earlier numbering)", from: legacy[0].number, to: legacy[legacy.length - 1].number, total: legacy.length, cancelled: legacy.filter((r) => r.kind === "cancelled").length });
   }

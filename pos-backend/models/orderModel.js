@@ -398,6 +398,9 @@ orderSchema.pre("validate", async function stampStoreId() {
 // Never reissued: an order that has one keeps it, cancelled or not.
 orderSchema.pre("validate", async function stampBillNumber() {
   if (!this.isNew || this.billNumber || !this.restaurantId || mongoose.connection.readyState !== 1) return;
+  // A Swiggy / Zomato order is invoiced by the platform, which pays its GST
+  // (section 9(5)): it takes no number from the restaurant's own series.
+  if (String(this.source || "").toUpperCase() === "MARKETPLACE") return;
   this.billNumber = await require("../services/billNumber").nextBillNumber(this.restaurantId, this.orderDate || this.createdAt || new Date());
 });
 

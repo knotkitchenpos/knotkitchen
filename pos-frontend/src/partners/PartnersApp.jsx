@@ -108,6 +108,22 @@ const Loading = () => (
 const Shell = ({ me, children }) => {
   const navigate = useNavigate();
   const qc = useQueryClient();
+  // The tab title names the section. The POS screens set their own on
+  // mount; this runs after theirs, so the Partners one stays.
+  const { pathname } = useLocation();
+  useEffect(() => {
+    const item = NAV.find((n) => (n.end ? pathname === n.to : pathname.startsWith(n.to))) || (pathname.startsWith("/more") ? { label: "More" } : null);
+    const title = item ? `${item.label} · KnotKitchen Partners` : "KnotKitchen Partners";
+    document.title = title;
+    // A POS screen may set its own title later (once its data loads): put this one back.
+    const el = document.querySelector("title");
+    if (!el || typeof MutationObserver === "undefined") return undefined;
+    const watch = new MutationObserver(() => {
+      if (document.title !== title) document.title = title;
+    });
+    watch.observe(el, { childList: true, characterData: true, subtree: true });
+    return () => watch.disconnect();
+  }, [pathname]);
   const signOut = async () => {
     await partnersApi.logout().catch(() => {});
     qc.clear();
