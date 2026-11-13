@@ -32,6 +32,8 @@ const partnerAccountSchema = new mongoose.Schema(
     phone: { type: String, default: "" },
     createdByUserId: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
     sessions: { type: [partnerSessionSchema], default: [] },
+    // Phone alerts: which ones, and their amounts (services/partnerAlerts prefsOf).
+    alerts: { type: mongoose.Schema.Types.Mixed, default: {} },
   },
   { timestamps: true }
 );

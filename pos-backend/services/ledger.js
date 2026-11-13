@@ -141,7 +141,14 @@ const applyMovement = async ({
 const credit = (args) => applyMovement({ ...args, direction: "CREDIT" });
 
 /** Money out. Throws InsufficientBalanceError rather than going negative. */
-const debit = (args) => applyMovement({ ...args, direction: "DEBIT" });
+const debit = async (args) => {
+  const result = await applyMovement({ ...args, direction: "DEBIT" });
+  // Wallet fell below an owner's alert line: their phone hears (Partners).
+  if (!result.duplicate && result.entry) {
+    require("./partnerAlerts").walletMoved(args.restaurantId, result.entry.balanceAfterPaise, result.entry.amountPaise);
+  }
+  return result;
+};
 
 /** The statement, newest first. */
 const history = async (restaurantId, { limit = 50, before = null } = {}) => {

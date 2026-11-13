@@ -210,6 +210,8 @@ const evaluateLock = async (restaurantId, on = new Date()) => {
     balance.lockedAt = new Date(on);
     balance.lockedReason = reason;
     await balance.save();
+    // The owner's phone, if they switched alerts on in Partners.
+    require("./partnerAlerts").storeLocked(restaurantId, reason);
     return { ...assessment, changed: true, locked: true, balance };
   }
 

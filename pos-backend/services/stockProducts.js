@@ -95,7 +95,10 @@ const turnOffFor = async (restaurantId, ingredientId) => {
     }
     if (changed) await menu.save();
   }
-  if (names.length) announce(restaurantId, names.length);
+  if (names.length) {
+    announce(restaurantId, names.length);
+    require("./partnerAlerts").stockOut(restaurantId, names);
+  }
   return names;
 };
 

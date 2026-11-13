@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDispatch } from "react-redux";
 import {
   MdDashboard, MdStorefront, MdReceiptLong, MdBarChart, MdListAlt, MdPerson, MdLogout, MdFileDownload,
-  MdRestaurantMenu, MdInventory2, MdGroups, MdSupportAgent, MdApps, MdShield, MdSyncAlt, MdTrendingUp, MdSchedule, MdAccountBalanceWallet,
+  MdRestaurantMenu, MdInventory2, MdGroups, MdSupportAgent, MdApps, MdShield, MdSyncAlt, MdTrendingUp, MdSchedule, MdAccountBalanceWallet, MdNotificationsActive,
 } from "react-icons/md";
 import GlobalPinPrompt from "../components/common/GlobalPinPrompt";
 import { setUser } from "../redux/slices/userSlice";
@@ -28,6 +28,7 @@ const MenuTools = lazy(() => import("./pages/MenuTools"));
 const Profit = lazy(() => import("./pages/Profit"));
 const StoreHours = lazy(() => import("./pages/StoreHours"));
 const TopUp = lazy(() => import("./pages/TopUp"));
+const Alerts = lazy(() => import("./pages/Alerts"));
 
 // `phone`: on the phone's bottom bar; everything else is under More.
 const NAV = [
@@ -43,6 +44,7 @@ const NAV = [
   { to: "/staff-watch", label: "Staff watch", Icon: MdShield, note: "Discounts, cancellations and refunds by staff" },
   { to: "/staff", label: "Manage Staff", Icon: MdGroups, note: "Staff logins and their PIN privileges" },
   { to: "/exports", label: "Exports", Icon: MdFileDownload, note: "GSTR-1 and Tally for your accountant" },
+  { to: "/alerts", label: "Phone alerts", Icon: MdNotificationsActive, note: "Store locked, wallet low, refunds, stock" },
   { to: "/hours", label: "Store hours", Icon: MdSchedule, note: "Close for today, holidays, opening hours" },
   { to: "/stores", label: "Stores", Icon: MdStorefront, note: "Link and manage your stores" },
   { to: "/support", label: "Help & Support", Icon: MdSupportAgent, note: "Ask KnotKitchen for help" },
@@ -238,6 +240,7 @@ const PartnersApp = () => (
     <Route path="/menu" element={<Protected>{(me) => <MenuPage me={me} />}</Protected>} />
     <Route path="/menu-tools" element={<Protected>{(me) => <MenuTools me={me} />}</Protected>} />
     <Route path="/profit" element={<Protected>{(me) => <Profit me={me} />}</Protected>} />
+    <Route path="/alerts" element={<Protected>{() => <Alerts />}</Protected>} />
     <Route path="/topup" element={<Protected>{() => <TopUp />}</Protected>} />
     <Route path="/hours" element={<Protected>{(me) => <StoreHours me={me} />}</Protected>} />
     <Route path="/inventory" element={<Protected>{(me) => <InventoryPage me={me} />}</Protected>} />

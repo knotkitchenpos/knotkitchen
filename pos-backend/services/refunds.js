@@ -336,6 +336,9 @@ const refundCancelledOrder = async (order, { user, reason, amount: asked } = {})
     user: user?.name || "POS",
   });
   await order.save();
+  if (entry.status !== "FAILED") {
+    require("./partnerAlerts").refundGiven(order.restaurantId, { amount, orderNumber: order.billNumber || order.orderNumber, by: user?.name });
+  }
   return { order, entry, amount };
 };
 
@@ -378,6 +381,13 @@ const refundOnCancel = async (order, { user, reason } = {}) => {
     { _id: order._id, "refunds.0": { $exists: false } },
     { $push: { refunds: { $each: entries } } },
   );
+  if (modifiedCount) {
+    require("./partnerAlerts").refundGiven(order.restaurantId, {
+      amount: round2(entries.reduce((s, e) => s + e.amount, 0)),
+      orderNumber: order.billNumber || order.orderNumber,
+      by: user?.name,
+    });
+  }
   return modifiedCount ? entries : null;
 };
 

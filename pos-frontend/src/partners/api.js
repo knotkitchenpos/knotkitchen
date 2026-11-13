@@ -27,6 +27,12 @@ export const partnersApi = {
   topUpStores: () => axiosWrapper.get("/topup/stores"),
   topUp: (body) => axiosWrapper.post("/topup", body, { timeout: 60000 }),
   verifyTopUp: (gatewayOrderId) => axiosWrapper.post("/topup/verify", { gatewayOrderId }, { timeout: 60000 }),
+  // Phone alerts
+  alerts: (endpoint) => axiosWrapper.get("/alerts", { params: endpoint ? { endpoint } : {} }),
+  saveAlerts: (prefs) => axiosWrapper.put("/alerts", { prefs }),
+  alertsSubscribe: (subscription) => axiosWrapper.post("/alerts/subscribe", { subscription }),
+  alertsUnsubscribe: (endpoint) => axiosWrapper.post("/alerts/unsubscribe", { endpoint }),
+  alertsTest: () => axiosWrapper.post("/alerts/test", {}),
   profit: (params) => axiosWrapper.get("/profit", { params, timeout: 90000 }),
   staffWatch: (params) => axiosWrapper.get("/staff-watch", { params, timeout: 60000 }),
   // One order, through its store's own API (read only).

@@ -638,4 +638,75 @@ router.post("/topup/verify", requirePartner, async (req, res, next) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Phone alerts (owner, 2026-11-13): web push about any linked store.
+// ---------------------------------------------------------------------------
+const partnerAlerts = require("../services/partnerAlerts");
+const { PartnerPushSubscription } = require("../models/partnerPushModel");
+const csdPush = require("../services/csdPush");
+
+// GET /api/partners/alerts?endpoint= -- the settings, the push key, and whether this device is on.
+router.get("/alerts", requirePartner, async (req, res, next) => {
+  try {
+    const endpoint = String(req.query.endpoint || "");
+    const [publicKey, devices, here] = await Promise.all([
+      csdPush.publicKey(),
+      PartnerPushSubscription.countDocuments({ partnerId: req.partner._id }),
+      endpoint ? PartnerPushSubscription.exists({ partnerId: req.partner._id, endpoint }) : null,
+    ]);
+    res.status(200).json({ success: true, data: { publicKey, prefs: partnerAlerts.prefsOf(req.partner.alerts || {}), devices, subscribed: Boolean(here) } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/partners/alerts { prefs }
+router.put("/alerts", requirePartner, async (req, res, next) => {
+  try {
+    const prefs = partnerAlerts.prefsOf({ ...(req.partner.alerts || {}), ...(req.body?.prefs || {}) });
+    await PartnerAccount.updateOne({ _id: req.partner._id }, { $set: { alerts: prefs } });
+    res.status(200).json({ success: true, data: { prefs } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/partners/alerts/subscribe { subscription }
+router.post("/alerts/subscribe", requirePartner, async (req, res, next) => {
+  try {
+    const sub = req.body?.subscription;
+    if (!csdPush.isValidSubscription(sub)) throw createHttpError(400, "This browser's push details were not accepted.");
+    const count = await PartnerPushSubscription.countDocuments({ partnerId: req.partner._id });
+    if (count >= 20) throw createHttpError(400, "Alerts are on for 20 devices already. Switch one off first.");
+    await PartnerPushSubscription.findOneAndUpdate(
+      { endpoint: sub.endpoint },
+      { $set: { partnerId: req.partner._id, keys: { p256dh: sub.keys.p256dh, auth: sub.keys.auth }, userAgent: String(req.get("user-agent") || "").slice(0, 300) } },
+      { upsert: true },
+    );
+    res.status(200).json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/partners/alerts/unsubscribe { endpoint }
+router.post("/alerts/unsubscribe", requirePartner, async (req, res, next) => {
+  try {
+    await PartnerPushSubscription.deleteOne({ partnerId: req.partner._id, endpoint: String(req.body?.endpoint || "") });
+    res.status(200).json({ success: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/partners/alerts/test -- one notification to this partner's devices.
+router.post("/alerts/test", requirePartner, async (req, res, next) => {
+  try {
+    const r = await partnerAlerts.sendToPartner(req.partner._id, { title: "KnotKitchen Partners", body: "Alerts are working on this device.", url: "/partners/alerts", tag: "test" });
+    res.status(200).json({ success: true, data: r });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;
