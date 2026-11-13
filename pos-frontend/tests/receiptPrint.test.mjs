@@ -294,41 +294,50 @@ test("D4: a customer's order prints when staff accept it; a till order when it i
   const printNew = hook.slice(hook.indexOf("const printNewOrder"), hook.indexOf("const onCreated"));
   assert.ok(printNew.indexOf("if (order.isOffline && (order.kotPrinted || !config.kotPrint)) return;") > printNew.indexOf("getOrderById("), "checked on the fetched order");
   // A device with only a kitchen printer still prints KOTs, new orders and rounds alike.
-  assert.match(printNew, /const wantKot = !settled && config\.kotPrint && kitchenPrinter\(config\)\.type;/);
+  assert.match(printNew, /const wantKot = !settled && config\.kotPrint && kotPrintable\(config\);/);
   const onRound = hook.slice(hook.indexOf("const onRound"), hook.indexOf("socket.on("));
-  assert.match(onRound, /!kitchenPrinter\(config\)\.type/);
+  assert.match(onRound, /!kotPrintable\(config\)/);
   assert.doesNotMatch(onRound, /!config\.type/);
 });
 
-test("KOTs go to the kitchen printer when one is set up, else the receipt printer", async () => {
-  const { kitchenPrinter } = await import("../src/utils/printerDevice.js");
+test("KOTs go to the kitchen printers when set up (routed by category), else the receipt printer", async () => {
+  const { kitchenPrinter, kitchenPrinters, kotPrintable, savePrinterConfig } = await import("../src/utils/printerDevice.js");
   const old = { type: "usb", name: "XP-80", paper: "80", protocol: "escpos", kotPrint: true };
-  assert.equal(kitchenPrinter(old), old, "a saved config from before the kitchen slot");
-  const unset = { ...old, kitchen: { type: "" } };
-  assert.equal(kitchenPrinter(unset), unset, "an empty kitchen slot");
+  assert.equal(kitchenPrinter(old), old, "a saved config from before kitchen printers");
+  assert.deepEqual(kitchenPrinters({ ...old, kitchen: { type: "" } }), [], "an empty kitchen slot");
+  // The one kitchen slot of before becomes Kitchen Printer 1, printing everything.
   const split = { ...old, kitchen: { type: "bluetooth", name: "BT-58", paper: "58", bluetooth: { address: "AA:BB" } } };
-  const k = kitchenPrinter(split);
-  assert.deepEqual([k.type, k.name, k.paper, k.protocol, k.bluetooth.address], ["bluetooth", "BT-58", "58", "escpos", "AA:BB"]);
-  assert.equal(kitchenPrinter({ ...old, kitchen: { type: "usb", name: "K" } }).paper, "80", "the defaults fill the slot");
-  // Only the KOT is routed: bills and reports stay on the receipt printer,
-  // and there is no KOT copy on the receipt printer once a kitchen one is set.
+  const [k] = kitchenPrinters(split);
+  assert.deepEqual([k.type, k.name, k.paper, k.protocol, k.bluetooth.address, k.label, k.route.all], ["bluetooth", "BT-58", "58", "escpos", "AA:BB", "Kitchen Printer 1", true]);
+  assert.equal(kitchenPrinters({ ...old, kitchen: { type: "usb", name: "K" } })[0].paper, "80", "the defaults fill the slot");
+  const saved = savePrinterConfig(split);
+  assert.equal(saved.kitchen, undefined, "kept as kitchens from then on");
+  assert.equal(saved.kitchens.length, 1);
+  // Any number of them; a kitchen printer alone is enough for a KOT.
+  const many = { kitchens: [{ id: "a", type: "usb" }, { id: "b", type: "lan" }, { id: "c", type: "" }] };
+  assert.deepEqual(kitchenPrinters(many).map((x) => x.id), ["a", "b"]);
+  assert.equal(kotPrintable(many), true);
+  assert.equal(kotPrintable({ type: "" }), false);
+  // Only the KOT is routed: bills and reports stay on the receipt printer.
   const print = SRC("src/utils/printReceipt.js");
-  assert.equal(print.match(/kitchenPrinter\(/g).length, 1);
   const kot = print.slice(print.indexOf("export const printKot"), print.indexOf("export const printReport"));
-  assert.match(kot, /const printer = kitchenPrinter\(config \|\| loadPrinterConfig\(\)\);/);
-  // A receipt and a kitchen printer on Web Bluetooth stay connected together.
+  assert.match(kot, /routeKot\(\{/);
+  assert.match(kot, /const kitchens = kitchenPrinters\(config\);/);
+  assert.match(kot, /err\.retry = \(\) => printKot\(order, \{ \.\.\.opts, config: undefined, only: ids \}\);/);
+  // A receipt and kitchen printers on Web Bluetooth stay connected together.
   const device = SRC("src/utils/printerDevice.js");
   assert.match(device, /const bts = new Map\(\);/);
   assert.match(device, /bts\.set\(key, link\);/);
   assert.doesNotMatch(device, /let bt = null/);
-  // Device Configuration: one slot each, the kitchen one can be cleared.
+  // Device Configuration: the receipt printer, then one slot per kitchen printer, each removable.
   const screen = SRC("src/components/settings/DeviceConfiguration.jsx");
   assert.equal(screen.match(/<PrinterSlot\n/g).length, 2);
-  assert.match(screen, /title="Kitchen Printer \(KOT\)"/);
-  assert.match(screen, /emptyLabel="Uses receipt printer"/);
-  assert.match(screen, /onClear=\{\(\) => patchDevice\(\{ kitchen: undefined \}\)\}/);
-  assert.match(screen, /const testKot = async \(\) => \{\s+try \{\s+const \{ via \} = await printKot\(SAMPLE_ORDER, \{ config: device, context \}\);/);
-  assert.match(screen, /if \(device\.kotPrint && !device\.type && !device\.kitchen\?\.type\) \{/);
+  assert.match(screen, /\{kitchens\.map\(\(k\) => \(/);
+  assert.match(screen, /onClear=\{\(\) => removeKitchen\(k\)\}/);
+  assert.match(screen, /<KotRoutingPanel printer=\{k\}/);
+  assert.match(screen, /\+ Add KOT printer/);
+  assert.match(screen, /await printKot\(SAMPLE_ORDER, \{ config: device, context, printer: k \}\);/);
+  assert.match(screen, /if \(device\.kotPrint && !kotPrintable\(device\)\) \{/);
 });
 
 test("a pre-order's KOT says when it is wanted, on the store's clock", () => {
@@ -569,7 +578,7 @@ test("REGRESSION: receipts print in the font the POS ships, not the device's", (
   // Loaded before anything is measured or drawn, on every print path.
   const print = SRC("src/utils/printReceipt.js");
   assert.match(print, /ensureReceiptFont\(\),\n  \]\);/, "receipts");
-  assert.match(print, /await ensureReceiptFont\(\);\n  const canvas = renderKotCanvas/, "KOTs");
+  assert.match(print, /await ensureReceiptFont\(\);\n  \/\/ The printer's name heads its ticket/, "KOTs");
   assert.match(print, /await ensureReceiptFont\(\);\n  const canvas = paintLayout\(\(measure\) => layoutReport/, "reports");
 });
 
@@ -678,12 +687,12 @@ test("REGRESSION O1: a synced offline sale prints its KOT on the kitchen device 
   const run = async (order, config, payload = { orderId: "o1" }, opts) => {
     const out = [];
     const printNewOrder = new Function(
-      "loadPrinterConfig", "kitchenPrinter", "claim", "getOrderById", "enqueueSnackbar", "printKot", "printOrderReceipt", "warnNotPrinted",
+      "loadPrinterConfig", "kotPrintable", "claim", "getOrderById", "enqueueSnackbar", "printKot", "printOrderReceipt", "warnNotPrinted",
       `${src}
 return printNewOrder;`,
     )(
       () => config,
-      (c) => c.kitchen?.type ? c.kitchen : c,
+      (c) => Boolean(c.type || c.kitchens?.some((k) => k.type)),
       () => true,
       async () => ({ data: { data: order } }),
       () => {},
@@ -753,10 +762,11 @@ test("REGRESSION: a failed automatic print shows Retry for a few seconds (printe
   assert.doesNotMatch(hook, /enqueueSnackbar\(`(KOT|Receipt) not printed/);
   assert.equal(hook.match(/warnNotPrinted\(/g).length, 3, "new order KOT, receipt and table round");
   // Retry prints with the printer saved at that moment, not the one that failed.
-  assert.match(hook, /warnNotPrinted\("KOT", err, \(\) => printKot\(order, \{ auto: true \}\)\)/);
+  // A KOT split over several printers retries only the ones that missed it.
+  assert.match(hook, /warnNotPrinted\("KOT", err, err\?\.retry \|\| \(\(\) => printKot\(order, \{ auto: true \}\)\)\)/);
   assert.match(hook, /warnNotPrinted\("Receipt", err, \(\) => printOrderReceipt\(order, \{ auto: true \}\)\)/);
-  assert.match(hook, /warnNotPrinted\("KOT", err, \(\) => printKot\(ticket, opts\)\)/);
-  assert.match(SRC("src/components/pos/OrderPanel.jsx"), /warnNotPrinted\("KOT", e, \(\) => printKot\(localOrderView\(entry\), \{ auto: true \}\)\.then\(\(\) => markKotPrinted\(localId\)\)\)/);
+  assert.match(hook, /warnNotPrinted\("KOT", err, err\?\.retry \|\| \(\(\) => printKot\(ticket, opts\)\)\)/);
+  assert.match(SRC("src/components/pos/OrderPanel.jsx"), /\(e\?\.retry \? e\.retry\(\) : printKot\(localOrderView\(entry\), \{ auto: true \}\)\)\.then\(\(\) => markKotPrinted\(localId\)\)/);
   // A pressed Print whose browser forgot the Bluetooth printer gets the same Reconnect tap.
   const print = SRC("src/utils/printReceipt.js");
   assert.match(print, /if \(err\?\.code === "BT_RECONNECT"\) return warnNotPrinted\(What, err, \(\) => printWithFeedback\(what, run\)\);/);

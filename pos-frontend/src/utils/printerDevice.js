@@ -28,6 +28,7 @@
 
 import { Capacitor, registerPlugin } from "@capacitor/core";
 import { readStoreScoped, storeScopedKey, writeStoreScoped } from "./storeSession.js";
+import { normalizeRoute } from "./kotRouting.js";
 
 /** True inside the Android app. */
 export const nativePrinting = Capacitor.isNativePlatform();
@@ -41,8 +42,42 @@ const KEY = "kk.receiptPrinter.v1";
  */
 export const DEFAULT_CONFIG = { type: "", name: "", paper: "80", autoPrint: false, kotPrint: false, protocol: "escpos" };
 
-/** Where KOTs print: the kitchen slot when one is set up, else the receipt printer. */
-export const kitchenPrinter = (config) => (config?.kitchen?.type ? { ...DEFAULT_CONFIG, ...config.kitchen } : config);
+/**
+ * Kitchen (KOT) printers: as many as the kitchen has, each with what it
+ * prints (`route`, utils/kotRouting.js). Kept in `kitchens`; a device set up
+ * before there could be several has its one `kitchen` slot moved there as
+ * "Kitchen Printer 1", printing everything, so nothing changes for it.
+ */
+let lastKitchenId = 0;
+export const newKitchenId = () => {
+  lastKitchenId = Math.max(lastKitchenId + 1, Date.now());
+  return `k${lastKitchenId.toString(36)}`;
+};
+
+const normalizeKitchen = (k, i) => ({
+  ...DEFAULT_CONFIG,
+  ...k,
+  id: String(k?.id || `k${i + 1}`),
+  label: String(k?.label || "").trim().slice(0, 40) || `Kitchen Printer ${i + 1}`,
+  route: normalizeRoute(k?.route),
+  autoPrint: false,
+  kotPrint: false,
+});
+
+const withKitchens = (config) => {
+  const { kitchen, ...rest } = config || {};
+  const list = Array.isArray(rest.kitchens) ? rest.kitchens : kitchen?.type ? [{ ...kitchen, id: "k1" }] : [];
+  return { ...rest, kitchens: list.filter(Boolean).map(normalizeKitchen) };
+};
+
+/** The kitchen printers that are set up (have a printer chosen). */
+export const kitchenPrinters = (config) => withKitchens(config).kitchens.filter((k) => k.type);
+
+/** True when a KOT has somewhere to print: a kitchen printer or the receipt printer. */
+export const kotPrintable = (config) => Boolean(config?.type) || kitchenPrinters(config).length > 0;
+
+/** Where KOTs print when they are not split by category: the first kitchen printer, else the receipt printer. */
+export const kitchenPrinter = (config) => kitchenPrinters(config)[0] || config;
 
 /** The printer another takeaway set up on this device, if any. */
 const anyTakeawayConfig = () => {
@@ -51,7 +86,7 @@ const anyTakeawayConfig = () => {
       const key = localStorage.key(i);
       if (!key || !key.startsWith(`${KEY}:`)) continue;
       const config = JSON.parse(localStorage.getItem(key));
-      if (config?.type) return config; // a takeaway that never set one up has nothing to pass on
+      if (kotPrintable(config)) return config; // a takeaway that never set one up has nothing to pass on
     }
   } catch {
     /* private mode */
@@ -72,21 +107,21 @@ const anyTakeawayConfig = () => {
 export const loadPrinterConfig = () => {
   try {
     const own = localStorage.getItem(storeScopedKey(KEY));
-    if (own !== null) return { ...DEFAULT_CONFIG, ...JSON.parse(own) };
+    if (own !== null) return withKitchens({ ...DEFAULT_CONFIG, ...JSON.parse(own) });
   } catch {
     /* unreadable: fall through to the device's printer */
   }
   const legacy = readStoreScoped(KEY, null);
   const inherited = legacy?.type ? legacy : anyTakeawayConfig() || legacy;
-  const config = { ...DEFAULT_CONFIG, ...(inherited || {}) };
+  const config = withKitchens({ ...DEFAULT_CONFIG, ...(inherited || {}) });
   // Kept only once there is a printer to keep (a blank copy would block a
   // later inherit). Signed out the scoped key IS the bare key: nothing to copy.
-  if (inherited?.type && storeScopedKey(KEY) !== KEY) writeStoreScoped(KEY, config);
+  if (kotPrintable(inherited) && storeScopedKey(KEY) !== KEY) writeStoreScoped(KEY, config);
   return config;
 };
 
 export const savePrinterConfig = (config) => {
-  const next = { ...DEFAULT_CONFIG, ...config };
+  const next = withKitchens({ ...DEFAULT_CONFIG, ...config });
   writeStoreScoped(KEY, next); // private mode: the choice lasts for this page only
   return next;
 };

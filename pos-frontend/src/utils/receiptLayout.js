@@ -374,7 +374,7 @@ export const layoutReport = ({ title = "Report", store = {}, period = "", genera
  * on a clip. `items` defaults to the whole order; a round added to a table
  * passes just the new lines, and the ticket says so.
  */
-export const layoutKot = ({ order = {}, items, store = {}, paper = 80, round = false, measure }) => {
+export const layoutKot = ({ order = {}, items, store = {}, paper = 80, round = false, station = "", measure }) => {
   const P = paperOf(paper);
   const W = P.width;
   const inner = W - P.pad * 2;
@@ -409,6 +409,8 @@ export const layoutKot = ({ order = {}, items, store = {}, paper = 80, round = f
   // Two lines, not one wrapped line on 58 mm paper.
   text("KITCHEN ORDER", { size: P.title + 4, bold: true, align: "center" });
   if (round) text("ADDED ITEMS", { size: P.title, bold: true, align: "center" });
+  // Which kitchen printer this part of the order went to (several share one order).
+  if (station) text(String(station).toUpperCase(), { size: P.title, bold: true, align: "center" });
   if (store.name) text(store.name, { size: P.small, align: "center" });
   rule(false, 6);
 

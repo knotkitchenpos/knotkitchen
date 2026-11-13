@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { useSelector } from "react-redux";
 import { enqueueSnackbar } from "../utils/notify";
 import { getOrderById } from "../https";
-import { kitchenPrinter, loadPrinterConfig } from "../utils/printerDevice";
+import { kotPrintable, loadPrinterConfig } from "../utils/printerDevice";
 import { printKot, printOrderReceipt, warnNotPrinted } from "../utils/printReceipt";
 import { acquireSocket, releaseSocket } from "../socket";
 
@@ -57,7 +57,7 @@ const useAutoReceiptPrint = () => {
       const config = loadPrinterConfig();
       // A device with only a kitchen printer still prints its KOTs.
       const wantReceipt = config.autoPrint && config.type;
-      const wantKot = !settled && config.kotPrint && kitchenPrinter(config).type;
+      const wantKot = !settled && config.kotPrint && kotPrintable(config);
       if (!payload?.orderId || (!wantReceipt && !wantKot)) return;
       if (!claim(settled ? `paid:${payload.orderId}` : payload.orderId)) return;
       let order;
@@ -77,7 +77,7 @@ const useAutoReceiptPrint = () => {
       if (order.isOffline && (order.kotPrinted || !config.kotPrint)) return;
       // Kitchen first: the cook is waiting, the customer copy can follow.
       if (config.kotPrint && !settled) {
-        await printKot(order, { auto: true, config }).catch((err) => warnNotPrinted("KOT", err, () => printKot(order, { auto: true })));
+        await printKot(order, { auto: true, config }).catch((err) => warnNotPrinted("KOT", err, err?.retry || (() => printKot(order, { auto: true }))));
       }
       // A table's bill waits for the till to settle it: guests order more.
       if (wantReceipt && !order.isOffline && (settled || !order.tableSessionId)) {
@@ -96,14 +96,14 @@ const useAutoReceiptPrint = () => {
     // Lines added to a table mid-meal: a ticket for just those lines.
     const onRound = async (payload) => {
       const config = loadPrinterConfig();
-      if (!config.kotPrint || !kitchenPrinter(config).type || !payload?.orderId || !payload.items?.length) return;
+      if (!config.kotPrint || !kotPrintable(config) || !payload?.orderId || !payload.items?.length) return;
       if (!claim(`${payload.orderId}:${payload.roundId || payload.items.length}:${payload.at || ""}`)) return;
       const ticket = { _id: payload.orderId, orderNumber: payload.orderNumber, orderType: "dine-in", table: payload.table, createdAt: payload.at };
       const opts = { items: payload.items, round: true, auto: true };
       try {
         await printKot(ticket, { ...opts, config });
       } catch (err) {
-        warnNotPrinted("KOT", err, () => printKot(ticket, opts));
+        warnNotPrinted("KOT", err, err?.retry || (() => printKot(ticket, opts)));
       }
     };
 

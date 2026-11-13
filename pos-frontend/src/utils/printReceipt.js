@@ -7,7 +7,9 @@ import { formatAddress } from "./address";
 import { layoutKot, layoutReceipt, layoutReport, paperOf } from "./receiptLayout.js";
 import { ditherInPlace, rasterJob, TEAR_FEED_DOTS, TEAR_FEED_DOTS_80, toMonochrome } from "./escpos.js";
 import { catJob } from "./catprinter.js";
-import { bluetoothLinked, kitchenPrinter, loadPrinterConfig, reconnectBluetoothPrinter, sendToPrinter } from "./printerDevice.js";
+import { bluetoothLinked, kitchenPrinters, loadPrinterConfig, reconnectBluetoothPrinter, sendToPrinter } from "./printerDevice.js";
+import { menuIndex, routeKot } from "./kotRouting.js";
+import { readSavedMenu } from "./systemMenu.js";
 import { ensureReceiptFont } from "./receiptFont.js";
 import { getActiveStoreId, readStoreScoped, writeStoreScoped } from "./storeSession.js";
 import { BACKEND_URL } from "../config";
@@ -113,8 +115,8 @@ export const renderReceiptCanvas = async ({ order, store, settings, paper }) => 
 };
 
 /** The kitchen ticket for `order`, or for just `items` of it (a round added to a table). */
-export const renderKotCanvas = ({ order, items, store, paper, round = false }) =>
-  paintLayout((measure) => layoutKot({ order, items, store, paper, round, measure }), {});
+export const renderKotCanvas = ({ order, items, store, paper, round = false, station = "" }) =>
+  paintLayout((measure) => layoutKot({ order, items, store, paper, round, station, measure }), {});
 
 /** Lay out with the canvas's own text metrics, then draw every op. */
 const paintLayout = (layoutWith, { logo, qr }) => {
@@ -204,8 +206,13 @@ export const printOrderReceipt = async (order, { auto = false, config, context }
 };
 
 /**
- * Print a kitchen order ticket on this device's kitchen printer, or on its
- * receipt printer when no kitchen printer is set up.
+ * Print a kitchen order ticket, split across this device's kitchen printers
+ * by what each one prints (Device Configuration > Kitchen Printers,
+ * utils/kotRouting.js). Dishes no kitchen printer takes print on the receipt
+ * printer; with no kitchen printer at all, the whole ticket does.
+ *
+ * Every printer is tried even when one fails. A failure throws once, naming
+ * the printers that did not print, with `err.retry` reprinting only those.
  *
  * @param {object} order
  * @param {object} [options]
@@ -213,22 +220,63 @@ export const printOrderReceipt = async (order, { auto = false, config, context }
  * @param {boolean} [options.round] label the ticket as added items
  * @param {boolean} [options.auto]  never open a dialog nobody asked for
  * @param {object}  [options.config] the device's printer config (default: the saved one)
+ * @param {object}  [options.printer] print everything on this one printer (Test Print)
+ * @param {Array}   [options.only]  ticket ids to print (a retry of the ones that failed)
+ * @param {Array}   [options.menus] the menu to route by (default: the menu saved on this device)
  */
-export const printKot = async (order, { items, round = false, auto = false, config, context } = {}) => {
+export const printKot = async (order, opts = {}) => {
+  const { round = false, auto = false, context, printer: forced, only, menus } = opts;
   // Cancelled dishes are not cooked. With none left there is no ticket: an
   // automatic print skips quietly, a pressed button says why.
-  const lines = billableItems(Array.isArray(items) ? items : order?.items);
+  const lines = billableItems(Array.isArray(opts.items) ? opts.items : order?.items);
   if (lines.length === 0) {
     if (auto) return null;
     throw new Error("Nothing to print: every item on this order is cancelled.");
   }
-  items = lines;
-  const printer = kitchenPrinter(config || loadPrinterConfig());
+  const config = opts.config || loadPrinterConfig();
+  const kitchens = kitchenPrinters(config);
+  let tickets = forced
+    ? [{ id: forced.id || "test", label: forced.label || "", printer: forced, items: lines }]
+    : routeKot({
+        lines,
+        kitchens,
+        receipt: config,
+        lookup: menuIndex(menus || readSavedMenu()?.body?.data || []),
+      });
+  if (Array.isArray(only)) tickets = tickets.filter((t) => only.includes(t.id));
+  if (!tickets.length) return null;
   const { store } = context || (await loadReceiptContext());
-  const paper = paperFor(printer);
   await ensureReceiptFont();
-  const canvas = renderKotCanvas({ order, items, store, paper, round });
-  return sendCanvas(canvas, { printer, paper, auto });
+  // The printer's name heads its ticket once the kitchen has more than one.
+  const named = !forced && (kitchens.length > 1 || tickets.length > 1);
+
+  const results = [];
+  const failed = [];
+  for (const t of tickets) {
+    try {
+      const paper = paperFor(t.printer);
+      const canvas = renderKotCanvas({ order, items: t.items, store, paper, round, station: named ? t.label : "" });
+      results.push(await sendCanvas(canvas, { printer: t.printer, paper, auto }));
+    } catch (err) {
+      failed.push({ ticket: t, err });
+    }
+  }
+  if (failed.length) {
+    const first = failed[0].err;
+    const err = new Error(
+      tickets.length === 1
+        ? first?.message || "Could not print the KOT."
+        : failed.map((f) => `${f.ticket.label || "Receipt printer"}: ${f.err?.message || "not printed"}`).join(" · "),
+    );
+    if (first?.code) {
+      err.code = first.code;
+      err.printer = first.printer; // BT_RECONNECT: the printer whose chooser to open
+    }
+    const ids = failed.map((f) => f.ticket.id);
+    err.retry = () => printKot(order, { ...opts, config: undefined, only: ids });
+    throw err;
+  }
+  return results.find((r) => r?.printed) || results[0] || null;
 };
 
 /**

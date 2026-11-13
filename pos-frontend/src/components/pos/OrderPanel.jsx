@@ -379,7 +379,12 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
         if (loadPrinterConfig().kotPrint && !mayHaveReachedServer(err))
           printKot(localOrderView(entry), { auto: true })
             .then(() => markKotPrinted(localId))
-            .catch((e) => warnNotPrinted("KOT", e, () => printKot(localOrderView(entry), { auto: true }).then(() => markKotPrinted(localId))));
+            // A retry reprints only the kitchen printers that missed it.
+            .catch((e) =>
+              warnNotPrinted("KOT", e, () =>
+                (e?.retry ? e.retry() : printKot(localOrderView(entry), { auto: true })).then(() => markKotPrinted(localId)),
+              ),
+            );
         return { data: { data: localOrderView(entry), offline: true } };
       }
     },

@@ -12,7 +12,9 @@ import {
   chooseBluetoothPrinter,
   chooseUsbPrinter,
   isLanIp,
+  kotPrintable,
   lanPrinting,
+  newKitchenId,
   listNativePrinters,
   loadPrinterConfig,
   nativePrinting,
@@ -31,6 +33,8 @@ import {
 import { looksLikeCatPrinter } from "../../utils/catprinter";
 import { openTabletSettings, openTechnicianMode, useManagedDevice } from "../../utils/managedDevice";
 import { PhoneLayoutCard, PopularItemsCard } from "./PosScreenSettings";
+import { KotRoutingOverview, KotRoutingPanel, RouteChips } from "./KotRouting";
+import { loadSystemMenu, readSavedMenu, systemMenuKey } from "../../utils/systemMenu";
 
 /**
  * Settings > Device Configuration.
@@ -166,7 +170,7 @@ const ManagedTabletCard = () => {
  * printer. `device` is that slot's record; `patchDevice` saves a change to it
  * at once. `onUnsavedLan(true)` while a typed LAN address has not answered yet.
  */
-const PrinterSlot = ({ title, subtitle, emptyLabel = "Not set up", device, patchDevice, onTest, onClear, onUnsavedLan, systemPrinters, btOn }) => {
+const PrinterSlot = ({ title, subtitle, emptyLabel = "Not set up", device, patchDevice, onTest, onClear, clearLabel = "Use the receipt printer instead", clearAlways = false, onUnsavedLan, systemPrinters, btOn, children }) => {
   const [tab, setTab] = useState(device.type === "bluetooth" || device.type === "lan" ? device.type : "usb");
   const [connecting, setConnecting] = useState(false);
   // App only: printers to pick from when more than one is found.
@@ -448,12 +452,13 @@ const PrinterSlot = ({ title, subtitle, emptyLabel = "Not set up", device, patch
         <button type="button" className={btnGhost} onClick={onTest} disabled={!device.type}>
           Test print
         </button>
-        {onClear && device.type ? (
-          <button type="button" className={btnGhost} onClick={onClear}>
-            Use the receipt printer instead
+        {onClear && (device.type || clearAlways) ? (
+          <button type="button" className={`${btnGhost} text-[#DC2626]`} onClick={onClear}>
+            {clearLabel}
           </button>
         ) : null}
       </div>
+      {children}
     </Card>
   );
 };
@@ -471,7 +476,34 @@ const DeviceConfiguration = () => {
   // THIS device, and Orders > Print read the saved copy -- so a printer that
   // was connected but not yet saved opened the print dialog instead.
   const patchDevice = (patch) => setDevice((d) => savePrinterConfig({ ...d, ...patch }));
-  const patchKitchen = (patch) => setDevice((d) => savePrinterConfig({ ...d, kitchen: { ...d.kitchen, ...patch } }));
+  // Kitchen (KOT) printers: as many as the kitchen has, each with what it prints.
+  const kitchens = device.kitchens || [];
+  const patchKitchen = (id, patch) =>
+    setDevice((d) => savePrinterConfig({ ...d, kitchens: (d.kitchens || []).map((k) => (k.id === id ? { ...k, ...patch } : k)) }));
+  const addKitchen = () =>
+    setDevice((d) => {
+      const list = d.kitchens || [];
+      // The first prints everything, as one kitchen printer always did; a
+      // later one starts empty so nothing prints twice until it is given categories.
+      const next = { id: newKitchenId(), label: `Kitchen Printer ${list.length + 1}`, route: list.length ? { all: false } : { all: true } };
+      return savePrinterConfig({ ...d, kitchens: [...list, next] });
+    });
+  const removeKitchen = (k) => {
+    if (!window.confirm(`Remove ${k.label}? Its products then print on ${kitchens.length > 1 ? "the other kitchen printers or " : ""}the receipt printer.`)) return;
+    setDevice((d) => savePrinterConfig({ ...d, kitchens: (d.kitchens || []).filter((x) => x.id !== k.id) }));
+    setLanWaiting((w) => ({ ...w, [k.id]: false }));
+  };
+  // The published menu, as the tills print it: categories and products to route.
+  const { data: menuRes, isLoading: menuLoading } = useQuery({
+    queryKey: systemMenuKey(),
+    queryFn: loadSystemMenu,
+    initialData: () => {
+      const saved = readSavedMenu();
+      return saved?.body ? { data: saved.body } : undefined;
+    },
+    initialDataUpdatedAt: 0,
+  });
+  const menus = useMemo(() => (menuRes?.data?.data || []).filter((m) => m && m._id), [menuRes]);
   // A LAN address typed in a slot that has not answered yet: Save waits for it.
   const [lanWaiting, setLanWaiting] = useState({});
 
@@ -551,11 +583,11 @@ const DeviceConfiguration = () => {
     }
   };
 
-  // printKot picks the kitchen slot out of the device's config by itself.
-  const testKot = async () => {
+  // A sample KOT on this one kitchen printer, whatever it is routed to print.
+  const testKot = async (k) => {
     try {
-      const { via } = await printKot(SAMPLE_ORDER, { config: device, context });
-      if (via !== "dialog") enqueueSnackbar("Test KOT sent to the kitchen printer.", { variant: "success" });
+      const { via } = await printKot(SAMPLE_ORDER, { config: device, context, printer: k });
+      if (via !== "dialog") enqueueSnackbar(`Test KOT sent to ${k.label}.`, { variant: "success" });
     } catch (err) {
       enqueueSnackbar(err?.message || "Test print failed.", { variant: "error" });
     }
@@ -591,7 +623,7 @@ const DeviceConfiguration = () => {
       enqueueSnackbar("Connect a printer before turning on Auto Receipt Print.", { variant: "warning" });
       return;
     }
-    if (device.kotPrint && !device.type && !device.kitchen?.type) {
+    if (device.kotPrint && !kotPrintable(device)) {
       enqueueSnackbar("Connect a printer before turning on Auto KOT Print.", { variant: "warning" });
       return;
     }
@@ -623,18 +655,45 @@ const DeviceConfiguration = () => {
           systemPrinters={systemPrinters}
           btOn={btOn}
         />
-        <PrinterSlot
-          key={`kitchen-${device.kitchen?.type || "none"}`}
-          title="Kitchen Printer (KOT)"
-          emptyLabel="Uses receipt printer"
-          device={device.kitchen || {}}
-          patchDevice={patchKitchen}
-          onUnsavedLan={(v) => setLanWaiting((w) => ({ ...w, kitchen: v }))}
-          onTest={testKot}
-          onClear={() => patchDevice({ kitchen: undefined })}
-          systemPrinters={systemPrinters}
-          btOn={btOn}
-        />
+        {/* ---------- Kitchen (KOT) printers, routed by category ---------- */}
+        <KotRoutingOverview kitchens={kitchens} menus={menus} hasReceipt={Boolean(device.type)} />
+        {kitchens.map((k) => (
+          <PrinterSlot
+            key={`kitchen-${k.id}-${k.type || "none"}`}
+            title={k.label}
+            subtitle={
+              <span className="flex flex-wrap items-center gap-1.5 mt-1">
+                <span>KOT ·</span>
+                <RouteChips route={k.route} menus={menus} />
+              </span>
+            }
+            emptyLabel="Not connected"
+            device={k}
+            patchDevice={(patch) => patchKitchen(k.id, patch)}
+            onUnsavedLan={(v) => setLanWaiting((w) => ({ ...w, [k.id]: v }))}
+            onTest={() => testKot(k)}
+            onClear={() => removeKitchen(k)}
+            clearLabel="Remove this printer"
+            clearAlways
+            systemPrinters={systemPrinters}
+            btOn={btOn}
+          >
+            <KotRoutingPanel printer={k} menus={menus} loading={menuLoading && !menus.length} onChange={(patch) => patchKitchen(k.id, patch)} />
+          </PrinterSlot>
+        ))}
+        <div className="bg-white border border-dashed border-[#CBD5E1] rounded-2xl p-4 sm:p-5 flex flex-wrap items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[14px] font-extrabold text-[#0F172A]">{kitchens.length ? "Add another kitchen printer" : "Kitchen printers (KOT)"}</p>
+            <p className="text-[12px] text-[#64748B] mt-0.5">
+              {kitchens.length
+                ? "As many as the kitchen has. Give each one the categories and products it prints."
+                : "None set up: KOTs print on the receipt printer. Add one per station, then choose what each prints."}
+            </p>
+          </div>
+          <button type="button" className={btnPrimary} onClick={addKitchen}>
+            + Add KOT printer
+          </button>
+        </div>
 
         {/* ---------- Automation ---------- */}
         <Card title="Automation">
@@ -726,14 +785,14 @@ const DeviceConfiguration = () => {
         <PopularItemsCard form={form} patch={patch} />
 
         <div className="flex items-center justify-end gap-3">
-          {lanWaiting.receipt || lanWaiting.kitchen ? (
+          {Object.values(lanWaiting).some(Boolean) ? (
             <p className="text-[12px] text-[#64748B]">Save turns on once the LAN printer answers.</p>
           ) : null}
           <button
             type="button"
             className={`${btnPrimary} px-6`}
             onClick={save}
-            disabled={saveMutation.isPending || lanWaiting.receipt || lanWaiting.kitchen}
+            disabled={saveMutation.isPending || Object.values(lanWaiting).some(Boolean)}
           >
             {saveMutation.isPending ? "Saving…" : "Save"}
           </button>

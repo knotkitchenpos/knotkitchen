@@ -153,7 +153,8 @@ test("Device Configuration: IP in, auto-connect, kept only once a printer answer
   assert.equal(ui.match(/<PrinterSlot\b/g).length, 2);
   // Two sibling cards: same-type keys ("none"/"none", "lan"/"lan") would leave a stale card on screen.
   assert.match(ui, /key=\{`receipt-\$\{device\.type \|\| "none"\}`\}/);
-  assert.match(ui, /key=\{`kitchen-\$\{device\.kitchen\?\.type \|\| "none"\}`\}/);
+  // One card per kitchen printer: its id keeps two LAN kitchen printers apart.
+  assert.match(ui, /key=\{`kitchen-\$\{k\.id\}-\$\{k\.type \|\| "none"\}`\}/);
   // Opens on the LAN tab, with its address, after a restart; a USB slot never picks up a stale one.
   assert.match(slot, /useState\(device\.type === "bluetooth" \|\| device\.type === "lan" \? device\.type : "usb"\)/);
   assert.match(slot, /useState\(device\.type === "lan" \? device\.lan\?\.host \|\| "" : ""\)/);
@@ -168,7 +169,7 @@ test("Device Configuration: IP in, auto-connect, kept only once a printer answer
   // No paper choice for a LAN printer: the section is not shown at all.
   assert.match(slot, /\{tab !== "lan" && device\.type !== "lan" && \(\s*<div[^>]*>\s*<p[^>]*>Paper size<\/p>/);
   // Save waits for the printer to answer.
-  assert.match(ui, /disabled=\{saveMutation\.isPending \|\| lanWaiting\.receipt \|\| lanWaiting\.kitchen\}/);
+  assert.match(ui, /disabled=\{saveMutation\.isPending \|\| Object\.values\(lanWaiting\)\.some\(Boolean\)\}/);
   // A browser, or an app from before LAN printing, is told what to do.
   assert.match(slot, /A browser cannot reach a network printer\. Use the KnotKitchen POS app on Android or Windows\./);
   assert.match(slot, /Update the KnotKitchen POS app to use a LAN printer: it updates itself; restart it when it offers\./);
