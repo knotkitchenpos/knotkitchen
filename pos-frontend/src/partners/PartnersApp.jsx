@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDispatch } from "react-redux";
 import {
   MdDashboard, MdStorefront, MdReceiptLong, MdBarChart, MdListAlt, MdPerson, MdLogout, MdFileDownload,
-  MdRestaurantMenu, MdInventory2, MdGroups, MdSupportAgent, MdApps, MdShield, MdSyncAlt, MdTrendingUp, MdSchedule,
+  MdRestaurantMenu, MdInventory2, MdGroups, MdSupportAgent, MdApps, MdShield, MdSyncAlt, MdTrendingUp, MdSchedule, MdAccountBalanceWallet,
 } from "react-icons/md";
 import GlobalPinPrompt from "../components/common/GlobalPinPrompt";
 import { setUser } from "../redux/slices/userSlice";
@@ -27,6 +27,7 @@ const StaffWatch = lazy(() => import("./pages/StaffWatch"));
 const MenuTools = lazy(() => import("./pages/MenuTools"));
 const Profit = lazy(() => import("./pages/Profit"));
 const StoreHours = lazy(() => import("./pages/StoreHours"));
+const TopUp = lazy(() => import("./pages/TopUp"));
 
 // `phone`: on the phone's bottom bar; everything else is under More.
 const NAV = [
@@ -34,6 +35,7 @@ const NAV = [
   { to: "/orders", label: "Orders", Icon: MdListAlt, phone: true },
   { to: "/reports", label: "Reports", Icon: MdBarChart, phone: true },
   { to: "/billing", label: "Billing", Icon: MdReceiptLong, phone: true },
+  { to: "/topup", label: "Top up stores", Icon: MdAccountBalanceWallet, note: "One payment across stores' wallets" },
   { to: "/profit", label: "Profit", Icon: MdTrendingUp, note: "Food cost and gross profit by dish" },
   { to: "/menu", label: "Manage Menu", Icon: MdRestaurantMenu, note: "Categories, dishes, variants and add-ons" },
   { to: "/menu-tools", label: "Menu across stores", Icon: MdSyncAlt, note: "Copy menus, change prices everywhere" },
@@ -236,6 +238,7 @@ const PartnersApp = () => (
     <Route path="/menu" element={<Protected>{(me) => <MenuPage me={me} />}</Protected>} />
     <Route path="/menu-tools" element={<Protected>{(me) => <MenuTools me={me} />}</Protected>} />
     <Route path="/profit" element={<Protected>{(me) => <Profit me={me} />}</Protected>} />
+    <Route path="/topup" element={<Protected>{() => <TopUp />}</Protected>} />
     <Route path="/hours" element={<Protected>{(me) => <StoreHours me={me} />}</Protected>} />
     <Route path="/inventory" element={<Protected>{(me) => <InventoryPage me={me} />}</Protected>} />
     <Route path="/staff" element={<Protected>{(me) => <StaffPage me={me} />}</Protected>} />

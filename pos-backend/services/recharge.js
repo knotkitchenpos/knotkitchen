@@ -120,8 +120,80 @@ const createPrinterPayment = async ({ restaurantId, code, acceptance, shipTo = n
   });
 };
 
+/**
+ * One top-up from the Partners dashboard shared across several stores'
+ * wallets (owner, 2026-11-13). One Cashfree payment; each store's share is
+ * checked against that store's own minimum and closed state exactly as its
+ * own top-up would be, and credited to that store alone when paid
+ * (finalizeRecharge). The first store is the payment's customer.
+ */
+const MAX_SPLITS = 25;
+const splitShares = (paidPaise, splits) => {
+  // Credit what was PAID. Equal to what was asked for in practice; if not,
+  // each store gets its proportional share and the last takes the rounding.
+  const asked = splits.reduce((s, x) => s + x.amountPaise, 0);
+  if (paidPaise === asked) return splits.map((x) => x.amountPaise);
+  let left = paidPaise;
+  return splits.map((x, i) => {
+    if (i === splits.length - 1) return left;
+    const share = Math.floor((x.amountPaise * paidPaise) / asked);
+    left -= share;
+    return share;
+  });
+};
+
+const createSplitRecharge = async ({ splits, partnerId = null, createdBy = null, returnUrl, nameOf = (id) => String(id) } = {}) => {
+  const list = (Array.isArray(splits) ? splits : [])
+    .map((x) => ({ restaurantId: x.restaurantId, amountPaise: Math.round(Number(x.amountPaise) || 0) }))
+    .filter((x) => x.amountPaise > 0);
+  if (!list.length) throw new RechargeError("Enter an amount for at least one store.");
+  if (list.length > MAX_SPLITS) throw new RechargeError(`At most ${MAX_SPLITS} stores in one top-up.`);
+  const ids = list.map((x) => String(x.restaurantId));
+  if (new Set(ids).size !== ids.length) throw new RechargeError("A store appears twice.");
+  for (const x of list) {
+    if (await closedForTopUp(x.restaurantId)) {
+      throw new RechargeError(`${nameOf(x.restaurantId)}: ${STORE_CLOSED_MESSAGE}`, 409, "SUBSCRIPTION_CANCELLED");
+    }
+    const { paise: minimum, first } = await minimumTopUpPaise(x.restaurantId);
+    if (x.amountPaise < minimum) {
+      throw new RechargeError(
+        `${nameOf(x.restaurantId)}: ${first ? "the first top-up" : "a top-up"} must be at least ${formatINR(minimum)}.`,
+        400,
+        first ? "FIRST_TOPUP_MINIMUM" : "TOPUP_MINIMUM",
+      );
+    }
+  }
+  const total = list.reduce((s, x) => s + x.amountPaise, 0);
+  return openPayment({ restaurantId: list[0].restaurantId, amountPaise: total, createdBy, returnUrl, purpose: "SPLIT", splits: list, partnerId });
+};
+
+/** After money reached a store's wallet: its plan, its dues, its lock. Never fails the credit. */
+const afterCredit = async (restaurantId, paidPaise, duplicate) => {
+  let plan = null;
+  if (!duplicate) {
+    try {
+      plan = await afterRecharge({ restaurantId, amountPaise: paidPaise });
+    } catch (err) {
+      console.warn("[recharge] plan update after top-up failed:", err.message);
+    }
+  }
+  let settled = null;
+  try {
+    settled = await settlePendingCharges(restaurantId);
+  } catch (err) {
+    console.warn("[recharge] settling dues after top-up failed:", err.message);
+  }
+  let lock = null;
+  try {
+    lock = await evaluateLock(restaurantId);
+  } catch (err) {
+    console.warn("[recharge] lock re-evaluation failed:", err.message);
+  }
+  return { plan, settled, lock };
+};
+
 /** Open a Cashfree order for a top-up or a printer. Nothing is credited or bought here. */
-const openPayment = async ({ restaurantId, amountPaise: amount, createdBy = null, returnUrl, purpose = "RECHARGE", item } = {}) => {
+const openPayment = async ({ restaurantId, amountPaise: amount, createdBy = null, returnUrl, purpose = "RECHARGE", item, splits, partnerId } = {}) => {
   // Only NEW payments: one already paid is credited by finalizeRecharge.
   if (await closedForTopUp(restaurantId)) {
     throw new RechargeError(STORE_CLOSED_MESSAGE, 409, "SUBSCRIPTION_CANCELLED");
@@ -142,6 +214,8 @@ const openPayment = async ({ restaurantId, amountPaise: amount, createdBy = null
     amountPaise: amount,
     purpose,
     ...(item ? { item } : {}),
+    ...(splits ? { splits } : {}),
+    ...(partnerId ? { partnerId } : {}),
     gatewayOrderId,
     gatewayProvider: "cashfree",
     environment: gw.environment,
@@ -167,7 +241,7 @@ const openPayment = async ({ restaurantId, amountPaise: amount, createdBy = null
       // So a top-up is credited even if the operator closes the payment window
       // before the POS can verify it (the webhook credits through the same key).
       notifyUrl: require("../config/config").cashfreeNotifyUrl,
-      tags: { purpose: purpose === "PRINTER" ? "printer_purchase" : "business_balance_recharge", restaurantId: String(restaurantId) },
+      tags: { purpose: purpose === "PRINTER" ? "printer_purchase" : purpose === "SPLIT" ? "business_balance_split" : "business_balance_recharge", restaurantId: String(restaurantId) },
     });
 
     intent.paymentSessionId = order.paymentSessionId || "";
@@ -272,6 +346,34 @@ const finalizeRecharge = async ({ gatewayOrderId }) => {
     return { credited: false, purchased: true, already: !recorded, intent, invoice };
   }
 
+  // One payment shared across several stores: each share to its own wallet,
+  // each under its own idempotency key, so a racing callback credits once.
+  if (intent.purpose === "SPLIT") {
+    const shares = splitShares(paidPaise, intent.splits || []);
+    const stores = [];
+    for (const [i, split] of (intent.splits || []).entries()) {
+      if (shares[i] <= 0) continue;
+      const { entry, duplicate } = await credit({
+        restaurantId: split.restaurantId,
+        kind: "RECHARGE",
+        amountPaise: shares[i],
+        description: "Business Balance top-up (Partners, shared payment)",
+        idempotencyKey: `${idempotencyKeyFor(gatewayOrderId)}-${split.restaurantId}`,
+        refType: "RechargeOrder",
+        refId: intent._id,
+        meta: { gatewayOrderId, cfOrderId: status.cfOrderId || "", sharedPaymentPaise: paidPaise },
+      });
+      split.ledgerEntryId = entry._id;
+      stores.push({ restaurantId: split.restaurantId, amountPaise: shares[i], duplicate, ...(await afterCredit(split.restaurantId, shares[i], duplicate)) });
+    }
+    intent.status = "PAID";
+    intent.paidAt = new Date();
+    intent.gatewayPaymentId = status.cfOrderId || "";
+    intent.markModified("splits");
+    await intent.save();
+    return { credited: true, intent, stores };
+  }
+
   const { entry, duplicate } = await credit({
     restaurantId: intent.restaurantId,
     kind: "RECHARGE",
@@ -327,6 +429,8 @@ const finalizeRecharge = async ({ gatewayOrderId }) => {
 
 module.exports = {
   createPrinterPayment,
+  createSplitRecharge,
+  splitShares,
   ownReturnUrl,
   createRecharge,
   finalizeRecharge,

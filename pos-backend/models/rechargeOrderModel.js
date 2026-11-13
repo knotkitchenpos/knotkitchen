@@ -22,7 +22,21 @@ const rechargeOrderSchema = new mongoose.Schema(
     amountPaise: { type: Number, required: true, min: 1 },
     // RECHARGE credits the wallet; PRINTER buys a printer outright through the
     // gateway (the wallet is never touched) -- services/recharge finalizeRecharge.
-    purpose: { type: String, enum: ["RECHARGE", "PRINTER"], default: "RECHARGE" },
+    // SPLIT is one payment from the Partners dashboard shared across several
+    // stores' wallets: each share is credited to its own store (splits below).
+    purpose: { type: String, enum: ["RECHARGE", "PRINTER", "SPLIT"], default: "RECHARGE" },
+    splits: {
+      type: [
+        {
+          _id: false,
+          restaurantId: { type: mongoose.Schema.Types.ObjectId, ref: "Restaurant", required: true },
+          amountPaise: { type: Number, required: true, min: 1 },
+          ledgerEntryId: { type: mongoose.Schema.Types.ObjectId, default: null },
+        },
+      ],
+      default: undefined,
+    },
+    partnerId: { type: mongoose.Schema.Types.ObjectId, default: null },
     item: {
       code: { type: String, default: "" },
       name: { type: String, default: "" },
@@ -60,5 +74,6 @@ const rechargeOrderSchema = new mongoose.Schema(
 );
 
 rechargeOrderSchema.index({ restaurantId: 1, createdAt: -1 });
+rechargeOrderSchema.index({ partnerId: 1, createdAt: -1 }, { sparse: true });
 
 module.exports = mongoose.model("RechargeOrder", rechargeOrderSchema);

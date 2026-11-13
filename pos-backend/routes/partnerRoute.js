@@ -555,4 +555,87 @@ router.get("/exports/:storeId/tally.xml", requirePartner, async (req, res, next)
   }
 });
 
+// ---------------------------------------------------------------------------
+// One top-up shared across stores (owner, 2026-11-13): one Cashfree payment,
+// each store's share credited to its own wallet (services/recharge SPLIT).
+// ---------------------------------------------------------------------------
+const { createSplitRecharge, finalizeRecharge, ownReturnUrl, RechargeError } = require("../services/recharge");
+const { minimumTopUpPaise, closedForTopUp } = require("../services/subscription");
+const RechargeOrder = require("../models/rechargeOrderModel");
+const { getBalance } = require("../services/ledger");
+const { asAmount, toRupees } = require("../services/money");
+
+const rechargeErr = (err) => (err instanceof RechargeError ? createHttpError(err.status, err.message, { expose: true, code: err.code }) : err);
+
+// GET /api/partners/topup/stores -- each linked store's wallet and its smallest top-up now.
+router.get("/topup/stores", requirePartner, async (req, res, next) => {
+  try {
+    const cards = await storeCards(req.partner);
+    const stores = await Promise.all(
+      cards.map(async (c) => {
+        if (c.linkStatus !== "ok") return { storeId: c.storeId, name: c.name, wallet: c.wallet, usable: false, reason: "Link this store again first." };
+        const [{ paise, first }, closed] = await Promise.all([minimumTopUpPaise(c.restaurantId), closedForTopUp(c.restaurantId)]);
+        return { storeId: c.storeId, name: c.name, wallet: c.wallet, locked: c.locked, usable: !closed, reason: closed ? "This store is closed." : "", minimum: toRupees(paise), first };
+      }),
+    );
+    res.status(200).json({ success: true, data: { stores } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/partners/topup { splits: [{ storeId, amount (rupees) }], returnUrl? }
+router.post("/topup", requirePartner, async (req, res, next) => {
+  try {
+    const raw = Array.isArray(req.body?.splits) ? req.body.splits : [];
+    const names = new Map();
+    const splits = [];
+    for (const x of raw) {
+      const rupees = Number(x?.amount);
+      if (!Number.isFinite(rupees) || rupees <= 0) continue;
+      const owner = await ownerForLink(await linkFor(req.partner, x?.storeId));
+      const r = await Restaurant.findById(owner.restaurantId).select("name").lean();
+      names.set(String(owner.restaurantId), r?.name || `Store ${x.storeId}`);
+      splits.push({ restaurantId: owner.restaurantId, amountPaise: Math.round(rupees * 100) });
+    }
+    const result = await createSplitRecharge({
+      splits,
+      partnerId: req.partner._id,
+      returnUrl: ownReturnUrl(req.body?.returnUrl),
+      nameOf: (id) => names.get(String(id)) || "A store",
+    });
+    res.status(201).json({ success: true, data: result });
+  } catch (err) {
+    next(rechargeErr(err));
+  }
+});
+
+// POST /api/partners/topup/verify { gatewayOrderId } -- asks Cashfree, never the browser.
+router.post("/topup/verify", requirePartner, async (req, res, next) => {
+  try {
+    const gatewayOrderId = String(req.body?.gatewayOrderId || "");
+    if (!gatewayOrderId) throw createHttpError(400, "gatewayOrderId is required.");
+    // Only this partner's own shared top-up.
+    const own = await RechargeOrder.findOne({ gatewayOrderId, purpose: "SPLIT", partnerId: req.partner._id }).select("_id").lean();
+    if (!own) throw createHttpError(404, "No such top-up.");
+    const result = await finalizeRecharge({ gatewayOrderId });
+    const cards = await storeCards(req.partner);
+    const byRid = new Map(cards.map((c) => [String(c.restaurantId), c]));
+    const stores = await Promise.all(
+      (result.intent?.splits || []).map(async (s) => ({
+        storeId: byRid.get(String(s.restaurantId))?.storeId || "",
+        name: byRid.get(String(s.restaurantId))?.name || "",
+        amount: asAmount(s.amountPaise),
+        balance: asAmount((await getBalance(s.restaurantId)).balancePaise),
+      })),
+    );
+    res.status(200).json({
+      success: true,
+      data: { credited: Boolean(result.credited), already: Boolean(result.already), reason: result.reason || "", stores },
+    });
+  } catch (err) {
+    next(rechargeErr(err));
+  }
+});
+
 module.exports = router;

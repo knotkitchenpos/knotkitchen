@@ -23,6 +23,10 @@ export const partnersApi = {
   storeWebsiteSettings: (storeId) => axiosWrapper.get(`/s/${encodeURIComponent(storeId)}/api/website/settings`),
   storeHolidays: (storeId, holidays) => axiosWrapper.put(`/s/${encodeURIComponent(storeId)}/api/restaurant/holidays`, { holidays }),
   storeClosedToday: (storeId, enabled) => axiosWrapper.put(`/s/${encodeURIComponent(storeId)}/api/restaurant/closed-for-today`, { enabled, reason: "Closed for today" }),
+  // One payment shared across stores' wallets
+  topUpStores: () => axiosWrapper.get("/topup/stores"),
+  topUp: (body) => axiosWrapper.post("/topup", body, { timeout: 60000 }),
+  verifyTopUp: (gatewayOrderId) => axiosWrapper.post("/topup/verify", { gatewayOrderId }, { timeout: 60000 }),
   profit: (params) => axiosWrapper.get("/profit", { params, timeout: 90000 }),
   staffWatch: (params) => axiosWrapper.get("/staff-watch", { params, timeout: 60000 }),
   // One order, through its store's own API (read only).
