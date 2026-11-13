@@ -228,6 +228,8 @@ const updateOnlineOrderStatus = async (req, res, next) => {
 
     if (action === "reject" || action === "cancel") {
       const reason = String(req.body?.reason || "").slice(0, 300);
+      // Who turned it down, for the owner's staff watch (as a till cancel records it).
+      if (!order.cancelledBy) order.cancelledBy = req.user?.name || "POS";
       order.items.forEach((item) => {
         item.status = "cancelled";
         item.cancelledAt = new Date();

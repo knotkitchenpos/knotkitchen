@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDispatch } from "react-redux";
 import {
   MdDashboard, MdStorefront, MdReceiptLong, MdBarChart, MdListAlt, MdPerson, MdLogout, MdFileDownload,
-  MdRestaurantMenu, MdInventory2, MdGroups, MdSupportAgent, MdApps,
+  MdRestaurantMenu, MdInventory2, MdGroups, MdSupportAgent, MdApps, MdShield,
 } from "react-icons/md";
 import GlobalPinPrompt from "../components/common/GlobalPinPrompt";
 import { setUser } from "../redux/slices/userSlice";
@@ -23,6 +23,7 @@ const MenuPage = lazy(() => import("./pages/MenuPage"));
 const InventoryPage = lazy(() => import("./pages/InventoryPage"));
 const StaffPage = lazy(() => import("./pages/StaffPage"));
 const SupportPage = lazy(() => import("./pages/SupportPage"));
+const StaffWatch = lazy(() => import("./pages/StaffWatch"));
 
 // `phone`: on the phone's bottom bar; everything else is under More.
 const NAV = [
@@ -32,6 +33,7 @@ const NAV = [
   { to: "/billing", label: "Billing", Icon: MdReceiptLong, phone: true },
   { to: "/menu", label: "Manage Menu", Icon: MdRestaurantMenu, note: "Categories, dishes, variants and add-ons" },
   { to: "/inventory", label: "Inventory", Icon: MdInventory2, note: "Stock, purchases and restock alerts" },
+  { to: "/staff-watch", label: "Staff watch", Icon: MdShield, note: "Discounts, cancellations and refunds by staff" },
   { to: "/staff", label: "Manage Staff", Icon: MdGroups, note: "Staff logins and their PIN privileges" },
   { to: "/exports", label: "Exports", Icon: MdFileDownload, note: "GSTR-1 and Tally for your accountant" },
   { to: "/stores", label: "Stores", Icon: MdStorefront, note: "Link and manage your stores" },
@@ -225,6 +227,7 @@ const PartnersApp = () => (
     <Route path="/menu" element={<Protected>{(me) => <MenuPage me={me} />}</Protected>} />
     <Route path="/inventory" element={<Protected>{(me) => <InventoryPage me={me} />}</Protected>} />
     <Route path="/staff" element={<Protected>{(me) => <StaffPage me={me} />}</Protected>} />
+    <Route path="/staff-watch" element={<Protected>{(me) => <StaffWatch me={me} />}</Protected>} />
     <Route path="/support" element={<Protected>{(me) => <SupportPage me={me} />}</Protected>} />
     <Route path="/more" element={<Protected>{() => <More />}</Protected>} />
     <Route path="/settings" element={<SettingsRedirect />} />

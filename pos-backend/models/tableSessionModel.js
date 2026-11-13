@@ -19,6 +19,8 @@ const tableSessionItemSchema = new mongoose.Schema(
     kdsItemId: { type: mongoose.Schema.Types.ObjectId }, // KDS item reference inside kitchen order
     cancelledAt: Date,
     cancelReason: String,
+    // Who struck the line off (staff name), for the owner's staff watch.
+    cancelledBy: String,
     // N013: the till's key for the round this line came in on: a repeat is a replay.
     requestId: { type: String, default: "" },
   },

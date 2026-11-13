@@ -1716,6 +1716,7 @@ const cancelSessionItem = async (req, res, next) => {
     item.status = "cancelled";
     item.cancelledAt = new Date();
     item.cancelReason = reason;
+    item.cancelledBy = req.user?.name || "";
 
     addTimeline(
       session,
@@ -1758,6 +1759,7 @@ const cancelSessionItem = async (req, res, next) => {
       orderItem.status = "cancelled";
       orderItem.cancelledAt = item.cancelledAt;
       orderItem.cancelReason = reason;
+      orderItem.cancelledBy = item.cancelledBy;
     }
 
     const touchedOrders = [];

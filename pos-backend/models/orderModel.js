@@ -47,6 +47,8 @@ const orderItemSchema = new mongoose.Schema({
   },
   cancelledAt: Date,
   cancelReason: String,
+  // Who struck the line off (staff name), for the owner's staff watch.
+  cancelledBy: String,
 });
 
 const paymentSchema = new mongoose.Schema({

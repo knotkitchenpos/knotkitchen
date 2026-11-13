@@ -19,6 +19,7 @@ const {
   storeCards,
 } = require("../services/partners");
 const { aggregateDashboard } = require("../services/partnerDashboard");
+const { staffWatch } = require("../services/staffWatch");
 const { customerPrivacy } = require("../middlewares/customerPrivacy");
 
 /**
@@ -264,6 +265,29 @@ router.get("/dashboard", requirePartner, async (req, res, next) => {
             renewsOn: c.plan?.renewsOn || null,
             lockedReason: c.lockedReason,
           })),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/partners/staff-watch?from&to&stores= : per store, each staff
+// member's sales, discounts, cancellations and refunds, with who stands out.
+router.get("/staff-watch", requirePartner, async (req, res, next) => {
+  try {
+    const { usable, skipped } = await pickStores(req.partner, req.query);
+    const cards = await storeCards(req.partner);
+    const nameOf = new Map(cards.map((c) => [c.storeId, c.name]));
+    const reports = await Promise.all(usable.map(({ owner }) => reportFor(owner, req.query)));
+    const stores = reports.map((r, i) => ({ storeId: usable[i].link.storeId, name: nameOf.get(usable[i].link.storeId) || usable[i].link.storeId, ...staffWatch(r.projected) }));
+    res.status(200).json({
+      success: true,
+      data: {
+        stores,
+        flagged: stores.reduce((n, s) => n + s.staff.filter((p) => p.flags.length).length, 0),
+        window: reports[0] ? { from: reports[0].window.start, to: reports[0].window.end } : null,
+        skipped,
       },
     });
   } catch (err) {

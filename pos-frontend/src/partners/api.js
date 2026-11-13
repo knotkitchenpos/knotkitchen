@@ -14,6 +14,7 @@ export const partnersApi = {
   unlinkStore: (storeId) => axiosWrapper.delete(`/stores/${encodeURIComponent(storeId)}`),
   dashboard: (params) => axiosWrapper.get("/dashboard", { params, timeout: 60000 }),
   orders: (params) => axiosWrapper.get("/orders", { params, timeout: 60000 }),
+  staffWatch: (params) => axiosWrapper.get("/staff-watch", { params, timeout: 60000 }),
   // One order, through its store's own API (read only).
   order: (storeId, id) => axiosWrapper.get(`/s/${encodeURIComponent(storeId)}/api/order/${encodeURIComponent(id)}`),
   sessions: () => axiosWrapper.get("/sessions"),
