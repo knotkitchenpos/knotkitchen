@@ -295,6 +295,68 @@ router.get("/staff-watch", requirePartner, async (req, res, next) => {
   }
 });
 
+/* ---------------------------------------------- menu across stores -- */
+
+const { catalogOf, copyCategories, setPrices } = require("../services/menuTools");
+
+// GET /api/partners/menu-tools/catalog?stores= : each chosen store's draft categories and dishes.
+router.get("/menu-tools/catalog", requirePartner, async (req, res, next) => {
+  try {
+    const { usable, skipped } = await pickStores(req.partner, req.query);
+    const cards = await storeCards(req.partner);
+    const nameOf = new Map(cards.map((c) => [c.storeId, c.name]));
+    const stores = await Promise.all(usable.map(async ({ link, owner }) => ({ storeId: link.storeId, name: nameOf.get(link.storeId) || link.storeId, categories: await catalogOf(owner) })));
+    res.status(200).json({ success: true, data: { stores, skipped } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/partners/menu-tools/copy { from, to: [storeId], categoryIds: [id] }
+router.post("/menu-tools/copy", requirePartner, async (req, res, next) => {
+  try {
+    const { from, to, categoryIds } = req.body || {};
+    if (!Array.isArray(categoryIds) || !categoryIds.length) throw createHttpError(400, "Choose the categories to copy.");
+    const targets = [...new Set((Array.isArray(to) ? to : []).map(String))].filter((id) => id !== String(from));
+    if (!targets.length) throw createHttpError(400, "Choose the stores to copy to.");
+    const source = await ownerForLink(await linkFor(req.partner, from));
+    const results = [];
+    for (const storeId of targets) {
+      const target = await ownerForLink(await linkFor(req.partner, storeId));
+      const r = await copyCategories({ source, target, categoryIds });
+      results.push({ storeId, ...r });
+      await logActivity({ req, user: target, action: "Partners menu copy", resource: "Menu", description: `Copied ${categoryIds.length} categor${categoryIds.length === 1 ? "y" : "ies"} from store ${from}: ${r.categoriesCreated} created, ${r.dishesAdded} dishes added` }).catch(() => {});
+    }
+    res.status(200).json({ success: true, data: { results } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/partners/menu-tools/prices { changes: [{ storeId, menuId, itemId, price?, variants?: [{ id, price }] }] }
+router.post("/menu-tools/prices", requirePartner, async (req, res, next) => {
+  try {
+    const changes = Array.isArray(req.body?.changes) ? req.body.changes.slice(0, 500) : [];
+    if (!changes.length) throw createHttpError(400, "Nothing to change.");
+    const byStore = new Map();
+    for (const c of changes) {
+      const list = byStore.get(String(c.storeId)) || [];
+      list.push(c);
+      byStore.set(String(c.storeId), list);
+    }
+    const results = [];
+    for (const [storeId, list] of byStore) {
+      const owner = await ownerForLink(await linkFor(req.partner, storeId));
+      const changed = await setPrices({ owner, changes: list });
+      results.push({ storeId, changed });
+      if (changed) await logActivity({ req, user: owner, action: "Partners price change", resource: "Menu", description: `Changed the price of ${changed} dish(es) from the Partners dashboard` }).catch(() => {});
+    }
+    res.status(200).json({ success: true, data: { results } });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /api/partners/orders?from&to&stores=&q= : every chosen store's orders, newest first.
 // A customer's phone in full on the order's day only, as in the POS (middlewares/customerPrivacy).
 router.get("/orders", requirePartner, customerPrivacy, async (req, res, next) => {

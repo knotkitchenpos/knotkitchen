@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDispatch } from "react-redux";
 import {
   MdDashboard, MdStorefront, MdReceiptLong, MdBarChart, MdListAlt, MdPerson, MdLogout, MdFileDownload,
-  MdRestaurantMenu, MdInventory2, MdGroups, MdSupportAgent, MdApps, MdShield,
+  MdRestaurantMenu, MdInventory2, MdGroups, MdSupportAgent, MdApps, MdShield, MdSyncAlt,
 } from "react-icons/md";
 import GlobalPinPrompt from "../components/common/GlobalPinPrompt";
 import { setUser } from "../redux/slices/userSlice";
@@ -24,6 +24,7 @@ const InventoryPage = lazy(() => import("./pages/InventoryPage"));
 const StaffPage = lazy(() => import("./pages/StaffPage"));
 const SupportPage = lazy(() => import("./pages/SupportPage"));
 const StaffWatch = lazy(() => import("./pages/StaffWatch"));
+const MenuTools = lazy(() => import("./pages/MenuTools"));
 
 // `phone`: on the phone's bottom bar; everything else is under More.
 const NAV = [
@@ -32,6 +33,7 @@ const NAV = [
   { to: "/reports", label: "Reports", Icon: MdBarChart, phone: true },
   { to: "/billing", label: "Billing", Icon: MdReceiptLong, phone: true },
   { to: "/menu", label: "Manage Menu", Icon: MdRestaurantMenu, note: "Categories, dishes, variants and add-ons" },
+  { to: "/menu-tools", label: "Menu across stores", Icon: MdSyncAlt, note: "Copy menus, change prices everywhere" },
   { to: "/inventory", label: "Inventory", Icon: MdInventory2, note: "Stock, purchases and restock alerts" },
   { to: "/staff-watch", label: "Staff watch", Icon: MdShield, note: "Discounts, cancellations and refunds by staff" },
   { to: "/staff", label: "Manage Staff", Icon: MdGroups, note: "Staff logins and their PIN privileges" },
@@ -114,7 +116,10 @@ const Shell = ({ me, children }) => {
   // mount; this runs after theirs, so the Partners one stays.
   const { pathname } = useLocation();
   useEffect(() => {
-    const item = NAV.find((n) => (n.end ? pathname === n.to : pathname.startsWith(n.to))) || (pathname.startsWith("/more") ? { label: "More" } : null);
+    // The longest address that matches: /menu-tools is not Manage Menu.
+    const item =
+      NAV.filter((n) => (n.end ? pathname === n.to : pathname === n.to || pathname.startsWith(`${n.to}/`)))
+        .sort((a, b) => b.to.length - a.to.length)[0] || (pathname.startsWith("/more") ? { label: "More" } : null);
     const title = item ? `${item.label} · KnotKitchen Partners` : "KnotKitchen Partners";
     document.title = title;
     // A POS screen may set its own title later (once its data loads): put this one back.
@@ -225,6 +230,7 @@ const PartnersApp = () => (
     <Route path="/account" element={<Protected>{(me) => <Account me={me} />}</Protected>} />
     <Route path="/exports" element={<Protected>{(me) => <Exports me={me} />}</Protected>} />
     <Route path="/menu" element={<Protected>{(me) => <MenuPage me={me} />}</Protected>} />
+    <Route path="/menu-tools" element={<Protected>{(me) => <MenuTools me={me} />}</Protected>} />
     <Route path="/inventory" element={<Protected>{(me) => <InventoryPage me={me} />}</Protected>} />
     <Route path="/staff" element={<Protected>{(me) => <StaffPage me={me} />}</Protected>} />
     <Route path="/staff-watch" element={<Protected>{(me) => <StaffWatch me={me} />}</Protected>} />
