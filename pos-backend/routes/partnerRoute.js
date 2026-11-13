@@ -295,6 +295,47 @@ router.get("/staff-watch", requirePartner, async (req, res, next) => {
   }
 });
 
+/* ------------------------------------------------------------- profit -- */
+
+const { profitOf } = require("../services/profit");
+const { dishCostTable } = require("../controllers/inventoryController");
+
+// GET /api/partners/profit?from&to&stores= : sales, food cost and gross profit per store and dish.
+router.get("/profit", requirePartner, async (req, res, next) => {
+  try {
+    const { usable, skipped } = await pickStores(req.partner, req.query);
+    const cards = await storeCards(req.partner);
+    const nameOf = new Map(cards.map((c) => [c.storeId, c.name]));
+    const stores = await Promise.all(
+      usable.map(async ({ link, owner }) => {
+        const [report, costs] = await Promise.all([reportFor(owner, req.query), dishCostTable(owner)]);
+        return { storeId: link.storeId, name: nameOf.get(link.storeId) || link.storeId, ...profitOf({ orders: report.projected, costs: costs.data, targetPct: costs.settings?.targetFoodCostPct ?? 35 }) };
+      })
+    );
+    const sum = (f) => Math.round(stores.reduce((t, s) => t + (Number(s[f]) || 0), 0) * 100) / 100;
+    const costedRevenue = sum("costedRevenue");
+    const foodCost = sum("foodCost");
+    res.status(200).json({
+      success: true,
+      data: {
+        totals: {
+          revenue: sum("revenue"),
+          costedRevenue,
+          foodCost,
+          grossProfit: Math.round((costedRevenue - foodCost) * 100) / 100,
+          foodCostPct: costedRevenue > 0 ? Math.round((foodCost / costedRevenue) * 1000) / 10 : null,
+          coveragePct: sum("revenue") > 0 ? Math.round((costedRevenue / sum("revenue")) * 1000) / 10 : 0,
+          discounts: sum("discounts"),
+        },
+        stores,
+        skipped,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 /* ---------------------------------------------- menu across stores -- */
 
 const { catalogOf, copyCategories, setPrices } = require("../services/menuTools");

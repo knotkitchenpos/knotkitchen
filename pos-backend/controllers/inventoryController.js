@@ -544,25 +544,32 @@ const menuDishes = async (user) => {
  * (owner, 2026-11-01: "Paneer Tikka costs ₹92 to make, sells for ₹220, food
  * cost 42%"). Above the store's target is flagged.
  */
+/** Every product with its cost per plate where it has a recipe. Shared with the Partners profit view. */
+const dishCostTable = async (user) => {
+  const restaurantId = user.restaurantId;
+  const [dishes, recipes, items, settings] = await Promise.all([
+    menuDishes(user),
+    Recipe.find({ restaurantId, isDeleted: { $ne: true } }).lean(),
+    costItems(restaurantId),
+    settingsOf(restaurantId),
+  ]);
+  const byDish = new Map(recipes.map((r) => [String(r.menuItemId), r]));
+  const data = dishes.map((d) => {
+    const recipe = byDish.get(d.menuItemId);
+    const hasRecipe = Boolean(recipe && (recipe.ingredients || []).length);
+    return {
+      menuItemId: d.menuItemId, name: d.name, category: d.category, price: d.price, hasRecipe,
+      recipeOn: hasRecipe && recipe.isActive !== false,
+      ...(hasRecipe ? dishCost({ recipe, price: d.price, items, targetPct: settings.targetFoodCostPct }) : {}),
+    };
+  });
+  return { data, settings };
+};
+
 const dishCosts = async (req, res, next) => {
   try {
-    const s = scope(req);
-    const [dishes, recipes, items, settings] = await Promise.all([
-      menuDishes(req.user),
-      Recipe.find({ restaurantId: s.restaurantId, isDeleted: { $ne: true } }).lean(),
-      costItems(s.restaurantId),
-      settingsOf(s.restaurantId),
-    ]);
-    const byDish = new Map(recipes.map((r) => [String(r.menuItemId), r]));
-    const data = dishes.map((d) => {
-      const recipe = byDish.get(d.menuItemId);
-      const hasRecipe = Boolean(recipe && (recipe.ingredients || []).length);
-      return {
-        menuItemId: d.menuItemId, name: d.name, category: d.category, price: d.price, hasRecipe,
-        recipeOn: hasRecipe && recipe.isActive !== false,
-        ...(hasRecipe ? dishCost({ recipe, price: d.price, items, targetPct: settings.targetFoodCostPct }) : {}),
-      };
-    });
+    scope(req);
+    const { data, settings } = await dishCostTable(req.user);
     res.status(200).json({ success: true, data, settings });
   } catch (e) { next(e); }
 };
@@ -874,7 +881,7 @@ const saveSettings = async (req, res, next) => {
 
 module.exports = {
   scanBarcode,
-  makeBatch, dishCosts, listAddonRecipes, saveAddonRecipe,
+  makeBatch, dishCosts, dishCostTable, listAddonRecipes, saveAddonRecipe,
   listCounts, startCount, getCount, saveCount, finishCount, cancelCount,
   inventoryReport, getSettings, saveSettings,
   listIngredients, listRestockAlerts, createIngredient, updateIngredient, deleteIngredient,
