@@ -239,7 +239,7 @@ export const KotRoutingOverview = ({ kitchens, menus, hasReceipt }) => {
         <div className="mt-3 rounded-xl bg-[#FFFBEB] border border-[#FDE68A] p-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-[12.5px] font-bold text-[#92400E]">
-              {missing.length} product{missing.length === 1 ? "" : "s"} not assigned to any kitchen printer: {hasReceipt ? "they print on the receipt printer." : "they print on the first kitchen printer."}
+              {missing.length} product{missing.length === 1 ? "" : "s"} not assigned to any kitchen printer: {missing.length === 1 ? "it is" : "they are"} not printed on the KOT.
             </p>
             <button type="button" onClick={() => setShowMissing((v) => !v)} className="text-[12px] font-bold text-[#B45309] hover:underline">
               {showMissing ? "Hide" : "Show"}

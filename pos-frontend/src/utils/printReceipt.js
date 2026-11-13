@@ -208,8 +208,8 @@ export const printOrderReceipt = async (order, { auto = false, config, context }
 /**
  * Print a kitchen order ticket, split across this device's kitchen printers
  * by what each one prints (Device Configuration > Kitchen Printers,
- * utils/kotRouting.js). Dishes no kitchen printer takes print on the receipt
- * printer; with no kitchen printer at all, the whole ticket does.
+ * utils/kotRouting.js). Dishes no kitchen printer takes are not printed;
+ * with no kitchen printer at all, the whole ticket prints on the receipt printer.
  *
  * Every printer is tried even when one fails. A failure throws once, naming
  * the printers that did not print, with `err.retry` reprinting only those.
@@ -252,7 +252,11 @@ export const printKot = async (order, opts = {}) => {
     ? [{ id: forced.id || "test", label: forced.label || "", printer: forced, items: lines }]
     : routeKot({ lines, kitchens, receipt: config, lookup });
   if (Array.isArray(only)) tickets = tickets.filter((t) => only.includes(t.id));
-  if (!tickets.length) return null;
+  if (!tickets.length) {
+    // Every line is unassigned: no ticket. A pressed KOT button says why.
+    if (auto || Array.isArray(only)) return null;
+    throw new Error("Nothing to print: none of these items is assigned to a kitchen printer.");
+  }
   const { store } = context || (await loadReceiptContext());
   await ensureReceiptFont();
   // The printer's name heads its ticket once the kitchen has more than one.

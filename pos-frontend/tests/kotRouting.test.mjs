@@ -33,7 +33,7 @@ test("a category prints all its products; one switched off stays off; a later pr
   assert.deepEqual(normalizeRoute({ all: false, categories: ["a", "a", ""], excluded: null }), { all: false, categories: ["a"], excluded: [] });
 });
 
-test("a KOT is split per printer; the same product can go to several; the rest go to the receipt printer", () => {
+test("a KOT is split per printer; the same product can go to several; unassigned products are not printed", () => {
   const kitchens = [
     { id: "p1", label: "Pizza oven", type: "usb", route: { all: false, categories: ["pizza"], excluded: ["chick"] } },
     { id: "p2", label: "Grill", type: "lan", route: { all: false, categories: ["pizza"], excluded: ["marg", "paneer", "cheese"] } },
@@ -45,14 +45,20 @@ test("a KOT is split per printer; the same product can go to several; the rest g
   assert.deepEqual(by.p1, ["marg"], "Chicken Pizza is off on the oven");
   assert.deepEqual(by.p2, ["chick"]);
   assert.deepEqual(by.p3, ["marg", "chick"], "the same products on a second printer too");
-  assert.deepEqual(by.receipt, ["cola"], "nobody takes Drinks: never lost, it prints on the receipt printer");
-  assert.equal(t.find((x) => x.id === "receipt").label, "Not assigned");
+  assert.equal(by.receipt, undefined, "nobody takes Drinks: the Cola is not printed (owner, 2026-11-13)");
+  assert.deepEqual(t.map((x) => x.id), ["p1", "p2", "p3"]);
 });
 
-test("unassigned lines go to the first kitchen printer when there is no receipt printer; no kitchen printers = receipt printer", () => {
+test("unassigned lines are not printed, with or without a receipt printer; no kitchen printers = receipt printer", () => {
   const kitchens = [{ id: "p1", label: "Oven", type: "usb", route: { all: false, categories: ["pizza"] } }];
-  const t = routeKot({ lines: [line("cola", "Cola"), line("marg", "x")], kitchens, receipt: { type: "" }, lookup });
-  assert.deepEqual(t.map((x) => [x.id, x.items.length]), [["p1", 2]]);
+  for (const receipt of [{ type: "" }, { type: "usb" }]) {
+    const t = routeKot({ lines: [line("cola", "Cola"), line("marg", "x")], kitchens, receipt, lookup });
+    assert.deepEqual(t.map((x) => [x.id, x.items.map((i) => i.menuItemId)]), [["p1", ["marg"]]]);
+  }
+  assert.deepEqual(routeKot({ lines: [line("cola", "Cola")], kitchens, receipt: { type: "usb" }, lookup }), [], "only unassigned: no ticket at all");
+  // A pressed KOT button with nothing assigned says why; an automatic one stays quiet.
+  const kot = src("utils/printReceipt.js");
+  assert.match(kot, /if \(auto \|\| Array\.isArray\(only\)\) return null;\n    throw new Error\("Nothing to print: none of these items is assigned to a kitchen printer\."\);/);
   const none = routeKot({ lines: [line("cola", "Cola")], kitchens: [], receipt: { type: "usb" }, lookup });
   assert.deepEqual(none.map((x) => x.id), ["receipt"]);
   assert.deepEqual(routeKot({ lines: [], kitchens, receipt: {}, lookup }), []);

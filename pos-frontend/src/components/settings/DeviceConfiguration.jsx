@@ -489,7 +489,7 @@ const DeviceConfiguration = () => {
       return savePrinterConfig({ ...d, kitchens: [...list, next] });
     });
   const removeKitchen = (k) => {
-    if (!window.confirm(`Remove ${k.label}? Its products then print on ${kitchens.length > 1 ? "the other kitchen printers or " : ""}the receipt printer.`)) return;
+    if (!window.confirm(kitchens.length > 1 ? `Remove ${k.label}? Products only it printed will no longer be printed on the KOT.` : `Remove ${k.label}? KOTs then print on the receipt printer.`)) return;
     setDevice((d) => savePrinterConfig({ ...d, kitchens: (d.kitchens || []).filter((x) => x.id !== k.id) }));
     setLanWaiting((w) => ({ ...w, [k.id]: false }));
   };

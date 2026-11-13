@@ -10,8 +10,10 @@
  * A category stores its id, not its dishes: a dish added to it later prints
  * there too. The same dish may print on several printers.
  *
- * Dishes no kitchen printer takes print on the receipt printer (or, with none,
- * on the first kitchen printer): a sale is never left without a ticket.
+ * Dishes no kitchen printer takes are left off the KOT (owner, 2026-11-13):
+ * not assigning a product is how a kitchen says it needs no ticket for it
+ * (a bottled drink, a packaged sweet). With no kitchen printer set up at all,
+ * the whole KOT prints on the receipt printer as before.
  */
 
 export const ROUTE_ALL = Object.freeze({ all: true, categories: [], excluded: [] });
@@ -79,28 +81,14 @@ export const needsMenu = (kitchens = []) => kitchens.some((k) => !normalizeRoute
 export const routeKot = ({ lines = [], kitchens = [], receipt = {}, lookup = () => null }) => {
   if (!kitchens.length) return lines.length ? [{ id: "receipt", label: "", printer: receipt, items: lines }] : [];
   const tickets = kitchens.map((k) => ({ id: k.id, label: k.label || "", printer: k, items: [] }));
-  const leftover = [];
   for (const line of lines) {
     const hit = lookup(line);
-    let taken = false;
     kitchens.forEach((k, i) => {
-      if (routeTakes(k.route, hit?.itemId, hit?.categoryId)) {
-        tickets[i].items.push(line);
-        taken = true;
-      }
+      if (routeTakes(k.route, hit?.itemId, hit?.categoryId)) tickets[i].items.push(line);
     });
-    if (!taken) leftover.push(line);
   }
-  const out = tickets.filter((t) => t.items.length);
-  if (leftover.length) {
-    if (receipt?.type) out.push({ id: "receipt", label: "Not assigned", printer: receipt, items: leftover });
-    else {
-      const first = out.find((t) => t.id === kitchens[0].id);
-      if (first) first.items.push(...leftover);
-      else out.unshift({ id: kitchens[0].id, label: kitchens[0].label || "", printer: kitchens[0], items: leftover });
-    }
-  }
-  return out;
+  // A line no printer takes is not printed anywhere.
+  return tickets.filter((t) => t.items.length);
 };
 
 /**
@@ -120,7 +108,7 @@ export const routeSummary = (route, menus = []) => {
   return { all: false, categories };
 };
 
-/** Dishes of `menus` that no printer in `kitchens` takes (they print on the receipt printer). */
+/** Dishes of `menus` that no printer in `kitchens` takes (not printed on the KOT). */
 export const unassignedItems = (kitchens = [], menus = []) => {
   if (!kitchens.length || kitchens.some((k) => normalizeRoute(k.route).all)) return [];
   const out = [];
