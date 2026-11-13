@@ -1,4 +1,5 @@
 import React from "react";
+import { useSelector } from "react-redux";
 import { Link } from "react-router-dom";
 import Reports from "../../pages/Reports";
 import { useActiveStore } from "../PartnersApp";
@@ -10,6 +11,8 @@ import { StorePicker } from "../components/Filters";
  */
 const ReportsPage = ({ me }) => {
   const { current, usable, choose } = useActiveStore(me?.stores);
+  // The POS screen reads the store's Owner from redux: only once it is this store's.
+  const ready = useSelector((s) => s.user.storeId) === current?.storeId;
   if (!current) {
     return (
       <div className="bg-white border border-[#E2E8F0] rounded-2xl p-8 text-center">
@@ -24,7 +27,7 @@ const ReportsPage = ({ me }) => {
     <div>
       <StorePicker usable={usable} current={current} onChoose={choose} />
       <div className="-mx-4 sm:-mx-7 rounded-2xl overflow-hidden">
-        <Reports key={current.storeId} />
+        {ready ? <Reports key={current.storeId} /> : null}
       </div>
     </div>
   );

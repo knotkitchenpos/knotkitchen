@@ -12,7 +12,8 @@ import { isOwner } from "../utils/security";
  */
 export const PARTNERS_URL = (
   import.meta.env.VITE_PARTNERS_URL ||
-  (typeof window !== "undefined" && /^(localhost|127\.0\.0\.1)$/.test(window.location.hostname) ? "http://localhost:5176/partners" : "https://knotkitchen.com/partners")
+  // The dev server only (npm run dev); every build, the apps included, goes to the live one.
+  (import.meta.env.DEV ? "http://localhost:5176/partners" : "https://knotkitchen.com/partners")
 ).replace(/\/$/, "");
 
 const BillingMoved = () => {

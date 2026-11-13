@@ -19,6 +19,7 @@ const {
   storeCards,
 } = require("../services/partners");
 const { aggregateDashboard } = require("../services/partnerDashboard");
+const { customerPrivacy } = require("../middlewares/customerPrivacy");
 
 /**
  * The Partners dashboard API (knotkitchen.com/partners -> Caddy ->
@@ -271,7 +272,8 @@ router.get("/dashboard", requirePartner, async (req, res, next) => {
 });
 
 // GET /api/partners/orders?from&to&stores=&q= : every chosen store's orders, newest first.
-router.get("/orders", requirePartner, async (req, res, next) => {
+// A customer's phone in full on the order's day only, as in the POS (middlewares/customerPrivacy).
+router.get("/orders", requirePartner, customerPrivacy, async (req, res, next) => {
   try {
     const { usable, skipped } = await pickStores(req.partner, req.query);
     const cards = await storeCards(req.partner);

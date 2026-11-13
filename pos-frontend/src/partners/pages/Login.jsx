@@ -1,6 +1,6 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { partnersApi, errorMessage } from "../api";
 
 export const inputCls =
@@ -59,6 +59,16 @@ const Login = () => {
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const qc = useQueryClient();
+  const nextPath = () => {
+    const next = params.get("next");
+    return next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+  };
+  // Already signed in (a bookmark, the back button): straight in.
+  const { data: me } = useQuery({ queryKey: ["partner-me"], queryFn: () => partnersApi.me().then((r) => r.data.data), retry: false });
+  useEffect(() => {
+    if (me) navigate(nextPath(), { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me]);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -68,8 +78,7 @@ const Login = () => {
     try {
       const res = await partnersApi.login(v);
       qc.setQueryData(["partner-me"], res.data.data);
-      const next = params.get("next");
-      navigate(next && next.startsWith("/") && !next.startsWith("//") ? next : "/", { replace: true });
+      navigate(nextPath(), { replace: true });
     } catch (err) {
       setError(errorMessage(err, "Could not sign in."));
     } finally {
