@@ -23,13 +23,31 @@ test("Partners pass-through: only a store's billing and read-only reports, nothi
   assert.ok(allowed("GET", "/api/order/report"));
   assert.ok(allowed("GET", "/api/order/report/export"));
   assert.ok(allowed("GET", "/api/order/6af670da403e505d31ad669c"));
+  // Manage Menu, Inventory, Staff, Help & Support (owner, 2026-11-13)
+  for (const [m, p] of [
+    ["GET", "/api/menu"],
+    ["POST", "/api/menu/dish"],
+    ["PUT", "/api/menu/6af670da403e505d31ad669c/publish"],
+    ["POST", "/api/menu/publish/system"],
+    ["POST", "/api/media"],
+    ["GET", "/api/inventory/ingredients"],
+    ["POST", "/api/inventory/stock-counts"],
+    ["GET", "/api/restaurant/staff"],
+    ["POST", "/api/restaurant/staff"],
+    ["DELETE", "/api/restaurant/staff/6af670da403e505d31ad669c"],
+    ["POST", "/api/restaurant/verify-pin"],
+    ["POST", "/api/support/requests"],
+  ]) assert.equal(allowed(m, p), true, `${m} ${p}`);
   // The POS's everything else
   for (const [m, p] of [
+    ["POST", "/api/table-session/open"],
+    ["PUT", "/api/restaurant/properties"],
+    ["PUT", "/api/restaurant/order-toggles"],
+    ["PUT", "/api/website/settings"],
+    ["POST", "/api/menuX"],
     ["POST", "/api/order"],
     ["PUT", "/api/order/6af670da403e505d31ad669c"],
-    ["GET", "/api/menu"],
     ["PUT", "/api/restaurant/pos-settings"],
-    ["POST", "/api/restaurant/staff"],
     ["GET", "/api/user"],
     ["POST", "/api/user/change-password"],
     ["DELETE", "/api/subscription/plan"],

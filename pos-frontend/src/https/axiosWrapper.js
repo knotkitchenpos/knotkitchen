@@ -21,19 +21,20 @@ export const axiosWrapper = axios.create({
 axiosWrapper.interceptors.request.use(
   (config) => {
     // The Partners dashboard (knotkitchen.com/partners) reuses the POS's
-    // Billing and Reports screens: their calls go to the store picked there,
+    // Billing, Reports, Menu, Inventory, Staff and Support screens: their calls go to the store picked there,
     // through /api/partners/s/<storeId>/... (middlewares/partnerPassthrough).
+    // (The Security PIN headers below go with them: Manage Staff asks for it.)
     if (PARTNERS_APP) {
       config.baseURL = PARTNERS_API;
       const url = String(config.url || "");
       if (url.startsWith("/api/")) config.url = `/s/${activePartnerStore()}${url}`;
-      return config;
+    } else {
+      // Tell the API which takeaway this tab is acting as, so it reads that
+      // store's session cookie and not another one signed in from the same
+      // browser. Without this every takeaway shares one session.
+      const storeId = getActiveStoreId();
+      if (storeId) config.headers["x-store-id"] = storeId;
     }
-    // Tell the API which takeaway this tab is acting as, so it reads that
-    // store's session cookie and not another one signed in from the same
-    // browser. Without this every takeaway shares one session.
-    const storeId = getActiveStoreId();
-    if (storeId) config.headers["x-store-id"] = storeId;
 
     const pinToken = sessionStorage.getItem("staffPinToken");
     const pinExpiry = sessionStorage.getItem("staffPinTokenExpiry");
@@ -89,6 +90,16 @@ axiosWrapper.interceptors.response.use(
     const url = originalRequest?.url || "";
     // Partners: no POS refresh or PIN loop; a signed-out session goes to its sign-in.
     if (PARTNERS_APP) {
+      // The store's Security PIN, asked once and the request sent again, as in the POS.
+      if (error.response?.status === 403 && error.response?.data?.code === "PIN_REQUIRED" && originalRequest && !originalRequest._pinRetry) {
+        originalRequest._pinRetry = true;
+        try {
+          await requestPin();
+        } catch {
+          return Promise.reject(error);
+        }
+        return axiosWrapper(originalRequest);
+      }
       if (error.response?.status === 401) partnersSignedOut();
       return Promise.reject(error);
     }

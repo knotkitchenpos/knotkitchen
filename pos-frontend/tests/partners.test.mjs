@@ -20,13 +20,28 @@ test("in the Partners build the POS's Billing and Reports call the picked store 
   const ax = src("src/https/axiosWrapper.js");
   assert.match(ax, /if \(PARTNERS_APP\) \{\n\s+config\.baseURL = PARTNERS_API;/);
   assert.match(ax, /if \(url\.startsWith\("\/api\/"\)\) config\.url = `\/s\/\$\{activePartnerStore\(\)\}\$\{url\}`;/);
-  // No POS refresh or PIN loop there: a signed-out session goes to its own sign-in.
-  assert.match(ax, /if \(PARTNERS_APP\) \{\n\s+if \(error\.response\?\.status === 401\) partnersSignedOut\(\);\n\s+return Promise\.reject\(error\);/);
+  // No POS session refresh there: a signed-out session goes to its own sign-in.
+  assert.match(ax, /if \(error\.response\?\.status === 401\) partnersSignedOut\(\);\n\s+return Promise\.reject\(error\);\n\s+\}/);
   const mode = src("src/partners/mode.js");
   assert.match(mode, /export const PARTNERS_APP = import\.meta\.env\.VITE_KK_APP === "partners";/);
   // Switching store drops the other store's cached billing and reports.
   assert.match(src("src/partners/PartnersApp.jsx"), /qc\.removeQueries\(\{ predicate: \(q\) => !String\(q\.queryKey\[0\] \|\| ""\)\.startsWith\("partner-"\) \}\);/);
-  assert.match(src("src/partners/pages/BillingPage.jsx"), /<Billing key=\{current\.storeId\} \/>/);
+  // Every reused POS screen sits in one wrapper: drawn once the store's Owner is set, afresh per store.
+  const screen = src("src/partners/components/StoreScreen.jsx");
+  assert.match(screen, /const ready = useSelector\(\(s\) => s\.user\.storeId\) === current\?\.storeId;/);
+  assert.match(screen, /key=\{current\.storeId\}/);
+  for (const [page, comp] of [
+    ["BillingPage", "Billing"],
+    ["ReportsPage", "Reports"],
+    ["MenuPage", "ManageMenu"],
+    ["InventoryPage", "InventoryView"],
+    ["StaffPage", "ManageStaffView"],
+    ["SupportPage", "Support"],
+  ]) {
+    const s = src(`src/partners/pages/${page}.jsx`);
+    assert.match(s, /<StoreScreen me=\{me\}/, page);
+    assert.ok(s.includes(`<${comp} />`), page);
+  }
 });
 
 test("the POS no longer has Billing: its route says where it moved and keeps ?device=", () => {
@@ -54,7 +69,7 @@ test("the Partners pages: sign-in with a store's Owner login, link any number of
 test("Accountant exports: one store and month, figures and checks first, then the files", () => {
   const routes = src("src/partners/PartnersApp.jsx");
   assert.ok(routes.includes('path="/exports"'));
-  assert.match(routes, /\{ to: "\/exports", label: "Exports", Icon: MdFileDownload \}/);
+  assert.match(routes, /\{ to: "\/exports", label: "Exports", Icon: MdFileDownload,/);
   const page = src("src/partners/pages/Exports.jsx");
   // Last month by default: the return being filed.
   assert.match(page, /useState\(months\[1\]\.key\)/);
@@ -72,4 +87,19 @@ test("the GST bill number shows on the printed bill, the order screens and the c
   assert.match(orders, /Bill No\. \(GST\)/);
   assert.match(src("src/components/invoice/Invoice.jsx"), /\{safeOrder\.billNumber \? \(/);
   assert.match(src("src/partners/pages/OrdersPage.jsx"), /\{o\.billNumber \|\| "—"\}/);
+});
+
+test("Manage Menu, Inventory, Manage Staff and Help & Support in Partners, with the store's Security PIN", () => {
+  const app = src("src/partners/PartnersApp.jsx");
+  for (const p of ["/menu", "/inventory", "/staff", "/support", "/more", "/settings"]) assert.ok(app.includes(`path="${p}"`), p);
+  // The POS screens' PIN popup, and the phone's More page for what the bottom bar leaves out.
+  assert.match(app, /<GlobalPinPrompt \/>/);
+  assert.match(app, /\[\.\.\.NAV\.filter\(\(n\) => n\.phone\), \{ to: "\/more", label: "More", Icon: MdApps \}\]/);
+  // Manage Menu's "Set stock use" (/settings?view=inventory&tab=addons) lands on Inventory here.
+  assert.match(app, /const to = \{ inventory: "\/inventory", staff: "\/staff", billing: "\/billing" \}\[view\] \|\| "\/";/);
+  // The PIN is asked and the request sent again, as in the POS; a store switch forgets it.
+  const ax = src("src/https/axiosWrapper.js");
+  assert.match(ax, /if \(PARTNERS_APP\) \{\n\s+\/\/ The store's Security PIN, asked once and the request sent again, as in the POS\.\n\s+if \(error\.response\?\.status === 403 && error\.response\?\.data\?\.code === "PIN_REQUIRED"/);
+  const mode = src("src/partners/mode.js");
+  assert.match(mode, /rememberTypedPin\(null\);\n  try \{\n    sessionStorage\.removeItem\("staffPinToken"\);/);
 });

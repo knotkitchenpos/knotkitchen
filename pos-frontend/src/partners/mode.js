@@ -1,3 +1,5 @@
+import { rememberTypedPin } from "../utils/pinPrompt";
+
 /**
  * The Partners dashboard build (knotkitchen.com/partners, vite.partners.config.js)
  * shares this codebase with the POS. Shared code asks here which one it is.
@@ -24,7 +26,11 @@ export const activePartnerStore = () => {
 };
 
 export const setActivePartnerStore = (storeId) => {
+  // A Security PIN belongs to one store: never sent to the next one.
+  rememberTypedPin(null);
   try {
+    sessionStorage.removeItem("staffPinToken");
+    sessionStorage.removeItem("staffPinTokenExpiry");
     sessionStorage.setItem(KEY, String(storeId || ""));
     localStorage.setItem(KEY, String(storeId || ""));
   } catch {
