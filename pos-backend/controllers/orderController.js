@@ -1703,6 +1703,7 @@ module.exports = {
   getPopularItems,
   getOrdersReport,
   reportFor,
+  reportMethodOf,
   exportOrdersCsv,
   validateTableCapacityForOrder,
   // Exposed for other controllers/services that need consistent

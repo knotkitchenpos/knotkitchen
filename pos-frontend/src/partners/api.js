@@ -18,6 +18,10 @@ export const partnersApi = {
   order: (storeId, id) => axiosWrapper.get(`/s/${encodeURIComponent(storeId)}/api/order/${encodeURIComponent(id)}`),
   sessions: () => axiosWrapper.get("/sessions"),
   revokeOtherSessions: () => axiosWrapper.post("/sessions/revoke-others", {}),
+  // Accountant exports of one store (GSTR-1 Excel / JSON, Tally XML).
+  exportSummary: (storeId, params) => axiosWrapper.get(`/exports/${encodeURIComponent(storeId)}/summary`, { params, timeout: 120000 }),
+  exportFile: (storeId, file, params) =>
+    axiosWrapper.get(`/exports/${encodeURIComponent(storeId)}/${file}`, { params, responseType: "blob", timeout: 180000 }),
 };
 
 /** The message an API error carries, for a snackbar. */

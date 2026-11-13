@@ -316,4 +316,112 @@ router.get("/orders", requirePartner, customerPrivacy, async (req, res, next) =>
   }
 });
 
+/* ---------------------------------------------------- accountant exports -- */
+
+const Restaurant = require("../models/restaurantModel");
+const { reportMethodOf } = require("../controllers/orderController");
+const { buildXlsx } = require("../services/xlsx");
+const { billRows, gstr1, gstr1Sheets, gstr1Json, tallyXml } = require("../services/accountantExports");
+
+const YMD = /^\d{4}-\d{2}-\d{2}$/;
+
+/** One linked store's bills for a period, as export rows, and its GST details. */
+const exportData = async (req) => {
+  const { from, to } = req.query;
+  if (!YMD.test(String(from || "")) || !YMD.test(String(to || "")) || from > to) {
+    throw createHttpError(400, "Choose a period: from and to dates (YYYY-MM-DD).");
+  }
+  if (new Date(to) - new Date(from) > 366 * 86400000) throw createHttpError(400, "Export at most one year at a time.");
+  const link = await linkFor(req.partner, req.params.storeId);
+  const owner = await ownerForLink(link);
+  const [restaurant, report] = await Promise.all([
+    Restaurant.findById(owner.restaurantId).select("name taxId address").lean(),
+    reportFor(owner, { from, to }),
+  ]);
+  const store = {
+    storeId: link.storeId,
+    name: restaurant?.name || `Store ${link.storeId}`,
+    gstin: String(restaurant?.taxId || "").trim().toUpperCase(),
+    state: restaurant?.address?.state || "",
+  };
+  const rows = billRows(report.projected, { methodOf: reportMethodOf });
+  return { store, rows, from, to, owner };
+};
+
+const fileName = (store, from, to, ext) => `${store.storeId}-${from}-to-${to}.${ext}`;
+const send = (res, { name, type, body }) => {
+  res.setHeader("Content-Type", type);
+  res.setHeader("Content-Disposition", `attachment; filename="${name}"`);
+  res.setHeader("Cache-Control", "no-store");
+  res.status(200).send(body);
+};
+const logExport = (req, owner, what, store, from, to) =>
+  logActivity({ req, user: owner, action: "Partners export", resource: "Accountant exports", description: `${what} for store ${store.storeId}, ${from} to ${to}` }).catch(() => {});
+
+// GET /api/partners/exports/:storeId/summary?from&to : the figures and checks, before downloading.
+router.get("/exports/:storeId/summary", requirePartner, async (req, res, next) => {
+  try {
+    const { store, rows, from, to } = await exportData(req);
+    const g = gstr1({ rows, store, from, to });
+    res.status(200).json({
+      success: true,
+      data: {
+        store: g.store,
+        period: g.period,
+        totals: g.totals,
+        b2b: { count: g.b2b.length, taxable: g.b2b.reduce((s, r) => s + r.taxable, 0) },
+        b2cs: g.b2cs,
+        eco: g.eco,
+        nil: g.nil,
+        docs: g.docs,
+        warnings: g.warnings,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/exports/:storeId/gstr1.xlsx", requirePartner, async (req, res, next) => {
+  try {
+    const { store, rows, from, to, owner } = await exportData(req);
+    const g = gstr1({ rows, store, from, to });
+    logExport(req, owner, "GSTR-1 Excel", store, from, to);
+    send(res, { name: fileName(store, from, to, "gstr1.xlsx"), type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", body: buildXlsx(gstr1Sheets(g, rows)) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/exports/:storeId/gstr1.json", requirePartner, async (req, res, next) => {
+  try {
+    const { store, rows, from, to, owner } = await exportData(req);
+    if (!store.gstin) throw createHttpError(400, "This store has no GST number in Store Properties, so it files no GSTR-1.");
+    if (from.slice(0, 7) !== to.slice(0, 7)) throw createHttpError(400, "The GSTR-1 JSON is for one month: choose a single month.");
+    const g = gstr1({ rows, store, from, to });
+    logExport(req, owner, "GSTR-1 JSON", store, from, to);
+    send(res, { name: fileName(store, from, to, "gstr1.json"), type: "application/json", body: JSON.stringify(gstr1Json(g), null, 2) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /api/partners/exports/:storeId/tally.xml?from&to&mode=bill|day&ledgers=<json>
+router.get("/exports/:storeId/tally.xml", requirePartner, async (req, res, next) => {
+  try {
+    const { store, rows, from, to, owner } = await exportData(req);
+    let ledgers = {};
+    try {
+      ledgers = req.query.ledgers ? JSON.parse(String(req.query.ledgers).slice(0, 4000)) : {};
+    } catch {
+      throw createHttpError(400, "The ledger names could not be read.");
+    }
+    const mode = req.query.mode === "day" ? "day" : "bill";
+    logExport(req, owner, `Tally XML (${mode})`, store, from, to);
+    send(res, { name: fileName(store, from, to, "tally.xml"), type: "application/xml", body: tallyXml({ rows, store, mode, ledgers }) });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

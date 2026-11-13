@@ -50,3 +50,16 @@ test("the Partners pages: sign-in with a store's Owner login, link any number of
   assert.match(login, /next && next\.startsWith\("\/"\) && !next\.startsWith\("\/\/"\) \? next : "\/"/);
   assert.match(src("src/partners/pages/Stores.jsx"), /partnersApi\.linkStore\(v\)/);
 });
+
+test("Accountant exports: one store and month, figures and checks first, then the files", () => {
+  const routes = src("src/partners/PartnersApp.jsx");
+  assert.ok(routes.includes('path="/exports"'));
+  assert.match(routes, /\{ to: "\/exports", label: "Exports", Icon: MdFileDownload \}/);
+  const page = src("src/partners/pages/Exports.jsx");
+  // Last month by default: the return being filed.
+  assert.match(page, /useState\(months\[1\]\.key\)/);
+  assert.match(page, /onClick=\{\(\) => download\("gstr1\.xlsx"\)\}/);
+  assert.match(page, /disabled=\{!valid \|\| !registered \|\| !oneMonth\}/, "JSON only for a registered store and one month");
+  assert.match(page, /download\("tally\.xml", \{ mode, ledgers: JSON\.stringify\(ledgers\) \}\)/);
+  assert.match(src("src/partners/api.js"), /responseType: "blob"/);
+});

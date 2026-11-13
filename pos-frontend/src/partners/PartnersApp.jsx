@@ -2,7 +2,7 @@ import React, { Suspense, lazy, useEffect, useState } from "react";
 import { NavLink, Navigate, Route, Routes, useLocation, useNavigate } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDispatch } from "react-redux";
-import { MdDashboard, MdStorefront, MdReceiptLong, MdBarChart, MdListAlt, MdPerson, MdLogout } from "react-icons/md";
+import { MdDashboard, MdStorefront, MdReceiptLong, MdBarChart, MdListAlt, MdPerson, MdLogout, MdFileDownload } from "react-icons/md";
 import { setUser } from "../redux/slices/userSlice";
 import { partnersApi } from "./api";
 import { activePartnerStore, setActivePartnerStore } from "./mode";
@@ -14,12 +14,14 @@ const BillingPage = lazy(() => import("./pages/BillingPage"));
 const ReportsPage = lazy(() => import("./pages/ReportsPage"));
 const OrdersPage = lazy(() => import("./pages/OrdersPage"));
 const Account = lazy(() => import("./pages/Account"));
+const Exports = lazy(() => import("./pages/Exports"));
 
 const NAV = [
   { to: "/", label: "Dashboard", Icon: MdDashboard, end: true },
   { to: "/orders", label: "Orders", Icon: MdListAlt },
   { to: "/reports", label: "Reports", Icon: MdBarChart },
   { to: "/billing", label: "Billing", Icon: MdReceiptLong },
+  { to: "/exports", label: "Exports", Icon: MdFileDownload },
   { to: "/stores", label: "Stores", Icon: MdStorefront },
   { to: "/account", label: "Account", Icon: MdPerson, desktopOnly: true },
 ];
@@ -118,7 +120,7 @@ const Shell = ({ me, children }) => {
         <main className="flex-1 w-full max-w-[1280px] mx-auto px-4 sm:px-6 lg:px-8 py-5 lg:py-7 pb-24 lg:pb-10">{children}</main>
 
         {/* Phone bottom bar */}
-        <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-[#E2E8F0] grid grid-cols-5 pb-[env(safe-area-inset-bottom)]">
+        <nav className="lg:hidden fixed bottom-0 inset-x-0 z-30 bg-white border-t border-[#E2E8F0] grid grid-cols-6 pb-[env(safe-area-inset-bottom)]">
           {NAV.filter((n) => !n.desktopOnly).map(({ to, label, Icon, end }) => (
             <NavLink
               key={to}
@@ -157,6 +159,7 @@ const PartnersApp = () => (
     <Route path="/reports" element={<Protected>{(me) => <ReportsPage me={me} />}</Protected>} />
     <Route path="/orders" element={<Protected>{(me) => <OrdersPage me={me} />}</Protected>} />
     <Route path="/account" element={<Protected>{(me) => <Account me={me} />}</Protected>} />
+    <Route path="/exports" element={<Protected>{(me) => <Exports me={me} />}</Protected>} />
     <Route path="*" element={<Navigate to="/" replace />} />
   </Routes>
 );
