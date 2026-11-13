@@ -249,22 +249,9 @@ test("REGRESSION: a deploy that cannot fast-forward fails instead of going green
   assert.match(wf, /git status --porcelain/);
 });
 
-test("the hand-added demo vhost is in version control, before the wildcard", () => {
-  // Left only on the server, it is what blocked every pull. The wildcard below
-  // it would otherwise claim the hostname and proxy it to customer-web, which
-  // has no such store.
-  assert.match(CADDY, /^demostore\.\{\$BASE_DOMAIN\} \{$/m);
-  assert.ok(
-    CADDY.indexOf("demostore.{$BASE_DOMAIN}") < CADDY.indexOf("*.{$BASE_DOMAIN}"),
-    "the wildcard must not shadow it",
-  );
-  assert.match(CADDY, /root \* \/srv\/landing\/demostore/);
-  // Its files are bind-mounted straight out of the repo, so they have to be
-  // tracked alongside the vhost that serves them.
-  assert.ok(
-    fs.existsSync(path.join(__dirname, "..", "..", "deploy", "landing", "demostore", "index.html")),
-    "the page itself must ship with the vhost that serves it",
-  );
+test("demostore.<base> is freed: no vhost, no demo files (owner, 2026-11-13)", () => {
+  assert.doesNotMatch(CADDY, /demostore/);
+  assert.equal(fs.existsSync(path.join(__dirname, "..", "..", "deploy", "landing", "demostore")), false);
 });
 
 test("REGRESSION: a Caddyfile change recreates caddy, because a reload cannot", () => {
