@@ -53,13 +53,19 @@ export const menuIndex = (menus = []) => {
       if (key && !byName.has(key)) byName.set(key, entry);
     }
   }
+  // Every id a line may carry: a till order's dish is `menuItemId`; a website,
+  // QR or Knot Eats order keeps its CATEGORY there and the dish in `itemId`.
   return (line) => {
-    const id = line?.menuItemId || line?.itemId || line?.dishId;
-    if (id && byId.has(String(id))) return byId.get(String(id));
+    for (const id of [line?.itemId, line?.menuItemId, line?.dishId]) {
+      if (id && byId.has(String(id))) return byId.get(String(id));
+    }
     const name = line?.originalName || line?.name;
     return byName.get(String(name || "").trim().toLowerCase()) || byName.get(baseName(name)) || null;
   };
 };
+
+/** True when any kitchen printer prints only chosen categories (so lines must be matched to the menu). */
+export const needsMenu = (kitchens = []) => kitchens.some((k) => !normalizeRoute(k.route).all);
 
 /**
  * Split a KOT's lines across this device's printers.

@@ -63,6 +63,35 @@ test("an order line is matched by its dish id, else by its name without the vari
   assert.deepEqual(lookup({ name: "Chicken Pizza (Large)" }), { itemId: "chick", categoryId: "pizza" });
   assert.deepEqual(lookup({ name: "masala chai" }), { itemId: "chai", categoryId: "drinks" });
   assert.equal(lookup({ name: "Unknown" }), null);
+  // A website / QR / Knot Eats line keeps its CATEGORY in menuItemId and the dish in itemId.
+  assert.deepEqual(lookup({ menuItemId: "pizza", itemId: "chick", name: "Renamed" }), { itemId: "chick", categoryId: "pizza" });
+});
+
+test("a kitchen device with no menu saved fetches it before routing; a table round carries its dish ids", () => {
+  const print = src("utils/printReceipt.js");
+  const kot = print.slice(print.indexOf("export const printKot"), print.indexOf("export const printReport"));
+  assert.match(kot, /if \(!forced && needsMenu\(kitchens\)\) \{/);
+  assert.match(kot, /if \(!menus && lines\.some\(\(l\) => !lookup\(l\)\)\) \{\s+menu = \(await loadSystemMenu\(\)/);
+  const socket = fs.readFileSync(new URL("../../pos-backend/services/socket.js", import.meta.url), "utf8");
+  const round = socket.slice(socket.indexOf("const emitKitchenRound"), socket.indexOf('emitEvent("kitchen:round"'));
+  assert.match(round, /menuItemId: i\.menuItemId \? String\(i\.menuItemId\) : undefined,/);
+  assert.match(round, /itemId: i\.itemId \? String\(i\.itemId\) : undefined,/);
+});
+
+test("printers copied from another takeaway on the device print everything until this one chooses", async () => {
+  const mem = new Map();
+  const store = { getItem: (k) => (mem.has(k) ? mem.get(k) : null), setItem: (k, v) => mem.set(k, String(v)), removeItem: (k) => mem.delete(k), key: (i) => [...mem.keys()][i] ?? null, get length() { return mem.size; } };
+  for (const n of ["localStorage", "sessionStorage"]) Object.defineProperty(globalThis, n, { value: store, configurable: true, writable: true });
+  try {
+    mem.set("kk.receiptPrinter.v1:OTHER", JSON.stringify({ type: "usb", kitchens: [{ id: "k1", type: "lan", label: "Oven", route: { all: false, categories: ["theirs"] } }] }));
+    const { loadPrinterConfig } = await import("../src/utils/printerDevice.js");
+    const c = loadPrinterConfig();
+    assert.equal(c.kitchens[0].label, "Oven");
+    assert.deepEqual(c.kitchens[0].route, { all: true, categories: [], excluded: [] });
+  } finally {
+    delete globalThis.localStorage;
+    delete globalThis.sessionStorage;
+  }
 });
 
 test("the screen shows what each printer covers, and what no printer takes", () => {

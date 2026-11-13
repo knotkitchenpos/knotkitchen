@@ -112,7 +112,15 @@ export const loadPrinterConfig = () => {
     /* unreadable: fall through to the device's printer */
   }
   const legacy = readStoreScoped(KEY, null);
-  const inherited = legacy?.type ? legacy : anyTakeawayConfig() || legacy;
+  // Another takeaway's printers come over, not what they print: its routes
+  // name ITS categories, which this menu does not have, so every kitchen
+  // printer starts on "Everything" here until this takeaway chooses.
+  const other = legacy?.type ? null : anyTakeawayConfig();
+  const inherited = legacy?.type
+    ? legacy
+    : other
+      ? { ...other, kitchens: withKitchens(other).kitchens.map((k) => ({ ...k, route: { all: true } })) }
+      : legacy;
   const config = withKitchens({ ...DEFAULT_CONFIG, ...(inherited || {}) });
   // Kept only once there is a printer to keep (a blank copy would block a
   // later inherit). Signed out the scoped key IS the bare key: nothing to copy.

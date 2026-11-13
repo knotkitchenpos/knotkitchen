@@ -354,6 +354,10 @@ const emitKitchenRound = ({ restaurantId, outletId, order, items, table }) => {
       ? { _id: String(tableDoc._id), tableNumber: tableDoc.tableNumber ?? null, displayId: tableDoc.displayId || "", tableName: tableDoc.tableName || "" }
       : order.table || null,
     items: items.map((i) => ({
+      // The dish, so a device whose kitchen printers are routed by category
+      // sends the line to the right one (pos-frontend utils/kotRouting.js).
+      menuItemId: i.menuItemId ? String(i.menuItemId) : undefined,
+      itemId: i.itemId ? String(i.itemId) : undefined,
       name: i.name,
       quantity: i.quantity,
       modifiers: (i.modifiers || []).map((m) => ({ name: m.name, price: m.price })),

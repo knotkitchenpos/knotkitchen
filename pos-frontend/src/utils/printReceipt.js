@@ -8,8 +8,8 @@ import { layoutKot, layoutReceipt, layoutReport, paperOf } from "./receiptLayout
 import { ditherInPlace, rasterJob, TEAR_FEED_DOTS, TEAR_FEED_DOTS_80, toMonochrome } from "./escpos.js";
 import { catJob } from "./catprinter.js";
 import { bluetoothLinked, kitchenPrinters, loadPrinterConfig, reconnectBluetoothPrinter, sendToPrinter } from "./printerDevice.js";
-import { menuIndex, routeKot } from "./kotRouting.js";
-import { readSavedMenu } from "./systemMenu.js";
+import { menuIndex, needsMenu, routeKot } from "./kotRouting.js";
+import { loadSystemMenu, readSavedMenu } from "./systemMenu.js";
 import { ensureReceiptFont } from "./receiptFont.js";
 import { getActiveStoreId, readStoreScoped, writeStoreScoped } from "./storeSession.js";
 import { BACKEND_URL } from "../config";
@@ -235,14 +235,22 @@ export const printKot = async (order, opts = {}) => {
   }
   const config = opts.config || loadPrinterConfig();
   const kitchens = kitchenPrinters(config);
+  let lookup = () => null;
+  if (!forced && needsMenu(kitchens)) {
+    // Routing by category needs the menu. A kitchen device that only prints
+    // (nobody opened its product screen) may have none saved, or one from
+    // before a dish was added: fetch it then, so no dish lands on the wrong
+    // printer. Offline, the saved copy is what there is.
+    let menu = menus || readSavedMenu()?.body?.data || [];
+    lookup = menuIndex(menu);
+    if (!menus && lines.some((l) => !lookup(l))) {
+      menu = (await loadSystemMenu().catch(() => null))?.data?.data || menu;
+      lookup = menuIndex(menu);
+    }
+  }
   let tickets = forced
     ? [{ id: forced.id || "test", label: forced.label || "", printer: forced, items: lines }]
-    : routeKot({
-        lines,
-        kitchens,
-        receipt: config,
-        lookup: menuIndex(menus || readSavedMenu()?.body?.data || []),
-      });
+    : routeKot({ lines, kitchens, receipt: config, lookup });
   if (Array.isArray(only)) tickets = tickets.filter((t) => only.includes(t.id));
   if (!tickets.length) return null;
   const { store } = context || (await loadReceiptContext());
