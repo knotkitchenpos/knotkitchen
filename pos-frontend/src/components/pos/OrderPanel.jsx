@@ -377,12 +377,14 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
         // sale, and that live copy prints on the kitchen device.
         // shortcut: an ERR_NETWORK raised after the server saved the sale still prints twice; tag the live attempt if that is seen.
         if (loadPrinterConfig().kotPrint && !mayHaveReachedServer(err))
+          // Marked only once a ticket really printed: nothing here routed to
+          // this till's kitchen printers leaves the KOT to the kitchen device.
           printKot(localOrderView(entry), { auto: true })
-            .then(() => markKotPrinted(localId))
+            .then((r) => r?.printed && markKotPrinted(localId))
             // A retry reprints only the kitchen printers that missed it.
             .catch((e) =>
               warnNotPrinted("KOT", e, () =>
-                (e?.retry ? e.retry() : printKot(localOrderView(entry), { auto: true })).then(() => markKotPrinted(localId)),
+                (e?.retry ? e.retry() : printKot(localOrderView(entry), { auto: true })).then((r) => r?.printed && markKotPrinted(localId)),
               ),
             );
         return { data: { data: localOrderView(entry), offline: true } };

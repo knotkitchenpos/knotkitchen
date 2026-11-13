@@ -49,7 +49,7 @@ test("M7: a cart line cannot be sold through an order type its dish is not offer
 });
 
 // orderMutation's mutationFn with the network down.
-const offlineSale = async ({ kotPrint, printFails = false, code = "ERR_NETWORK" }) => {
+const offlineSale = async ({ kotPrint, printFails = false, code = "ERR_NETWORK", result = { printed: true } }) => {
   const printed = [];
   const warned = [];
   const marked = [];
@@ -67,7 +67,7 @@ const offlineSale = async ({ kotPrint, printFails = false, code = "ERR_NETWORK" 
     () => ({ kotPrint }),
     (order, opts) => {
       printed.push([order, opts]);
-      return printFails ? Promise.reject(new Error("Printer not connected")) : Promise.resolve({ printed: true });
+      return printFails ? Promise.reject(new Error("Printer not connected")) : Promise.resolve(result);
     },
     (localId) => marked.push(localId),
     (what, err) => warned.push([`${what} not printed: ${err.message}`, "warning"]),
@@ -91,6 +91,11 @@ test("O1: an order saved offline prints its KOT on this device when Auto KOT Pri
   const failed = await offlineSale({ kotPrint: true, printFails: true });
   assert.equal(failed.res.data.offline, true, "a printer failure never loses the sale");
   assert.deepEqual(failed.warned.at(-1), ["KOT not printed: Printer not connected", "warning"]);
+  assert.deepEqual(failed.marked, [], "not printed: the kitchen device still prints it on sync");
+
+  assert.equal((await offlineSale({ kotPrint: true })).marked.length, 1, "printed here: marked, so it is not printed twice");
+  // Nothing on it is routed to this till's kitchen printers: no ticket, left to the kitchen device.
+  assert.deepEqual((await offlineSale({ kotPrint: true, result: null })).marked, []);
 });
 
 test("REGRESSION O1: only a KOT that printed here stops the synced copy printing; a timeout prints nothing locally", async () => {

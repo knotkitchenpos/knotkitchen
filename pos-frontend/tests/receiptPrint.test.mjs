@@ -766,7 +766,9 @@ test("REGRESSION: a failed automatic print shows Retry for a few seconds (printe
   assert.match(hook, /warnNotPrinted\("KOT", err, err\?\.retry \|\| \(\(\) => printKot\(order, \{ auto: true \}\)\)\)/);
   assert.match(hook, /warnNotPrinted\("Receipt", err, \(\) => printOrderReceipt\(order, \{ auto: true \}\)\)/);
   assert.match(hook, /warnNotPrinted\("KOT", err, err\?\.retry \|\| \(\(\) => printKot\(ticket, opts\)\)\)/);
-  assert.match(SRC("src/components/pos/OrderPanel.jsx"), /\(e\?\.retry \? e\.retry\(\) : printKot\(localOrderView\(entry\), \{ auto: true \}\)\)\.then\(\(\) => markKotPrinted\(localId\)\)/);
+  assert.match(SRC("src/components/pos/OrderPanel.jsx"), /\(e\?\.retry \? e\.retry\(\) : printKot\(localOrderView\(entry\), \{ auto: true \}\)\)\.then\(\(r\) => r\?\.printed && markKotPrinted\(localId\)\)/);
+  // Nothing routed to this till's kitchen printers (or nothing printed): left to the kitchen device.
+  assert.match(SRC("src/components/pos/OrderPanel.jsx"), /printKot\(localOrderView\(entry\), \{ auto: true \}\)\n\s+\.then\(\(r\) => r\?\.printed && markKotPrinted\(localId\)\)/);
   // A pressed Print whose browser forgot the Bluetooth printer gets the same Reconnect tap.
   const print = SRC("src/utils/printReceipt.js");
   assert.match(print, /if \(err\?\.code === "BT_RECONNECT"\) return warnNotPrinted\(What, err, \(\) => printWithFeedback\(what, run\)\);/);
