@@ -5,11 +5,15 @@ import { updateChannelTimings, updateHolidays, toggleClosedForToday } from "../.
 import { getWebsiteSettings } from "../../https/storefrontApi";
 import { STORE_TZ } from "../../utils";
 
+const NO_SETTINGS = Object.freeze({});
+
 /* ---------- Store Timings UI Redesign & Holidays Calendar ---------- */
 const TimingsHolidaysView = () => {
   const qc = useQueryClient();
   const { data: webRes, isLoading } = useQuery({ queryKey: ["website", "settings"], queryFn: getWebsiteSettings });
-  const settings = webRes?.data?.data?.settings || {};
+  // One stable empty object while loading or refused: a fresh {} each render
+  // re-ran the schedule effect below, which set state, forever.
+  const settings = webRes?.data?.data?.settings || NO_SETTINGS;
 
   // Active channel tab: "collection", "delivery", or "table"
   const [activeChannel, setActiveChannel] = useState("delivery");
