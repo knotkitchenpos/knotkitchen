@@ -287,6 +287,26 @@ order.{$BASE_DOMAIN} {
 		}
 	}
 
+	# knotkitchen.com/watch-demo — the full product demo (HLS: 1080p/720p
+	# video, Hindi/English/Bengali audio tracks) with its player page. Static
+	# files in deploy/downloads/demovideo (already mounted at /srv/downloads),
+	# built by reel-kit (renderDemo.cjs DEMO_LANG=multi); the page uses relative
+	# links, so it needs the trailing slash. Segments never change once
+	# published, so they cache for a year; images and the player script for a
+	# day; the page and playlists revalidate. (Was demovideo.<base> until
+	# 2026-11-13.)
+	redir /watch-demo /watch-demo/ 308
+	handle_path /watch-demo/* {
+		root * /srv/downloads/demovideo
+		@segments path *.m4s *.mp4
+		header @segments Cache-Control "public, max-age=31536000, immutable"
+		@assets path *.jpg *.png *.js
+		header @assets Cache-Control "public, max-age=86400"
+		@playlists path *.m3u8 *.html /
+		header @playlists Cache-Control "no-cache"
+		file_server
+	}
+
 	# Static marketing landing page + legal pages, served straight off disk
 	# from ./landing (bind-mounted into this container at /srv/landing).
 	root * /srv/landing
@@ -310,27 +330,6 @@ order.{$BASE_DOMAIN} {
 			}
 		}
 	}
-}
-
-# =============================================================================
-# demovideo.knotkitchen.com — the full product demo (HLS: 1080p/720p video,
-# Hindi/English/Bengali audio tracks) with its player page. Static files in
-# deploy/downloads/demovideo (already mounted at /srv/downloads), built by
-# reel-kit (renderDemo.cjs DEMO_LANG=multi). Segments never change once
-# published, so they cache for a year; images and the player script for a
-# day; the page and playlists revalidate.
-# =============================================================================
-demovideo.{$BASE_DOMAIN} {
-	import security_headers
-	root * /srv/downloads/demovideo
-	@segments path *.m4s *.mp4
-	header @segments Cache-Control "public, max-age=31536000, immutable"
-	@assets path *.jpg *.png *.js
-	header @assets Cache-Control "public, max-age=86400"
-	@playlists path *.m3u8 *.html /
-	header @playlists Cache-Control "no-cache"
-	encode @playlists zstd gzip
-	file_server
 }
 
 # =============================================================================
