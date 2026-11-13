@@ -5,7 +5,7 @@
   "start_url": "/chat?tab=whatsapp",
   "scope": "/",
   "display": "standalone",
-  "background_color": "#EAF0FA",
+  "background_color": "#070d1f",
   "theme_color": "#0b1020",
   "icons": [
     {
