@@ -295,7 +295,8 @@ order.{$BASE_DOMAIN} {
 	# published, so they cache for a year; images and the player script for a
 	# day; the page and playlists revalidate. (Was demovideo.<base> until
 	# 2026-11-13.)
-	redir /watch-demo /watch-demo/ 308
+	# {?query} keeps a shared ?lang=bn / ?lang=en on the way to the slash.
+	redir /watch-demo /watch-demo/{?query} 308
 	handle_path /watch-demo/* {
 		root * /srv/downloads/demovideo
 		@segments path *.m4s *.mp4
@@ -325,6 +326,9 @@ order.{$BASE_DOMAIN} {
 				}
 			}
 			handle {
+				# The landing root again: under /watch-demo/ the root is the
+				# video folder, which has no 404 page.
+				root * /srv/landing
 				rewrite * /404.html
 				file_server
 			}
