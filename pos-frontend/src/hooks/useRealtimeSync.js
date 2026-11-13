@@ -32,6 +32,8 @@ const INVALIDATE_ON = {
   "onlineOrder:created": ["orders"],
   "onlineOrder:status": ["orders", "tables"],
   "menu:updated": ["menus", "menu-groups", "popular-items", "store-properties"],
+  // Device Configuration saved: Popular Items (and the receipt settings) changed.
+  "posSettings:updated": ["popular-items", "store-properties"],
   tableSessionUpdated: ["tables", "orders"],
   waiterCall: ["tables"],
   "tableBooking:created": ["table-bookings"],

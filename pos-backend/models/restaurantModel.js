@@ -104,6 +104,12 @@ const restaurantSchema = new mongoose.Schema(
       showQrCode: { type: Boolean, default: false },
       qrCodeImage: { type: String, default: "" },
       showLogo: { type: Boolean, default: true },
+      // Popular Items on every till (Settings > Device Configuration): how
+      // many are shown, the dishes pinned first in this order, and whether
+      // best sellers fill the places the pinned ones leave.
+      popularCount: { type: Number, default: 12, min: 2, max: 48 },
+      popularItemIds: { type: [String], default: [] },
+      popularFill: { type: Boolean, default: true },
     },
 
     // How long a table stays out of service after its bill is settled, so

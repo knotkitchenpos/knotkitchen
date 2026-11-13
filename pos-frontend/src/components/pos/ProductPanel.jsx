@@ -9,6 +9,7 @@ import { money, thumbUrl, storeClock } from "../../utils";
 import { formatQty } from "../../utils/orderItems";
 import { loadSystemMenu, readSavedMenu, systemMenuKey } from "../../utils/systemMenu";
 import { readStoreScoped, writeStoreScoped } from "../../utils/storeSession";
+import { gridLayout, LAYOUT_EVENT, loadPhoneColumns } from "../../utils/phoneLayout";
 
 /**
  * Popular Items, kept on this device like the menu: it comes from the server,
@@ -131,9 +132,9 @@ const IconChevron = () => (
 );
 
 /* ---------- Veg / Non-veg square marker ---------- */
-const DietMark = ({ veg }) => (
+const DietMark = ({ veg, className = "" }) => (
   <span
-    className="absolute top-1.5 left-1.5 w-[14px] h-[14px] rounded-[3px] bg-white border-[1.5px] flex items-center justify-center shadow-sm"
+    className={`absolute top-1.5 left-1.5 w-[14px] h-[14px] rounded-[3px] bg-white border-[1.5px] flex items-center justify-center shadow-sm ${className}`}
     style={{ borderColor: veg ? "#16A34A" : "#DC2626" }}
     title={veg ? "Vegetarian" : "Non-Vegetarian"}
   >
@@ -172,6 +173,19 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
   const orderType = useSelector((s) => s.orderType.orderType);
 
   const [view, setView] = useState("grid");
+  // Products per row on a phone (Settings > Device Configuration > Phone Screen Layout).
+  const [phoneCols, setPhoneCols] = useState(loadPhoneColumns);
+  useEffect(() => {
+    const changed = () => setPhoneCols(loadPhoneColumns());
+    const stop = () => {
+      window.removeEventListener(LAYOUT_EVENT, changed);
+      window.removeEventListener("storage", changed);
+    };
+    window.addEventListener(LAYOUT_EVENT, changed);
+    window.addEventListener("storage", changed);
+    return stop;
+  }, []);
+  const layout = gridLayout(phoneCols);
   const [q, setQ] = useState("");
   const [catId, setCatId] = useState(null);
   // "View All" under Popular Items. Without a mode of its own it used to
@@ -795,7 +809,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
             - Touch target height stays >= 128px which is comfortable on 10"
               touchscreen POS displays (§47).
           */
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-2.5">
+          <div className={`grid ${layout.grid}`} data-phone-columns={phoneCols}>
             {products.map((item) => {
               const img = item.imageThumbnailUrl || item.imageUrl || item.image;
               const price = item.variants?.length
@@ -817,7 +831,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
                   }`}
                 >
                   {/* Image with veg mark overlay (top-left) */}
-                  <div className="relative w-full aspect-[4/3] bg-[#F1F5F9]">
+                  <div className={`relative w-full ${layout.image} bg-[#F1F5F9]`}>
                     {img ? (
                       // Fills the 4:3 frame edge to edge: fitted inside it, a square
                       // photo sat between grey side bars. No blurred backdrop: a blur
@@ -826,20 +840,20 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
                     ) : (
                       <span className="w-full h-full flex items-center justify-center text-2xl">🍽️</span>
                     )}
-                    <DietMark veg={item.isVegetarian !== false} />
+                    <DietMark veg={item.isVegetarian !== false} className={layout.mark} />
                     {inCart && (
-                      <span className="absolute top-1.5 right-1.5 min-w-[20px] h-[20px] px-1.5 rounded-full bg-[#16A34A] text-white text-[10.5px] font-extrabold flex items-center justify-center shadow">
+                      <span className="absolute top-1 right-1 sm:top-1.5 sm:right-1.5 min-w-[20px] h-[20px] px-1.5 rounded-full bg-[#16A34A] text-white text-[10.5px] font-extrabold flex items-center justify-center shadow">
                         {formatQty(inCart.quantity)}
                       </span>
                     )}
                   </div>
 
                   {/* Name + price */}
-                  <div className="px-2.5 py-2">
-                    <p className="text-[12.5px] font-bold text-[#0F172A] leading-tight line-clamp-2 min-h-[32px]">
+                  <div className={layout.body}>
+                    <p className={`${layout.name} font-bold text-[#0F172A] leading-tight line-clamp-2 break-words`} title={item.name}>
                       {item.name}
                     </p>
-                    <p className="text-[14px] font-extrabold text-[#0F172A] mt-1">
+                    <p className={`${layout.price} font-extrabold text-[#0F172A] truncate`}>
                       {cardPrice(price)}
                     </p>
                     {off && (

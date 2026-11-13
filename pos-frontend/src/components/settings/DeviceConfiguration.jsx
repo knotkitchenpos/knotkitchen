@@ -30,14 +30,17 @@ import {
 } from "../../utils/printReceipt";
 import { looksLikeCatPrinter } from "../../utils/catprinter";
 import { openTabletSettings, openTechnicianMode, useManagedDevice } from "../../utils/managedDevice";
+import { PhoneLayoutCard, PopularItemsCard } from "./PosScreenSettings";
 
 /**
  * Settings > Device Configuration.
  *
  * Two kinds of setting live here and are saved together by one button:
  *   - this device: a receipt printer, an optional kitchen printer for KOTs,
- *     their paper sizes, Auto Receipt / KOT Print (localStorage)
- *   - the restaurant: Auto E-Bill and what is printed on the receipt (server)
+ *     their paper sizes, Auto Receipt / KOT Print, products per row on a
+ *     phone (localStorage)
+ *   - the restaurant: Auto E-Bill, what is printed on the receipt, and the
+ *     Popular Items every till shows first (server)
  */
 
 const Card = ({ title, subtitle, children, right }) => (
@@ -570,11 +573,15 @@ const DeviceConfiguration = () => {
         showQrCode: form.showQrCode,
         qrCodeImage: form.qrCodeImage,
         showLogo: form.showLogo,
+        popularCount: form.popularCount,
+        popularItemIds: form.popularItemIds || [],
+        popularFill: form.popularFill !== false,
       }),
     onSuccess: (res) => {
       setDevice(savePrinterConfig(device));
       if (res?.data?.data) setForm({ ...res.data.data });
       qc.invalidateQueries({ queryKey: ["store-properties"] });
+      qc.invalidateQueries({ queryKey: ["popular-items"] });
       enqueueSnackbar("Device configuration saved.", { variant: "success" });
     },
     onError: (e) => enqueueSnackbar(e.response?.data?.message || "Could not save.", { variant: "error" }),
@@ -713,6 +720,10 @@ const DeviceConfiguration = () => {
             onChange={(v) => patch({ showLogo: v })}
           />
         </Card>
+
+        {/* ---------- The POS product screen ---------- */}
+        <PhoneLayoutCard />
+        <PopularItemsCard form={form} patch={patch} />
 
         <div className="flex items-center justify-end gap-3">
           {lanWaiting.receipt || lanWaiting.kitchen ? (

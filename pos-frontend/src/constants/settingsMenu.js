@@ -7,7 +7,7 @@ const SHOW_LATER_FEATURES = false;
 
 export const MENU_ITEMS = [
   { id: "cache", title: "1. Manage Cache", desc: "Publish menu changes to the POS tills, website and Knot Eats.", Icon: I.database, mode: "view" },
-  { id: "device", title: "2. Device Configuration", desc: "Printer paper sizes, auto-print & e-bill settings.", Icon: I.printer, mode: "view" },
+  { id: "device", title: "2. Device Configuration", desc: "Printers, auto-print, e-bill, phone layout & popular items.", Icon: I.printer, mode: "view" },
   { id: "properties", title: "3. Store Properties", desc: "Store details, payment gateway & protection PIN.", Icon: I.store, mode: "view" },
   { id: "menu", title: "4. Manage Menu", desc: "Categories, dishes, variants and add-ons.", Icon: I.utensils, path: "/manage-menu" },
   // Sales use up each product's recipe (set in Manage Menu); the POS alerts when an item needs restocking.

@@ -22,6 +22,7 @@ const { displayPaymentMethod } = require("../constants/paymentMethods");
 const { maskPhone } = require("../middlewares/customerPrivacy");
 const { DEFAULT_TZ, zonedInstant, localDate } = require("../services/tableBookings");
 const { capFor } = require("../services/modifierGroups");
+const { popularSettingsOf, buildPopularList } = require("../services/popularSettings");
 
 
 /**
@@ -1519,7 +1520,14 @@ const getOrdersReport = async (req, res, next) => {
 const getPopularItems = async (req, res, next) => {
 
   try {
-    const limit = Math.max(1, Math.min(50, Number(req.query.limit) || 10));
+    // The store's own choice (Settings > Device Configuration > Popular
+    // Items): how many, and the dishes pinned first. The query's limit only
+    // counts for a user with no restaurant.
+    const store = req.user?.restaurantId
+      ? await Restaurant.findById(req.user.restaurantId).select("posSettings").lean()
+      : null;
+    const popularCfg = store ? popularSettingsOf(store) : null;
+    const limit = popularCfg ? popularCfg.popularCount : Math.max(1, Math.min(50, Number(req.query.limit) || 10));
     const days = Math.max(1, Math.min(365, Number(req.query.days) || 30));
     const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 
@@ -1584,8 +1592,19 @@ const getPopularItems = async (req, res, next) => {
       });
     });
 
+    // Pinned dishes take their places first; the best sellers and the menu's
+    // fallbacks below are ranked past them, then everything is cut to `limit`.
+    const pinnedIds = popularCfg?.popularItemIds || [];
     const seen = new Set();
     const popular = [];
+    if (pinnedIds.length && popularCfg && !popularCfg.popularFill) {
+      return res.status(200).json({
+        success: true,
+        data: buildPopularList({ pinnedIds, byId: dishesById, count: limit, fill: false }),
+      });
+    }
+    // Room for every pinned dish on top of the ranked ones they may repeat.
+    const rankLimit = limit + pinnedIds.length;
     for (const row of popularityAgg) {
       let dish = null;
       const menuItemId = row._id?.menuItemId ? String(row._id.menuItemId) : null;
@@ -1600,12 +1619,12 @@ const getPopularItems = async (req, res, next) => {
       if (seen.has(key)) continue;
       seen.add(key);
       popular.push({ ...dish, orderCount: row.orders, totalQty: row.totalQty });
-      if (popular.length >= limit) break;
+      if (popular.length >= rankLimit) break;
     }
 
     // Fallback: if we don't have enough real popularity, fill remaining slots
     // with the store's own default/featured products, then any active dishes.
-    if (popular.length < limit) {
+    if (popular.length < rankLimit) {
       const fallbackCandidates = [];
       publishedMenus.forEach((menu) => {
         (menu.items || []).forEach((item) => {
@@ -1632,11 +1651,14 @@ const getPopularItems = async (req, res, next) => {
         if (seen.has(key)) continue;
         seen.add(key);
         popular.push({ ...dish, orderCount: 0, totalQty: 0, fallback: true });
-        if (popular.length >= limit) break;
+        if (popular.length >= rankLimit) break;
       }
     }
 
-    res.status(200).json({ success: true, data: popular });
+    res.status(200).json({
+      success: true,
+      data: buildPopularList({ pinnedIds, byId: dishesById, ranked: popular, count: limit, fill: true }),
+    });
   } catch (error) {
     next(error);
   }

@@ -37,6 +37,8 @@ const WebsiteSettings = require("../models/websiteSettingsModel");
 const { buildStorefrontUrl } = require("../services/websiteProvisioningService");
 const { hasWebsite, featuresOf, effectiveOrderToggles } = require("../services/planFeatures");
 
+const { popularSettingsOf, cleanPopularIds, POPULAR_MIN, POPULAR_MAX } = require("../services/popularSettings");
+
 /** posSettings with every field present, including ones added after the restaurant was saved. */
 const receiptSettingsOf = (restaurant) => {
   const s = (restaurant && restaurant.posSettings) || {};
@@ -48,6 +50,7 @@ const receiptSettingsOf = (restaurant) => {
     showQrCode: Boolean(s.showQrCode),
     qrCodeImage: s.qrCodeImage || "",
     showLogo: s.showLogo !== false,
+    ...popularSettingsOf(restaurant),
   };
 };
 
@@ -380,12 +383,30 @@ const updatePosSettings = async (req, res, next) => {
     if ("showQrCode" in body) updated.showQrCode = Boolean(body.showQrCode);
     if ("qrCodeImage" in body) updated.qrCodeImage = cleanImageUrl(body.qrCodeImage);
     if ("showLogo" in body) updated.showLogo = Boolean(body.showLogo);
+    if ("popularItemIds" in body) updated.popularItemIds = cleanPopularIds(body.popularItemIds);
+    if ("popularFill" in body) updated.popularFill = Boolean(body.popularFill);
+    if ("popularCount" in body) {
+      const n = Math.round(Number(body.popularCount));
+      if (!Number.isFinite(n) || n < POPULAR_MIN || n > POPULAR_MAX) {
+        return next(createHttpError(400, `Popular Items shown must be between ${POPULAR_MIN} and ${POPULAR_MAX}.`));
+      }
+      updated.popularCount = n;
+    }
+    // Every pinned dish is shown: the count never hides one of them.
+    updated.popularCount = Math.max(updated.popularCount, updated.popularItemIds.length);
     if (updated.showQrCode && !updated.qrCodeImage) {
       return next(createHttpError(400, "Upload the website QR code image before turning it on."));
     }
 
     restaurant.posSettings = { ...updated, autoPrintReceipt: restaurant.posSettings?.autoPrintReceipt ?? true };
     await restaurant.save();
+
+    // Every till of this restaurant shows the new Popular Items without a reload.
+    try {
+      require("../services/socket").emitToRestaurant(String(restaurant._id), "posSettings:updated", { at: new Date() });
+    } catch (err) {
+      console.warn("posSettings:updated emit failed:", err.message);
+    }
 
     res.status(200).json({ success: true, message: "POS Settings updated!", data: receiptSettingsOf(restaurant) });
   } catch (error) {
