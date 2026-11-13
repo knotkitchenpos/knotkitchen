@@ -18,7 +18,7 @@ self.addEventListener("push", (event) => {
   const title = data.title || "KnotKitchen Business";
   const options = {
     body: data.body || "New message",
-    icon: "/icons/icon-192.png",
+    icon: "/icons/icon-192.png?v=2",
     badge: "/icons/badge-96.png",
     tag: data.tag || undefined,
     // A newer message from the same customer replaces the alert, and still buzzes.
