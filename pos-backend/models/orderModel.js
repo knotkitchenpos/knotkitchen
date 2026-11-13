@@ -212,6 +212,9 @@ const orderSchema = new mongoose.Schema({
   storeId: { type: String, default: "", index: true },
   // Human-friendly reference shown to the customer, e.g. "W-482193-0007".
   orderNumber: { type: String, default: "" },
+  // GST bill (invoice) serial: consecutive per store and financial year,
+  // "2627/000123" (services/billNumber.js). Issued once, on the first save.
+  billNumber: { type: String, default: "" },
   // Its stock went back to inventory when it was cancelled (services/inventory.js returnOrderStock).
   stockReturned: { type: Boolean, default: false },
   // Idempotency key for online checkout (§32 double-click protection).
@@ -373,6 +376,12 @@ orderSchema.index(
   { unique: true, partialFilterExpression: { orderNumber: { $gt: "" } } }
 );
 
+// A GST bill number is never given twice within a store (services/billNumber).
+orderSchema.index(
+  { restaurantId: 1, billNumber: 1 },
+  { unique: true, partialFilterExpression: { billNumber: { $gt: "" } } }
+);
+
 
 // Only the website checkout used to set storeId, so CSD lumped every POS, QR,
 // table and marketplace order under a blank store. One stamp here covers every
@@ -382,6 +391,23 @@ orderSchema.pre("validate", async function stampStoreId() {
   if (!this.isNew || this.storeId || !this.restaurantId || mongoose.connection.readyState !== 1) return;
   const restaurant = await require("./restaurantModel").findById(this.restaurantId).select("storeId").lean();
   this.storeId = restaurant?.storeId || "";
+});
+
+// The GST bill number, for every channel at once (they all save through here).
+// After stampStoreId; skipped with no live connection (DB-less unit tests).
+// Never reissued: an order that has one keeps it, cancelled or not.
+orderSchema.pre("validate", async function stampBillNumber() {
+  if (!this.isNew || this.billNumber || !this.restaurantId || mongoose.connection.readyState !== 1) return;
+  this.billNumber = await require("../services/billNumber").nextBillNumber(this.restaurantId, this.orderDate || this.createdAt || new Date());
+});
+
+// A first save that failed after its bill number was issued: the number is
+// recorded as void, so the series never silently skips (services/billNumber).
+orderSchema.post("save", function voidUnsavedBillNumber(error, doc, next) {
+  if (doc?.isNew && doc.billNumber && doc.restaurantId) {
+    require("../services/billNumber").voidBillNumber(doc.restaurantId, doc.billNumber, error?.message || "save failed");
+  }
+  next(error);
 });
 
 // The refund lifecycle is a function of the record; keep the stored copy in step.

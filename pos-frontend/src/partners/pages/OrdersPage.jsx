@@ -29,6 +29,7 @@ const OrderDetail = ({ row, onClose }) => {
         <div className="p-5 space-y-4 text-[13px]">
           <dl className="grid grid-cols-2 gap-3">
             <div><dt className="text-[#94A3B8] font-bold">Store</dt><dd className="font-bold">{row.storeName}</dd></div>
+            {row.billNumber && <div><dt className="text-[#94A3B8] font-bold">Bill No.</dt><dd className="font-bold">{row.billNumber}</dd></div>}
             <div><dt className="text-[#94A3B8] font-bold">Placed</dt><dd className="font-bold">{dateGB(row.createdAt)}, {time12(row.createdAt)}</dd></div>
             <div><dt className="text-[#94A3B8] font-bold">Type</dt><dd className="font-bold">{tableLabel(row.table) || typeLabel(row.orderType)}</dd></div>
             <div><dt className="text-[#94A3B8] font-bold">Status</dt><dd className="font-bold">{statusLabel(row.orderStatus)}</dd></div>
@@ -104,7 +105,7 @@ const OrdersPage = ({ me }) => {
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search order number, customer, phone or store"
+          placeholder="Search order or bill number, customer, phone or store"
           className="w-full h-11 pl-11 pr-3 rounded-xl border border-[#E2E8F0] bg-white text-[14px] focus:border-[#FD5302] focus:outline-none"
         />
       </label>
@@ -143,6 +144,7 @@ const OrdersPage = ({ me }) => {
               <thead>
                 <tr className="text-left text-[11.5px] uppercase tracking-wide text-[#64748B] bg-[#F8FAFC]">
                   <th className="py-2.5 px-4 font-bold">Order</th>
+                  <th className="py-2.5 px-3 font-bold">Bill No.</th>
                   <th className="py-2.5 px-3 font-bold">Store</th>
                   <th className="py-2.5 px-3 font-bold">Time</th>
                   <th className="py-2.5 px-3 font-bold">Type</th>
@@ -156,6 +158,7 @@ const OrdersPage = ({ me }) => {
                 {orders.map((o) => (
                   <tr key={`${o.storeId}-${o._id}`} onClick={() => setOpen(o)} className="cursor-pointer hover:bg-[#FFF7F2]">
                     <td className="py-2.5 px-4 font-extrabold">#{o.orderNumber || String(o._id).slice(-6)}</td>
+                    <td className="py-2.5 px-3 whitespace-nowrap">{o.billNumber || "—"}</td>
                     <td className="py-2.5 px-3 font-bold max-w-[180px] truncate">{o.storeName}</td>
                     <td className="py-2.5 px-3 whitespace-nowrap">{dateGB(o.createdAt)}, {time12(o.createdAt)}</td>
                     <td className="py-2.5 px-3">{tableLabel(o.table) || typeLabel(o.orderType)}</td>

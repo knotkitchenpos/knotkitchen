@@ -37,6 +37,11 @@ const connected = async (fn) => {
 test("a new order is stamped with its restaurant's storeId, whatever the channel", async () => {
   const realFindById = Restaurant.findById;
   const asked = [];
+  // The GST bill number is issued in the same hook chain: a counter in memory.
+  const { BillCounter } = require("../services/billNumber");
+  const realCounter = BillCounter.findOneAndUpdate;
+  let seq = 0;
+  BillCounter.findOneAndUpdate = async () => ({ seq: (seq += 1) });
   Restaurant.findById = (id) => {
     asked.push(String(id));
     return { select: () => ({ lean: async () => ({ storeId: "123456" }) }) };
@@ -47,20 +52,24 @@ test("a new order is stamped with its restaurant's storeId, whatever the channel
         const order = new Order({ restaurantId: R1, source, orderStatus: "Pending" });
         await order.validate();
         assert.equal(order.storeId, "123456", source);
+        assert.match(order.billNumber, /^\d{4}\/0000\d\d$/, source);
       }
       // A website order already has it: no read, nothing changed.
       const site = new Order({ restaurantId: R1, source: "WEBSITE", storeId: "654321", orderStatus: "Pending" });
       await site.validate();
       assert.equal(site.storeId, "654321");
       assert.equal(asked.length, 3);
+      assert.equal(seq, 4, "every channel's new order took the next bill number");
     });
     // No live connection (unit tests): the hook never waits on a read.
     const offline = new Order({ restaurantId: R1, orderStatus: "Pending" });
     await offline.validate();
     assert.equal(offline.storeId, "");
+    assert.equal(offline.billNumber, "", "no connection: no number");
     assert.equal(asked.length, 3);
   } finally {
     Restaurant.findById = realFindById;
+    BillCounter.findOneAndUpdate = realCounter;
   }
 });
 

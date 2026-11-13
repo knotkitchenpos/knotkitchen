@@ -63,3 +63,13 @@ test("Accountant exports: one store and month, figures and checks first, then th
   assert.match(page, /download\("tally\.xml", \{ mode, ledgers: JSON\.stringify\(ledgers\) \}\)/);
   assert.match(src("src/partners/api.js"), /responseType: "blob"/);
 });
+
+test("the GST bill number shows on the printed bill, the order screens and the checkout bill, and is searchable", () => {
+  const layout = src("src/utils/receiptLayout.js");
+  assert.match(layout, /if \(order\.billNumber\) pair\("Bill No\.", order\.billNumber, \{ bold: true \}\);\n  pair\("Order"/);
+  const orders = src("src/pages/Orders.jsx");
+  assert.match(orders, /o\.billNumber\?\.toLowerCase\(\)\.includes\(s\) \|\|/);
+  assert.match(orders, /Bill No\. \(GST\)/);
+  assert.match(src("src/components/invoice/Invoice.jsx"), /\{safeOrder\.billNumber \? \(/);
+  assert.match(src("src/partners/pages/OrdersPage.jsx"), /\{o\.billNumber \|\| "—"\}/);
+});

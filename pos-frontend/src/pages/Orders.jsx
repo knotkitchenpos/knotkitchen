@@ -410,6 +410,8 @@ const Orders = () => {
       return (
         o._id?.toLowerCase().includes(s) ||
         o.orderNumber?.toLowerCase().includes(s) ||
+        // The GST bill serial, "2627/000123" (pos-backend services/billNumber).
+        o.billNumber?.toLowerCase().includes(s) ||
         o.customerDetails?.name?.toLowerCase().includes(s) ||
         o.customerDetails?.phone?.includes(s) ||
         o.deliveryAddress?.line1?.toLowerCase().includes(s)
@@ -990,6 +992,12 @@ const Orders = () => {
                       {orderDisplayId(selected)}
                     </p>
                   </div>
+                  {selected.billNumber ? (
+                    <div>
+                      <p className="text-[#94A3B8]">Bill No. (GST)</p>
+                      <p className="font-bold text-[#0F172A] mt-0.5 break-all">{selected.billNumber}</p>
+                    </div>
+                  ) : null}
                   <div>
                     <p className="text-[#94A3B8]">Source</p>
                     <p className="font-bold text-[#0F172A] mt-0.5">

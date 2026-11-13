@@ -122,7 +122,7 @@ const render = (receipt, { reviewUrl = "" } = {}) => {
     `<div class="row"><span>${esc(label)}</span><span>${value}</span></div>`;
 
   return page(
-    `${r.restaurant.name} — Bill ${r.orderNumber}`,
+    `${r.restaurant.name} — Bill ${r.billNumber || r.orderNumber}`,
     `<div class="card">
       <div class="head">
         <h1>${esc(r.restaurant.name)}</h1>
@@ -130,6 +130,7 @@ const render = (receipt, { reviewUrl = "" } = {}) => {
         <div class="pill ${paid ? "paid" : "due"}">${paid ? "PAID" : "PAYMENT DUE"}</div>
       </div>
       <div class="meta">
+        ${r.billNumber ? line("Bill No.", esc(r.billNumber)) : ""}
         ${line("Order No.", esc(r.orderNumber))}
         ${line("Date", esc(when))}
         ${r.tableOrder ? line("Table", esc(r.tableOrder.tableNumber)) : ""}

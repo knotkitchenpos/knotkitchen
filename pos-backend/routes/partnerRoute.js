@@ -289,6 +289,7 @@ router.get("/orders", requirePartner, customerPrivacy, async (req, res, next) =>
           storeId,
           storeName: nameOf.get(storeId) || storeId,
           orderNumber: o.orderNumber,
+          billNumber: o.billNumber || "",
           orderId: o.orderId,
           createdAt: o.createdAt,
           orderStatus: o.orderStatus,
@@ -303,7 +304,7 @@ router.get("/orders", requirePartner, customerPrivacy, async (req, res, next) =>
           items: (o.items || []).length,
         };
         if (q) {
-          const hay = `${row.orderNumber || ""} ${row.orderId || ""} ${row.customerName} ${row.customerPhone} ${row.storeName}`.toLowerCase();
+          const hay = `${row.orderNumber || ""} ${row.billNumber} ${row.orderId || ""} ${row.customerName} ${row.customerPhone} ${row.storeName}`.toLowerCase();
           if (!hay.includes(q)) continue;
         }
         rows.push(row);
@@ -322,6 +323,7 @@ const Restaurant = require("../models/restaurantModel");
 const { reportMethodOf } = require("../controllers/orderController");
 const { buildXlsx } = require("../services/xlsx");
 const { billRows, gstr1, gstr1Sheets, gstr1Json, tallyXml } = require("../services/accountantExports");
+const { BillVoid } = require("../services/billNumber");
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -345,7 +347,9 @@ const exportData = async (req) => {
     state: restaurant?.address?.state || "",
   };
   const rows = billRows(report.projected, { methodOf: reportMethodOf });
-  return { store, rows, from, to, owner };
+  // Bill numbers issued in the period whose order never saved: cancelled documents (services/billNumber).
+  const voids = (await BillVoid.find({ restaurantId: owner.restaurantId, createdAt: { $gte: report.window.start, $lte: report.window.end } }).select("billNumber").lean()).map((v) => v.billNumber);
+  return { store, rows, from, to, owner, voids };
 };
 
 const fileName = (store, from, to, ext) => `${store.storeId}-${from}-to-${to}.${ext}`;
@@ -361,8 +365,8 @@ const logExport = (req, owner, what, store, from, to) =>
 // GET /api/partners/exports/:storeId/summary?from&to : the figures and checks, before downloading.
 router.get("/exports/:storeId/summary", requirePartner, async (req, res, next) => {
   try {
-    const { store, rows, from, to } = await exportData(req);
-    const g = gstr1({ rows, store, from, to });
+    const { store, rows, from, to, voids } = await exportData(req);
+    const g = gstr1({ rows, store, from, to, voids });
     res.status(200).json({
       success: true,
       data: {
@@ -384,8 +388,8 @@ router.get("/exports/:storeId/summary", requirePartner, async (req, res, next) =
 
 router.get("/exports/:storeId/gstr1.xlsx", requirePartner, async (req, res, next) => {
   try {
-    const { store, rows, from, to, owner } = await exportData(req);
-    const g = gstr1({ rows, store, from, to });
+    const { store, rows, from, to, owner, voids } = await exportData(req);
+    const g = gstr1({ rows, store, from, to, voids });
     logExport(req, owner, "GSTR-1 Excel", store, from, to);
     send(res, { name: fileName(store, from, to, "gstr1.xlsx"), type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", body: buildXlsx(gstr1Sheets(g, rows)) });
   } catch (err) {
@@ -395,10 +399,10 @@ router.get("/exports/:storeId/gstr1.xlsx", requirePartner, async (req, res, next
 
 router.get("/exports/:storeId/gstr1.json", requirePartner, async (req, res, next) => {
   try {
-    const { store, rows, from, to, owner } = await exportData(req);
+    const { store, rows, from, to, owner, voids } = await exportData(req);
     if (!store.gstin) throw createHttpError(400, "This store has no GST number in Store Properties, so it files no GSTR-1.");
     if (from.slice(0, 7) !== to.slice(0, 7)) throw createHttpError(400, "The GSTR-1 JSON is for one month: choose a single month.");
-    const g = gstr1({ rows, store, from, to });
+    const g = gstr1({ rows, store, from, to, voids });
     logExport(req, owner, "GSTR-1 JSON", store, from, to);
     send(res, { name: fileName(store, from, to, "gstr1.json"), type: "application/json", body: JSON.stringify(gstr1Json(g), null, 2) });
   } catch (err) {

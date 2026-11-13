@@ -189,6 +189,12 @@ const Invoice = ({
                                 {orderId}
                             </strong>
                         </p>
+                        {safeOrder.billNumber ? (
+                            <p className="flex justify-between gap-4">
+                                <span className="text-white/50">Bill No.</span>
+                                <strong className="truncate max-w-[220px]">{safeOrder.billNumber}</strong>
+                            </p>
+                        ) : null}
                         {paymentId ? (
                             <p className="flex justify-between gap-4">
                                 <span className="text-white/50">Payment ID</span>

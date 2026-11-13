@@ -22,6 +22,7 @@
 const { localDate, DEFAULT_TZ } = require("./tableBookings");
 const { netAmount, orderTotal, wasPaid } = require("./refunds");
 const { isValidGstin, RESTAURANT_SAC } = require("./gst");
+const { parseBillNumber } = require("./billNumber");
 
 const round2 = (n) => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -78,7 +79,10 @@ const billRows = (orders, { methodOf = () => "other" } = {}) =>
     const cgst = round2(taxNet / 2);
     return {
       id: String(o._id),
-      number: String(o.orderNumber || o._id).slice(0, 16),
+      // The GST bill serial (services/billNumber), else the order number a
+      // bill from before it was printed with.
+      number: String(o.billNumber || o.orderNumber || o._id).slice(0, 16),
+      serial: Boolean(parseBillNumber(o.billNumber)),
       day,
       channel: source === "MARKETPLACE" ? o.marketplace || "Swiggy/Zomato" : o.salesChannel === "KNOT_EATS" ? "Knot Eats" : source === "WEBSITE" ? "Website" : source === "QR" ? "Table QR" : "POS",
       kind: cancelled ? "cancelled" : source === "MARKETPLACE" ? "eco" : gstin && isValidGstin(gstin) ? "b2b" : "b2c",
@@ -120,9 +124,10 @@ const sumBy = (rows, keyOf, init) => {
 
 /**
  * The GSTR-1 sections and the checks the accountant should see first.
- * @param {{ rows, store: { name, gstin, state }, from, to }} input  (YYYY-MM-DD)
+ * @param {{ rows, store: { name, gstin, state }, from, to, voids?: string[] }} input  (YYYY-MM-DD)
+ *        voids: bill numbers issued in the period whose order was never saved
  */
-const gstr1 = ({ rows, store, from, to }) => {
+const gstr1 = ({ rows, store, from, to, voids = [] }) => {
   const pos = stateCodeOf(store.gstin, store.state);
   const live = rows.filter((r) => r.kind !== "cancelled" && r.value > 0);
   const b2b = live.filter((r) => r.kind === "b2b");
@@ -132,11 +137,41 @@ const gstr1 = ({ rows, store, from, to }) => {
   const b2cs = sumBy(taxedB2c, (r) => r.rate, (r) => ({ rate: r.rate, pos }));
   const hsn = (list) => sumBy(list.filter((r) => r.rate > 0), (r) => r.rate, (r) => ({ rate: r.rate, hsn: RESTAURANT_SAC }));
   const nilB2c = b2c.filter((r) => r.rate === 0);
-  // Every bill number issued, cancelled ones too (Table 13).
-  const issued = rows.slice().sort((a, b) => new Date(a.at) - new Date(b.at));
-  const docs = issued.length
-    ? { from: issued[0].number, to: issued[issued.length - 1].number, total: issued.length, cancelled: rows.filter((r) => r.kind === "cancelled").length }
-    : null;
+  // Table 13: every bill number issued, cancelled ones too. One line per
+  // financial-year series (services/billNumber): first to last number, how
+  // many, how many cancelled (void numbers too). Bills from before the series
+  // (random order numbers) get a line of their own, first to last by time.
+  const docs = [];
+  const gaps = [];
+  const used = new Set(rows.map((r) => r.number));
+  const series = new Map();
+  for (const r of rows.filter((x) => x.serial)) {
+    const { fy, seq } = parseBillNumber(r.number);
+    const g = series.get(fy) || { seqs: [], cancelled: 0 };
+    g.seqs.push(seq);
+    if (r.kind === "cancelled") g.cancelled += 1;
+    series.set(fy, g);
+  }
+  for (const v of voids) {
+    const parsed = parseBillNumber(v);
+    if (!parsed || used.has(v)) continue;
+    const g = series.get(parsed.fy) || { seqs: [], cancelled: 0 };
+    g.seqs.push(parsed.seq);
+    g.cancelled += 1;
+    series.set(parsed.fy, g);
+  }
+  for (const [fy, g] of [...series.entries()].sort()) {
+    const seqs = [...new Set(g.seqs)].sort((a, b) => a - b);
+    const first = seqs[0];
+    const last = seqs[seqs.length - 1];
+    docs.push({ nature: "Invoices for outward supply", from: `${fy}/${String(first).padStart(6, "0")}`, to: `${fy}/${String(last).padStart(6, "0")}`, total: seqs.length, cancelled: g.cancelled });
+    const missing = last - first + 1 - seqs.length;
+    if (missing > 0) gaps.push({ fy, missing, first, last });
+  }
+  const legacy = rows.filter((r) => !r.serial).sort((a, b) => new Date(a.at) - new Date(b.at));
+  if (legacy.length) {
+    docs.push({ nature: "Invoices for outward supply (earlier numbering)", from: legacy[0].number, to: legacy[legacy.length - 1].number, total: legacy.length, cancelled: legacy.filter((r) => r.kind === "cancelled").length });
+  }
   const totals = {
     bills: live.length,
     taxable: round2(live.reduce((s, r) => s + r.taxable, 0)),
@@ -156,7 +191,8 @@ const gstr1 = ({ rows, store, from, to }) => {
   if (totals.untaxed > 0) warnings.push(`₹${totals.untaxed.toFixed(2)} of service charge and delivery fees carried no GST on the bills. They are listed apart for your accountant to classify.`);
   // Only news for a registered store: an unregistered one charges no GST on any bill.
   if (nilB2c.length && store.gstin) warnings.push(`${nilB2c.length} bill(s) carried no GST (no rate set when billed). Listed as Nil / non-GST.`);
-  if (docs && store.gstin) warnings.push("Bill numbers are issued at random, not as a consecutive series; the documents table lists the first and last bill of the period by time.");
+  if (legacy.length && store.gstin) warnings.push(`${legacy.length} bill(s) are from before consecutive bill numbers: they keep the order numbers they were printed with, on a line of their own in the documents table.`);
+  for (const gap of gaps) warnings.push(`${gap.missing} bill number(s) between ${gap.fy}/${String(gap.first).padStart(6, "0")} and ${gap.fy}/${String(gap.last).padStart(6, "0")} are not in this period: usually bills dated just outside it (an offline sale synced late). Check the neighbouring month.`);
   return {
     store: { ...store, pos, posLabel: posLabel(pos) },
     period: { from, to, fp: `${to.slice(5, 7)}${to.slice(0, 4)}` },
@@ -234,7 +270,7 @@ const gstr1Sheets = (g, rows) => {
       widths: [34, 16, 16, 14, 12],
       rows: [
         ["Nature of Document", "Sr. No. From", "Sr. No. To", "Total Number", "Cancelled"],
-        ...(g.docs ? [["Invoices for outward supply", g.docs.from, g.docs.to, g.docs.total, g.docs.cancelled]] : []),
+        ...g.docs.map((d) => [d.nature, d.from, d.to, d.total, d.cancelled]),
       ],
     },
     {
@@ -287,8 +323,8 @@ const gstr1Json = (g) => {
     b2cs: g.b2cs.map((r) => ({ sply_ty: "INTRA", rt: r.rate, typ: "OE", pos, txval: r.taxable, camt: r.cgst, samt: r.sgst, csamt: 0 })),
     hsn: { hsn_b2b: hsnRows(g.hsnB2b), hsn_b2c: hsnRows(g.hsnB2c) },
     ...(g.nil.count ? { nil: { inv: [{ sply_ty: "INTRAB2C", expt_amt: 0, nil_amt: 0, ngsup_amt: g.nil.value }] } } : {}),
-    ...(g.docs
-      ? { doc_issue: { doc_det: [{ doc_num: 1, docs: [{ num: 1, from: g.docs.from, to: g.docs.to, totnum: g.docs.total, cancel: g.docs.cancelled, net_issue: g.docs.total - g.docs.cancelled }] }] } }
+    ...(g.docs.length
+      ? { doc_issue: { doc_det: [{ doc_num: 1, docs: g.docs.map((d, i) => ({ num: i + 1, from: d.from, to: d.to, totnum: d.total, cancel: d.cancelled, net_issue: d.total - d.cancelled })) }] } }
       : {}),
   };
 };

@@ -8,7 +8,7 @@
  * execute when the file is opened.
  */
 const HEADER = [
-  "Date", "Time", "Order no", "Source", "Order type", "Status",
+  "Date", "Time", "Order no", "Bill no", "Source", "Order type", "Status",
   "Customer", "Phone", "Company", "GSTIN", "Items",
   "Subtotal", "Discount", "Tax", "Tax %", "Service charge", "Delivery fee", "Packaging fee",
   "Total", "Tip", "Payment", "Payment status", "Refunded", "Net",
@@ -40,6 +40,8 @@ const orderRow = (o, h) => {
     placed ? h.localDate(placed) : "",
     placed ? h.localTime(placed) : "",
     o.orderNumber || String(o._id || ""),
+    // The GST bill serial (services/billNumber); blank on bills from before it.
+    o.billNumber || "",
     o.source || "",
     o.orderType || "",
     o.orderStatus || "",

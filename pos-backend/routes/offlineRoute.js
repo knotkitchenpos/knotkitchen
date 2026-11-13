@@ -32,7 +32,7 @@ router.route("/orders/sync").post(isVerifiedUser, async (req, res, next) => {
       try {
         const { doc: created, duplicate } = await findOrCreate({
           find: () => Order.findOne({ restaurantId: req.user.restaurantId, idempotencyKey: key }).select("_id orderNumber").lean(),
-          create: () => runAddOrder(req, entry.order, key),
+          create: () => runAddOrder(req, entry.order, key, entry.placedAt),
         });
         if (duplicate) {
           synced.push({ localId, serverId: created._id, orderNumber: created.orderNumber, duplicate: true });
@@ -59,12 +59,17 @@ router.route("/orders/sync").post(isVerifiedUser, async (req, res, next) => {
  * and the timeline move back by the same amount: food handed over an hour ago
  * is not "Preparing" for another 20 minutes.
  */
+/** The sale time a till reported, when believable: not in the future, at most a week old. */
+const sanePlacedAt = (raw) => {
+  const placedAt = new Date(raw);
+  return !Number.isNaN(placedAt.getTime()) && Date.now() - placedAt.getTime() < 7 * 86400000 && placedAt.getTime() <= Date.now() ? placedAt : null;
+};
+
 const backdate = (created, placedAtRaw) => {
   const set = { isOffline: true, syncStatus: "synced" };
-  const placedAt = new Date(placedAtRaw);
+  const placedAt = sanePlacedAt(placedAtRaw);
   const createdAt = new Date(created.createdAt || Date.now());
-  const sane = !Number.isNaN(placedAt.getTime()) && Date.now() - placedAt.getTime() < 7 * 86400000 && placedAt.getTime() <= Date.now();
-  if (!sane) return set;
+  if (!placedAt) return set;
   const shift = createdAt.getTime() - placedAt.getTime();
   set.createdAt = placedAt;
   set.orderDate = placedAt;
@@ -76,11 +81,14 @@ const backdate = (created, placedAtRaw) => {
 };
 
 /** Run the live addOrder against one queued order, capturing its result. */
-const runAddOrder = (req, body, idempotencyKey) =>
+const runAddOrder = (req, body, idempotencyKey, placedAt) =>
   new Promise((resolve, reject) => {
     const fakeReq = Object.create(req);
     fakeReq.body = body;
     fakeReq.idempotencyKey = idempotencyKey;
+    // The sale's own time from the start: its GST bill number follows the
+    // financial year it was SOLD in, even when it syncs after 31 March.
+    fakeReq.offlinePlacedAt = sanePlacedAt(placedAt);
     const fakeRes = {
       status() {
         return this;

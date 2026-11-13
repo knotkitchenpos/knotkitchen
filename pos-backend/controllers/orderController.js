@@ -675,6 +675,9 @@ const addOrder = async (req, res, next) => {
       // S13: set at birth so the emit below already says it; the auto-print devices skip a sale served hours ago.
       isOffline: offlineSync,
       ...(offlineSync && req.body?.kotPrinted === true ? { kotPrinted: true } : {}),
+      // An offline sale is dated when it was sold (routes/offlineRoute), so its
+      // GST bill number falls in that financial year (services/billNumber).
+      ...(offlineSync && req.offlinePlacedAt ? { orderDate: req.offlinePlacedAt } : {}),
     };
 
 

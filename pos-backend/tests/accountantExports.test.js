@@ -65,7 +65,8 @@ test("GSTR-1 sections: B2B by invoice, B2C summed by rate, platform bills apart,
   assert.equal(b2cs.taxable, 2904.76);
   assert.equal(b2cs.rate, 5);
   assert.deepEqual(g.eco.map((r) => [r.channel, r.taxable]), [["Swiggy", 600]]);
-  assert.deepEqual([g.docs.total, g.docs.cancelled, g.docs.from, g.docs.to], [9, 1, "100001", "100009"]);
+  // These bills predate the series: one line of their own, first to last by time.
+  assert.deepEqual(g.docs, [{ nature: "Invoices for outward supply (earlier numbering)", from: "100001", to: "100009", total: 9, cancelled: 1 }]);
   assert.equal(g.hsnB2b[0].hsn, "996331");
   assert.equal(g.hsnB2c[0].taxable, 2904.76);
   assert.ok(g.warnings.some((w) => /section 9\(5\)/.test(w)));
@@ -89,6 +90,7 @@ test("GSTR-1 JSON in the portal's shape", () => {
   assert.equal(j.b2cs[0].sply_ty, "INTRA");
   assert.equal(j.hsn.hsn_b2c[0].hsn_sc, "996331");
   assert.equal(j.doc_issue.doc_det[0].docs[0].net_issue, 8);
+  assert.equal(j.doc_issue.doc_det[0].docs[0].num, 1);
 });
 
 test("Tally: every voucher balances, ledgers are created, B2B goes to the buyer with a receipt", () => {
@@ -134,3 +136,4 @@ test("the workbook is a real zip of the offline tool's sheets", () => {
   assert.match(data.toString(), /sheet8\.xml/);
   assert.equal(crc32(Buffer.from("123456789")), 0xcbf43926, "the standard CRC-32 check value");
 });
+

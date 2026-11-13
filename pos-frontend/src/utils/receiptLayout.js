@@ -174,6 +174,9 @@ export const layoutReceipt = ({ order = {}, store = {}, settings = {}, images = 
 
   // ---- Order details ----
   const placed = new Date(order.orderDate || order.createdAt || Date.now());
+  // The GST bill serial, consecutive per financial year (pos-backend services/billNumber).
+  // A bill rung up offline gets it when it syncs: its first print has the order number only.
+  if (order.billNumber) pair("Bill No.", order.billNumber, { bold: true });
   pair("Order", `#${orderDisplayId(order)}`, { bold: true });
   pair(
     "Date",

@@ -173,6 +173,8 @@ const buildReceipt = ({
     restaurant: restaurantInfo,
     outlet: outletInfo,
     orderNumber,
+    // The GST bill (invoice) serial, "2627/000123" (services/billNumber); "" on bills from before it.
+    billNumber: order?.billNumber || "",
     dateTime: new Date(dateTime).toISOString(),
     customerInformation,
     items,
