@@ -34,6 +34,8 @@ const partnerAccountSchema = new mongoose.Schema(
     sessions: { type: [partnerSessionSchema], default: [] },
     // Phone alerts: which ones, and their amounts (services/partnerAlerts prefsOf).
     alerts: { type: mongoose.Schema.Types.Mixed, default: {} },
+    // Daily WhatsApp summary: { enabled, phone, hour (IST), lastSentDay, lastSentAt, lastError } (services/partnerDailySummary).
+    summary: { type: mongoose.Schema.Types.Mixed, default: {} },
   },
   { timestamps: true }
 );

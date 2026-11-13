@@ -709,4 +709,63 @@ router.post("/alerts/test", requirePartner, async (req, res, next) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Daily WhatsApp summary (owner, 2026-11-13): services/partnerDailySummary.
+// ---------------------------------------------------------------------------
+const dailySummary = require("../services/partnerDailySummary");
+
+// GET /api/partners/summary -- settings, whether the template is approved, and yesterday's message.
+router.get("/summary", requirePartner, async (req, res, next) => {
+  try {
+    const day = dailySummary.yesterdayIST();
+    const [{ dash, cards }, check] = await Promise.all([dailySummary.collect(req.partner, day), dailySummary.templateReady()]);
+    const values = dailySummary.summaryValues({ name: req.partner.name, day, dash, cards });
+    res.status(200).json({
+      success: true,
+      data: {
+        settings: dailySummary.settingsOf(req.partner),
+        template: { name: dailySummary.TEMPLATE, wording: dailySummary.WORDING, ready: check.ready, reason: check.reason || "" },
+        preview: dailySummary.preview(values),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// PUT /api/partners/summary { enabled, phone, hour }
+router.put("/summary", requirePartner, async (req, res, next) => {
+  try {
+    const b = req.body || {};
+    const current = dailySummary.settingsOf(req.partner);
+    const phone = b.phone !== undefined ? String(b.phone).replace(/\D/g, "").slice(-10) : current.phone;
+    if (b.phone !== undefined && phone && !/^[6-9]\d{9}$/.test(phone)) throw createHttpError(400, "Enter a valid 10-digit WhatsApp number.");
+    const hour = b.hour !== undefined ? Number(b.hour) : current.hour;
+    if (!Number.isInteger(hour) || hour < 6 || hour > 23) throw createHttpError(400, "Choose an hour between 6 AM and 11 PM.");
+    const enabled = b.enabled !== undefined ? Boolean(b.enabled) : current.enabled;
+    if (enabled && !phone) throw createHttpError(400, "Enter the WhatsApp number to send it to.");
+    await PartnerAccount.updateOne({ _id: req.partner._id }, { $set: { "summary.enabled": enabled, "summary.phone": phone, "summary.hour": hour } });
+    const fresh = await PartnerAccount.findById(req.partner._id).select("phone summary").lean();
+    res.status(200).json({ success: true, data: { settings: dailySummary.settingsOf(fresh) } });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /api/partners/summary/send-now -- yesterday's summary now, at most once in 10 minutes.
+// One that actually went out per 10 minutes; a refused attempt (template not approved) does not count.
+const summarySentAt = new Map();
+router.post("/summary/send-now", requirePartner, async (req, res, next) => {
+  try {
+    const key = String(req.partner._id);
+    if (Date.now() - (summarySentAt.get(key) || 0) < 10 * 60 * 1000) throw createHttpError(429, "One test summary every 10 minutes.");
+    const r = await dailySummary.sendSummary(req.partner);
+    summarySentAt.set(key, Date.now());
+    await PartnerAccount.updateOne({ _id: req.partner._id }, { $set: { "summary.lastSentAt": new Date(), "summary.lastError": "" } });
+    res.status(200).json({ success: true, data: { text: r.text } });
+  } catch (err) {
+    next(err.status ? createHttpError(err.status, err.message, { expose: true, code: err.code }) : err);
+  }
+});
+
 module.exports = router;

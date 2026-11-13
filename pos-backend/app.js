@@ -385,6 +385,10 @@ if (runSchedulers) try {
     // switches automatic sending on in CSD → Store Health.
     require("./services/storeAlerts").startAlertScheduler();
 
+    // Partners owners' daily WhatsApp summary, at the hour each chose.
+    // Sends nothing until the kk_daily_summary template is approved.
+    require("./services/partnerDailySummary").startDailySummaryScheduler();
+
     // Audit entries older than 90 days move to the compressed archive
     // (moved, never deleted; CSD's activity views read both).
     require("./services/auditArchive").startAuditArchiveScheduler();
