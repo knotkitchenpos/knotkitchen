@@ -37,6 +37,9 @@ test("Partners pass-through: only a store's billing and read-only reports, nothi
     ["DELETE", "/api/restaurant/staff/6af670da403e505d31ad669c"],
     ["POST", "/api/restaurant/verify-pin"],
     ["POST", "/api/support/requests"],
+    ["PUT", "/api/restaurant/timings"],
+    ["PUT", "/api/restaurant/holidays"],
+    ["PUT", "/api/restaurant/closed-for-today"],
   ]) assert.equal(allowed(m, p), true, `${m} ${p}`);
   // The POS's everything else
   for (const [m, p] of [

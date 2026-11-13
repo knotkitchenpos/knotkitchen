@@ -19,6 +19,10 @@ export const partnersApi = {
   setMenuPrices: (body) => axiosWrapper.post("/menu-tools/prices", body, { timeout: 60000 }),
   // Publish a store's draft menu to its tills (system) or website, through its own API.
   publishMenu: (storeId, target) => axiosWrapper.post(`/s/${encodeURIComponent(storeId)}/api/menu/publish/${target}`, {}, { timeout: 60000 }),
+  // One store's website hours, holidays and Close for today, through its own API.
+  storeWebsiteSettings: (storeId) => axiosWrapper.get(`/s/${encodeURIComponent(storeId)}/api/website/settings`),
+  storeHolidays: (storeId, holidays) => axiosWrapper.put(`/s/${encodeURIComponent(storeId)}/api/restaurant/holidays`, { holidays }),
+  storeClosedToday: (storeId, enabled) => axiosWrapper.put(`/s/${encodeURIComponent(storeId)}/api/restaurant/closed-for-today`, { enabled, reason: "Closed for today" }),
   profit: (params) => axiosWrapper.get("/profit", { params, timeout: 90000 }),
   staffWatch: (params) => axiosWrapper.get("/staff-watch", { params, timeout: 60000 }),
   // One order, through its store's own API (read only).

@@ -46,6 +46,8 @@ const ALLOW = [
   ["POST", /^\/api\/restaurant\/staff$/],
   ["PUT", /^\/api\/restaurant\/staff\/[^/]+$/],
   ["DELETE", /^\/api\/restaurant\/staff\/[^/]+$/],
+  // Store hours across stores: opening hours, holidays, Close for today
+  ["PUT", /^\/api\/restaurant\/(timings|holidays|closed-for-today)$/],
   // The Security PIN popup those screens raise, and Help & Support
   ["POST", /^\/api\/restaurant\/verify-pin$/],
   ["POST", /^\/api\/support\/requests$/],
