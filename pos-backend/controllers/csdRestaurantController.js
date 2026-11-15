@@ -196,7 +196,6 @@ const getRestaurant = async (req, res, next) => {
           // null = the platform amount and start date (CSD → Billing). The
           // platform fee: website orders, then table-QR orders, then Knot Eats.
           onlinePaidOrderCharge: charges.onlinePaidOrderCharge ?? null,
-          qrPaidOrderCharge: charges.qrPaidOrderCharge ?? null,
           knotEatsPaidOrderCharge: charges.knotEatsPaidOrderCharge ?? null,
           orderChargeFrom: charges.orderChargeFrom || null,
           ebillCharge: charges.ebillCharge ?? null,
@@ -604,7 +603,6 @@ const updateCharges = async (req, res, next) => {
     // real "charged nothing".
     for (const [key, label, max] of [
       ["onlinePaidOrderCharge", "Website platform fee", 10000],
-      ["qrPaidOrderCharge", "Table QR platform fee", 10000],
       ["knotEatsPaidOrderCharge", "Knot Eats platform fee", 10000],
       ["ebillCharge", "E-bill charge", 1000],
     ]) {
@@ -683,7 +681,6 @@ const updateCharges = async (req, res, next) => {
 
     const previous = {
       onlinePaidOrderCharge: existing.onlinePaidOrderCharge ?? null,
-      qrPaidOrderCharge: existing.qrPaidOrderCharge ?? null,
       knotEatsPaidOrderCharge: existing.knotEatsPaidOrderCharge ?? null,
       orderChargeFrom: existing.orderChargeFrom || null,
       ebillCharge: existing.ebillCharge ?? null,
@@ -730,7 +727,6 @@ const updateCharges = async (req, res, next) => {
       success: true,
       data: {
         onlinePaidOrderCharge: existing.onlinePaidOrderCharge ?? null,
-        qrPaidOrderCharge: existing.qrPaidOrderCharge ?? null,
         knotEatsPaidOrderCharge: existing.knotEatsPaidOrderCharge ?? null,
         orderChargeFrom: existing.orderChargeFrom || null,
         ebillCharge: existing.ebillCharge ?? null,

@@ -1008,7 +1008,6 @@ const RestaurantDetail = () => {
             {/* Paid by the customer on an online payment, then taken from the wallet. */}
             {[
               ["Website platform fee", charges.onlinePaidOrderCharge, "order"],
-              ["Table QR platform fee", charges.qrPaidOrderCharge, "bill"],
               ["Knot Eats platform fee", charges.knotEatsPaidOrderCharge, "order"],
             ].map(([label, amount, per]) => (
               <Row key={label} label={label}>

@@ -17,7 +17,6 @@ const mongoose = require("mongoose");
 // platform price into itself, or it silently overrides every later change.
 const DEFAULTS = {
   onlinePaidOrderCharge: null,
-  qrPaidOrderCharge: null,
   knotEatsPaidOrderCharge: null,
   orderChargeFrom: null,
 };
@@ -39,14 +38,12 @@ const csdStoreChargesSchema = new mongoose.Schema(
   {
     storeId: { type: String, required: true, unique: true, index: true },
 
-    // The platform fee on this store's online-paid orders, rupees before GST:
-    // website orders here ("Website platform fee"), table-QR orders below
-    // ("Table QR platform fee"). null means "use the platform amount"; 0
-    // means "this restaurant's customers pay none", which is a real setting.
+    // The platform fee on this store's online-paid website orders, rupees
+    // before GST ("Website platform fee"). null means "use the platform
+    // amount"; 0 means "this restaurant's customers pay none", a real setting.
     onlinePaidOrderCharge: { type: Number, default: DEFAULTS.onlinePaidOrderCharge, min: 0 },
-    qrPaidOrderCharge: { type: Number, default: DEFAULTS.qrPaidOrderCharge, min: 0 },
     knotEatsPaidOrderCharge: { type: Number, default: DEFAULTS.knotEatsPaidOrderCharge, min: 0 }, // ₹ before GST; null = platform; 0 = none
-    // Delays the platform fee (all three sources) for this store only: it applies
+    // Delays the platform fee (website and Knot Eats) for this store only: it applies
     // to orders placed on or after max(platform effectiveFrom, orderChargeFrom).
     // null = the platform start date alone.
     orderChargeFrom: { type: Date, default: DEFAULTS.orderChargeFrom },

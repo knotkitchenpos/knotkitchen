@@ -132,8 +132,8 @@ const gstSchema = new mongoose.Schema(
  * row that predates them, without switching anything on.
  *
  * The platform fee is one charge per order source, each with its own amount:
- * websiteOrderCharge for website orders ("WEBSITE"), qrOrderCharge for
- * table-QR orders ("QR") and knotEatsOrderCharge for website orders placed
+ * websiteOrderCharge for website orders ("WEBSITE") and knotEatsOrderCharge
+ * for website orders placed
  * through Knot Eats (source "WEBSITE", salesChannel "KNOT_EATS"; it replaces
  * the website fee on those). It is added to the customer's bill only when
  * they pay online, and the same amount is then deducted from the store's
@@ -143,13 +143,6 @@ const gstSchema = new mongoose.Schema(
 const DEFAULT_ORDER_CHARGE = {
   enabled: false,
   amountPaise: 300,
-  effectiveFrom: null,
-  taxable: true,
-};
-
-const DEFAULT_QR_ORDER_CHARGE = {
-  enabled: false,
-  amountPaise: 100,
   effectiveFrom: null,
   taxable: true,
 };
@@ -206,9 +199,9 @@ const platformBillingConfigSchema = new mongoose.Schema(
     // Every top-up after the POS plan has started must be at least this; 0 = none.
     topUpMinPaise: { type: Number, default: 100000, min: 0 },
     gst: { type: gstSchema, default: () => ({}) },
-    // Platform fee per online-paid website order, per table-QR one and per Knot Eats one.
+    // Platform fee per online-paid website order and per Knot Eats one. Table QR
+    // orders carry none (the table-QR fee was removed on 2026-11-15).
     websiteOrderCharge: { type: messageChargeSchema, default: () => ({ ...DEFAULT_ORDER_CHARGE }) },
-    qrOrderCharge: { type: messageChargeSchema, default: () => ({ ...DEFAULT_QR_ORDER_CHARGE }) },
     knotEatsOrderCharge: { type: messageChargeSchema, default: () => ({ ...DEFAULT_KNOT_EATS_ORDER_CHARGE }) },
     // Charged per e-bill actually delivered -- never per attempt.
     ebillCharge: { type: messageChargeSchema, default: () => ({ ...DEFAULT_EBILL_CHARGE }) },
@@ -272,7 +265,6 @@ module.exports = {
   CATALOG_VERSION,
   isRetiredAddon,
   DEFAULT_ORDER_CHARGE,
-  DEFAULT_QR_ORDER_CHARGE,
   DEFAULT_KNOT_EATS_ORDER_CHARGE,
   DEFAULT_EBILL_CHARGE,
   PlatformBillingConfig: mongoose.model("PlatformBillingConfig", platformBillingConfigSchema),

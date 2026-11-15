@@ -64,7 +64,6 @@ const ChargesDialog = ({ storeId, charges, onClose, onSaved }) => {
   const blankIfNull = (v) => (v == null ? "" : String(v));
   const [form, setForm] = useState({
     onlinePaidOrderCharge: blankIfNull(charges.onlinePaidOrderCharge),
-    qrPaidOrderCharge: blankIfNull(charges.qrPaidOrderCharge),
     knotEatsPaidOrderCharge: blankIfNull(charges.knotEatsPaidOrderCharge),
     orderChargeFrom: asInputDate(charges.orderChargeFrom),
   });
@@ -86,7 +85,6 @@ const ChargesDialog = ({ storeId, charges, onClose, onSaved }) => {
         setCatalog(catalogItems(c));
         setRates({
           website: c.websiteOrderCharge?.amount,
-          qr: c.qrOrderCharge?.amount,
           knotEats: c.knotEatsOrderCharge?.amount,
         });
       })
@@ -124,7 +122,6 @@ const ChargesDialog = ({ storeId, charges, onClose, onSaved }) => {
       const orNull = (v) => (String(v).trim() === "" ? null : Number(v));
       await api.updateCharges(storeId, {
         onlinePaidOrderCharge: orNull(form.onlinePaidOrderCharge),
-        qrPaidOrderCharge: orNull(form.qrPaidOrderCharge),
         knotEatsPaidOrderCharge: orNull(form.knotEatsPaidOrderCharge),
         orderChargeFrom: form.orderChargeFrom || null,
         billingExempt: exempt,
@@ -163,7 +160,6 @@ const ChargesDialog = ({ storeId, charges, onClose, onSaved }) => {
         <form onSubmit={submit} className="space-y-4">
           {[
             ["onlinePaidOrderCharge", "Website platform fee", "/ order", rates?.website],
-            ["qrPaidOrderCharge", "Table QR platform fee", "/ bill", rates?.qr],
             ["knotEatsPaidOrderCharge", "Knot Eats platform fee", "/ order", rates?.knotEats],
           ].map(([name, label, suffix, rate]) => (
             <Field key={name} label={label} name={name} prefix="₹" suffix={suffix} placeholder="Platform rate"

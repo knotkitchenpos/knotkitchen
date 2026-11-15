@@ -74,13 +74,13 @@ test("the public pricing is the catalogue: plans, on-sale add-ons and devices, t
       { code: "TABLET", name: "Tablet", description: "10-inch Android tablet", price: 10000, imageUrl: IMG() },
       { code: "PRINTER_3IN_LAN", name: "3-inch LAN printer", description: "", price: 3900.5, imageUrl: "" },
     ],
-    charges: { website: 3, qr: 1, knotEats: 9, ebill: 0.25 },
-    taxable: { website: true, qr: true, knotEats: true, ebill: true },
+    charges: { website: 3, knotEats: 9, ebill: 0.25 },
+    taxable: { website: true, knotEats: true, ebill: true },
   });
   // CSD sets a charge to "Not taxable": the site drops its "+ GST".
   const config = catalogue();
   config.ebillCharge.taxable = false;
-  assert.deepEqual(publicPricing(config).taxable, { website: true, qr: true, knotEats: true, ebill: false });
+  assert.deepEqual(publicPricing(config).taxable, { website: true, knotEats: true, ebill: false });
 });
 
 test("never a store's negotiated price: the endpoint does not read per-store overrides", () => {

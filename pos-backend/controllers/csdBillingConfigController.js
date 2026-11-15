@@ -44,7 +44,7 @@ const asDate = (v) => {
 
 // The usage charges, all one shape: the platform fee per order source (website,
 // table QR, Knot Eats), and the e-bill.
-const USAGE_CHARGES = ["websiteOrderCharge", "qrOrderCharge", "knotEatsOrderCharge", "ebillCharge"];
+const USAGE_CHARGES = ["websiteOrderCharge", "knotEatsOrderCharge", "ebillCharge"];
 
 /** Config as the admin edits it: money in rupees, everything else verbatim. */
 const present = (config) => ({

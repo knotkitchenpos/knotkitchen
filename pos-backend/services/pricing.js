@@ -31,7 +31,6 @@ const {
   CATALOG_VERSION,
   isRetiredAddon,
   DEFAULT_ORDER_CHARGE,
-  DEFAULT_QR_ORDER_CHARGE,
   DEFAULT_KNOT_EATS_ORDER_CHARGE,
   DEFAULT_EBILL_CHARGE,
 } = require("../models/platformBillingModel");
@@ -104,7 +103,6 @@ const backfillCharges = (config) => {
   let changed = false;
   for (const [key, shipped] of [
     ["websiteOrderCharge", DEFAULT_ORDER_CHARGE],
-    ["qrOrderCharge", DEFAULT_QR_ORDER_CHARGE],
     ["knotEatsOrderCharge", DEFAULT_KNOT_EATS_ORDER_CHARGE],
     ["ebillCharge", DEFAULT_EBILL_CHARGE],
   ]) {
@@ -129,9 +127,9 @@ const NEW_DEVICES = ["TABLET", "PRINTER_3IN_LAN", "PRINTER_3IN_USB"];
  * The v1→v2 step (the October 2026 prices); the caller sets catalogVersion.
  * Stands in for a migration the owner would otherwise have to run by hand.
  *
- * The one order charge for website + table QR becomes one charge per source:
- * the website's keeps its switch and date only if WEBSITE was one of its
- * sources, and the new table-QR one copies them only if QR was. Store rows
+ * The one order charge for website + table QR becomes the website's alone:
+ * it keeps its switch and date only if WEBSITE was one of its sources (table
+ * QR carries no platform fee since 2026-11-15). Store rows
  * still holding the ₹9 CsdStoreCharges once copied into every row (and nobody
  * edited) go back to the platform rate -- migration 011's reset.
  *
@@ -172,10 +170,8 @@ const upgradeCatalog = async (config) => {
       : { enabled: false, effectiveFrom: null };
   const taxable = old.taxable !== false;
   const amountPaise = Number(old.amountPaise) === V1.orderChargePaise ? DEFAULT_ORDER_CHARGE.amountPaise : Number(old.amountPaise) || 0;
-  const qr = { ...from("QR"), amountPaise: DEFAULT_QR_ORDER_CHARGE.amountPaise, taxable };
   // Assigned whole, so the retired chargeableSources goes with the old value.
   config.websiteOrderCharge = { ...from("WEBSITE"), amountPaise, taxable };
-  config.qrOrderCharge = qr;
 
   await CsdStoreCharges.updateMany(
     { onlinePaidOrderCharge: 9, history: { $not: { $elemMatch: { field: "onlinePaidOrderCharge" } } } },
@@ -260,17 +256,18 @@ const priceFor = async ({ restaurantId, code, config, override } = {}) => {
 
 // Each order source with a platform fee: its platform charge, and the
 // per-store override (rupees) that replaces the amount for one store.
+// Table QR ("QR") has none: removed by the owner on 2026-11-15.
 const ORDER_CHARGES = {
   WEBSITE: ["websiteOrderCharge", "onlinePaidOrderCharge"],
-  QR: ["qrOrderCharge", "qrPaidOrderCharge"],
   // Not an Order.source: a website order placed through Knot Eats is quoted
   // under this key instead of WEBSITE (Order.salesChannel "KNOT_EATS").
   KNOT_EATS: ["knotEatsOrderCharge", "knotEatsPaidOrderCharge"],
 };
 
 /**
- * The platform fee on an order from `source` ("WEBSITE", "QR" or "KNOT_EATS") at a
- * restaurant, for an order placed `on` that day. Any other source has none.
+ * The platform fee on an order from `source` ("WEBSITE" or "KNOT_EATS") at a
+ * restaurant, for an order placed `on` that day. Any other source (table QR
+ * included) has none.
  *
  * `enabled` is answered independently of the amount, because a restaurant set
  * to 0 is still "enabled and charged nothing" -- distinct from the charge

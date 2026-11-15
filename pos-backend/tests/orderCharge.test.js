@@ -170,11 +170,12 @@ test("only an order paid through the gateway is charged; cash and counter paymen
   assert.equal(pending.permanent, false);
 });
 
-test("the platform fee ships per source -- website ₹3, table QR ₹1 -- each OFF with no date", () => {
+test("the website platform fee ships at ₹3, OFF with no date; table QR has no fee", () => {
   const { PlatformBillingConfig } = require("../models/platformBillingModel");
   const Order = require("../models/orderModel");
   const fresh = new PlatformBillingConfig();
-  for (const [key, paise] of [["websiteOrderCharge", 300], ["qrOrderCharge", 100]]) {
+  assert.equal(PlatformBillingConfig.schema.path("qrOrderCharge"), undefined, "the table-QR fee was removed on 2026-11-15");
+  for (const [key, paise] of [["websiteOrderCharge", 300]]) {
     assert.deepEqual(
       [fresh[key].amountPaise, fresh[key].enabled, fresh[key].effectiveFrom, fresh[key].taxable],
       [paise, false, null, true],
@@ -183,9 +184,9 @@ test("the platform fee ships per source -- website ₹3, table QR ₹1 -- each O
   }
   // One charge per source: no list of sources to keep in step any more...
   assert.equal(PlatformBillingConfig.schema.path("websiteOrderCharge.chargeableSources"), undefined);
-  // ...and the sources priced are the ones the order channels actually write.
+  // ...and the source priced is one the order channels actually write.
   const sources = Order.schema.path("source").enumValues;
-  for (const s of ["WEBSITE", "QR"]) assert.ok(sources.includes(s), s);
+  assert.ok(sources.includes("WEBSITE"));
 });
 
 test("the charge starts at the platform date, and a store date can only delay it", async () => {
@@ -216,10 +217,11 @@ test("the charge starts at the platform date, and a store date can only delay it
   assert.equal(undated.enabled, false);
 });
 
-test("each source has its own fee and per-store rate: null means the platform amount, 0 is a real rate", async () => {
+test("the website fee and its per-store rate: null means the platform amount, 0 is a real rate; table QR never charged", async () => {
   const { resolveOrderCharge } = require("../services/pricing");
   const config = {
     websiteOrderCharge: { enabled: true, amountPaise: 300, effectiveFrom: new Date("2020-01-01") },
+    // A row saved before the fee was removed: still never charged.
     qrOrderCharge: { enabled: true, amountPaise: 100, effectiveFrom: new Date("2020-01-01") },
   };
   const fee = async (source, override) => {
@@ -230,19 +232,15 @@ test("each source has its own fee and per-store rate: null means the platform am
   assert.deepEqual(await fee("WEBSITE", {}), [true, 300, "platform"]);
   assert.deepEqual(await fee("WEBSITE", { onlinePaidOrderCharge: 5, qrPaidOrderCharge: 2 }), [true, 500, "restaurant"]);
   assert.deepEqual(await fee("WEBSITE", { onlinePaidOrderCharge: 0 }), [true, 0, "restaurant"]);
-  assert.deepEqual(await fee("QR", { onlinePaidOrderCharge: 5 }), [true, 100, "platform"], "the website rate never prices a table");
-  assert.deepEqual(await fee("QR", { qrPaidOrderCharge: 2 }), [true, 200, "restaurant"]);
-  // The table-QR fee has its own switch.
-  const qrOff = await resolveOrderCharge({ config: { ...config, qrOrderCharge: { ...config.qrOrderCharge, enabled: false } }, override: null, source: "QR" });
-  assert.equal(qrOff.enabled, false);
-  // Any other source (the POS, a marketplace) has no platform fee.
-  for (const source of ["POS", "MARKETPLACE", undefined]) {
+  // Table QR has no platform fee (whatever an old config row says), nor does
+  // any other source (the POS, a marketplace).
+  for (const source of ["QR", "POS", "MARKETPLACE", undefined]) {
     const none = await resolveOrderCharge({ config, override: null, source });
     assert.deepEqual([none.enabled, none.amountPaise], [false, 0], String(source));
     assert.match(none.reason, /is not chargeable/);
   }
   // A demo store's customers pay none.
-  assert.deepEqual(await fee("QR", { billingExempt: true }), [false, 100, "platform"]);
+  assert.deepEqual(await fee("WEBSITE", { billingExempt: true }), [false, 300, "platform"]);
 });
 
 test("SOURCE: the debit is the fee the diner paid, never a rate looked up again", () => {
@@ -276,36 +274,30 @@ test("an existing config row gets the shipped prices, OFF, and admin values are 
   // Never configured: priced, and still off.
   const { got: old, saves } = await load({
     websiteOrderCharge: { enabled: false, amountPaise: 0, effectiveFrom: null },
-    qrOrderCharge: { enabled: false, amountPaise: 0, effectiveFrom: null },
     ebillCharge: { enabled: false, amountPaise: 0, effectiveFrom: null },
   });
   assert.equal(saves, 1);
   assert.equal(old.websiteOrderCharge.amountPaise, 300);
   assert.equal(old.websiteOrderCharge.enabled, false, "backfill never switches it on");
   assert.equal(old.websiteOrderCharge.effectiveFrom, null);
-  assert.deepEqual([old.qrOrderCharge.amountPaise, old.qrOrderCharge.enabled], [100, false]);
   assert.equal(old.ebillCharge.amountPaise, 25);
   assert.equal(old.ebillCharge.enabled, false);
 
   // An admin's choices, each on its own, stand.
   const set = {
     websiteOrderCharge: { enabled: true, amountPaise: 0, effectiveFrom: new Date("2026-10-01") },
-    qrOrderCharge: { enabled: false, amountPaise: 0, effectiveFrom: new Date("2026-11-01") },
     ebillCharge: { enabled: false, amountPaise: 0, effectiveFrom: new Date("2026-12-01") },
   };
   const { got: admin, saves: adminSaves } = await load(set);
   assert.equal(adminSaves, 0, "nothing to backfill");
   assert.equal(admin.websiteOrderCharge.amountPaise, 0);
-  assert.equal(admin.qrOrderCharge.amountPaise, 0);
   assert.equal(admin.ebillCharge.amountPaise, 0);
 
   const priced = await load({
     websiteOrderCharge: { enabled: false, amountPaise: 1200 },
-    qrOrderCharge: { enabled: false, amountPaise: 150 },
     ebillCharge: { enabled: false, amountPaise: 50 },
   });
   assert.equal(priced.saves, 0);
   assert.equal(priced.got.websiteOrderCharge.amountPaise, 1200);
-  assert.equal(priced.got.qrOrderCharge.amountPaise, 150);
   assert.equal(priced.got.ebillCharge.amountPaise, 50);
 });

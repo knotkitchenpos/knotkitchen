@@ -138,7 +138,7 @@ test("the pay page spells out the fee before money moves", async () => {
 // Table QR
 // ---------------------------------------------------------------------------
 
-test("table QR: verify and the webhook expect bill + the STORED fee, and hand that fee to the settle", () => {
+test("table QR: verify and the webhook still honour a fee STORED on a payment opened before the fee was removed", () => {
   const qr = SRC("controllers/qrController.js");
   const verify = slice(qr, "const paymentVerify = async", "// Public: call waiter.");
   assert.match(verify, /const platformFee = session\.payment\?\.platformFee;/);
@@ -152,14 +152,16 @@ test("table QR: verify and the webhook expect bill + the STORED fee, and hand th
   assert.match(hook, /Math\.abs\(Number\(status\.amount\) - Number\(expected\)\) > 0\.01/);
   assert.match(hook, /amount: payable,\s*platformFee,/);
 
-  // The diner's page is told the fee before tapping Pay, and the intent
-  // reports it next to the bill.
-  assert.match(qr, /onlinePlatformFee: onlinePaymentEnabled\s*\? toRupees\(\(await quotePlatformFee\(\{ restaurantId, source: "QR" \}\)\)\?\.totalPaise\)\s*: 0,/);
+  // Table QR carries no platform fee (removed 2026-11-15): nothing quoted for
+  // the diner's page, and a new payment is the bill alone.
+  assert.doesNotMatch(qr, /onlinePlatformFee|quotePlatformFee/);
   const intent = slice(qr, "const paymentIntent = async", "const paymentVerify = async");
-  assert.match(intent, /amount: online \? gatewayAmount : payable,\s*billAmount: payable,\s*platformFee: online \? platformFee : 0,/);
+  assert.match(intent, /const gatewayAmount = payable;/);
+  assert.match(intent, /"payment\.platformFee": \{\} \}/);
+  assert.match(intent, /amount: online \? gatewayAmount : payable,\s*billAmount: payable,\s*platformFee: 0,/);
 });
 
-test("table QR: the phone step already quotes bill + fee, so Pay says what the gateway will charge", async () => {
+test("table QR: Pay is the bill alone, even if a fee would be quoted", async () => {
   // A table opened at the till: no phone yet, so no checkout opens.
   const session = { _id: "s1", sessionCode: "TS1", status: "PAYMENT_PENDING", bills: { totalWithTax: 500 }, customerPhone: "", timeline: [], save: async () => {} };
   const fakes = {
@@ -175,7 +177,7 @@ test("table QR: the phone step already quotes bill + fee, so Pay says what the g
   assert.equal(failure, undefined, failure && failure.message);
   const d = body.data;
   assert.deepEqual([d.needsPhone, d.onlinePaymentEnabled, d.checkout], [true, false, null]);
-  assert.deepEqual([d.billAmount, d.platformFee, d.amount], [500, 1.18, 501.18], "Bill / Platform fee / Payable");
+  assert.deepEqual([d.billAmount, d.platformFee, d.amount], [500, 0, 500], "Bill / no platform fee / Payable");
 });
 
 /** recordSessionPayment over an in-memory session, Bill, ledger and orders. */

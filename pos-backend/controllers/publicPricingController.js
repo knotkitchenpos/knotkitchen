@@ -48,14 +48,12 @@ const publicPricing = (config) => {
     // Already listed on the site as amounts, whether or not CSD has switched them on.
     charges: {
       website: charge("websiteOrderCharge"),
-      qr: charge("qrOrderCharge"),
       knotEats: charge("knotEatsOrderCharge"),
       ebill: charge("ebillCharge"),
     },
     // CSD's per-charge GST switch: false drops the site's "+ GST" after that amount.
     taxable: {
       website: config.websiteOrderCharge?.taxable !== false,
-      qr: config.qrOrderCharge?.taxable !== false,
       knotEats: config.knotEatsOrderCharge?.taxable !== false,
       ebill: config.ebillCharge?.taxable !== false,
     },

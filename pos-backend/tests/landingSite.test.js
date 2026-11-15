@@ -274,11 +274,14 @@ test("the pricing HTML is the no-script fallback: every amount written in, each 
   for (const [key, text] of [
     ["plan:POS", "₹599"], ["plan:BILLING", "₹199"], ["plan:POS:firstRechargeMin", "₹5,000"], ["plan:POS:topUpMin", "₹1,000"],
     ["plan:BILLING:firstRechargeMin", "₹3,000"], ["plan:BILLING:topUpMin", "₹1,000"],
-    ["charge:website", "₹3"], ["charge:qr", "₹1"], ["charge:knotEats", "₹9"], ["charge:ebill", "₹0.25"],
+    ["charge:website", "₹3"], ["charge:knotEats", "₹9"], ["charge:ebill", "₹0.25"],
   ]) {
     assert.ok(pricing.includes(`data-price="${key}">${text}<`), key);
     if (key.startsWith("charge:")) assert.ok(pricing.includes(`data-price="${key}">${text}</span><span data-gst="${key}"> + GST</span>`), key);
   }
+  // Table QR bills carry no platform fee (removed 2026-11-15).
+  assert.ok(!pricing.includes("charge:qr"));
+  assert.ok(pricing.includes("(none on table QR bills)"));
   // Every rupee amount in pricing and the FAQ is one home.js refreshes, or sits in a list it rebuilds.
   const loose = pricing
     .replace(/<ul class="lines" id="(addon|device)-list">[\s\S]*?<\/ul>/g, "")

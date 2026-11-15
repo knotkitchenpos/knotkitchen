@@ -173,7 +173,7 @@ const PLATFORM_FEE =
 const PLATFORM_FEE_HINT =
   " Cash, counter and pay-at-pickup payments never carry it, and a cancelled order's fee goes back to the wallet. Nothing is charged before the start date; a store can be given a later start or its own amount on its own page.";
 
-// The usage charges. All four have the same shape and are set only here. Only
+// The usage charges (table QR carries none). All three have the same shape and are set only here. Only
 // the Knot Eats fee is shown in the POS app, on its opt-in screen, because
 // listing there is the owner's consent to it.
 const USAGE_CHARGES = [
@@ -184,14 +184,6 @@ const USAGE_CHARGES = [
     label: "Charge on website orders paid online",
     hint: `One fee per order.${PLATFORM_FEE_HINT}`,
     defaultAmount: "₹3",
-  },
-  {
-    key: "qrOrderCharge",
-    title: "Table QR platform fee",
-    subtitle: PLATFORM_FEE,
-    label: "Charge on table-QR bills paid online",
-    hint: `One fee per bill paid online, however many rounds were ordered.${PLATFORM_FEE_HINT}`,
-    defaultAmount: "₹1",
   },
   {
     key: "ebillCharge",

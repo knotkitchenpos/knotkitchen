@@ -140,8 +140,8 @@ export function Definitions({ L }) {
                 <strong>"Platform fee"</strong>
               </td>
               <td>
-                KnotKitchen's fee for ordering and paying online, charged only on an Order paid online (through this
-                website or the Restaurant's table QR ordering), never on an Order paid in cash or at the counter. It is set
+                KnotKitchen's fee for ordering and paying online, charged only on an Order placed on this website and
+                paid online (never on the Restaurant's table QR ordering), and never on an Order paid in cash or at the counter. It is set
                 by KnotKitchen, not the Restaurant, includes any applicable GST, and is shown as its own "Platform fee" line,
                 included in the total, before the Customer pays. The Restaurant collects it together with the Order payment
                 and passes it on to KnotKitchen. It is a fee for KnotKitchen's technology, not part of the price of any food,

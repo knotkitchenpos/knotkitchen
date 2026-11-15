@@ -234,11 +234,6 @@ export default function OrderOnline() {
   const cartPayable = round2(cartTotal + cartTax + cartService);
 
   const sessionTotal = session?.bills?.totalWithTax || 0;
-  // KnotKitchen's platform fee (incl. GST) on paying from this phone. It is
-  // never part of the table's bill: a party that pays at the counter does not
-  // pay it. Shown before Pay so the diner sees it before the gateway opens;
-  // the server prices the real one and the payment intent carries it.
-  const platformFee = Number(charges.onlinePlatformFee) || 0;
   const sessionBillLines = [
     ["Subtotal", session?.bills?.subtotal],
     ["Discount", -(Number(session?.bills?.discount) || 0)],
@@ -399,8 +394,8 @@ export default function OrderOnline() {
 
   /**
    * "Pay" goes straight to the gateway: the server opens the Cashfree order
-   * against the table's own bill (plus the platform fee, already shown on the
-   * card and the Pay button) and the checkout opens on the same tap, with
+   * against the table's own bill (table QR carries no platform fee) and the
+   * checkout opens on the same tap, with
    * no summary screen in between. The summary card is only what is left
    * behind: a store with no gateway (ask for the bill instead), or a diner
    * who closed the checkout and wants to try again.
@@ -711,12 +706,6 @@ export default function OrderOnline() {
             <div className="p-3 space-y-2">
               {!paymentInfo ? (
                 <>
-                  {platformFee > 0 && (
-                    <div className="flex justify-between px-1 text-[12.5px] text-slate-600">
-                      <span>Platform fee (online payment)</span>
-                      <span className="font-semibold">{money(platformFee)}</span>
-                    </div>
-                  )}
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       onClick={() =>
@@ -732,28 +721,12 @@ export default function OrderOnline() {
                       className="text-sm py-2.5 rounded-xl font-bold text-white disabled:opacity-50"
                       style={{ background: primary }}
                     >
-                      {loadingPayment
-                        ? "Opening payment…"
-                        : platformFee > 0
-                          ? `Pay ${money(round2(sessionTotal + platformFee))}`
-                          : "Pay"}
+                      {loadingPayment ? "Opening payment…" : "Pay"}
                     </button>
                   </div>
                 </>
               ) : (
                 <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm space-y-2">
-                  {Number(paymentInfo.platformFee) > 0 && (
-                    <>
-                      <div className="flex justify-between text-slate-600">
-                        <span>Bill</span>
-                        <span>{money(paymentInfo.billAmount)}</span>
-                      </div>
-                      <div className="flex justify-between text-slate-600">
-                        <span>Platform fee</span>
-                        <span>{money(paymentInfo.platformFee)}</span>
-                      </div>
-                    </>
-                  )}
                   <div className="flex justify-between font-semibold">
                     <span>Payable</span>
                     <span>{money(paymentInfo.amount)}</span>

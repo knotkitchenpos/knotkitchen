@@ -46,11 +46,12 @@ test("the catalogue ships at the owner's prices", () => {
   assert.equal(config.firstRechargeMinPaise, money.toPaise(3000));
   assert.equal(config.topUpMinPaise, money.toPaise(1000), "every top-up after the plan starts");
   assert.equal(config.addons.length, 2);
-  // The platform fee per source, and the e-bill: priced, all OFF.
+  // The website platform fee and the e-bill: priced, all OFF. Table QR has no fee.
   assert.deepEqual(
-    ["websiteOrderCharge", "qrOrderCharge", "ebillCharge"].map((k) => [config[k].amountPaise, config[k].enabled]),
-    [[300, false], [100, false], [25, false]],
+    ["websiteOrderCharge", "ebillCharge"].map((k) => [config[k].amountPaise, config[k].enabled]),
+    [[300, false], [25, false]],
   );
+  assert.equal(PlatformBillingConfig.schema.path("qrOrderCharge"), undefined, "no table-QR fee (removed 2026-11-15)");
   assert.equal(PlatformBillingConfig.schema.path("websiteOrderCharge.chargeableSources"), undefined);
   assert.equal(config.catalogVersion, 6, "a new row starts on the current catalogue");
   // The old plan catalogue and its upgrade maths are gone.
@@ -130,13 +131,13 @@ test("an add-on's own period round-trips, so a CSD save never turns the yearly W
   // The usage charges, one shape each; nothing about sources any more.
   const charges = present({
     websiteOrderCharge: { enabled: true, amountPaise: 300, effectiveFrom: new Date("2026-11-01") },
-    qrOrderCharge: { amountPaise: 100 },
     ebillCharge: { amountPaise: 25 },
   });
   assert.deepEqual(
-    ["websiteOrderCharge", "qrOrderCharge", "ebillCharge"].map((k) => [charges[k].amount, charges[k].enabled, charges[k].taxable]),
-    [[3, true, true], [1, false, true], [0.25, false, true]],
+    ["websiteOrderCharge", "ebillCharge"].map((k) => [charges[k].amount, charges[k].enabled, charges[k].taxable]),
+    [[3, true, true], [0.25, false, true]],
   );
+  assert.equal("qrOrderCharge" in charges, false);
   assert.equal("chargeableSources" in charges.websiteOrderCharge, false);
   // Changed 2026-10-16 (was: no rechargeRequired under tablet): tablet rent ended, so CSD has no rental prices at all.
   assert.equal("tablet" in charges, false);
@@ -211,12 +212,9 @@ test("a stored config row moves to the new catalogue once, keeping everything CS
         ["PRINTER_3IN_USB", "3-inch USB printer", 350000],
       ],
     );
-    // QR only was charged: the website's charge is off, the table-QR one keeps the switch and date.
+    // QR only was charged: the website's charge is off, and table QR has no fee at all now.
     assert.deepEqual([got.websiteOrderCharge.amountPaise, got.websiteOrderCharge.enabled], [300, false]);
-    assert.deepEqual(
-      [got.qrOrderCharge.amountPaise, got.qrOrderCharge.enabled, got.qrOrderCharge.effectiveFrom.toISOString()],
-      [100, true, new Date("2026-10-01").toISOString()],
-    );
+    assert.equal(got.get("qrOrderCharge", null, { strict: false }), undefined);
     assert.equal(got.get("websiteOrderCharge.chargeableSources", null, { strict: false }), undefined, "the retired field is gone");
     assert.equal(got.$__delta()?.[1]?.$inc?.__v, 1, "saved only over the version it read");
     // Migration 011's reset: an untouched ₹9 store rate back to the platform rate.
@@ -255,7 +253,6 @@ test("a stored config row moves to the new catalogue once, keeping everything CS
       "a printer CSD repriced keeps its name and price",
     );
     assert.deepEqual([edited.websiteOrderCharge.amountPaise, edited.websiteOrderCharge.enabled], [500, true]);
-    assert.equal(edited.qrOrderCharge.enabled, true);
 
     // Once: a row already on the current version is not touched (nor saved).
     let saves = 0;
@@ -284,7 +281,6 @@ test("a stored config row moves to the new catalogue once, keeping everything CS
         addons: [{ code: "WEBSITE", name: "Website", pricePaise: 30000, feature: "website" }],
         printers: [{ code: "PRINTER_2IN", name: "2-inch receipt printer", pricePaise: 190000 }],
         websiteOrderCharge: { enabled: true, amountPaise: 900, effectiveFrom: new Date("2026-10-01"), taxable: true },
-        qrOrderCharge: { enabled: true, amountPaise: 200, effectiveFrom: new Date("2026-10-02"), taxable: true },
       });
     const upgraded = await load([v2(250000)]);
     assert.deepEqual(
@@ -292,9 +288,9 @@ test("a stored config row moves to the new catalogue once, keeping everything CS
       [300000, 100000, 6],
     );
     assert.deepEqual(
-      ["websiteOrderCharge", "qrOrderCharge"].map((k) => [upgraded[k].enabled, upgraded[k].effectiveFrom.toISOString(), upgraded[k].amountPaise]),
-      [[true, new Date("2026-10-01").toISOString(), 900], [true, new Date("2026-10-02").toISOString(), 200]],
-      "the platform fees CSD set are kept",
+      [upgraded.websiteOrderCharge.enabled, upgraded.websiteOrderCharge.effectiveFrom.toISOString(), upgraded.websiteOrderCharge.amountPaise],
+      [true, new Date("2026-10-01").toISOString(), 900],
+      "the platform fee CSD set is kept",
     );
     assert.deepEqual([upgraded.basePlan.pricePaise, upgraded.addons[0].pricePaise], [39900, 30000], "no v1 price is moved");
     assert.deepEqual(upgraded.printers.map((p) => p.code), ["PRINTER_2IN"], "no device is re-added");
@@ -356,7 +352,7 @@ test("SOURCE: every catalogue setting is editable, validated and audited", () =>
   // Changed 2026-10-16 (was: tablet editable too): tablet rent ended, so its prices are not settable.
   assert.ok(!/body\.tablet\b|config\.tablet\b/.test(src), "no tablet rental prices");
   assert.ok(!/rechargeRequired|chargeableSources/.test(src), "the tablet top-up and the order-charge sources are gone");
-  assert.match(src, /const USAGE_CHARGES = \["websiteOrderCharge", "qrOrderCharge", "knotEatsOrderCharge", "ebillCharge"\];/, "one validator for every usage charge");
+  assert.match(src, /const USAGE_CHARGES = \["websiteOrderCharge", "knotEatsOrderCharge", "ebillCharge"\];/, "one validator for every usage charge (no table-QR fee)");
   assert.ok(!/upgradePolicy|readPlans/.test(src), "the plan editor is gone");
 });
 
@@ -430,13 +426,14 @@ test("negotiated prices go through the existing charges endpoint, with the new c
   assert.ok(CsdStoreCharges.schema.path("planPrices"));
 });
 
-test("a store's platform fee can be negotiated per source: website and table QR", () => {
+test("a store's website platform fee can be negotiated; table QR has no fee to negotiate", () => {
   const CsdStoreCharges = require("../models/csdStoreChargesModel");
   const row = new CsdStoreCharges({ storeId: "123456", ...CsdStoreCharges.DEFAULTS });
-  assert.deepEqual([row.onlinePaidOrderCharge, row.qrPaidOrderCharge], [null, null], "null = the platform rate");
+  assert.equal(row.onlinePaidOrderCharge, null, "null = the platform rate");
+  assert.equal(CsdStoreCharges.schema.path("qrPaidOrderCharge"), undefined);
   const ctrl = SRC("controllers/csdRestaurantController.js");
-  assert.match(ctrl, /\["onlinePaidOrderCharge", "Website platform fee", 10000\],\s*\["qrPaidOrderCharge", "Table QR platform fee", 10000\],/);
-  assert.equal((ctrl.match(/qrPaidOrderCharge: (charges|existing)\.qrPaidOrderCharge \?\? null,/g) || []).length, 3, "read, audited and answered");
+  assert.match(ctrl, /\["onlinePaidOrderCharge", "Website platform fee", 10000\],/);
+  assert.doesNotMatch(ctrl, /qrPaidOrderCharge/);
 });
 
 // ---------------------------------------------------------------------------

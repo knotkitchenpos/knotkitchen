@@ -23,8 +23,6 @@ const config = require("../config/config");
 const { findOrCreate } = require("../services/idempotency");
 const { round2, toRupees } = require("../services/money");
 const { menuPriceNow, isItemAvailableNow } = require("../services/businessHours");
-// Lazy for the same reason as accountLock above.
-const quotePlatformFee = (args) => require("../services/orderCharge").quotePlatformFee(args);
 
 /**
  * The table QR: what a diner's phone talks to after scanning the card on
@@ -347,11 +345,6 @@ const getTableByToken = async (req, res, next) => {
             taxPercent: Math.round((g.rate || 0) * 10000) / 100,
             taxInclusive: Boolean(g.inclusive),
             serviceChargePercent: g.serviceChargePercent || 0,
-            // KnotKitchen's platform fee on paying online (rupees incl. GST, 0
-            // when none or no gateway), so the diner sees it before tapping Pay.
-            onlinePlatformFee: onlinePaymentEnabled
-              ? toRupees((await quotePlatformFee({ restaurantId, source: "QR" }))?.totalPaise)
-              : 0,
           })),
         // Locked for non-payment, or outside Restaurant Time: the menu still
         // shows and a seated party can still call a waiter and pay, but no new
@@ -700,13 +693,10 @@ const paymentIntent = async (req, res, next) => {
     // carries no secret and cannot be used against any other order.
     let checkout = null;
     const gw = await resolveGateway({ restaurantId });
-    // KnotKitchen's platform fee goes on top of the bill when it is paid
-    // online: one fee per online payment, quoted here on the server. It is
-    // stored with the gateway order below, and verify, the webhook and the
-    // wallet debit all use that stored snapshot.
-    const fee = gw.enabled && payable > 0 ? await quotePlatformFee({ restaurantId, source: "QR" }) : null;
-    const platformFee = toRupees(fee?.totalPaise);
-    const gatewayAmount = round2(payable + platformFee);
+    // Table QR bills carry no platform fee (removed 2026-11-15): the diner
+    // pays the bill alone. A payment opened earlier with a fee still settles
+    // against the fee stored on its session (verify, webhook, wallet debit).
+    const gatewayAmount = payable;
     if (gw.enabled && payable > 0 && hasPhone) {
       const cashfree = require("../services/gateways/cashfree");
       // N021a: the order this table opened last time may already be paid, or
@@ -757,7 +747,7 @@ const paymentIntent = async (req, res, next) => {
           await TableSession.updateOne(
             { _id: session._id },
             {
-              $set: { "payment.gatewayOrderId": order.orderId, "payment.gatewayProvider": PROVIDERS.CASHFREE, "payment.platformFee": fee || {} },
+              $set: { "payment.gatewayOrderId": order.orderId, "payment.gatewayProvider": PROVIDERS.CASHFREE, "payment.platformFee": {} },
               $addToSet: { "payment.gatewayOrderIds": { $each: [previous, order.orderId].filter(Boolean) } },
             },
           );
@@ -793,11 +783,10 @@ const paymentIntent = async (req, res, next) => {
         sessionId: session._id,
         sessionCode: session.sessionCode,
         status: session.status,
-        // What the online payment charges: the bill plus the platform fee.
-        // With nothing to be paid online, just the bill.
+        // What the online payment charges: the bill (no platform fee on table QR).
         amount: online ? gatewayAmount : payable,
         billAmount: payable,
-        platformFee: online ? platformFee : 0,
+        platformFee: 0,
         currency: "INR",
         paymentStatus: session.payment?.status || "PENDING",
         onlinePaymentEnabled: Boolean(checkout),
