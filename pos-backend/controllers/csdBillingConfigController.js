@@ -312,7 +312,7 @@ const updateBillingConfig = async (req, res, next) => {
       };
     }
 
-    // The platform fee (website, table QR, Knot Eats) and the e-bill charge: an amount
+    // The platform fee (website, Knot Eats; none on table QR) and the e-bill charge: an amount
     // (left out keeps the saved one), a start date it needs to be on, and GST.
     for (const key of USAGE_CHARGES) {
       if (body[key] === undefined) continue;
