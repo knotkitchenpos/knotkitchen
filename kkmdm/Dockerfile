@@ -6,7 +6,7 @@
 # host for enrollment, sync, the WebSocket and APK downloads.
 
 # ---------------------------- dashboard build --------------------------------
-FROM node:20-alpine AS dashboard
+FROM node:24-alpine AS dashboard
 WORKDIR /dashboard
 COPY dashboard/package.json dashboard/package-lock.json ./
 RUN npm ci && npm cache clean --force
@@ -14,7 +14,7 @@ COPY dashboard/ ./
 RUN npm run build
 
 # ------------------------------- server deps ---------------------------------
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 # bcrypt compiles on Alpine; the toolchain stays in this stage only.
 RUN apk add --no-cache python3 make g++ libc6-compat
@@ -22,7 +22,7 @@ COPY server/package.json server/package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 # -------------------------------- runtime ------------------------------------
-FROM node:20-alpine AS runtime
+FROM node:24-alpine AS runtime
 WORKDIR /app
 RUN apk add --no-cache tini libc6-compat
 ENV NODE_ENV=production \

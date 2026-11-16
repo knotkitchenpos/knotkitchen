@@ -1,7 +1,7 @@
 # =============================================================================
 # Knot Kitchen — Customer Support Desk SPA (csd.<BASE_DOMAIN>)
 # =============================================================================
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 
 # Baked into the bundle at build time. src/api/index.js appends "/csd", so this
@@ -19,7 +19,7 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
-FROM nginx:1.27-alpine AS runtime
+FROM nginx:1.30-alpine AS runtime
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80

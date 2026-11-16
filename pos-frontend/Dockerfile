@@ -1,7 +1,7 @@
 # =============================================================================
 # Knot Kitchen — POS Frontend (pos.knotkitchen.com)
 # =============================================================================
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 
 ARG VITE_BACKEND_URL=""
@@ -15,7 +15,7 @@ COPY . .
 # The POS, then the Partners dashboard into dist/partners (served at /partners/).
 RUN npm run build && npm run build:partners
 
-FROM nginx:1.27-alpine AS runtime
+FROM nginx:1.30-alpine AS runtime
 COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80

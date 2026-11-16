@@ -6,7 +6,7 @@
 # at runtime from the request hostname (§8 of the spec).
 
 # --------------------------------- build --------------------------------------
-FROM node:20-alpine AS build
+FROM node:24-alpine AS build
 WORKDIR /app
 
 # The Vite build inlines VITE_* env vars into the bundle at build time, so the
@@ -26,7 +26,7 @@ COPY . .
 RUN npm run build
 
 # --------------------------------- runtime ------------------------------------
-FROM nginx:1.27-alpine AS runtime
+FROM nginx:1.30-alpine AS runtime
 
 # The nginx config below serves the SPA and adds strict security headers.
 COPY nginx.conf /etc/nginx/conf.d/default.conf

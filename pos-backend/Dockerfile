@@ -3,11 +3,11 @@
 # =============================================================================
 # Multi-stage build so the runtime image ships ONLY production dependencies
 # and application code — no dev deps, no build tools, no cache. Uses the
-# distroless-ish `node:20-alpine` because the app has no native compile step
+# distroless-ish `node:24-alpine` because the app has no native compile step
 # once bcrypt is prebuilt.
 
 # ------------------------------- deps -----------------------------------------
-FROM node:20-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 
 # Copy manifests first so `npm ci` is cached until they change. bcrypt needs
@@ -18,7 +18,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
 # ------------------------------- runtime --------------------------------------
-FROM node:20-alpine AS runtime
+FROM node:24-alpine AS runtime
 WORKDIR /app
 
 # Run as an unprivileged UID. `node` (uid 1000) already exists in the base
