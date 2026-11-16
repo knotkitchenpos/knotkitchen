@@ -8,11 +8,12 @@
 #   3. knotkitchen_backend_uploads  menu media (only meaningful when
 #                                 MEDIA_STORAGE_PROVIDER=local — the default)
 #   4. knotkitchen_csd_documents  restaurant KYC/GST/FSSAI + signed agreements
-#   5. knotkitchen_onboard_data   the onboard portal's database.json
+#   5. knotkitchen_onboard_data   the retired onboard portal's database.json
+#                                 (retired 2026-11-16; kept, not mounted)
 #                                 (agents + agreements) — this is a PRIMARY
 #                                 datastore with no Atlas equivalent; if this
 #                                 volume is lost, the data is simply gone
-#   6. knotkitchen_onboard_uploads  KYC documents uploaded via the portal
+#   6. knotkitchen_onboard_uploads  KYC documents uploaded via the retired portal (kept)
 #      knotkitchen_kkmdm_storage  KKMDM APKs, device logs and its generated secrets
 #   7. MongoDB                    full mongodump of the database (the
 #                                 "mongo" container on this VPS)
