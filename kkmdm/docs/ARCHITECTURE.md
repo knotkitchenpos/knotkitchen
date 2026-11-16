@@ -8,7 +8,7 @@ KKMDM manages the Android tablets KnotKitchen supplies to restaurants and locks 
 |---|---|---|
 | **KK Agent**: Android Device Owner (DPC) | `kkmdm/agent` | Java, Android 9+ (minSdk 28, target 34), OkHttp |
 | **KKMDM server**: admin API, device API, command queue, push channel | `kkmdm/server` | Node 20+ / Express / MongoDB (Mongoose), `ws` |
-| **Admin dashboard** | `kkmdm/dashboard` | React 18 + Vite, port 5177 |
+| **Admin UI** | CSD's KKMDM screens, `csd-web/src/kkmdm` (the standalone `kkmdm/dashboard` was removed on 2026-11-16) | React 18 + Vite, port 5175 |
 
 The server deliberately uses the same stack as `pos-backend` (Express + Mongoose + bcrypt + JWT) so the same people can run it and it fits the existing VPS, Docker and Caddy setup.
 
@@ -145,7 +145,7 @@ At 10k devices on a 60 s heartbeat that is about 170 syncs/s, which suits 2–3 
 
 **Environments:**
 * **Dev** runs locally (`local-test` mongod on 27018, DB `kkmdm`).
-* **Production** is the `kkmdm` service in `deploy/docker-compose.yml`, behind Caddy at `https://mdm.<BASE_DOMAIN>` (`kkmdm/Dockerfile`: server plus the built dashboard, same origin).
+* **Production** is the `kkmdm` service in `deploy/docker-compose.yml`, behind Caddy at `https://mdm.<BASE_DOMAIN>` (`kkmdm/Dockerfile`: the server only; CSD at `https://csd.<BASE_DOMAIN>` is the admin UI).
   * It uses the POS cluster's `MONGODB_URI` with its own database (`KKMDM_DB_NAME`, default `kkmdm`), and reads the POS stores through the same URI.
   * Its volume is `knotkitchen_kkmdm_storage`, external and created by `deploy/bootstrap-volumes.sh`. It holds APKs, logs, and `secrets.json` with the JWT and data keys generated on first boot unless `KKMDM_ADMIN_JWT_SECRET` / `KKMDM_DATA_ENCRYPTION_KEY` are set in `deploy/.env`.
   * The first Super Admin password is in `storage/initial-admin.txt` (`docker compose -f deploy/docker-compose.yml exec kkmdm cat storage/initial-admin.txt`), unless `KKMDM_SUPERADMIN_PASSWORD` is set.

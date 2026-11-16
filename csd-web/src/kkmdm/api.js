@@ -1,5 +1,5 @@
 // KKMDM's API, reached from CSD (owner, 2026-11-03: KKMDM inside CSD).
-// Same shape as kkmdm/dashboard/src/api.js, so its screens run here unchanged.
+// Same shape as the former kkmdm/dashboard's api.js, so its screens run here unchanged.
 // Signing in is CSD's: on a 401 the CSD server hands over a one-minute
 // assertion (POST /api/csd/kkmdm/sso) which KKMDM turns into its own session
 // cookie, and the call is retried. Every call carries X-KKMDM, KKMDM's CSRF guard.

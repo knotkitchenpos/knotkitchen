@@ -4,7 +4,7 @@ Manages KnotKitchen's restaurant tablets and locks each into a dedicated POS ter
 
 * `agent/` — **KK Agent**, the Android Device Owner (Java, Android 9+)
 * `server/` — **KKMDM server**: admin + device API, command queue, WebSocket push (Node/Express/MongoDB, port 8100)
-* `dashboard/` — **admin dashboard** (React/Vite, port 5177)
+* Admin UI: CSD's KKMDM screens (`csd-web/src/kkmdm`); the standalone dashboard was removed on 2026-11-16
 * `scripts/` — `adb-provision.sh` (technician USB enrollment), `build-agent.sh`
 * `docs/ARCHITECTURE.md` — design decisions, capability matrix, schema, flows, security, phases, test results
 * `docs/openapi.yaml` — API reference
@@ -17,7 +17,7 @@ Uses the local test MongoDB from `..\..\local-test` (port 27018). KKMDM keeps it
 2. Server: `kkmdm\server> npm install`, then `npm run seed` (first time) and `npm start`
    * Copy `.env.example` to `.env`.
    * On first boot it creates the Super Admin and writes the password to `server/storage/initial-admin.txt` (git-ignored).
-3. Dashboard: `kkmdm\dashboard> npm install` then `npm run dev`, and open http://localhost:5177.
+3. Admin UI: run CSD (`csd-web> npm run dev`, http://localhost:5175) and open its KKMDM pages.
 4. Agent: `kkmdm/scripts/build-agent.sh`.
    * Needs the Android SDK at `C:\Users\supra\Android\Sdk`, `JAVA_HOME` = JDK 21, and the key in `agent/signing/` (git-ignored, see "Key custody" in the architecture doc).
 

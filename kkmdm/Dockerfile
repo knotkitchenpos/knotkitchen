@@ -1,17 +1,9 @@
 # =============================================================================
-# KKMDM — server + admin dashboard in one image  →  mdm.${BASE_DOMAIN}
+# KKMDM server  →  mdm.${BASE_DOMAIN}
 # =============================================================================
-# The dashboard is built to static files and served by the server itself, so
-# it shares the API's origin (cookie session, no CORS). Tablets reach the same
-# host for enrollment, sync, the WebSocket and APK downloads.
-
-# ---------------------------- dashboard build --------------------------------
-FROM node:24-alpine AS dashboard
-WORKDIR /dashboard
-COPY dashboard/package.json dashboard/package-lock.json ./
-RUN npm ci && npm cache clean --force
-COPY dashboard/ ./
-RUN npm run build
+# The API behind CSD's KKMDM screens (CSD is the only admin UI; the standalone
+# dashboard was removed on 2026-11-16). Tablets reach the same host for
+# enrollment, sync, the WebSocket and APK downloads.
 
 # ------------------------------- server deps ---------------------------------
 FROM node:24-alpine AS deps
@@ -27,12 +19,10 @@ WORKDIR /app
 RUN apk add --no-cache tini libc6-compat
 ENV NODE_ENV=production \
     PORT=8100 \
-    DASHBOARD_DIR=/app/dashboard \
     KKMDM_STORAGE_DIR=/app/storage
 COPY --from=deps /app/node_modules ./node_modules
 COPY server/package.json ./
 COPY server/src ./src
-COPY --from=dashboard /dashboard/dist ./dashboard
 # APK repository, agent APK, uploaded logs, generated secrets: the volume.
 RUN mkdir -p /app/storage && chown -R node:node /app/storage
 USER node

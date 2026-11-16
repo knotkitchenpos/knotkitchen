@@ -4,7 +4,7 @@ import { Err, Field, Modal } from "./ui.jsx";
 
 /**
  * The KKMDM account of the signed-in CSD person, and the permission check the
- * KKMDM pages use (as kkmdm/dashboard/src/auth.jsx). There is no KKMDM sign-in
+ * KKMDM pages use (as the former kkmdm/dashboard's auth.jsx). There is no KKMDM sign-in
  * screen here: CSD signs in for them (./api.js).
  */
 export const AuthContext = createContext(null);

@@ -1,6 +1,6 @@
 /*
  * KKMDM's screens inside CSD (owner, 2026-11-03), in CSD's theme. The pages
- * keep KKMDM's class names (kkmdm/dashboard/src/styles.css); here they are
+ * keep KKMDM's class names (from the former kkmdm/dashboard's styles.css); here they are
  * CSD's cards, buttons, badges and tables. Scoped to .kkmdm so nothing else
  * in CSD is touched.
  */

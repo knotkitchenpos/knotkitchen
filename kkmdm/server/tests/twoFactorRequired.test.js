@@ -9,8 +9,6 @@ test("an admin without 2FA reaches only the 2FA setup in production", () => {
   // Accounts from CSD signed in with CSD's own two-factor sign-in (lib/csdSso.js).
   assert.ok(auth.includes(`if (config.isProduction && !admin.totpEnabled && admin.ssoProvider !== "csd" && !TWO_FA_SETUP_PATHS.includes(req.originalUrl.split("?")[0])) {`));
   assert.match(auth, /"\/api\/auth\/2fa\/setup", "\/api\/auth\/2fa\/enable"/);
-  const dash = fs.readFileSync(path.join(__dirname, "..", "..", "dashboard", "src", "App.jsx"), "utf8");
-  assert.match(dash, /const needs2fa = admin\.twoFactorRequired && !admin\.totpEnabled;/);
 });
 
 /** Owner, 2026-11-03: a device stays signed in until it signs out; signing out ends only that device. */

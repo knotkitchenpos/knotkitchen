@@ -68,12 +68,10 @@ const config = {
   agentAdminComponent: "com.knotkitchen.mdm/.AdminReceiver",
   posPackage: "com.knotkitchen.pos",
   storageDir,
-  // The built dashboard (dashboard/dist), served at / in the container.
-  dashboardDir: env.DASHBOARD_DIR || "",
   superAdminEmail: env.SUPERADMIN_EMAIL || "admin@knotkitchen.com",
   superAdminPassword: env.SUPERADMIN_PASSWORD || "",
-  // Local CSD (5175) shows KKMDM too.
-  dashboardOrigins: (env.DASHBOARD_ORIGINS || "http://localhost:5177,http://localhost:5175").split(",").map((s) => s.trim()).filter(Boolean),
+  // CSD (local: 5175) is KKMDM's only admin UI.
+  dashboardOrigins: (env.DASHBOARD_ORIGINS || "http://localhost:5175").split(",").map((s) => s.trim()).filter(Boolean),
   alertWebhookUrl: env.ALERT_WEBHOOK_URL || "",
   // Hosts the Applications "import from URL" may download from.
   importHosts: (env.KKMDM_IMPORT_HOSTS || "github.com,business.knotkitchen.com").split(",").map((s) => s.trim()).filter(Boolean),
