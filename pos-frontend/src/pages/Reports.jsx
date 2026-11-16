@@ -15,6 +15,9 @@ import { formatQty, resolveItemAmounts } from "../utils/orderItems";
 import { money, localDay, cellDay, dateGB as fmtDate, time12 as fmtTime } from "../utils";
 import { opensFromLeft } from "../utils/popoverSide";
 
+// One shared empty value while loading: a fresh one each render re-ran the memos/effects below.
+const NO_ORDERS = Object.freeze([]);
+
 /**
  * Module 5 — Reports.
  *
@@ -522,7 +525,7 @@ const Reports = () => {
 
   const summary = data?.data?.data?.summary;
   const breakdown = data?.data?.data?.breakdown;
-  const orders = data?.data?.data?.orders || [];
+  const orders = data?.data?.data?.orders || NO_ORDERS;
   const responseWindow = data?.data?.data?.window;
   // The totals cover every order; the list stops at the newest 1,000.
   const truncated = Boolean(data?.data?.data?.truncated);

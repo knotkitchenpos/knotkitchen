@@ -42,6 +42,9 @@ import ProductDrawer from "./manageMenu/ProductDrawer";
 import GroupDrawer from "./manageMenu/GroupDrawer";
 import CategoryDrawer from "./manageMenu/CategoryDrawer";
 
+// One shared empty value while loading: a fresh one each render re-ran the memos/effects below.
+const NO_MENUS = Object.freeze([]);
+
 const NAV_TABS = [
   { id: "product", label: "Products" },
   { id: "groups", label: "Groups" },
@@ -137,7 +140,7 @@ const ManageMenu = () => {
   const [viewingProduct, setViewingProduct] = useState(null);
 
   const { data: menusRes, isLoading } = useQuery({ queryKey: ["menus"], queryFn: () => getMenus() });
-  const menus = menusRes?.data?.data || [];
+  const menus = menusRes?.data?.data || NO_MENUS;
 
   // The store's group list, from the server, so every device shows the same
   // groups -- including ones not attached to any product yet. It used to be
@@ -563,7 +566,7 @@ const ManageMenu = () => {
   }, [activeCategory]);
 
   // Selection handlers
-  const safeMenus = Array.isArray(menus) ? menus : [];
+  const safeMenus = Array.isArray(menus) ? menus : NO_MENUS;
   const currentItems = useMemo(() => {
     if (activeTab === "groups") {
       if (activeGroup) {

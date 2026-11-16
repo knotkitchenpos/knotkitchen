@@ -7,6 +7,9 @@ import { uploadMedia } from "../../https/storefrontApi";
 import MapPinPicker from "./MapPinPicker";
 import PaymentGatewayCard from "./PaymentGatewayCard";
 
+// One shared empty value while loading: a fresh one each render re-ran the memos/effects below.
+const NO_STORE = Object.freeze({});
+
 /**
  * The store's logo: uploaded here, shown everywhere -- the POS header, the
  * invoice, printed receipts, the table QR page and the website. Saved with
@@ -83,7 +86,7 @@ const StorePropertiesView = () => {
   const qc = useQueryClient();
   const user = useSelector((s) => s.user);
   const { data: propsRes, isLoading } = useQuery({ queryKey: ["store-properties"], queryFn: getStoreProperties });
-  const storeData = propsRes?.data?.data || {};
+  const storeData = propsRes?.data?.data || NO_STORE;
 
   const [pin, setPin] = useState("");
   const [pinVerified, setPinVerified] = useState(false);

@@ -129,7 +129,6 @@ const CameraScanner = ({ onCode, onClose, paused }) => {
       }
     })();
     return () => { alive = false; stop(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

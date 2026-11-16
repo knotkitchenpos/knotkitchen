@@ -216,7 +216,7 @@ export const KotRoutingPanel = ({ printer, menus, onChange, loading }) => {
 };
 
 /** Above the kitchen printers: who prints what, and what no printer takes. */
-export const KotRoutingOverview = ({ kitchens, menus, hasReceipt }) => {
+export const KotRoutingOverview = ({ kitchens, menus }) => {
   const [showMissing, setShowMissing] = useState(false);
   const missing = useMemo(() => unassignedItems(kitchens, menus), [kitchens, menus]);
   if (kitchens.length < 1) return null;

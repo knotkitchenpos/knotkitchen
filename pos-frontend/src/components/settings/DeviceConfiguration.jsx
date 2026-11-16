@@ -656,7 +656,7 @@ const DeviceConfiguration = () => {
           btOn={btOn}
         />
         {/* ---------- Kitchen (KOT) printers, routed by category ---------- */}
-        <KotRoutingOverview kitchens={kitchens} menus={menus} hasReceipt={Boolean(device.type)} />
+        <KotRoutingOverview kitchens={kitchens} menus={menus} />
         {kitchens.map((k) => (
           <PrinterSlot
             key={`kitchen-${k.id}-${k.type || "none"}`}

@@ -459,7 +459,7 @@ const ProductPanel = ({ onAddCategory, onAddProduct }) => {
       });
     }
     return basePrice + extras;
-  }, [customizingItem, selectedVariantId, selectedModifiers]);
+  }, [customizingItem, selectedVariantId, selectedModifiers, orderType]);
 
   const handlePosCustomizedAdd = () => {
     if (!customizingItem) return;

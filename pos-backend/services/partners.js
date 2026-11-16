@@ -141,10 +141,17 @@ const storeCards = async (partner) => {
     BusinessBalance.find({ restaurantId: { $in: restaurantIds } }).select("restaurantId balancePaise lockedAt lockedReason").lean(),
     PlatformSubscription.find({ restaurantId: { $in: restaurantIds } }).select("restaurantId planName planCode status currentPeriodEnd").lean(),
     User.find({ _id: { $in: links.map((l) => l.userId) } }).select("password role isActive isDeleted storeId name").lean(),
-    Order.aggregate([
-      { $match: { restaurantId: { $in: restaurantIds }, isDeleted: { $ne: true } } },
-      { $group: { _id: "$restaurantId", at: { $max: "$createdAt" } } },
-    ]),
+    // Each store's newest order: one index lookup per store ({ restaurantId, createdAt }),
+    // not a group over every order it ever took (this runs on most Partners pages).
+    Promise.all(
+      restaurantIds.map((restaurantId) =>
+        Order.findOne({ restaurantId, isDeleted: { $ne: true } })
+          .sort({ createdAt: -1 })
+          .select("createdAt")
+          .lean()
+          .then((o) => (o ? { _id: restaurantId, at: o.createdAt } : null)),
+      ),
+    ).then((rows) => rows.filter(Boolean)),
   ]);
   const by = (list, key = "restaurantId") => new Map(list.map((x) => [String(x[key]), x]));
   const rById = by(restaurants, "_id");

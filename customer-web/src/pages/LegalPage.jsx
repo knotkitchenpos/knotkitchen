@@ -1,4 +1,3 @@
-/* eslint-disable react/no-unescaped-entities -- legal prose keeps its apostrophes and quotation marks */
 import React, { useEffect } from "react";
 import { Link } from "react-router-dom";
 import { LEGAL_PAGES, legalPage } from "../lib/legalPages";
