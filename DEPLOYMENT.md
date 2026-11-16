@@ -28,7 +28,6 @@ Let's Encrypt HTTP-01._
 | Support desk / internal admin | `csd.knotkitchen.com` | `csd-web` |
 | POS SPA | `business.knotkitchen.com` | `pos-web` |
 | POS backend API | `api.knotkitchen.com` | `pos-api` |
-| Partner onboarding / agreement portal | `agreement.knotkitchen.com` | `onboard-portal` (`onboard/` in this repo) |
 | Knot Eats marketplace | `eats.knotkitchen.com` | `customer-web` in "eats" mode (see §14) |
 | Per-store customer website | `<store_id>.knotkitchen.com` (any subdomain not listed above) | `customer-web`, resolved by hostname via `resolveStorefront()` |
 

@@ -115,11 +115,9 @@ test("legal records survive a permanent delete: contract, agreement snapshot, si
   ]);
 });
 
-test("the delete route keeps the agreement link and no longer deletes the portal's copy", () => {
+test("the delete route keeps the agreement link (it carries the signed snapshot)", () => {
   const src = SRC("controllers", "csdStoreController.js");
   assert.ok(!/CsdAgreementLink\.deleteOne/.test(src), "the link carries the signed snapshot");
-  assert.ok(!/deleteAgreement/.test(src), "the portal holds the signed original");
-  assert.ok(!/deleteAgreement/.test(SRC("services", "onboardPortalService.js")));
 });
 
 test("it refuses to run with no scope at all", async () => {

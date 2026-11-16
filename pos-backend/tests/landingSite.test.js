@@ -116,7 +116,10 @@ test("hardware refunds are payable out, as Agreement clause 9.1 allows", () => {
 });
 
 test("terms link the public Agreement; shipping matches the real device flow", () => {
-  assert.match(page("terms.html"), /href="https:\/\/agreement\.knotkitchen\.com\/agreement\.html"/);
+  assert.match(page("terms.html"), /href="https:\/\/knotkitchen\.com\/agreement\.html"/);
+  // The agreement text is a static page on the main site (the portal at agreement.<base> was retired 2026-11-16).
+  assert.match(page("agreement.html"), /KNOTKITCHEN RESTAURANT SERVICE AGREEMENT/);
+  assert.doesNotMatch(page("terms.html"), /agreement\.knotkitchen\.com/);
   assert.doesNotMatch(page("terms.html"), /POS devices/);
   const shipping = page("shipping.html");
   assert.match(shipping, /There is no separate shipping charge/);

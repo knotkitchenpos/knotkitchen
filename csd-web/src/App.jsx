@@ -9,7 +9,6 @@ import StoreSearch from "./pages/StoreSearch";
 import RestaurantDetail from "./pages/RestaurantDetail";
 import Dashboard from "./pages/Dashboard";
 import Onboarding from "./pages/Onboarding";
-import Agreements from "./pages/Agreements";
 import SearchConsole from "./pages/SearchConsole";
 import Jobs from "./pages/Jobs";
 import JobDetail from "./pages/JobDetail";
@@ -101,10 +100,6 @@ const App = () => (
           <Route
             path="/onboarding"
             element={<RequireAdmin><Onboarding /></RequireAdmin>}
-          />
-          <Route
-            path="/agreements"
-            element={<RequireAdmin><Agreements /></RequireAdmin>}
           />
           <Route
             path="/staff"

@@ -30,9 +30,11 @@ networks:
 # -----------------------------------------------------------------------------
 # Volumes.
 #
-# The three volumes below marked `external: true` hold data that exists NOWHERE
-# ELSE and cannot be regenerated: restaurant compliance documents, and the
-# onboarding portal's own database. Compose does not manage external volumes,
+# The volumes below marked `external: true` hold data that exists NOWHERE
+# ELSE and cannot be regenerated: restaurant compliance documents and KKMDM's
+# storage. (knotkitchen_onboard_data / _onboard_uploads, the retired
+# onboarding portal's signed agreements and KYC, are no longer mounted but
+# are kept on the server and still backed up by deploy/backup.sh.) Compose does not manage external volumes,
 # which is the point — `docker compose down -v` and `docker volume prune` both
 # leave them alone. Those two commands are the realistic way this data dies,
 # because they get typed by hand during an incident.
@@ -57,12 +59,6 @@ volumes:
   csd_documents:   # restaurant KYC/compliance documents — never served statically
     external: true
     name: knotkitchen_csd_documents
-  onboard_data:    # onboard-portal's server/data/database.json (agents + agreements)
-    external: true
-    name: knotkitchen_onboard_data
-  onboard_uploads: # onboard-portal's uploaded KYC documents
-    external: true
-    name: knotkitchen_onboard_uploads
   kkmdm_storage:   # KKMDM: uploaded APKs, the agent APK, device logs, its generated secrets
     external: true
     name: knotkitchen_kkmdm_storage
@@ -289,10 +285,6 @@ services:
       RESET_SUPERADMIN_PASSWORD: ${RESET_SUPERADMIN_PASSWORD:-}
       # Must match the csd_documents mount below.
       CSD_DOCUMENTS_DIR: /app/csd-documents
-      # Agreement → store creation. Unset until the onboarding portal supports
-      # a service token; CSD then makes no calls at all.
-      ONBOARD_BASE_URL: ${ONBOARD_BASE_URL:-http://onboard-portal:3000}
-      ONBOARD_SERVICE_TOKEN: ${ONBOARD_SERVICE_TOKEN:-}
 
     # Local uploads dir — only used if MEDIA_STORAGE_PROVIDER=local. Cloud
     # providers (S3-compatible / Cloudinary) write there and this volume
@@ -369,37 +361,6 @@ services:
     networks: [knot]
 
   # ---------------------------------------------------------------------------
-  # Partner Onboarding & Agreement portal  →  agreement.${BASE_DOMAIN}
-  # Lives in this repo under onboard/ (it was a separate repo, knotkitchenpos/
-  # onboard, cloned to /srv/onboard; that repo is gone), so it deploys with
-  # every push like the other apps.
-  # ---------------------------------------------------------------------------
-  onboard-portal:
-    build:
-      context: ../onboard
-      dockerfile: Dockerfile
-    image: knotkitchen/onboard-portal:latest
-    restart: unless-stopped
-    networks: [knot]
-    environment:
-      NODE_ENV: production
-      PORT: "3000"
-      ALLOWED_ORIGINS: https://agreement.${BASE_DOMAIN}
-      AGENT_JWT_SECRET: ${ONBOARD_JWT_SECRET}
-      # Only used to bootstrap an admin account if server/data/database.json
-      # doesn't exist on the volume yet.
-      ADMIN_USERNAME: ${ONBOARD_ADMIN_USERNAME:-admin}
-      ADMIN_PASSWORD: ${ONBOARD_ADMIN_PASSWORD}
-      # Shared secret that lets CSD read agreements and their uploaded
-      # documents without an agent session. MUST match the value pos-api uses.
-      # Unset = the portal accepts no service token at all and CSD reports the
-      # connection as not configured, which is the correct inert default.
-      ONBOARD_SERVICE_TOKEN: ${ONBOARD_SERVICE_TOKEN:-}
-    volumes:
-      - onboard_data:/app/server/data
-      - onboard_uploads:/app/uploads
-
-  # ---------------------------------------------------------------------------
   # KKMDM (tablet management: server + admin dashboard)  →  mdm.${BASE_DOMAIN}
   #
   # Its own database (KKMDM_DB_NAME) on the POS cluster, and a read-only look
@@ -467,6 +428,5 @@ services:
     depends_on:
       - pos-api
       - kkmdm
-      - onboard-portal
       - pos-web
       - customer-web

@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   FiGrid, FiUserPlus, FiUsers, FiShoppingBag, FiSearch, FiMessageSquare,
-  FiCheckSquare, FiBarChart2, FiSettings, FiLogOut, FiMenu, FiX, FiBell, FiFileText,
+  FiCheckSquare, FiBarChart2, FiSettings, FiLogOut, FiMenu, FiX, FiBell,
   FiDollarSign, FiPackage, FiMapPin, FiTablet, FiChevronDown, FiActivity, FiBookOpen,
 } from "react-icons/fi";
 import { menuFor } from "../kkmdm/menu";
@@ -24,7 +24,6 @@ const NAV = [
   { to: "/stores", label: "Store Management", icon: FiShoppingBag, adminOnly: false, group: "Stores", section: "stores" },
   { to: "/health", label: "Store Health", icon: FiActivity, adminOnly: false, group: "Stores", section: "health" },
   { to: "/onboarding", label: "Store Onboarding", icon: FiUserPlus, adminOnly: true, group: "Stores" },
-  { to: "/agreements", label: "Agreements", icon: FiFileText, adminOnly: true, group: "Stores" },
   { to: "/eats", label: "Knot Eats", icon: FiMapPin, adminOnly: false, group: "Stores", section: "eats" },
   { to: "/search", label: "Search Console", icon: FiSearch, adminOnly: false, group: "Support", section: "search" },
   { to: "/chat", label: "Chat", icon: FiMessageSquare, adminOnly: false, group: "Support", badge: "whatsapp", section: ["chat", "whatsapp"] },

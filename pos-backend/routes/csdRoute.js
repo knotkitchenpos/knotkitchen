@@ -29,9 +29,6 @@ const {
 } = require("../controllers/csdBillingConfigController");
 const { singleImageUpload } = require("../middlewares/uploadHandler");
 const {
-  listAgreements, getAgreement, createStoreFromAgreement, retryPortalNotify,
-} = require("../controllers/csdAgreementController");
-const {
   listDocuments, downloadDocument, uploadDocument, deleteDocument,
 } = require("../controllers/csdDocumentController");
 const { listMenus, listUsers, updateUser } = require("../controllers/csdCatalogController");
@@ -242,13 +239,6 @@ router.delete("/restaurants/:storeId/documents/:docId", requireCsdAdmin, deleteD
 
 router.patch("/restaurants/:storeId/charges", requireCsdAdmin, updateCharges);
 router.patch("/restaurants/:storeId/google-business", requireCsdAdmin, updateGoogleBusiness);
-
-// Agreement → store creation. Admin only: this creates a paying customer
-// record and is the commercial handover from sales to operations.
-router.get("/agreements", requireCsdAdmin, listAgreements);
-router.get("/agreements/:id", requireCsdAdmin, getAgreement);
-router.post("/agreements/:id/create-store", requireCsdAdmin, createStoreFromAgreement);
-router.post("/agreements/:id/retry-notify", requireCsdAdmin, retryPortalNotify);
 
 // Menus (read-only, for the website editor's dish picker) and the
 // restaurant's own POS users, ported from the Admin Portal. Any signed-in

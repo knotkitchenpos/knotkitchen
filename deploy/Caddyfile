@@ -15,7 +15,6 @@
 #   csd.knotkitchen.com        → csd-web       (Customer Support Desk)
 #   business.knotkitchen.com   → pos-web       (POS SPA)
 #   api.knotkitchen.com        → pos-api       (POS backend API)
-#   agreement.knotkitchen.com  → onboard-portal (partner onboarding)
 #   mdm.knotkitchen.com        → kkmdm          (tablet management + dashboard)
 #   bill.knotkitchen.com       → pos-api       (customer bill link, /r/<token>)
 #   pay.knotkitchen.com        → pos-api       (website checkout, /c/*)
@@ -356,28 +355,6 @@ mdm.{$BASE_DOMAIN} {
 		header_up X-Forwarded-Host    {host}
 
 		health_uri     /healthz
-		health_interval 15s
-	}
-}
-
-# =============================================================================
-# agreement.knotkitchen.com — Partner Onboarding & Agreement portal
-# =============================================================================
-agreement.{$BASE_DOMAIN} {
-	import security_headers
-
-	request_body {
-		max_size 20MB
-	}
-
-	encode zstd gzip
-	reverse_proxy onboard-portal:3000 {
-		header_up X-Real-IP           {remote_host}
-		header_up X-Forwarded-For     {remote_host}
-		header_up X-Forwarded-Proto   {scheme}
-		header_up X-Forwarded-Host    {host}
-
-		health_uri     /api/health
 		health_interval 15s
 	}
 }

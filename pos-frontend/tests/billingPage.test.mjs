@@ -44,7 +44,7 @@ test("every purchase is priced by /quote, shown as an order summary, and sent on
   assert.match(billing, /disabled=\{!accepted \|\| busy\}/);
   assert.match(billing, /\{summary && \(\s*<OrderSummary/);
   // The accepted agreement is one tap away (landing/X-AGREEMENT-IN-APP).
-  assert.match(billing, /href="https:\/\/agreement\.knotkitchen\.com\/agreement\.html"/);
+  assert.match(billing, /href="https:\/\/knotkitchen\.com\/agreement\.html"/);
   // A short wallet (402) is a warning with the server's shortfall, not a generic failure.
   assert.match(billing, /err\?\.response\?\.status === 402 \? "warning" : "error"/);
 });

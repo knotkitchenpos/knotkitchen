@@ -63,11 +63,12 @@ in this repository:
 
 | App                | Source                              | Type              | Dev port |
 | ------------------ | ----------------------------------- | ----------------- | -------- |
-| Onboarding portal  | separate repo, cloned as `../onboard` | Node.js + Express | `3000` |
+| (none)             | The onboarding/agreement portal was retired on 2026-11-16 | | |
 
-The compose file references it as `context: ../../onboard`, so a checkout of
-this repo alone **cannot** `docker compose build` without that sibling clone
-present on the VPS at `/srv/onboard`.
+Its signed agreements and KYC uploads stay on the server in the
+`knotkitchen_onboard_data` / `knotkitchen_onboard_uploads` volumes (no longer
+mounted, still backed up). The agreement text is published at
+knotkitchen.com/agreement.html.
 
 ### 1.2 Multi-tenant plumbing already in place
 
@@ -183,8 +184,8 @@ Nothing that already worked was replaced or rewritten.
                 internal Docker network `knot`
    ┌──────────┬──────────┬──────────────┬───────────┐
    ▼          ▼          ▼              ▼           ▼
- pos-web  csd-web  customer-web  onboard-portal   pos-api
-  :80       :80        :80          :3000          :8000
+ pos-web  csd-web  customer-web      kkmdm        pos-api
+  :80       :80        :80          :8100          :8000
                                                      │
                                                      ▼
                                              MongoDB Atlas
@@ -221,7 +222,6 @@ extra hop in front of `trust proxy = 1`.
 | A    | `knotkitchen.com`             | `<VPS IPv4>` | customer-web    |
 | A    | `business.knotkitchen.com`    | `<VPS IPv4>` | pos-web (POS SPA) |
 | A    | `csd.knotkitchen.com`         | `<VPS IPv4>` | csd-web (support desk) |
-| A    | `agreement.knotkitchen.com`   | `<VPS IPv4>` | onboard-portal  |
 | A    | `api.knotkitchen.com`         | `<VPS IPv4>` | pos-api         |
 | A    | `*.knotkitchen.com`           | `<VPS IPv4>` | **Wildcard** — customer-web, one vhost per store |
 
@@ -284,7 +284,6 @@ subdomain and slug. See the resolution order in §1.2.
 | pos-api        | 8000          | ❌ no       | `api.knotkitchen.com`              |
 | pos-web        | 80            | ❌ no       | `business.knotkitchen.com`         |
 | csd-web        | 80            | ❌ no       | `csd.knotkitchen.com`              |
-| onboard-portal | 3000          | ❌ no       | `agreement.knotkitchen.com`        |
 | customer-web   | 80            | ❌ no       | `knotkitchen.com` + `*.knotkitchen.com` |
 
 Dev ports `5173` (pos-web), `5175` (csd-web), `5176`
@@ -375,8 +374,8 @@ publishing customer identity documents.
   | `knotkitchen_caddy_data`      | ACME account key + issued certificates      |
   | `knotkitchen_backend_uploads` | menu media (when `MEDIA_STORAGE_PROVIDER=local`) |
   | `knotkitchen_csd_documents`   | restaurant KYC / GST / FSSAI / agreements   |
-  | `knotkitchen_onboard_data`    | onboard portal `database.json` — **a primary datastore**, not mirrored in Atlas |
-  | `knotkitchen_onboard_uploads` | KYC documents uploaded via the portal       |
+  | `knotkitchen_onboard_data`    | the retired onboard portal's `database.json` (signed agreements) — kept, not mounted, backed up |
+  | `knotkitchen_onboard_uploads` | KYC documents uploaded via the retired portal — kept, not mounted, backed up |
 
   A volume that does not exist yet is skipped with a warning; a volume that
   exists and fails to archive aborts the run, because a silently partial
@@ -502,11 +501,10 @@ enough that a name says what a file is.
 
 The customer website is `customer-web` only. The POS used to carry a second copy under `src/storefront/` for `/website/preview`; Preview now opens the real site, and the copy is gone.
 
-### customer-web, csd-web, onboard, pos-desktop
+### customer-web, csd-web, pos-desktop
 
 - **customer-web**: `src/lib/` (API client, hostname → store, dispatch, legal page registry), `src/components/landing/` (the five designs and shared parts), `src/pages/legal/` (policy bodies). Tests in `src/lib/*.test.mjs`.
 - **csd-web**: `src/api/index.js` (the one client), `src/lib/format.js` (money and dates), `src/pages/`, `src/components/`.
-- **onboard**: `server/` (Express, `routes/api.js`, `middleware/{auth,serviceAuth}.js`), `public/index.html` plus `public/css/portal.css` and `public/js/` (agreement template, agreement text, markdown, PDF, API client). Tests in `tests/`.
 - **pos-desktop**: Electron shell for Windows (`main.js`, `preload.js`).
 
 ### 11.4 Money rules, stated once

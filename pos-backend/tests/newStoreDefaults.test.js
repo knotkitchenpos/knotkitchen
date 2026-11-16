@@ -58,7 +58,7 @@ test("an older store provisioned on first access keeps auto-ready off, as it alw
 });
 
 test("every way a store is created starts it with the new-store order types and settings", () => {
-  for (const file of ["controllers/csdOnboardingController.js", "controllers/csdAgreementController.js", "controllers/userController.js"]) {
+  for (const file of ["controllers/csdOnboardingController.js", "controllers/userController.js"]) {
     const src = SRC(file);
     const create = src.slice(src.indexOf("await Restaurant.create({"));
     const fields = create.slice(0, create.indexOf("});"));

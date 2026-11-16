@@ -2,11 +2,10 @@ const createHttpError = require("http-errors");
 const mongoose = require("mongoose");
 const CsdStoreDocument = require("../models/csdStoreDocumentModel");
 const storage = require("../services/csdDocumentStorage");
-const portal = require("../services/onboardPortalService");
 const { csdAudit } = require("../services/csdAuditService");
 const { loadStore } = require("./csdRestaurantController");
 
-const { CATEGORIES, categoryForFileKey } = CsdStoreDocument;
+const { CATEGORIES } = CsdStoreDocument;
 const str = (v) => String(v ?? "").trim();
 
 const shape = (d) => ({
@@ -25,77 +24,6 @@ const shape = (d) => ({
   lastUpdatedAt: d.replacedAt || d.updatedAt,
   replacedByName: d.replacedByName || "",
 });
-
-/**
- * Import every file attached to an agreement into a store's documents.
- *
- * The bytes are COPIED, not referenced. The portal can edit or delete an
- * agreement and its individual files, and a store's GST certificate must not
- * vanish because a sales agent tidied up months later. Copying also means the
- * documents survive the portal being unavailable.
- *
- * Never throws: this runs inside store creation, and a document that failed
- * to import must not undo a store that was otherwise created correctly. The
- * per-file outcome is returned so the caller can report it.
- *
- * @returns {{ imported: [], failed: [] }}
- */
-const importAgreementDocuments = async ({ agreement, storeId, staff, req }) => {
-  const files = agreement?.files || {};
-  const imported = [];
-  const failed = [];
-
-  for (const [fileKey, file] of Object.entries(files)) {
-    const url = file?.url;
-    if (!url) continue;
-
-    try {
-      const { buffer } = await portal.fetchFile(url);
-      const saved = await storage.save({ buffer, storeId });
-
-      const doc = await CsdStoreDocument.create({
-        storeId,
-        category: categoryForFileKey(fileKey, file.name),
-        name: file.name || fileKey,
-        originalName: file.name || "",
-        storageKey: saved.storageKey,
-        mimeType: saved.mimeType,
-        size: saved.size,
-        checksum: saved.checksum,
-        source: "agreement",
-        sourceAgreementId: agreement.id,
-        sourceFileKey: fileKey,
-        uploadedById: staff?._id,
-        uploadedByStaffId: staff?.staffId || "",
-        uploadedByName: staff?.fullName || "",
-      });
-
-      imported.push(shape(doc));
-    } catch (err) {
-      // A duplicate means a previous import already brought this file in.
-      if (err?.code === 11000) continue;
-      failed.push({ fileKey, name: file?.name || fileKey, reason: err.message });
-    }
-  }
-
-  if (imported.length || failed.length) {
-    await csdAudit({
-      req,
-      staff,
-      action: "CSD_DOCUMENTS_IMPORTED",
-      resource: "CsdStoreDocument",
-      entityType: "Store",
-      storeId,
-      description: `Imported ${imported.length} document(s) from agreement ${agreement.id}${
-        failed.length ? `; ${failed.length} failed` : ""
-      }`,
-      newValue: { imported: imported.map((d) => d.name), failed },
-      severity: failed.length ? "WARNING" : "INFO",
-    });
-  }
-
-  return { imported, failed };
-};
 
 /** GET /api/csd/restaurants/:storeId/documents — staff and admin (§31). */
 const listDocuments = async (req, res, next) => {
@@ -314,5 +242,5 @@ const deleteDocument = async (req, res, next) => {
 };
 
 module.exports = {
-  importAgreementDocuments, listDocuments, downloadDocument, uploadDocument, deleteDocument,
+  listDocuments, downloadDocument, uploadDocument, deleteDocument,
 };

@@ -130,7 +130,7 @@ const OrderSummary = ({ summary, onClose, onConfirm, busy }) => {
           <input type="checkbox" className="mt-0.5" checked={accepted} onChange={(e) => setAccepted(e.target.checked)} />
           <span>
             I have read the order summary above and accept it and the{" "}
-            <a href="https://agreement.knotkitchen.com/agreement.html" target="_blank" rel="noopener" className="underline">
+            <a href="https://knotkitchen.com/agreement.html" target="_blank" rel="noopener" className="underline">
               KnotKitchen Restaurant Service Agreement
             </a>{" "}
             on behalf of this restaurant. {online ? "I will pay it now online." : "It will be paid from the wallet."}
