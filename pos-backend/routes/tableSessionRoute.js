@@ -11,6 +11,7 @@ const {
   cancelSessionItem,
   setServiceCharge,
   setDiscount,
+  useLoyaltyPoints,
   moveSession,
   mergeSessions,
 } = require("../controllers/tableSessionController");
@@ -36,5 +37,7 @@ router.route("/:id/merge").post(isVerifiedUser, mergeSessions);
 router.route("/:id/items/:itemId/cancel").post(isVerifiedUser, requireProtectedAction, cancelSessionItem);
 router.route("/:id/service-charge").post(isVerifiedUser, setServiceCharge);
 router.route("/:id/discount").post(isVerifiedUser, requireProtectedAction, setDiscount);
+// A customer's own loyalty points as the bill's discount: no PIN (services/loyalty).
+router.route("/:id/loyalty").post(isVerifiedUser, useLoyaltyPoints);
 
 module.exports = router;

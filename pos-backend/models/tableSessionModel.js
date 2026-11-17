@@ -72,6 +72,9 @@ const tableSessionSchema = new mongoose.Schema(
     capacity: { type: Number, default: 0 },
     customerName: { type: String, default: "" },
     customerPhone: { type: String, default: "" },
+    // Loyalty points used on this bill (services/loyalty): each { phone, points, value, customerId, key }.
+    // Given back if the discount changes, the table closes unpaid; carried on a merge.
+    loyaltyRedeems: { type: [mongoose.Schema.Types.Mixed], default: [] },
     customerId: { type: mongoose.Schema.Types.ObjectId, ref: "Customer" },
     // When the automatic e-bill was sent, and the lock that stops it going
     // twice. A settle can be retried -- a webhook redelivery, a double-tap on

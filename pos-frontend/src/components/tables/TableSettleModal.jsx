@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "../../utils/notify";
 import { money } from "../../utils";
-import { getStoreProperties, getTableSessionById, setTableDiscount, setTableServiceCharge } from "../../https";
+import { getStoreProperties, getTableSessionById, setTableDiscount, setTableServiceCharge, applyTableLoyalty } from "../../https";
 import DiscountModal from "../pos/DiscountModal";
 
 /**
@@ -403,6 +403,11 @@ const TableSettleModal = ({ table, session, busy, onClose, onConfirm }) => {
           onClose={() => setShowDiscount(false)}
           onApply={applyDiscount}
           onClear={() => applyDiscount({ mode: "none", value: 0 })}
+          // The customer's own points as the discount (no PIN; given back if the discount changes or the table closes unpaid).
+          onUseLoyalty={async ({ phone, points }) => {
+            if (await restrike(() => applyTableLoyalty(session._id, { phone, points }), "Could not use the points.")) setShowDiscount(false);
+          }}
+          loyaltyPhone={live.customerPhone || ""}
         />
       )}
     </div>

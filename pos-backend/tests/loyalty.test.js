@@ -44,3 +44,18 @@ test("wiring: checked before the PIN rule, deducted before save and given back i
   assert.match(src("models/loyaltyEntryModel.js"), /key: \{ type: String, required: true, unique: true \}/, "each change once");
   assert.match(src("routes/restaurantRoute.js"), /router\.route\("\/loyalty"\)\.get\(isVerifiedUser, loyaltySettings\.getSettings\)\.put\(isVerifiedUser, requireTypedPin\(\), loyaltySettings\.saveSettings\);/);
 });
+
+/** Owner, 2026-11-17 (#34): points on table bills, at settlement. */
+test("table bills: points checked and deducted without a PIN, applied through the one discount path, given back when undone", () => {
+  const c = src("controllers/tableSessionController.js");
+  const r = src("routes/tableSessionRoute.js");
+  assert.match(r, /router\.route\("\/:id\/loyalty"\)\.post\(isVerifiedUser, useLoyaltyPoints\);/, "no PIN: the customer's own points");
+  assert.match(c, /if \(session\.customerPhone && session\.customerPhone !== phone\)/, "the table's own customer");
+  assert.match(c, /if \(use\.value >= sub\) throw createHttpError\(400, "Those points would cover the whole bill/);
+  assert.ok(c.indexOf("await loyalty.redeem({ restaurantId: session.restaurantId") < c.indexOf("req.loyaltyDiscount = true;"), "deducted before it is applied");
+  assert.match(c, /return setDiscount\(req, res, async \(err\) => \{\n\s+if \(err\) \{/, "given back if applying fails");
+  assert.match(c, /if \(!req\.loyaltyDiscount && \(session\.loyaltyRedeems \|\| \[\]\)\.length\) \{\n\s+await require\("\.\.\/services\/loyalty"\)\.returnForSession\(session\);/, "a discount set by hand gives them back");
+  assert.match(c, /addTimeline\(session, "SESSION_CLOSED", "Session closed without payment", "POS", req\.user\?\._id\);\n\s+await require\("\.\.\/services\/loyalty"\)\.returnForSession\(session\);/, "closed unpaid gives them back");
+  assert.match(c, /target\.loyaltyRedeems = \[\.\.\.\(target\.loyaltyRedeems \|\| \[\]\), \.\.\.source\.loyaltyRedeems\];/, "a merge carries them with the discount");
+  assert.match(src("services/loyalty.js"), /key: `return:\$\{u\.key\}`/, "each use given back once");
+});

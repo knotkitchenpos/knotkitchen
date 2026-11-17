@@ -223,6 +223,9 @@ export const setTableServiceCharge = (sessionId, waived) =>
 // Staff are asked for the Security PIN by the global popup.
 export const setTableDiscount = (sessionId, data) =>
   axiosWrapper.post(`/api/table-session/${sessionId}/discount`, data);
+// A customer's loyalty points as the table bill's discount (no PIN).
+export const applyTableLoyalty = (sessionId, data) =>
+  axiosWrapper.post(`/api/table-session/${sessionId}/loyalty`, data);
 
 // Menu Endpoints
 // The "has it changed?" check is quick; a whole menu on a slow line may take longer.

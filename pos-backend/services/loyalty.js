@@ -189,8 +189,8 @@ const checkRedeem = async ({ restaurantId, phone, points, discount }) => {
   return { customer: c, points: want, value };
 };
 
-/** Deduct points for an order, atomically: never below zero, once per order. */
-const redeem = async ({ restaurantId, customer, points, orderId }) => {
+/** Deduct points for an order (or a table bill, with its own key), atomically: never below zero, once per key. */
+const redeem = async ({ restaurantId, customer, points, orderId = null, tableSessionId = null, key = `redeem:${orderId}` }) => {
   const Customer = require("../models/customerModel");
   const taken = await Customer.findOneAndUpdate(
     { _id: customer._id, loyaltyPoints: { $gte: points } },
@@ -199,7 +199,7 @@ const redeem = async ({ restaurantId, customer, points, orderId }) => {
   );
   if (!taken) throw new LoyaltyError("Those points were just used elsewhere. Check the balance again.");
   try {
-    await LoyaltyEntry.create({ restaurantId, customerId: customer._id, kind: "REDEEM", points: -points, key: `redeem:${orderId}`, orderId });
+    await LoyaltyEntry.create({ restaurantId, customerId: customer._id, kind: "REDEEM", points: -points, key, orderId, tableSessionId });
   } catch (err) {
     // Already recorded for this order: put the points back.
     await Customer.updateOne({ _id: customer._id }, { $inc: { loyaltyPoints: points } });
@@ -212,6 +212,24 @@ const undoRedeem = async ({ customer, points, orderId }) => {
   const Customer = require("../models/customerModel");
   await Customer.updateOne({ _id: customer._id }, { $inc: { loyaltyPoints: points } });
   await LoyaltyEntry.deleteOne({ key: `redeem:${orderId}` });
+};
+
+/**
+ * A table bill's points given back (its discount changed or removed, the
+ * table closed unpaid): every use on the session, each once. Clears the list;
+ * the caller saves the session. Never throws.
+ */
+const returnForSession = async (session) => {
+  const uses = session?.loyaltyRedeems || [];
+  for (const u of uses) {
+    try {
+      await move({ customer: { _id: u.customerId }, restaurantId: session.restaurantId, kind: "RETURN", points: u.points, key: `return:${u.key}`, tableSessionId: session._id });
+    } catch (err) {
+      console.warn("[loyalty] return failed:", err?.message);
+    }
+  }
+  if (uses.length) session.loyaltyRedeems = [];
+  return uses.length;
 };
 
 /** A cancelled order: take back what it earned, give back what it redeemed. Never throws. */
@@ -228,4 +246,4 @@ const reverseForOrder = async (order) => {
   }
 };
 
-module.exports = { settingsOf, pointsFor, isExpired, lookup, earn, earnLater, checkRedeem, redeem, undoRedeem, reverseForOrder, LoyaltyError };
+module.exports = { settingsOf, pointsFor, isExpired, lookup, earn, earnLater, checkRedeem, redeem, undoRedeem, returnForSession, reverseForOrder, LoyaltyError };

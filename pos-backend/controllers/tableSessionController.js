@@ -1389,6 +1389,10 @@ const mergeSessions = async (req, res, next) => {
     // overcharged the party with nothing on screen to say so.
     const carried = Number(source.bills?.discount) || 0;
     if (carried > 0) target.bills.discount = round2((Number(target.bills?.discount) || 0) + carried);
+    if ((source.loyaltyRedeems || []).length) {
+      target.loyaltyRedeems = [...(target.loyaltyRedeems || []), ...source.loyaltyRedeems];
+      source.loyaltyRedeems = [];
+    }
     addTimeline(
       target,
       "TABLES_MERGED",
@@ -1439,6 +1443,7 @@ const closeSessionWithoutPayment = async (req, res, next) => {
     session.closedAt = new Date();
     session.closedBy = req.user?._id;
     addTimeline(session, "SESSION_CLOSED", "Session closed without payment", "POS", req.user?._id);
+    await require("../services/loyalty").returnForSession(session);
     await session.save();
 
     await Table.findOneAndUpdate(
@@ -1907,6 +1912,67 @@ const setServiceCharge = async (req, res, next) => {
  * asks staff for the Security PIN (the owner passes straight through), the
  * same rule as voiding an order.
  */
+/**
+ * POST /api/table-session/:id/loyalty { phone, points } (owner, 2026-11-17):
+ * a customer's loyalty points as this table bill's discount. Their own
+ * points, so no Security PIN. Checked (balance, minimum, the bill's phone),
+ * deducted, then applied through setDiscount; given back if that fails, if
+ * the discount is later changed, or if the table closes unpaid.
+ */
+const useLoyaltyPoints = async (req, res, next) => {
+  const loyalty = require("../services/loyalty");
+  let session;
+  let use;
+  try {
+    const { id } = req.params;
+    if (!mongoose.Types.ObjectId.isValid(id)) throw createHttpError(404, "Invalid session id!");
+    session = await TableSession.findOne({ _id: id, ...getScopeQuery(req), isDeleted: { $ne: true } });
+    if (!session) throw createHttpError(404, "Table session not found!");
+    if (SETTLED_SESSION_STATUSES.includes(session.status)) {
+      throw createHttpError(409, "This table has already been settled: its bill can no longer be changed.");
+    }
+    if ((session.loyaltyRedeems || []).length) throw createHttpError(409, "Points are already used on this bill. Remove that discount first.");
+    const phone = String(req.body?.phone || "").replace(/\D/g, "").slice(-10);
+    if (!/^[6-9]\d{9}$/.test(phone)) throw createHttpError(400, "Enter the customer's 10-digit mobile number.");
+    if (session.customerPhone && session.customerPhone !== phone) {
+      throw createHttpError(400, "Use the phone number already on this table for the points.");
+    }
+    const sub = round2(session.items.filter(isBillable).reduce((t, i) => t + round2(i.price * i.quantity), 0));
+    try {
+      use = await loyalty.checkRedeem({ restaurantId: session.restaurantId, phone, points: req.body?.points, discount: Number.MAX_SAFE_INTEGER });
+    } catch (err) {
+      if (err instanceof loyalty.LoyaltyError) throw createHttpError(400, err.message);
+      throw err;
+    }
+    if (use.value >= sub) throw createHttpError(400, "Those points would cover the whole bill. Use fewer points.");
+    const key = `redeem-s:${session._id}:${Date.now()}`;
+    try {
+      await loyalty.redeem({ restaurantId: session.restaurantId, customer: use.customer, points: use.points, tableSessionId: session._id, key });
+    } catch (err) {
+      if (err instanceof loyalty.LoyaltyError) throw createHttpError(409, err.message);
+      throw err;
+    }
+    session.loyaltyRedeems = [{ phone, points: use.points, value: use.value, customerId: use.customer._id, key }];
+    if (!session.customerPhone) session.customerPhone = phone;
+    await session.save();
+  } catch (err) {
+    return next(err);
+  }
+  // Apply it as the bill's discount through the one discount path.
+  req.body = { mode: "fixed", value: use.value };
+  req.loyaltyDiscount = true;
+  return setDiscount(req, res, async (err) => {
+    if (err) {
+      const fresh = await TableSession.findById(session._id).catch(() => null);
+      if (fresh) {
+        await loyalty.returnForSession(fresh);
+        await fresh.save().catch(() => {});
+      }
+    }
+    next(err);
+  });
+};
+
 const setDiscount = async (req, res, next) => {
   try {
     const { id } = req.params;
@@ -1937,6 +2003,10 @@ const setDiscount = async (req, res, next) => {
     // be released, so a full discount would leave the table stuck occupied.
     if (amount > 0 && amount >= sub) {
       throw createHttpError(400, "A discount cannot cover the whole bill. Leave something to pay, or void the dishes.");
+    }
+    // A discount set by hand replaces one paid with loyalty points: those go back.
+    if (!req.loyaltyDiscount && (session.loyaltyRedeems || []).length) {
+      await require("../services/loyalty").returnForSession(session);
     }
     session.bills.discount = amount;
     addTimeline(
@@ -2029,6 +2099,7 @@ module.exports = {
   cancelSessionItem,
   setServiceCharge,
   setDiscount,
+  useLoyaltyPoints,
   addRoundToKitchenOrder,
   findCancelTarget,
   releaseSessionForCancelledOrder,
