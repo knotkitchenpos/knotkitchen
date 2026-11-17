@@ -8,6 +8,17 @@ import { STORE_TZ } from "../../utils";
 const NO_SETTINGS = Object.freeze({});
 
 /* ---------- Store Timings UI Redesign & Holidays Calendar ---------- */
+// Monday to Sunday (dayIndex as Date#getDay). Fixed, so outside the component.
+const DAYS = [
+  { key: "monday", label: "Monday", dayIndex: 1 },
+  { key: "tuesday", label: "Tuesday", dayIndex: 2 },
+  { key: "wednesday", label: "Wednesday", dayIndex: 3 },
+  { key: "thursday", label: "Thursday", dayIndex: 4 },
+  { key: "friday", label: "Friday", dayIndex: 5 },
+  { key: "saturday", label: "Saturday", dayIndex: 6 },
+  { key: "sunday", label: "Sunday", dayIndex: 0 },
+];
+
 const TimingsHolidaysView = () => {
   const qc = useQueryClient();
   const { data: webRes, isLoading } = useQuery({ queryKey: ["website", "settings"], queryFn: getWebsiteSettings });
@@ -29,16 +40,6 @@ const TimingsHolidaysView = () => {
     if (settings.holidays) setHolidays(settings.holidays);
   }, [settings.holidays]);
 
-  // Days list Monday to Sunday
-  const DAYS = [
-    { key: "monday", label: "Monday", dayIndex: 1 },
-    { key: "tuesday", label: "Tuesday", dayIndex: 2 },
-    { key: "wednesday", label: "Wednesday", dayIndex: 3 },
-    { key: "thursday", label: "Thursday", dayIndex: 4 },
-    { key: "friday", label: "Friday", dayIndex: 5 },
-    { key: "saturday", label: "Saturday", dayIndex: 6 },
-    { key: "sunday", label: "Sunday", dayIndex: 0 },
-  ];
 
   // Store timings schedule for current channel
   const channelData = settings.channelHours?.[activeChannel] || {};
@@ -495,7 +496,7 @@ const TimingsHolidaysView = () => {
             </div>
             {settings.closedForToday?.enabled && (
               <p className="text-[12px] font-bold text-[#DC2626] pt-1">
-                🚫 Ordering is currently blocked for today ({settings.closedForToday?.date}). Will automatically re-open on tomorrow's scheduled time.
+                🚫 Ordering is currently blocked for today ({settings.closedForToday?.date}). Will automatically re-open on tomorrow&apos;s scheduled time.
               </p>
             )}
           </div>
