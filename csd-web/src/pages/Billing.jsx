@@ -345,6 +345,13 @@ const Billing = () => {
           >
             <Money value={config.topUpMin} onChange={(v) => set({ topUpMin: v })} />
           </Field>
+          <Field
+            label="Referral reward (₹, each store)"
+            hint="Wallet credit for both the referring and the new store when the new store's first top-up is paid. 0 = referral programme off."
+            error={fieldErrors.referralReward}
+          >
+            <Money value={config.referralReward} onChange={(v) => set({ referralReward: v })} />
+          </Field>
         </div>
       </Card>
 

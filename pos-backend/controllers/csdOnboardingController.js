@@ -49,6 +49,8 @@ const validate = (body) => {
     // moment the answer is actually known.
     salesAgentName: str(body.salesAgentName),
     googleBusinessUrl: str(body.googleBusinessUrl),
+    // Referral programme: the referring store's code (KK + Store ID), optional.
+    referralCode: str(body.referralCode),
   };
 
   if (v.restaurantName.length < 2) errors.restaurantName = "Enter the restaurant's display name.";
@@ -111,6 +113,14 @@ const createStore = async (req, res, next) => {
     const { values: v, errors } = validate(req.body || {});
     if (Object.keys(errors).length) {
       return next(createHttpError(400, "Please correct the highlighted fields.", { fieldErrors: errors }));
+    }
+
+    // A referral code must name a real store before anything is created.
+    let referrer = null;
+    if (v.referralCode) {
+      const found = await require("../services/referrals").findReferrer(v.referralCode);
+      if (found.error) return next(createHttpError(400, "Please correct the highlighted fields.", { fieldErrors: { referralCode: found.error } }));
+      referrer = found.referrer;
     }
 
     const storeId = await generateUniqueStoreId();
@@ -184,6 +194,15 @@ const createStore = async (req, res, next) => {
       console.error(`[CSD] storefront provisioning failed for ${storeId}:`, err.message);
     }
 
+    if (referrer) {
+      try {
+        await require("../services/referrals").recordReferral({ referrer, referredRestaurantId: restaurant._id, referredStoreId: storeId, byName: req.csdStaff?.fullName || "" });
+      } catch (err) {
+        // The store stands; the referral can be raised with support.
+        console.error(`[CSD] referral for ${storeId} not recorded:`, err.message);
+      }
+    }
+
     await csdAudit({
       req,
       staff: req.csdStaff,
@@ -193,7 +212,7 @@ const createStore = async (req, res, next) => {
       entityId: store._id,
       storeId,
       description: `Onboarded "${v.restaurantName}" as store ${storeId}`,
-      newValue: { storeId, restaurantName: v.restaurantName, ownerPhone: v.ownerPhone },
+      newValue: { storeId, restaurantName: v.restaurantName, ownerPhone: v.ownerPhone, referredBy: referrer?.storeId || null },
     });
 
     res.status(201).json({

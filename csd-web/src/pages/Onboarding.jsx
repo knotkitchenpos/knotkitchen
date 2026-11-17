@@ -9,7 +9,7 @@ const EMPTY = {
   postalCode: "", restaurantPhone: "", mapsLink: "", restaurantType: "",
   ownerName: "", ownerPhone: "", ownerEmail: "",
   gstRegistered: false, gstin: "", fssaiNumber: "", fssaiValidUntil: "",
-  salesAgentName: "", googleBusinessUrl: "",
+  salesAgentName: "", googleBusinessUrl: "", referralCode: "",
 };
 
 const Field = ({ label, name, value, onChange, error, required, hint, ...rest }) => (
@@ -244,6 +244,9 @@ const Onboarding = () => {
           <Field label="Sales agent" name="salesAgentName" value={form.salesAgentName}
             onChange={set} error={errors.salesAgentName}
             hint="Who won this account — recorded now, while it's known" />
+          <Field label="Referral code" name="referralCode" value={form.referralCode}
+            onChange={set} error={errors.referralCode} placeholder="KK893146"
+            hint="The store that referred them (optional). Both get wallet credit after this store's first top-up." />
           <Field label="Google Business URL" name="googleBusinessUrl" value={form.googleBusinessUrl}
             onChange={set} error={errors.googleBusinessUrl} placeholder="https://maps.google.com/…" />
         </Section>

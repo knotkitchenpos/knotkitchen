@@ -198,6 +198,9 @@ const platformBillingConfigSchema = new mongoose.Schema(
     firstRechargeMinPaise: { type: Number, default: DEFAULT_FIRST_RECHARGE_MIN_PAISE, min: 0 },
     // Every top-up after the POS plan has started must be at least this; 0 = none.
     topUpMinPaise: { type: Number, default: 100000, min: 0 },
+    // Referral programme (services/referrals.js): wallet credit for EACH of the two
+    // stores when a referred store's first top-up is paid. 0 = off.
+    referralRewardPaise: { type: Number, default: 50000, min: 0 },
     gst: { type: gstSchema, default: () => ({}) },
     // Platform fee per online-paid website order and per Knot Eats one. Table QR
     // orders carry none (the table-QR fee was removed on 2026-11-15).

@@ -768,4 +768,47 @@ router.post("/summary/send-now", requirePartner, async (req, res, next) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Refer & earn (owner, 2026-11-17): each store's code and what it has earned.
+// ---------------------------------------------------------------------------
+const Referral = require("../models/referralModel");
+const referrals = require("../services/referrals");
+
+// GET /api/partners/referrals
+router.get("/referrals", requirePartner, async (req, res, next) => {
+  try {
+    const cards = await storeCards(req.partner);
+    const rids = cards.map((c) => c.restaurantId);
+    const [made, config] = await Promise.all([
+      Referral.find({ referrerRestaurantId: { $in: rids } }).sort({ createdAt: -1 }).limit(200).lean(),
+      require("../services/pricing").getPlatformConfig(),
+    ]);
+    const names = new Map(
+      (await Restaurant.find({ _id: { $in: made.map((r) => r.referredRestaurantId) } }).select("name").lean()).map((r) => [String(r._id), r.name]),
+    );
+    const rewardPaise = Math.max(0, Number(config.referralRewardPaise ?? 50000) || 0);
+    res.status(200).json({
+      success: true,
+      data: {
+        reward: asAmount(rewardPaise),
+        stores: cards.map((c) => ({
+          storeId: c.storeId,
+          name: c.name,
+          code: referrals.codeFor(c.storeId),
+          referrals: made
+            .filter((r) => String(r.referrerRestaurantId) === String(c.restaurantId))
+            .map((r) => ({
+              name: names.get(String(r.referredRestaurantId)) || `Store ${r.referredStoreId}`,
+              joinedAt: r.createdAt,
+              status: r.status === "REWARDED" ? "rewarded" : "waiting for first top-up",
+              earned: r.status === "REWARDED" ? asAmount(r.rewardPaise) : null,
+            })),
+        })),
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 module.exports = router;

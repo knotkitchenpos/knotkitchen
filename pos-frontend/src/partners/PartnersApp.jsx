@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDispatch } from "react-redux";
 import {
   MdDashboard, MdStorefront, MdReceiptLong, MdBarChart, MdListAlt, MdPerson, MdLogout, MdFileDownload,
-  MdRestaurantMenu, MdInventory2, MdGroups, MdSupportAgent, MdApps, MdShield, MdSyncAlt, MdTrendingUp, MdSchedule, MdAccountBalanceWallet, MdNotificationsActive,
+  MdRestaurantMenu, MdInventory2, MdGroups, MdSupportAgent, MdApps, MdShield, MdSyncAlt, MdTrendingUp, MdSchedule, MdAccountBalanceWallet, MdNotificationsActive, MdCardGiftcard,
 } from "react-icons/md";
 import { FaWhatsapp } from "react-icons/fa";
 import GlobalPinPrompt from "../components/common/GlobalPinPrompt";
@@ -31,6 +31,7 @@ const StoreHours = lazy(() => import("./pages/StoreHours"));
 const TopUp = lazy(() => import("./pages/TopUp"));
 const Alerts = lazy(() => import("./pages/Alerts"));
 const DailySummary = lazy(() => import("./pages/DailySummary"));
+const ReferEarn = lazy(() => import("./pages/ReferEarn"));
 
 // `phone`: on the phone's bottom bar; everything else is under More.
 const NAV = [
@@ -46,6 +47,7 @@ const NAV = [
   { to: "/staff-watch", label: "Staff watch", Icon: MdShield, note: "Discounts, cancellations and refunds by staff" },
   { to: "/staff", label: "Manage Staff", Icon: MdGroups, note: "Staff logins and their PIN privileges" },
   { to: "/exports", label: "Exports", Icon: MdFileDownload, note: "GSTR-1 and Tally for your accountant" },
+  { to: "/refer", label: "Refer & earn", Icon: MdCardGiftcard, note: "Your code, wallet credit for both" },
   { to: "/summary", label: "WhatsApp summary", Icon: FaWhatsapp, note: "Yesterday's sales every morning" },
   { to: "/alerts", label: "Phone alerts", Icon: MdNotificationsActive, note: "Store locked, wallet low, refunds, stock" },
   { to: "/hours", label: "Store hours", Icon: MdSchedule, note: "Close for today, holidays, opening hours" },
@@ -243,6 +245,7 @@ const PartnersApp = () => (
     <Route path="/menu" element={<Protected>{(me) => <MenuPage me={me} />}</Protected>} />
     <Route path="/menu-tools" element={<Protected>{(me) => <MenuTools me={me} />}</Protected>} />
     <Route path="/profit" element={<Protected>{(me) => <Profit me={me} />}</Protected>} />
+    <Route path="/refer" element={<Protected>{() => <ReferEarn />}</Protected>} />
     <Route path="/summary" element={<Protected>{() => <DailySummary />}</Protected>} />
     <Route path="/alerts" element={<Protected>{() => <Alerts />}</Protected>} />
     <Route path="/topup" element={<Protected>{() => <TopUp />}</Protected>} />

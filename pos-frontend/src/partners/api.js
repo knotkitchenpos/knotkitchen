@@ -27,6 +27,8 @@ export const partnersApi = {
   topUpStores: () => axiosWrapper.get("/topup/stores"),
   topUp: (body) => axiosWrapper.post("/topup", body, { timeout: 60000 }),
   verifyTopUp: (gatewayOrderId) => axiosWrapper.post("/topup/verify", { gatewayOrderId }, { timeout: 60000 }),
+  // Refer & earn
+  referrals: () => axiosWrapper.get("/referrals"),
   // Daily WhatsApp summary
   summary: () => axiosWrapper.get("/summary", { timeout: 60000 }),
   saveSummary: (body) => axiosWrapper.put("/summary", body),

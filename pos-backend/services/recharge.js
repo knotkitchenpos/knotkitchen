@@ -365,6 +365,7 @@ const finalizeRecharge = async ({ gatewayOrderId }) => {
       });
       split.ledgerEntryId = entry._id;
       stores.push({ restaurantId: split.restaurantId, amountPaise: shares[i], duplicate, ...(await afterCredit(split.restaurantId, shares[i], duplicate)) });
+      if (!duplicate) require("./referrals").afterTopUp(split.restaurantId);
     }
     intent.status = "PAID";
     intent.paidAt = new Date();
@@ -397,6 +398,9 @@ const finalizeRecharge = async ({ gatewayOrderId }) => {
   // count twice.
   // Never allowed to fail the top-up -- the credit already happened and is
   // not in doubt.
+  // A referred store's first paid top-up rewards both stores (services/referrals).
+  if (!duplicate) require("./referrals").afterTopUp(intent.restaurantId);
+
   let plan = null;
   if (!duplicate) {
     try {

@@ -87,6 +87,7 @@ const present = (config) => ({
   })),
   firstRechargeMin: toRupees(config.firstRechargeMinPaise || 0),
   topUpMin: toRupees(config.topUpMinPaise || 0),
+  referralReward: toRupees(config.referralRewardPaise ?? 50000),
   gst: {
     registered: config.gst?.registered || false,
     gstin: config.gst?.gstin || "",
@@ -270,6 +271,7 @@ const updateBillingConfig = async (req, res, next) => {
     }
     // Left out (a CSD page from before it existed) keeps the saved one.
     if (body.topUpMin !== undefined) config.topUpMinPaise = readPrice(body.topUpMin, "topUpMin", fieldErrors);
+    if (body.referralReward !== undefined) config.referralRewardPaise = readPrice(body.referralReward, "referralReward", fieldErrors);
 
     if (body.gst !== undefined) {
       const g = body.gst || {};
