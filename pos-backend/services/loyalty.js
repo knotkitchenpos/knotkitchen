@@ -75,6 +75,23 @@ const findCustomer = async (restaurantId, phone) => {
   return Customer.findOne({ restaurantId, phone: digits, isDeleted: { $ne: true } }).lean();
 };
 
+/** A customer record for a phone that has none yet (set only on insert, so a race keeps the first). */
+const createCustomer = async (restaurantId, phone, name, billAmount) => {
+  const digits = String(phone || "").replace(/\D/g, "").slice(-10);
+  if (!/^[6-9]\d{9}$/.test(digits)) return null;
+  const Customer = require("../models/customerModel");
+  try {
+    await Customer.updateOne(
+      { restaurantId, phone: digits, isDeleted: { $ne: true } },
+      { $setOnInsert: { restaurantId, phone: digits, name: String(name || "").slice(0, 80), visitCount: 1, totalSpent: Number(billAmount) || 0, lastVisitAt: new Date() } },
+      { upsert: true },
+    );
+  } catch (err) {
+    if (err?.code !== 11000) throw err;
+  }
+  return findCustomer(restaurantId, digits);
+};
+
 const loadSettings = async (restaurantId) => {
   const Restaurant = require("../models/restaurantModel");
   const r = await Restaurant.findById(restaurantId).select("loyalty name").lean();
@@ -123,6 +140,7 @@ const earn = async (source) => {
   try {
     let restaurantId;
     let phone;
+    let guestName = "";
     let billAmount;
     let key;
     if (source.orderId) {
@@ -136,10 +154,11 @@ const earn = async (source) => {
       key = `earn:${o._id}`;
     } else if (source.tableSessionId) {
       const TableSession = require("../models/tableSessionModel");
-      const s = await TableSession.findById(source.tableSessionId).select("restaurantId customerPhone bills.totalWithTax").lean();
+      const s = await TableSession.findById(source.tableSessionId).select("restaurantId customerPhone customerName bills.totalWithTax").lean();
       if (!s) return null;
       ({ restaurantId } = s);
       phone = s.customerPhone;
+      guestName = s.customerName;
       billAmount = s.bills?.totalWithTax;
       key = `earn-s:${s._id}`;
     } else return null;
@@ -147,7 +166,8 @@ const earn = async (source) => {
     if (!settings.enabled) return null;
     const points = pointsFor(billAmount, settings);
     if (!points) return null;
-    let c = await findCustomer(restaurantId, phone);
+    // A table guest has no customer record unless they also bought at the counter: make one.
+    let c = (await findCustomer(restaurantId, phone)) || (await createCustomer(restaurantId, phone, guestName, billAmount));
     if (!c) return null;
     c = await expireIfDue(c, settings, restaurantId);
     const done = await move({ customer: c, restaurantId, kind: "EARN", points, key, orderId: source.orderId || null, tableSessionId: source.tableSessionId || null, billAmount });

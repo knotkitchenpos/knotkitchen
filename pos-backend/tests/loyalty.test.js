@@ -59,3 +59,12 @@ test("table bills: points checked and deducted without a PIN, applied through th
   assert.match(c, /target\.loyaltyRedeems = \[\.\.\.\(target\.loyaltyRedeems \|\| \[\]\), \.\.\.source\.loyaltyRedeems\];/, "a merge carries them with the discount");
   assert.match(src("services/loyalty.js"), /key: `return:\$\{u\.key\}`/, "each use given back once");
 });
+
+/** Recheck, 2026-11-17: table-only guests earn; website/Knot Eats cancellations undo points. */
+test("a table guest with no customer record gets one when they earn; an online order cancelled undoes its points", () => {
+  const l = src("services/loyalty.js");
+  assert.match(l, /let c = \(await findCustomer\(restaurantId, phone\)\) \|\| \(await createCustomer\(restaurantId, phone, guestName, billAmount\)\);/);
+  assert.match(l, /\{ \$setOnInsert: \{ restaurantId, phone: digits,/, "never overwrites an existing customer");
+  assert.ok(l.includes("if (!/^[6-9]\\d{9}$/.test(digits)) return null;"), "a real 10-digit mobile only");
+  assert.match(src("controllers/onlineOrderController.js"), /await require\("\.\.\/services\/loyalty"\)\.reverseForOrder\(order\);/);
+});

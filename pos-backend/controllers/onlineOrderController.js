@@ -246,6 +246,8 @@ const updateOnlineOrderStatus = async (req, res, next) => {
       fireOrderChargeReversal(order._id);
       // N012: a prepaid website order the store turns down goes back to the customer.
       await refundOnCancel(order, { user: req.user, reason: req.body?.reason || "Not accepted" });
+      // Loyalty points it earned (and any it used) are undone too (services/loyalty).
+      await require("../services/loyalty").reverseForOrder(order);
       try {
         const { releaseSessionForCancelledOrder } = require("./tableSessionController");
         await releaseSessionForCancelledOrder(order, req.user?.name || "POS");
