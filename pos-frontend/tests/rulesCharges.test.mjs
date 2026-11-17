@@ -9,7 +9,10 @@ test("Rules & Charges builds its form only from loaded settings, remounted per v
   const view = src("components/settings/RulesChargesView.jsx");
   // No hooks seeded from `{}` while the query is loading or failed.
   assert.match(view, /if \(!webRes\) \{/);
-  assert.match(view, /return <RulesChargesForm key=\{settings\.version\} settings=\{settings\} \/>;/);
+  assert.match(view, /return <RulesChargesForm key=\{settings\.version\} settings=\{settings\} posPlan=\{posPlan\} \/>;/);
+  // Loyalty points (POS plan only) is a card here; it renders only when the cached plan says POS.
+  assert.match(view, /const posPlan = subRes\?\.data\?\.data\?\.features\?\.pos === true;/);
+  assert.match(view, /\{posPlan && <LoyaltyView \/>\}/);
   // The saved answer replaces the cache, which bumps the version and remounts the form.
   assert.match(view, /qc\.setQueryData\(\["website", "settings"\], res\)/);
 });
