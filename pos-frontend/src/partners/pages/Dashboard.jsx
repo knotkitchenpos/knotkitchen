@@ -74,15 +74,18 @@ const Dashboard = ({ me }) => {
       </div>
 
       {data?.alerts?.length > 0 && (
-        <div className="grid gap-2 sm:grid-cols-2">
+        // grid-cols-1 (minmax(0,1fr)), not an implicit column: a long reason must
+        // not widen the card past a phone's screen and push "Top up" off it.
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
           {data.alerts.map((a) => {
             const A = ALERT[a.kind] || ALERT.wallet;
             return (
-              <div key={`${a.storeId}-${a.kind}`} className={`flex items-center gap-3 border rounded-xl px-3.5 py-3 ${A.tone}`}>
+              <div key={`${a.storeId}-${a.kind}`} className={`min-w-0 flex items-center gap-3 border rounded-xl px-3.5 py-3 ${A.tone}`}>
                 <A.Icon size={20} className="shrink-0" />
                 <div className="min-w-0 flex-1">
                   <p className="text-[13px] font-extrabold truncate">{a.name}</p>
-                  <p className="text-[12px] font-semibold truncate">{A.text(a)}</p>
+                  {/* The reason says what to do (e.g. how much to top up): wrapped, never cut off. */}
+                  <p className="text-[12px] font-semibold break-words">{A.text(a)}</p>
                 </div>
                 <Link to={A.to} className="shrink-0 text-[12.5px] font-extrabold underline">{A.cta}</Link>
               </div>

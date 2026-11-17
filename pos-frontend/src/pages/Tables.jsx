@@ -636,11 +636,12 @@ const Tables = () => {
             <h1 className="font-display text-2xl font-extrabold text-[#0F172A]">Manage Tables</h1>
           </div>
 
-          <div className="flex items-center gap-3">
-            <div className="px-3.5 py-2 rounded-xl bg-[#DCFCE7] text-[#15803D] text-xs font-bold">
+          {/* Wraps on a phone: four controls do not fit 375px on one line. */}
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <div className="px-3.5 py-2 rounded-xl bg-[#DCFCE7] text-[#15803D] text-xs font-bold whitespace-nowrap">
               {availableCount} Available
             </div>
-            <div className="px-3.5 py-2 rounded-xl bg-[#FEF3C7] text-[#B45309] text-xs font-bold">
+            <div className="px-3.5 py-2 rounded-xl bg-[#FEF3C7] text-[#B45309] text-xs font-bold whitespace-nowrap">
               {bookedCount} Booked
             </div>
             <WaitlistButton />
@@ -649,7 +650,7 @@ const Tables = () => {
                 resetForm();
                 setIsAddModalOpen(true);
               }}
-              className="px-4 py-2.5 rounded-xl bg-[#FD5302] text-white text-xs font-bold hover:bg-[#D64502] flex items-center gap-2"
+              className="px-4 py-2.5 rounded-xl bg-[#FD5302] text-white text-xs font-bold hover:bg-[#D64502] flex items-center gap-2 whitespace-nowrap"
             >
               <FiPlus size={16} /> Add Table
             </button>

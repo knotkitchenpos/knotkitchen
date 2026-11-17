@@ -62,7 +62,7 @@ export default function Admins() {
         )}
         <button className="btn primary" disabled={act.busy}>Create</button>
       </form>
-      <div className="card">
+      <div className="card scroll">
         <h2>What each role can do</h2>
         <table><tbody>{(roles.data?.items || []).map((r) => <tr key={r.key}><td><b>{r.name}</b></td><td className="mono" style={{ fontSize: 12 }}>{r.permissions.join(", ")}</td></tr>)}</tbody></table>
       </div>

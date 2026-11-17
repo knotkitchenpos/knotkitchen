@@ -49,7 +49,7 @@ export default function Home() {
       </div>
       {reauth.dialog}
       <div className="grid two">
-        <div className="card">
+        <div className="card scroll">
           <h2>Recent alerts</h2>
           {!data?.recentAlerts?.length && <div className="muted">No open alerts.</div>}
           <table>

@@ -40,7 +40,7 @@ export default function DeviceDetail({ params }) {
       <div className="tabs">
         {TABS.map((x) => <button key={x} className={tab === x ? "on" : ""} onClick={() => setTab(x)}>{x}</button>)}
       </div>
-      <div className="card">
+      <div className="card scroll">
         {tab === "Info" && <InfoTab d={d} admin={admin} onSaved={reload} />}
         {tab === "Status" && <Kv rows={[
           ["Online", d.online ? "yes" : "no"], ["Last seen", when(d.lastSeenAt)], ["Lifecycle", <Badge v={d.lifecycle} />],

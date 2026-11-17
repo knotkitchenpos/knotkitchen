@@ -21,7 +21,7 @@ export default function Policies() {
       {editing ? (
         <Editor policy={editing} defaults={defaults.data?.settings} onDone={() => { setEditing(null); reload(); }} />
       ) : (
-        <div className="card">
+        <div className="card scroll">
           <table><thead><tr><th>Policy</th><th>Version</th><th>Overrides</th><th>Assigned to</th><th>Updated</th><th /></tr></thead>
             <tbody>{(data?.items || []).map((p) => (
               <tr key={p._id}>

@@ -77,7 +77,7 @@ const WaitlistButton = () => {
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="px-3.5 py-2 rounded-xl border border-[#E2E8F0] bg-white text-[#334155] text-xs font-bold hover:bg-[#F8FAFC] flex items-center gap-1.5"
+        className="px-3.5 py-2 rounded-xl border border-[#E2E8F0] bg-white text-[#334155] text-xs font-bold hover:bg-[#F8FAFC] flex items-center gap-1.5 whitespace-nowrap"
       >
         <FiClock size={14} /> Waitlist{entries.length ? ` (${entries.length})` : ""}
       </button>

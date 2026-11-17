@@ -42,7 +42,7 @@ export default function Groups() {
         </form>
       )}
       <Err error={error || act.error} />
-      <div className="card">
+      <div className="card scroll">
         <table><thead><tr><th>Group</th><th>Store</th><th>Description</th><th>Policy</th><th /></tr></thead>
           <tbody>{(data?.items || []).map((g) => (
             <tr key={g._id}>

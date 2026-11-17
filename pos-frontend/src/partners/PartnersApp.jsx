@@ -60,7 +60,7 @@ const NAV = [
 const More = () => (
   <div className="space-y-4">
     <h1 className="text-[22px] font-extrabold tracking-tight">More</h1>
-    <div className="grid gap-2">
+    <div className="grid grid-cols-1 gap-2">
       {NAV.filter((n) => !n.phone).map(({ to, label, Icon, note }) => (
         <NavLink key={to} to={to} className="flex items-center gap-3 bg-white border border-[#E2E8F0] rounded-2xl px-4 py-3.5 hover:border-[#FDBA8C]">
           <span className="w-10 h-10 rounded-xl bg-[#FFF1E8] text-[#C2410C] flex items-center justify-center shrink-0">
