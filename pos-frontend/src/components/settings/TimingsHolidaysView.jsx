@@ -103,23 +103,53 @@ const TimingsHolidaysView = () => {
     return ch * 60 + cm < oh * 60 + om;
   };
 
+  // With "Same timing for all days" the one row stands for every day, so a
+  // change made there is applied to all seven; otherwise to that day alone.
+  const applyToDays = (prev, dayKey, change) => {
+    const next = { ...prev };
+    for (const { key, dayIndex } of DAYS) {
+      if (sameTimingAllDays || key === dayKey) next[key] = change(prev[key] || {}, dayIndex);
+    }
+    return next;
+  };
+
   const handleToggleDay = (dayKey) => {
-    setWeeklySchedule((prev) => ({
-      ...prev,
-      [dayKey]: {
-        ...prev[dayKey],
-        isOpen: !prev[dayKey]?.isOpen,
-      },
-    }));
+    setWeeklySchedule((prev) => {
+      const isOpen = !prev[dayKey]?.isOpen;
+      return applyToDays(prev, dayKey, (d) => ({ ...d, isOpen }));
+    });
+  };
+
+  // The closing day is the same day or the next one (overnight), never any other.
+  const handleCloseDay = (dayKey, offset) => {
+    setWeeklySchedule((prev) => applyToDays(prev, dayKey, (d, dayIndex) => ({ ...d, closeDay: (dayIndex + offset) % 7 })));
+  };
+
+  // Ticking "Same timing" copies Monday's hours to every day, so what the one
+  // row shows is what is saved for the week.
+  const handleSameTiming = (checked) => {
+    setSameTimingAllDays(checked);
+    if (!checked) return;
+    setWeeklySchedule((prev) => {
+      const first = prev[DAYS[0].key] || {};
+      const offset = ((Number(first.closeDay ?? DAYS[0].dayIndex) - DAYS[0].dayIndex) % 7 + 7) % 7 === 1 ? 1 : 0;
+      const next = {};
+      for (const { key, dayIndex } of DAYS) {
+        next[key] = { ...first, periods: [...(first.periods || [])], closeDay: (dayIndex + offset) % 7 };
+      }
+      return next;
+    });
   };
 
   const handleTimeChange = (dayKey, field, val, periodIdx = null) => {
     setWeeklySchedule((prev) => {
       const current = prev[dayKey] || { isOpen: true, openTime: "16:00", closeDay: 1, closeTime: "23:50", periods: [] };
       if (periodIdx !== null) {
-        const copyPeriods = [...(current.periods || [])];
-        copyPeriods[periodIdx] = { ...copyPeriods[periodIdx], [field]: val };
-        return { ...prev, [dayKey]: { ...current, periods: copyPeriods } };
+        return applyToDays(prev, dayKey, (d) => {
+          const copyPeriods = [...(d.periods || [])];
+          copyPeriods[periodIdx] = { ...copyPeriods[periodIdx], [field]: val };
+          return { ...d, periods: copyPeriods };
+        });
       }
 
       const updated = { ...current, [field]: val };
@@ -159,19 +189,13 @@ const TimingsHolidaysView = () => {
   };
 
   const handleAddHour = (dayKey) => {
-    setWeeklySchedule((prev) => {
-      const current = prev[dayKey] || { isOpen: true, openTime: "16:00", closeTime: "23:50", periods: [] };
-      const copyPeriods = [...(current.periods || []), { openTime: "21:00", closeTime: "23:50" }];
-      return { ...prev, [dayKey]: { ...current, periods: copyPeriods } };
-    });
+    setWeeklySchedule((prev) =>
+      applyToDays(prev, dayKey, (d) => ({ ...d, periods: [...(d.periods || []), { openTime: "21:00", closeTime: "23:50" }] })),
+    );
   };
 
   const handleRemovePeriod = (dayKey, periodIdx) => {
-    setWeeklySchedule((prev) => {
-      const current = prev[dayKey];
-      const copyPeriods = (current.periods || []).filter((_, i) => i !== periodIdx);
-      return { ...prev, [dayKey]: { ...current, periods: copyPeriods } };
-    });
+    setWeeklySchedule((prev) => applyToDays(prev, dayKey, (d) => ({ ...d, periods: (d.periods || []).filter((_, i) => i !== periodIdx) })));
   };
 
   const handleSubmitDay = () => {
@@ -268,7 +292,7 @@ const TimingsHolidaysView = () => {
             type="checkbox"
             id="sameTiming"
             checked={sameTimingAllDays}
-            onChange={(e) => setSameTimingAllDays(e.target.checked)}
+            onChange={(e) => handleSameTiming(e.target.checked)}
             className="w-4 h-4 accent-[#FD5302] cursor-pointer"
           />
           <label htmlFor="sameTiming" className="cursor-pointer">Same timing for all days</label>
@@ -279,7 +303,7 @@ const TimingsHolidaysView = () => {
           {/* dayIndex is used below for the end-day dropdown default and the
               overnight badge — destructure it or the whole page throws
               ReferenceError on first render. */}
-          {DAYS.map(({ key, label, dayIndex }) => {
+          {(sameTimingAllDays ? [{ ...DAYS[0], label: "Every day" }] : DAYS).map(({ key, label, dayIndex }) => {
             const dayData = weeklySchedule[key] || { isOpen: true, openTime: "16:00", closeTime: "23:50", periods: [] };
             const isOpen = dayData.isOpen;
             const overnight = isOpen && isOvernight(dayData.openTime, dayData.closeTime);
@@ -335,16 +359,18 @@ const TimingsHolidaysView = () => {
                       {/* End Day Selector Dropdown */}
                       <div className="flex items-center gap-1.5">
                         <select
-                          value={dayData.closeDay !== undefined && dayData.closeDay !== null ? dayData.closeDay : (overnight ? (dayIndex + 1) % 7 : dayIndex)}
-                          onChange={(e) => handleTimeChange(key, "closeDay", Number(e.target.value))}
+                          value={((Number(dayData.closeDay !== undefined && dayData.closeDay !== null ? dayData.closeDay : (overnight ? (dayIndex + 1) % 7 : dayIndex)) - dayIndex) % 7 + 7) % 7}
+                          onChange={(e) => handleCloseDay(key, Number(e.target.value))}
                           className="w-[145px] h-[38px] px-2.5 rounded-lg border border-[#E2E8F0] font-semibold text-[13px] text-[#334155] bg-white focus:border-[#FD5302] cursor-pointer"
                           title="Select End Day"
                         >
-                          {DAYS.map((d) => (
-                            <option key={d.dayIndex} value={d.dayIndex}>
-                              {d.label}
-                            </option>
-                          ))}
+                          <option value={0}>Same day</option>
+                          <option value={1}>{sameTimingAllDays ? "Next day" : `Next day (${DAYS.find((d) => d.dayIndex === (dayIndex + 1) % 7)?.label})`}</option>
+                          {(() => {
+                            // An older saved closing day that is neither: shown so it is not lost.
+                            const off = ((Number(dayData.closeDay ?? dayIndex) - dayIndex) % 7 + 7) % 7;
+                            return off > 1 ? <option value={off}>{DAYS.find((d) => d.dayIndex === Number(dayData.closeDay))?.label}</option> : null;
+                          })()}
                         </select>
 
                         {/* Closing / End Time Input */}
@@ -377,10 +403,8 @@ const TimingsHolidaysView = () => {
                     )}
                   </div>
 
-                  {/* Actions: Add Hour & Submit. Right-aligned inside a fixed
-                      slot so Submit keeps its column on closed days, where
-                      Add Hour isn't rendered. */}
-                  <div className="sm:w-[168px] shrink-0 flex items-center justify-end gap-2">
+                  {/* Add Hour. Right-aligned in a fixed slot so rows line up. */}
+                  <div className="sm:w-[100px] shrink-0 flex items-center justify-end gap-2">
                     {isOpen && (
                       <button
                         type="button"
@@ -390,14 +414,6 @@ const TimingsHolidaysView = () => {
                         Add Hour
                       </button>
                     )}
-                    <button
-                      type="button"
-                      onClick={() => handleSubmitDay(key)}
-                      disabled={timingMutation.isPending}
-                      className="h-[34px] px-4 rounded-lg bg-[#DCFCE7] text-[#15803D] font-bold text-[12px] hover:bg-[#BBF7D0] transition-colors disabled:opacity-50"
-                    >
-                      {timingMutation.isPending ? "Saving…" : "Submit"}
-                    </button>
                   </div>
                 </div>
 
@@ -433,6 +449,18 @@ const TimingsHolidaysView = () => {
               </div>
             );
           })}
+        </div>
+
+        {/* One save for the whole week (each row's Submit used to save all days anyway). */}
+        <div className="flex justify-end pt-2 border-t border-[#F1F5F9]">
+          <button
+            type="button"
+            onClick={handleSubmitDay}
+            disabled={timingMutation.isPending}
+            className="h-[40px] px-6 rounded-xl bg-[#FD5302] text-white font-bold text-[13px] hover:bg-[#D64502] transition-colors disabled:opacity-50"
+          >
+            {timingMutation.isPending ? "Saving…" : "Save hours"}
+          </button>
         </div>
       </div>
 
