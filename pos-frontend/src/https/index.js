@@ -14,6 +14,10 @@ export const logout = () => axiosWrapper.post("/api/user/logout");
 export const createSupportRequest = (data) => axiosWrapper.post("/api/support/requests", data);
 // KnotKitchen's announcements for this store (posted in CSD).
 export const getAnnouncements = () => axiosWrapper.get("/api/announcements");
+// Waitlist for busy hours (Manage Tables).
+export const getWaitlist = () => axiosWrapper.get("/api/waitlist");
+export const addToWaitlist = (data) => axiosWrapper.post("/api/waitlist", data);
+export const waitlistAction = (id, action) => axiosWrapper.post(`/api/waitlist/${encodeURIComponent(id)}/${action}`, {});
 
 // Store Auth Endpoints — password-based, 2026-08-31 migration off Fast2SMS.
 // The old sendStoreOtp/verifyStoreOtp/completeStoreSignup/sendLoginOtp

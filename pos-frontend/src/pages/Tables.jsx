@@ -42,6 +42,7 @@ import { updateTable as updateTableAction, setSessionId } from "../redux/slices/
 import { readStoreScoped, writeStoreScoped } from "../utils/storeSession";
 import { localDay } from "../utils";
 import { nextTableName } from "../utils/tableNames";
+import WaitlistButton from "../components/tables/WaitlistButton";
 
 const IconQr = ({ size = 13 }) => (
   <svg
@@ -642,6 +643,7 @@ const Tables = () => {
             <div className="px-3.5 py-2 rounded-xl bg-[#FEF3C7] text-[#B45309] text-xs font-bold">
               {bookedCount} Booked
             </div>
+            <WaitlistButton />
             <button
               onClick={() => {
                 resetForm();
