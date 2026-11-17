@@ -66,6 +66,15 @@ const TimingsHolidaysView = () => {
         periods: Array.isArray(found?.periods) ? found.periods : [],
       };
     });
+    // "Same timing" shows one row (Monday's): make every day match it, so what
+    // is shown is exactly what Save writes, even if stored days had drifted apart.
+    if (rawData.sameTimingAllDays) {
+      const first = map[DAYS[0].key];
+      const offset = ((first.closeDay - DAYS[0].dayIndex) % 7 + 7) % 7 === 1 ? 1 : 0;
+      DAYS.forEach(({ key, dayIndex }) => {
+        map[key] = { ...first, periods: [...first.periods], closeDay: (dayIndex + offset) % 7 };
+      });
+    }
     setWeeklySchedule(map);
   }, [activeChannel, settings]);
 
