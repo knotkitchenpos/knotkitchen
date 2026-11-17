@@ -30,6 +30,7 @@ import useAutoReceiptPrint from "./hooks/useAutoReceiptPrint";
 import useOfflineQueue from "./hooks/useOfflineQueue";
 import OfflineBanner from "./components/shared/OfflineBanner";
 import OldWebViewBanner from "./components/shared/OldWebViewBanner";
+import AnnouncementBanner from "./components/shared/AnnouncementBanner";
 
 // One chunk per page: a guest opening the table QR or a payment link no longer
 // downloads the whole POS first.
@@ -157,6 +158,7 @@ function Layout() {
         {isAuth && <OfflineBanner online={offline.online} queued={offline.queued} rejected={offline.rejected} onSync={offline.flush} onDiscard={offline.discard} />}
         {isAuth && <OldWebViewBanner />}
         {isAuth && <AccountLockBanner {...lock} />}
+        {isAuth && !bare && <AnnouncementBanner />}
         {isAuth && <GlobalPinPrompt />}
         {lock.locked ? <LockRedirect /> : null}
         {routes}

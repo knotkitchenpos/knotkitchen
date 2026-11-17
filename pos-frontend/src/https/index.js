@@ -12,6 +12,8 @@ export const getUserData = () => axiosWrapper.get("/api/user", { timeout: OFFLIN
 export const logout = () => axiosWrapper.post("/api/user/logout");
 // Help & Support: becomes a job in the CSD queue.
 export const createSupportRequest = (data) => axiosWrapper.post("/api/support/requests", data);
+// KnotKitchen's announcements for this store (posted in CSD).
+export const getAnnouncements = () => axiosWrapper.get("/api/announcements");
 
 // Store Auth Endpoints — password-based, 2026-08-31 migration off Fast2SMS.
 // The old sendStoreOtp/verifyStoreOtp/completeStoreSignup/sendLoginOtp

@@ -14,6 +14,7 @@ import Jobs from "./pages/Jobs";
 import JobDetail from "./pages/JobDetail";
 import Chat from "./pages/Chat";
 import StaffManagement from "./pages/StaffManagement";
+import Announcements from "./pages/Announcements";
 import Reports from "./pages/Reports";
 import Settings from "./pages/Settings";
 import Billing from "./pages/Billing";
@@ -100,6 +101,10 @@ const App = () => (
           <Route
             path="/onboarding"
             element={<RequireAdmin><Onboarding /></RequireAdmin>}
+          />
+          <Route
+            path="/announcements"
+            element={<RequireAdmin><Announcements /></RequireAdmin>}
           />
           <Route
             path="/staff"

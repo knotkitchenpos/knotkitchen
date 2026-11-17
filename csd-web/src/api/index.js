@@ -141,6 +141,12 @@ export const dashboard = {
   get: () => api.get("/dashboard").then((r) => r.data.data),
 };
 
+export const announcements = {
+  list: () => api.get("/announcements").then((r) => r.data.data),
+  create: (payload) => api.post("/announcements", payload).then((r) => r.data.data),
+  end: (id) => api.post(`/announcements/${encodeURIComponent(id)}/end`).then((r) => r.data.data),
+};
+
 export const onboarding = {
   options: () => api.get("/onboarding/options").then((r) => r.data.data),
   createStore: (payload) => api.post("/onboarding/stores", payload).then((r) => r.data.data),

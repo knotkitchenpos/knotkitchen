@@ -240,6 +240,12 @@ router.delete("/restaurants/:storeId/documents/:docId", requireCsdAdmin, deleteD
 router.patch("/restaurants/:storeId/charges", requireCsdAdmin, updateCharges);
 router.patch("/restaurants/:storeId/google-business", requireCsdAdmin, updateGoogleBusiness);
 
+// Announcements to every POS (admin only).
+const announcements = require("../controllers/announcementController");
+router.get("/announcements", requireCsdAdmin, announcements.listAll);
+router.post("/announcements", requireCsdAdmin, announcements.create);
+router.post("/announcements/:id/end", requireCsdAdmin, announcements.end);
+
 // Menus (read-only, for the website editor's dish picker) and the
 // restaurant's own POS users, ported from the Admin Portal. Any signed-in
 // staff member may look; only an admin may change a user, which matches the

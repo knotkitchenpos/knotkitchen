@@ -44,6 +44,8 @@ const ALWAYS_OPEN = [
   // A non-owner confirms a purchase (add-on, tablet, printer) with the Store PIN. It only issues a
   // PIN token; everything that token unlocks is still gated.
   "/api/restaurant/verify-pin",
+  // KnotKitchen's announcements (downtime, notices) reach a locked store too.
+  "/api/announcements",
 
   // Gateway callbacks. (Diners never sign in, so customer-facing routes are
   // never reached by this middleware at all -- listing them here only ever

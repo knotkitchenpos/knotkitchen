@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import {
   FiGrid, FiUserPlus, FiUsers, FiShoppingBag, FiSearch, FiMessageSquare,
-  FiCheckSquare, FiBarChart2, FiSettings, FiLogOut, FiMenu, FiX, FiBell,
+  FiCheckSquare, FiBarChart2, FiSettings, FiLogOut, FiMenu, FiX, FiBell, FiSpeaker,
   FiDollarSign, FiPackage, FiMapPin, FiTablet, FiChevronDown, FiActivity, FiBookOpen,
 } from "react-icons/fi";
 import { menuFor } from "../kkmdm/menu";
@@ -30,6 +30,7 @@ const NAV = [
   { to: "/jobs", label: "Jobs", icon: FiCheckSquare, adminOnly: false, group: "Support", section: "jobs" },
   { to: "/knowledge", label: "Knowledge base", icon: FiBookOpen, adminOnly: false, group: "Support", section: "knowledge" },
   { to: "/hardware", label: "Hardware requests", icon: FiPackage, adminOnly: false, group: "Support", badge: "hardware", section: "hardware" },
+  { to: "/announcements", label: "Announcements", icon: FiSpeaker, adminOnly: true, group: "Admin" },
   { to: "/billing", label: "Billing", icon: FiDollarSign, adminOnly: true, group: "Admin" },
   { to: "/staff", label: "Staff Management", icon: FiUsers, adminOnly: true, group: "Admin" },
   { to: "/settings", label: "Settings", icon: FiSettings, adminOnly: true, group: "Admin" },
