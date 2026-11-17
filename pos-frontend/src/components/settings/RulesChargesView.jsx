@@ -3,6 +3,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "../../utils/notify";
 import { getWebsiteSettings, updateWebsiteSettings } from "../../https/storefrontApi";
 import { fieldErrorLines } from "../../utils/rulesCharges";
+import { getSubscriptionStatus } from "../../https";
+import LoyaltyView from "./LoyaltyView";
 
 /* ---------- Module 8: Rules, Charges & Promotions ---------- */
 // The form mounts only once settings are loaded, and remounts on every new
@@ -10,6 +12,10 @@ import { fieldErrorLines } from "../../utils/rulesCharges";
 // never a list built before the load finished (which wiped the saved rules).
 const RulesChargesView = () => {
   const { data: webRes, isError } = useQuery({ queryKey: ["website", "settings"], queryFn: getWebsiteSettings });
+  // Loyalty points are on the POS plan only (its API refuses the Billing plan), so its
+  // card shows only once the plan (already loaded by the app) says POS.
+  const { data: subRes } = useQuery({ queryKey: ["subscription"], queryFn: getSubscriptionStatus, staleTime: 60_000 });
+  const posPlan = subRes?.data?.data?.features?.pos === true;
   if (!webRes) {
     return (
       <div className="p-8 text-center text-[#94A3B8]">
@@ -18,12 +24,12 @@ const RulesChargesView = () => {
     );
   }
   const settings = webRes.data?.data?.settings || {};
-  return <RulesChargesForm key={settings.version} settings={settings} />;
+  return <RulesChargesForm key={settings.version} settings={settings} posPlan={posPlan} />;
 };
 
 const COUPON_CODE = /^[A-Z0-9]{3,20}$/;
 
-const RulesChargesForm = ({ settings }) => {
+const RulesChargesForm = ({ settings, posPlan }) => {
   const qc = useQueryClient();
   const ordering = settings.ordering || {};
 
@@ -202,6 +208,8 @@ const RulesChargesForm = ({ settings }) => {
         {errors("free")}
         {freeRules.length>0&&<div className="pt-2 border-t border-[#E2E8F0] space-y-2 text-[13px]">{freeRules.map((r,i)=><div key={i} className="flex justify-between p-3 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0]"><span className="font-bold">{r.itemName} (min ₹{r.minOrderAmount||0})</span><button onClick={()=>save("free",{freeItemConfig:freeRules.filter((_,j)=>j!==i)})} disabled={mut.isPending} className="text-[#DC2626] font-bold text-[12px]">Remove</button></div>)}</div>}
       </div>
+
+      {posPlan && <LoyaltyView />}
     </div>
   );
 };

@@ -19,9 +19,7 @@ export const MENU_ITEMS = [
   // Also the table QR's and Knot Eats' hours. Open on the POS plan; on the Billing plan the Website add-on opens it.
   { id: "timings", title: "9. Website Timing & Holidays", desc: "Collection, delivery and table hours, Close for Today and holidays for the website and table QR.", Icon: I.calendar, mode: "view", feature: "websiteHours" },
   // Open on every plan: a billing-only store sets its own GST and charges here.
-  { id: "rules", title: "10. Rules, Charges & Promotions", desc: "Min orders, delivery slabs, GST, coupons, free items.", Icon: I.fileText, mode: "view" },
-  // Owner, 2026-11-17: earn on paid bills, spend at the counter (services/loyalty.js).
-  { id: "loyalty", title: "Loyalty Points", desc: "Points on every bill, used as a discount at the counter.", Icon: I.gift, mode: "view", feature: "pos" },
+  { id: "rules", title: "10. Rules, Charges & Promotions", desc: "Min orders, delivery slabs, GST, coupons, free items, loyalty points.", Icon: I.fileText, mode: "view" },
   { id: "reports", title: "11. Reports", desc: "Sales, revenue and order breakdowns.", Icon: I.chart, path: "/reports" },
   // Shift & Day End is built (ShiftView) but hidden until the user wants it
   // on. Flip SHOW_LATER_FEATURES to list it.

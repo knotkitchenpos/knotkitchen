@@ -4,7 +4,8 @@ import { enqueueSnackbar } from "../../utils/notify";
 import { getLoyaltySettings, saveLoyaltySettings } from "../../https";
 
 /**
- * Loyalty points settings (owner, 2026-11-17; pos-backend services/loyalty.js).
+ * Loyalty points settings (owner, 2026-11-17; pos-backend services/loyalty.js),
+ * a card in Rules, Charges & Promotions (POS plan only).
  * Customers earn on every paid bill with their phone and spend points as a
  * discount at counter checkout (the Discount button).
  */
@@ -36,10 +37,10 @@ const LoyaltyView = () => {
   const example = Math.floor((500 / 100) * (Number(form.earnPer100) || 0));
 
   return (
-    <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-5 max-w-2xl">
+    <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-4">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h3 className="text-[16px] font-extrabold text-[#0F172A]">Loyalty points</h3>
+          <h4 className="text-[15px] font-extrabold text-[#0F172A]">Loyalty Points</h4>
           <p className="text-[12.5px] text-[#64748B] mt-0.5">
             Customers earn points on every paid bill with their phone number and use them as a discount at the counter (Discount → Loyalty points).
           </p>
