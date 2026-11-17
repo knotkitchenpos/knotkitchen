@@ -37,6 +37,10 @@ router.route("/order-toggles").put(isVerifiedUser, requireTypedPin(), updateOrde
 router.route("/timings").put(isVerifiedUser, requireTypedPin(), updateChannelTimings);
 router.route("/holidays").put(isVerifiedUser, requireTypedPin(), updateHolidays);
 router.route("/closed-for-today").put(isVerifiedUser, requireTypedPin(), toggleClosedForToday);
+// Loyalty points settings (services/loyalty.js); saved with the typed Store PIN like other settings.
+const loyaltySettings = require("../controllers/loyaltyController");
+router.route("/loyalty/lookup").get(isVerifiedUser, loyaltySettings.lookup);
+router.route("/loyalty").get(isVerifiedUser, loyaltySettings.getSettings).put(isVerifiedUser, requireTypedPin(), loyaltySettings.saveSettings);
 
 // Staff Management (Owner Only)
 router.route("/staff").post(isVerifiedUser, requireOwnerOnly, addStaffMember);

@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { ModalShell, Field, inputCls } from "./ModalShell";
+import LoyaltyRedeem from "./LoyaltyRedeem";
 
 /**
  * Cart-level Discount modal (Module 2 §1, §2).
@@ -28,6 +29,9 @@ const DiscountModal = ({
     onClose,
     onApply,
     onClear,
+    // Loyalty points as the discount (only at the counter); null hides it.
+    onUseLoyalty = null,
+    loyaltyPhone = "",
 }) => {
     const [manual, setManual] = useState(initialMode !== "none");
     const [type, setType] = useState(initialMode === "fixed" ? "fixed" : "percent");
@@ -207,6 +211,8 @@ const DiscountModal = ({
                     </button>
                 </form>
             )}
+
+            {onUseLoyalty && <LoyaltyRedeem subtotal={applicable} initialPhone={loyaltyPhone} onUse={onUseLoyalty} />}
 
             {/* Clear + close row */}
             <div className="mt-4 flex items-center justify-between border-t border-[#E2E8F0] pt-3">

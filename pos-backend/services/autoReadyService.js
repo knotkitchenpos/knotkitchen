@@ -437,6 +437,7 @@ const runAutoCompleteTick = async (now = new Date()) => {
         // no less final. Same fire-and-forget contract; no-op unless the
         // restaurant has autoEBill on.
         fireAutoEBill({ orderId: order._id });
+        require("./loyalty").earnLater({ orderId: order._id });
         fireOrderCharge(order._id);
 
         if (emitter && order.restaurantId) {

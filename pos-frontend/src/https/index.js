@@ -16,6 +16,10 @@ export const createSupportRequest = (data) => axiosWrapper.post("/api/support/re
 export const getAnnouncements = () => axiosWrapper.get("/api/announcements");
 // Waitlist for busy hours (Manage Tables).
 export const getWaitlist = () => axiosWrapper.get("/api/waitlist");
+// Loyalty points: settings, and a customer's balance at the till.
+export const getLoyaltySettings = () => axiosWrapper.get("/api/restaurant/loyalty");
+export const saveLoyaltySettings = (data) => axiosWrapper.put("/api/restaurant/loyalty", data);
+export const lookupLoyalty = (phone) => axiosWrapper.get("/api/restaurant/loyalty/lookup", { params: { phone } });
 export const addToWaitlist = (data) => axiosWrapper.post("/api/waitlist", data);
 export const waitlistAction = (id, action) => axiosWrapper.post(`/api/waitlist/${encodeURIComponent(id)}/${action}`, {});
 

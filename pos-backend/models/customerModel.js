@@ -28,6 +28,11 @@ const customerSchema = new mongoose.Schema(
     visitCount: { type: Number, default: 0 },
     lastVisitAt: { type: Date },
 
+    // Loyalty points (services/loyalty.js): the balance, and the last time it
+    // moved (points expire after the store's months of no activity).
+    loyaltyPoints: { type: Number, default: 0, min: 0 },
+    loyaltyLastAt: { type: Date, default: null },
+
     address: {
       line1: String,
       line2: String,

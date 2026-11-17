@@ -26,6 +26,9 @@ import { createSlice } from "@reduxjs/toolkit";
 const initialState = {
     mode: "none",
     value: 0,
+    // Loyalty points paying for the discount: { phone, points } or null. Any
+    // manual discount replaces it; the server re-checks it on the order.
+    loyalty: null,
 };
 
 const clampPercent = (n) => {
@@ -49,18 +52,26 @@ const discountSlice = createSlice({
     initialState,
     reducers: {
         setPercentDiscount: (state, action) => {
+            state.loyalty = null;
             state.mode = "percent";
             state.value = clampPercent(action.payload);
         },
         setFixedDiscount: (state, action) => {
+            state.loyalty = null;
             state.mode = "fixed";
             state.value = clampFixed(action.payload);
         },
         clearDiscount: () => ({ ...initialState }),
+        setLoyaltyDiscount: (state, action) => {
+            const { phone, points, value } = action.payload || {};
+            state.mode = "fixed";
+            state.value = clampFixed(value);
+            state.loyalty = { phone: String(phone || ""), points: Math.floor(Number(points) || 0) };
+        },
     },
 });
 
-export const { setPercentDiscount, setFixedDiscount, clearDiscount } = discountSlice.actions;
+export const { setPercentDiscount, setFixedDiscount, clearDiscount, setLoyaltyDiscount } = discountSlice.actions;
 
 /**
  * Compute the discount amount in ₹ given the currently applicable amount

@@ -1234,6 +1234,7 @@ const recordSessionPayment = async (req, res, next) => {
     // round trip to a third party is how a busy till starts timing out.
     // No-op unless the restaurant has autoEBill on.
     if (paid) fireAutoEBill({ tableSessionId: session._id });
+    if (paid) require("../services/loyalty").earnLater({ tableSessionId: session._id });
 
     // Every other till and the diner's page: the table is paid (or the
     // attempt failed). An open settle panel elsewhere refreshes instead of

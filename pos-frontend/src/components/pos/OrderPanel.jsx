@@ -28,6 +28,7 @@ import {
   computeDiscountAmount,
   formatDiscountLabel,
   setFixedDiscount,
+  setLoyaltyDiscount,
   setPercentDiscount,
 } from "../../redux/slices/discountSlice";
 import {
@@ -539,6 +540,8 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
       ...(paymentMethod === "split" ? { splits } : {}),
       ...(deliveryAddress ? { deliveryAddress } : {}),
       ...(table ? { table } : {}),
+      // Loyalty points paying for the discount; the server checks them against this bill's phone.
+      ...(discount.loyalty?.points > 0 ? { loyaltyRedeem: discount.loyalty } : {}),
     };
   };
 
@@ -1298,6 +1301,15 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
             setShowDiscount(false);
             enqueueSnackbar("Discount removed.", { variant: "info" });
           }}
+          // Counter orders only: a table bill takes its discount at settlement.
+          // The customer's own points need no PIN (the server agrees).
+          onUseLoyalty={isTable ? null : ({ phone, points, value }) => {
+            dispatch(setLoyaltyDiscount({ phone, points, value }));
+            dispatch(setCustomer({ name: customer.customerName || "", phone, guests: customer.guests || 0 }));
+            setShowDiscount(false);
+            enqueueSnackbar(`${points} points used: ₹${value} off.`, { variant: "success" });
+          }}
+          loyaltyPhone={customer.customerPhone || ""}
         />
       )}
 

@@ -93,6 +93,14 @@ const restaurantSchema = new mongoose.Schema(
       // An order cancelled within this many minutes of being placed puts its stock back (0: never).
       cancelReturnMinutes: { type: Number, default: 3, min: 0, max: 1440 },
     },
+    // Loyalty points (owner, 2026-11-17; services/loyalty.js). Off until the owner switches it on.
+    loyalty: {
+      enabled: { type: Boolean, default: false },
+      earnPer100: { type: Number, default: 1, min: 0, max: 100 }, // points per ₹100 paid
+      pointValue: { type: Number, default: 1, min: 0.01, max: 100 }, // ₹ off per point
+      minRedeem: { type: Number, default: 50, min: 0, max: 100000 }, // points needed to redeem
+      expiryMonths: { type: Number, default: 12, min: 0, max: 120 }, // 0 = never
+    },
     posSettings: {
       autoPrintReceipt: { type: Boolean, default: true }, // legacy, unread
       autoEBill: { type: Boolean, default: false },

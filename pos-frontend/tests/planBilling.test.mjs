@@ -15,6 +15,7 @@ test("every Settings tile carries the plan feature that opens it", () => {
     cache: null, device: null, properties: null, menu: null,
     tables: "tableQr", staff: null, toggles: "pos", timings: "websiteHours", rules: null, reports: null,
     shift: "pos", inventory: "pos", billing: null, website: "website", eats: "pos", support: null, logout: null,
+    loyalty: "pos",
   });
 });
 

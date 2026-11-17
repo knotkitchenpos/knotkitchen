@@ -17,6 +17,7 @@ import OrderTypesAutoReadyView from "../components/settings/OrderTypesAutoReadyV
 import TimingsHolidaysView from "../components/settings/TimingsHolidaysView";
 import ManageStaffView from "../components/settings/ManageStaffView";
 import RulesChargesView from "../components/settings/RulesChargesView";
+import LoyaltyView from "../components/settings/LoyaltyView";
 import KnotEatsView from "../components/settings/KnotEatsView";
 import { readQueue } from "../utils/offlineQueue";
 
@@ -170,6 +171,8 @@ const Settings = () => {
           <TimingsHolidaysView />
         ) : view === "staff" ? (
           <ManageStaffView />
+        ) : view === "loyalty" ? (
+          <LoyaltyView />
         ) : view === "rules" ? (
           <RulesChargesView />
         ) : view === "eats" ? (

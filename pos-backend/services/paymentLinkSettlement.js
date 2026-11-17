@@ -163,6 +163,7 @@ const finalizePaymentLinkFromGateway = async ({
   // order is unpaid, so a webhook redelivery returns null here and cannot send
   // a second one. (eBillSentAt makes that safe twice over.)
   if (updatedOrder) fireAutoEBill({ orderId: updatedOrder._id });
+  if (updatedOrder) require("./loyalty").earnLater({ orderId: updatedOrder._id });
   if (updatedOrder) fireOrderCharge(updatedOrder._id);
 
   return { link: updatedLink || link, txn, order: updatedOrder };

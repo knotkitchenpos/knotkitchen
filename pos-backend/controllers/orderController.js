@@ -521,13 +521,32 @@ const addOrder = async (req, res, next) => {
       ];
     }
 
+    // Loyalty points used at the counter (services/loyalty): the same phone as
+    // the bill, enough points, the minimum, and the discount covering them.
+    // Offline-synced orders cannot check a balance, so they use no points.
+    let loyaltyUse = null;
+    const loyaltyRedeem = req.body?.loyaltyRedeem;
+    if (loyaltyRedeem && Number(loyaltyRedeem.points) > 0 && !offlineSync) {
+      const loyalty = require("../services/loyalty");
+      if (!phone || String(loyaltyRedeem.phone || "").replace(/\D/g, "").slice(-10) !== phone) {
+        return next(createHttpError(400, "Use the same phone number on the bill as for the points."));
+      }
+      try {
+        loyaltyUse = await loyalty.checkRedeem({ restaurantId: req.user?.restaurantId, phone, points: loyaltyRedeem.points, discount: sanitizedBills.discount });
+      } catch (err) {
+        if (err instanceof loyalty.LoyaltyError) return next(createHttpError(400, err.message));
+        throw err;
+      }
+    }
+
     // A discount is money off a sale, so it needs the Security PIN, as a void
     // does, unless the owner gives it. The till asks for the PIN when the
     // discount is applied; this is the enforcement. Offline-synced orders are
     // exempt: the sale already happened, a PIN token has long expired by sync
     // time, and refusing would lose it.
     // ponytail: a hand-crafted offline-sync request skips the PIN; audit-log offline discounts if that matters.
-    if (sanitizedBills.discount > 0 && !offlineSync) {
+    // Points a customer spends are theirs, not the staff's to give: only the rest needs the PIN.
+    if (sanitizedBills.discount - (loyaltyUse?.value || 0) > 0.009 && !offlineSync) {
       const { isOwnerUser, hasPinAuthorization, pinRequired } = require("../middlewares/requirePermission");
       if (!isOwnerUser(req.user) && !(await hasPinAuthorization(req))) return next(pinRequired());
     }
@@ -683,6 +702,17 @@ const addOrder = async (req, res, next) => {
 
 
     const order = new Order(orderData);
+    if (loyaltyUse) {
+      try {
+        await require("../services/loyalty").redeem({ restaurantId: req.user?.restaurantId, customer: loyaltyUse.customer, points: loyaltyUse.points, orderId: order._id });
+      } catch (err) {
+        if (err instanceof require("../services/loyalty").LoyaltyError) return next(createHttpError(409, err.message));
+        throw err;
+      }
+    }
+    const undoLoyalty = () =>
+      loyaltyUse ? require("../services/loyalty").undoRedeem({ customer: loyaltyUse.customer, points: loyaltyUse.points, orderId: order._id }) : null;
+    try {
     try {
       await order.save();
     } catch (err) {
@@ -699,10 +729,16 @@ const addOrder = async (req, res, next) => {
         // unique index kept one order, so answer with it.
         const winner = await Order.findOne({ restaurantId: req.user?.restaurantId, idempotencyKey: req.idempotencyKey });
         if (!winner) throw err;
+        // The first attempt already used (and recorded) its points.
+        await undoLoyalty();
         return res.status(200).json({ success: true, message: "Order already created", data: winner });
       } else {
         throw err;
       }
+    }
+    } catch (err) {
+      await undoLoyalty();
+      throw err;
     }
 
     // Sync table occupancy when a dine-in order is placed via the legacy path
@@ -733,6 +769,7 @@ const addOrder = async (req, res, next) => {
     // Fire-and-forget, and a no-op unless posSettings.autoEBill is on and the
     // order carries a phone number.
     if (isPaidAtTill) fireAutoEBill({ orderId: order._id });
+    if (isPaidAtTill) require("../services/loyalty").earnLater({ orderId: order._id });
     // Same trigger, different direction: the e-bill goes to the diner, this
     // settles the platform fee with the restaurant. A till order never carries
     // one, so it is only stamped "No platform fee was collected."
@@ -995,6 +1032,7 @@ const updateOrder = async (req, res, next) => {
     await order.save();
     // N012: a paid order cancelled is a refund on record, never a sale that vanished.
     if (cancelling && paid) await refundOnCancel(order, { user: req.user, reason: order.cancelReason });
+    if (cancelling) await require("../services/loyalty").reverseForOrder(order);
 
     // EVERY transition is broadcast, not only the one to Ready.
     //
@@ -1025,6 +1063,7 @@ const updateOrder = async (req, res, next) => {
     // change worked, and a messaging problem must not turn that into an error.
     // Does nothing unless posSettings.autoEBill is on for this restaurant.
     if (settledTransition) fireAutoEBill({ orderId: order._id });
+    if (settledTransition) require("../services/loyalty").earnLater({ orderId: order._id });
     if (settledTransition) fireOrderCharge(order._id);
 
     // Cancelling wrote orderStatus and stopped. The table session and the
