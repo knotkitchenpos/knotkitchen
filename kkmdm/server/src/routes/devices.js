@@ -234,6 +234,31 @@ router.post("/bulk/commands", requirePerm("fleet.bulk"), wrap(async (req, res) =
   res.status(201).json({ bulkId: job._id, total: devices.length });
 }));
 
+/**
+ * Update every tablet whose POS is older than the newest version in
+ * Applications (CSD: Home -> Outdated POS -> Update all). One bulk install of
+ * that version, through the same queue as any bulk command.
+ */
+router.post("/update-outdated", requirePerm("fleet.bulk"), wrap(async (req, res) => {
+  checkCommandAllowed(req, "install_app");
+  if (!requireRecentAuth(req)) throw new HttpError(428, "reauth_required");
+  const pos = await App.findOne({ role: "pos" }).lean();
+  const latest = pos && await AppVersion.findOne({ appId: pos._id }).sort({ versionCode: -1 }).lean();
+  if (!latest) throw new HttpError(400, "no_pos_version", "Upload the POS app in Applications first.");
+  const devices = await Device.find({
+    ...scopeFilter(req),
+    lifecycle: { $in: ["enrolled", "active"] },
+    $or: [{ posVersionCode: { $lt: latest.versionCode } }, { posVersionCode: null }],
+  }).select("_id").lean();
+  if (!devices.length) return res.json({ total: 0, versionCode: latest.versionCode });
+  const p = await commandParams("install_app", { versionId: latest._id });
+  const target = { deviceIds: devices.map((d) => String(d._id)) };
+  const job = await BulkJob.create({ type: "install_app", params: p, target, total: devices.length, createdBy: req.admin._id, createdByEmail: req.admin.email });
+  for (const d of devices) await commands.enqueue(d._id, "install_app", p, { actor: req.admin, bulkId: job._id });
+  await audit(req, "bulk.update_outdated", { targetType: "bulk_job", targetId: job._id, details: { total: devices.length, versionCode: latest.versionCode } });
+  res.status(201).json({ bulkId: job._id, total: devices.length, versionCode: latest.versionCode });
+}));
+
 router.post("/:id/technician-otp", requirePerm("technician.otp"), wrap(async (req, res) => {
   const d = await loadDevice(req);
   if (!d.techSecretEnc) throw new HttpError(409, "device_has_no_seed");

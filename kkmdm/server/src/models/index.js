@@ -318,7 +318,7 @@ const TelemetryDaily = mongoose.model("TelemetryDaily", new Schema({
 
 // ---------------- Alerts ----------------
 
-const ALERT_TYPES = ["offline", "kiosk_exited", "crash_loop", "low_storage", "low_battery", "not_charging", "policy_noncompliant", "enrollment_failed"];
+const ALERT_TYPES = ["offline", "kiosk_exited", "crash_loop", "low_storage", "low_battery", "not_charging", "policy_noncompliant", "enrollment_failed", "pos_outdated"];
 
 const AlertRule = mongoose.model("AlertRule", new Schema({
   companyId: { type: Id, ref: "Company", required: true },

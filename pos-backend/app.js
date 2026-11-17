@@ -390,6 +390,9 @@ if (runSchedulers) try {
     // Sends nothing until the kk_daily_summary template is approved.
     require("./services/partnerDailySummary").startDailySummaryScheduler();
 
+    // New KKMDM tablet alerts, pushed to CSD staff with Device management.
+    require("./services/kkmdmAlertPush").startKkmdmAlertPush();
+
     // Audit entries older than 90 days move to the compressed archive
     // (moved, never deleted; CSD's activity views read both).
     require("./services/auditArchive").startAuditArchiveScheduler();

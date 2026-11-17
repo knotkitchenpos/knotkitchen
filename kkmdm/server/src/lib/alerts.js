@@ -4,13 +4,13 @@
  * alert resolves itself when the condition clears.
  */
 const config = require("../config");
-const { AlertRule, Alert, Device, Store } = require("../models");
+const { AlertRule, Alert, Device, Store, App, AppVersion } = require("../models");
 const { inWindow } = require("./time");
 
 const DEFAULT_THRESHOLDS = { offline: 15, low_storage: 500, low_battery: 15, crash_loop: 5, not_charging: 30 };
-const SEVERITY = { offline: "critical", kiosk_exited: "critical", crash_loop: "critical", low_storage: "warning", low_battery: "warning", not_charging: "warning", policy_noncompliant: "warning", enrollment_failed: "info" };
+const SEVERITY = { offline: "critical", kiosk_exited: "critical", crash_loop: "critical", low_storage: "warning", low_battery: "warning", not_charging: "warning", policy_noncompliant: "warning", enrollment_failed: "info", pos_outdated: "warning" };
 
-function condition(rule, d, now) {
+function condition(rule, d, now, ctx = {}) {
   const th = rule.threshold ?? DEFAULT_THRESHOLDS[rule.type];
   const t = d.telemetry || {};
   switch (rule.type) {
@@ -29,6 +29,10 @@ function condition(rule, d, now) {
     case "policy_noncompliant":
       return d.policy?.compliant === false && d.enrolledAt && now - d.enrolledAt > 10 * 60e3
         && `Policy not applied${d.policy.errors?.length ? `: ${d.policy.errors[0]}` : ""}`;
+    case "pos_outdated":
+      // Only a tablet that reports its POS version; the newest one in Applications is the bar.
+      return ctx.posVersionCode != null && d.posVersionCode != null && d.posVersionCode < ctx.posVersionCode
+        && `POS ${d.posVersion || d.posVersionCode} is older than the latest (${ctx.posVersionCode})`;
     default:
       return false;
   }
@@ -61,10 +65,19 @@ async function notify(alert, rule, device, store) {
   return sent;
 }
 
+/** The newest POS version in Applications (same as routes/devices currentPosVersionCode). */
+async function latestPosVersionCode() {
+  const pos = await App.findOne({ role: "pos" }).lean();
+  if (!pos) return null;
+  const v = await AppVersion.findOne({ appId: pos._id }).sort({ versionCode: -1 }).lean();
+  return v?.versionCode ?? null;
+}
+
 async function evaluate(now = new Date()) {
   const rules = await AlertRule.find({ enabled: true }).lean();
   if (!rules.length) return 0;
   const stores = new Map((await Store.find().lean()).map((s) => [String(s._id), s]));
+  const ctx = { posVersionCode: rules.some((r) => r.type === "pos_outdated") ? await latestPosVersionCode() : null };
   let opened = 0;
   for (const rule of rules) {
     const q = { companyId: rule.companyId, lifecycle: { $in: ["enrolled", "active"] } };
@@ -74,12 +87,14 @@ async function evaluate(now = new Date()) {
       const store = stores.get(String(d.storeId));
       const inHours = !rule.businessHoursOnly || !store
         || inWindow(store.businessHours?.open, store.businessHours?.close, store.timezone, now);
-      const msg = inHours && condition(rule, d, now);
+      const msg = inHours && condition(rule, d, now, ctx);
       const existing = await Alert.findOne({ ruleId: rule._id, deviceId: d._id, status: { $ne: "resolved" } });
       if (msg && !existing) {
         const alert = await Alert.create({ ruleId: rule._id, deviceId: d._id, storeId: d.storeId, type: rule.type, severity: SEVERITY[rule.type], message: msg });
-        alert.notified = await notify(alert, rule, d, store);
-        await alert.save();
+        // Added, not assigned: CSD's push (pos-backend services/kkmdmAlertPush) may
+        // already have marked it, and that mark must survive.
+        const sent = await notify(alert, rule, d, store);
+        if (sent.length) await Alert.updateOne({ _id: alert._id }, { $addToSet: { notified: { $each: sent } } });
         opened++;
       } else if (!msg && existing) {
         existing.status = "resolved";
