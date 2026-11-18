@@ -48,6 +48,9 @@ function EatsStore({ storeId }) {
   const [info, setInfo] = useState(null);
   const [missing, setMissing] = useState(false);
   const [replace, setReplace] = useState(null); // { from, resolve } while asking
+  // Leaving with the question still open is a "no": the dishes waiting on it
+  // are dropped, and the next one from another store asks again (lib/eatsCart).
+  useEffect(() => () => replace?.resolve(false), [replace]);
   const config = useEatsConfig();
 
   // In parallel with StorePage's own menu fetches; a new point re-quotes delivery.

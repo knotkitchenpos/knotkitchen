@@ -49,25 +49,43 @@ export function clearCartFor(storeId) {
   }
 }
 
+// The question already on screen. Dishes added while it is open (Reorder adds
+// several at once) wait for that one answer; a second question would replace
+// the first on screen and drop every dish waiting on it.
+let asking = null;
+
 /**
  * The store page's cart, with an `addItem` that asks before a dish from this
  * store replaces another store's basket. `confirmReplace(active)` resolves
  * true to start over here; false keeps the other basket and drops the dish.
+ * `addItem` resolves whether the dish went in.
  */
 export function guardCart(cart, { storeId, name }, confirmReplace) {
   const addItem = (line) => {
     const active = getActiveCart();
     if (active && active.storeId !== storeId) {
-      Promise.resolve(confirmReplace(active)).then((ok) => {
-        if (!ok) return;
-        clearCartFor(active.storeId);
-        setActiveCart({ storeId, name });
-        cart.addItem(line);
+      if (!asking) {
+        asking = Promise.resolve(confirmReplace(active))
+          .then((ok) => {
+            if (ok) {
+              clearCartFor(active.storeId);
+              setActiveCart({ storeId, name });
+            }
+            return ok;
+          })
+          .finally(() => {
+            asking = null;
+          });
+      }
+      // Resolves whether the dish went in (Reorder counts them).
+      return asking.then((ok) => {
+        if (ok) cart.addItem(line);
+        return ok;
       });
-      return;
     }
     setActiveCart({ storeId, name });
     cart.addItem(line);
+    return Promise.resolve(true);
   };
   return { ...cart, addItem };
 }

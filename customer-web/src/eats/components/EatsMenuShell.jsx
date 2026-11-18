@@ -141,8 +141,8 @@ export default function EatsMenuShell({
     const byName = new Map();
     s.categories.forEach((c) => c.products.forEach((p) => byName.set(String(p.name).trim().toLowerCase(), p)));
     getEatsOrder(reorderToken)
-      .then((res) => {
-        let added = 0;
+      .then(async (res) => {
+        const adding = [];
         const later = [];
         for (const i of res.data?.data?.order?.items || []) {
           const p = byName.get(String(i.name || "").trim().toLowerCase());
@@ -152,12 +152,17 @@ export default function EatsMenuShell({
             later.push(p.name);
             continue;
           }
-          cart.addItem({ ...simpleLine({ ...p, price: priceFor(p, cart.channel) }), quantity: Math.max(1, Number(i.quantity) || 1) });
-          added += 1;
+          adding.push(cart.addItem({ ...simpleLine({ ...p, price: priceFor(p, cart.channel) }), quantity: Math.max(1, Number(i.quantity) || 1) }));
         }
-        setReorderNote(
-          [added ? `Added ${added} dish${added === 1 ? "" : "es"} from your last order.` : "None of those dishes can be added again right now.", later.length ? `Choose options for ${later.join(", ")} from the menu.` : ""].filter(Boolean).join(" "),
-        );
+        // Counted once they are in: with a basket from another restaurant the
+        // diner is asked first, and "Cancel" adds none of them.
+        const added = (await Promise.all(adding)).filter((ok) => ok !== false).length;
+        const first = added
+          ? `Added ${added} dish${added === 1 ? "" : "es"} from your last order.`
+          : adding.length
+            ? "Nothing was added: you kept your other cart."
+            : "None of those dishes can be added again right now.";
+        setReorderNote([first, later.length ? `Choose options for ${later.join(", ")} from the menu.` : ""].filter(Boolean).join(" "));
       })
       .catch(() => setReorderNote("Couldn't load your last order. Add dishes from the menu."));
     // cart is a new object every render; once per page is the point.

@@ -81,3 +81,18 @@ test("profile: valid details only, one Home and one Work, and Clear wipes it", (
   clearProfile();
   assert.deepEqual(getProfile(), { name: "", phone: "", addresses: [] });
 });
+
+test("ordering again to a saved address does not save it twice", () => {
+  clearProfile();
+  saveAddress({ label: "Home", line1: "1 A Rd" });
+  saveAddress({ label: "Work", line1: "2 B Rd" });
+  for (let i = 0; i < 7; i += 1) saveAddress({ label: "Other", line1: "3 C Rd", line2: "Flat 4", postalCode: "700016" });
+  assert.deepEqual(
+    getProfile().addresses.map((a) => `${a.label}: ${a.line1}`),
+    ["Other: 3 C Rd", "Work: 2 B Rd", "Home: 1 A Rd"],
+    "one Other, and Home and Work are still there",
+  );
+  // The same place saved under another label moves to that label.
+  saveAddress({ label: "Work", line1: "3 C Rd", line2: "Flat 4", postalCode: "700016" });
+  assert.deepEqual(getProfile().addresses.map((a) => `${a.label}: ${a.line1}`), ["Work: 3 C Rd", "Home: 1 A Rd"]);
+});

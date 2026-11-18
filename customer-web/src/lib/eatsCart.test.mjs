@@ -62,3 +62,23 @@ test("recent orders: newest first, no duplicates, at most 10; a known one is fil
   addRecentOrder({ token: "" });
   assert.equal(recentOrders().length, 10);
 });
+
+test("several dishes at once (Reorder) ask once, and every one is added", async () => {
+  store.clear();
+  guardCart(fakeCart("111111"), { storeId: "111111", name: "A" }, () => true).addItem({ itemId: "x" });
+  const b = fakeCart("222222");
+  let asked = 0;
+  let answer;
+  const guarded = guardCart(b, { storeId: "222222", name: "B" }, () => {
+    asked += 1;
+    return new Promise((resolve) => (answer = resolve));
+  });
+  guarded.addItem({ itemId: "p" });
+  guarded.addItem({ itemId: "q" });
+  guarded.addItem({ itemId: "r" });
+  assert.equal(asked, 1, "one question, not one per dish");
+  answer(true);
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(b.added.map((l) => l.itemId), ["p", "q", "r"]);
+  assert.deepEqual(getActiveCart(), { storeId: "222222", name: "B", count: 3 });
+});

@@ -48,14 +48,18 @@ const store = localStore("ke_profile_v1", EMPTY, cleanProfile);
 /** Name and phone, as typed at checkout (only a valid mobile is kept). */
 export const saveContact = ({ name, phone }) => store.set(cleanProfile({ ...store.get(), name, phone }));
 
+const samePlace = (x, a) => ["line1", "line2", "city", "postalCode"].every((k) => x[k].toLowerCase() === a[k].toLowerCase());
+
 /**
  * One address per label for Home and Work (a new Home replaces the old one);
- * "Other" adds. The newest is first, so checkout offers it first.
+ * "Other" adds. The same place saved again (checkout saves it with each
+ * order) replaces its old copy rather than adding one. The newest is first,
+ * so checkout offers it first.
  */
 export const saveAddress = (address) => {
   const a = cleanAddress(address);
   if (!a) return null;
-  const rest = store.get().addresses.filter((x) => x.id !== a.id && (a.label === "Other" || x.label !== a.label));
+  const rest = store.get().addresses.filter((x) => x.id !== a.id && !samePlace(x, a) && (a.label === "Other" || x.label !== a.label));
   store.set(cleanProfile({ ...store.get(), addresses: [a, ...rest] }));
   return a;
 };
