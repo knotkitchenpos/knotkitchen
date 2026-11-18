@@ -108,3 +108,17 @@ test("SOURCE: nginx serves each page with its head, robots, a sitemap and real 4
   const route = read("pos-backend", "routes", "publicStoreRoute.js");
   assert.ok(route.indexOf('"/store/head"') < route.indexOf('"/store/:storeId"'), "head before :storeId");
 });
+
+test("SOURCE: every Knot Eats page is served by nginx as a page, not a 404", () => {
+  const conf = read("customer-web", "nginx.conf");
+  const block = conf.match(/location ~ "\^\/\((search\|saved[^"]*)"/);
+  assert.ok(block, "the eats.<base> page location");
+  const pages = new RegExp(`^/(${block[1]}`);
+  const app = read("customer-web", "src", "eats", "EatsApp.jsx");
+  // Each fixed path in EatsApp's routes (the ones with :params are covered by their own patterns).
+  const fixed = [...app.matchAll(/<Route path="(\/[a-z/]+)"/g)].map((m) => m[1]).filter((p) => p !== "/");
+  assert.ok(fixed.includes("/orders") && fixed.includes("/account"));
+  for (const p of fixed) assert.match(p, pages, `${p} must be in nginx's eats page list`);
+  assert.match("/store/893146", pages);
+  assert.match("/order/v_6afcab7e34e0071f4617d539_fEsQyN7Gf4VQECux7XCM_r", pages);
+});
