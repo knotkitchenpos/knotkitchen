@@ -201,5 +201,5 @@ test("REGRESSION R2: voids have their own card, so Total + Cancelled is every or
   const s = buildReportBuckets(list);
   assert.deepEqual(s.cancelled, { count: 1, amount: 250 });
   assert.equal(s.total.count + s.cancelled.count, list.length);
-  assert.match(fs.readFileSync(path.join(__dirname, "..", "..", "pos-frontend", "src", "pages", "Reports.jsx"), "utf8"), /\{ key: "cancelled", label: "Cancelled Orders"/);
+  assert.match(fs.readFileSync(path.join(__dirname, "..", "..", "pos-frontend", "src", "pages", "Reports.jsx"), "utf8"), /\{ key: "cancelled", label: "Cancelled \(unpaid\)"/);
 });

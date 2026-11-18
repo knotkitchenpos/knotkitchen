@@ -859,7 +859,8 @@ const Orders = () => {
                             {extra.quantity > 1 ? `${extra.quantity}× ${extra.name}` : extra.name}
                           </p>
                           <span className="text-[12px] font-semibold text-[#334155] w-[68px] text-right shrink-0">
-                            {extra.price ? money(extra.price * extra.quantity * lineQty) : "—"}
+                            {/* Already inside the dish's amount above: "incl.", so it is not added twice. */}
+                            {extra.price ? `incl. ${money(extra.price * extra.quantity * lineQty)}` : "—"}
                           </span>
                         </div>
                       ))}

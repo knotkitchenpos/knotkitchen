@@ -99,7 +99,7 @@ function QuickActions({ device, admin, onDone }) {
       {otp && (
         <Modal title="Technician PIN" onClose={() => setOtp(null)}>
           <div style={{ fontSize: 44, fontWeight: 800, letterSpacing: 8, textAlign: "center" }}>{otp.code}</div>
-          <p className="muted">Valid until about {new Date(otp.validUntil).toLocaleTimeString("en-IN")}. On the tablet, tap the KnotKitchen title 7 times (on the screen behind the POS) or use the POS&apos;s technician menu, then enter this PIN. The kiosk re-locks by itself.</p>
+          <p className="muted">Valid until about {new Date(otp.validUntil).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata" })}. On the tablet, tap the KnotKitchen title 7 times (on the screen behind the POS) or use the POS&apos;s technician menu, then enter this PIN. The kiosk re-locks by itself.</p>
         </Modal>
       )}
       {reauth.dialog}

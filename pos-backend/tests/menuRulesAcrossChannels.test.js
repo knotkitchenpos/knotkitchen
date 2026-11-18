@@ -97,6 +97,29 @@ test("REGRESSION M3: a category or subcategory save that leaves Dispatch Type as
   assert.equal(menu.items[0].dispatchType.collection, true);
 });
 
+test("deleting a subcategory keeps its dishes, moved up to the category (QA walkthrough, 2026-11-18)", async (t) => {
+  const { deleteSubcategory } = r("controllers/menuController");
+  const menu = new Menu({
+    name: "Burgers", createdBy: oid(), restaurantId: RID, subcategories: [{ name: "Chicken" }, { name: "Veg" }],
+    items: [{ name: "Zinger", price: 150, category: "Burgers", subcategory: "Chicken" }, { name: "Aloo", price: 90, category: "Burgers", subcategory: "Veg" }],
+  });
+  t.mock.method(Menu, "findOne", async () => menu);
+  t.mock.method(menu, "save", async () => menu);
+  let body;
+  const res = { status: () => res, json: (b) => { body = b; return res; } };
+  const fail = (e) => { throw e; };
+  await deleteSubcategory({ user: { _id: oid(), restaurantId: RID }, body: { menuId: menu._id, subcategoryId: menu.subcategories[0]._id } }, res, fail);
+  assert.deepEqual(menu.subcategories.map((s) => s.name), ["Veg"]);
+  assert.equal(menu.items.length, 2, "no dish is removed");
+  assert.equal(menu.items[0].subcategory, "", "Zinger now sits directly under Burgers");
+  assert.equal(menu.items[1].subcategory, "Veg", "other subcategories untouched");
+  assert.equal(body.moved, 1);
+
+  let err;
+  await deleteSubcategory({ user: { _id: oid(), restaurantId: RID }, body: { menuId: menu._id } }, res, (e) => (err = e));
+  assert.equal(err?.status, 400);
+});
+
 test("REGRESSION: a category outside its own schedule is neither listed on the table QR nor sold to a table", async (t) => {
   const { nowInTimezone } = r("services/businessHours");
   const today = nowInTimezone("Asia/Kolkata").day;

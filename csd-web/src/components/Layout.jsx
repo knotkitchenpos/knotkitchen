@@ -145,7 +145,7 @@ const Layout = () => {
   const here = NAV.find((n) => pathname.startsWith(n.to))
     || (inMdm ? { label: `Device management · ${(mdmItems.find((m) => m.key && pathname.startsWith(`/mdm/${m.key}`)) || { label: "Overview" }).label}` } : null)
     || (pathname.startsWith("/profile") ? { label: "My Profile" } : null);
-  const today = new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" });
+  const today = new Date().toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", weekday: "long", day: "numeric", month: "long" });
 
   // Active: a lit pill with an orange bar on its leading edge.
   const linkClass = ({ isActive }) =>

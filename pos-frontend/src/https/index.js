@@ -236,6 +236,7 @@ export const addCategory = (data) => axiosWrapper.post("/api/menu/category", dat
 export const updateCategory = (data) => axiosWrapper.put("/api/menu/category", data);
 export const addSubcategory = (data) => axiosWrapper.post("/api/menu/subcategory", data);
 export const updateSubcategory = (data) => axiosWrapper.put("/api/menu/subcategory", data);
+export const deleteSubcategory = (data) => axiosWrapper.post("/api/menu/subcategory/delete", data);
 export const deleteCategory = (menuId) => axiosWrapper.delete(`/api/menu/${menuId}`);
 export const addDish = (data) => axiosWrapper.post("/api/menu/dish", data);
 export const updateDish = ({ menuId, itemId, ...data }) =>

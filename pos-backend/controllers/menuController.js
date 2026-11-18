@@ -296,6 +296,34 @@ const addSubcategory = async (req, res, next) => {
   }
 };
 
+// A subcategory made by mistake can be removed (QA walkthrough, 2026-11-18).
+// Its dishes are kept: they move up to the category itself, so nothing on
+// sale disappears with it.
+const deleteSubcategory = async (req, res, next) => {
+  try {
+    const { menuId, subcategoryId } = req.body || {};
+    if (!menuId || !subcategoryId) return next(createHttpError(400, "Category ID and Subcategory ID are required!"));
+
+    const menu = await Menu.findOne({ _id: menuId, ...menuScopeFor(req.user) });
+    if (!menu) return next(createHttpError(404, "Category not found!"));
+    const subcat = (menu.subcategories || []).id(subcategoryId);
+    if (!subcat) return next(createHttpError(404, "Subcategory not found!"));
+
+    let moved = 0;
+    for (const item of menu.items || []) {
+      if (item.subcategory === subcat.name) {
+        item.subcategory = "";
+        moved += 1;
+      }
+    }
+    subcat.deleteOne();
+    await menu.save();
+    res.status(200).json({ success: true, message: "Subcategory deleted!", data: menu, moved });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const updateSubcategory = async (req, res, next) => {
   try {
     const { menuId, subcategoryId, name, oldName, description, dispatchType, published, bgColor, textColor } = req.body;
@@ -1386,6 +1414,7 @@ module.exports = {
   updateCategory,
   addSubcategory,
   updateSubcategory,
+  deleteSubcategory,
   addDish,
   updateDish,
 

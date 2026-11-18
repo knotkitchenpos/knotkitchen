@@ -123,7 +123,7 @@ const SessionDetailModal = ({
                         {extra.quantity > 1 ? `${extra.quantity}× ${extra.name}` : extra.name}
                       </p>
                       <p className="text-xs font-semibold text-content-muted shrink-0">
-                        {extra.price ? `₹${(extra.price * extra.quantity * lineQty).toFixed(2)}` : ""}
+                        {extra.price ? `incl. ₹${(extra.price * extra.quantity * lineQty).toFixed(2)}` : ""}
                       </p>
                     </div>
                   ))}

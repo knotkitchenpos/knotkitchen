@@ -242,7 +242,7 @@ const Invoice = ({
                                             </span>
                                             <span className="shrink-0 text-white/60">
                                                 {extra.price
-                                                    ? money(extra.price * extra.quantity * resolveItemAmounts(item).quantity)
+                                                    ? `incl. ${money(extra.price * extra.quantity * resolveItemAmounts(item).quantity)}`
                                                     : ""}
                                             </span>
                                         </div>

@@ -5,8 +5,8 @@ import { chat, stores as storesApi, whatsapp, errorMessage } from "../api";
 import WhatsAppInbox from "./WhatsAppInbox";
 import { useAuth } from "../context/AuthContext";
 
-const time = (d) => new Date(d).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
-const day = (d) => new Date(d).toLocaleDateString("en-IN", { dateStyle: "medium" });
+const time = (d) => new Date(d).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" });
+const day = (d) => new Date(d).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium" });
 
 /**
  * Poll interval for the open thread.

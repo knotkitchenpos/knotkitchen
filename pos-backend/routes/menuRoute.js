@@ -5,6 +5,7 @@ const {
   updateCategory,
   addSubcategory,
   updateSubcategory,
+  deleteSubcategory,
   addDish,
   updateDish,
   deleteMenu,
@@ -43,6 +44,7 @@ router.route("/category").post(isVerifiedUser, requireProtectedAction, addCatego
 router.route("/category").put(isVerifiedUser, requireProtectedAction, updateCategory);
 router.route("/subcategory").post(isVerifiedUser, requireProtectedAction, addSubcategory);
 router.route("/subcategory").put(isVerifiedUser, requireProtectedAction, updateSubcategory);
+router.route("/subcategory/delete").post(isVerifiedUser, requireProtectedAction, deleteSubcategory);
 router.route("/dish").post(isVerifiedUser, requireProtectedAction, addDish);
 
 // Bulk delete — one atomic $pull. Looping the single-dish route instead races

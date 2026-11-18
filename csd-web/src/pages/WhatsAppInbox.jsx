@@ -17,16 +17,17 @@ import CustomerPanel from "../components/CustomerPanel";
  */
 const POLL_MS = 4000;
 
-const time = (d) => new Date(d).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
-const day = (d) => new Date(d).toLocaleDateString("en-IN", { dateStyle: "medium" });
+const time = (d) => new Date(d).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata", hour: "2-digit", minute: "2-digit" });
+const day = (d) => new Date(d).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium" });
 const when = (d) => {
   if (!d) return "";
   const t = new Date(d);
   const now = new Date();
-  if (t.toDateString() === now.toDateString()) return time(t);
-  const y = new Date(now); y.setDate(now.getDate() - 1);
-  if (t.toDateString() === y.toDateString()) return "Yesterday";
-  return t.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  // Today and yesterday in India, whatever the viewer's clock says.
+  const istDay = (x) => x.toLocaleDateString("en-CA", { timeZone: "Asia/Kolkata" });
+  if (istDay(t) === istDay(now)) return time(t);
+  if (istDay(t) === istDay(new Date(now.getTime() - 86400000))) return "Yesterday";
+  return t.toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short" });
 };
 const left = (d) => {
   const ms = new Date(d).getTime() - Date.now();

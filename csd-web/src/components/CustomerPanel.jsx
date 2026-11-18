@@ -6,8 +6,8 @@ import { useAuth } from "../context/AuthContext";
 
 /** Beside a WhatsApp chat: who this is, their plan, wallet, tablets and open jobs. */
 const inr = (paise) => `₹${Math.floor((paise || 0) / 100).toLocaleString("en-IN")}`;
-const day = (d) => (d ? new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "None yet");
-const seen = (d) => (d ? new Date(d).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true }) : "never");
+const day = (d) => (d ? new Date(d).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short" }) : "None yet");
+const seen = (d) => (d ? new Date(d).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", hour: "numeric", minute: "2-digit", hour12: true }) : "never");
 
 const Row = ({ label, children }) => (
   <div className="flex justify-between gap-3 py-1 text-sm">

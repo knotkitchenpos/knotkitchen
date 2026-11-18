@@ -12,7 +12,7 @@ const LEVELS = [
   ["critical", "Critical (red)"],
 ];
 const input = "w-full rounded-xl border border-navy-200 px-3 py-2 text-sm";
-const when = (d) => (d ? new Date(d).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "");
+const when = (d) => (d ? new Date(d).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" }) : "");
 const isLive = (a, now = Date.now()) => new Date(a.startsAt).getTime() <= now && (!a.endsAt || new Date(a.endsAt).getTime() > now);
 
 const Field = ({ text, hint, children }) => (

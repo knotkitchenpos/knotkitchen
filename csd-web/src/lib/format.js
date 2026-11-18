@@ -14,8 +14,8 @@ export const inrWhole = (n) => INR_WHOLE.format(n || 0);
 export const num = (n) => NUM.format(n || 0);
 
 /** "17 Sept 2026, 4:05 pm", or a dash. */
-export const dt = (d) => (d ? new Date(d).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "—");
+export const dt = (d) => (d ? new Date(d).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" }) : "—");
 /** Same, but "Never" when there is no date (last-login style fields). */
-export const dtOrNever = (d) => (d ? new Date(d).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : "Never");
+export const dtOrNever = (d) => (d ? new Date(d).toLocaleString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium", timeStyle: "short" }) : "Never");
 /** "17 Sept 2026", or a dash. */
-export const dOnly = (d) => (d ? new Date(d).toLocaleDateString("en-IN", { dateStyle: "medium" }) : "—");
+export const dOnly = (d) => (d ? new Date(d).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", dateStyle: "medium" }) : "—");

@@ -17,6 +17,8 @@ const CategoryDrawer = ({
   updateCategoryMut,
   addSubcatMut,
   updateSubcatMut,
+  onDeleteSubcategory,
+  deletingSubcategory,
   onClose,
 }) => {
   const [catPublished, setCatPublished] = useState(true);
@@ -310,6 +312,16 @@ const CategoryDrawer = ({
                 ? "Saving…"
                 : "Save Changes"}
             </button>
+            {mode === "subcategory" && editing?._id && onDeleteSubcategory && (
+              <button
+                type="button"
+                onClick={() => onDeleteSubcategory(editing)}
+                disabled={deletingSubcategory}
+                className="mt-2.5 w-full h-[42px] rounded-xl border border-[#FECACA] text-[#DC2626] text-[13.5px] font-bold hover:bg-[#FEF2F2] disabled:opacity-50"
+              >
+                {deletingSubcategory ? "Deleting…" : "Delete subcategory"}
+              </button>
+            )}
           </div>
         </div>
       </div>

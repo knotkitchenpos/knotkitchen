@@ -11,6 +11,7 @@ import {
   updateDish,
   addSubcategory,
   updateSubcategory,
+  deleteSubcategory,
   bulkAddGroup,
   bulkRemoveGroup,
   deleteCategory,
@@ -365,6 +366,29 @@ const ManageMenu = () => {
     },
     onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to update subcategory", { variant: "error" }),
   });
+
+  // Its dishes stay: the server moves them up to the category itself.
+  const deleteSubcatMut = useMutation({
+    mutationFn: deleteSubcategory,
+    onSuccess: () => {
+      invalidate();
+      setShowCreateSubcategory(false);
+      setEditingSubcategory(null);
+    },
+    onError: (e) => enqueueSnackbar(e.response?.data?.message || "Failed to delete subcategory", { variant: "error" }),
+  });
+  const askDeleteSubcategory = (subcat) => {
+    const count = (activeCategory?.items || []).filter((it) => it.subcategory === subcat.name).length;
+    askConfirm({
+      title: `Delete subcategory "${subcat.name}"?`,
+      message: count
+        ? `Its ${count} product${count === 1 ? " stays" : "s stay"} on the menu, directly under ${activeCategory?.name || "the category"}.`
+        : "It has no products. This cannot be undone.",
+      confirmLabel: "Delete Subcategory",
+      tone: "danger",
+      onConfirm: () => deleteSubcatMut.mutate({ menuId: activeCategory?._id, subcategoryId: subcat._id }),
+    });
+  };
 
   const addDishMut = useMutation({
     mutationFn: addDish,
@@ -1729,6 +1753,8 @@ const ManageMenu = () => {
         updateCategoryMut={updateCategoryMut}
         addSubcatMut={addSubcatMut}
         updateSubcatMut={updateSubcatMut}
+        onDeleteSubcategory={askDeleteSubcategory}
+        deletingSubcategory={deleteSubcatMut.isPending}
         onClose={() => {
           setShowCreateCategory(false);
           setShowCreateSubcategory(false);

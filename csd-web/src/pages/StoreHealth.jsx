@@ -15,7 +15,7 @@ const KINDS = {
   device_offline: { label: "Tablets offline", Icon: FiTablet },
 };
 
-const day = (d) => new Date(d).toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+const day = (d) => new Date(d).toLocaleDateString("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short" });
 
 const Tile = ({ kind, count, active, onClick }) => {
   const { label, Icon } = KINDS[kind];

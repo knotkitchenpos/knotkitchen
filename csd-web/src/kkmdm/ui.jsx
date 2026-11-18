@@ -32,7 +32,7 @@ export function ago(d) {
 }
 
 export function when(d) {
-  return d ? new Date(d).toLocaleString("en-IN") : "—";
+  return d ? new Date(d).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" }) : "—";
 }
 
 const TONES = {

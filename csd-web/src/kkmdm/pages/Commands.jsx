@@ -49,7 +49,7 @@ export default function Commands() {
               <td><a href={`/mdm/devices/${c.deviceId?._id}`}>{c.deviceId?.name}</a></td>
               <td>{c.type}</td><td className="muted" title={c.createdByEmail}>{c.createdByName || c.createdByEmail}</td>
               <td><Badge v={c.status} /></td>
-              <td className="muted" style={{ fontSize: 12 }}>{c.history.map((h) => `${h.status} ${new Date(h.at).toLocaleTimeString("en-IN")}`).join(" → ")}</td>
+              <td className="muted" style={{ fontSize: 12 }}>{c.history.map((h) => `${h.status} ${new Date(h.at).toLocaleTimeString("en-IN", { timeZone: "Asia/Kolkata" })}`).join(" → ")}</td>
               <td className="mono" style={{ maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis" }}>{c.error || (c.result ? JSON.stringify(c.result) : "")}</td>
               <td>{c.status === "queued" && can(admin, "cmd.basic") && <button className="btn small" onClick={() => cancel(c)}>Cancel</button>}</td>
             </tr>
