@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { thumbUrl } from "../../lib/thumbUrl";
 import { FOCUS } from "../shared";
@@ -20,18 +20,31 @@ export default function DishChips({ tags = [] }) {
         <li key={t.tag}>
           <Link to={`/search?tag=${encodeURIComponent(t.tag)}`} className={`flex flex-col items-center gap-1.5 rounded-xl p-1 text-center ${FOCUS}`}>
             <span className="block h-[68px] w-[68px] overflow-hidden rounded-full bg-orange-50">
-              {t.image ? (
-                <img src={thumbUrl(t.image, 160)} alt="" loading="lazy" decoding="async" className="h-full w-full object-cover" />
-              ) : (
-                <span aria-hidden="true" className="flex h-full w-full items-center justify-center text-[24px] font-bold text-brand">
-                  {t.label?.charAt(0)}
-                </span>
-              )}
+              <ChipImage image={t.image} label={t.label} tag={t.tag} />
             </span>
             <span className="text-[13px] font-medium leading-tight text-slate-700">{t.label}</span>
           </Link>
         </li>
       ))}
     </ul>
+  );
+}
+
+// Knot Eats' dish tags (services/knotEats.js DISH_TAGS) as a picture, for a tag with no photo.
+const EMOJI = {
+  biryani: "🍛", momo: "🥟", chicken: "🍗", paneer: "🧀", pizza: "🍕", burger: "🍔", roll: "🌯", noodles: "🍜",
+  "fried-rice": "🍚", thali: "🍱", dosa: "🥞", cake: "🍰", shake: "🥤", "tea-coffee": "☕", kebab: "🍢",
+  sandwich: "🥪", pasta: "🍝", "ice-cream": "🍨", fish: "🐟", mutton: "🍖", egg: "🍳",
+};
+
+/** The dish photo; else its picture, else its initial (also when the photo will not load). */
+function ChipImage({ image, label, tag }) {
+  const [broken, setBroken] = useState(false);
+  return image && !broken ? (
+    <img src={thumbUrl(image, 160)} alt="" loading="lazy" decoding="async" onError={() => setBroken(true)} className="h-full w-full object-cover" />
+  ) : (
+    <span aria-hidden="true" className={`flex h-full w-full items-center justify-center font-bold text-brand ${EMOJI[tag] ? "text-[34px]" : "text-[24px]"}`}>
+      {EMOJI[tag] || label?.charAt(0)}
+    </span>
   );
 }

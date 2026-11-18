@@ -19,3 +19,6 @@ export function useSaved() {
   const ids = useSyncExternalStore(saved.subscribe, saved.get);
   return { ids, isSaved: (id) => ids.includes(String(id)), toggle };
 }
+
+/** Account > Clear my data. */
+export const clearSaved = () => saved.set([]);

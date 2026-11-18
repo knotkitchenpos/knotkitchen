@@ -202,6 +202,11 @@ export default function OrderStatusPage() {
             Call
           </a>
         ) : null}
+        {TERMINAL.has(stage) && store.storeId ? (
+          <Link to={`/store/${store.storeId}?reorder=${encodeURIComponent(token)}`} className="inline-flex min-h-[44px] items-center rounded-lg bg-brand px-3 text-[14px] font-semibold text-white">
+            Reorder
+          </Link>
+        ) : null}
         {!delivery && store.mapUrl ? (
           <a href={store.mapUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-[44px] items-center rounded-lg border border-slate-300 px-3 text-[14px] font-medium">
             Directions

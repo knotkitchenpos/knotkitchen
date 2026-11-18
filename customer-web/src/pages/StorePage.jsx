@@ -334,9 +334,12 @@ export default function StorePage({ slug, host, eats = null }) {
     );
   }
 
+  // Knot Eats draws the menu, cart and checkout its own way (eats/components/
+  // EatsMenuShell.jsx, in the Knot Eats chunk); the ordering engine above is shared.
+  const Shell = eats?.Shell || StoreShell;
   return (
     <>
-    <StoreShell
+    <Shell
       homePath={homePath}
       bootstrap={bootstrap}
       store={store}

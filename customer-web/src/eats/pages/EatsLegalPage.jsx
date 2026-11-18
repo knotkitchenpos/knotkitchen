@@ -146,7 +146,9 @@ function Privacy() {
       <h2>3. Kept on your device</h2>
       <p>
         Your browser keeps your saved restaurants, your recent orders, your cart and your last location in its local
-        storage. Clearing your browser's site data removes them.
+        storage. If you tick &quot;Remember my details&quot; at checkout, it also keeps your name, phone number and delivery
+        addresses there, so the next checkout is filled in. They stay on your device and are not sent to us until you
+        place an order. Account &gt; Clear my data, or clearing your browser's site data, removes them.
       </p>
       <h2>4. Who we share it with</h2>
       <ul>

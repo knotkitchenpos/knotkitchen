@@ -12,6 +12,7 @@ import LocationPrompt from "../components/LocationPrompt";
 import EmptyState from "../components/EmptyState";
 import CartPill from "../components/CartPill";
 import EatsFooter from "../components/EatsFooter";
+import BottomNav from "../components/BottomNav";
 import { useEatsLocation, useEatsPrefs } from "../../lib/eatsLocation";
 import { activeFilterCount, filtersToSearch, readFilters, toApiParams } from "../../lib/eatsFilters";
 import { getActiveCart } from "../../lib/eatsCart";
@@ -81,7 +82,7 @@ export default function HomePage() {
   );
 
   return (
-    <div className={cart ? "pb-24" : ""}>
+    <div className={cart ? "pb-40 md:pb-24" : "pb-16 md:pb-0"}>
       <h1 className="sr-only">Knot Eats: order from restaurants near you</h1>
       <EatsHeader location={location} onPickLocation={pickLocation} />
 
@@ -117,6 +118,7 @@ export default function HomePage() {
 
       <EatsFooter />
       <CartPill cart={cart} />
+      <BottomNav />
       <LocationPicker open={pickerOpen} onClose={() => setPickerOpen(false)} />
     </div>
   );

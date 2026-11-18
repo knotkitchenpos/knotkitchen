@@ -1,8 +1,10 @@
-import React from "react";
-import { Link, Navigate, Route, Routes, useParams } from "react-router-dom";
+import React, { useEffect } from "react";
+import { Link, Navigate, Route, Routes, useLocation, useNavigationType, useParams } from "react-router-dom";
 import HomePage from "./pages/HomePage";
 import SearchPage from "./pages/SearchPage";
 import SavedPage from "./pages/SavedPage";
+import OrdersPage from "./pages/OrdersPage";
+import AccountPage from "./pages/AccountPage";
 import EatsStorePage from "./pages/EatsStorePage";
 import OrderStatusPage from "./pages/OrderStatusPage";
 import EatsLegalPage from "./pages/EatsLegalPage";
@@ -34,11 +36,14 @@ export default function EatsApp() {
       >
         Skip to content
       </a>
+      <ScrollToTop />
       <main id="main">
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/search" element={<SearchPage />} />
           <Route path="/saved" element={<SavedPage />} />
+          <Route path="/orders" element={<OrdersPage />} />
+          <Route path="/account" element={<AccountPage />} />
           <Route path="/store/:storeId/menu" element={<ToStore />} />
           {/* One route for the store and its own policy pages, so moving
               between them keeps StorePage (and its menu fetch) mounted. */}
@@ -60,6 +65,19 @@ export default function EatsApp() {
       </main>
     </div>
   );
+}
+
+/**
+ * A new screen opens at its top, as in an app; Back returns to where the
+ * diner was (the browser restores that scroll on a POP).
+ */
+function ScrollToTop() {
+  const { pathname } = useLocation();
+  const type = useNavigationType();
+  useEffect(() => {
+    if (type !== "POP") window.scrollTo(0, 0);
+  }, [pathname, type]);
+  return null;
 }
 
 /** /store/:id/menu: the store page always opens on its menu. */

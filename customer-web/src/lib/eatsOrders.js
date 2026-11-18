@@ -38,3 +38,12 @@ export function addRecentOrder({ token, orderNumber, storeName, storeId, placedA
     /* not remembered on this device */
   }
 }
+
+/** Account > Clear my data: this device forgets the order links (the orders themselves are kept). */
+export function clearRecentOrders() {
+  try {
+    globalThis.localStorage.removeItem(KEY);
+  } catch {
+    /* nothing kept */
+  }
+}

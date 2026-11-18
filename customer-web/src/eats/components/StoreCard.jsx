@@ -15,6 +15,11 @@ import { BTN_PRIMARY, BTN_SECONDARY, FOCUS, useEatsConfig } from "../shared";
  * serves. An <article> of sibling links and one button; nothing interactive
  * inside anything interactive.
  */
+// A photo that will not load leaves its soft background, never a broken-image icon.
+const hideImg = (e) => {
+  e.currentTarget.style.visibility = "hidden";
+};
+
 export default function StoreCard({ store, mode, eager = false, dishTags }) {
   const href = `/store/${store.storeId}`;
   const closed = !store.isOpen;
@@ -36,7 +41,7 @@ export default function StoreCard({ store, mode, eager = false, dishTags }) {
           <ul aria-label={`Dishes at ${store.name}`} className="flex snap-x snap-mandatory gap-2 overflow-x-auto [scrollbar-width:none]">
             {slides.map((d, i) => (
               <li key={d.itemId} className={`${slides.length > 1 ? "w-[92%]" : "w-full"} shrink-0 snap-start`}>
-                <Link to={`${href}?dish=${encodeURIComponent(d.itemId)}`} className={`relative block aspect-[4/3] overflow-hidden rounded-2xl ${FOCUS}`}>
+                <Link to={`${href}?dish=${encodeURIComponent(d.itemId)}`} className={`relative block aspect-[4/3] overflow-hidden rounded-2xl bg-gradient-to-br from-orange-50 to-slate-200 ${FOCUS}`}>
                   <img
                     src={thumbUrl(d.image, 640)}
                     alt={`${d.name}, ${inr(d.price)}`}
@@ -45,6 +50,7 @@ export default function StoreCard({ store, mode, eager = false, dishTags }) {
                     // eslint-disable-next-line react/no-unknown-property
                     fetchpriority={eager && i === 0 ? "high" : undefined}
                     decoding="async"
+                    onError={hideImg}
                     className={img}
                   />
                   {/* The alt already says this; the caption is for sighted readers. */}
@@ -67,6 +73,7 @@ export default function StoreCard({ store, mode, eager = false, dishTags }) {
                 // eslint-disable-next-line react/no-unknown-property
                 fetchpriority={eager ? "high" : undefined}
                 decoding="async"
+                onError={hideImg}
                 className={img}
               />
             ) : (

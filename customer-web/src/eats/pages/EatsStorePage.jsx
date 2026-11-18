@@ -6,9 +6,11 @@ import SaveButton from "../components/SaveButton";
 import LocationStrip from "../components/LocationStrip";
 import StoreReviews from "../components/StoreReviews";
 import ReplaceCartDialog from "../components/ReplaceCartDialog";
+import EatsMenuShell from "../components/EatsMenuShell";
+import { useEatsConfig } from "../shared";
 import { getEatsStore, getEatsStorefront, startEatsCheckout, verifyEatsCheckout } from "../api";
 import { useEatsLocation, useEatsPrefs } from "../../lib/eatsLocation";
-import { deliveryBlockReason } from "../../lib/eatsFormat";
+import { deliveryBlockReason, etaLabel } from "../../lib/eatsFormat";
 import { clearCartFor, guardCart } from "../../lib/eatsCart";
 import { addRecentOrder } from "../../lib/eatsOrders";
 import { bestCoupon, couponApplies, couponDiscount, couponNote } from "../../lib/eatsOffers";
@@ -46,6 +48,7 @@ function EatsStore({ storeId }) {
   const [info, setInfo] = useState(null);
   const [missing, setMissing] = useState(false);
   const [replace, setReplace] = useState(null); // { from, resolve } while asking
+  const config = useEatsConfig();
 
   // In parallel with StorePage's own menu fetches; a new point re-quotes delivery.
   const lat = location?.lat;
@@ -91,7 +94,12 @@ function EatsStore({ storeId }) {
       navigate(`/order/${order.orderToken}?placed=1`, { replace: true });
     },
     wrapCart,
+    // The Knot Eats restaurant page (menu, cart, checkout), not the website one.
+    Shell: EatsMenuShell,
     shellProps: {
+      eatsStore: info?.store || null,
+      dishTags: config?.dishTags || [],
+      deliveryEta: delivery?.deliverable ? etaLabel(delivery.etaMinutes) : "",
       // The back link and the seller line live here, not in StoreShell, so
       // store websites never download them (§10.8 main-chunk budget).
       back: (
@@ -130,13 +138,10 @@ function EatsStore({ storeId }) {
           </>
         ),
       },
-      belowInfo: (
-        <>
-          <LocationStrip location={location} delivery={delivery} reason={reason} />
-          <StoreReviews storeId={storeId} rating={info?.store?.rating ?? null} ratingCount={info?.store?.ratingCount || 0} reviews={info?.reviews || []} />
-        </>
-      ),
+      locationStrip: <LocationStrip location={location} delivery={delivery} reason={reason} />,
+      reviews: <StoreReviews storeId={storeId} rating={info?.store?.rating ?? null} ratingCount={info?.store?.ratingCount || 0} reviews={info?.reviews || []} />,
       openDishId: params.get("dish") || "",
+      reorderToken: /^v_[a-f0-9]{24}_[A-Za-z0-9_-]{22}$/.test(params.get("reorder") || "") ? params.get("reorder") : "",
       openCart: params.get("cart") === "1",
       initialVegOnly: veg,
       // On a marketplace the customer is told who actually sells the food.

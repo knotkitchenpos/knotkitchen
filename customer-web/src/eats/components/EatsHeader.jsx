@@ -1,7 +1,7 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import ModeToggle from "./ModeToggle";
-import { BookmarkIcon } from "./SaveButton";
+import { HeaderLinks } from "./BottomNav";
 import { FOCUS } from "../shared";
 
 export function PinIcon() {
@@ -25,13 +25,7 @@ export default function EatsHeader({ location, onPickLocation }) {
         <Link to="/" className={`rounded text-[26px] font-extrabold leading-none tracking-tight text-[color:var(--ke-ink)] ${FOCUS}`}>
           knot <span className="text-[color:var(--accent)]">eats</span>
         </Link>
-        <Link
-          to="/saved"
-          aria-label="Saved restaurants and recent orders"
-          className={`flex h-11 w-11 items-center justify-center rounded-full text-slate-700 hover:bg-slate-100 ${FOCUS}`}
-        >
-          <BookmarkIcon />
-        </Link>
+        <HeaderLinks />
       </div>
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 pb-2 pt-1">
         <button

@@ -5,6 +5,7 @@ import DishChips from "../components/DishChips";
 import FilterBar from "../components/FilterBar";
 import { StoreGrid } from "../components/StoreCard";
 import LocationPicker from "../components/LocationPicker";
+import BottomNav from "../components/BottomNav";
 import LocationPrompt from "../components/LocationPrompt";
 import EmptyState from "../components/EmptyState";
 import { useEatsLocation, useEatsPrefs } from "../../lib/eatsLocation";
@@ -136,6 +137,8 @@ export default function SearchPage() {
           </>
         )}
       </div>
+      <div className="h-16 md:hidden" aria-hidden="true" />
+      <BottomNav />
       <LocationPicker open={pickerOpen} onClose={() => setPickerOpen(false)} />
     </>
   );

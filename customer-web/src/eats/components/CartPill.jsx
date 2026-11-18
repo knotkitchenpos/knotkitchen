@@ -10,7 +10,7 @@ import { FOCUS } from "../shared";
 export default function CartPill({ cart }) {
   if (!cart) return null;
   return (
-    <div className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-3 pb-[env(safe-area-inset-bottom)]">
+    <div className="pointer-events-none fixed inset-x-0 bottom-[64px] z-40 px-3 md:bottom-0 md:pb-[env(safe-area-inset-bottom)]">
       <Link
         to={`/store/${cart.storeId}?cart=1`}
         className={`pointer-events-auto mx-auto mb-3 flex max-w-xl items-center justify-between gap-3 rounded-xl bg-brand px-5 py-3 text-white shadow-xl ${FOCUS}`}

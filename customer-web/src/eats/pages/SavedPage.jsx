@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import EatsHeader from "../components/EatsHeader";
 import { StoreGrid } from "../components/StoreCard";
 import LocationPicker from "../components/LocationPicker";
+import BottomNav from "../components/BottomNav";
 import LocationPrompt from "../components/LocationPrompt";
 import EmptyState from "../components/EmptyState";
 import EatsFooter from "../components/EatsFooter";
@@ -22,7 +23,7 @@ const placedOn = (iso) => {
 
 /** `/saved`: restaurants bookmarked on this device, then the orders placed from it. */
 export default function SavedPage() {
-  useTitle("Saved");
+  useTitle("Favourites");
   const { ids, isSaved } = useSaved();
   const { location } = useEatsLocation();
   const { mode } = useEatsPrefs();
@@ -45,7 +46,7 @@ export default function SavedPage() {
     <>
       <EatsHeader location={location} onPickLocation={pickLocation} />
       <div className="mx-auto max-w-6xl px-4 pb-10">
-        <h1 className="mt-4 text-[26px] font-extrabold text-[color:var(--ke-ink)]">Saved</h1>
+        <h1 className="mt-4 text-[26px] font-extrabold text-[color:var(--ke-ink)]">Favourites</h1>
 
         <section aria-labelledby="ke-saved-stores" className="mt-2">
           <h2 id="ke-saved-stores" className="mb-4 text-[13px] font-bold uppercase tracking-[0.15em] text-slate-500">
@@ -91,6 +92,8 @@ export default function SavedPage() {
         </section>
       </div>
       <EatsFooter />
+      <div className="h-16 md:hidden" aria-hidden="true" />
+      <BottomNav />
       <LocationPicker open={pickerOpen} onClose={() => setPickerOpen(false)} />
     </>
   );
