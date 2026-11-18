@@ -6,6 +6,7 @@ const Store = require("../models/storeModel");
 const Restaurant = require("../models/restaurantModel");
 const { resolveStorefront, REASON_MESSAGES } = require("../services/storefrontResolver");
 const { buildLandingPayload } = require("../services/landingPayload");
+const { siteText } = require("../services/websitePublicInfo");
 
 const getPublicStoreInfo = async (req, res, next) => {
   try {
@@ -144,8 +145,7 @@ const getPublicStoreByDomain = async (req, res, next) => {
 
         // Display / SEO metadata.
         name: settings.displayName || store.storeName || restaurant?.name || "",
-        siteTitle: settings.branding?.siteTitle || "",
-        siteDescription: settings.branding?.siteDescription || "",
+        ...siteText(settings.branding, settings.displayName || store.storeName || restaurant?.name || ""),
         tagline: settings.branding?.tagline || "",
 
         // The landing page is what this response paints, so it ships here

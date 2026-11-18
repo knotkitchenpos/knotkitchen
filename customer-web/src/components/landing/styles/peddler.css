@@ -171,3 +171,6 @@
 .kkt-peddler .hero-image-frame img{width:100%;height:100%;object-fit:cover}
 .kkt-peddler .dish-image img{width:100%;height:100%;object-fit:cover;transition:transform .5s}
 .kkt-peddler .dish-card:hover .dish-image img{transform:scale(1.06)}
+/* Book a Table is a button among the nav links: it looks and sits like them. */
+.kkt-peddler .site-nav .kkt-book{color:#687067}
+@media(max-width:760px){.kkt-peddler .site-nav .kkt-book{padding:13px 0;text-align:left}}

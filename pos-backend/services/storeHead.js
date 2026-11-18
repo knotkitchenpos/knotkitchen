@@ -15,7 +15,7 @@
 const fs = require("fs");
 const path = require("path");
 const { resolveStorefront } = require("./storefrontResolver");
-const { mergedContact } = require("./websitePublicInfo");
+const { mergedContact, siteText } = require("./websitePublicInfo");
 
 // Keys and titles as customer-web/src/lib/legalPages.js.
 const LEGAL = Object.freeze({
@@ -103,8 +103,8 @@ const buildHead = ({ host, path: pagePath, result, exists = servable }) => {
   }
 
   const { settings, store, restaurant } = result;
-  const branding = settings.branding || {};
   const name = settings.displayName || store?.storeName || restaurant?.name || DEFAULT_TITLE;
+  const branding = { ...(settings.branding || {}), ...siteText(settings.branding, name) };
   const contact = mergedContact(settings, restaurant);
   const city = String(contact.city || "").split(",")[0].trim();
   const ways = [settings.ordering?.pickupEnabled !== false ? "pickup" : "", settings.ordering?.deliveryEnabled ? "delivery" : ""]

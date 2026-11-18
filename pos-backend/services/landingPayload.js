@@ -13,7 +13,7 @@
  */
 
 const { LANDING_TEMPLATES, LEGACY_LANDING_TEMPLATES } = require("../models/websiteSettingsModel");
-const { mergedContact } = require("./websitePublicInfo");
+const { mergedContact, siteText } = require("./websitePublicInfo");
 
 /**
  * The template this store should render, translated if it is an old key.
@@ -56,7 +56,7 @@ const buildLandingPayload = (settings = {}, restaurant = null, store = null) => 
      */
     version: Number(settings.version) || 0,
     template: templateOf(landing.template),
-    headline: landing.headline || branding.siteTitle || name,
+    headline: landing.headline || siteText(branding, name).siteTitle || name,
     subheadline: landing.subheadline || branding.tagline || "",
     ctaText: landing.ctaText || "View Menu",
     backgroundImage: landing.backgroundImage?.url || branding.coverImage?.url || "",

@@ -24,7 +24,11 @@ test("the website tiles are locked without the Website add-on, and point to Bill
   assert.match(MENU(), /id: "eats",[^\n]*mode: "view", feature: "pos" \}/);
   const site = SRC("src/pages/WebsiteSettings.jsx");
   assert.doesNotMatch(site, /key: "payments"/);
-  assert.match(site, /if \(websiteLocked\) return <Navigate to="\/settings\/billing" replace \/>;/);
+  assert.match(site, /if \(websiteLocked\) return <Navigate to="\/settings\/billing\?need=website" replace \/>;/);
+  // ...where the page says why it was sent there.
+  const moved = SRC("src/pages/BillingMoved.jsx");
+  assert.match(moved, /get\("need"\) === "website"/);
+  assert.match(moved, /Manage Website needs the Website add-on/);
   assert.match(site, /updateWebsiteSettings\(\{ \.\.\.withoutRulesKeys\(settings\), paymentGateways: undefined \}\)/);
   assert.doesNotMatch(site, /existing_secret_token/);
 });

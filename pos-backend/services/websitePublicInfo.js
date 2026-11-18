@@ -106,4 +106,23 @@ const buildLegalPayload = (settings = {}, restaurant = null, { websiteUrl = "" }
   };
 };
 
-module.exports = { mergedContact, mapsSearchUrl, buildLegalPayload, LEGAL_DEFAULTS };
+/**
+ * The website's title and description with today's name. Both are written
+ * once, when the website is made (websiteProvisioningService), from the name
+ * the store had then; a restaurant renamed later kept its old name in
+ * Google results and the browser tab. Text in that generated form is made
+ * again from `name`; anything the owner or CSD wrote is kept as it is.
+ */
+const AUTO_TITLE = / — Order Online$/;
+const AUTO_DESCRIPTION = /^Order delicious food online from .+\. Fast pickup and delivery\.$/;
+const siteText = (branding, name) => {
+  const title = clean(branding?.siteTitle);
+  const description = clean(branding?.siteDescription);
+  const n = clean(name);
+  return {
+    siteTitle: n && AUTO_TITLE.test(title) ? `${n} — Order Online` : title,
+    siteDescription: n && AUTO_DESCRIPTION.test(description) ? `Order delicious food online from ${n}. Fast pickup and delivery.` : description,
+  };
+};
+
+module.exports = { mergedContact, mapsSearchUrl, buildLegalPayload, LEGAL_DEFAULTS, siteText };

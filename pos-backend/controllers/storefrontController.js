@@ -22,7 +22,7 @@ const {
 const { projectedMenus } = require("../services/projectedMenuCache");
 const { getTheme } = require("../services/themeRegistry");
 const { buildLandingPayload } = require("../services/landingPayload");
-const { mergedContact, buildLegalPayload } = require("../services/websitePublicInfo");
+const { mergedContact, buildLegalPayload, siteText } = require("../services/websitePublicInfo");
 const { emitOrderCreated } = require("../services/socket");
 const WebsiteCheckout = require("../models/websiteCheckoutModel");
 const { resolveGateway } = require("../services/paymentGateway");
@@ -275,8 +275,8 @@ const buildStorefrontPayload = async ({ settings, restaurantId, storeId, timezon
     },
     landing,
     branding: {
-      siteTitle: settings.branding?.siteTitle || settings.displayName || "",
-      siteDescription: settings.branding?.siteDescription || "",
+      siteTitle: siteText(settings.branding, settings.displayName).siteTitle || settings.displayName || "",
+      siteDescription: siteText(settings.branding, settings.displayName).siteDescription,
       tagline: settings.branding?.tagline || "",
       aboutText: settings.branding?.aboutText || "",
       logo: settings.branding?.logo?.url || "",

@@ -25,10 +25,17 @@ const BillingMoved = () => {
   });
   const href = `${PARTNERS_URL}/billing${typeof window !== "undefined" ? window.location.search : ""}`;
   const locked = Boolean(data?.locked);
+  // Settings > Manage Website sends a store without the Website add-on here; say why.
+  const needWebsite = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("need") === "website";
   return (
     <div className="h-full overflow-y-auto bg-[#F8FAFC] p-4 sm:p-6">
       <div className="max-w-[560px] mx-auto space-y-4">
         <div className="bg-white border border-[#E2E8F0] rounded-2xl p-6 sm:p-7">
+          {needWebsite && (
+            <p className="mb-4 text-[13.5px] font-bold text-[#92400E] bg-[#FFFBEB] border border-[#FDE68A] rounded-xl px-3 py-2.5">
+              Manage Website needs the Website add-on. The store owner adds it on the Partners dashboard, under Billing.
+            </p>
+          )}
           <p className="text-[11.5px] font-extrabold uppercase tracking-[0.14em] text-[#FD5302]">Moved</p>
           <h1 className="mt-1 text-[20px] sm:text-[22px] font-extrabold text-[#0F172A]">Billing is on the Partners dashboard</h1>
           <p className="mt-2 text-[13.5px] text-[#475569]">

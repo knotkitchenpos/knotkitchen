@@ -86,7 +86,8 @@ export default function StoreShell({
   };
   const offers = offersOverride || s.offers;
   const symbol = ordering.currencySymbol || "₹";
-  const title = branding.siteTitle || b.name || "Restaurant";
+  // The restaurant's name, never the SEO title ("<name> — Order Online") the browser tab carries.
+  const title = s.store?.name || b.name || branding.siteTitle || "Restaurant";
   const websiteEnabled =
     b.websiteEnabled !== false && s.store?.acceptingOrders !== false;
 

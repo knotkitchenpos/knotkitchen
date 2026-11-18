@@ -14,6 +14,7 @@ const {
   LANDING_TEMPLATES,
 } = require("../models/websiteSettingsModel");
 const { logActivity } = require("../services/auditService");
+const { siteText } = require("../services/websitePublicInfo");
 
 /**
  * Website customization API (§3, §19, §26).
@@ -251,6 +252,8 @@ const sanitizeSettings = (doc) => {
       }
     }
   }
+  // Manage Website shows (and saves back) the description with today's name.
+  if (obj.branding) obj.branding = { ...obj.branding, ...siteText(obj.branding, obj.displayName) };
   return obj;
 };
 

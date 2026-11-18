@@ -236,7 +236,7 @@ const WebsiteSettings = () => {
     });
   };
 
-  if (websiteLocked) return <Navigate to="/settings/billing" replace />;
+  if (websiteLocked) return <Navigate to="/settings/billing?need=website" replace />;
 
   if (loading) {
     return (
@@ -607,7 +607,7 @@ const WebsiteSettings = () => {
                               }
                               className="h-4 w-4 rounded border-[#CBD5E1]"
                             />
-                            {d.image ? <img src={d.image} alt="" className="h-9 w-9 rounded-lg object-cover" /> : null}
+                            {d.image ? <img src={d.image} alt="" onError={(e) => (e.currentTarget.style.visibility = "hidden")} className="h-9 w-9 rounded-lg bg-[#F1F5F9] object-cover" /> : null}
                             <span className="min-w-0 flex-1">
                               <span className="block truncate text-sm font-bold text-[#0F172A]">{d.name}</span>
                               <span className="block truncate text-xs text-[#94A3B8]">
