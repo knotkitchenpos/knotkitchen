@@ -259,7 +259,7 @@ function CommandsTab({ id, device, admin }) {
           <tr key={c._id}>
             <td className="muted" title={when(c.createdAt)}>{ago(c.createdAt)}</td>
             <td>{c.type}{c.holdForMaintenance && <div className="muted">waits for maintenance window</div>}</td>
-            <td className="muted">{c.createdByEmail}</td>
+            <td className="muted" title={c.createdByEmail}>{c.createdByName || c.createdByEmail}</td>
             <td><Badge v={c.status} /></td>
             <td className="mono" style={{ maxWidth: 360, overflow: "hidden", textOverflow: "ellipsis" }}>{c.error || (c.result ? JSON.stringify(c.result) : "")}</td>
           </tr>

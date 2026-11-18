@@ -92,7 +92,7 @@ const CopyMenu = ({ catalog, names, refresh }) => {
               <label key={c.id} className="flex items-center gap-3 px-3 min-h-[46px] cursor-pointer">
                 <input type="checkbox" checked={cats.includes(c.id)} onChange={() => toggle(cats, setCats, c.id)} className="w-[18px] h-[18px] accent-[#FD5302]" />
                 <span className="min-w-0 flex-1 text-[13.5px] font-bold truncate">{c.name}</span>
-                <span className="text-[12px] text-[#94A3B8] shrink-0">{c.items.length} dishes</span>
+                <span className="text-[12px] text-[#94A3B8] shrink-0">{c.items.length} dish{c.items.length === 1 ? "" : "es"}</span>
               </label>
             ))}
           </div>
@@ -104,7 +104,7 @@ const CopyMenu = ({ catalog, names, refresh }) => {
               <label key={s.storeId} className="flex items-center gap-3 px-3 min-h-[46px] cursor-pointer">
                 <input type="checkbox" checked={to.includes(s.storeId)} onChange={() => toggle(to, setTo, s.storeId)} className="w-[18px] h-[18px] accent-[#FD5302]" />
                 <span className="min-w-0 flex-1 text-[13.5px] font-bold truncate">{s.name}</span>
-                <span className="text-[12px] text-[#94A3B8] shrink-0">{s.categories.length} categories</span>
+                <span className="text-[12px] text-[#94A3B8] shrink-0">{s.categories.length} categor{s.categories.length === 1 ? "y" : "ies"}</span>
               </label>
             ))}
           </div>
@@ -118,7 +118,7 @@ const CopyMenu = ({ catalog, names, refresh }) => {
         <div className="space-y-3">
           <ul className="text-[13px] space-y-1">
             {result.map((r) => (
-              <li key={r.storeId}><strong>{names.get(r.storeId) || r.storeId}</strong>: {r.categoriesCreated} categor{r.categoriesCreated === 1 ? "y" : "ies"} created, {r.dishesAdded} dishes added{r.dishesSkipped ? `, ${r.dishesSkipped} already there` : ""}.</li>
+              <li key={r.storeId}><strong>{names.get(r.storeId) || r.storeId}</strong>: {r.categoriesCreated} categor{r.categoriesCreated === 1 ? "y" : "ies"} created, {r.dishesAdded} dish{r.dishesAdded === 1 ? "" : "es"} added{r.dishesSkipped ? `, ${r.dishesSkipped} already there` : ""}.</li>
             ))}
           </ul>
           <PublishNow storeIds={result.filter((r) => r.categoriesCreated || r.dishesAdded).map((r) => r.storeId)} names={names} />

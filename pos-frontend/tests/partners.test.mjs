@@ -20,8 +20,9 @@ test("in the Partners build the POS's Billing and Reports call the picked store 
   const ax = src("src/https/axiosWrapper.js");
   assert.match(ax, /if \(PARTNERS_APP\) \{\n\s+config\.baseURL = PARTNERS_API;/);
   assert.match(ax, /if \(url\.startsWith\("\/api\/"\)\) config\.url = `\/s\/\$\{activePartnerStore\(\)\}\$\{url\}`;/);
-  // No POS session refresh there: a signed-out session goes to its own sign-in.
-  assert.match(ax, /if \(error\.response\?\.status === 401\) partnersSignedOut\(\);\n\s+return Promise\.reject\(error\);\n\s+\}/);
+  // No POS session refresh there: a signed-out session goes to its own sign-in
+  // (only that one: a wrong store password is a 401 too, tests/wrongPinNoSignOut).
+  assert.match(ax, /code === "PARTNER_SIGNED_OUT"\) partnersSignedOut\(\);\n\s+return Promise\.reject\(error\);\n\s+\}/);
   const mode = src("src/partners/mode.js");
   assert.match(mode, /export const PARTNERS_APP = import\.meta\.env\.VITE_KK_APP === "partners";/);
   // Switching store drops the other store's cached billing and reports.

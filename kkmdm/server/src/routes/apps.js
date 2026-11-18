@@ -28,7 +28,7 @@ async function wakeFleet() {
 
 router.get("/", requirePerm("apps.view"), wrap(async (req, res) => {
   const apps = await App.find().sort({ role: 1, packageName: 1 }).lean();
-  const versions = await AppVersion.find().sort({ versionCode: -1 }).populate("uploadedBy", "email").lean();
+  const versions = await AppVersion.find().sort({ versionCode: -1 }).populate("uploadedBy", "email name").lean();
   const fleet = await Device.aggregate([
     { $match: { lifecycle: { $ne: "retired" } } },
     { $unwind: "$apps" },

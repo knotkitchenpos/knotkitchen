@@ -100,7 +100,10 @@ axiosWrapper.interceptors.response.use(
         }
         return axiosWrapper(originalRequest);
       }
-      if (error.response?.status === 401) partnersSignedOut();
+      // Only an ended session signs out. A wrong store password (Link a store,
+      // Security PIN) is a 401 too; signing out on it reloaded the page and the
+      // owner never saw "wrong password".
+      if (error.response?.status === 401 && error.response?.data?.code === "PARTNER_SIGNED_OUT") partnersSignedOut();
       return Promise.reject(error);
     }
     // NOTE: only the endpoints that BOOTSTRAP a new session (login/register)
@@ -150,7 +153,10 @@ axiosWrapper.interceptors.response.use(
       }
       return axiosWrapper(originalRequest);
     }
-    if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isAuthEndpoint) {
+    // A wrong Security PIN is a 401 too, but the session is fine: refreshing and
+    // resending it would count one typo as two wrong PINs toward the lockout.
+    const wrongPin = error.response?.data?.code === "WRONG_PIN";
+    if (error.response?.status === 401 && originalRequest && !originalRequest._retry && !isAuthEndpoint && !wrongPin) {
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           pendingQueue.push({ resolve, reject });

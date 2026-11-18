@@ -736,7 +736,7 @@ const updateWebsiteSettings = async (req, res, next) => {
         }
       }
       if ((activeGatewayChanging || credentialsChanging) && !(await gatewayPinOk(req))) {
-        return next(createHttpError(401, GATEWAY_PIN_MESSAGE));
+        return next(createHttpError(401, GATEWAY_PIN_MESSAGE, { code: "WRONG_PIN" }));
       }
 
       if (activeGatewayChanging && ["cashfree", "phonepe"].includes(pg.activeGateway)) {
@@ -977,7 +977,7 @@ const gatewayPinOk = async (req) => {
 
 const validateGatewayCredentials = async (req, res, next) => {
   try {
-    if (!(await gatewayPinOk(req))) return next(createHttpError(401, GATEWAY_PIN_MESSAGE));
+    if (!(await gatewayPinOk(req))) return next(createHttpError(401, GATEWAY_PIN_MESSAGE, { code: "WRONG_PIN" }));
     const { tenant, settings } = await loadOwnSettings(req);
     const { gateway, clientId, clientSecret, merchantId, saltKey, saltIndex, environment } = req.body || {};
 

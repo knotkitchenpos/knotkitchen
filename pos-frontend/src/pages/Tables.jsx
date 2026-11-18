@@ -836,7 +836,7 @@ const Tables = () => {
                         : ""}
                     </p>
                     <p className="text-[11px] text-[#0F172A] truncate">
-                      {table.booking.name} · {table.booking.guestCount} guests · {table.booking.phone}
+                      {table.booking.name} · {table.booking.guestCount} guest{Number(table.booking.guestCount) === 1 ? "" : "s"} · {table.booking.phone}
                     </p>
                     <div className="mt-1.5 flex gap-1.5">
                       <button

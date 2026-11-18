@@ -32,7 +32,7 @@ const TablePickerModal = ({ title, hint, tables, busy, onPick, onClose }) => (
               <span className="block text-[14px] font-extrabold text-[#0F172A]">{label(t)}</span>
               <span className="block text-[11.5px] text-[#64748B]">
                 {t.session
-                  ? `${t.session.customerCount || 1} guests · ₹${Number(t.session.bills?.totalWithTax || 0).toFixed(0)}`
+                  ? `${t.session.customerCount || 1} guest${(t.session.customerCount || 1) === 1 ? "" : "s"} · ₹${Number(t.session.bills?.totalWithTax || 0).toFixed(0)}`
                   : `Seats ${t.capacity || 4}${t.zone ? ` · ${t.zone}` : ""}`}
               </span>
             </button>

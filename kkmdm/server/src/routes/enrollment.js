@@ -91,7 +91,7 @@ router.get("/tokens", requirePerm("enrollment.manage"), wrap(async (req, res) =>
   const q = {};
   if (req.query.storeId) q.storeId = req.query.storeId;
   const rows = await EnrollmentToken.find(q).sort({ createdAt: -1 }).skip(skip).limit(limit)
-    .populate("storeId", "name").populate("groupId", "name").populate("policyId", "name").populate("createdBy", "email").lean();
+    .populate("storeId", "name").populate("groupId", "name").populate("policyId", "name").populate("createdBy", "email name").lean();
   let items = rows.map((t) => ({ ...t, tokenHash: undefined, status: tokenStatus(t) }));
   if (req.query.status) items = items.filter((t) => t.status === req.query.status);
   res.json({ items });

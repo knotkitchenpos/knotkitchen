@@ -35,6 +35,7 @@ async function enqueue(deviceId, type, params = {}, opts = {}) {
     rolloutId: opts.rolloutId,
     createdBy: opts.actor?._id,
     createdByEmail: opts.actor?.email || "system",
+    createdByName: opts.actor?.name || "",
     history: [{ status: "queued", at: new Date() }],
   });
   if (!holdForWindow) push.wake(deviceId);

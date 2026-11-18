@@ -98,7 +98,7 @@ const StaffWatch = ({ me }) => {
       ) : (
         <>
           <div className={`rounded-2xl border px-4 py-3 text-[13.5px] font-bold ${data.flagged ? "bg-[#FEF2F2] border-[#FECACA] text-[#991B1B]" : "bg-[#F0FDF4] border-[#BBF7D0] text-[#166534]"}`}>
-            {data.flagged ? `${data.flagged} staff member${data.flagged === 1 ? "" : "s"} stand out in this period.` : "Nobody stands out in this period."}
+            {data.flagged ? `${data.flagged} ${data.flagged === 1 ? "staff member stands" : "staff members stand"} out in this period.` : "Nobody stands out in this period."}
           </div>
           {data.stores.map((s) => (
             <section key={s.storeId} className="bg-white border border-[#E2E8F0] rounded-2xl p-4 sm:p-5 space-y-3">

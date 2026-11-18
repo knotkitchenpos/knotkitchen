@@ -1011,7 +1011,8 @@ const Orders = () => {
                   <div>
                     <p className="text-[#94A3B8]">Status</p>
                     <p className="font-bold text-[#0F172A] mt-0.5">
-                      {statusLabel(selected.orderStatus)}
+                      {/* Same words as the order's card: a paid takeaway still cooking is not "Completed" to the kitchen. */}
+                      {paidTakeawayCooking(selected) ? "Paid · Preparing" : statusLabel(selected.orderStatus)}
                     </p>
                   </div>
                   <div>

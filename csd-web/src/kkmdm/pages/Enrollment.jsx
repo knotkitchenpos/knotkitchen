@@ -97,7 +97,7 @@ export default function Enrollment() {
           <tbody>{(tokens.data?.items || []).map((t) => (
             <tr key={t._id}>
               <td className="mono">{t.hint}…</td><td>{t.storeId?.name}</td><td>{t.deviceName}</td><td>{t.policyId?.name || "inherit"}</td>
-              <td>{t.uses}/{t.maxUses}</td><td title={when(t.expiresAt)}>{when(t.expiresAt)}</td><td className="muted">{t.createdBy?.email}</td>
+              <td>{t.uses}/{t.maxUses}</td><td title={when(t.expiresAt)}>{when(t.expiresAt)}</td><td className="muted" title={t.createdBy?.email}>{t.createdBy?.name || t.createdBy?.email}</td>
               <td><Badge v={t.status} /></td>
               <td>{t.status === "active" && <button className="btn small danger" onClick={() => revoke(t._id)}>Revoke</button>}</td>
             </tr>

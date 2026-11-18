@@ -28,7 +28,7 @@ const getSettings = async (req, res, next) => {
       success: true,
       data: {
         authentication: {
-          method: "Email + password",
+          method: "Phone number + password + two-factor code",
           sessionLength: process.env.CSD_TOKEN_EXPIRY || "12h",
           sessionSecretConfigured: csdSecret.length >= 32,
           superAdminSeedConfigured: Boolean(
@@ -37,7 +37,7 @@ const getSettings = async (req, res, next) => {
           ),
         },
         access: {
-          model: "Email + password. A staff record with status !== 'active' cannot sign in.",
+          model: "Phone number + password + two-factor code. A staff record with status !== 'active' cannot sign in.",
           staffTotal,
           staffActive,
           staffDisabled: staffTotal - staffActive,

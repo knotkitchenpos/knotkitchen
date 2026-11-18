@@ -271,6 +271,7 @@ const commandSchema = new Schema({
   rolloutId: { type: Id, ref: "Rollout", index: true },
   createdBy: { type: Id, ref: "AdminUser" },
   createdByEmail: String,
+  createdByName: String, // who, readably: a CSD sign-in has only a placeholder email
   result: Schema.Types.Mixed,
   error: String,
   history: [{ status: String, at: Date, _id: false }],
@@ -286,6 +287,7 @@ const BulkJob = mongoose.model("BulkJob", new Schema({
   total: Number,
   createdBy: { type: Id, ref: "AdminUser" },
   createdByEmail: String,
+  createdByName: String, // who, readably: a CSD sign-in has only a placeholder email
 }, opts));
 
 // ---------------- Telemetry (time series, 90-day retention) ----------------

@@ -142,7 +142,7 @@ const StoreHours = ({ me }) => {
           })}
         </div>
         <button type="button" disabled={!hol.start || !hol.stores.length || Boolean(busy)} onClick={addHoliday} className="h-11 px-5 rounded-xl bg-[#FD5302] text-white text-[14px] font-extrabold disabled:opacity-40">
-          {busy === "holiday" ? "Saving…" : `Add holiday to ${hol.stores.length || ""} store${hol.stores.length === 1 ? "" : "s"}`}
+          {busy === "holiday" ? "Saving…" : `Add holiday to ${hol.stores.length ? `${hol.stores.length} ` : ""}store${hol.stores.length === 1 ? "" : "s"}`}
         </button>
         <ul className="space-y-2">
           {stores.flatMap((s, i) =>

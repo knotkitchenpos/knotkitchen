@@ -225,7 +225,7 @@ router.post("/bulk/commands", requirePerm("fleet.bulk"), wrap(async (req, res) =
   const devices = await commands.resolveTarget(target, scopeFilter(req));
   if (!devices.length) throw new HttpError(400, "no_devices");
   const p = await commandParams(type, params);
-  const job = await BulkJob.create({ type, params: p, target, total: devices.length, createdBy: req.admin._id, createdByEmail: req.admin.email });
+  const job = await BulkJob.create({ type, params: p, target, total: devices.length, createdBy: req.admin._id, createdByEmail: req.admin.email, createdByName: req.admin.name || "" });
   for (const d of devices) {
     await commands.enqueue(d._id, type, p, { force: Boolean(force), actor: req.admin, bulkId: job._id });
     await afterCommandQueued(d, type, p);
@@ -253,7 +253,7 @@ router.post("/update-outdated", requirePerm("fleet.bulk"), wrap(async (req, res)
   if (!devices.length) return res.json({ total: 0, versionCode: latest.versionCode });
   const p = await commandParams("install_app", { versionId: latest._id });
   const target = { deviceIds: devices.map((d) => String(d._id)) };
-  const job = await BulkJob.create({ type: "install_app", params: p, target, total: devices.length, createdBy: req.admin._id, createdByEmail: req.admin.email });
+  const job = await BulkJob.create({ type: "install_app", params: p, target, total: devices.length, createdBy: req.admin._id, createdByEmail: req.admin.email, createdByName: req.admin.name || "" });
   for (const d of devices) await commands.enqueue(d._id, "install_app", p, { actor: req.admin, bulkId: job._id });
   await audit(req, "bulk.update_outdated", { targetType: "bulk_job", targetId: job._id, details: { total: devices.length, versionCode: latest.versionCode } });
   res.status(201).json({ bulkId: job._id, total: devices.length, versionCode: latest.versionCode });
@@ -266,7 +266,7 @@ router.post("/:id/technician-otp", requirePerm("technician.otp"), wrap(async (re
   const step = TECH_STEP * 1000;
   const validUntil = new Date((Math.floor(Date.now() / step) + 2) * step);
   await audit(req, "device.technician_otp_issued", { targetType: "device", targetId: d._id, details: { reason: req.body.reason } });
-  await deviceEvent(d._id, "technician_otp_issued", `Issued to ${req.admin.email}`);
+  await deviceEvent(d._id, "technician_otp_issued", `Issued to ${req.admin.name || req.admin.email}`);
   res.json({ code, validUntil });
 }));
 

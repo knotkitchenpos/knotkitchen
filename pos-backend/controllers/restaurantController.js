@@ -179,7 +179,7 @@ const verifyPin = async (req, res, next) => {
 
     if (!restaurant.securityPin) return next(noPinError());
     const ok = await verifyPinHelper(restaurant, pin, req.user);
-    if (!ok) return next(createHttpError(401, "Invalid Security PIN."));
+    if (!ok) return next(createHttpError(401, "Invalid Security PIN.", { code: "WRONG_PIN" }));
 
     const jwt = require("jsonwebtoken");
     const config = require("../config/config");
@@ -221,7 +221,7 @@ const changePin = async (req, res, next) => {
     // The first PIN is set by the signed-in owner alone; after that the current one is needed.
     if (restaurant.securityPin) {
       const ok = await verifyPinHelper(restaurant, currentPin, req.user);
-      if (!ok) return next(createHttpError(401, "Current PIN is invalid."));
+      if (!ok) return next(createHttpError(401, "Current PIN is invalid.", { code: "WRONG_PIN" }));
     }
 
     const salt = await bcrypt.genSalt(12);
@@ -256,7 +256,7 @@ const updateStoreProperties = async (req, res, next) => {
 
     if (!restaurant.securityPin) return next(noPinError());
     const ok = await verifyPinHelper(restaurant, pin, req.user);
-    if (!ok) return next(createHttpError(401, "PIN verification required to update Store Properties."));
+    if (!ok) return next(createHttpError(401, "PIN verification required to update Store Properties.", { code: "WRONG_PIN" }));
 
     // Owner-Only Action check: changing owner contact details
     if (

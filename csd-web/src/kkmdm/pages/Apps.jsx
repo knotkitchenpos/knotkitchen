@@ -95,7 +95,7 @@ export default function Apps() {
             <tbody>{app.versions.map((v) => (
               <tr key={v._id}>
                 <td>{v.versionName}</td><td>{v.versionCode}</td><td>{v.minSdk}</td><td>{Math.round(v.size / 1024 / 1024 * 10) / 10} MB</td>
-                <td>{v.installedOn}</td><td className="muted">{when(v.createdAt)}<br />{v.uploadedBy?.email}</td>
+                <td>{v.installedOn}</td><td className="muted">{when(v.createdAt)}<br />{v.uploadedBy?.name || v.uploadedBy?.email}</td>
                 <td>{String(app.currentVersionId) === String(v._id) ? <Badge v="active" label="stable" /> : ""}</td>
                 <td>{roll && String(app.currentVersionId) !== String(v._id) && (
                   <div className="row">

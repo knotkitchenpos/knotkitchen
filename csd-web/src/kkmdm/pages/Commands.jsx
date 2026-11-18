@@ -26,7 +26,7 @@ export default function Commands() {
               <tr key={j._id}>
                 <td>{ago(j.createdAt)}</td><td>{j.type}</td>
                 <td className="muted">{j.target.fleet ? "whole fleet" : j.target.storeId ? "store" : j.target.groupId ? "group" : `${j.target.deviceIds?.length} devices`}</td>
-                <td className="muted">{j.createdByEmail}</td>
+                <td className="muted" title={j.createdByEmail}>{j.createdByName || j.createdByEmail}</td>
                 <td>{done}/{j.total} done · {Object.entries(j.progress).map(([k, n]) => `${k} ${n}`).join(", ")}</td>
               </tr>
             );
@@ -47,7 +47,7 @@ export default function Commands() {
             <tr key={c._id}>
               <td title={when(c.createdAt)}>{ago(c.createdAt)}</td>
               <td><a href={`/mdm/devices/${c.deviceId?._id}`}>{c.deviceId?.name}</a></td>
-              <td>{c.type}</td><td className="muted">{c.createdByEmail}</td>
+              <td>{c.type}</td><td className="muted" title={c.createdByEmail}>{c.createdByName || c.createdByEmail}</td>
               <td><Badge v={c.status} /></td>
               <td className="muted" style={{ fontSize: 12 }}>{c.history.map((h) => `${h.status} ${new Date(h.at).toLocaleTimeString("en-IN")}`).join(" → ")}</td>
               <td className="mono" style={{ maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis" }}>{c.error || (c.result ? JSON.stringify(c.result) : "")}</td>
