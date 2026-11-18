@@ -101,6 +101,9 @@ const buildStorefrontUrl = (settings) => {
   if (!settings) return "";
   if (settings.customDomain) return `https://${settings.customDomain}`;
   if (settings.subdomain && config.storefrontRootDomain) return `https://${settings.subdomain}`;
+  // A website made before the root domain was configured has no subdomain saved, but
+  // <slug>.<root> still reaches it (the resolver reads the slug from the host).
+  if (settings.slug && config.storefrontRootDomain) return `https://${settings.slug}.${config.storefrontRootDomain}`;
   return `${config.storefrontBaseUrl}/store/${settings.slug}`;
 };
 
