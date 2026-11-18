@@ -297,7 +297,11 @@ export default function EatsMenuShell({
                   <span className="font-semibold text-[color:var(--ke-bad)]">Closed now</span>
                 )}
                 {today.length ? (
-                  <span className="text-slate-500"> · {today.map((l) => `${l.label} ${l.text}`).join(" · ")}</span>
+                  // Pickup and delivery on the same hours read as one line, without the labels.
+                  <span className="text-slate-500">
+                    {" · "}
+                    {today.every((l) => l.text === today[0].text) ? today[0].text : today.map((l) => `${l.label} ${l.text}`).join(" · ")}
+                  </span>
                 ) : !state.isOpen && state.closedReason ? (
                   <span className="text-slate-500"> · {state.closedReason}</span>
                 ) : null}
@@ -326,7 +330,7 @@ export default function EatsMenuShell({
         {notice ? <Banner tone="warn">{notice}</Banner> : null}
         {reorderNote ? <Banner>{reorderNote}</Banner> : null}
 
-        {/* Menu: search and filters stay in reach while scrolling. */}
+        {/* Menu: the search stays in reach while scrolling; the filters scroll away. */}
         <div className="sticky top-[56px] z-30 -mx-3 mt-4 bg-slate-50 px-3 pb-2 pt-2">
           <div className="relative">
             <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" aria-hidden="true">
@@ -342,7 +346,8 @@ export default function EatsMenuShell({
               className="w-full rounded-2xl border border-slate-200 bg-white py-3 pl-11 pr-3 text-[15px] shadow-sm outline-none focus:border-brand"
             />
           </div>
-          <div className="mt-2 flex gap-2 overflow-x-auto [scrollbar-width:none]" role="group" aria-label="Filter the menu">
+        </div>
+        <div className="-mx-3 mb-3 flex gap-2 overflow-x-auto px-3 pb-1 [scrollbar-width:none]" role="group" aria-label="Filter the menu">
             <Chip on={diet === "veg"} onClick={() => setDiet(diet === "veg" ? "" : "veg")}>
               <DietDot veg /> Veg
             </Chip>
@@ -354,7 +359,6 @@ export default function EatsMenuShell({
                 ★ Bestseller
               </Chip>
             ) : null}
-          </div>
         </div>
 
         {loadingFull && !s.categories ? (

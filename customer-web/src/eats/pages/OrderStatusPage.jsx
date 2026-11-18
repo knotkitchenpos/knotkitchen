@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import Message from "../../components/Message";
 import ReviewForm from "../components/ReviewForm";
+import BottomNav from "../components/BottomNav";
+import { FOCUS } from "../shared";
 import { getEatsOrder } from "../api";
 import { addRecentOrder } from "../../lib/eatsOrders";
 import { totalPaid } from "../../lib/orderTotals";
@@ -13,6 +15,8 @@ const DELIVERY_STEPS = ["placed", "accepted", "ready", "on_the_way", "completed"
 const POLL_MS = 15_000;
 const BACKOFF_MS = 60_000;
 const TERMINAL = new Set(["completed", "cancelled"]);
+const STAGE_ICON = { placed: "🧾", accepted: "👨‍🍳", ready: "🛍️", on_the_way: "🛵", completed: "✅", cancelled: "✖️" };
+const ACTION = `inline-flex min-h-[44px] flex-1 items-center justify-center rounded-xl px-3 text-[14px] font-semibold ${FOCUS}`;
 
 const money = (n) => `₹${(Number(n) || 0).toFixed(2)}`;
 const isDelivery = (order) => String(order?.orderType || "").toLowerCase() === "delivery";
@@ -149,105 +153,173 @@ export default function OrderStatusPage() {
   const refund = refundText(order);
   const phone = store.phone ? String(store.phone).replace(/[^\d+]/g, "") : "";
   const b = order.bills || {};
+  const live = !TERMINAL.has(stage);
+  const hero =
+    stage === "cancelled" ? "from-red-600 to-red-700" : stage === "completed" ? "from-green-600 to-green-700" : "from-[color:var(--accent)] to-[color:var(--brand)]";
+  const where = delivery
+    ? [order.deliveryAddress?.line2, order.deliveryAddress?.line1].filter(Boolean).join(", ")
+    : order.scheduledFor
+      ? `Pickup at ${new Date(order.scheduledFor).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}`
+      : "";
+  const extras = (i) => [i.variant, ...(i.addons || []), ...(i.options || [])].filter(Boolean);
 
   return (
-    <div className="mx-auto max-w-xl px-4 pb-16 pt-4 text-slate-800">
-      <Link to="/" className="inline-flex min-h-[44px] items-center text-[14px] font-semibold text-brand">
-        ← Knot Eats
-      </Link>
-
-      {params.get("placed") === "1" ? (
-        <p role="status" className="mb-3 rounded-xl border border-green-200 bg-green-50 px-3 py-2 text-[15px] font-semibold text-[color:var(--ke-good,#15803D)]">
-          Payment received. Order placed.
-        </p>
-      ) : null}
-
-      <h1 className="text-[24px] font-bold text-slate-900">Order {order.orderNumber}</h1>
-      <p className="text-[13px] text-slate-500">
-        {order.placedAt ? new Date(order.placedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : ""}
-        {order.scheduledFor
-          ? ` · Pickup at ${new Date(order.scheduledFor).toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" })}`
-          : ""}
-      </p>
-
-      <section className="mt-4 rounded-2xl border border-slate-200 p-4" aria-label="Order status">
-        <p className={`text-[18px] font-semibold ${stage === "cancelled" ? "text-[color:var(--ke-bad,#B91C1C)]" : "text-slate-900"}`}>
-          {stageText(stage, delivery)}
-        </p>
-        {stage !== "cancelled" ? (
-          <ol className={`mt-3 grid ${delivery ? "grid-cols-5" : "grid-cols-4"} gap-1 text-center text-[12px]`}>
-            {steps.map((s, i) => (
-              <li key={s} aria-current={i === current ? "step" : undefined} className={i <= current ? "font-semibold text-slate-900" : "text-slate-400"}>
-                <span className={`mb-1 block h-1.5 rounded-full ${i <= current ? "bg-[color:var(--ke-good,#15803D)]" : "bg-slate-200"}`} />
-                {stepLabel(s, delivery)}
-              </li>
-            ))}
-          </ol>
-        ) : null}
-        {refund ? <p className="mt-2 text-[14px] text-slate-700">{refund}</p> : null}
-        {delivery && (order.deliveryAddress?.line1 || order.deliveryAddress?.line2) ? (
-          <p className="mt-2 text-[14px] text-slate-600">
-            Delivering to {[order.deliveryAddress.line1, order.deliveryAddress.line2].filter(Boolean).join(", ")}
-          </p>
-        ) : null}
-      </section>
-
-      <section className="mt-4 flex items-center gap-3 rounded-2xl border border-slate-200 p-4" aria-label="Restaurant">
-        {store.logo ? <img src={thumbUrl(store.logo, 160)} alt="" className="h-11 w-11 rounded-full object-cover" /> : null}
-        <Link to={store.storeId ? `/store/${store.storeId}` : "/"} className="min-w-0 flex-1 truncate font-semibold text-slate-900">
-          {store.name || "The restaurant"}
-        </Link>
-        {phone ? (
-          <a href={`tel:${phone}`} className="inline-flex min-h-[44px] items-center rounded-lg border border-slate-300 px-3 text-[14px] font-medium">
-            Call
-          </a>
-        ) : null}
-        {TERMINAL.has(stage) && store.storeId ? (
-          <Link to={`/store/${store.storeId}?reorder=${encodeURIComponent(token)}`} className="inline-flex min-h-[44px] items-center rounded-lg bg-brand px-3 text-[14px] font-semibold text-white">
-            Reorder
+    <div className="min-h-screen bg-slate-50 pb-28 text-slate-800">
+      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white">
+        <div className="mx-auto flex max-w-xl items-center gap-2 px-2 py-1.5">
+          <Link to="/orders" aria-label="Your orders" className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-slate-700 hover:bg-slate-100 ${FOCUS}`}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M19 12H5M12 19l-7-7 7-7" />
+            </svg>
           </Link>
-        ) : null}
-        {!delivery && store.mapUrl ? (
-          <a href={store.mapUrl} target="_blank" rel="noreferrer" className="inline-flex min-h-[44px] items-center rounded-lg border border-slate-300 px-3 text-[14px] font-medium">
-            Directions
-          </a>
-        ) : null}
-      </section>
-
-      <section className="mt-4 rounded-2xl border border-slate-200 p-4 text-[14px]" aria-labelledby="ke-bill">
-        <h2 id="ke-bill" className="text-[16px] font-semibold text-slate-900">
-          Bill
-        </h2>
-        <ul className="mt-2 space-y-1">
-          {(order.items || []).map((i, idx) => (
-            <li key={idx} className="flex justify-between gap-3">
-              <span className="min-w-0 break-words">
-                {i.quantity}× {i.name}
-                {[i.variant, ...(i.addons || []), ...(i.options || [])].filter(Boolean).length ? (
-                  <span className="block text-[12px] text-slate-500">{[i.variant, ...(i.addons || []), ...(i.options || [])].filter(Boolean).join(", ")}</span>
-                ) : null}
-              </span>
-              <span className="shrink-0">{money(i.total)}</span>
-            </li>
-          ))}
-        </ul>
-        <div className="mt-3 space-y-1 border-t pt-3 text-slate-600">
-          <Line label="Subtotal" value={money(b.subtotal)} />
-          {Number(b.discount) ? <Line label="Discount" value={`−${money(b.discount)}`} /> : null}
-          {Number(b.packagingFee) ? <Line label="Packaging" value={money(b.packagingFee)} /> : null}
-          {Number(b.tax) ? <Line label="Tax" value={money(b.tax)} /> : null}
-          {Number(b.deliveryFee) ? <Line label="Delivery" value={money(b.deliveryFee)} /> : null}
-          {Number(b.platformFee) ? <Line label="Platform fee" value={money(b.platformFee)} /> : null}
-          <div className="flex justify-between pt-1 text-[15px] font-semibold text-slate-900">
-            <span>Total paid</span>
-            <span>{money(totalPaid(order))}</span>
+          <div className="min-w-0">
+            <h1 className="truncate text-[17px] font-bold text-[color:var(--ke-ink)]">Order {order.orderNumber}</h1>
+            <p className="truncate text-[12.5px] text-slate-500">
+              {order.placedAt ? new Date(order.placedAt).toLocaleString("en-IN", { dateStyle: "medium", timeStyle: "short" }) : ""}
+            </p>
           </div>
         </div>
-      </section>
+      </header>
 
-      <section id="review" className="mt-4 scroll-mt-4 rounded-2xl border border-slate-200 p-4" aria-label="Rate this order">
-        <ReviewForm token={token} review={review} onSaved={onSaved} />
-      </section>
+      <div className="mx-auto max-w-xl space-y-3 px-3 pt-3">
+        {params.get("placed") === "1" ? (
+          <p role="status" className="rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-[15px] font-semibold text-[color:var(--ke-good,#15803D)]">
+            Payment received. Order placed.
+          </p>
+        ) : null}
+
+        {/* Where the order is, at a glance */}
+        <section className="overflow-hidden rounded-3xl bg-white shadow-[0_2px_12px_rgba(15,23,42,0.08)]" aria-label="Order status">
+          <div className={`bg-gradient-to-br ${hero} px-5 py-5 text-white`}>
+            <div className="flex items-center gap-4">
+              <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/20 text-[30px]" aria-hidden="true">
+                {STAGE_ICON[stage] || "🧾"}
+              </span>
+              <div className="min-w-0">
+                <p className="text-[20px] font-extrabold leading-tight">{stageText(stage, delivery)}</p>
+                {where ? <p className="mt-0.5 break-words text-[13.5px] text-white/90">{delivery ? `Delivering to ${where}` : where}</p> : null}
+              </div>
+            </div>
+            {live ? (
+              <p className="mt-3 flex items-center gap-2 text-[12.5px] font-semibold text-white/90">
+                <span className="relative flex h-2 w-2" aria-hidden="true">
+                  <span className="absolute inline-flex h-full w-full rounded-full bg-white opacity-75 motion-safe:animate-ping" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-white" />
+                </span>
+                Live: this page updates by itself
+              </p>
+            ) : null}
+          </div>
+          {stage !== "cancelled" ? (
+            <ol className="px-5 py-4">
+              {steps.map((s, i) => {
+                const done = i < current || stage === "completed";
+                const now = i === current && stage !== "completed";
+                return (
+                  <li key={s} aria-current={now ? "step" : undefined} className="relative flex gap-3 pb-4 last:pb-0">
+                    {i < steps.length - 1 ? (
+                      <span className={`absolute left-[11px] top-6 h-[calc(100%-20px)] w-0.5 ${done ? "bg-[color:var(--ke-good,#15803D)]" : "bg-slate-200"}`} aria-hidden="true" />
+                    ) : null}
+                    <span
+                      className={`relative flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[12px] font-bold ${
+                        done ? "bg-[color:var(--ke-good,#15803D)] text-white" : now ? "bg-brand text-white ring-4 ring-orange-100" : "border-2 border-slate-200 bg-white text-slate-400"
+                      }`}
+                      aria-hidden="true"
+                    >
+                      {done ? "✓" : i + 1}
+                    </span>
+                    <span className={`pt-0.5 text-[14.5px] ${done || now ? "font-semibold text-slate-900" : "text-slate-400"}`}>
+                      {stepLabel(s, delivery)}
+                      {done ? <span className="sr-only"> (done)</span> : now ? <span className="sr-only"> (now)</span> : null}
+                    </span>
+                  </li>
+                );
+              })}
+            </ol>
+          ) : null}
+          {refund ? <p className="border-t border-slate-100 px-5 py-3 text-[14px] text-slate-700">{refund}</p> : null}
+        </section>
+
+        {/* The restaurant, with its buttons on their own row so a long name is never cut. */}
+        <section className="rounded-2xl bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.06)]" aria-label="Restaurant">
+          <div className="flex items-center gap-3">
+            {store.logo ? (
+              <img src={thumbUrl(store.logo, 160)} alt="" className="h-12 w-12 shrink-0 rounded-xl object-cover" />
+            ) : (
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-[20px] font-extrabold text-brand" aria-hidden="true">
+                {(store.name || "R").charAt(0)}
+              </span>
+            )}
+            <div className="min-w-0 flex-1">
+              <Link to={store.storeId ? `/store/${store.storeId}` : "/"} className={`block break-words rounded text-[16px] font-bold text-slate-900 ${FOCUS}`}>
+                {store.name || "The restaurant"}
+              </Link>
+              <p className="text-[12.5px] text-slate-500">{delivery ? "Delivery" : "Pickup"} order</p>
+            </div>
+          </div>
+          {phone || (!delivery && store.mapUrl) || (TERMINAL.has(stage) && store.storeId) ? (
+            <div className="mt-3 flex gap-2">
+              {phone ? (
+                <a href={`tel:${phone}`} className={`${ACTION} border border-slate-300 text-slate-800`}>
+                  Call
+                </a>
+              ) : null}
+              {!delivery && store.mapUrl ? (
+                <a href={store.mapUrl} target="_blank" rel="noreferrer" className={`${ACTION} border border-slate-300 text-slate-800`}>
+                  Directions
+                </a>
+              ) : null}
+              {TERMINAL.has(stage) && store.storeId ? (
+                <Link to={`/store/${store.storeId}?reorder=${encodeURIComponent(token)}`} className={`${ACTION} bg-brand text-white`}>
+                  Reorder
+                </Link>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
+
+        <section className="rounded-2xl bg-white p-4 text-[14px] shadow-[0_1px_2px_rgba(15,23,42,0.06)]" aria-labelledby="ke-bill">
+          <h2 id="ke-bill" className="text-[13px] font-bold uppercase tracking-[0.12em] text-slate-500">
+            Bill details
+          </h2>
+          <ul className="mt-2 space-y-2">
+            {(order.items || []).map((i, idx) => (
+              <li key={idx} className="flex justify-between gap-3">
+                <span className="min-w-0 break-words text-slate-800">
+                  <span className="font-semibold">{i.quantity} ×</span> {i.name}
+                  {extras(i).length ? <span className="block text-[12px] text-slate-500">{extras(i).join(", ")}</span> : null}
+                </span>
+                <span className="shrink-0">{money(i.total)}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-3 space-y-1 border-t border-dashed border-slate-200 pt-3 text-slate-600">
+            <Line label="Item total" value={money(b.subtotal)} />
+            {Number(b.discount) ? <Line label="Discount" value={`−${money(b.discount)}`} /> : null}
+            {Number(b.packagingFee) ? <Line label="Packaging" value={money(b.packagingFee)} /> : null}
+            {Number(b.tax) ? <Line label="Taxes" value={money(b.tax)} /> : null}
+            {Number(b.deliveryFee) ? <Line label="Delivery fee" value={money(b.deliveryFee)} /> : null}
+            {Number(b.platformFee) ? <Line label="Platform fee" value={money(b.platformFee)} /> : null}
+            <div className="flex justify-between pt-1 text-[16px] font-bold text-slate-900">
+              <span>Total paid</span>
+              <span>{money(totalPaid(order))}</span>
+            </div>
+          </div>
+        </section>
+
+        <section id="review" className="scroll-mt-20 rounded-2xl bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.06)]" aria-label="Rate this order">
+          <ReviewForm token={token} review={review} onSaved={onSaved} />
+        </section>
+
+        <p className="px-2 pb-2 text-center text-[12.5px] text-slate-500">
+          A problem with this order? Call the restaurant first, or see{" "}
+          <Link to="/legal/refunds" className="font-semibold underline underline-offset-2">
+            Refunds &amp; cancellations
+          </Link>
+          .
+        </p>
+      </div>
+      <BottomNav />
     </div>
   );
 }

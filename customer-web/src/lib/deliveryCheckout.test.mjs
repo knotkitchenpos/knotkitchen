@@ -28,5 +28,7 @@ test("Knot Eats tracking shows the 'On the way' step the server sends for Out fo
   assert.match(page, /DELIVERY_STEPS = \["placed", "accepted", "ready", "on_the_way", "completed"\]/);
   assert.match(page, /step === "on_the_way"\) return "On the way"/);
   assert.match(page, /stage === "on_the_way"\)/);
-  assert.match(page, /grid-cols-5/);
+  // The timeline draws every step of the list for the order's type.
+  assert.match(page, /const steps = delivery \? DELIVERY_STEPS : STEPS/);
+  assert.match(page, /steps\.map\(/);
 });

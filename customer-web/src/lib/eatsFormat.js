@@ -24,6 +24,8 @@ export function distanceLabel(km, source) {
   if (km === null || km === undefined || km === "" || !Number.isFinite(Number(km))) return "";
   const n = Number(km);
   const m = Math.round(n * 100) * 10;
+  // A rounded "0 m" reads like a mistake: the restaurant is simply next door.
+  if (m < 100) return "Under 100 m";
   const text = m < 1000 ? `${m} m` : n >= 10 ? `${Math.round(n)} km` : `${n.toFixed(1)} km`;
   return source === "straight_line" ? `~${text}` : text;
 }

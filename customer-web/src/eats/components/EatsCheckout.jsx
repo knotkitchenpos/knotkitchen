@@ -65,6 +65,7 @@ export default function EatsCheckout({
   const [remember, setRemember] = useState(true);
   const [address, setAddress] = useState({ line1: "", line2: "", city: "", postalCode: "", instructions: "" });
   const [saveAs, setSaveAs] = useState("Home");
+  const [editing, setEditing] = useState(false);
   const filled = useRef(false);
   useEffect(() => {
     if (!open || filled.current) return;
@@ -86,6 +87,7 @@ export default function EatsCheckout({
   const pickSaved = (a) => {
     setAddress({ line1: a.line1, line2: a.line2, city: a.city, postalCode: a.postalCode, instructions: a.instructions });
     setSaveAs(a.label);
+    setEditing(false);
     if (Number.isFinite(a.lat)) setLocation({ lat: a.lat, lng: a.lng, label: `${a.label}: ${a.line1}`.slice(0, 80), source: "places" });
   };
 
@@ -123,6 +125,10 @@ export default function EatsCheckout({
   // A coupon the server says this phone has already used: its Remove clears both.
   const error = errorCode === "COUPON_USED" && !coupon ? "" : placeError;
   const both = ordering?.pickupEnabled && ordering?.deliveryEnabled;
+  // A saved address in use shows as one card; Edit (or a problem with it) opens the fields.
+  const same = (a) => ["line1", "line2", "city", "postalCode"].every((k) => (a[k] || "") === (address[k] || ""));
+  const savedInUse = profile.addresses.find(same);
+  const compact = Boolean(savedInUse && !editing && address.line1.trim() && !state.pinBad);
 
   const submit = (e) => {
     e.preventDefault();
@@ -221,7 +227,7 @@ export default function EatsCheckout({
 
           {delivery ? (
             <Card title="Delivery address">
-              {profile.addresses.length ? (
+              {profile.addresses.length > (compact ? 1 : 0) ? (
                 <div className="-mx-1 mb-3 flex gap-2 overflow-x-auto px-1 pb-1 [scrollbar-width:none]">
                   {profile.addresses.map((a) => (
                     <button
@@ -236,15 +242,36 @@ export default function EatsCheckout({
                   ))}
                 </div>
               ) : null}
+              {compact ? (
+                <div className="mb-2 flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-3">
+                  <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-orange-50 text-brand" aria-hidden="true">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z" />
+                    </svg>
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[14.5px] font-bold text-slate-900">Delivering to {savedInUse.label}</p>
+                    <p className="break-words text-[13px] text-slate-600">{[address.line2, address.line1, address.city, address.postalCode].filter(Boolean).join(", ")}</p>
+                  </div>
+                  <button type="button" onClick={() => setEditing(true)} aria-label="Edit delivery address" className={`min-h-[36px] shrink-0 px-1 text-[13.5px] font-bold text-brand ${FOCUS}`}>
+                    Edit
+                  </button>
+                </div>
+              ) : null}
               <div className="space-y-2">
+                {compact ? null : (
+                  <>
                 <input aria-label="House or flat, floor, building" placeholder="House / flat, floor, building" className={INPUT} value={address.line2} onChange={(e) => setAddress((a) => ({ ...a, line2: e.target.value }))} autoComplete="address-line2" />
                 <input aria-label="Street and area" placeholder="Street and area *" className={INPUT} value={address.line1} onChange={(e) => setAddress((a) => ({ ...a, line1: e.target.value }))} autoComplete="address-line1" />
                 <div className="flex gap-2">
                   <input aria-label="City" placeholder="City" className={INPUT} value={address.city} onChange={(e) => setAddress((a) => ({ ...a, city: e.target.value }))} autoComplete="address-level2" />
                   <input aria-label="Pincode" placeholder="Pincode" inputMode="numeric" maxLength={6} className={`${INPUT} ${state.pinBad ? "border-red-500" : ""}`} value={address.postalCode} onChange={(e) => setAddress((a) => ({ ...a, postalCode: e.target.value.replace(/\D/g, "").slice(0, 6) }))} autoComplete="postal-code" />
                 </div>
+                  </>
+                )}
                 <input aria-label="Instructions for the delivery partner" placeholder="Instructions for delivery (optional)" className={INPUT} maxLength={200} value={address.instructions} onChange={(e) => setAddress((a) => ({ ...a, instructions: e.target.value }))} />
               </div>
+              {compact ? null : (
               <div className="mt-3 flex items-center gap-2" role="radiogroup" aria-label="Save address as">
                 <span className="text-[13px] text-slate-500">Save as</span>
                 {ADDRESS_LABELS.map((label) => (
@@ -253,6 +280,7 @@ export default function EatsCheckout({
                   </button>
                 ))}
               </div>
+              )}
             </Card>
           ) : (
             <Card title="Pickup time">

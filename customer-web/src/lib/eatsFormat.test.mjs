@@ -16,6 +16,7 @@ test("distance: metres under 1 km, one decimal below 10 km, ~ for a straight-lin
   assert.equal(distanceLabel(0.4, "straight_line"), "~400 m");
   assert.equal(distanceLabel(12.4, "road"), "12 km");
   assert.equal(distanceLabel(null, null), "", "no location: no distance, not 0 m");
+  assert.equal(distanceLabel(0.004, "straight_line"), "Under 100 m", "never ~0 m");
 });
 
 test("rating: New below 3 ratings; the label says it in words", () => {

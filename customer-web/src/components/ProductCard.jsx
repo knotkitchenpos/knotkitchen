@@ -202,6 +202,10 @@ export default function ProductCard({
               src={thumbUrl(product.thumbnail || product.image, 320)}
               alt={product.imageAlt || product.name}
               loading="lazy"
+              // A photo that will not load leaves the soft background, not a broken-image icon.
+              onError={(e) => {
+                e.currentTarget.style.visibility = "hidden";
+              }}
               className="h-full w-full object-cover"
             />
           </button>
