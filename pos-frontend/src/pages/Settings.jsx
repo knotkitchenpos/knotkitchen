@@ -79,8 +79,8 @@ const Settings = () => {
   // On the Billing plan only an add-on's own screens open by buying it; the rest needs the POS plan.
   const lockedNote = (item) =>
     features?.pos === false && item.feature !== "website" && item.feature !== "websiteHours"
-      ? "Not on the Billing plan. Tap to upgrade in Billing & Subscription."
-      : `Needs the ${ADDON_FOR[item.feature] || "Website"} add-on. Tap to add it in Billing.`;
+      ? "Not on the Billing plan. The owner can upgrade on the Partners dashboard."
+      : `Needs the ${ADDON_FOR[item.feature] || "Website"} add-on. The owner can add it on the Partners dashboard.`;
 
   const handleClick = (item) => {
     // The click that ends a long-press only opens the pin sheet.

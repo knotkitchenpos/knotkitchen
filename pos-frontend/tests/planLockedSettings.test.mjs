@@ -32,12 +32,14 @@ test("the website tiles are locked without the Website add-on, and point to Bill
 test("locked tiles name the add-on, or the plan upgrade on the Billing plan", () => {
   const settings = SRC("src/pages/Settings.jsx");
   assert.match(settings, /\{locked \? lockedNote\(item\) :/);
-  assert.match(settings, /`Needs the \$\{ADDON_FOR\[item\.feature\] \|\| "Website"\} add-on\. Tap to add it in Billing\.`/);
+  assert.match(settings, /`Needs the \$\{ADDON_FOR\[item\.feature\] \|\| "Website"\} add-on\. The owner can add it on the Partners dashboard\.`/);
+  // Billing moved to Partners: the tile says where the owner actually does it.
+  assert.match(settings, /Not on the Billing plan\. The owner can upgrade on the Partners dashboard\./);
   // Changed 2026-10-16: QR Table Ordering is in the POS plan, so no tile names it as an add-on.
   assert.match(settings, /const ADDON_FOR = \{ website: "Website", websiteHours: "Website" \};/);
   assert.doesNotMatch(settings, /QR Table Ordering/);
   // Billing plan: a screen an add-on opens still names the add-on; every other lock is the plan.
-  assert.match(settings, /features\?\.pos === false && item\.feature !== "website" && item\.feature !== "websiteHours"\s*\? "Not on the Billing plan\. Tap to upgrade in Billing & Subscription\."/);
+  assert.match(settings, /features\?\.pos === false && item\.feature !== "website" && item\.feature !== "websiteHours"\s*\? "Not on the Billing plan. The owner can upgrade on the Partners dashboard."/);
   assert.doesNotMatch(settings, /onlineOrdering/);
 });
 
