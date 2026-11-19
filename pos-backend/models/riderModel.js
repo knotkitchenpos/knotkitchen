@@ -75,6 +75,9 @@ const riderPushSchema = new mongoose.Schema(
     },
     userAgent: { type: String, default: "", maxlength: 300 },
     lastSentAt: { type: Date, default: null },
+    // What the push service said the last time it refused (for the rider's own test).
+    lastError: { type: String, default: "", maxlength: 300 },
+    lastErrorAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

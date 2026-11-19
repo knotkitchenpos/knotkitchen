@@ -62,10 +62,17 @@ export default function Profile({ me, onLogout }) {
       setPushBusy(false);
     }
   };
+  // What really happened, so a missing notification can be put right.
   const test = async () => {
     try {
-      const { sent } = await riderApi.pushTest();
-      enqueueSnackbar(sent ? "Test sent. It should arrive in a moment." : "No device has alerts on yet.", { variant: sent ? "success" : "warning" });
+      const r = await riderApi.pushTest();
+      if (r.sent) {
+        enqueueSnackbar(`Sent to ${r.sent} device${r.sent === 1 ? "" : "s"}. Nothing within a minute? Allow notifications for Chrome in your phone's settings and set battery to Unrestricted.`, { variant: "success", autoHideDuration: 9000 });
+      } else if (r.failed) {
+        enqueueSnackbar(`The notification service refused it: ${r.errors?.[0] || "unknown error"}. Turn Notifications off and on again.`, { variant: "error", autoHideDuration: 9000 });
+      } else {
+        enqueueSnackbar("This phone isn't registered for notifications. Turn Notifications off and on again.", { variant: "warning", autoHideDuration: 9000 });
+      }
     } catch (err) {
       enqueueSnackbar(errorMessage(err), { variant: "error" });
     }

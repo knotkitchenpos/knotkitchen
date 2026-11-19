@@ -208,7 +208,7 @@ const revokeAllSessions = (rider) => {
 const pushToRider = async (riderId, { title, body, url = "/rider/", tag = "", orderId = "" }) => {
   try {
     const subs = await RiderPushSubscription.find({ riderId }).lean();
-    if (!subs.length) return { sent: 0 };
+    if (!subs.length) return { sent: 0, failed: 0, devices: 0, errors: [] };
     const keys = await require("./csdPush").getKeys();
     // orderId: a new delivery, answerable from the notification (Accept / Decline).
     const payload = JSON.stringify({ title: clip(title, 80), body: clip(body, 180), url: String(url).slice(0, 300), tag: clip(tag, 80), ...(orderId ? { orderId: String(orderId) } : {}) });
@@ -219,25 +219,30 @@ const pushToRider = async (riderId, { title, body, url = "/rider/", tag = "", or
       urgency: "high",
       timeout: 10000,
     };
-    let sent = 0;
+    const ok = [];
     const gone = [];
+    const errors = [];
     await Promise.all(
       subs.map(async (s) => {
         try {
           await webpush.sendNotification({ endpoint: s.endpoint, keys: s.keys }, payload, options);
-          sent += 1;
+          ok.push(s._id);
         } catch (err) {
-          if (err?.statusCode === 404 || err?.statusCode === 410) gone.push(s._id);
-          else console.warn("[riders] push failed:", err?.statusCode || "", String(err?.body || err?.message || "").slice(0, 200));
+          if (err?.statusCode === 404 || err?.statusCode === 410) return gone.push(s._id);
+          const why = `${err?.statusCode || "network"} ${String(err?.body || err?.message || "").slice(0, 200)}`.trim();
+          errors.push(why);
+          console.warn("[riders] push failed:", why);
+          await RiderPushSubscription.updateOne({ _id: s._id }, { $set: { lastError: why.slice(0, 300), lastErrorAt: new Date() } }).catch(() => {});
         }
       }),
     );
     if (gone.length) await RiderPushSubscription.deleteMany({ _id: { $in: gone } });
-    if (sent) await RiderPushSubscription.updateMany({ riderId, _id: { $nin: gone } }, { $set: { lastSentAt: new Date() } });
-    return { sent };
+    if (ok.length) await RiderPushSubscription.updateMany({ _id: { $in: ok } }, { $set: { lastSentAt: new Date(), lastError: "", lastErrorAt: null } });
+    console.log(`[riders] push "${clip(title, 40)}" to rider ${riderId}: ${ok.length} sent, ${errors.length} failed, ${gone.length} gone`);
+    return { sent: ok.length, failed: errors.length, devices: subs.length - gone.length, errors };
   } catch (err) {
     console.warn("[riders] push error:", err.message);
-    return { sent: 0 };
+    return { sent: 0, failed: 1, devices: 0, errors: [err.message] };
   }
 };
 

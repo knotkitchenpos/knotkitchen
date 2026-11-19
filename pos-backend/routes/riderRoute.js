@@ -335,11 +335,18 @@ router.post("/deliveries/:id/delivered", ...act((req) => riders.completeDelivery
 router.get("/push", async (req, res, next) => {
   try {
     const endpoint = String(req.query.endpoint || "");
-    const [publicKey, here] = await Promise.all([
+    const [publicKey, here, devices] = await Promise.all([
       csdPush.publicKey(),
-      endpoint ? RiderPushSubscription.exists({ riderId: req.rider._id, endpoint }) : null,
+      endpoint ? RiderPushSubscription.findOne({ riderId: req.rider._id, endpoint }).select("lastSentAt lastError lastErrorAt").lean() : null,
+      RiderPushSubscription.countDocuments({ riderId: req.rider._id }),
     ]);
-    ok(res, { publicKey, subscribed: Boolean(here) });
+    ok(res, {
+      publicKey,
+      subscribed: Boolean(here),
+      devices,
+      lastSentAt: here?.lastSentAt || null,
+      lastError: here?.lastError || "",
+    });
   } catch (err) {
     next(err);
   }
@@ -377,8 +384,8 @@ router.post("/push/unsubscribe", async (req, res, next) => {
 // POST /api/rider/push/test -- a test notification to this rider's devices.
 router.post("/push/test", stepLimiter, async (req, res, next) => {
   try {
-    const { sent } = await riders.pushToRider(req.rider._id, { title: "Notifications are on ✅", body: "You'll hear about new deliveries here.", url: "/rider/", tag: "test" });
-    ok(res, { sent });
+    const result = await riders.pushToRider(req.rider._id, { title: "Notifications are on ✅", body: "You'll hear about new deliveries here.", url: "/rider/", tag: "test" });
+    ok(res, result);
   } catch (err) {
     next(err);
   }
