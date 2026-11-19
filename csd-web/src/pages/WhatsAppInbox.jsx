@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import {
   FiSearch, FiSend, FiX, FiPlus, FiCheck, FiClock, FiAlertCircle, FiArrowLeft,
   FiEdit2, FiFileText, FiPaperclip, FiLock, FiUser, FiShoppingBag, FiZap, FiInfo,
@@ -387,6 +387,26 @@ const WhatsAppInbox = ({ onUnread, onThreadOpen }) => {
   activeRef.current = activeId;
   olderRef.current = older;
 
+  // Like WhatsApp: opening a chat from the list is a step the phone's Back
+  // button (and Esc) undoes, back to the list. The step is a history entry on
+  // the same address, marked in its state.
+  const location = useLocation();
+  const openedHere = Boolean(location.state?.waChat);
+  const openChat = (id) => {
+    if (!activeId && !openedHere) navigate({ search: location.search }, { state: { ...location.state, waChat: true } });
+    setActiveId(id);
+  };
+  const closeChat = useCallback(() => {
+    if (openedHere) navigate(-1);
+    else setActiveId(null);
+  }, [openedHere, navigate]);
+  // Back (or Esc above) popped the step: the chat closes.
+  const wasOpenedHere = useRef(openedHere);
+  useEffect(() => {
+    if (wasOpenedHere.current && !openedHere) setActiveId(null);
+    wasOpenedHere.current = openedHere;
+  }, [openedHere]);
+
   useEffect(() => {
     whatsapp.status().then(setStatus).catch(() => setStatus({ configured: false }));
     jobs.assignees().then(setStaffList).catch(() => {});
@@ -565,6 +585,23 @@ const WhatsAppInbox = ({ onUnread, onThreadOpen }) => {
     if (e.key === "Enter" && !e.shiftKey) send(e);
   };
 
+  // Esc closes what is on top: a dialog or the details panel, else the chat.
+  // A quick-reply list (the composer's own Esc) and other inputs keep theirs.
+  useEffect(() => {
+    const onKey = (e) => {
+      if (e.key !== "Escape" || e.defaultPrevented) return;
+      if (jobFor) return setJobFor(null);
+      if (templateFor) return setTemplateFor(false);
+      if (newChat) return setNewChat(false);
+      if (e.target?.tagName === "INPUT" || e.target?.tagName === "SELECT") return;
+      if (details) return setDetails(false);
+      if (document.querySelector('[aria-modal="true"]')) return; // someone else's dialog
+      if (activeId) closeChat();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [activeId, jobFor, templateFor, newChat, details, closeChat]);
+
   const configured = status ? status.configured : true;
   const replyBlocked = mode === "reply" && conv && !conv.windowOpen;
   let lastDay = null;
@@ -619,7 +656,7 @@ const WhatsAppInbox = ({ onUnread, onThreadOpen }) => {
             )}
             {list.conversations.map((c) => (
               <li key={c.id}>
-                <button type="button" onClick={() => setActiveId(c.id)}
+                <button type="button" onClick={() => openChat(c.id)}
                   className={`flex w-full gap-3 border-b border-navy-100 p-3 text-left last:border-b-0 ${c.id === activeId ? "bg-emerald-50" : "hover:bg-navy-50"}`}>
                   <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-sm font-bold text-emerald-800">
                     {initials(c)}
@@ -666,7 +703,7 @@ const WhatsAppInbox = ({ onUnread, onThreadOpen }) => {
           ) : (
             <>
               <header className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-navy-200 p-2.5 sm:p-4">
-                <button type="button" onClick={() => setActiveId(null)} className="rounded-lg p-1.5 text-navy-500 hover:bg-navy-50 lg:hidden" aria-label="Back to chats">
+                <button type="button" onClick={closeChat} className="rounded-lg p-1.5 text-navy-500 hover:bg-navy-50 lg:hidden" aria-label="Back to chats">
                   <FiArrowLeft />
                 </button>
                 <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 text-sm font-bold text-emerald-800">{initials(conv)}</span>
@@ -911,7 +948,7 @@ const WhatsAppInbox = ({ onUnread, onThreadOpen }) => {
 
       {newChat && (
         <NewChatDialog onClose={() => setNewChat(false)}
-          onStarted={(id) => { setNewChat(false); setFilter("open"); setActiveId(id); loadList(); }} />
+          onStarted={(id) => { setNewChat(false); setFilter("open"); openChat(id); loadList(); }} />
       )}
       {templateFor && conv && (
         <TemplateDialog onClose={() => setTemplateFor(false)}
