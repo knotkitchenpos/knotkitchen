@@ -357,7 +357,22 @@ const WhatsAppInbox = ({ onUnread, onThreadOpen }) => {
   const linked = params.get("c");
   const linkedAt = params.get("at");
   useEffect(() => {
-    if (/^[a-f0-9]{24}$/.test(linked || "")) setActiveId(linked);
+    if (!/^[a-f0-9]{24}$/.test(linked || "")) return;
+    setActiveId(linked);
+    // The list goes under the chat, so the phone's Back returns to it (as
+    // from a chat opened from the list) instead of leaving Chat.
+    const rest = new URLSearchParams(window.location.search);
+    rest.delete("c");
+    rest.delete("at");
+    const search = rest.toString() ? `?${rest}` : "";
+    if (window.history.state?.usr?.waChat) {
+      // A chat is already open over the list: this one takes its place.
+      navigate({ search }, { replace: true, state: { waChat: true } });
+    } else {
+      navigate({ search }, { replace: true });
+      navigate({ search }, { state: { waChat: true } });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [linked, linkedAt]);
   const [thread, setThread] = useState(null);
   const [older, setOlder] = useState([]);
