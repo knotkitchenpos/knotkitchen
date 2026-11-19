@@ -327,7 +327,7 @@ router.post("/deliveries/:id/accept", ...act((req) => riders.acceptDelivery(req.
 router.post("/deliveries/:id/reject", ...act((req) => riders.rejectDelivery(req.rider, req.params.id, req.body || {})));
 router.post("/deliveries/:id/start", ...act((req) => riders.startDelivery(req.rider, req.params.id)));
 router.post("/deliveries/:id/arrived", ...act((req) => riders.arriveDelivery(req.rider, req.params.id), finishingOnly));
-router.post("/deliveries/:id/delivered", ...act((req) => riders.completeDelivery(req.rider, req.params.id, { collected: req.body?.collected === true }), finishingOnly));
+router.post("/deliveries/:id/delivered", ...act((req) => riders.completeDelivery(req.rider, req.params.id, { collected: req.body?.collected === true, code: req.body?.code }), finishingOnly));
 
 /* -------------------------------------------------------------------- push -- */
 

@@ -366,6 +366,9 @@ const deliveryView = (order, { store } = {}) => {
       total: Math.round(((Number(order.bills?.totalWithTax) || 0) + (Number(order.bills?.platformFee) || 0)) * 100) / 100,
     },
     collect: live ? toCollect(order) : 0,
+    // The customer's handover code is needed to mark it delivered (never the code itself).
+    codeRequired: Boolean(order.deliveryCode),
+    codeLocked: (d.codeTries || 0) >= 5,
     paidOnline: wasPaid(order),
     times: {
       assignedAt: d.assignedAt || null,
@@ -622,8 +625,26 @@ const arriveDelivery = async (rider, orderId) => {
   return updated;
 };
 
-const completeDelivery = async (rider, orderId, { collected } = {}) => {
+const MAX_CODE_TRIES = 5;
+
+const completeDelivery = async (rider, orderId, { collected, code } = {}) => {
   const order = await riderOrder(rider, orderId);
+  // A website or Knot Eats delivery: the customer's 4-digit code proves the handover.
+  if (order.deliveryCode && OPEN.includes(order.delivery?.status)) {
+    const tries = order.delivery?.codeTries || 0;
+    if (tries >= MAX_CODE_TRIES) throw fail(429, "Too many wrong codes. Call the store: they can mark it delivered.", "CODE_LOCKED");
+    const given = String(code ?? "").replace(/D/g, "");
+    const a = Buffer.from(given.padEnd(4, "x"));
+    const b = Buffer.from(String(order.deliveryCode));
+    if (!(a.length === b.length && crypto.timingSafeEqual(a, b))) {
+      if (!given) throw fail(400, "Ask the customer for their 4-digit delivery code.", "CODE_REQUIRED");
+      const after = await Order.findOneAndUpdate({ _id: order._id, "delivery.riderId": rider._id }, { $inc: { "delivery.codeTries": 1 } }, { new: true });
+      const left = MAX_CODE_TRIES - (after?.delivery?.codeTries || tries + 1);
+      throw left > 0
+        ? fail(400, `That code isn't right. ${left} tr${left === 1 ? "y" : "ies"} left.`, "WRONG_CODE")
+        : fail(429, "Too many wrong codes. Call the store: they can mark it delivered.", "CODE_LOCKED");
+    }
+  }
   const due = toCollect(order);
   if (due > 0 && collected !== true) throw fail(400, `Collect ${money(due)} from the customer first, then confirm.`, "CONFIRM_CASH");
   const updated = await step(rider, orderId, ["on_the_way", "arrived"], "delivered", { "delivery.deliveredAt": new Date() });

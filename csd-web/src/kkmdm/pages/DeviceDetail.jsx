@@ -43,7 +43,7 @@ export default function DeviceDetail({ params }) {
       <div className="card scroll">
         {tab === "Info" && <InfoTab d={d} admin={admin} onSaved={reload} />}
         {tab === "Status" && <Kv rows={[
-          ["Online", d.online ? "yes" : "no"], ["Last seen", when(d.lastSeenAt)], ["Lifecycle", <Badge v={d.lifecycle} />],
+          ["Online", d.online ? "yes" : "no"], ["Last seen", when(d.lastSeenAt)], ["Lifecycle", <Badge key="v" v={d.lifecycle} />],
           ["Enrolled", when(d.enrolledAt)], ["Ready (kiosk locked)", when(d.readyAt)], ["Uptime", t.uptimeSec ? `${Math.round(t.uptimeSec / 3600)} h` : null],
           ["Last boot reason", t.lastBootReason], ["Android", `${d.androidVersion} (SDK ${d.sdkInt})`], ["Security patch", d.securityPatch],
           ["Agent", `${d.agentVersion} (${d.agentVersionCode})`], ["Attestation", d.attestation ? `${d.attestation.verified ? "verified" : "not verified"} — ${d.attestation.detail}` : null],
@@ -57,7 +57,7 @@ export default function DeviceDetail({ params }) {
               <tbody>{(d.apps || []).map((a) => <tr key={a.packageName}><td className="mono">{a.packageName}</td><td>{a.versionName}</td><td>{a.versionCode}</td></tr>)}</tbody></table>
           </>
         )}
-        {tab === "Kiosk" && <Kv rows={[["State", <Badge v={d.kiosk?.state} />], ["Error", d.kiosk?.error], ["Recent POS crashes", d.kiosk?.crashCount], ["Technician until", when(d.kiosk?.technicianUntil)], ["Lost mode", d.lostMode?.enabled ? `on — ${d.lostMode.message}` : "off"]]} />}
+        {tab === "Kiosk" && <Kv rows={[["State", <Badge key="v" v={d.kiosk?.state} />], ["Error", d.kiosk?.error], ["Recent POS crashes", d.kiosk?.crashCount], ["Technician until", when(d.kiosk?.technicianUntil)], ["Lost mode", d.lostMode?.enabled ? `on — ${d.lostMode.message}` : "off"]]} />}
         {tab === "Network" && <Kv rows={[["Type", t.networkType], ["SSID", t.ssid || "(hidden unless location is allowed by policy)"], ["Signal", t.signal != null ? `${t.signal}/4` : null], ["IP", t.ip], ["Internet reachable", t.internetReachable ? "yes" : "no"], ["Location", d.location?.lat ? `${d.location.lat.toFixed(5)}, ${d.location.lng.toFixed(5)} (±${Math.round(d.location.accuracy)} m, ${ago(d.location.at)})` : "not collected"]]} />}
         {tab === "Battery" && <><Kv rows={[["Level", t.battery != null ? `${t.battery}%` : null], ["Charging", t.charging ? "yes" : "no"], ["Plugged", t.plugged]]} /><History id={id} field="battery" unit="%" /></>}
         {tab === "Storage" && <Kv rows={[["Free storage", t.storageFreeMb != null ? `${t.storageFreeMb} MB of ${t.storageTotalMb} MB` : null], ["Free RAM", t.ramFreeMb != null ? `${t.ramFreeMb} MB of ${t.ramTotalMb} MB` : null]]} />}
@@ -171,7 +171,7 @@ function InfoTab({ d, admin, onSaved }) {
         <Field label="Warranty until"><input disabled={!editable} type="date" value={form.inventory.warrantyUntil} onChange={inv("warrantyUntil")} /></Field>
         <Field label="Notes"><input disabled={!editable} value={form.inventory.notes} onChange={inv("notes")} /></Field>
       </div>
-      <Kv rows={[["Serial", <span className="mono">{d.serial}</span>], ["IMEI", d.imei], ["Model", `${d.manufacturer} ${d.model}`], ["Hardware ID", <span className="mono">{d.hardwareId}</span>], ["Device ID", <span className="mono">{d._id}</span>]]} />
+      <Kv rows={[["Serial", <span key="v" className="mono">{d.serial}</span>], ["IMEI", d.imei], ["Model", `${d.manufacturer} ${d.model}`], ["Hardware ID", <span key="v" className="mono">{d.hardwareId}</span>], ["Device ID", <span key="v" className="mono">{d._id}</span>]]} />
       <Err error={act.error} />
       {editable && (
         <div className="row" style={{ marginTop: 12 }}>
@@ -210,8 +210,8 @@ function PolicyTab({ id }) {
   return (
     <>
       <Kv rows={[
-        ["Compliant", <Badge v={data.applied?.compliant ? "true" : "false"} label={data.applied?.compliant ? "yes" : "no"} />],
-        ["Expected hash", <span className="mono">{data.hash}</span>], ["Applied hash", <span className="mono">{data.applied?.appliedHash}</span>],
+        ["Compliant", <Badge key="v" v={data.applied?.compliant ? "true" : "false"} label={data.applied?.compliant ? "yes" : "no"} />],
+        ["Expected hash", <span key="v" className="mono">{data.hash}</span>], ["Applied hash", <span key="v" className="mono">{data.applied?.appliedHash}</span>],
         ["Applied at", when(data.applied?.appliedAt)], ["Errors", data.applied?.errors?.length ? data.applied.errors.join("; ") : "none"],
         ["Layers", data.layers.map((l) => `${l.scope}: ${l.name} v${l.version}`).join("  →  ") || "built-in defaults only"],
       ]} />

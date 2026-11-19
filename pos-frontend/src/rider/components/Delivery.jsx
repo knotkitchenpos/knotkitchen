@@ -59,6 +59,8 @@ export function ActionSheets({ delivery, actions }) {
   const [reason, setReason] = useState("");
   const [note, setNote] = useState("");
   const [collected, setCollected] = useState(false);
+  const [code, setCode] = useState("");
+  const needsCode = Boolean(delivery.codeRequired);
   const due = Number(delivery.collect) || 0;
   return (
     <>
@@ -100,13 +102,37 @@ export function ActionSheets({ delivery, actions }) {
         open={actions.delivering}
         onClose={() => actions.setDelivering(false)}
         title="Mark as delivered?"
-        body={due > 0 ? undefined : "Only once the customer has the order in their hands."}
+        body={due > 0 || needsCode ? undefined : "Only once the customer has the order in their hands."}
         confirmLabel="Delivered"
         tone="green"
         busy={actions.busy}
-        disabled={due > 0 && !collected}
-        onConfirm={() => actions.run("delivered", { collected: due > 0 })}
+        disabled={(due > 0 && !collected) || (needsCode && code.length !== 4) || delivery.codeLocked}
+        onConfirm={() => actions.run("delivered", { collected: due > 0, ...(needsCode ? { code } : {}) })}
       >
+        {needsCode ? (
+          <div className="mb-3">
+            <label htmlFor={`r-dcode-${delivery.orderId}`} className="r-label">
+              Delivery code from the customer
+            </label>
+            {delivery.codeLocked ? (
+              <p className="rounded-2xl px-4 py-3 text-[14.5px] font-bold" style={{ background: "var(--r-red-soft)", color: "var(--r-red)" }}>
+                Too many wrong codes. Call the store: they can mark it delivered.
+              </p>
+            ) : (
+              <input
+                id={`r-dcode-${delivery.orderId}`}
+                className="r-input text-center text-[28px] font-black"
+                style={{ letterSpacing: code ? "0.5em" : undefined }}
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={4}
+                placeholder="4 digits"
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/D/g, "").slice(0, 4))}
+              />
+            )}
+          </div>
+        ) : null}
         {due > 0 ? (
           <label className="flex cursor-pointer items-center gap-3 rounded-2xl p-4" style={{ background: "var(--r-amber-soft)", border: "2px solid var(--r-amber)" }}>
             <input type="checkbox" className="h-6 w-6 accent-[var(--r-green)]" checked={collected} onChange={(e) => setCollected(e.target.checked)} />

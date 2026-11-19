@@ -9,6 +9,7 @@ import { addRecentOrder } from "../../lib/eatsOrders";
 import { totalPaid } from "../../lib/orderTotals";
 import { thumbUrl } from "../../lib/thumbUrl";
 import { riderText } from "../../lib/riderText";
+import DeliveryCode from "../../components/DeliveryCode";
 
 const STEPS = ["placed", "accepted", "ready", "completed"];
 // A delivery has one more stop: the restaurant has sent it out ("Out for delivery").
@@ -197,7 +198,7 @@ export default function OrderStatusPage() {
                 {STAGE_ICON[stage] || "🧾"}
               </span>
               <div className="min-w-0">
-                <p className="text-[20px] font-extrabold leading-tight">{stageText(stage, delivery)}</p>
+                <p className="text-[20px] font-extrabold leading-tight">{order.rider?.stage === "arrived" && stage !== "completed" ? "Your rider is at your door" : stageText(stage, delivery)}</p>
                 {where ? <p className="mt-0.5 break-words text-[13.5px] text-white/90">{delivery ? `Delivering to ${where}` : where}</p> : null}
               </div>
             </div>
@@ -247,6 +248,8 @@ export default function OrderStatusPage() {
           ) : null}
           {refund ? <p className="border-t border-slate-100 px-5 py-3 text-[14px] text-slate-700">{refund}</p> : null}
         </section>
+
+        <DeliveryCode code={order.deliveryCode} />
 
         {/* The restaurant, with its buttons on their own row so a long name is never cut. */}
         <section className="rounded-2xl bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.06)]" aria-label="Restaurant">

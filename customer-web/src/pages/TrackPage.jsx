@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import Message from "../components/Message";
 import { getTrackedOrder } from "../lib/api";
 import { riderText } from "../lib/riderText";
+import DeliveryCode from "../components/DeliveryCode";
 
 /**
  * /track/:token on a store's website: a delivery order's live status and the
@@ -109,7 +110,11 @@ export default function TrackPage() {
               <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-white/20 text-[30px]" aria-hidden="true">
                 {ICON[stage] || "🧾"}
               </span>
-              <p className="text-[20px] font-extrabold leading-tight">{stage === "ready" && !order.rider ? "Ready; the restaurant will send it out" : HEADLINE[stage] || ""}</p>
+              <p className="text-[20px] font-extrabold leading-tight">{order.rider?.stage === "arrived" && stage !== "completed"
+                  ? "Your rider is at your door"
+                  : stage === "ready" && !order.rider
+                    ? "Ready; the restaurant will send it out"
+                    : HEADLINE[stage] || ""}</p>
             </div>
             {rider ? (
               <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-white/20 px-3 py-1.5 text-[13.5px] font-bold">
@@ -137,6 +142,8 @@ export default function TrackPage() {
             <p className="px-5 py-4 text-[14px] text-slate-600">Contact the restaurant about your refund.</p>
           )}
         </section>
+
+        <DeliveryCode code={order.deliveryCode} />
 
         <section className="rounded-3xl bg-white p-4 shadow-[0_2px_12px_rgba(15,23,42,0.06)]">
           <h2 className="text-[13px] font-bold uppercase tracking-wider text-slate-500">Your order</h2>

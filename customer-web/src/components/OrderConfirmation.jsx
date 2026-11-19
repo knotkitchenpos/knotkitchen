@@ -1,6 +1,7 @@
 import React from "react";
 import useScrollLock from "../lib/useScrollLock";
 import { totalPaid } from "../lib/orderTotals";
+import DeliveryCode from "./DeliveryCode";
 
 /**
  * Shown after a successful order. The `order` payload comes directly from the
@@ -33,6 +34,8 @@ export default function OrderConfirmation({ order, symbol, prepTime, onClose }) 
           ) : null}
           <p className="text-xs text-slate-500 mt-1">The restaurant will confirm your order shortly.</p>
         </div>
+
+        <DeliveryCode code={order.deliveryCode} className="mb-4" />
 
         <div className="border-t pt-3 space-y-1 text-sm">
           {order.items.map((i, idx) => (

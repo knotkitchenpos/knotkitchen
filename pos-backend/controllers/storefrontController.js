@@ -6,7 +6,7 @@ const Menu = require("../models/menuModel");
 const Order = require("../models/orderModel");
 const Customer = require("../models/customerModel");
 const { resolveStorefront, REASON_MESSAGES } = require("../services/storefrontResolver");
-const { AWAITING_ACCEPTANCE, CANCELLED_STATUSES } = require("../constants/orderStatus");
+const { AWAITING_ACCEPTANCE, CANCELLED_STATUSES, isFinished } = require("../constants/orderStatus");
 const { isItemAvailableNow, menuPriceNow } = require("../services/businessHours");
 const { calculateOrderTotals, PricingError } = require("../services/orderPricingService");
 const { resolveGst } = require("../services/gst");
@@ -660,6 +660,7 @@ const buildStorefrontOrder = (finalize) => async (req, res, next) => {
       customerDetails: { name, phone, guests: 1 },
       // Map to the POS's existing vocabulary so downstream reports keep working.
       orderType: orderTypeForOrder,
+      ...(orderTypeForOrder === "delivery" ? { deliveryCode: newDeliveryCode() } : {}),
       ...(deliveryAddress ? { deliveryAddress } : {}),
       orderStatus: AWAITING_ACCEPTANCE,
       items: priced.items,
@@ -899,6 +900,7 @@ const placePaidCheckout = async ({ checkout, paid, restaurantId, outletId, store
   const transactionId = claimed.transactionId;
   const order = new Order({
     ...data,
+    ...(data.orderType === "delivery" && !data.deliveryCode ? { deliveryCode: newDeliveryCode() } : {}),
     paymentMethod: "online",
     payments: [{ method: "online", amount: claimed.amount, status: "paid", transactionId }],
     // The merchant order id Cashfree knows this payment by: a refund needs it.
@@ -1087,6 +1089,18 @@ const verifyKnotEatsCheckout = async (req, res, next) => {
   }
 };
 
+/** A 4-digit handover code for a delivery (never one digit four times). */
+const newDeliveryCode = () => {
+  let code;
+  do code = String(require("crypto").randomInt(0, 10000)).padStart(4, "0");
+  while (new Set(code).size === 1);
+  return code;
+};
+
+/** The handover code, for the customer, while a delivery is still on its way to them. */
+const liveDeliveryCode = (order) =>
+  order?.orderType === "delivery" && order.deliveryCode && !isFinished(order.orderStatus) ? order.deliveryCode : undefined;
+
 /** Customer-facing projection of an order — no internal ids or POS fields. */
 const publicOrderView = (order) => ({
   orderId: order._id,
@@ -1108,6 +1122,8 @@ const publicOrderView = (order) => ({
   bills: order.bills,
   // What the diner was charged: the bill plus any platform fee (bills.platformFee).
   totalPaid: round2((Number(order.bills?.totalWithTax) || 0) + (Number(order.bills?.platformFee) || 0)),
+  // Tell the rider this when the food arrives (it marks the order delivered).
+  ...(liveDeliveryCode(order) ? { deliveryCode: liveDeliveryCode(order) } : {}),
   // Knot Eats only (a website order's view is unchanged): no name or phone,
   // which the Eats client never shows, and the signed token for its status
   // page and review form.

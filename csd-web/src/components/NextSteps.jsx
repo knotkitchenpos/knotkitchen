@@ -8,9 +8,9 @@ const NextSteps = ({ storeId }) => (
       creates a password using the owner phone.
     </li>
     <li>
-      Recharges the plan's first-recharge minimum (set in CSD Billing) in one payment, so their
+      Recharges the plan&apos;s first-recharge minimum (set in CSD Billing) in one payment, so their
       plan (POS or Billing, + GST where applicable, 30 days) starts and the rest stays in the wallet.
-      Later top-ups follow the plan's top-up minimum.
+      Later top-ups follow the plan&apos;s top-up minimum.
     </li>
     <li>
       Adds add-ons (Website yearly, GMB Management) and buys tablets or

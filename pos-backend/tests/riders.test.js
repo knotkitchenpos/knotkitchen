@@ -172,3 +172,20 @@ test("DEPLOY: knotkitchen.com/rider serves the app, its API and its socket, same
   assert.match(ROOT("pos-frontend/Dockerfile"), /npm run build:rider/);
   assert.match(ROOT(".github/workflows/ci.yml"), /run: npm run build:rider/);
 });
+
+test("a website / Knot Eats delivery's handover code: the rider is told one is needed, never shown it", () => {
+  const v = riders.deliveryView(order({ deliveryCode: "4821" }));
+  assert.equal(v.codeRequired, true);
+  assert.equal(JSON.stringify(v).includes("4821"), false);
+  assert.equal(riders.deliveryView(order()).codeRequired, false, "a till's own delivery needs no code");
+});
+
+test("SOURCE: the customer sees the code only while the delivery is on its way", () => {
+  const sf = SRC("controllers/storefrontController.js");
+  assert.match(sf, /order\?\.orderType === "delivery" && order\.deliveryCode && !isFinished\(order\.orderStatus\) \? order\.deliveryCode : undefined/);
+  assert.match(sf, /\.\.\.\(orderTypeForOrder === "delivery" \? \{ deliveryCode: newDeliveryCode\(\) \} : \{\}\)/);
+  assert.match(sf, /\.\.\.\(data\.orderType === "delivery" && !data\.deliveryCode \? \{ deliveryCode: newDeliveryCode\(\) \} : \{\}\)/);
+  const r = SRC("services/riders.js");
+  assert.match(r, /crypto\.timingSafeEqual\(a, b\)/);
+  assert.match(r, /const MAX_CODE_TRIES = 5;/);
+});

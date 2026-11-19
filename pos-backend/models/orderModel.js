@@ -96,6 +96,8 @@ const deliverySchema = new mongoose.Schema({
   cancelledAt: Date,
   // The till chose "Assign later" at Ready.
   skippedAt: Date,
+  // Wrong delivery codes the rider typed (5 and the rider must call the store).
+  codeTries: { type: Number, default: 0 },
   // Riders who turned it down, newest last.
   rejections: [{
     _id: false,
@@ -351,6 +353,10 @@ const orderSchema = new mongoose.Schema({
   // Customer-created (QR) orders have no POS user — createdBy is null
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   isDeleted: { type: Boolean, default: false },
+  // A website or Knot Eats delivery's 4-digit handover code: the customer
+  // sees it on their order page and tells the rider, who needs it to mark
+  // the order delivered. Never shown in the Rider app.
+  deliveryCode: { type: String, default: undefined },
   // The store's own rider for a delivery order (services/riders.js). Absent
   // until a rider is first assigned, so older orders are untouched.
   delivery: { type: deliverySchema, default: undefined },

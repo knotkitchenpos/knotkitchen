@@ -178,6 +178,8 @@ const getOrder = async (req, res, next) => {
         },
         // The store's own rider, once one has it: first name and where they are.
         rider: require("../services/riders").customerRiderView(order),
+        // Shared with the rider at the door; it marks the order delivered.
+        deliveryCode: view.deliveryCode,
       },
       store: {
         storeId: order.storeId,
@@ -227,6 +229,7 @@ const getTrackedOrder = async (req, res, next) => {
         totalPaid: view.totalPaid,
         refundStatus: order.refundStatus || null,
         rider: require("../services/riders").customerRiderView(order),
+        deliveryCode: view.deliveryCode,
       },
       store: { name: settings?.displayName || restaurant?.name || "", logo: settings?.branding?.logo?.url || "", phone: contact.phone },
     });
