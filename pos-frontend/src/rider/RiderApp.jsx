@@ -87,12 +87,12 @@ function BottomNav({ badge }) {
 /* ------------------------------------------------------- live & ringing -- */
 
 let tone = null;
-const RING_MS = 3000; // ring.wav: "ring-ring", then a pause
+const RING_MS = 3700; // new-order.mp3: a school bell, about 3.7 s
 
 /**
- * Ring like a phone call while a delivery waits to be accepted: the ring
- * loops and the phone buzzes with each ring, until the rider accepts or
- * rejects (or the store takes it back). Sound and vibration follow the
+ * Ring while a delivery waits to be accepted: the bell (new-order.mp3,
+ * Universfield on Pixabay) loops and the phone buzzes with each ring, until
+ * the rider accepts or declines (or the store takes it back). Sound and vibration follow the
  * rider's settings. A page nobody has touched yet can't play sound, so the
  * first tap or key starts it.
  */
@@ -105,7 +105,7 @@ function useRinging(ringing, prefs) {
     const play = () => {
       if (stopped || !sound) return;
       try {
-        tone = tone || Object.assign(new Audio("/rider/sounds/ring.wav"), { loop: true, preload: "auto" });
+        tone = tone || Object.assign(new Audio("/rider/sounds/new-order.mp3"), { loop: true, preload: "auto" });
         if (tone.paused) tone.play().catch(() => {});
       } catch {
         /* no audio */

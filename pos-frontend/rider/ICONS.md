@@ -5,3 +5,9 @@
 © Google LLC, licensed under the Apache License 2.0
 (https://www.apache.org/licenses/LICENSE-2.0): the scooter on KnotKitchen
 navy (#0B1120), resized, plus a white silhouette for the notification badge.
+
+# Rider app sounds
+
+`public/sounds/new-order.mp3`: "School Bell" by Universfield (Pixabay, sound
+199584), used under the Pixabay Content License. Loops while a new delivery
+waits to be accepted or declined.
