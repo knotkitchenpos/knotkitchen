@@ -6,10 +6,12 @@ import { buildOrder, checkoutState, pickupTimes } from "../../lib/eatsCheckout";
 import { ADDRESS_LABELS, getProfile, saveAddress, saveContact, useEatsProfile } from "../../lib/eatsProfile";
 import { useEatsLocation } from "../../lib/eatsLocation";
 import { FoodMark } from "../../components/ProductCard";
-import { FOCUS } from "../shared";
+import { loadGoogle, osmReverseAddress, reverseGeocodeAddress } from "../../lib/googleMaps";
+import { FOCUS, useEatsConfig } from "../shared";
 
 const clock = (d) => d.toLocaleTimeString("en-IN", { hour: "numeric", minute: "2-digit" });
 const rupees = (symbol, n) => `${symbol}${(Number(n) || 0).toFixed(2)}`;
+const GEO_OPTIONS = { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 };
 const INPUT = `w-full rounded-xl border border-slate-300 bg-white px-3.5 py-3 text-[15px] text-slate-900 placeholder:text-slate-400 focus:border-brand focus:outline-none`;
 
 /**
@@ -81,6 +83,51 @@ export default function EatsCheckout({
       setAddress((a) => ({ ...a, line1: a.line1 || deliveryPoint.address || deliveryPoint.label }));
     }
   }, [open, deliveryPoint]);
+
+  // The device's exact location: the delivery point moves there (the
+  // restaurant re-quotes) and the street, city and pincode are filled from it.
+  // The flat number stays the customer's to type.
+  const mapsKey = useEatsConfig()?.maps?.browserKey || "";
+  const hasGps = typeof navigator !== "undefined" && "geolocation" in navigator;
+  const [locating, setLocating] = useState(false);
+  const [locNote, setLocNote] = useState("");
+  const locateMe = () => {
+    if (!hasGps || locating) return;
+    setLocating(true);
+    setLocNote("");
+    navigator.geolocation.getCurrentPosition(
+      async ({ coords }) => {
+        const point = { lat: coords.latitude, lng: coords.longitude };
+        const g = mapsKey ? await loadGoogle(mapsKey) : null;
+        const found = (g ? await reverseGeocodeAddress(point) : null) || (await osmReverseAddress(point));
+        setLocation({ ...point, label: found?.label || "Current location", source: "gps" });
+        if (found?.line1) {
+          setAddress((a) => ({ ...a, line1: found.line1, city: found.city || a.city, postalCode: found.postalCode || a.postalCode }));
+          setLocNote(`Filled from your location${found.osm ? " (address data © OpenStreetMap contributors)" : ""}. Check it and add your flat number.`);
+        } else {
+          setLocNote("Location set. Type your street and area below.");
+        }
+        setEditing(true);
+        setLocating(false);
+      },
+      (err) => {
+        setLocating(false);
+        setLocNote(err.code === 1 ? "Location permission is off. Allow it for this site, or type your address." : "We couldn't get your location. Type your address instead.");
+      },
+      GEO_OPTIONS,
+    );
+  };
+  // Opened for delivery with no exact point and no saved address there: ask
+  // the device once, so the customer doesn't type what the phone knows.
+  const autoLocated = useRef(false);
+  useEffect(() => {
+    if (!open || !delivery || autoLocated.current) return;
+    autoLocated.current = true;
+    const p = getProfile();
+    const saved = deliveryPoint && p.addresses.some((a) => Number.isFinite(a.lat) && Math.abs(a.lat - deliveryPoint.lat) < 0.001 && Math.abs(a.lng - deliveryPoint.lng) < 0.001);
+    if (!saved && deliveryPoint?.source !== "places") locateMe();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, delivery]);
 
   // Picking a saved address with a map point moves the delivery point too, so
   // the restaurant re-quotes the fee and whether it delivers there.
@@ -257,6 +304,20 @@ export default function EatsCheckout({
                     Edit
                   </button>
                 </div>
+              ) : null}
+              {hasGps ? (
+                <button type="button" onClick={locateMe} disabled={locating} className={`mb-2 flex min-h-[44px] w-full items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-left text-[14px] font-semibold text-brand disabled:opacity-60 ${FOCUS}`}>
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                    <circle cx="12" cy="12" r="4" />
+                    <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
+                  </svg>
+                  {locating ? "Finding your location…" : "Use my current location"}
+                </button>
+              ) : null}
+              {locNote ? (
+                <p role="status" className="mb-2 text-[13px] text-slate-600">
+                  {locNote}
+                </p>
               ) : null}
               <div className="space-y-2">
                 {compact ? null : (

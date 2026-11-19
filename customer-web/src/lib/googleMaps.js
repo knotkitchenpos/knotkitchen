@@ -131,3 +131,63 @@ export async function reverseGeocode({ lat, lng }) {
     return "";
   }
 }
+
+/**
+ * A GPS fix as checkout address fields: { line1, city, postalCode, label }
+ * from the nearest result, or null. label is as reverseGeocode's, so one
+ * geocode call serves both. line1 is the street and area ("12, Park Street,
+ * Park Circus"); the flat number is left to the customer.
+ */
+export async function reverseGeocodeAddress({ lat, lng }) {
+  try {
+    const { Geocoder } = await window.google.maps.importLibrary("geocoding");
+    const { results } = await new Geocoder().geocode({ location: { lat, lng } });
+    const first = results?.[0];
+    if (!first) return null;
+    const parts = first.address_components || [];
+    const pick = (type) => parts.find((c) => c.types?.includes(type))?.long_name || "";
+    const city = pick("locality") || pick("administrative_area_level_3") || pick("administrative_area_level_2");
+    const postalCode = pick("postal_code").replace(/\D/g, "").slice(0, 6);
+    const street = [pick("street_number"), pick("premise"), pick("route"), pick("sublocality_level_2"), pick("sublocality_level_1") || pick("neighborhood")];
+    let line1 = [...new Set(street.filter(Boolean))].join(", ");
+    if (!line1) {
+      // No parts: the formatted address up to the city.
+      const segs = (first.formatted_address || "").split(",").map((s) => s.trim());
+      const cut = segs.findIndex((s) => s === city);
+      line1 = segs.slice(0, cut > 0 ? cut : Math.max(1, segs.length - 3)).join(", ");
+    }
+    const area = pick("sublocality_level_1") || pick("sublocality") || pick("neighborhood");
+    const label = [...new Set([area, city].filter(Boolean))].join(", ");
+    return { line1: line1.slice(0, 200), city, postalCode, label };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The same fields from OpenStreetMap's Nominatim, for when no Google key is
+ * installed: one request per customer tap (well inside its 1 request/second
+ * policy), the browser's Referer identifying the site. null on any failure.
+ */
+export async function osmReverseAddress({ lat, lng }) {
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&addressdetails=1&accept-language=en&lat=${lat}&lon=${lng}`;
+    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    if (!res.ok) return null;
+    const a = (await res.json())?.address;
+    if (!a) return null;
+    const area = a.suburb || a.neighbourhood || a.quarter || a.city_district || "";
+    const city = a.city || a.town || a.village || a.county || a.state_district || "";
+    const line1 = [...new Set([a.house_number, a.building, a.road, a.neighbourhood, area].filter(Boolean))].join(", ");
+    if (!line1) return null;
+    return {
+      line1: line1.slice(0, 200),
+      city,
+      postalCode: String(a.postcode || "").replace(/\D/g, "").slice(0, 6),
+      label: [...new Set([area, city].filter(Boolean))].join(", "),
+      osm: true, // ODbL: the page credits OpenStreetMap wherever this is shown
+    };
+  } catch {
+    return null;
+  }
+}
