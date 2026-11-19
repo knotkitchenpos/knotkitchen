@@ -108,7 +108,7 @@ test("each report row names its payment the way its card does", () => {
   assert.equal(label({}), "—");
 });
 
-test("REGRESSION N012: a paid order that was cancelled is a refund in Reports, not a vanished sale", () => {
+test("a paid order that was cancelled and refunded is a Cancelled order in Reports, not a sale", () => {
   const { buildReportBreakdown } = require("../services/reportBreakdown");
   const voided = order({
     source: "POS",
@@ -118,8 +118,13 @@ test("REGRESSION N012: a paid order that was cancelled is a refund in Reports, n
     refunds: [{ amount: 100, status: "SUCCESS", channel: "cash" }],
     items: [{ name: "Thali", quantity: 1, total: 100 }],
   });
-  assert.deepEqual(buildReportBuckets([voided]).total, { count: 1, amount: 0 });
-  assert.deepEqual(buildReportBreakdown([voided]).adjustments, [{ name: "Refunds", amount: -100 }]);
+  const s = buildReportBuckets([voided]);
+  assert.deepEqual(s.total, { count: 0, amount: 0 });
+  assert.deepEqual(s.cash, { count: 0, amount: 0 });
+  assert.deepEqual(s.system, { count: 0, amount: 0 });
+  assert.deepEqual(s.cancelled, { count: 1, amount: 100 });
+  assert.deepEqual(buildReportBreakdown([voided]), { byItem: [], byCategory: [], byHour: [], byStaff: [], adjustments: [] });
+  // The refund itself is still recorded on the order.
   const src = SRC("controllers", "orderController.js");
   assert.match(src, /if \(cancelling && paid\) await refundOnCancel\(order/, "the void records the refund");
 });
@@ -130,7 +135,7 @@ test("REGRESSION N014: a nameless line left by a failed add is no dish in Report
   assert.deepEqual(buildReportBreakdown([o]).byItem.map((r) => r.name), ["Thali"]);
 });
 
-test("REGRESSION N012: a refunded cancel's tip went back too, so Tips do not count it", () => {
+test("a refunded cancel's tip went back too, so Tips do not count it", () => {
   // Settled ₹500 + ₹50 tip, then voided: the cash refund of ₹550 includes the tip.
   const voided = order({
     orderStatus: "Cancelled",
@@ -140,15 +145,17 @@ test("REGRESSION N012: a refunded cancel's tip went back too, so Tips do not cou
     refunds: [{ amount: 550, status: "SUCCESS", channel: "cash" }],
   });
   const s = buildReportBuckets([voided]);
-  assert.deepEqual(s.total, { count: 1, amount: 0 });
+  assert.deepEqual(s.total, { count: 0, amount: 0 });
   assert.deepEqual(s.tips, { count: 0, amount: 0 });
 });
 
-test("REGRESSION N012: a rejected prepaid order keeps its dishes, with no phantom Other adjustments", () => {
+test("a cancelled Knot Eats order (paid online, refunded) is in no sales card, and is in Cancelled", () => {
   const { buildReportBreakdown } = require("../services/reportBreakdown");
-  // Rejecting strikes every line (updateOnlineOrderStatus); the refund gives back the whole ₹450.
   const rejected = order({
     source: "WEBSITE",
+    salesChannel: "KNOT_EATS",
+    orderType: "collection",
+    paymentMethod: "online",
     orderStatus: "Cancelled",
     createdAt: "2026-10-12T08:00:00.000Z",
     bills: { totalWithTax: 450, tax: 20, deliveryFee: 30 },
@@ -156,18 +163,13 @@ test("REGRESSION N012: a rejected prepaid order keeps its dishes, with no phanto
     refunds: [{ amount: 450, status: "SUCCESS" }],
     items: [{ name: "Biryani", quantity: 1, total: 400, status: "cancelled" }],
   });
-  const b = buildReportBreakdown([rejected]);
-  assert.deepEqual(b.byItem.map((r) => [r.name, r.amount]), [["Biryani", 400]]);
-  assert.deepEqual(b.adjustments, [{ name: "Tax & charges", amount: 50 }, { name: "Refunds", amount: -450 }]);
-  // A dish struck before a paid table was voided was never in the bill: still not a dish.
-  const voided = order({
-    orderStatus: "Cancelled",
-    createdAt: "2026-10-12T08:00:00.000Z",
-    payments: [{ method: "cash", amount: 100, status: "paid" }],
-    refunds: [{ amount: 100, status: "SUCCESS", channel: "cash" }],
-    items: [{ name: "Thali", quantity: 1, total: 100 }, { name: "Lassi", quantity: 1, total: 60, status: "cancelled" }],
-  });
-  assert.deepEqual(buildReportBreakdown([voided]).byItem.map((r) => r.name), ["Thali"]);
+  const s = buildReportBuckets([rejected]);
+  for (const k of ["total", "website", "knotEats", "gateway", "other", "collection", "delivery"]) assert.deepEqual(s[k], { count: 0, amount: 0 }, k);
+  assert.deepEqual(s.cancelled, { count: 1, amount: 450 });
+  assert.deepEqual(buildReportBreakdown([rejected]).byItem, []);
+  // Refund still on its way: the same.
+  const pending = { ...rejected, refunds: [{ amount: 450, status: "PENDING" }] };
+  assert.deepEqual(buildReportBuckets([pending]).cancelled, { count: 1, amount: 450 });
 });
 
 test("REGRESSION N014: the Reports order list and drawer drop a nameless line (lean read, no model hook)", () => {
@@ -195,11 +197,11 @@ test("REGRESSION R2: voids have their own card, so Total + Cancelled is every or
   const list = [
     order({ paymentMethod: "Cash" }),
     order({ orderStatus: "Cancelled", paymentMethod: "Cash", bills: { totalWithTax: 250 } }),
-    // Refunded void: already in Total, as a refund (N012).
+    // Refunded void: a cancelled order too.
     order({ orderStatus: "Cancelled", payments: [{ method: "cash", amount: 100, status: "paid" }], refunds: [{ amount: 100, status: "SUCCESS", channel: "cash" }] }),
   ];
   const s = buildReportBuckets(list);
-  assert.deepEqual(s.cancelled, { count: 1, amount: 250 });
+  assert.deepEqual(s.cancelled, { count: 2, amount: 350 });
   assert.equal(s.total.count + s.cancelled.count, list.length);
-  assert.match(fs.readFileSync(path.join(__dirname, "..", "..", "pos-frontend", "src", "pages", "Reports.jsx"), "utf8"), /\{ key: "cancelled", label: "Cancelled \(unpaid\)"/);
+  assert.match(fs.readFileSync(path.join(__dirname, "..", "..", "pos-frontend", "src", "pages", "Reports.jsx"), "utf8"), /\{ key: "cancelled", label: "Cancelled Orders"/);
 });

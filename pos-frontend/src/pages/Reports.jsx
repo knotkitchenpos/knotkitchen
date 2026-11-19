@@ -474,9 +474,8 @@ const REPORT_CARDS = [
   { key: "collection", label: "Collection Orders" },
   // Not sales, so outside Total and Cash: what the drawer holds on top.
   { key: "tips", label: "Tips" },
-  // R2: voids with nothing refunded. A refunded void is in Total, as a refund; together they are every order in the list.
-  // Labelled "unpaid" so a paid-then-refunded cancellation is not looked for here (it is under Refunds).
-  { key: "cancelled", label: "Cancelled (unpaid)", tint: "#DC2626" },
+  // Every cancelled order, refunded or not: none is in Total or the cards above. Together with Total they are every order in the list.
+  { key: "cancelled", label: "Cancelled Orders", tint: "#DC2626" },
 ];
 
 const SummaryCard = ({ label, count, amount, tint }) => (

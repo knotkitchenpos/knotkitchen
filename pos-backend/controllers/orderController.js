@@ -1456,10 +1456,10 @@ const buildReportBuckets = (orders) => {
 
   for (const o of orders) {
     // A cancelled order was never a sale: it is in no sales card, count or value
-    // (as in the dish, category, hour and staff breakdowns).
-    // N012: unless money was taken and given back: then it counts, as a refund.
-    // R2: the rest go on their own card, so Total + Cancelled is every order in the list.
-    if (canonicalStatus(o.orderStatus) === CANCELLED && !refundedTotal(o)) {
+    // (as in the dish, category, hour and staff breakdowns), refunded or not.
+    // Its money and refund stay on the order. It goes on its own card, so
+    // Total + Cancelled is every order in the list.
+    if (canonicalStatus(o.orderStatus) === CANCELLED) {
       inc(summary.cancelled, orderTotal(o));
       continue;
     }
@@ -1478,8 +1478,7 @@ const buildReportBuckets = (orders) => {
 
     inc(summary[reportMethodOf(o)], amount);
     const tip = Number(o.bills?.tip || o.tips) || 0;
-    // N012: a cancelled order's tip went back with its refund (as in services/shifts.js).
-    if (tip > 0 && canonicalStatus(o.orderStatus) !== CANCELLED) inc(summary.tips, tip);
+    if (tip > 0) inc(summary.tips, tip);
 
     const type = String(o.orderType || "").toLowerCase();
     if (type === "delivery") inc(summary.delivery, amount);
@@ -1491,12 +1490,12 @@ const buildReportBuckets = (orders) => {
 
 /**
  * Takings per store day, by the same rule as the sales cards: a cancelled
- * order is no sale unless money was taken and given back (N012).
+ * order is no sale.
  */
 const buildDailySeries = (orders) => {
   const days = new Map();
   for (const o of orders) {
-    if (canonicalStatus(o.orderStatus) === CANCELLED && !refundedTotal(o)) continue;
+    if (canonicalStatus(o.orderStatus) === CANCELLED) continue;
     const day = localDate(new Date(o.orderDate || o.createdAt), DEFAULT_TZ);
     const d = days.get(day) || { day, count: 0, amount: 0 };
     d.count += 1;

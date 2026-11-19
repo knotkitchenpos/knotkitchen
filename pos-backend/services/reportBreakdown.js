@@ -15,7 +15,7 @@ const { isCancelled } = require("../constants/orderStatus");
 
 const { round2 } = require("./money");
 const { resolveItemAmounts, round3 } = require("./orderItemAmounts");
-const { netAmount, orderTotal, refundedTotal } = require("./refunds");
+const { netAmount, orderTotal } = require("./refunds");
 const { DEFAULT_TZ } = require("./tableBookings");
 const { localClock } = require("./websiteAvailability");
 
@@ -41,8 +41,8 @@ const buildReportBreakdown = (orders, { categoryOf = () => "", timeZone = DEFAUL
   const adj = { discounts: 0, charges: 0, refunds: 0, other: 0 };
 
   for (const o of orders || []) {
-    // N012: a cancelled order with money given back stays in, as a refund.
-    if (isCancelled(o.orderStatus) && !refundedTotal(o)) continue;
+    // A cancelled order is no sale, refunded or not (Reports' Cancelled card).
+    if (isCancelled(o.orderStatus)) continue;
     const net = netAmount(o);
 
     // The store's hour, not the server's: the container runs on UTC, which
@@ -59,12 +59,10 @@ const buildReportBreakdown = (orders, { categoryOf = () => "", timeZone = DEFAUL
     s.amount += net;
     staff.set(who, s);
 
-    // N012: rejecting an order strikes every line; they are still what was paid and refunded.
-    const struckWhole = isCancelled(o.orderStatus) && (o.items || []).every((i) => !i?.name || i.status === "cancelled");
     let lines = 0;
     for (const it of o.items || []) {
       // N014: a nameless line is debris from a failed add, not a dish.
-      if (!it?.name || (it.status === "cancelled" && !struckWhole)) continue;
+      if (!it?.name || it.status === "cancelled") continue;
       const qty = Number(it.quantity) || 1;
       const amt = lineAmount(it);
       lines += amt;
