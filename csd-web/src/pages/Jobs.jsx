@@ -53,9 +53,6 @@ const Jobs = () => {
       <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-navy-900">Jobs</h1>
-          <p className="mt-1 text-sm text-navy-500">
-            Internal tasks. Closed jobs are kept permanently as the record of work done.
-          </p>
         </div>
         <button
           type="button"

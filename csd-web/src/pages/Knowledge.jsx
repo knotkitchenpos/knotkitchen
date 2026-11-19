@@ -128,7 +128,7 @@ const Knowledge = () => {
       <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-navy-900">Knowledge base</h1>
-          <p className="mt-1 text-sm text-navy-500">How-to articles for the team. Quick replies appear in WhatsApp when you type /.</p>
+          <p className="mt-1 text-sm text-navy-500">Quick replies appear in WhatsApp when you type /.</p>
         </div>
         <button type="button" onClick={() => setEditing(null)} className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-500">
           <FiPlus aria-hidden="true" /> New article

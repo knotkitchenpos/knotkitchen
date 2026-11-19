@@ -277,11 +277,12 @@ test("REGRESSION: a counter order paid at the till fires the e-bill too", () => 
     "a till-paid order must send its e-bill at creation",
   );
 
-  // ...and the two hooks are distinct: creation, and the later status change.
+  // ...and the hooks are distinct: creation, the later status change, and
+  // the store's rider handing a delivery over (setDeliveryOrderStatus).
   assert.equal(
     (src.match(/fireAutoEBill\(/g) || []).length,
-    2,
-    "both the creation and the completion paths must fire",
+    3,
+    "the creation, completion and rider-delivered paths must each fire",
   );
 });
 
@@ -297,6 +298,8 @@ test("EVERY way a bill gets settled fires the e-bill", () => {
     ["controllers/orderController.js", /if \(isPaidAtTill\) fireAutoEBill\(/],
     // Counter order completed later by a person.
     ["controllers/orderController.js", /if \(settledTransition\) fireAutoEBill\(/],
+    // Delivered by the store's rider (services/riders.js -> setDeliveryOrderStatus).
+    ["controllers/orderController.js", /if \(riderSettled\) fireAutoEBill\(/],
     // Finished by the auto-complete timer instead of a person.
     ["services/autoReadyService.js", /fireAutoEBill\(\{ orderId: order\._id \}\)/],
     // Table session settled at the POS -- and, through settleSessionFromGateway,

@@ -130,9 +130,6 @@ const ManageCacheView = () => {
         <div className="flex items-start justify-between gap-4 pt-1">
           <div>
             <h4 className="text-[15px] font-extrabold text-[#0F172A]">Update Website Cache</h4>
-            <p className="text-[12.5px] text-[#64748B] mt-0.5">
-              Publish menu changes to your website and Knot Eats
-            </p>
           </div>
           <button
             onClick={() => executeProtected(() => webMutation.mutate())}

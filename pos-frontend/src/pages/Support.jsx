@@ -278,9 +278,6 @@ const Support = () => {
               </button>
             </div>
 
-            <p className="text-[13px] text-[#64748B]">
-              Enter your contact phone number and preferred time. Our support executive will call you back.
-            </p>
 
             <div className="space-y-3.5 text-[13px]">
               <div>

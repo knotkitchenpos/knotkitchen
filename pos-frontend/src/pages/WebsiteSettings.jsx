@@ -356,10 +356,6 @@ const WebsiteSettings = () => {
             <div className="rounded-2xl border border-[#E2E8F0] bg-white p-4 space-y-3">
               <div>
                 <p className="text-sm font-bold text-[#0F172A]">Visitor analytics</p>
-                <p className="text-xs text-[#94A3B8]">
-                  Optional. Your website asks each visitor first (a cookie banner) and loads nothing until they
-                  accept. Applies as soon as you save.
-                </p>
               </div>
               <div className="grid sm:grid-cols-2 gap-4">
                 <Field label="Google Analytics 4 ID" hint="Looks like G-XXXXXXXXXX (Admin › Data streams).">
@@ -501,7 +497,6 @@ const WebsiteSettings = () => {
             <div className="rounded-2xl border border-[#E2E8F0] bg-white p-4 space-y-4">
               <div>
                 <p className="text-sm font-bold text-[#0F172A]">Photos</p>
-                <p className="text-xs text-[#94A3B8]">Pick from Website Images, or upload a new one there.</p>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
                 {[
@@ -571,10 +566,6 @@ const WebsiteSettings = () => {
 
             <div>
               <p className="text-sm font-bold text-[#475569] mb-1.5">Popular items</p>
-              <p className="text-xs text-[#94A3B8] mb-2">
-                Up to three dishes shown on the home page. Name, photo and price come from the menu, so they stay in
-                step with the POS. Choose none and the website shows the three best sellers of the last 30 days.
-              </p>
               {dishes.length ? (
                 <>
                   <input
@@ -632,8 +623,7 @@ const WebsiteSettings = () => {
         {tab === "contact" ? (
           <>
             <p className="mb-4 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3 text-xs text-[#64748B]">
-              Leave a field blank to use the restaurant&apos;s details from Settings › Store Properties (address, phone,
-              email, Google Maps pin). Fill it in only to show something different on the website.
+              Leave blank to use Store Properties.
             </p>
             <div className="grid sm:grid-cols-2 gap-4">
               {[
@@ -661,12 +651,6 @@ const WebsiteSettings = () => {
         {/* ---------- LEGAL PAGES ---------- */}
         {tab === "legal" ? (
           <div className="space-y-5">
-            <p className="rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] p-3 text-xs text-[#64748B]">
-              The website carries five legal pages, linked from every footer: Terms &amp; Conditions, Privacy Policy,
-              Refund &amp; Cancellation Policy, Return Policy, and Shipping &amp; Delivery Policy. The restaurant&apos;s
-              name, address, FSSAI number, GSTIN, phone and email are taken from Store Properties. The values below are
-              the parts the policies let you set.
-            </p>
             <div>
               <p className="text-sm font-bold text-[#475569] mb-1.5">Grievance officer</p>
               <div className="grid sm:grid-cols-2 gap-4">

@@ -34,6 +34,7 @@ test("wiring: checked before the PIN rule, deducted before save and given back i
   for (const [f, re] of [
     ["controllers/orderController.js", /if \(isPaidAtTill\) require\("\.\.\/services\/loyalty"\)\.earnLater\(\{ orderId: order\._id \}\);/],
     ["controllers/orderController.js", /if \(settledTransition\) require\("\.\.\/services\/loyalty"\)\.earnLater/],
+    ["controllers/orderController.js", /if \(riderSettled\) require\("\.\.\/services\/loyalty"\)\.earnLater/],
     ["controllers/tableSessionController.js", /if \(paid\) require\("\.\.\/services\/loyalty"\)\.earnLater\(\{ tableSessionId: session\._id \}\);/],
     ["services/autoReadyService.js", /require\("\.\/loyalty"\)\.earnLater\(\{ orderId: order\._id \}\);/],
     ["services/paymentLinkSettlement.js", /if \(updatedOrder\) require\("\.\/loyalty"\)\.earnLater/],

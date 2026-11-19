@@ -125,6 +125,12 @@ jobs:
           VITE_BASE_DOMAIN: "knotkitchen.com"
         run: npm run build
 
+      # The Rider app is a second build of pos-frontend (served at /rider/).
+      - name: Build Rider app
+        if: matrix.app == 'pos-frontend'
+        working-directory: ${{ matrix.path }}
+        run: npm run build:rider
+
   # ---------------------------------------------------------------------------
   # Docker compose sanity check — catches YAML/config regressions locally.
   # ---------------------------------------------------------------------------

@@ -7,6 +7,8 @@ import LoadingSkeleton from "./components/LoadingSkeleton";
 
 // Knot Eats (eats.<base>) is its own chunk: a store website never downloads it.
 const EatsApp = lazy(() => import("./eats/EatsApp"));
+// A delivery's tracking page (/track/<t_ token>): its own chunk, opened from the order confirmation.
+const TrackPage = lazy(() => import("./pages/TrackPage"));
 
 /**
  * Customer website router.
@@ -39,6 +41,14 @@ export default function App() {
   return (
     <BrowserRouter>
       <Routes>
+        <Route
+          path="/track/:token"
+          element={
+            <Suspense fallback={<LoadingSkeleton />}>
+              <TrackPage />
+            </Suspense>
+          }
+        />
         {/* Explicit path-based routing (dev/preview); also matches bare /s/:slug */}
         <Route path="/s/:slug/*" element={<PathStorePage />} />
 

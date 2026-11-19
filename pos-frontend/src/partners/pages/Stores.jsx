@@ -81,7 +81,6 @@ const Stores = ({ me }) => {
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-[22px] sm:text-[26px] font-extrabold tracking-tight">Stores</h1>
-          <p className="text-[13px] text-[#64748B] mt-0.5">Every store you own, each linked with its own Owner login.</p>
         </div>
         {!adding && (
           <button type="button" onClick={() => { setAdding(true); setRelink(null); }} className={`${btnPrimary} inline-flex items-center gap-2`}>

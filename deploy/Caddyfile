@@ -11,6 +11,7 @@
 # Public hostname map (BASE_DOMAIN = knotkitchen.com):
 #   knotkitchen.com            → static landing, else customer-web
 #   knotkitchen.com/partners/  → pos-web       (owners' Partners dashboard; API -> pos-api /api/partners)
+#   knotkitchen.com/rider/     → pos-web       (KnotKitchen Rider app; API -> pos-api /api/rider, socket -> /socket.io)
 #   www.knotkitchen.com        → redirect to knotkitchen.com
 #   csd.knotkitchen.com        → csd-web       (Customer Support Desk)
 #   business.knotkitchen.com   → pos-web       (POS SPA)
@@ -280,6 +281,29 @@ order.{$BASE_DOMAIN} {
 		}
 	}
 	handle /partners/* {
+		reverse_proxy pos-web:80 {
+			header_up Host {host}
+		}
+	}
+
+	# The KnotKitchen Rider app: a store's own delivery riders (pos-frontend
+	# vite.rider.config.js, at /rider/). Same arrangement as Partners: its API
+	# is /api/rider/* only, and its live socket is /socket.io, both same-origin
+	# so the rider's cookie (path /rider) never travels anywhere else.
+	redir /rider /rider/ 308
+	handle /rider/api/* {
+		uri replace /rider/api/ /api/rider/ 1
+		reverse_proxy pos-api:8000 {
+			header_up Host {host}
+		}
+	}
+	handle /rider/socket.io/* {
+		uri replace /rider/socket.io/ /socket.io/ 1
+		reverse_proxy pos-api:8000 {
+			header_up Host {host}
+		}
+	}
+	handle /rider/* {
 		reverse_proxy pos-web:80 {
 			header_up Host {host}
 		}

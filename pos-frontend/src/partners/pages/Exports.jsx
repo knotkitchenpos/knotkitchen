@@ -162,7 +162,6 @@ const Exports = ({ me }) => {
     <div className="space-y-4">
       <div>
         <h1 className="text-[22px] sm:text-[26px] font-extrabold tracking-tight">Accountant exports</h1>
-        <p className="text-[13px] text-[#64748B] mt-0.5">GST-ready sales for GSTR-1, and a Tally import. One store and period at a time.</p>
       </div>
 
       <StorePicker usable={usable} current={current} onChoose={choose} />

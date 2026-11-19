@@ -75,6 +75,7 @@ const {
   CANCELLED,
   REFUNDED,
   OUT_FOR_DELIVERY,
+  DELIVERED,
   isSettled,
   ALLOWED_INITIAL_STATUS,
   ALLOWED_STATUS_TRANSITIONS,
@@ -926,6 +927,38 @@ const getOrders = async (req, res, next) => {
   }
 };
 
+/**
+ * The store's rider moved a delivery on (services/riders.js): Out for
+ * delivery when they leave, Delivered when they hand it over. The same
+ * bookkeeping as the till's own buttons in updateOrder, for a fresh order
+ * document the caller has already checked.
+ */
+const setDeliveryOrderStatus = async (order, nextStatus, actor) => {
+  order.orderStatus = nextStatus;
+  order.timeline = order.timeline || [];
+  order.timeline.push({ status: nextStatus, timestamp: new Date(), user: actor || "Rider" });
+  let riderSettled = false;
+  if (nextStatus === DELIVERED) {
+    order.completeDueAt = null;
+    if (!order.completedAt) {
+      order.completedAt = new Date();
+      order.completedBy = "RIDER";
+      riderSettled = true;
+    }
+  }
+  await order.save();
+  try {
+    emitOrderStatusChanged({ restaurantId: order.restaurantId, outletId: order.outletId, storeId: order.storeId, order });
+  } catch (err) {
+    console.warn("emitOrderStatusChanged failed:", err.message);
+  }
+  // A finished sale, like the till's Delivered: e-bill, loyalty, platform fee.
+  if (riderSettled) fireAutoEBill({ orderId: order._id });
+  if (riderSettled) require("../services/loyalty").earnLater({ orderId: order._id });
+  if (riderSettled) fireOrderCharge(order._id);
+  return order;
+};
+
 const updateOrder = async (req, res, next) => {
   try {
     const { orderStatus } = req.body || {};
@@ -1733,6 +1766,7 @@ const getPopularItems = async (req, res, next) => {
 };
 
 module.exports = {
+  setDeliveryOrderStatus,
   addOrder,
   getOrderById,
   getOrders,

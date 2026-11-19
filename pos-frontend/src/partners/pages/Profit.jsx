@@ -43,7 +43,6 @@ const Profit = ({ me }) => {
     <div className="space-y-4">
       <div>
         <h1 className="text-[22px] sm:text-[26px] font-extrabold tracking-tight">Profit</h1>
-        <p className="text-[13px] text-[#64748B] mt-0.5">What the dishes sold for against what they cost to make, from their recipes in Inventory.</p>
       </div>
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
         <PeriodPicker period={period} onPeriod={setPeriod} custom={custom} onCustom={setCustom} />

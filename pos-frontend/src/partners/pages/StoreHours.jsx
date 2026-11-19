@@ -67,7 +67,6 @@ const StoreHours = ({ me }) => {
     <div className="space-y-4">
       <div>
         <h1 className="text-[22px] sm:text-[26px] font-extrabold tracking-tight">Store hours</h1>
-        <p className="text-[13px] text-[#64748B] mt-0.5">Close for today and holidays for several stores at once. These are the website&apos;s, table QR&apos;s and Knot Eats&apos; hours; the till keeps working.</p>
       </div>
 
       {/* Today */}

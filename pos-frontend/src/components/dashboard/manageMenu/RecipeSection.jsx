@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { getIngredients, getRecipes, getSubscriptionStatus } from "../../../https";
-import { foodCostTone, linesCost, rupees, unitLabel, unitsLike } from "../../../utils/inventory";
+import { foodCostTone, linesCost, rupees, unitsLike } from "../../../utils/inventory";
 
 /**
  * The product form's Recipe section: the inventory items one serving uses,
@@ -62,7 +62,6 @@ const RecipeSection = ({ open, productId, value, onChange, price = 0 }) => {
       <div className="flex items-center justify-between">
         <div>
           <label className="text-[13px] font-extrabold text-[#0F172A]">Recipe</label>
-          <p className="text-[11.5px] text-[#94A3B8]">Each sale takes these items out of inventory.</p>
         </div>
         <input
           type="checkbox"
@@ -139,11 +138,6 @@ const RecipeSection = ({ open, productId, value, onChange, price = 0 }) => {
                   </>
                 )}
                 {missing.length > 0 && <span className="block text-[11px] text-[#B45309]">No cost price yet for {missing.join(", ")}.</span>}
-              </p>
-            )}
-            {value.rows.some((r) => r.ingredientId && r.unit && r.unit !== unitOf(r.ingredientId)) && (
-              <p className="text-[11px] text-[#94A3B8]">
-                Converted to each item&apos;s stock unit on sale (for example Gram to {unitLabel("kg")}).
               </p>
             )}
           </div>

@@ -59,7 +59,6 @@ const DailySummary = () => {
     <div className="space-y-4 max-w-2xl">
       <div>
         <h1 className="text-[22px] sm:text-[26px] font-extrabold tracking-tight">Daily WhatsApp summary</h1>
-        <p className="text-[13px] text-[#64748B] mt-0.5">Yesterday&apos;s sales across all your stores, and anything that needs you, on WhatsApp every morning.</p>
       </div>
       {isError ? (
         <p className="text-[14px] font-bold text-[#B91C1C]">{errorMessage(error, "Could not load.")}</p>

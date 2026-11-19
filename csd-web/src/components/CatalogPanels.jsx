@@ -133,10 +133,6 @@ const UsersPanel = ({ storeId }) => {
           </tbody>
         </table>
       </div>
-      <p className="mt-3 text-xs text-navy-500">
-        These are the restaurant&apos;s own POS logins, not KnotKitchen staff.
-        Passwords cannot be set from here — the restaurant resets its own.
-      </p>
     </Card>
   );
 };

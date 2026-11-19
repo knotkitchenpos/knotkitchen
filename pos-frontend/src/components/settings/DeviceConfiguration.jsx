@@ -333,8 +333,7 @@ const PrinterSlot = ({ title, subtitle, emptyLabel = "Not set up", device, patch
           <div className="rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] p-3">
             <p className="font-bold text-[#0F172A]">Printer installed on this computer</p>
             <p className="text-[12px] text-[#64748B] mt-0.5">
-              Prints go straight to the printer you choose here, with no dialog. Install the printer&apos;s
-              Windows driver first; it then appears in this list.
+              Install the printer&apos;s Windows driver first.
             </p>
             <select
               className="mt-2 h-[40px] w-full rounded-xl border border-[#E2E8F0] bg-white px-3 text-[13px] font-bold text-[#334155]"
@@ -400,8 +399,7 @@ const PrinterSlot = ({ title, subtitle, emptyLabel = "Not set up", device, patch
         <div className="mt-4 space-y-3 text-[13px]">
           {nativePrinting && (
             <p className="text-[#64748B]">
-              Pair the printer once in the phone&apos;s <strong>Settings › Bluetooth</strong> (the PIN is usually 0000
-              or 1234). Then press <strong>Search &amp; connect</strong> and pick it.
+              Pair the printer in <strong>Settings › Bluetooth</strong> first (PIN 0000 or 1234).
             </p>
           )}
           {!supports.bluetooth() ? (

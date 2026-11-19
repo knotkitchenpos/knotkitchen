@@ -202,8 +202,7 @@ const StoreStatusCard = ({ storeId, current, onChanged }) => {
   return (
     <Card title="Store status" className="mt-3">
       <p className="text-sm text-navy-500">
-        Change the operating status of this store. Disabling or closing takes effect immediately
-        across the POS, storefront and CSD lookups.
+        Takes effect immediately.
       </p>
 
       <div className="mt-4 space-y-3">
@@ -886,9 +885,6 @@ const RestaurantDetail = () => {
             <Row label="Owner (personal)">{contact.ownerPhone ? `+91 ${contact.ownerPhone}` : "—"}</Row>
             <Row label="Restaurant (business)">{contact.restaurantPhone ? `+91 ${contact.restaurantPhone}` : "—"}</Row>
           </dl>
-          <p className="mt-3 text-xs text-navy-400">
-            Kept separate — the owner&apos;s personal number and the restaurant&apos;s line are often different.
-          </p>
         </Card>
 
         {/* ── Row 3 ─────────────────────────────────────────────────── */}
@@ -909,10 +905,6 @@ const RestaurantDetail = () => {
               <p className="text-sm text-navy-500">unique customers</p>
             </div>
           </div>
-          <p className="mt-3 text-xs text-navy-400">
-            Counted by phone number across website, POS and table orders, so one person ordering
-            through two channels counts once.
-          </p>
         </Card>
 
         <Card title="Order summary">
@@ -974,21 +966,10 @@ const RestaurantDetail = () => {
             <Row label="Currently">{header.availability.isOpen ? "Open" : "Closed"}</Row>
           </dl>
 
-          {!storeProperties.timings.hasConfiguredMinMax && (
-            <p className="mb-3 text-xs text-navy-400">
-              The platform stores a prep time and auto-ready windows rather than separate
-              minimum/maximum delivery and collection times, so those are shown above as they are
-              actually configured.
-            </p>
-          )}
 
           <h3 className="mb-1 mt-4 text-xs font-semibold uppercase tracking-wider text-navy-500">
             Website timing &amp; holidays
           </h3>
-          <p className="mb-2 text-xs text-navy-400">
-            As the store set them in the POS (Settings › Website Timing &amp; Holidays). The website and
-            checkout follow these hours.
-          </p>
           <WebsiteHours hours={storeProperties.websiteHours} closedForToday={storeProperties.closedForToday} />
         </Card>
 
@@ -1081,9 +1062,6 @@ const RestaurantDetail = () => {
               </table>
             </div>
           )}
-          <p className="mt-3 text-xs text-navy-400">
-            These accounts belong to the restaurant and are managed from their own POS.
-          </p>
         </Card>
       </div>
 

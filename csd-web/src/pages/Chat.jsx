@@ -218,10 +218,6 @@ const TeamChat = () => {
     <div>
       <header className="mb-4 flex flex-wrap items-start justify-between gap-4">
         <div>
-          <p className="text-sm text-navy-500">
-            Internal conversations. Every CSD member can read these — a colleague picking up a
-            ticket needs the history.
-          </p>
         </div>
         <button type="button" onClick={() => setCreating(true)}
           className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-500">
@@ -373,7 +369,7 @@ const TeamChat = () => {
                   </button>
                 </div>
                 <p className="mt-1.5 text-[11px] text-navy-400">
-                  Enter sends · Shift+Enter for a new line · attachments coming soon
+                  Enter sends · Shift+Enter for a new line
                 </p>
               </form>
             </>

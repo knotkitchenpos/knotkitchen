@@ -231,8 +231,7 @@ const ChargesDialog = ({ storeId, charges, onClose, onSaved }) => {
             <span>
               <span className="block text-sm font-semibold text-navy-900">Demo store — never billed</span>
               <span className="block text-xs text-navy-500">
-                Every add-on without buying it, no platform fee on its customers&rsquo; online payments, no e-bill
-                charges, and the POS never locks. For demo and testing stores only.
+                All add-ons, no fees, never locks. Demo and testing stores only.
               </span>
             </span>
           </label>

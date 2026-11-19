@@ -8,6 +8,7 @@ import { getEatsOrder } from "../api";
 import { addRecentOrder } from "../../lib/eatsOrders";
 import { totalPaid } from "../../lib/orderTotals";
 import { thumbUrl } from "../../lib/thumbUrl";
+import { riderText } from "../../lib/riderText";
 
 const STEPS = ["placed", "accepted", "ready", "completed"];
 // A delivery has one more stop: the restaurant has sent it out ("Out for delivery").
@@ -200,6 +201,13 @@ export default function OrderStatusPage() {
                 {where ? <p className="mt-0.5 break-words text-[13.5px] text-white/90">{delivery ? `Delivering to ${where}` : where}</p> : null}
               </div>
             </div>
+            {/* The restaurant's own rider, once one has the order. */}
+            {riderText(order.rider) ? (
+              <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-white/20 px-3 py-1.5 text-[13.5px] font-bold">
+                <span aria-hidden="true">🛵</span>
+                {riderText(order.rider)}
+              </p>
+            ) : null}
             {live ? (
               <p className="mt-3 flex items-center gap-2 text-[12.5px] font-semibold text-white/90">
                 <span className="relative flex h-2 w-2" aria-hidden="true">

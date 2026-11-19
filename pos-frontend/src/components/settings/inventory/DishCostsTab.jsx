@@ -75,9 +75,6 @@ const DishCostsTab = ({ onEditRecipe }) => {
         </div>
       </div>
 
-      <p className="text-[12px] text-[#64748B]">
-        Cost per plate is the recipe at today&apos;s cost prices (set by each stock purchase). Most restaurants aim for a food cost of 28–35%.
-      </p>
 
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex gap-2 overflow-x-auto">

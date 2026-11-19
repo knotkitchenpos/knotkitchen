@@ -63,6 +63,50 @@ const paymentSchema = new mongoose.Schema({
   },
 });
 
+/**
+ * A delivery order's rider (KnotKitchen Rider app). The order stays the one
+ * record: the rider reads the customer, address and bill from it, never a
+ * copy. riderName is kept for the POS and history after a rider is removed.
+ *
+ *   ""           no rider (never assigned, skipped, rejected or unassigned)
+ *   assigned     the store picked a rider; waiting for them to accept
+ *   accepted     the rider said yes
+ *   on_the_way   left the restaurant (the order is Out for delivery)
+ *   arrived      at the customer
+ *   delivered    handed over (the order is Delivered)
+ *   cancelled    the order was cancelled while a rider had it
+ *
+ * Every change is one conditional update on the order (services/riders.js),
+ * so two riders, or a rider and the till, can never both win.
+ */
+const deliverySchema = new mongoose.Schema({
+  riderId: { type: mongoose.Schema.Types.ObjectId, ref: "Rider", default: null },
+  riderName: { type: String, default: "" },
+  status: {
+    type: String,
+    enum: ["", "assigned", "accepted", "on_the_way", "arrived", "delivered", "cancelled"],
+    default: "",
+  },
+  assignedAt: Date,
+  assignedBy: String,
+  acceptedAt: Date,
+  startedAt: Date,
+  arrivedAt: Date,
+  deliveredAt: Date,
+  cancelledAt: Date,
+  // The till chose "Assign later" at Ready.
+  skippedAt: Date,
+  // Riders who turned it down, newest last.
+  rejections: [{
+    _id: false,
+    riderId: mongoose.Schema.Types.ObjectId,
+    riderName: String,
+    reason: String,
+    note: String,
+    at: Date,
+  }],
+}, { _id: false });
+
 const orderSchema = new mongoose.Schema({
   customerDetails: {
     name: { type: String, default: "" },
@@ -155,7 +199,7 @@ const orderSchema = new mongoose.Schema({
    */
   completeDueAt: { type: Date, default: null, index: true },
   completedAt: { type: Date, default: null },
-  completedBy: { type: String, enum: ["STAFF", "AUTO", "KDS", "SYSTEM", ""], default: "" },
+  completedBy: { type: String, enum: ["STAFF", "AUTO", "KDS", "SYSTEM", "RIDER", ""], default: "" },
 
   orderStatus: { type: String, required: true },
   marketplace: { type: String, enum: ["Swiggy", "Zomato", "Manual", ""] },
@@ -307,9 +351,14 @@ const orderSchema = new mongoose.Schema({
   // Customer-created (QR) orders have no POS user — createdBy is null
   createdBy: { type: mongoose.Schema.Types.ObjectId, ref: "User", default: null },
   isDeleted: { type: Boolean, default: false },
+  // The store's own rider for a delivery order (services/riders.js). Absent
+  // until a rider is first assigned, so older orders are untouched.
+  delivery: { type: deliverySchema, default: undefined },
 }, { timestamps: true });
 
 orderSchema.index({ orderStatus: 1, createdAt: -1 });
+// A rider's deliveries (the Rider app's list and history).
+orderSchema.index({ "delivery.riderId": 1, "delivery.status": 1, createdAt: -1 }, { sparse: true });
 orderSchema.index({ marketplace: 1, orderDate: -1 });
 orderSchema.index({ restaurantId: 1, createdAt: -1 });
 orderSchema.index({ "customerDetails.phone": 1 });

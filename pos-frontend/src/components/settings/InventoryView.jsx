@@ -188,9 +188,6 @@ const ItemModal = ({ item, ingredients, onClose, refresh }) => {
         </div>
       </div>
       {badRange && <p className="text-[12px] font-bold text-[#B91C1C]">Maximum stock must be more than the minimum stock.</p>}
-      {Number(form.shelfLifeDays) > 0 && (
-        <p className="text-[11.5px] text-[#64748B]">Stock added gets a use-by date {form.shelfLifeDays} day(s) ahead, unless you give one; the oldest is used first.</p>
-      )}
 
       {/* Bought in packs, used in the item's unit: a tray of 30 eggs. */}
       <div className="rounded-xl border border-[#E2E8F0] p-3 space-y-2">
@@ -209,7 +206,6 @@ const ItemModal = ({ item, ingredients, onClose, refresh }) => {
         <button type="button" className="text-[12.5px] font-bold text-[#C2410C] hover:underline" onClick={() => setPacks([...packs, { name: "", size: "" }])}>
           + Add a pack
         </button>
-        {!packs.length && <p className="text-[11.5px] text-[#94A3B8]">Optional. Then stock can be added as &quot;2 Trays&quot; while recipes keep using {u}.</p>}
       </div>
 
       {/* The barcodes on its packets: scanning one adds that much of it. */}
@@ -234,7 +230,6 @@ const ItemModal = ({ item, ingredients, onClose, refresh }) => {
         ) : (
           <button type="button" className="text-[12.5px] font-bold text-[#C2410C] hover:underline" onClick={() => setScanning(true)}>+ Add a barcode</button>
         )}
-        {!barcodes.length && !scanning && <p className="text-[11.5px] text-[#94A3B8]">Optional. Scan the packet once; then scanning it adds stock or counts it.</p>}
       </div>
 
       {/* Prepared items: made in batches from other items. */}
@@ -242,7 +237,6 @@ const ItemModal = ({ item, ingredients, onClose, refresh }) => {
         <label className="flex items-center justify-between gap-2">
           <span>
             <span className="block text-[12.5px] font-extrabold text-[#0F172A]">Prepared item</span>
-            <span className="block text-[11.5px] text-[#94A3B8]">Made in batches from other items: gravy, dough, sauce.</span>
           </span>
           <input type="checkbox" className="w-5 h-5 accent-[#22C55E]" checked={prepared} onChange={(e) => setPrepared(e.target.checked)} />
         </label>
@@ -260,9 +254,6 @@ const ItemModal = ({ item, ingredients, onClose, refresh }) => {
           </>
         )}
       </div>
-      {item && item.unit !== form.unit && (
-        <p className="text-[12px] text-[#64748B]">Stock, minimum, maximum, cost, packs and batch size are converted to {u} where the units are the same kind of measure.</p>
-      )}
       <div className="flex gap-2 pt-1">
         {item && (
           <button type="button" className={`${btnGhost} h-[40px]`} disabled={deleteMut.isPending}
@@ -503,7 +494,7 @@ const DashboardTab = ({ ingredients, refresh, settings }) => {
       </div>
 
       {ingredients.length === 0 ? (
-        <p className="bg-white border border-[#E2E8F0] rounded-2xl p-6 text-center text-[13px] text-[#94A3B8]">No inventory items yet. Add what you buy: pizza dough, mozzarella cheese, chicken sausage…</p>
+        <p className="bg-white border border-[#E2E8F0] rounded-2xl p-6 text-center text-[13px] text-[#94A3B8]">No inventory items yet.</p>
       ) : rows.length === 0 ? (
         <p className="bg-white border border-[#E2E8F0] rounded-2xl p-6 text-center text-[13px] text-[#94A3B8]">No items match.</p>
       ) : (
@@ -676,9 +667,7 @@ const RecipesTab = ({ ingredients, refresh, initialDish, target = 35 }) => {
             ← All products
           </button>
         )}
-        {!dishId ? (
-          <p className="text-[13px] text-[#94A3B8]">Pick a product to set what one serving uses. You can also set it in Manage Menu, under the product&apos;s price.</p>
-        ) : ingredients.length === 0 ? (
+        {!dishId ? null : ingredients.length === 0 ? (
           <p className="text-[13px] text-[#94A3B8]">Add inventory items on the Dashboard first.</p>
         ) : (
           <div className="space-y-2">

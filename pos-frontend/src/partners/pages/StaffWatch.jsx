@@ -84,7 +84,6 @@ const StaffWatch = ({ me }) => {
     <div className="space-y-4">
       <div>
         <h1 className="text-[22px] sm:text-[26px] font-extrabold tracking-tight">Staff watch</h1>
-        <p className="text-[13px] text-[#64748B] mt-0.5">Who discounted, cancelled and refunded what. A flag is a question to ask, not proof.</p>
       </div>
       <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
         <PeriodPicker period={period} onPeriod={setPeriod} custom={custom} onCustom={setCustom} />
@@ -137,9 +136,6 @@ const StaffWatch = ({ me }) => {
               )}
             </section>
           ))}
-          <p className="text-[11.5px] text-[#94A3B8]">
-            Who struck a single line off an order is recorded from 13 Nov 2026; earlier ones show as “Not recorded”. Customers (online) are QR, website and Knot Eats orders nobody rang up.
-          </p>
         </>
       )}
     </div>

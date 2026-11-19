@@ -186,9 +186,6 @@ const Reports = () => {
           <p className="mt-1 text-sm text-navy-500">
             orders worth {inr(data.cancellations.value)}
           </p>
-          <p className="mt-3 text-xs text-navy-400">
-            Reported separately because they are excluded from every revenue figure above.
-          </p>
         </Card>
 
         <Card title="By order type"><Split rows={data.byOrderType} empty="No orders in this period." /></Card>
@@ -241,9 +238,6 @@ const Reports = () => {
                   </li>
                 ))}
               </ul>
-              <p className="mt-3 text-xs text-navy-400">
-                Counts audited actions only — an activity signal, not a performance measure.
-              </p>
             </>
           )}
         </Card>

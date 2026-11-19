@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/rider/icons/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/rider/icons/favicon-16.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/rider/icons/apple-touch-icon.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#FD5302" />
+    <meta name="application-name" content="KnotKitchen Rider" />
+    <meta name="apple-mobile-web-app-title" content="KK Rider" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="robots" content="noindex" />
+    <link rel="manifest" href="/rider/manifest.webmanifest" />
+    <title>KnotKitchen Rider</title>
+    <style>
+      /* The splash before the app's script runs: no white flash, in either theme. */
+      html, body { margin: 0; background: #F6F7FB; }
+      @media (prefers-color-scheme: dark) { html, body { background: #0B0F17; } }
+      #boot { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; font-family: system-ui, sans-serif; color: #FD5302; font-weight: 800; letter-spacing: .02em; }
+      #boot img { width: 72px; height: 72px; border-radius: 20px; }
+    </style>
+  </head>
+  <body>
+    <div id="root"><div id="boot"><img src="/rider/icons/icon-192.png" alt="" />KnotKitchen Rider</div></div>
+    <script type="module" src="./main.jsx"></script>
+  </body>
+</html>

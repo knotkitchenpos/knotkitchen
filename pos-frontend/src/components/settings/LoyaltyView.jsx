@@ -41,9 +41,6 @@ const LoyaltyView = () => {
       <div className="flex items-start justify-between gap-4">
         <div>
           <h4 className="text-[15px] font-extrabold text-[#0F172A]">Loyalty Points</h4>
-          <p className="text-[12.5px] text-[#64748B] mt-0.5">
-            Customers earn points on every paid bill with their phone number and use them as a discount at the counter (Discount → Loyalty points).
-          </p>
         </div>
         <button
           type="button"
@@ -62,9 +59,6 @@ const LoyaltyView = () => {
         <Num label="Points needed to redeem" value={form.minRedeem} onChange={set("minRedeem")} />
         <Num label="Points expire after (months of no visits)" value={form.expiryMonths} onChange={set("expiryMonths")} hint="0 = never expire." />
       </div>
-      <p className="text-[11.5px] text-[#64748B]">
-        Customers get a WhatsApp message with their balance after each bill once KnotKitchen has that message approved. A cancelled order takes back its points.
-      </p>
       <button type="button" disabled={save.isPending} onClick={() => save.mutate(form)} className="h-11 px-6 rounded-xl bg-[#FD5302] text-white text-[14px] font-extrabold disabled:opacity-50">
         {save.isPending ? "Saving…" : "Save"}
       </button>

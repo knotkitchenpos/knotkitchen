@@ -98,9 +98,6 @@ const Login = () => {
         <form onSubmit={submit} className="bg-white rounded-2xl p-6 sm:p-7 shadow-2xl space-y-4">
           <div>
             <h1 className="text-[20px] font-extrabold text-[#0F172A]">Owner sign-in</h1>
-            <p className="text-[13px] text-[#64748B] mt-1">
-              Sign in with one of your stores&apos; Owner login. You can link your other stores once you are in.
-            </p>
           </div>
           <StoreCredentialsFields value={v} onChange={setV} autoFocus />
           {error && (
@@ -112,7 +109,7 @@ const Login = () => {
             {busy ? "Signing in…" : "Sign in"}
           </button>
           <p className="text-[12px] text-[#94A3B8] text-center">
-            Only the store&apos;s Owner can sign in here. Forgot the password? Reset it from the POS sign-in or ask KnotKitchen support.
+            Owner login only. Forgot the password? Reset it from the POS sign-in.
           </p>
         </form>
       </div>

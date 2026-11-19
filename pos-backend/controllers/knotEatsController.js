@@ -176,6 +176,8 @@ const getOrder = async (req, res, next) => {
           line1: order.deliveryAddress?.line1 || "",
           line2: order.deliveryAddress?.line2 || "",
         },
+        // The store's own rider, once one has it: first name and where they are.
+        rider: require("../services/riders").customerRiderView(order),
       },
       store: {
         storeId: order.storeId,
@@ -192,6 +194,41 @@ const getOrder = async (req, res, next) => {
         // notice: the order view carries no customer details to build it from.
         authorName: maskAuthor(order.customerDetails?.name),
       },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * GET /api/storefront/track/:token -- a store website's delivery order: its
+ * stage and rider, for the site's tracking page. The t_ link is the only
+ * credential; it shows no customer details and opens nothing else.
+ */
+const getTrackedOrder = async (req, res, next) => {
+  try {
+    const parsed = readToken(req.params.token);
+    const order = parsed?.isTracking ? await Order.findOne({ _id: parsed.id, isDeleted: { $ne: true } }) : null;
+    if (!order || order.salesChannel === "KNOT_EATS" || order.orderType !== "delivery") return next(createHttpError(404, "Order not found."));
+    const [settings, restaurant] = await Promise.all([
+      WebsiteSettings.findOne({ storeId: order.storeId }).select("-draft -paymentGateways -analytics"),
+      order.restaurantId ? Restaurant.findById(order.restaurantId).lean() : null,
+    ]);
+    if (settings) applyPublishedSnapshot(settings);
+    const contact = mergedContact(settings || {}, restaurant);
+    const view = storefront().publicOrderView(order);
+    res.set("Cache-Control", "no-store");
+    ok(res, {
+      order: {
+        orderNumber: view.orderNumber,
+        stage: stageOf(order.orderStatus),
+        placedAt: view.placedAt,
+        items: view.items.map((i) => ({ name: i.name, quantity: i.quantity })),
+        totalPaid: view.totalPaid,
+        refundStatus: order.refundStatus || null,
+        rider: require("../services/riders").customerRiderView(order),
+      },
+      store: { name: settings?.displayName || restaurant?.name || "", logo: settings?.branding?.logo?.url || "", phone: contact.phone },
     });
   } catch (error) {
     next(error);
@@ -641,5 +678,6 @@ module.exports = {
   csdSetReviewHidden,
   maskAuthor,
   stageOf,
+  getTrackedOrder,
   REVIEW_WINDOW_DAYS,
 };

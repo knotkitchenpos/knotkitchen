@@ -56,7 +56,7 @@ const AddonsTab = ({ ingredients }) => {
   if (!options.length && !variants.length) {
     return (
       <p className={`${card} p-6 text-center text-[13px] text-[#94A3B8]`}>
-        No add-ons or sizes yet. Add groups (Extra Toppings…) or sizes to products in Manage Menu, then set what each uses here.
+        No add-ons or sizes yet.
       </p>
     );
   }
@@ -113,11 +113,7 @@ const AddonsTab = ({ ingredients }) => {
             ← All add-ons
           </button>
         )}
-        {!picked ? (
-          <p className="text-[13px] text-[#94A3B8]">
-            Pick an add-on or a size to set what one portion uses on top of the dish&apos;s own recipe. A pizza ordered with Extra Cheese then takes the dough and the extra cheese.
-          </p>
-        ) : ingredients.length === 0 ? (
+        {!picked ? null : ingredients.length === 0 ? (
           <p className="text-[13px] text-[#94A3B8]">Add inventory items on the Dashboard first.</p>
         ) : (
           <div className="space-y-3">

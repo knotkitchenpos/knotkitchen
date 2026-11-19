@@ -63,8 +63,8 @@ export const NewBarcode = ({ code, product, ingredients, onDone, onCancel }) => 
         <p className="text-[13px] font-extrabold text-[#0F172A]">New barcode {code}</p>
         <p className="text-[11.5px] text-[#64748B]">
           {product
-            ? `Found on ${SOURCE[product.source] || "the product list"}${product.quantityText ? ` (${product.quantityText})` : ""}. Check it and save once; the next scan just adds stock.`
-            : "Not found on any product list. Type what it is once; it is remembered for every scan after."}
+            ? `Found on ${SOURCE[product.source] || "the product list"}${product.quantityText ? ` (${product.quantityText})` : ""}.`
+            : "Not found. Type what it is."}
         </p>
       </div>
       <div className="flex gap-1.5">
@@ -183,7 +183,6 @@ const ScanStockModal = ({ ingredients, onClose, refresh }) => {
 
   return (
     <Modal title="Scan to add stock" onClose={close} wide>
-      <p className="-mt-2 text-[12px] text-[#64748B]">Scan each packet as it comes in. Every scan adds one packet.</p>
       <BarcodeField onCode={onCode} paused={Boolean(pending)} />
       {pending && (
         <NewBarcode
@@ -213,7 +212,7 @@ const ScanStockModal = ({ ingredients, onClose, refresh }) => {
       )}
       {lines.length > 0 && (
         <p className="text-[11.5px] text-[#64748B]">
-          Enter what each cost in total to update its cost price; leave it blank to keep the price it has.{total > 0 ? ` Bill so far ${rupees(total)}.` : ""}
+          {total > 0 ? ` Bill so far ${rupees(total)}.` : ""}
         </p>
       )}
       <div className="flex gap-2 pt-1">

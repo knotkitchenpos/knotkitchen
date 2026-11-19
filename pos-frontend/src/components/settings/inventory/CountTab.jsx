@@ -152,7 +152,7 @@ const Counting = ({ countId, onDone, onBack }) => {
         <div>
           <h3 className="text-[15px] font-extrabold text-[#0F172A]">Stock count #{count.number}</h3>
           <p className="text-[12px] text-[#64748B]">
-            {done} of {total} counted{saveMut.isPending ? " · saving…" : dirty.current ? "" : done ? " · saved" : ""}. Count what is on the shelf; leave an item blank to skip it.
+            {done} of {total} counted{saveMut.isPending ? " · saving…" : dirty.current ? "" : done ? " · saved" : ""}.
           </p>
         </div>
       </div>
@@ -172,7 +172,6 @@ const Counting = ({ countId, onDone, onBack }) => {
       {scan && (
         <div className={`${card} p-3 space-y-1`}>
           <BarcodeField onCode={onCode} placeholder="Scan each packet on the shelf" />
-          <p className="text-[11.5px] text-[#94A3B8]">Each scan adds one packet to that item&apos;s count. Loose items are typed in below.</p>
         </div>
       )}
 
@@ -284,7 +283,7 @@ const CountTab = () => {
           <p className="text-[12.5px] text-[#64748B]">
             {open
               ? `${open.totals.counted} of ${open.items} counted so far. Carry on from any phone.`
-              : "Once a week works well. Count what is really there; the differences show what went missing, in ₹."}
+              : ""}
           </p>
         </div>
         <button type="button" className={btnPrimary} disabled={startMut.isPending} onClick={() => (open ? setCounting(open._id) : startMut.mutate())}>

@@ -408,10 +408,6 @@ const KnotEats = () => {
     <div className="mx-auto max-w-[1600px]">
       <header className="mb-5">
         <h1 className="text-2xl font-bold text-navy-900">Knot Eats</h1>
-        <p className="mt-1 text-sm text-navy-500">
-          The marketplace at eats.knotkitchen.com. Owners list their store from the POS; from here you can delist a
-          store or hide a review.
-        </p>
       </header>
 
       <div className="mb-3 flex flex-wrap gap-2" role="tablist" aria-label="Knot Eats">

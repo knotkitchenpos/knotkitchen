@@ -387,9 +387,6 @@ const Login = () => {
                   className="w-full bg-transparent text-[#F5F7FA] text-base placeholder:text-[#77839A] outline-none"
                 />
               </div>
-              <span className="mt-1 block text-[11px] text-[#77839A]">
-                The phone tied to your staff account for this store.
-              </span>
             </label>
 
             <button

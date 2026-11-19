@@ -75,9 +75,6 @@ const SearchConsole = () => {
     <div className="mx-auto max-w-[1600px]">
       <header className="mb-5">
         <h1 className="text-2xl font-bold text-navy-900">Search Console</h1>
-        <p className="mt-1 text-sm text-navy-500">
-          Find orders across every restaurant. Combine as many filters as you need.
-        </p>
       </header>
 
       <form onSubmit={submit} className="rounded-2xl border border-navy-200 bg-white p-5">

@@ -80,9 +80,6 @@ const AddProductModal = ({ menus = [], submitting, onClose, onSubmit }) => {
             className={inputCls(false)}
           />
         </Field>
-        <p className="text-[11.5px] text-[#94A3B8] -mt-1">
-          Leave blank to show products directly under the category.
-        </p>
 
         <div className="grid grid-cols-2 gap-2.5 pt-1">
           <button

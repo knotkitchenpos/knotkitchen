@@ -140,7 +140,6 @@ const KnotEatsView = () => {
 
       <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-3">
         <h4 className="text-[15px] font-extrabold text-[#0F172A]">Location & delivery</h4>
-        <p className="text-[12px] text-[#94A3B8]">Knot Eats shows your restaurant to customers within your delivery radius.</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Row label="Map pin" value={k.pin ? `${k.pin.lat}, ${k.pin.lng}` : "Not set"} to="/settings?view=properties" />
           <Row label="Delivery radius (Max Distance)" value={`${k.radiusKm ?? 7} km`} to="/settings?view=rules" />

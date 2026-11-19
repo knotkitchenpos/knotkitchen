@@ -64,7 +64,6 @@ const Announcements = () => {
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-navy-900">Announcements</h1>
-        <p className="text-sm text-navy-500">A banner on every POS, shown at once. Use it for new features, planned downtime or notices.</p>
       </div>
 
       <form onSubmit={post} className="space-y-4 rounded-2xl bg-white p-6 shadow-sm">

@@ -57,3 +57,6 @@ export const startCheckout = (slug, payload) =>
 
 export const verifyCheckout = (slug, checkoutId) =>
   client.post(`/api/storefront/${encodeURIComponent(slug)}/checkout/${checkoutId}/verify`);
+
+/** A delivery order's live status and rider, from its tracking link (t_ token). */
+export const getTrackedOrder = (token) => client.get(`/api/storefront/track/${encodeURIComponent(token)}`);

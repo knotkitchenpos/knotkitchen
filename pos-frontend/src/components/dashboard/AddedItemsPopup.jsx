@@ -247,9 +247,6 @@ const AddedItemsPopup = () => {
           >
             Cancel Entire Order
           </button>
-          <p className="text-[11px] text-[#94A3B8] text-center">
-            Tick items to cancel only those — otherwise the whole addition is cancelled.
-          </p>
         </div>
 
         {queue.length > 1 && (

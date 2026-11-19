@@ -400,6 +400,9 @@ const runAutoCompleteTick = async (now = new Date()) => {
       // a timer-Served order counted as revenue before it was paid and let
       // Release Table free a table with an unpaid bill.
       tableSessionId: null,
+      // The store's own rider has it: the rider closes it when they hand it
+      // over (services/riders.js), never the timer while they're on the road.
+      "delivery.status": { $nin: require("../models/riderModel").OPEN_DELIVERY_STATUSES },
     })
       .sort({ completeDueAt: 1 })
       .limit(MAX_BATCH);

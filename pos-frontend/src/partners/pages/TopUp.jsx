@@ -95,7 +95,6 @@ const TopUp = () => {
     <div className="space-y-4 max-w-3xl">
       <div>
         <h1 className="text-[22px] sm:text-[26px] font-extrabold tracking-tight">Top up stores</h1>
-        <p className="text-[13px] text-[#64748B] mt-0.5">One payment, shared across your stores&apos; wallets. Each store gets exactly its share, shown as a top-up in its own Billing statement.</p>
       </div>
 
       {done && (
@@ -126,7 +125,6 @@ const TopUp = () => {
               Split
             </button>
           </div>
-          <p className="text-[11.5px] text-[#94A3B8] -mt-2">Splits across the stores you have entered an amount for, or across all of them.</p>
 
           <ul className="divide-y divide-[#F1F5F9]">
             {stores.map((s) => {

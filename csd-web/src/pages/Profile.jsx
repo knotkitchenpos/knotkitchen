@@ -67,9 +67,6 @@ const Profile = () => {
         </dl>
       </section>
 
-      <p className="mt-4 text-xs text-navy-500">
-        Need a change to your details or access? Contact a KnotKitchen administrator.
-      </p>
     </div>
   );
 };

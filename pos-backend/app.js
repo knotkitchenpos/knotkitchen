@@ -266,6 +266,9 @@ app.get("/ready", (req, res) => {
 // store's own routes (middlewares/partnerPassthrough).
 app.use(require("./middlewares/partnerPassthrough").partnerPassthrough);
 app.use("/api/partners", require("./routes/partnerRoute"));
+// The KnotKitchen Rider app (knotkitchen.com/rider -> Caddy -> /api/rider) and the store's riders from the POS.
+app.use("/api/rider", require("./routes/riderRoute"));
+app.use("/api/riders", require("./routes/storeRiderRoute"));
 
 // Other Endpoints
 app.use("/api/user", require("./routes/userRoute"));

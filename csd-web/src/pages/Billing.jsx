@@ -302,9 +302,6 @@ const Billing = () => {
     <div className="space-y-5 pb-24">
       <header>
         <h1 className="text-xl font-bold text-navy-900">Billing</h1>
-        <p className="mt-0.5 text-sm text-navy-500">
-          KnotKitchen&rsquo;s own pricing. Restaurants can see what they pay but never change it.
-        </p>
       </header>
 
       {/* ---------------------------------------------------------------- */}
@@ -601,9 +598,6 @@ const Billing = () => {
             addItem("printers", { code: "", name: "", price: 0, isActive: true, description: "", imageUrl: "" })
           }
         />
-        <p className="text-xs text-navy-500">
-          A negotiated price for one restaurant is set on that restaurant&rsquo;s page, not here.
-        </p>
       </Card>
 
       {/* ---------------------------------------------------------------- */}

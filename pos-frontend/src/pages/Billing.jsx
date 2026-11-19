@@ -278,7 +278,6 @@ const DeliverTo = ({ title, initial, onClose, onNext }) => {
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/50 p-4" role="dialog" aria-label={title}>
       <form onSubmit={submit} className="w-full max-w-[440px] max-h-[calc(100dvh-2rem)] overflow-y-auto rounded-2xl bg-white p-5 shadow-2xl">
         <h3 className="text-[16px] font-extrabold text-[#0F172A]">{title}</h3>
-        <p className="mt-0.5 mb-4 text-[12px] text-[#64748B]">Where should KnotKitchen deliver it? We call this number before we come.</p>
         <div className="grid grid-cols-2 gap-2">
           <input className={`${FIELD} col-span-2`} placeholder="Contact name" value={form.name} onChange={set("name")} autoComplete="name" />
           <input className={`${FIELD} col-span-2`} placeholder="Mobile number" value={form.phone} onChange={set("phone")} inputMode="tel" autoComplete="tel" />
@@ -722,7 +721,6 @@ const Billing = () => {
     <div className="h-full overflow-y-auto bg-[#F8FAFC] p-4 sm:p-5 space-y-5">
       <header>
         <h1 className="text-[20px] font-extrabold text-[#0F172A]">Billing &amp; Subscription</h1>
-        <p className="text-[13px] text-[#64748B]">Your wallet, plan, add-ons, tablets, printers, their delivery and invoices.</p>
       </header>
 
       {balance?.locked && (

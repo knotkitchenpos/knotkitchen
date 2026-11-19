@@ -17,7 +17,9 @@
     "test": "node --test tests/*.test.mjs",
     "lint:undef": "node scripts/check-undefined.mjs",
     "build:partners": "vite build --config vite.partners.config.js",
-    "dev:partners": "vite --config vite.partners.config.js"
+    "dev:partners": "vite --config vite.partners.config.js",
+    "build:rider": "vite build --config vite.rider.config.js",
+    "dev:rider": "vite --config vite.rider.config.js"
   },
   "dependencies": {
     "@capacitor/android": "^7.4.4",

@@ -1,0 +1,213 @@
+/*
+ * KnotKitchen Rider theme. Light for the road in daylight (high contrast,
+ * nothing pale on white), and a dark theme of its own: deep blue-grey
+ * surfaces, not inverted colours. Everything reads these variables.
+ */
+.rider {
+  --r-bg: #f6f7fb;
+  --r-card: #ffffff;
+  --r-card-2: #f1f3f8;
+  --r-line: #e3e6ee;
+  --r-ink: #0d1321;
+  --r-ink-2: #475069;
+  --r-ink-3: #6b7489;
+  --r-brand: #fd5302;
+  --r-brand-ink: #c43d00;
+  --r-brand-soft: #fff1ea;
+  --r-green: #0f9d58;
+  --r-green-soft: #e7f6ee;
+  --r-blue: #1f6feb;
+  --r-blue-soft: #e8f0fe;
+  --r-amber: #d97706;
+  --r-amber-soft: #fef3e2;
+  --r-red: #d92d20;
+  --r-red-soft: #fdecea;
+  --r-shadow: 0 1px 2px rgba(13, 19, 33, 0.05), 0 6px 20px -8px rgba(13, 19, 33, 0.12);
+  background: var(--r-bg);
+  color: var(--r-ink);
+  min-height: 100%;
+  font-family: "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+}
+.rider.dark {
+  --r-bg: #0b0f17;
+  --r-card: #151b26;
+  --r-card-2: #1c2431;
+  --r-line: #263042;
+  --r-ink: #f2f4f8;
+  --r-ink-2: #b4bccb;
+  --r-ink-3: #8a94a8;
+  --r-brand: #ff6a1f;
+  --r-brand-ink: #ff8a4c;
+  --r-brand-soft: #2a1a12;
+  --r-green: #34c27a;
+  --r-green-soft: #12291d;
+  --r-blue: #5b9bff;
+  --r-blue-soft: #14223a;
+  --r-amber: #f5a524;
+  --r-amber-soft: #2c2111;
+  --r-red: #ff6b5e;
+  --r-red-soft: #2e1614;
+  --r-shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px -10px rgba(0, 0, 0, 0.6);
+  color-scheme: dark;
+}
+
+.r-card {
+  background: var(--r-card);
+  border: 1px solid var(--r-line);
+  border-radius: 20px;
+  box-shadow: var(--r-shadow);
+}
+
+.r-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 52px;
+  padding: 0 18px;
+  border-radius: 16px;
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.01em;
+  transition: transform 0.08s ease, opacity 0.15s ease, background 0.15s ease;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.r-btn:active:not(:disabled) {
+  transform: scale(0.98);
+}
+.r-btn:disabled {
+  opacity: 0.45;
+}
+.r-btn:focus-visible,
+.r-focus:focus-visible {
+  outline: 3px solid var(--r-brand);
+  outline-offset: 2px;
+}
+.r-btn-primary {
+  background: var(--r-brand);
+  color: #fff;
+}
+.r-btn-green {
+  background: var(--r-green);
+  color: #fff;
+}
+.r-btn-ghost {
+  background: var(--r-card-2);
+  color: var(--r-ink);
+  border: 1px solid var(--r-line);
+}
+.r-btn-danger {
+  background: var(--r-red-soft);
+  color: var(--r-red);
+}
+.r-btn-lg {
+  min-height: 60px;
+  font-size: 17px;
+  border-radius: 18px;
+}
+
+.r-input {
+  width: 100%;
+  min-height: 54px;
+  border-radius: 14px;
+  border: 1.5px solid var(--r-line);
+  background: var(--r-card);
+  color: var(--r-ink);
+  padding: 0 16px;
+  font-size: 17px;
+  font-weight: 600;
+  outline: none;
+}
+.r-input::placeholder {
+  color: var(--r-ink-3);
+  font-weight: 500;
+}
+.r-input:focus {
+  border-color: var(--r-brand);
+  box-shadow: 0 0 0 3px var(--r-brand-soft);
+}
+.r-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--r-ink-2);
+  margin-bottom: 6px;
+}
+
+.r-muted {
+  color: var(--r-ink-2);
+}
+.r-faint {
+  color: var(--r-ink-3);
+}
+
+.r-skeleton {
+  background: linear-gradient(90deg, var(--r-card-2) 25%, var(--r-line) 37%, var(--r-card-2) 63%);
+  background-size: 400% 100%;
+  animation: r-shimmer 1.4s ease infinite;
+  border-radius: 12px;
+}
+@keyframes r-shimmer {
+  0% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0 50%;
+  }
+}
+
+@keyframes r-pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 rgba(15, 157, 88, 0.45);
+  }
+  100% {
+    box-shadow: 0 0 0 12px rgba(15, 157, 88, 0);
+  }
+}
+.r-live-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--r-green);
+  animation: r-pulse-ring 1.6s ease-out infinite;
+}
+
+.r-safe-bottom {
+  padding-bottom: max(12px, env(safe-area-inset-bottom));
+}
+.r-safe-top {
+  padding-top: max(12px, env(safe-area-inset-top));
+}
+
+/* Bottom sheets: a short slide up, the backdrop fading in. */
+@keyframes r-sheet-in {
+  from {
+    transform: translateY(40px);
+    opacity: 0;
+  }
+  to {
+    transform: none;
+    opacity: 1;
+  }
+}
+@keyframes r-fade {
+  from {
+    opacity: 0;
+  }
+}
+.r-sheet-in {
+  animation: r-sheet-in 0.18s ease-out;
+}
+.r-fade {
+  animation: r-fade 0.18s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .r-sheet-in,
+  .r-fade,
+  .r-skeleton,
+  .r-live-dot {
+    animation: none;
+  }
+}

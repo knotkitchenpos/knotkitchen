@@ -52,9 +52,6 @@ const SecurityPinModal = ({ isOpen, onClose, onSuccess, title = "Security Author
           </button>
         </div>
 
-        <p className="text-xs text-[#64748B] leading-relaxed">
-          This protected action requires Staff Security PIN authorization.
-        </p>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>

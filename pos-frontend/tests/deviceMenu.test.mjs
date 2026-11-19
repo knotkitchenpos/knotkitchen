@@ -95,8 +95,7 @@ test("REGRESSION: Photos saved counts each product photo once, not its two copie
   assert.match(save, /save\(\{ \.\.\.current, photos: saved \}\)/);
 });
 
-test("Manage Cache: the website publish says what it publishes", () => {
+test("Manage Cache: no long explanation of what it publishes", () => {
   const view = SRC("src/components/settings/ManageCacheView.jsx");
-  assert.match(view, /Publish menu changes to your website and Knot Eats/);
   assert.doesNotMatch(view, /saved Manage Website changes/);
 });

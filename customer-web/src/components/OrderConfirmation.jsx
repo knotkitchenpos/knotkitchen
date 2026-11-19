@@ -84,10 +84,19 @@ export default function OrderConfirmation({ order, symbol, prepTime, onClose }) 
           </div>
         </div>
 
+        {/* A delivery has a live tracking page: the restaurant's rider, step by step. */}
+        {order.trackToken ? (
+          <a
+            href={`/track/${order.trackToken}`}
+            className="mt-5 flex w-full items-center justify-center gap-2 rounded-full border-2 border-brand py-3 font-semibold text-brand"
+          >
+            <span aria-hidden="true">🛵</span> Track your order
+          </a>
+        ) : null}
         <button
           type="button"
           onClick={onClose}
-          className="mt-5 w-full bg-brand text-brand-fg font-semibold rounded-full py-3"
+          className={`${order.trackToken ? "mt-2.5" : "mt-5"} w-full bg-brand text-brand-fg font-semibold rounded-full py-3`}
         >
           Close
         </button>

@@ -159,10 +159,6 @@ const ShiftView = () => {
 
   return (
     <div className="space-y-4">
-      <p className="text-[13px] text-[#64748B] leading-relaxed">
-        Open the till with the cash you start the day with. Every order until you close belongs to this shift. Close by
-        counting the drawer: the POS shows what should be there and the difference, prints the Z report, and keeps it here.
-      </p>
 
       {!shift ? (
         <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 space-y-3">

@@ -90,7 +90,6 @@ export const KotRoutingPanel = ({ printer, menus, onChange, loading }) => {
           placeholder="e.g. Pizza oven, Bar, Tandoor"
           className="mt-1.5 h-[40px] w-full rounded-xl border border-[#E2E8F0] px-3 text-[14px] font-bold"
         />
-        <span className="block text-[11.5px] text-[#94A3B8] mt-1">Printed on top of its tickets when the kitchen has more than one printer.</span>
       </label>
 
       <p className="mt-4 text-[13px] font-bold text-[#0F172A]">What prints here</p>
@@ -198,9 +197,6 @@ export const KotRoutingPanel = ({ printer, menus, onChange, loading }) => {
                               );
                             })
                           )}
-                          {!on && items.length > 0 && (
-                            <p className="pl-9 pr-3 pb-2 text-[11.5px] text-[#94A3B8]">Tick the category to print its products here.</p>
-                          )}
                         </div>
                       )}
                     </div>
@@ -223,7 +219,6 @@ export const KotRoutingOverview = ({ kitchens, menus }) => {
   return (
     <div className="bg-white border border-[#E2E8F0] rounded-2xl p-4 sm:p-5">
       <h4 className="text-[15px] font-extrabold text-[#0F172A]">Kitchen printer routing</h4>
-      <p className="text-[12px] text-[#64748B] mt-0.5">Each order&apos;s KOT is split: every printer gets only the products assigned to it.</p>
       <ul className="mt-3 space-y-2">
         {kitchens.map((k) => (
           <li key={k.id} className="flex flex-col sm:flex-row sm:items-start gap-1 sm:gap-3">

@@ -481,10 +481,6 @@ const WebsiteDesignDialog = ({ storeId, onClose }) => {
           {/* ---------- THEME ---------- */}
           {tab === "landing" ? (
             <>
-              <p className="mb-5 text-sm text-[#64748B]">
-                The first screen a customer sees. The menu is one tap behind it. Every text box can be left empty to
-                use the chosen design&apos;s own wording; the restaurant&apos;s name, details and photos are always its own.
-              </p>
 
               <Field label="Design">
                 <div className="grid gap-2 sm:grid-cols-3">
@@ -549,9 +545,6 @@ const WebsiteDesignDialog = ({ storeId, onClose }) => {
                 value={settings.landing?.backgroundImage}
                 onPick={(v) => patch("landing.backgroundImage", v)}
               />
-              <p className="-mt-2 mb-4 text-xs text-[#94A3B8]">
-                Leave empty to use the first featured dish&apos;s photo. Dish cards use each dish&apos;s own photo from the menu.
-              </p>
 
               <SectionRule title="Hero" />
               <Field label="Small line above the headline">
@@ -953,9 +946,6 @@ const WebsiteDesignDialog = ({ storeId, onClose }) => {
           {tab === "ordering" ? (
             <div className="mt-6 pt-5 border-t border-[#E2E8F0]">
               <p className="text-sm font-bold text-[#0F172A]">Table Booking</p>
-              <p className="text-xs text-[#64748B] mb-3">
-                Customers request a table from the website; you accept or cancel it on the POS.
-              </p>
               <Toggle
                 label="Allow Table Booking"
                 checked={settings.ordering?.tableBooking?.enabled !== false}
@@ -963,9 +953,6 @@ const WebsiteDesignDialog = ({ storeId, onClose }) => {
               />
               {/* Booking times are not set here: slots follow the Restaurant Time
                   the store saves in POS → Website Timing & Holidays. */}
-              <p className="text-xs text-[#64748B] mt-3">
-                Booking times follow the Restaurant Time set in the POS (Website Timing &amp; Holidays).
-              </p>
               <div className="grid sm:grid-cols-2 gap-4 mt-4">
                 {[
                   ["slotMinutes", "Time Slot Every (minutes)", 30],

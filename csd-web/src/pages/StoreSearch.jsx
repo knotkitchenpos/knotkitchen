@@ -89,9 +89,6 @@ Type the Store ID to confirm:`,
   return (
     <div className="mx-auto max-w-[1600px]">
       <h1 className="text-2xl font-bold text-navy-900">Store Management</h1>
-      <p className="mt-1 text-sm text-navy-500">
-        Search by Store ID, restaurant name, owner phone or address.
-      </p>
 
       {deniedFrom && (
         <div className="mt-4 flex items-start gap-2.5 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm text-amber-800">

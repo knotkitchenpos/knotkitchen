@@ -1731,7 +1731,6 @@ const ManageMenu = () => {
                     ) : (
                       <div className="p-8 text-center text-[#94A3B8]">
                         <p className="text-[13px] font-semibold text-[#64748B]">No direct products in this category.</p>
-                        <p className="text-[11.5px] text-[#94A3B8] mt-0.5">Click a subcategory above to view its products.</p>
                       </div>
                     )
                   ) : (

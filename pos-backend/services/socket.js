@@ -22,6 +22,16 @@ const parseCookies = (header = "") =>
  */
 const authenticateSocket = async (socket, next) => {
   try {
+    // The Rider app (knotkitchen.com/rider): its own cookie and its own room,
+    // never a store's. A rider hears only about their own deliveries.
+    if (socket.handshake.query?.app === "rider") {
+      const jar = parseCookies(socket.handshake.headers?.cookie || "");
+      const found = await require("./riders").riderFromToken(jar[require("./riders").COOKIE]);
+      if (!found) return next(new Error("Authentication required"));
+      socket.rider = { id: String(found.rider._id) };
+      return next();
+    }
+
     // Session cookies are namespaced per takeaway (services/sessionCookies),
     // so pick the one for the store this socket declares. Socket.IO has no
     // custom headers on the handshake, so the store arrives in the query.
@@ -90,6 +100,10 @@ const initSocket = (server, { corsOrigin = ["http://localhost:5173"] } = {}) => 
   io.use(authenticateSocket);
 
   io.on("connection", (socket) => {
+    if (socket.rider) {
+      socket.join(`rider:${socket.rider.id}`);
+      return;
+    }
     // These identifiers come from the authenticated user loaded above.
     // Handshake query/body values are intentionally ignored.
     const { restaurantId, outletId, storeId } = socket.tenant;
@@ -180,6 +194,22 @@ const emitEvent = (event, payload, rooms = []) => {
   if (!io) return;
   if (rooms && rooms.length) io.to(rooms).emit(event, payload);
   else io.emit(event, payload);
+};
+
+/** Close every live connection of a rider (removed, or their PIN reset). */
+const disconnectRider = (riderId) => {
+  if (!io || !riderId) return;
+  try {
+    io.in(`rider:${riderId}`).disconnectSockets(true);
+  } catch (err) {
+    console.warn("[socket] disconnectRider failed:", err.message);
+  }
+};
+
+/** To one rider's devices only (the Rider app). */
+const emitToRider = (riderId, event, payload) => {
+  if (!riderId) return;
+  emitEvent(event, payload, [`rider:${riderId}`]);
 };
 
 const emitToRestaurant = (restaurantId, event, payload) => {
@@ -372,7 +402,15 @@ const emitKitchenRound = ({ restaurantId, outletId, order, items, table }) => {
 };
 
 const emitOrderStatusChanged = ({ restaurantId, outletId, storeId, order }) => {
-  if (!io || !order) return;
+  if (!order) return;
+  // Every status change passes here, whichever path made it: the rider who
+  // has this order hears about a cancel, and a till's Delivered closes theirs.
+  if (order.delivery?.riderId) {
+    require("./riders")
+      .afterOrderStatus(order)
+      .catch((err) => console.warn("[riders] afterOrderStatus failed:", err.message));
+  }
+  if (!io) return;
   const payload = {
     type: "ORDER_STATUS_CHANGED",
     orderId: String(order._id),
@@ -432,6 +470,8 @@ module.exports = {
   authenticateSocket,
   emitEvent,
   emitToRestaurant,
+  emitToRider,
+  disconnectRider,
   orderCreatedPayload,
   itemsAddedPayload,
   emitOrderCreated,

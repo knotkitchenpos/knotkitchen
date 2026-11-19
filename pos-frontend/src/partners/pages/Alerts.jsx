@@ -102,7 +102,6 @@ const Alerts = () => {
     <div className="space-y-4 max-w-2xl">
       <div>
         <h1 className="text-[22px] sm:text-[26px] font-extrabold tracking-tight">Phone alerts</h1>
-        <p className="text-[13px] text-[#64748B] mt-0.5">Hear about any of your stores the moment something needs you, even with Partners closed.</p>
       </div>
       {!info || !prefs ? (
         <div className="h-40 rounded-2xl bg-white border border-[#E2E8F0] animate-pulse" />
@@ -141,7 +140,6 @@ const Alerts = () => {
             </Toggle>
             <Toggle on={prefs.stockOut} onChange={(v) => save({ ...prefs, stockOut: v })} label="Out of stock" hint="Dishes switched off because an inventory item ran out." />
           </section>
-          <p className="text-[12px] text-[#94A3B8]">These settings apply to every device you switch alerts on for.</p>
         </>
       )}
     </div>

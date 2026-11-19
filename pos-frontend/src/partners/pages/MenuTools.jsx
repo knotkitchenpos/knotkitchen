@@ -110,7 +110,6 @@ const CopyMenu = ({ catalog, names, refresh }) => {
           </div>
         </div>
       </div>
-      <p className="text-[12px] text-[#64748B]">A category the store already has gets the dishes it lacks; nothing there is changed or removed. Recipes and stock links are not copied.</p>
       <button type="button" className={btn} disabled={busy || !cats.length || !to.length} onClick={copy}>
         {busy ? "Copying…" : `Copy ${cats.length || ""} categor${cats.length === 1 ? "y" : "ies"} to ${to.length || ""} store${to.length === 1 ? "" : "s"}`}
       </button>
@@ -238,7 +237,6 @@ const ChangePrices = ({ catalog, names, refresh }) => {
               </label>
             ))}
           </div>
-          <p className="text-[12px] text-[#64748B]">A dish with separate channel prices (website, delivery) keeps those; change them in that store&apos;s Manage Menu.</p>
           <button type="button" className={btn} disabled={busy || nothing || !Object.values(rows).some(Boolean)} onClick={apply}>
             {busy ? "Saving…" : `Change in ${Object.values(rows).filter(Boolean).length} store(s)`}
           </button>
@@ -263,7 +261,6 @@ const MenuTools = ({ me }) => {
     <div className="space-y-4">
       <div>
         <h1 className="text-[22px] sm:text-[26px] font-extrabold tracking-tight">Menu across stores</h1>
-        <p className="text-[13px] text-[#64748B] mt-0.5">Copy categories between stores, or change a dish&apos;s price everywhere at once.</p>
       </div>
       <div className="flex gap-2">
         <button type="button" className={tabCls(tab === "copy")} onClick={() => setTab("copy")}><MdContentCopy size={17} /> Copy menu</button>

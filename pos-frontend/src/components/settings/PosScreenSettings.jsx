@@ -73,7 +73,6 @@ export const PhoneLayoutCard = () => {
           );
         })}
       </div>
-      <p className="text-[11.5px] text-[#94A3B8] mt-3">Saved on this device straight away.</p>
     </Card>
   );
 };
@@ -356,7 +355,6 @@ export const PopularItemsCard = ({ form, patch }) => {
           </button>
         </div>
       )}
-      <p className="text-[11.5px] text-[#94A3B8] mt-3">Saved for the whole restaurant with Save below.</p>
     </Card>
   );
 };

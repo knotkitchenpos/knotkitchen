@@ -17,6 +17,7 @@ import { AccountLockBanner, LockRedirect, useAccountLock } from "./components/sh
 import GlobalPinPrompt from "./components/common/GlobalPinPrompt";
 import useLoadData from "./hooks/useLoadData";
 import useRealtimeSync from "./hooks/useRealtimeSync";
+import useRiderAlerts from "./hooks/useRiderAlerts";
 import { isPublicPath } from "./utils/publicRoutes";
 import FullScreenLoader from "./components/shared/FullScreenLoader";
 import MarketplaceOrderPopup from "./components/dashboard/MarketplaceOrderPopup";
@@ -67,6 +68,8 @@ function Layout() {
   // One subscription for the whole app: socket events become cache
   // invalidations, so screens update without anyone pressing refresh.
   useRealtimeSync();
+  // A rider turned a delivery down: say so on any screen.
+  useRiderAlerts();
   // Prints each new order on this device's printer when it is set to.
   useAutoReceiptPrint();
   const location = useLocation();

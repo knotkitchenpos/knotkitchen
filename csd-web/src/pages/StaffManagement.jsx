@@ -148,8 +148,7 @@ const StaffDialog = ({ member, onClose, onSaved }) => {
           {editing && (
             <p className="-mt-2 flex items-start gap-1.5 text-xs text-navy-500">
               <FiInfo className="mt-0.5 shrink-0" aria-hidden="true" />
-              The account email identifies this person across the audit log and cannot be changed.
-              They sign in with the phone number above.
+              The email can&apos;t be changed.
             </p>
           )}
           <Field
@@ -277,9 +276,6 @@ const StaffManagement = () => {
       <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-navy-900">Staff Management</h1>
-          <p className="mt-1 text-sm text-navy-500">
-            Only people listed here can sign in, with their phone number and password.
-          </p>
         </div>
         <button type="button" onClick={() => setDialog({})}
           className="inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-brand-500">

@@ -138,9 +138,6 @@ const GroupDrawer = ({
             <div className="space-y-2 border-b border-[#E2E8F0] pb-3">
               <div>
                 <span className="font-extrabold text-[#0F172A] block">Selection Type</span>
-                <span className="text-[11.5px] font-semibold text-[#64748B]">
-                  Single = customer can pick 1 item. Multiple = customer can pick multiple items.
-                </span>
               </div>
               <div className="grid grid-cols-2 gap-2 pt-1">
                 <button
@@ -290,7 +287,7 @@ const GroupDrawer = ({
                 <div className="space-y-1.5 pt-2 border-t border-[#E2E8F0]">
                   {stockUse && editingGroup && (
                     <p className="flex flex-wrap items-center justify-between gap-1 text-[11px] text-[#64748B]">
-                      <span>What each takes from inventory when sold.</span>
+                      <span></span>
                       <button type="button" className="font-bold text-[#C2410C] hover:underline" onClick={() => navigate("/settings?view=inventory&tab=addons")}>
                         Set stock use →
                       </button>

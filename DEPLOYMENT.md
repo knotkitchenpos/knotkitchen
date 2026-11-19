@@ -568,6 +568,23 @@ Add `https://eats.knotkitchen.com/healthz` to the uptime monitor (§11).
 Road distances and the daily cap usage show in CSD → Knot Eats ("Google road
 distances today").
 
+## 14d. KnotKitchen Rider app (knotkitchen.com/rider)
+
+A store's own delivery riders. Built into the POS image (`pos-frontend`
+`npm run build:rider` -> `dist/rider`, served at `/rider/`); Caddy forwards
+`/rider/api/*` to `pos-api` `/api/rider/*` and `/rider/socket.io/*` to
+`/socket.io/*`. Nothing to configure: push notifications use the same VAPID
+key as CSD and Partners (`WEB_PUSH_PUBLIC_KEY` / `WEB_PUSH_PRIVATE_KEY`, or
+the generated one in the database).
+
+Stores add and approve riders in POS Settings > Delivery Riders; riders sign
+up at knotkitchen.com/rider with the Store ID. Verify after a deploy:
+
+```bash
+curl -fsSI https://knotkitchen.com/rider/ | head -1                        # 200
+curl -s https://knotkitchen.com/rider/api/me | grep -o '"code":"[A-Z_]*"'  # RIDER_SIGNED_OUT
+```
+
 ## 15. Test environment (systemtest.knotkitchen.com)
 
 Every change is deployed here first and checked before it reaches production.

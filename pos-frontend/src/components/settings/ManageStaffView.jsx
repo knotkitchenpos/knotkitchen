@@ -59,7 +59,7 @@ const ManageStaffView = () => {
   if (!isOwner) {
     return (
       <div className="bg-white border border-[#E2E8F0] rounded-2xl p-5 text-[13px] text-[#DC2626] font-bold">
-        🔒 Action Restricted: Only the Store Owner can manage staff members and permissions. Staff PIN verification is not sufficient for this operation.
+        🔒 Only the store owner can manage staff.
       </div>
     );
   }

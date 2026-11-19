@@ -38,7 +38,6 @@ const Account = ({ me }) => {
     <div className="space-y-5 max-w-[760px]">
       <div>
         <h1 className="text-[22px] sm:text-[26px] font-extrabold tracking-tight">Account</h1>
-        <p className="text-[13px] text-[#64748B] mt-0.5">Your Partners sign-in and where it is used.</p>
       </div>
 
       <section className="bg-white border border-[#E2E8F0] rounded-2xl p-4 sm:p-5">
@@ -56,9 +55,6 @@ const Account = ({ me }) => {
             <dd className="font-bold">{(me?.stores || []).length}</dd>
           </div>
         </dl>
-        <p className="mt-4 text-[12.5px] text-[#64748B]">
-          You sign in here with any linked store&apos;s Owner login. Passwords are each store&apos;s own: change one in that store&apos;s POS, then confirm it on the Stores page.
-        </p>
       </section>
 
       <section className="bg-white border border-[#E2E8F0] rounded-2xl p-4 sm:p-5">

@@ -28,6 +28,8 @@ const orderLimiter = rateLimit({
   message: "Too many order attempts. Please wait a moment before trying again.",
 });
 
+// A website delivery order's tracking page (t_ link): before /:slug, which it would never match anyway (two segments).
+router.get("/track/:token", readLimiter, require("../controllers/knotEatsController").getTrackedOrder);
 router.get("/:slug", readLimiter, getStorefront);
 // A website order is only placed once it is paid: /checkout opens the
 // payment, /verify asks the gateway and places the order. There is

@@ -6,6 +6,7 @@ import KnotLogo from "../components/shared/KnotLogo";
 import {
   cancelOrder,
   getOrders,
+  getRiders,
   getStoreProperties,
   getTableSessionById,
   markOrderReady,
@@ -28,6 +29,7 @@ import { sendTableEBill } from "../utils/sendTableEBill";
 import { money, time12 as timeOf, time12, dateGB, dateTimeIN, localDay, STORE_TZ } from "../utils";
 import { readStoreScoped, writeStoreScoped } from "../utils/storeSession";
 import { localOrderView, readQueue } from "../utils/offlineQueue";
+import { AssignRiderModal, RiderPanel, RIDER_STAGE, riderOn } from "../components/orders/RiderAssign";
 
 /**
  * Today's orders, kept on this device (offline-first, owner 2026-10-29). The
@@ -110,6 +112,8 @@ const I = {
 /* ---------- Helpers ---------- */
 // `end` stops the count: a finished order shows how long it took, not how long ago it was placed.
 const minsAgo = (d, end = Date.now()) => Math.max(0, Math.round((new Date(end).getTime() - new Date(d).getTime()) / 60000));
+
+const isDelivery = (o) => String(o?.orderType || "").toLowerCase() === "delivery";
 
 const typeMeta = (t) => {
   const k = String(t || "").toLowerCase();
@@ -256,6 +260,31 @@ const Orders = () => {
     () => [...(orderParams ? [] : queued.map(localOrderView)), ...(data?.data?.data || [])],
     [orderParams, queued, data],
   );
+
+  // "Assign Rider for Delivery?": asked once when a delivery order turns Ready
+  // on this screen (by a tap or the auto-ready timer), never for orders that
+  // were already Ready when the screen opened, nor after Skip / Assign Later.
+  const [assignFor, setAssignFor] = useState(null);
+  // A store with no riders of its own is never asked, and sees no rider labels.
+  const { data: storeRiders } = useQuery({ queryKey: ["riders", "active"], queryFn: () => getRiders(), select: (r) => r.data?.data?.riders || [], staleTime: 60_000 });
+  const usesRiders = (storeRiders?.length || 0) > 0;
+  const seenReady = React.useRef(null);
+  useEffect(() => {
+    if (isLoading || !usesRiders) return;
+    const readyNow = orders.filter((o) => isDelivery(o) && isReady(o.orderStatus) && !o.offline);
+    if (!seenReady.current) {
+      seenReady.current = new Set(readyNow.map((o) => o._id));
+      return;
+    }
+    // Only an order that turned Ready just now: a filter showing older Ready orders asks nothing.
+    const fresh = readyNow.find(
+      (o) => !seenReady.current.has(o._id) && !riderOn(o) && !o.delivery?.skippedAt && Date.now() - new Date(o.readyAt || 0).getTime() < 3 * 60 * 1000,
+    );
+    readyNow.forEach((o) => seenReady.current.add(o._id));
+    if (fresh && !assignFor) setAssignFor(fresh._id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orders, isLoading, usesRiders]);
+  const assignOrder = assignFor ? orders.find((o) => o._id === assignFor) : null;
 
   const readyMutation = useMutation({
     mutationFn: (orderId) => markOrderReady(orderId),
@@ -635,6 +664,16 @@ const Orders = () => {
                         <span className="sm:hidden">#{orderDisplayId(o)} · {timeOf(o.createdAt)} · </span>
                         {sourceLabel(o.source, o.salesChannel)} · {o.items?.length || 0} Items
                       </p>
+                      {/* The store's own rider on a live delivery order. */}
+                      {isDelivery(o) && !isFinished(o.orderStatus) ? (
+                        riderOn(o) ? (
+                          <p className="text-[11.5px] font-bold mt-0.5 truncate" style={{ color: RIDER_STAGE[o.delivery.status]?.fg }}>
+                            🚴 {o.delivery.riderName} · {RIDER_STAGE[o.delivery.status]?.label}
+                          </p>
+                        ) : usesRiders && isReady(o.orderStatus) ? (
+                          <p className="text-[11.5px] font-bold mt-0.5 text-[#B45309]">🚴 Ready — Rider Not Assigned</p>
+                        ) : null
+                      ) : null}
                     </div>
 
                     {/* Status + amount (stacked on phones) */}
@@ -798,6 +837,7 @@ const Orders = () => {
                     </a>
                   )}
                 </div>
+                {isDelivery(selected) && !selected.offline && (usesRiders || selected.delivery?.riderName) ? <RiderPanel order={selected} onAssign={() => setAssignFor(selected._id)} /> : null}
               </div>
 
               {/* Items — includes variant, add-ons and options (Module 4 §7). */}
@@ -1270,6 +1310,8 @@ const Orders = () => {
           </>
         )}
       </aside>
+
+      {assignOrder ? <AssignRiderModal order={assignOrder} onClose={() => setAssignFor(null)} /> : null}
 
       {pinFor && (
         <SecurityPinModal

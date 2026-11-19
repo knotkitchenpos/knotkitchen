@@ -53,7 +53,7 @@ test("the POS no longer has Billing: its route says where it moved and keeps ?de
   const moved = src("src/pages/BillingMoved.jsx");
   assert.match(moved, /const href = `\$\{PARTNERS_URL\}\/billing\$\{typeof window !== "undefined" \? window\.location\.search : ""\}`;/);
   assert.match(moved, /"https:\/\/knotkitchen\.com\/partners"/);
-  assert.match(src("src/constants/settingsMenu.js"), /desc: "Moved to the Partners dashboard at knotkitchen\.com\/partners\."/);
+  assert.match(src("src/constants/settingsMenu.js"), /\{ id: "billing", title: "12\. Billing & Subscription",[^\n]*path: "\/settings\/billing"/);
   assert.match(src("src/components/shared/AccountLock.jsx"), /recharges the wallet on the Partners dashboard/);
 });
 
@@ -61,7 +61,7 @@ test("the Partners pages: sign-in with a store's Owner login, link any number of
   const routes = src("src/partners/PartnersApp.jsx");
   for (const p of ["/login", "/", "/stores", "/billing", "/reports", "/orders", "/account"]) assert.ok(routes.includes(`path="${p}"`), p);
   const login = src("src/partners/pages/Login.jsx");
-  assert.match(login, /Only the store&apos;s Owner can sign in here\./);
+  assert.match(login, /Owner login only\./);
   // ?next= only to a path inside the app (no open redirect).
   assert.match(login, /next && next\.startsWith\("\/"\) && !next\.startsWith\("\/\/"\) \? next : "\/"/);
   assert.match(src("src/partners/pages/Stores.jsx"), /partnersApi\.linkStore\(v\)/);

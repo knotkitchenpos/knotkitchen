@@ -1388,7 +1388,6 @@ const OrderPanel = ({ mobileOpen = false, onMobileClose }) => {
             <div className="flex items-center justify-between border-b border-[#E2E8F0] px-5 py-4">
               <div>
                 <h3 className="text-[18px] font-extrabold text-[#0F172A]">Held Orders</h3>
-                <p className="mt-1 text-[12.5px] text-[#94A3B8]">Resume an order when the customer is ready.</p>
               </div>
               <button
                 onClick={() => setShowHeldOrders(false)}

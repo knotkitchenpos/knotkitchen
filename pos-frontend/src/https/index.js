@@ -376,3 +376,16 @@ export const getPlatformInvoices = () => axiosWrapper.get("/api/subscription/inv
 /* ---------- Restaurant, waiter calls ---------- */
 export const getMyRestaurant = () => axiosWrapper.get("/api/restaurant/me", { timeout: OFFLINE_TIMEOUT });
 export const dismissWaiterCall = (tableId) => axiosWrapper.post(`/api/qr/waiter-call/${tableId}/dismiss`);
+
+// ---- Delivery riders (KnotKitchen Rider app; /api/riders) ----
+// The till: who can take a delivery, and giving / taking it back.
+export const getRiders = ({ all = false } = {}) => axiosWrapper.get("/api/riders", { params: all ? { all: 1 } : {} });
+export const assignRider = ({ orderId, riderId }) => axiosWrapper.post(`/api/riders/orders/${orderId}/assign`, { riderId });
+export const unassignRider = (orderId) => axiosWrapper.post(`/api/riders/orders/${orderId}/unassign`, {});
+export const skipRiderAssign = (orderId) => axiosWrapper.post(`/api/riders/orders/${orderId}/skip`, {});
+// The owner or a manager: adding and managing riders.
+export const inviteRider = ({ name, phone }) => axiosWrapper.post("/api/riders", { name, phone });
+export const getRider = (id) => axiosWrapper.get(`/api/riders/${id}`);
+export const getRiderDeliveries = (id, days = 30) => axiosWrapper.get(`/api/riders/${id}/deliveries`, { params: { days } });
+/** action: approve | suspend | reactivate | deactivate | reset-pin */
+export const riderAction = (id, action, body = {}) => axiosWrapper.post(`/api/riders/${id}/${action}`, body);

@@ -160,8 +160,7 @@ const StoreDocuments = ({ storeId }) => {
 
       {data && data.documents.length === 0 && (
         <p className="rounded-xl border border-dashed border-navy-300 p-6 text-center text-sm text-navy-500">
-          No documents yet. Documents uploaded during the sales agreement are imported automatically
-          when a store is created from it.
+          No documents yet.
         </p>
       )}
 

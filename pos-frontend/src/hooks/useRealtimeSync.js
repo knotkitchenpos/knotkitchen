@@ -44,6 +44,10 @@ const INVALIDATE_ON = {
   "hardwareRequest:updated": ["subscription", "business-balance"],
   // A sale or a stock entry moved the shelf: the POS stock warning and the Inventory screens.
   "inventory:stock": ["stock-availability", "inventory"],
+  // A store rider accepted, set off, arrived, delivered or turned an order down.
+  "delivery:updated": ["orders", "riders"],
+  // A rider went online or offline, signed up, or was approved.
+  "rider:updated": ["riders"],
 };
 
 const useRealtimeSync = () => {

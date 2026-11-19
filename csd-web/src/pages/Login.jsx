@@ -103,7 +103,6 @@ const Login = () => {
             <img src={markUrl} alt="KnotKitchen" className="mb-3 h-12 w-12" />
           </div>
           <h1 className="text-3xl font-extrabold tracking-tight text-navy-900">Welcome back</h1>
-          <p className="mt-1.5 text-sm text-navy-500">Sign in to the KnotKitchen support panel.</p>
 
           <form onSubmit={submit} className="mt-8 space-y-5">
             {error && (
@@ -181,7 +180,6 @@ const Login = () => {
               {!busy && <FiArrowRight aria-hidden="true" />}
             </button>
 
-            <p className="text-center text-xs text-navy-500">No self-signup. Accounts are created by an administrator.</p>
           </form>
         </div>
       </main>

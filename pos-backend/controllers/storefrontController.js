@@ -39,7 +39,7 @@ const { round2, toRupees } = require("../services/money");
 const orderCharge = () => require("../services/orderCharge");
 // Lazy, for the same reason: the Knot Eats listing and road distances.
 const knotEats = () => require("../services/knotEats");
-const { readToken, tokenForCheckout, tokenForEatsOrder } = require("../services/receiptLink");
+const { readToken, tokenForCheckout, tokenForEatsOrder, tokenForTracking } = require("../services/receiptLink");
 
 const KNOT_EATS = "KNOT_EATS";
 const knotEatsUnavailable = () =>
@@ -1113,7 +1113,11 @@ const publicOrderView = (order) => ({
   // page and review form.
   ...(order.salesChannel === KNOT_EATS
     ? { salesChannel: KNOT_EATS, orderToken: tokenForEatsOrder(order._id) }
-    : { customer: { name: order.customerDetails?.name, phone: order.customerDetails?.phone } }),
+    : {
+        customer: { name: order.customerDetails?.name, phone: order.customerDetails?.phone },
+        // A delivery's live tracking page on the store's site (/track/<token>).
+        ...(order.orderType === "delivery" && order._id ? { trackToken: tokenForTracking(order._id) } : {}),
+      }),
 });
 
 /** Create or update the Customer CRM record for this phone number. */
