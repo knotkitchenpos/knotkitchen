@@ -143,6 +143,11 @@ function Privacy() {
         100 metres) and is not stored. Only the delivery point of an order you place is saved, on that order, so the
         restaurant can deliver it.
       </p>
+      <p>
+        At checkout for delivery, we ask your device for its location (your browser asks your permission first) to fill
+        in your address. That exact point is sent to OpenStreetMap, or to Google where Google address lookup is in use,
+        only to turn it into a street address. You can say no and type your address instead.
+      </p>
       <h2>3. Kept on your device</h2>
       <p>
         Your browser keeps your saved restaurants, your recent orders, your cart and your last location in its local
@@ -163,6 +168,14 @@ function Privacy() {
           <strong>Google</strong>, for address search and distances (see{" "}
           <a href="https://policies.google.com/privacy" target="_blank" rel="noreferrer">
             Google's Privacy Policy
+          </a>
+          ).
+        </li>
+        <li>
+          <strong>OpenStreetMap</strong> (the OpenStreetMap Foundation&apos;s Nominatim service), to turn your location
+          into a delivery address at checkout (see the{" "}
+          <a href="https://osmfoundation.org/wiki/Privacy_Policy" target="_blank" rel="noreferrer">
+            OpenStreetMap Foundation Privacy Policy
           </a>
           ).
         </li>
