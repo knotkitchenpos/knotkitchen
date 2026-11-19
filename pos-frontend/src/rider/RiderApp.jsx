@@ -87,28 +87,56 @@ function BottomNav({ badge }) {
 /* ------------------------------------------------------- live & ringing -- */
 
 let tone = null;
-/** Ring and buzz for a new delivery, as the rider's settings say. */
-const ring = (prefs) => {
-  if (prefs?.vibration !== false) navigator.vibrate?.([300, 120, 300, 120, 300]);
-  if (prefs?.sound === false) return;
-  try {
-    tone = tone || new Audio("/rider/sounds/new-delivery.mp3");
-    tone.currentTime = 0;
-    tone.play().catch(() => {});
-    setTimeout(() => tone?.pause(), 6000);
-  } catch {
-    /* no audio */
-  }
-};
+const RING_MS = 3000; // ring.wav: "ring-ring", then a pause
+
+/**
+ * Ring like a phone call while a delivery waits to be accepted: the ring
+ * loops and the phone buzzes with each ring, until the rider accepts or
+ * rejects (or the store takes it back). Sound and vibration follow the
+ * rider's settings. A page nobody has touched yet can't play sound, so the
+ * first tap or key starts it.
+ */
+function useRinging(ringing, prefs) {
+  const sound = prefs?.sound !== false;
+  const buzz = prefs?.vibration !== false;
+  useEffect(() => {
+    if (!ringing || (!sound && !buzz)) return undefined;
+    let stopped = false;
+    const play = () => {
+      if (stopped || !sound) return;
+      try {
+        tone = tone || Object.assign(new Audio("/rider/sounds/ring.wav"), { loop: true, preload: "auto" });
+        if (tone.paused) tone.play().catch(() => {});
+      } catch {
+        /* no audio */
+      }
+    };
+    const vibrate = () => buzz && navigator.vibrate?.([400, 200, 400]);
+    play();
+    vibrate();
+    const timer = setInterval(vibrate, RING_MS);
+    window.addEventListener("pointerdown", play);
+    window.addEventListener("keydown", play);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      window.removeEventListener("pointerdown", play);
+      window.removeEventListener("keydown", play);
+      navigator.vibrate?.(0);
+      if (tone) {
+        tone.pause();
+        tone.currentTime = 0;
+      }
+    };
+  }, [ringing, sound, buzz]);
+}
 
 /** Socket events and push messages: refresh, and ring when something new arrives. */
-function useLive(me) {
+function useLive() {
   const qc = useQueryClient();
   const navigate = useNavigate();
   const { enqueueSnackbar } = useSnackbar();
   const seen = useRef(null);
-  const prefs = useRef(me.prefs);
-  prefs.current = me.prefs;
 
   const refresh = useCallback(() => {
     qc.invalidateQueries({ queryKey: ["active"] });
@@ -123,7 +151,6 @@ function useLive(me) {
     if (seen.current) {
       const fresh = [...ids].filter((id) => !seen.current.has(id));
       if (fresh.length) {
-        ring(prefs.current);
         enqueueSnackbar("New delivery assigned 🚴", { variant: "info" });
       }
     }
@@ -158,9 +185,10 @@ function useLive(me) {
 }
 
 function SignedIn({ me, onLogout }) {
-  useLive(me);
+  useLive();
   const active = useQuery({ queryKey: ["active"], queryFn: riderApi.active, refetchInterval: 60_000 });
   const badge = (active.data?.deliveries || []).filter((d) => d.stage === "assigned").length;
+  useRinging(badge > 0, me.prefs);
   return (
     <>
       <main className="mx-auto w-full max-w-[560px] pb-[84px]">
