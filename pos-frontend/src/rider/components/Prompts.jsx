@@ -1,17 +1,18 @@
 import React, { useEffect, useState } from "react";
 import { useSnackbar } from "notistack";
-import { enablePush, pushState } from "../push";
-import { Icon } from "./ui";
+import { enablePush, isStandalone, pushState } from "../push";
+import { Icon, Sheet } from "./ui";
 
 /*
- * Notifications are asked for from a card the rider taps, after they are
- * signed in and can see why: never a browser prompt on first load.
+ * Notifications: a popup after sign-in (once per app open) and a card on
+ * Home until they're on. A browser only lets a site ask once: when the
+ * rider has blocked it, the popup shows how to allow it again instead.
  */
 
 const BLOCKERS = {
-  denied: "Notifications are blocked for this site. Open your browser's site settings for knotkitchen.com, allow Notifications, then come back.",
-  "ios-install": "On iPhone, add this app to your Home Screen first (Share > Add to Home Screen), then open it from there to turn on alerts.",
-  unsupported: "This browser can't show delivery alerts. Use Chrome on Android for alerts.",
+  denied: "Notifications are blocked for this site.",
+  "ios-install": "On iPhone, add this app to your Home Screen first, then open it from there.",
+  unsupported: "This browser can't show delivery alerts. Use Chrome on Android.",
 };
 
 /** Push state for this device, refreshed when the app comes back to the front. */
@@ -31,42 +32,134 @@ export const usePushState = () => {
   return [state, setState];
 };
 
+const SEEN_KEY = "kk.rider.alertsAsked";
+const askedThisOpen = () => {
+  try {
+    return sessionStorage.getItem(SEEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
+const markAsked = () => {
+  try {
+    sessionStorage.setItem(SEEN_KEY, "1");
+  } catch {
+    /* private mode */
+  }
+};
+
+function Steps({ items }) {
+  return (
+    <ol className="mt-1 space-y-2.5">
+      {items.map((t, i) => (
+        <li key={i} className="flex gap-3 text-[15px] leading-snug">
+          <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[13px] font-black text-white" style={{ background: "var(--r-brand)" }}>
+            {i + 1}
+          </span>
+          <span className="pt-0.5 font-semibold">{t}</span>
+        </li>
+      ))}
+    </ol>
+  );
+}
+
+/** The card on Home and the popup it opens (on its own once per app open). */
 export function AlertsPrompt() {
   const { enqueueSnackbar } = useSnackbar();
   const [state, setState] = usePushState();
+  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
+  const needed = state !== "on" && state !== "checking" && state !== "unsupported";
+
+  useEffect(() => {
+    if (needed && !askedThisOpen()) {
+      markAsked();
+      setOpen(true);
+    }
+    if (state === "on") setOpen(false);
+  }, [needed, state]);
+
   if (state === "on" || state === "checking") return null;
-  const blocked = BLOCKERS[state];
+
   const turnOn = async () => {
     setBusy(true);
     try {
       await enablePush();
       setState("on");
+      setOpen(false);
       enqueueSnackbar("Delivery alerts are on 🔔", { variant: "success" });
     } catch (err) {
       setState(err?.code || "off");
-      enqueueSnackbar(BLOCKERS[err?.code] || "Couldn't turn alerts on. Try again.", { variant: "warning" });
+      if (err?.code !== "denied") enqueueSnackbar(BLOCKERS[err?.code] || "Couldn't turn alerts on. Try again.", { variant: "warning" });
     } finally {
       setBusy(false);
     }
   };
+  // After allowing it in the browser's settings: finish here.
+  const recheck = async () => {
+    setBusy(true);
+    try {
+      const now = await pushState();
+      if (now === "denied") enqueueSnackbar("Still blocked. Allow Notifications for knotkitchen.com, then try again.", { variant: "warning" });
+      setState(now);
+      if (now === "off") await turnOn();
+    } finally {
+      setBusy(false);
+    }
+  };
+  const installed = isStandalone();
+
   return (
-    <section className="r-card flex gap-3 p-4" style={{ borderColor: "var(--r-amber)" }}>
-      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl" style={{ background: "var(--r-amber-soft)", color: "var(--r-amber)" }}>
-        <Icon.bell />
-      </span>
-      <div className="min-w-0 flex-1">
-        <p className="text-[15.5px] font-extrabold">Turn on delivery alerts</p>
-        <p className="r-muted mt-0.5 text-[13.5px] leading-snug">
-          {blocked || "Get notified of new deliveries."}
-        </p>
-        {!blocked ? (
-          <button type="button" className="r-btn r-btn-primary mt-3 min-h-[44px] w-full" disabled={busy} onClick={turnOn}>
-            {busy ? "Turning on…" : "Turn on alerts"}
+    <>
+      <section className="r-card flex items-center gap-3 p-4" style={{ borderColor: "var(--r-amber)" }}>
+        <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl" style={{ background: "var(--r-amber-soft)", color: "var(--r-amber)" }}>
+          <Icon.bell />
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-[15.5px] font-extrabold">Delivery alerts are off</p>
+          <p className="r-muted text-[13.5px] leading-snug">{BLOCKERS[state] || "You won't hear about new deliveries."}</p>
+        </div>
+        {state !== "unsupported" ? (
+          <button type="button" className="r-btn r-btn-primary min-h-[44px] shrink-0 px-4 text-[14px]" onClick={() => setOpen(true)}>
+            Turn on
           </button>
         ) : null}
-      </div>
-    </section>
+      </section>
+
+      <Sheet open={open} onClose={() => setOpen(false)} title={state === "denied" ? "Notifications are blocked" : "Turn on notifications"} labelledBy="r-alerts-title">
+        <div className="mb-4 flex justify-center">
+          <span className="flex h-16 w-16 items-center justify-center rounded-[22px] text-[32px]" style={{ background: "var(--r-amber-soft)" }} aria-hidden="true">
+            🔔
+          </span>
+        </div>
+        {state === "denied" ? (
+          <>
+            <Steps
+              items={
+                installed
+                  ? ["Long-press the KK Rider icon and tap App info.", "Tap Notifications and switch them on.", "Come back and tap “I’ve allowed it”."]
+                  : ["Tap the icon to the left of knotkitchen.com in the address bar.", "Tap Permissions, then Notifications, and choose Allow.", "Come back and tap “I’ve allowed it”."]
+              }
+            />
+            <button type="button" className="r-btn r-btn-primary r-btn-lg mt-5 w-full" disabled={busy} onClick={recheck}>
+              {busy ? "Checking…" : "I’ve allowed it"}
+            </button>
+          </>
+        ) : state === "ios-install" ? (
+          <Steps items={["Tap Share in Safari.", "Tap Add to Home Screen.", "Open KK Rider from your Home Screen and turn on notifications."]} />
+        ) : (
+          <>
+            <p className="r-muted text-center text-[15px]">Get a notification the moment you’re given a delivery, even with the app closed.</p>
+            <button type="button" className="r-btn r-btn-primary r-btn-lg mt-5 w-full" disabled={busy} onClick={turnOn}>
+              {busy ? "Turning on…" : "Turn on notifications"}
+            </button>
+          </>
+        )}
+        <button type="button" className="r-faint mt-3 w-full py-2 text-[14px] font-bold" onClick={() => setOpen(false)}>
+          Not now
+        </button>
+      </Sheet>
+    </>
   );
 }
 
