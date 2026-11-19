@@ -122,6 +122,11 @@ const PaymentMethodModal = ({
         totalWithTax = 0,
     } = bills;
 
+    // Cash on a delivery order is cash on delivery: the rider collects it.
+    const methods = String(orderType).toLowerCase() === "delivery"
+        ? METHODS.map((m) => (m.id === "cash" ? { ...m, title: "Cash on delivery", subtitle: "The rider collects it at the door." } : m))
+        : METHODS;
+
     // Split: the server takes CASH / UPI / CARD parts that add up to the total
     // (services/splitPayment). Editing a part leaves the last one as "the rest".
     const [split, setSplit] = useState(false);
@@ -192,7 +197,7 @@ const PaymentMethodModal = ({
             {/* ===== Payment methods ===== */}
             {!split ? (
                 <div className="mt-4 space-y-2.5">
-                    {METHODS.map((m) => (
+                    {methods.map((m) => (
                         <MethodTile key={m.id} {...m} disabled={busy} onClick={() => onSelect(m.id)} />
                     ))}
                 </div>
@@ -205,7 +210,7 @@ const PaymentMethodModal = ({
                                 onChange={(e) => setPart(i, { method: e.target.value })}
                                 className="h-[40px] rounded-lg border border-[#E2E8F0] bg-white px-2 text-[12.5px] font-bold"
                             >
-                                {METHODS.map((m) => (
+                                {methods.map((m) => (
                                     <option key={m.id} value={m.id.toUpperCase()}>
                                         {m.title}
                                     </option>

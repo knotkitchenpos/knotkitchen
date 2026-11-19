@@ -188,7 +188,11 @@ const buildReceipt = ({
     // GST already inside the prices: the bill says so instead of reading as extra.
     taxInclusive: Boolean((tableSession?.bills || bill?.bills || order?.bills)?.taxInclusive),
     paymentStatus,
-    paymentMethod: formatPaymentMethod(rawPaymentMethod),
+    // A cash delivery not handed over yet is cash on delivery, not paid.
+    paymentMethod:
+      order?.orderType === "delivery" && order?.payments?.[0]?.method === "cash" && order.payments[0].status === "pending"
+        ? "Cash on delivery"
+        : formatPaymentMethod(rawPaymentMethod),
   };
 
   // If table order, attach table details and full accumulated bill

@@ -504,6 +504,8 @@ const assignRider = async ({ user, orderId, riderId }) => {
         "delivery.arrivedAt": null,
         "delivery.deliveredAt": null,
         "delivery.cancelledAt": null,
+        // A new rider starts with a clean count of delivery-code tries.
+        "delivery.codeTries": 0,
         // The rider closes it: the auto-complete timer must not mark it Delivered on the way.
         completeDueAt: null,
       },

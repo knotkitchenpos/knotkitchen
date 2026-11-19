@@ -290,7 +290,10 @@ export const layoutReceipt = ({ order = {}, store = {}, settings = {}, images = 
     y += Math.round(s * 1.35);
   }
   const method = String(order.paymentMethod || order.payments?.[0]?.method || "").trim();
-  if (method) pair("Paid by", method.charAt(0).toUpperCase() + method.slice(1));
+  // A cash delivery not handed over yet: the rider collects it at the door.
+  const cod = String(order.orderType).toLowerCase() === "delivery" && order.payments?.[0]?.method === "cash" && order.payments[0].status === "pending";
+  if (cod) pair("Payment", "Cash on delivery");
+  else if (method) pair("Paid by", method.charAt(0).toUpperCase() + method.slice(1));
   // GST bill: the service code the buyer's return needs.
   if (registered && Number(order.bills?.tax) > 0) text("SAC 996331 · Restaurant service", { size: P.small, align: "center" });
 
