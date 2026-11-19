@@ -7,7 +7,8 @@
  *     API calls are never cached: a delivery is always the server's latest.
  */
 
-const SHELL = "kk-rider-shell-v1";
+// v2: new app icon (🛵); the old cache, with the old icons, is dropped on activate.
+const SHELL = "kk-rider-shell-v2";
 const HOME = "/rider/";
 
 self.addEventListener("install", (event) => {
@@ -82,7 +83,7 @@ self.addEventListener("push", (event) => {
       await self.registration.showNotification(data.title || "KnotKitchen Rider", {
         body: data.body || "",
         icon: "/rider/icons/icon-192.png",
-        badge: "/rider/icons/icon-192.png",
+        badge: "/rider/icons/badge-96.png",
         tag: data.tag || undefined,
         renotify: Boolean(data.tag),
         requireInteraction: /New Delivery/i.test(data.title || ""),

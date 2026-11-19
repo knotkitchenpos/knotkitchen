@@ -57,10 +57,22 @@ test("REGRESSION: delivery is priced by the store's distance slabs, not the till
 
 test("REGRESSION: a delivery paid at the till starts in the kitchen, paid", async () => {
   // It was created Completed, so it could never go out for delivery.
+  const out = await run(delivery({ paymentMethod: "upi" }));
+  assert.equal(out.status, 201, out.error?.message);
+  assert.equal(out.saved[0].orderStatus, "Preparing");
+  assert.deepEqual(out.saved[0].payments.map((p) => [p.method, p.amount, p.status]), [["upi", 260, "paid"]]);
+});
+
+test("cash on a delivery order is cash on delivery: unpaid until Delivered", async () => {
   const out = await run(delivery({ paymentMethod: "cash" }));
   assert.equal(out.status, 201, out.error?.message);
   assert.equal(out.saved[0].orderStatus, "Preparing");
-  assert.deepEqual(out.saved[0].payments.map((p) => [p.method, p.amount, p.status]), [["cash", 260, "paid"]]);
+  assert.deepEqual(out.saved[0].payments.map((p) => [p.method, p.amount, p.status]), [["cash", 260, "pending"]]);
+  // Handed over (the till's Delivered, or the rider's): the cash was collected.
+  const order = { orderType: "delivery", orderStatus: S.OUT_FOR_DELIVERY || "Ready", payments: [{ method: "cash", amount: 260, status: "pending" }] };
+  const done = await runUpdateOrder({ order, body: { orderStatus: "Delivered" } });
+  assert.equal(done.status, 200, done.error?.message);
+  assert.equal(done.doc.payments[0].status, "paid");
 });
 
 test("a paid order still in the kitchen is cancelled only through the reasoned route, by a manager", async () => {

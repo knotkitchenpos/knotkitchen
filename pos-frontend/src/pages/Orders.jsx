@@ -1068,7 +1068,9 @@ const Orders = () => {
                   <div>
                     <p className="text-[#94A3B8]">Payment Status</p>
                     <p className="font-bold text-[#0F172A] mt-0.5 capitalize">
-                      {selected.payments?.[0]?.status || "pending"}
+                      {isDelivery(selected) && selected.payments?.[0]?.method === "cash" && selected.payments[0].status === "pending"
+                        ? "Cash on delivery"
+                        : selected.payments?.[0]?.status || "pending"}
                     </p>
                   </div>
                   {selected.payments?.[0]?.transactionId && (

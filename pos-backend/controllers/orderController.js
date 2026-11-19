@@ -383,7 +383,11 @@ const addOrder = async (req, res, next) => {
       if (raw === "paymentlink" || raw === "payment_link" || raw === "link") return "PaymentLink";
       return "";
     })();
-    const isPaidAtTill = ["Cash", "UPI", "Card", "Split"].includes(normalizedPaymentMethod);
+    // Cash on a delivery order is cash on delivery (owner, 2026-11-19): the
+    // rider collects it at the door, so it is unpaid until the order is
+    // Delivered. UPI, card and split taken at the till are paid now.
+    const cashOnDelivery = normalizedPaymentMethod === "Cash" && normalizedOrderType === "delivery";
+    const isPaidAtTill = ["Cash", "UPI", "Card", "Split"].includes(normalizedPaymentMethod) && !cashOnDelivery;
     // A paid delivery still has to be cooked and driven over: it goes through
     // the kitchen and out for delivery, and finishes at Delivered. Created
     // "Completed", it could never be marked out for delivery at all.
@@ -511,6 +515,8 @@ const addOrder = async (req, res, next) => {
       if (!check.ok) return next(createHttpError(400, check.message));
       paymentsForOrder = check.parts.map((p) => ({ method: SPLIT_PART_METHOD[p.method], amount: p.amount, status: "paid", transactionId: "" }));
       paymentLabel = splitLabel(check.parts, displayPaymentMethod);
+    } else if (cashOnDelivery) {
+      paymentsForOrder = [{ method: "cash", amount: paidAmount, status: "pending", transactionId: "" }];
     } else if (isPaidAtTill) {
       paymentsForOrder = [
         {
@@ -927,6 +933,14 @@ const getOrders = async (req, res, next) => {
   }
 };
 
+/** A delivery handed over: its cash-on-delivery payment was collected at the door. */
+const collectCashOnDelivery = (order) => {
+  if (order.orderType !== "delivery") return;
+  for (const p of order.payments || []) {
+    if (String(p.method).toLowerCase() === "cash" && p.status === "pending") p.status = "paid";
+  }
+};
+
 /**
  * The store's rider moved a delivery on (services/riders.js): Out for
  * delivery when they leave, Delivered when they hand it over. The same
@@ -939,6 +953,7 @@ const setDeliveryOrderStatus = async (order, nextStatus, actor) => {
   order.timeline.push({ status: nextStatus, timestamp: new Date(), user: actor || "Rider" });
   let riderSettled = false;
   if (nextStatus === DELIVERED) {
+    collectCashOnDelivery(order);
     order.completeDueAt = null;
     if (!order.completedAt) {
       order.completedAt = new Date();
@@ -1045,6 +1060,7 @@ const updateOrder = async (req, res, next) => {
     }
 
     const lowerNext = String(nextStatus).toLowerCase();
+    if (lowerNext === "delivered") collectCashOnDelivery(order);
     let settledTransition = false;
     if (["completed", "delivered", "served", "cancelled", "refunded"].includes(lowerNext)) {
       order.completeDueAt = null;
