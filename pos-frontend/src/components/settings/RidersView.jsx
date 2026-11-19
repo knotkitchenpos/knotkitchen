@@ -54,11 +54,16 @@ function Modal({ title, onClose, children }) {
 }
 
 /** A one-time code to hand to the rider, with how to use it. */
-function CodeCard({ code, purpose, name, storeId, expiresAt }) {
+function CodeCard({ code, purpose, name, phone, storeId, expiresAt }) {
   const invite = purpose === "invite";
+  // The link fills the form in (rider/pages/Auth.jsx). After "#", so the
+  // code never reaches a server log; the rider still chooses their own PIN.
+  const link = invite
+    ? `https://${RIDER_APP}/signup#${new URLSearchParams({ s: storeId, n: name, p: phone || "", c: code })}`
+    : `https://${RIDER_APP}/forgot#${new URLSearchParams({ p: phone || "", c: code })}`;
   const text = invite
-    ? `Hi ${name}, join us as a delivery rider on KnotKitchen Rider: open https://${RIDER_APP}/signup, enter Store ID ${storeId}, your mobile number and invite code ${code}.`
-    : `Your KnotKitchen Rider PIN reset code is ${code}. Open https://${RIDER_APP}/forgot and set a new PIN. It works for 30 minutes.`;
+    ? `Hi ${name}, join us as a delivery rider on KnotKitchen Rider: ${link} (invite code ${code})`
+    : `Your KnotKitchen Rider PIN reset code is ${code}. Set a new PIN here within 30 minutes: ${link}`;
   const share = async () => {
     try {
       if (navigator.share) await navigator.share({ text });
@@ -106,7 +111,7 @@ function AddRider({ onClose, storeId }) {
     <Modal title={result ? "Rider invited" : "Add Rider"} onClose={onClose}>
       {result ? (
         <>
-          <CodeCard code={result.code} purpose="invite" name={result.rider.name} storeId={storeId} expiresAt={result.expiresAt} />
+          <CodeCard code={result.code} purpose="invite" name={result.rider.name} phone={result.rider.phone} storeId={storeId} expiresAt={result.expiresAt} />
           <button type="button" onClick={onClose} className="mt-4 w-full h-[46px] rounded-xl border border-[#E2E8F0] text-[14px] font-extrabold text-[#334155]">Done</button>
         </>
       ) : (
@@ -193,7 +198,7 @@ function RiderProfile({ id, onClose, storeId }) {
 
           {code ? (
             <div className="mt-4">
-              <CodeCard code={code.code} purpose={code.purpose} name={r.name} storeId={storeId} expiresAt={code.expiresAt} />
+              <CodeCard code={code.code} purpose={code.purpose} name={r.name} phone={r.phone} storeId={storeId} expiresAt={code.expiresAt} />
             </div>
           ) : null}
 

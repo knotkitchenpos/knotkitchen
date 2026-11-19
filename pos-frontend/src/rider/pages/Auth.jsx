@@ -6,6 +6,30 @@ import { Icon, PinField } from "../components/ui";
 
 const digits10 = (v) => v.replace(/\D/g, "").slice(0, 10);
 
+/**
+ * What a store's invite or PIN-reset link carries after "#" (Settings >
+ * Delivery Riders): s Store ID, n name, p phone, c code. Read once, then
+ * taken off the address bar so the code isn't left in the history.
+ */
+let linkFill = null; // once per page load: React may run a state initializer twice
+const readLinkFill = () => {
+  if (linkFill) return linkFill;
+  if (typeof window === "undefined" || !window.location.hash.slice(1)) return {};
+  const h = new URLSearchParams(window.location.hash.slice(1));
+  window.history.replaceState(window.history.state, "", window.location.pathname + window.location.search);
+  const fill = {
+    storeId: (h.get("s") || "").replace(/\D/g, "").slice(0, 6),
+    name: (h.get("n") || "").slice(0, 60),
+    phone: digits10(h.get("p") || ""),
+    code: (h.get("c") || "").replace(/\D/g, "").slice(0, 6),
+  };
+  linkFill = Object.fromEntries(Object.entries(fill).filter(([, v]) => v));
+  return linkFill;
+};
+
+// Letter-spaced digits only once typed: a spaced-out placeholder reads "6 d i g i t s".
+const spaced = (value, cls) => `r-input ${value ? cls : ""}`;
+
 function Shell({ title, subtitle, children, back }) {
   return (
     <main className="mx-auto flex min-h-[100dvh] w-full max-w-[440px] flex-col px-5 r-safe-top r-safe-bottom">
@@ -108,7 +132,7 @@ export function Login() {
 export function Signup() {
   const signedIn = useSignedIn();
   const [step, setStep] = useState(1);
-  const [form, setForm] = useState({ storeId: "", name: "", phone: "", code: "" });
+  const [form, setForm] = useState(() => ({ storeId: "", name: "", phone: "", code: "", ...readLinkFill() }));
   const [pin, setPin] = useState("");
   const [pin2, setPin2] = useState("");
   const [busy, setBusy] = useState(false);
@@ -168,7 +192,7 @@ export function Signup() {
           <label htmlFor="r-store" className="r-label">
             Store ID
           </label>
-          <input id="r-store" className="r-input tracking-[0.2em]" inputMode="numeric" placeholder="6 digits, e.g. 231146" value={form.storeId} onChange={set("storeId")} />
+          <input id="r-store" className={spaced(form.storeId, "tracking-[0.2em]")} inputMode="numeric" placeholder="6 digits, e.g. 231146" value={form.storeId} onChange={set("storeId")} />
         </div>
         <div>
           <label htmlFor="r-name" className="r-label">
@@ -186,7 +210,7 @@ export function Signup() {
           <label htmlFor="r-code" className="r-label">
             Invite code <span className="r-faint font-semibold">(if your store gave you one)</span>
           </label>
-          <input id="r-code" className="r-input tracking-[0.3em]" inputMode="numeric" placeholder="6 digits" value={form.code} onChange={set("code")} />
+          <input id="r-code" className={spaced(form.code, "tracking-[0.3em]")} inputMode="numeric" placeholder="6 digits" value={form.code} onChange={set("code")} />
         </div>
         <FormError message={error} />
         <button type="submit" className="r-btn r-btn-primary r-btn-lg w-full">
@@ -215,8 +239,9 @@ export function Signup() {
 
 export function ForgotPin() {
   const signedIn = useSignedIn();
-  const [phone, setPhone] = useState("");
-  const [code, setCode] = useState("");
+  const [fill] = useState(readLinkFill);
+  const [phone, setPhone] = useState(fill.phone || "");
+  const [code, setCode] = useState(fill.code || "");
   const [pin, setPin] = useState("");
   const [pin2, setPin2] = useState("");
   const [busy, setBusy] = useState(false);
@@ -249,7 +274,7 @@ export function ForgotPin() {
           <label htmlFor="r-fcode" className="r-label">
             Reset code from your store
           </label>
-          <input id="r-fcode" className="r-input tracking-[0.3em]" inputMode="numeric" placeholder="6 digits" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} />
+          <input id="r-fcode" className={spaced(code, "tracking-[0.3em]")} inputMode="numeric" placeholder="6 digits" value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))} />
         </div>
         <PinField id="r-fpin" label="New PIN" value={pin} onChange={setPin} />
         <PinField id="r-fpin2" label="Confirm new PIN" value={pin2} onChange={setPin2} />
