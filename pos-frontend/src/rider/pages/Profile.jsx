@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useSnackbar } from "notistack";
 import { riderApi, errorMessage } from "../api";
@@ -6,7 +6,7 @@ import { disablePush, enablePush } from "../push";
 import { usePushState } from "../components/Prompts";
 import { Confirm, Icon, Pill, PinField, Sheet, Toggle, TopBar } from "../components/ui";
 import { useTheme } from "../theme";
-import { ANDROID_APP_URL, inApp } from "../native";
+import { ANDROID_APP_URL, inApp, nativeNotificationsOn, nativeOpenNotificationSettings, nativeTestNotification } from "../native";
 
 const STATUS_TONE = { active: "green", pending: "amber", suspended: "red", deactivated: "grey" };
 const PUSH_NOTE = {
@@ -25,6 +25,43 @@ function Row({ icon, label, note, children }) {
       </div>
       {children}
     </div>
+  );
+}
+
+/**
+ * Inside the KK Rider Android app: the app's own notifications (RiderService),
+ * not the browser's. On or off is Android's setting for the app; the switch
+ * opens it, and the row reads it again when the rider comes back.
+ */
+function AppNotificationsRow() {
+  const { enqueueSnackbar } = useSnackbar();
+  const [on, setOn] = useState(() => nativeNotificationsOn());
+  useEffect(() => {
+    const again = () => document.visibilityState === "visible" && setOn(nativeNotificationsOn());
+    document.addEventListener("visibilitychange", again);
+    return () => document.removeEventListener("visibilitychange", again);
+  }, []);
+  // An app from before this setting existed: its alerts work; say so.
+  const known = on === true || on === false;
+  const test = () => {
+    if (nativeTestNotification() === false) {
+      enqueueSnackbar("Notifications are off for KK Rider. Turn them on in the settings that open.", { variant: "warning" });
+      nativeOpenNotificationSettings();
+    }
+  };
+  return (
+    <>
+      <Row icon={<Icon.bell />} label="Notifications" note={!known ? "On (update the app to change it here)" : on ? "On" : "Off: you won't hear about new deliveries"}>
+        {known ? <Toggle checked={on} onChange={() => nativeOpenNotificationSettings()} label="Delivery notifications" /> : null}
+      </Row>
+      {on === true ? (
+        <div className="px-4 py-2">
+          <button type="button" className="text-[14px] font-extrabold" style={{ color: "var(--r-brand-ink)" }} onClick={test}>
+            Send a test notification
+          </button>
+        </div>
+      ) : null}
+    </>
   );
 }
 
@@ -119,6 +156,10 @@ export default function Profile({ me, onLogout }) {
 
       <h2 className="r-faint mb-2 mt-6 px-1 text-[12px] font-extrabold uppercase tracking-widest">Settings</h2>
       <section className="r-card divide-y" style={{ borderColor: "var(--r-line)" }}>
+        {inApp() ? (
+          <AppNotificationsRow />
+        ) : (
+          <>
         <Row icon={<Icon.bell />} label="Notifications" note={push === "on" ? "On" : PUSH_NOTE[push] || "Off"}>
           <Toggle checked={push === "on"} disabled={pushBusy || Boolean(PUSH_NOTE[push]) || push === "checking"} onChange={setNotifications} label="Delivery notifications" />
         </Row>
@@ -129,6 +170,8 @@ export default function Profile({ me, onLogout }) {
             </button>
           </div>
         ) : null}
+          </>
+        )}
         <Row icon={<Icon.sound />} label="Sound">
           <Toggle checked={me.prefs?.sound !== false} disabled={prefs.isPending} onChange={(v) => prefs.mutate({ sound: v })} label="Sound" />
         </Row>

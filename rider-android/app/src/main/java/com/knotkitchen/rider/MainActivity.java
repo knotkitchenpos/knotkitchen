@@ -216,6 +216,38 @@ public class MainActivity extends Activity {
             updatePip();
         }
 
+        /** Whether this phone lets KK Rider show notifications (Profile > Notifications). */
+        @JavascriptInterface
+        public boolean notificationsEnabled() {
+            return getSystemService(android.app.NotificationManager.class).areNotificationsEnabled();
+        }
+
+        /** Android's notification settings for KK Rider. */
+        @JavascriptInterface
+        public void openNotificationSettings() {
+            runOnUiThread(() -> {
+                try {
+                    startActivity(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, getPackageName()));
+                } catch (Exception e) {
+                    startActivity(new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + getPackageName())));
+                }
+            });
+        }
+
+        /** A test notification from the app itself (Profile > Send a test notification). */
+        @JavascriptInterface
+        public boolean testNotification() {
+            android.app.NotificationManager nm = getSystemService(android.app.NotificationManager.class);
+            if (!nm.areNotificationsEnabled()) return false;
+            nm.notify(ActionReceiver.ID_RESULT, new android.app.Notification.Builder(MainActivity.this, RiderService.CH_NEW)
+                    .setSmallIcon(R.drawable.ic_stat_rider)
+                    .setContentTitle("Notifications are on ✅")
+                    .setContentText("KK Rider will ring for new deliveries.")
+                    .setAutoCancel(true)
+                    .build());
+            return true;
+        }
+
         @JavascriptInterface
         public String version() {
             return BuildConfigVersion.name(MainActivity.this);

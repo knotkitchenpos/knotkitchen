@@ -16,6 +16,22 @@ const call = (name, ...args) => {
   }
 };
 
+/** A value from the app, or undefined in a browser or an app too old to have it. */
+const ask = (name, ...args) => {
+  try {
+    const b = bridge();
+    return typeof b?.[name] === "function" ? b[name](...args) : undefined;
+  } catch {
+    return undefined;
+  }
+};
+
+/** In the app: whether Android lets KK Rider notify (true / false), or undefined. */
+export const nativeNotificationsOn = () => ask("notificationsEnabled");
+export const nativeOpenNotificationSettings = () => call("openNotificationSettings");
+/** In the app: a test notification from the phone itself; false when notifications are off. */
+export const nativeTestNotification = () => ask("testNotification");
+
 /** Online and approved: the phone stays connected and rings; otherwise it stops. */
 export const nativeOnline = (online) => call("setOnline", Boolean(online));
 
