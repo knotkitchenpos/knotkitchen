@@ -164,6 +164,7 @@ test("DEPLOY: knotkitchen.com/rider serves the app, its API and its socket, same
   assert.match(caddy, /handle \/rider\/api\/\* \{\s*uri replace \/rider\/api\/ \/api\/rider\/ 1\s*reverse_proxy pos-api:8000/);
   assert.match(caddy, /handle \/rider\/socket\.io\/\* \{\s*uri replace \/rider\/socket\.io\/ \/socket\.io\/ 1\s*reverse_proxy pos-api:8000/);
   assert.match(caddy, /handle \/rider\/\* \{\s*reverse_proxy pos-web:80/);
+  assert.match(caddy, /redir \/rider\/download https:\/\/business\.\{\$BASE_DOMAIN\}\/downloads\/android\/KK-Rider\.apk 302/);
   // The API one must come before the app one in the same site block.
   assert.ok(caddy.indexOf("handle /rider/api/*") < caddy.indexOf("handle /rider/* {"));
   const nginx = ROOT("pos-frontend/nginx.conf");

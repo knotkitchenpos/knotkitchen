@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { riderApi, errorMessage } from "../api";
 import { Icon, PinField } from "../components/ui";
+import { ANDROID_APP_URL, inApp } from "../native";
 
 const digits10 = (v) => v.replace(/\D/g, "").slice(0, 10);
 
@@ -51,6 +52,15 @@ function Shell({ title, subtitle, children, back }) {
       </div>
       {subtitle ? <p className="r-muted -mt-3 mb-5 text-[15px] leading-relaxed">{subtitle}</p> : null}
       {children}
+      {!inApp() ? (
+        <a
+          href={ANDROID_APP_URL}
+          className="r-focus mt-auto flex items-center justify-center gap-2 pt-8 text-[14.5px] font-extrabold"
+          style={{ color: "var(--r-brand-ink)" }}
+        >
+          <Icon.download s={18} /> Download the KK Rider Android app
+        </a>
+      ) : null}
     </main>
   );
 }

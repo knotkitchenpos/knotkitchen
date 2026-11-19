@@ -6,6 +6,7 @@ import { disablePush, enablePush } from "../push";
 import { usePushState } from "../components/Prompts";
 import { Confirm, Icon, Pill, PinField, Sheet, Toggle, TopBar } from "../components/ui";
 import { useTheme } from "../theme";
+import { ANDROID_APP_URL, inApp } from "../native";
 
 const STATUS_TONE = { active: "green", pending: "amber", suspended: "red", deactivated: "grey" };
 const PUSH_NOTE = {
@@ -147,6 +148,13 @@ export default function Profile({ me, onLogout }) {
             ))}
           </div>
         </Row>
+        {!inApp() ? (
+          <a href={ANDROID_APP_URL} className="r-focus block">
+            <Row icon={<Icon.download />} label="Android app" note="Rings for new deliveries even when it's closed">
+              <Icon.chevron className="r-faint" />
+            </Row>
+          </a>
+        ) : null}
         <button type="button" className="r-focus w-full text-left" onClick={() => setPinOpen(true)}>
           <Row icon={<Icon.lock />} label="Change PIN">
             <Icon.chevron className="r-faint" />

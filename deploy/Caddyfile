@@ -291,6 +291,8 @@ order.{$BASE_DOMAIN} {
 	# is /api/rider/* only, and its live socket is /socket.io, both same-origin
 	# so the rider's cookie (path /rider) never travels anywhere else.
 	redir /rider /rider/ 308
+	# The KK Rider Android app (rider-android), easy to say out loud.
+	redir /rider/download https://business.{$BASE_DOMAIN}/downloads/android/KK-Rider.apk 302
 	handle /rider/api/* {
 		uri replace /rider/api/ /api/rider/ 1
 		reverse_proxy pos-api:8000 {
