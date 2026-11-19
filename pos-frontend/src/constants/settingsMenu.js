@@ -28,22 +28,21 @@ export const MENU_ITEMS = [
         { id: "shift", title: "Shift & Day End", desc: "Open the till with a float, close with a cash count, print the Z report.", Icon: I.cash, mode: "view", feature: "pos" },
       ]
     : []),
-  // Reachable even when the account is locked -- it is the only screen that
-  // can clear a lock, so it must never be gated. See middlewares/accountLock.js.
-  // Moved to the owner's Partners dashboard (knotkitchen.com/partners); this opens the page that says so.
-  { id: "billing", title: "12. Billing & Subscription", desc: "Moved to the Partners dashboard at knotkitchen.com/partners.", Icon: I.fileText, path: "/settings/billing" },
+  // Billing lives on the owner's Partners dashboard; its tile is gone (owner,
+  // 2026-11-19). /settings/billing still opens the page that says where it
+  // moved, for a locked store. The store's own riders take its place
+  // (KnotKitchen Rider app, knotkitchen.com/rider).
+  { id: "riders", title: "12. Delivery Riders", desc: "Add, approve and manage your delivery riders.", Icon: I.bike, mode: "view", feature: "pos" },
 
   { id: "website", title: "13. Manage Website", desc: "Landing page, branding, colours and domain.", Icon: I.globe, path: "/website", feature: "website" },
   { id: "eats", title: "14. Knot Eats", desc: "List your restaurant on eats.knotkitchen.com.", Icon: I.store, mode: "view", feature: "pos" },
-  // The store's own riders, in the KnotKitchen Rider app (knotkitchen.com/rider).
-  { id: "riders", title: "15. Delivery Riders", desc: "Add, approve and manage your delivery riders.", Icon: I.bike, mode: "view", feature: "pos" },
 
   // Activity Log stays CSD-only: it is the audit trail of who did what,
   // including support's own actions, and has no POS route at all (CSD reads
   // it through /api/csd).
   // Also in the side panel; listed here so it is one tap away on a phone.
-  { id: "support", title: "16. Help & Support", desc: "Call or message KnotKitchen support.", Icon: I.headset, path: "/support" },
-  { id: "logout", title: "17. Logout", desc: "Securely sign out of the POS system.", Icon: I.logout, action: "logout" },
+  { id: "support", title: "15. Help & Support", desc: "Call or message KnotKitchen support.", Icon: I.headset, path: "/support" },
+  { id: "logout", title: "16. Logout", desc: "Securely sign out of the POS system.", Icon: I.logout, action: "logout" },
 ];
 
 /** "5. Manage Tables" -> "Manage Tables". */

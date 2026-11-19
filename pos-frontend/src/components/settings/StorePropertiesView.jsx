@@ -2,7 +2,8 @@ import React, { useState } from "react";
 import { useSelector } from "react-redux";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { enqueueSnackbar } from "../../utils/notify";
-import { changePin, getStoreProperties, updateStoreProperties, verifyPin } from "../../https";
+import { changePin, getBusinessBalance, getStoreProperties, updateStoreProperties, verifyPin } from "../../https";
+import { money } from "../../utils";
 import { uploadMedia } from "../../https/storefrontApi";
 import MapPinPicker from "./MapPinPicker";
 import PaymentGatewayCard from "./PaymentGatewayCard";
@@ -15,6 +16,24 @@ const NO_STORE = Object.freeze({});
  * invoice, printed receipts, the table QR page and the website. Saved with
  * the rest of Store Properties.
  */
+/** The store's KnotKitchen wallet balance (topped up on the Partners dashboard). */
+const WalletBalance = () => {
+  const { data, isLoading, isError } = useQuery({ queryKey: ["business-balance"], queryFn: getBusinessBalance, select: (r) => r.data?.data });
+  // { paise, rupees, label } from the API (services/money asAmount).
+  const rupees = Number(data?.balance?.rupees ?? data?.balance) || 0;
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] px-4 py-3">
+      <p className="text-[13.5px] font-extrabold text-[#0F172A]">Wallet Balance</p>
+      <div className="text-right">
+        <p className={`text-[18px] font-extrabold ${rupees < 0 ? "text-[#DC2626]" : "text-[#0F172A]"}`}>
+          {isLoading ? "…" : isError ? "—" : data?.balance?.label || money(rupees)}
+        </p>
+        {data?.locked ? <p className="text-[11.5px] font-bold text-[#DC2626]">Account locked</p> : null}
+      </div>
+    </div>
+  );
+};
+
 const StoreLogoField = ({ value, disabled, onChange }) => {
   const fileRef = React.useRef(null);
   const [uploading, setUploading] = useState(false);
@@ -202,6 +221,8 @@ const StorePropertiesView = () => {
             </span>
           )}
         </div>
+
+        <WalletBalance />
 
         <StoreLogoField
           value={formData.restaurantLogo || ""}

@@ -53,7 +53,9 @@ test("the POS no longer has Billing: its route says where it moved and keeps ?de
   const moved = src("src/pages/BillingMoved.jsx");
   assert.match(moved, /const href = `\$\{PARTNERS_URL\}\/billing\$\{typeof window !== "undefined" \? window\.location\.search : ""\}`;/);
   assert.match(moved, /"https:\/\/knotkitchen\.com\/partners"/);
-  assert.match(src("src/constants/settingsMenu.js"), /desc: "Moved to the Partners dashboard at knotkitchen\.com\/partners\."/);
+  // No Billing tile in Settings any more (owner, 2026-11-19); the route stays for a locked store.
+  assert.doesNotMatch(src("src/constants/settingsMenu.js"), /id: "billing"/);
+  assert.match(src("src/constants/settingsMenu.js"), /\{ id: "riders", title: "12\. Delivery Riders",/);
   assert.match(src("src/components/shared/AccountLock.jsx"), /recharges the wallet on the Partners dashboard/);
 });
 
