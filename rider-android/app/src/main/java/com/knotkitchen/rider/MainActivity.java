@@ -43,6 +43,10 @@ public class MainActivity extends Activity {
 
     private WebView web;
     private boolean inPip;
+    private boolean resumed;
+
+    /** For the updater: Android's install screen only opens while the app is on screen. */
+    boolean isOnScreen() { return resumed; }
 
     private final BroadcastReceiver refresh = new BroadcastReceiver() {
         @Override public void onReceive(Context c, Intent i) { js("window.dispatchEvent(new Event('kk:refresh'))"); }
@@ -174,7 +178,15 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        resumed = true;
         js("window.dispatchEvent(new Event('kk:refresh'))");
+        Updater.check(this);
+    }
+
+    @Override
+    protected void onPause() {
+        resumed = false;
+        super.onPause();
     }
 
     @Override

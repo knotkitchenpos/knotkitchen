@@ -45,3 +45,14 @@ test("in a browser the bridge does nothing", async () => {
   native.nativePending({ orderId: "x" });
   assert.equal(native.isAndroidBrowser(), false);
 });
+
+test("the app updates itself from the feed CI publishes, signed and checksummed", () => {
+  const u = ROOT("rider-android/app/src/main/java/com/knotkitchen/rider/Updater.java");
+  assert.match(u, /FEED_URL = "https:\/\/business\.knotkitchen\.com\/downloads\/android\/kk-rider-update\.json"/);
+  assert.match(u, /equalsIgnoreCase\(m\.getString\("sha256"\)\)/);
+  assert.match(ROOT("rider-android/app/src/main/java/com/knotkitchen/rider/MainActivity.java"), /Updater\.check\(this\);/);
+  const ci = ROOT(".github/workflows/build-rider-android.yml");
+  assert.match(ci, /mv \.incoming\/rider-feed\.json kk-rider-update\.json/);
+  assert.match(ci, /KK_VERSION_CODE: \$\{\{ github\.run_number \}\}/);
+  assert.match(ROOT("rider-android/app/src/main/AndroidManifest.xml"), /android\.permission\.REQUEST_INSTALL_PACKAGES/);
+});
