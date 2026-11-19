@@ -64,3 +64,11 @@ export function deliveryBlockReason(delivery, location) {
   if (delivery && delivery.deliverable === false) return delivery.reason || "This restaurant can't deliver to you.";
   return "";
 }
+
+/** Open stores whose rating reads as good (4.0+ from enough ratings), best first, at most 10. */
+export function topRated(stores = []) {
+  return (stores || [])
+    .filter((s) => s.isOpen && ratingView(s.rating, s.ratingCount).tone === "good")
+    .sort((a, b) => Number(b.rating) - Number(a.rating))
+    .slice(0, 10);
+}

@@ -31,7 +31,7 @@ export default function SearchBox({ labels = [] }) {
     <Link
       to="/search"
       aria-label="Search for restaurants and dishes"
-      className={`flex min-h-[48px] min-w-0 flex-1 items-center gap-2.5 rounded-xl border border-slate-200 bg-white px-3 text-[15px] text-slate-500 shadow-sm ${FOCUS}`}
+      className={`flex min-h-[48px] min-w-0 flex-1 items-center gap-2.5 rounded-xl bg-white px-3 text-[15px] text-slate-500 shadow-sm ${FOCUS}`}
     >
       <span className="text-brand">
         <SearchIcon />

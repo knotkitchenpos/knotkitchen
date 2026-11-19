@@ -6,6 +6,11 @@ import { getEatsConfig, listEatsStores } from "./api";
 
 export const FOCUS =
   "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2";
+// The warm band at the top of Home and Saved (header, then Home's search bar).
+// Dark enough for white 12px text; a horizontal gradient so stacked pieces line up.
+export const HERO = "bg-gradient-to-r from-[#C2410C] via-[#B4380A] to-[#9A3412]";
+export const FOCUS_ON_HERO =
+  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#B4380A]";
 export const BTN_PRIMARY = `inline-flex min-h-[44px] items-center justify-center rounded-xl bg-brand px-5 text-[15px] font-semibold text-white ${FOCUS}`;
 export const BTN_SECONDARY = `inline-flex min-h-[44px] items-center justify-center rounded-xl border border-slate-300 bg-white px-5 text-[15px] font-semibold text-slate-800 ${FOCUS}`;
 

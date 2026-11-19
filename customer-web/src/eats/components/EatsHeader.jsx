@@ -2,7 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import ModeToggle from "./ModeToggle";
 import { HeaderLinks } from "./BottomNav";
-import { FOCUS } from "../shared";
+import { FOCUS_ON_HERO, HERO } from "../shared";
 
 export function PinIcon() {
   return (
@@ -15,39 +15,40 @@ export function PinIcon() {
 /**
  * Top of Home and Saved: the wordmark, where we are looking (tap to change),
  * Delivery | Pickup, and the Saved page. The page owns the picker, because
- * its own prompts open the same one.
+ * its own prompts open the same one. It sits on the warm HERO band, which
+ * Home's search bar continues.
  */
 export default function EatsHeader({ location, onPickLocation }) {
   const sub = location?.address || (location?.source === "area" ? "Area: pick an exact spot to get delivery" : "");
   return (
-    <header className="bg-white">
+    <header className={HERO}>
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 pt-3">
-        <Link to="/" className={`rounded text-[26px] font-extrabold leading-none tracking-tight text-[color:var(--ke-ink)] ${FOCUS}`}>
-          knot <span className="text-[color:var(--accent)]">eats</span>
+        <Link to="/" className={`rounded text-[26px] font-extrabold leading-none tracking-tight text-white ${FOCUS_ON_HERO}`}>
+          knot <span className="text-amber-200">eats</span>
         </Link>
-        <HeaderLinks />
+        <HeaderLinks onHero />
       </div>
       <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 px-4 pb-2 pt-1">
         <button
           type="button"
           onClick={onPickLocation}
           aria-label={location ? `Location: ${location.label}. Change location` : "Set your location"}
-          className={`flex min-h-[44px] min-w-0 flex-1 items-center gap-1.5 rounded-lg text-left ${FOCUS}`}
+          className={`flex min-h-[44px] min-w-0 flex-1 items-center gap-1.5 rounded-lg text-left ${FOCUS_ON_HERO}`}
         >
-          <span className="shrink-0 text-brand">
+          <span className="shrink-0 text-amber-200">
             <PinIcon />
           </span>
           <span className="min-w-0">
-            <span className="flex items-center gap-1 text-[16px] font-bold text-[color:var(--ke-ink)]">
+            <span className="flex items-center gap-1 text-[16px] font-bold text-white">
               <span className="truncate">{location?.label || "Set your location"}</span>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="shrink-0" aria-hidden="true">
                 <path d="M6 9l6 6 6-6" />
               </svg>
             </span>
-            {sub ? <span className="block truncate text-[12px] text-slate-500">{sub}</span> : null}
+            {sub ? <span className="block truncate text-[12px] text-orange-100">{sub}</span> : null}
           </span>
         </button>
-        <ModeToggle />
+        <ModeToggle onHero />
       </div>
     </header>
   );

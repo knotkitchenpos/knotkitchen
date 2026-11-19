@@ -1,6 +1,6 @@
 import React from "react";
 import { NavLink } from "react-router-dom";
-import { FOCUS } from "../shared";
+import { FOCUS, FOCUS_ON_HERO } from "../shared";
 
 const svg = { width: 22, height: 22, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 2, strokeLinecap: "round", strokeLinejoin: "round", "aria-hidden": true };
 
@@ -84,11 +84,15 @@ export default function BottomNav() {
 }
 
 /** The same pages for a wide screen, in the header. */
-export function HeaderLinks() {
+export function HeaderLinks({ onHero = false }) {
+  const tone = (isActive) =>
+    onHero
+      ? `${isActive ? "bg-white/15 text-white" : "text-orange-50 hover:bg-white/10"} ${FOCUS_ON_HERO}`
+      : `${isActive ? "text-brand" : "text-slate-600 hover:bg-slate-100"} ${FOCUS}`;
   return (
     <nav aria-label="Knot Eats" className="hidden items-center gap-1 md:flex">
       {TABS.slice(1).map((t) => (
-        <NavLink key={t.to} to={t.to} className={({ isActive }) => `flex min-h-[44px] items-center gap-1.5 rounded-xl px-3 text-[14px] font-semibold ${isActive ? "text-brand" : "text-slate-600 hover:bg-slate-100"} ${FOCUS}`}>
+        <NavLink key={t.to} to={t.to} className={({ isActive }) => `flex min-h-[44px] items-center gap-1.5 rounded-xl px-3 text-[14px] font-semibold ${tone(isActive)}`}>
           {t.icon}
           {t.label}
         </NavLink>

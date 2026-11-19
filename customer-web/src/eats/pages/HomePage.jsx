@@ -16,11 +16,14 @@ import BottomNav from "../components/BottomNav";
 import { useEatsLocation, useEatsPrefs } from "../../lib/eatsLocation";
 import { activeFilterCount, filtersToSearch, readFilters, toApiParams } from "../../lib/eatsFilters";
 import { getActiveCart } from "../../lib/eatsCart";
-import { BTN_PRIMARY, BTN_SECONDARY, useEatsConfig, useStoreList, useTitle } from "../shared";
+import TopRated from "../components/TopRated";
+import { BTN_PRIMARY, BTN_SECONDARY, HERO, useEatsConfig, useStoreList, useTitle } from "../shared";
 
 // A first visit with no location opens the picker by itself, once per page
 // load; closing it leaves the prompt card.
 let autoOpened = false;
+
+const HEADING = "mb-3 text-[18px] font-extrabold tracking-tight text-[color:var(--ke-ink)]";
 
 /** `/`: restaurants delivering to, or near enough to pick up from, the chosen location. */
 export default function HomePage() {
@@ -86,10 +89,12 @@ export default function HomePage() {
       <h1 className="sr-only">Knot Eats: order from restaurants near you</h1>
       <EatsHeader location={location} onPickLocation={pickLocation} />
 
-      <div className="sticky top-0 z-30 bg-white shadow-[0_1px_0_rgb(226_232_240)]">
-        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-2">
+      <div className={`sticky top-0 z-30 ${HERO} shadow-md`}>
+        <div className="mx-auto flex max-w-6xl items-center gap-2 px-4 pb-3 pt-1">
           <SearchBox labels={chipWords} />
-          <VegToggle />
+          <span className="shrink-0 rounded-xl bg-white px-1 shadow-sm">
+            <VegToggle />
+          </span>
         </div>
       </div>
 
@@ -99,16 +104,17 @@ export default function HomePage() {
         ) : (
           <>
             <CollectionTile collection={collection} />
+            <TopRated stores={list.data?.stores} mode={mode} />
             {facets?.tags?.length ? (
               <section aria-labelledby="ke-dishes" className="mt-6">
-                <h2 id="ke-dishes" className="mb-3 text-[13px] font-bold uppercase tracking-[0.15em] text-slate-500">
+                <h2 id="ke-dishes" className={HEADING}>
                   What&apos;s on your mind?
                 </h2>
                 <DishChips tags={facets.tags} />
               </section>
             ) : null}
             <FilterBar filters={filters} onChange={setFilters} mode={mode} />
-            <h2 aria-live="polite" className="mb-4 mt-2 text-[13px] font-bold uppercase tracking-[0.15em] text-slate-500">
+            <h2 aria-live="polite" className={`${HEADING} mt-2`}>
               {mode === "delivery" ? "Restaurants delivering to you" : "Restaurants for pickup near you"}
             </h2>
             <StoreGrid list={list} mode={mode} empty={empty} onChangeLocation={pickLocation} />

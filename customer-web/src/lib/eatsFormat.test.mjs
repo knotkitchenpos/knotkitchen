@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { costLabel, deliveryBlockReason, distanceLabel, etaLabel, inr, ratingView, tagText } from "./eatsFormat.js";
+import { costLabel, deliveryBlockReason, distanceLabel, etaLabel, inr, ratingView, tagText, topRated } from "./eatsFormat.js";
 
 test("ETA reads as a range of minutes", () => {
   assert.equal(etaLabel({ min: 35, max: 45 }), "35-45 mins");
@@ -46,4 +46,12 @@ test("deliveryBlockReason: location first, then an area centroid, then the serve
   assert.equal(deliveryBlockReason(far, { lat: 22.5, lng: 88.3, source: "gps" }), far.reason);
   assert.equal(deliveryBlockReason(ok, { lat: 22.5, lng: 88.3, source: "places" }), "");
   assert.equal(deliveryBlockReason(null, { lat: 22.5, lng: 88.3, source: "gps" }), "", "not known yet: the server decides at checkout");
+});
+
+test("top rated: open, good ratings only, best first", () => {
+  const s = (id, rating, ratingCount, isOpen = true) => ({ storeId: id, rating, ratingCount, isOpen });
+  const out = topRated([s("a", 4.2, 50), s("b", 4.8, 50), s("c", 3.9, 50), s("d", 4.9, 50, false), s("e", 5, 1), s("f", null, 0)]);
+  assert.deepEqual(out.map((x) => x.storeId), ["b", "a"]);
+  assert.deepEqual(topRated(undefined), []);
+  assert.equal(topRated(Array.from({ length: 15 }, (_, i) => s(String(i), 4.5, 50))).length, 10);
 });

@@ -35,7 +35,7 @@ export default function StoreCard({ store, mode, eager = false, dishTags }) {
   const serves = [tagText(store.tags, dishTags), costLabel(store.priceForTwo)].filter(Boolean).join(" · ");
 
   return (
-    <article className={closed ? "opacity-70" : ""}>
+    <article className={`rounded-3xl bg-white p-2 pb-3 shadow-[0_8px_28px_-14px_rgba(11,27,59,0.35)] ring-1 ring-slate-100 ${closed ? "opacity-70" : ""}`}>
       <div className="relative overflow-hidden rounded-2xl bg-slate-100">
         {slides.length ? (
           <ul aria-label={`Dishes at ${store.name}`} className="flex snap-x snap-mandatory gap-2 overflow-x-auto [scrollbar-width:none]">
@@ -89,7 +89,7 @@ export default function StoreCard({ store, mode, eager = false, dishTags }) {
         </div>
       </div>
 
-      <div className="px-1 pt-3">
+      <div className="px-2 pt-3">
         <div className="flex items-start justify-between gap-3">
           <h3 className="min-w-0 break-words text-[18px] font-bold leading-snug text-[color:var(--ke-ink)]">
             <Link to={href} className={`rounded ${FOCUS}`}>
@@ -119,7 +119,7 @@ export default function StoreCard({ store, mode, eager = false, dishTags }) {
 
 function CardSkeleton() {
   return (
-    <div aria-hidden="true">
+    <div aria-hidden="true" className="rounded-3xl bg-white p-2 pb-3 ring-1 ring-slate-100">
       <div className="aspect-[4/3] rounded-2xl bg-slate-200 motion-safe:animate-pulse" />
       <div className="mt-3 h-5 w-2/3 rounded bg-slate-200 motion-safe:animate-pulse" />
       <div className="mt-2 h-4 w-1/2 rounded bg-slate-200 motion-safe:animate-pulse" />
