@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import { useSnackbar } from "notistack";
 import { enablePush, isStandalone, pushState } from "../push";
 import { Icon, Sheet } from "./ui";
+import { ANDROID_APP_URL, inApp, isAndroidBrowser } from "../native";
 
 /*
  * Notifications: a popup after sign-in (once per app open) and a card on
@@ -69,7 +70,8 @@ export function AlertsPrompt() {
   const [state, setState] = usePushState();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const needed = state !== "on" && state !== "checking" && state !== "unsupported";
+  // The Android app has its own alerts (RiderService): no browser prompt there.
+  const needed = !inApp() && state !== "on" && state !== "checking" && state !== "unsupported";
 
   useEffect(() => {
     if (needed && !askedThisOpen()) {
@@ -79,7 +81,7 @@ export function AlertsPrompt() {
     if (state === "on") setOpen(false);
   }, [needed, state]);
 
-  if (state === "on" || state === "checking") return null;
+  if (inApp() || state === "on" || state === "checking") return null;
 
   const turnOn = async () => {
     setBusy(true);
@@ -226,5 +228,22 @@ export function InstallPrompt() {
         </button>
       </div>
     </section>
+  );
+}
+
+/** In a phone's browser: the Android app rings for deliveries even when it's closed. */
+export function AndroidAppCard() {
+  if (!isAndroidBrowser()) return null;
+  return (
+    <a href={ANDROID_APP_URL} className="r-card r-focus flex items-center gap-3 p-4">
+      <img src="/rider/icons/icon-192.png" alt="" className="h-12 w-12 rounded-2xl" />
+      <div className="min-w-0 flex-1">
+        <p className="text-[15px] font-extrabold">Get the KK Rider app</p>
+        <p className="r-muted text-[13px]">Rings for new deliveries even when it&apos;s closed.</p>
+      </div>
+      <span className="r-btn r-btn-primary min-h-[40px] px-4 text-[14px]">
+        <Icon.download s={16} /> Get
+      </span>
+    </a>
   );
 }

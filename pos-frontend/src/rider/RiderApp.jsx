@@ -6,6 +6,8 @@ import { riderApi } from "./api";
 import { connectRiderSocket, disconnectRiderSocket } from "./socket";
 import { currentEndpoint, registerWorker } from "./push";
 import { useIsDark } from "./theme";
+import { inApp, nativeOnline, nativePending, nativePrefs } from "./native";
+import { rupees } from "./format";
 import { Icon } from "./components/ui";
 import { Login, Signup, ForgotPin, AccountHold } from "./pages/Auth";
 import Home from "./pages/Home";
@@ -174,21 +176,59 @@ function useLive() {
     navigator.serviceWorker?.addEventListener("message", onMessage);
     const onVisible = () => document.visibilityState === "visible" && refresh();
     document.addEventListener("visibilitychange", onVisible);
+    // The Android app: an answer from its alert or picture-in-picture card.
+    window.addEventListener("kk:refresh", refresh);
     return () => {
       socket.off("delivery:updated", onDelivery);
       socket.off("rider:account", onAccount);
       socket.off("connect", refresh);
       navigator.serviceWorker?.removeEventListener("message", onMessage);
       document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("kk:refresh", refresh);
     };
   }, [qc, refresh, navigate]);
+}
+
+/** The small picture-in-picture window (Android app): the waiting delivery, big and plain. */
+function PipCard({ delivery }) {
+  if (!delivery) {
+    return (
+      <div className="flex min-h-[100dvh] items-center justify-center p-3 text-center text-[18px] font-black">KK Rider 🛵</div>
+    );
+  }
+  return (
+    <div className="flex min-h-[100dvh] flex-col justify-center gap-1 p-3" style={{ background: "var(--r-brand)", color: "#fff" }}>
+      <p className="text-[13px] font-extrabold uppercase tracking-wider opacity-90">New delivery</p>
+      <p className="text-[24px] font-black leading-tight">#{delivery.orderNumber}</p>
+      <p className="truncate text-[14px] font-bold">{delivery.address?.text || delivery.customer?.name}</p>
+      <p className="text-[16px] font-black">{delivery.collect > 0 ? `Collect ${rupees(delivery.collect)}` : `${rupees(delivery.bills?.total)} · Paid`}</p>
+    </div>
+  );
 }
 
 function SignedIn({ me, onLogout }) {
   useLive();
   const active = useQuery({ queryKey: ["active"], queryFn: riderApi.active, refetchInterval: 60_000 });
-  const badge = (active.data?.deliveries || []).filter((d) => d.stage === "assigned").length;
-  useRinging(badge > 0, me.prefs);
+  const waiting = (active.data?.deliveries || []).filter((d) => d.stage === "assigned");
+  const badge = waiting.length;
+  // In the Android app the phone rings (RiderService); here only in a browser.
+  useRinging(badge > 0 && !inApp(), me.prefs);
+
+  // Tell the Android app what it needs: online, the bell settings, what's waiting.
+  const nativeOn = me.online && me.status === "active";
+  useEffect(() => nativeOnline(nativeOn), [nativeOn]);
+  useEffect(() => nativePrefs(me.prefs), [me.prefs]);
+  const firstWaiting = waiting[0] || null;
+  useEffect(() => nativePending(firstWaiting), [firstWaiting]);
+
+  const [pip, setPip] = useState(false);
+  useEffect(() => {
+    const on = (e) => setPip(Boolean(e.detail));
+    window.addEventListener("kk:pip", on);
+    return () => window.removeEventListener("kk:pip", on);
+  }, []);
+  if (pip) return <PipCard delivery={firstWaiting} />;
+
   return (
     <>
       <main className="mx-auto w-full max-w-[560px] pb-[84px]">
@@ -244,6 +284,7 @@ export default function RiderApp() {
   }, [qc]);
 
   const logout = useCallback(async () => {
+    nativeOnline(false);
     try {
       await riderApi.logout(await currentEndpoint());
     } catch {

@@ -1,0 +1,125 @@
+name: Build KK Rider Android app
+
+# The KK Rider app for delivery riders' phones (rider-android): the web app
+# at knotkitchen.com/rider in a WebView, plus a service that rings for new
+# deliveries with the app closed and a picture-in-picture card. Screens come
+# from the live site, so only native changes need a build.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "rider-android/**"
+      - ".github/workflows/build-rider-android.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      signed: ${{ env.HAS_KEYSTORE }}
+    env:
+      KK_VERSION_CODE: ${{ github.run_number }}
+      KK_VERSION_NAME: 1.0.${{ github.run_number }}
+      # The POS app's release key (same secrets as build-android-apk.yml).
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: ""
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Build debug APK and run lint
+        working-directory: rider-android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug lintDebug
+
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: kk-rider-debug-apk
+          path: rider-android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Build signed release APK
+        if: env.HAS_KEYSTORE == 'true'
+        working-directory: rider-android
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KK_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KK_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KK_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          export KK_KEYSTORE_PATH="$RUNNER_TEMP/knotkitchen-release.jks"
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$KK_KEYSTORE_PATH"
+          ./gradlew assembleRelease
+          rm -f "$KK_KEYSTORE_PATH"
+
+      - name: Upload signed release
+        if: env.HAS_KEYSTORE == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: kk-rider-release
+          path: rider-android/app/build/outputs/apk/release/app-release.apk
+          if-no-files-found: error
+
+  # Riders download it from business.<base>/downloads/android/KK-Rider.apk
+  # (Caddy serves deploy/downloads), next to the POS app. Signed builds from
+  # main only. The newest three versions stay.
+  publish:
+    needs: build
+    if: needs.build.outputs.signed == 'true' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: kk-rider-release
+          path: out
+
+      - name: Publish to business.knotkitchen.com/downloads/android
+        env:
+          SSH_HOST: ${{ secrets.DEPLOY_SSH_HOST }}
+          SSH_USER: ${{ secrets.DEPLOY_SSH_USER }}
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          APP_PATH: ${{ secrets.DEPLOY_APP_PATH }}
+          BASE_URL: https://business.knotkitchen.com/downloads/android
+        run: |
+          set -euo pipefail
+          V="1.0.$GITHUB_RUN_NUMBER"
+          APK="KK-Rider-$V.apk"
+          cp out/app-release.apk "$APK"
+          printf '{"versionCode":%s,"versionName":"%s","apkUrl":"%s/%s","sha256":"%s"}\n' \
+            "$GITHUB_RUN_NUMBER" "$V" "$BASE_URL" "$APK" "$(sha256sum "$APK" | cut -d' ' -f1)" > rider-feed.json
+          KEY="$RUNNER_TEMP/deploy_key"
+          install -m 600 /dev/null "$KEY"
+          printf '%s\n' "$SSH_KEY" > "$KEY"
+          OPTS=(-i "$KEY" -o StrictHostKeyChecking=no -o BatchMode=yes)
+          DIR="$APP_PATH/deploy/downloads/android"
+          ssh "${OPTS[@]}" "$SSH_USER@$SSH_HOST" "mkdir -p '$DIR/.incoming'"
+          scp "${OPTS[@]}" "$APK" rider-feed.json "$SSH_USER@$SSH_HOST:$DIR/.incoming/"
+          ssh "${OPTS[@]}" "$SSH_USER@$SSH_HOST" "set -e; cd '$DIR'
+            mv .incoming/$APK $APK
+            cp $APK .incoming/rider-latest.apk && mv .incoming/rider-latest.apk KK-Rider.apk
+            mv .incoming/rider-feed.json kk-rider-update.json
+            ls -1t KK-Rider-*.apk | tail -n +4 | xargs -r rm -f"
+          rm -f "$KEY"
+          curl -fsSI "$BASE_URL/KK-Rider.apk" | head -1

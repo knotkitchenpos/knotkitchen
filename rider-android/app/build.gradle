@@ -1,0 +1,47 @@
+apply plugin: 'com.android.application'
+
+android {
+    namespace "com.knotkitchen.rider"
+    compileSdk 35
+    defaultConfig {
+        applicationId "com.knotkitchen.rider"
+        // 26: notification channels and foreground services as used here.
+        minSdkVersion 26
+        targetSdkVersion 35
+        // CI sets these from the run number; a local build is 1 / 1.0.
+        versionCode Integer.parseInt(System.getenv("KK_VERSION_CODE") ?: "1")
+        versionName(System.getenv("KK_VERSION_NAME") ?: "1.0")
+    }
+    // Release signing from the environment only, with the POS app's key
+    // (.github/workflows/build-rider-android.yml). Never committed.
+    def keystorePath = System.getenv("KK_KEYSTORE_PATH")
+    signingConfigs {
+        release {
+            if (keystorePath) {
+                storeFile file(keystorePath)
+                storePassword System.getenv("KK_KEYSTORE_PASSWORD")
+                keyAlias System.getenv("KK_KEY_ALIAS")
+                keyPassword System.getenv("KK_KEY_PASSWORD")
+            }
+        }
+    }
+    buildTypes {
+        release {
+            if (keystorePath) {
+                signingConfig signingConfigs.release
+            }
+            minifyEnabled false
+        }
+    }
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    // The rider's live connection while online (same Socket.IO server as the app).
+    implementation('io.socket:socket.io-client:2.1.1') {
+        exclude group: 'org.json', module: 'json'
+    }
+}

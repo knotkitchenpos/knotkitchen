@@ -585,6 +585,17 @@ curl -fsSI https://knotkitchen.com/rider/ | head -1                        # 200
 curl -s https://knotkitchen.com/rider/api/me | grep -o '"code":"[A-Z_]*"'  # RIDER_SIGNED_OUT
 ```
 
+### KK Rider Android app (rider-android)
+
+The rider web app in a WebView, plus a foreground service that stays
+connected while the rider is online and rings for a new delivery with the
+app closed (Accept / Decline on the alert), and a picture-in-picture card.
+No Firebase: it uses the same /rider/socket.io connection as the web app.
+`.github/workflows/build-rider-android.yml` builds it on changes under
+`rider-android/`, signs it with the POS app's key, and publishes
+https://business.knotkitchen.com/downloads/android/KK-Rider.apk. Riders on
+an Android browser see a "Get the KK Rider app" card on Home.
+
 ## 15. Test environment (systemtest.knotkitchen.com)
 
 Every change is deployed here first and checked before it reaches production.

@@ -6,7 +6,7 @@ import { riderApi, errorMessage } from "../api";
 import { greeting, firstName, rupees } from "../format";
 import { DeliveryCard } from "../components/Delivery";
 import { CardSkeleton, Empty, ErrorCard, Icon, Toggle } from "../components/ui";
-import { AlertsPrompt, InstallPrompt } from "../components/Prompts";
+import { AlertsPrompt, AndroidAppCard, InstallPrompt } from "../components/Prompts";
 
 /** The rider's day: who they are, online or not, and the delivery that matters now. */
 export default function Home({ me }) {
@@ -70,6 +70,7 @@ export default function Home({ me }) {
         </p>
       ) : null}
 
+      <AndroidAppCard />
       <AlertsPrompt />
 
       {active.isLoading ? (
