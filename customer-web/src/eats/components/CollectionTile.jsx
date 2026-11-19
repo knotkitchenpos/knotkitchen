@@ -10,7 +10,7 @@ export default function CollectionTile({ collection }) {
   return (
     <Link
       to={`/search?maxPrice=${collection.maxPrice}`}
-      className={`relative mt-4 flex items-center justify-between gap-4 overflow-hidden rounded-3xl bg-gradient-to-br from-[#0B1B3B] via-[#16294f] to-[#2a1a3f] px-5 py-5 shadow-lg ${FOCUS}`}
+      className={`mt-4 flex items-center justify-between gap-4 overflow-hidden rounded-3xl bg-gradient-to-br from-[#0B1B3B] via-[#16294f] to-[#2a1a3f] px-5 py-5 shadow-lg ${FOCUS}`}
     >
       <span className="min-w-0">
         <span className="block text-[21px] font-extrabold leading-tight text-white">{collection.title}</span>
