@@ -86,9 +86,13 @@ self.addEventListener("push", (event) => {
         badge: "/rider/icons/badge-96.png",
         tag: data.tag || undefined,
         renotify: Boolean(data.tag),
-        requireInteraction: /New Delivery/i.test(data.title || ""),
+        // A new delivery stays on screen until it's answered, with the answer on it.
+        requireInteraction: Boolean(data.orderId),
+        ...(data.orderId
+          ? { actions: [{ action: "accept", title: "✅ Accept" }, { action: "decline", title: "✖ Decline" }] }
+          : {}),
         vibrate: [300, 120, 300, 120, 300],
-        data: { url: data.url || HOME },
+        data: { url: data.url || HOME, orderId: data.orderId || "" },
       });
     })(),
   );
@@ -122,8 +126,50 @@ self.addEventListener("pushsubscriptionchange", (event) => {
   );
 });
 
+/**
+ * Accept or Decline straight from a new-delivery notification, app closed or
+ * not. Same API and session cookie as the app; the result is a notification
+ * of its own, and an open app refreshes.
+ */
+const answer = async (orderId, action) => {
+  const id = String(orderId).replace(/[^a-f0-9]/gi, "").slice(0, 24);
+  const res = await fetch(`/rider/api/deliveries/${id}/${action === "accept" ? "accept" : "reject"}`, {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(action === "accept" ? {} : { reason: "Not available" }),
+  }).catch(() => null);
+  const body = res ? await res.json().catch(() => ({})) : {};
+  const open = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+  open.forEach((c) => c.postMessage({ type: "rider-push", data: {} }));
+  if (res?.ok) {
+    const n = body?.data?.delivery?.orderNumber || "";
+    await self.registration.showNotification(action === "accept" ? `Accepted order #${n} ✅` : `Declined order #${n}`, {
+      body: action === "accept" ? "Open the app to start the ride." : "The store has been told.",
+      icon: "/rider/icons/icon-192.png",
+      badge: "/rider/icons/badge-96.png",
+      tag: `order-${id}`,
+      data: { url: `/rider/delivery/${id}` },
+    });
+    return true;
+  }
+  await self.registration.showNotification(action === "accept" ? "Couldn't accept" : "Couldn't decline", {
+    body: body?.message || "Open the app and try again.",
+    icon: "/rider/icons/icon-192.png",
+    badge: "/rider/icons/badge-96.png",
+    tag: `order-${id}`,
+    data: { url: `/rider/delivery/${id}` },
+  });
+  return false;
+};
+
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
+  const { orderId } = event.notification.data || {};
+  if (orderId && (event.action === "accept" || event.action === "decline")) {
+    event.waitUntil(answer(orderId, event.action));
+    return;
+  }
   const target = new URL(event.notification.data?.url || HOME, self.location.origin);
   // Only ever a Rider page on this site.
   const url = target.origin === self.location.origin && target.pathname.startsWith("/rider/") ? target.href : new URL(HOME, self.location.origin).href;

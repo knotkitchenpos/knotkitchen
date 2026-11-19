@@ -189,3 +189,9 @@ test("SOURCE: the customer sees the code only while the delivery is on its way",
   assert.match(r, /crypto\.timingSafeEqual\(a, b\)/);
   assert.match(r, /const MAX_CODE_TRIES = 5;/);
 });
+
+test("SOURCE: a new-delivery notification names its order, so it can carry Accept / Decline", () => {
+  const src = SRC("services/riders.js");
+  assert.match(src, /title: "New Delivery Assigned 🚴",[\s\S]{0,400}orderId: updated\._id,/);
+  assert.match(src, /\.\.\.\(orderId \? \{ orderId: String\(orderId\) \} : \{\}\)/);
+});

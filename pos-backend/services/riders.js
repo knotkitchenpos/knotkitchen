@@ -205,12 +205,13 @@ const revokeAllSessions = (rider) => {
 /* ------------------------------------------------------------------ push -- */
 
 /** Push to every device of a rider. Never throws; gone devices are removed. */
-const pushToRider = async (riderId, { title, body, url = "/rider/", tag = "" }) => {
+const pushToRider = async (riderId, { title, body, url = "/rider/", tag = "", orderId = "" }) => {
   try {
     const subs = await RiderPushSubscription.find({ riderId }).lean();
     if (!subs.length) return { sent: 0 };
     const keys = await require("./csdPush").getKeys();
-    const payload = JSON.stringify({ title: clip(title, 80), body: clip(body, 180), url: String(url).slice(0, 300), tag: clip(tag, 80) });
+    // orderId: a new delivery, answerable from the notification (Accept / Decline).
+    const payload = JSON.stringify({ title: clip(title, 80), body: clip(body, 180), url: String(url).slice(0, 300), tag: clip(tag, 80), ...(orderId ? { orderId: String(orderId) } : {}) });
     const options = {
       vapidDetails: { subject: process.env.WEB_PUSH_SUBJECT || "mailto:support@knotkitchen.com", publicKey: keys.publicKey, privateKey: keys.privateKey },
       // A delivery offer is stale within the hour.
@@ -524,6 +525,7 @@ const assignRider = async ({ user, orderId, riderId }) => {
     body: [`Order #${updated.orderNumber}`, clip(updated.customerDetails?.name, 40), clip(a.line1 || updated.customerDetails?.address, 60), money(toCollect(updated) || updated.bills?.totalWithTax)].filter(Boolean).join(" · "),
     url: `/rider/delivery/${updated._id}`,
     tag: `order-${updated._id}`,
+    orderId: updated._id,
   });
   return updated;
 };
