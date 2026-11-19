@@ -91,15 +91,20 @@ export default function EatsCheckout({
   const hasGps = typeof navigator !== "undefined" && "geolocation" in navigator;
   const [locating, setLocating] = useState(false);
   const [locNote, setLocNote] = useState("");
-  const locateMe = () => {
+  // Set once the customer types the street, city or pincode: an automatic fix
+  // that lands after that must not overwrite what they wrote.
+  const typed = useRef(false);
+  const locateMe = (auto = false) => {
     if (!hasGps || locating) return;
     setLocating(true);
     setLocNote("");
     navigator.geolocation.getCurrentPosition(
       async ({ coords }) => {
+        if (auto && typed.current) return setLocating(false);
         const point = { lat: coords.latitude, lng: coords.longitude };
         const g = mapsKey ? await loadGoogle(mapsKey) : null;
         const found = (g ? await reverseGeocodeAddress(point) : null) || (await osmReverseAddress(point));
+        if (auto && typed.current) return setLocating(false);
         setLocation({ ...point, label: found?.label || "Current location", source: "gps" });
         if (found?.line1) {
           setAddress((a) => ({ ...a, line1: found.line1, city: found.city || a.city, postalCode: found.postalCode || a.postalCode }));
@@ -125,13 +130,14 @@ export default function EatsCheckout({
     autoLocated.current = true;
     const p = getProfile();
     const saved = deliveryPoint && p.addresses.some((a) => Number.isFinite(a.lat) && Math.abs(a.lat - deliveryPoint.lat) < 0.001 && Math.abs(a.lng - deliveryPoint.lng) < 0.001);
-    if (!saved && deliveryPoint?.source !== "places") locateMe();
+    if (!saved && deliveryPoint?.source !== "places") locateMe(true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, delivery]);
 
   // Picking a saved address with a map point moves the delivery point too, so
   // the restaurant re-quotes the fee and whether it delivers there.
   const pickSaved = (a) => {
+    typed.current = true; // a late automatic fix must not replace it
     setAddress({ line1: a.line1, line2: a.line2, city: a.city, postalCode: a.postalCode, instructions: a.instructions });
     setSaveAs(a.label);
     setEditing(false);
@@ -306,7 +312,7 @@ export default function EatsCheckout({
                 </div>
               ) : null}
               {hasGps ? (
-                <button type="button" onClick={locateMe} disabled={locating} className={`mb-2 flex min-h-[44px] w-full items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-left text-[14px] font-semibold text-brand disabled:opacity-60 ${FOCUS}`}>
+                <button type="button" onClick={() => locateMe()} disabled={locating} className={`mb-2 flex min-h-[44px] w-full items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 text-left text-[14px] font-semibold text-brand disabled:opacity-60 ${FOCUS}`}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
                     <circle cx="12" cy="12" r="4" />
                     <path d="M12 2v3M12 19v3M2 12h3M19 12h3" />
@@ -323,10 +329,10 @@ export default function EatsCheckout({
                 {compact ? null : (
                   <>
                 <input aria-label="House or flat, floor, building" placeholder="House / flat, floor, building" className={INPUT} value={address.line2} onChange={(e) => setAddress((a) => ({ ...a, line2: e.target.value }))} autoComplete="address-line2" />
-                <input aria-label="Street and area" placeholder="Street and area *" className={INPUT} value={address.line1} onChange={(e) => setAddress((a) => ({ ...a, line1: e.target.value }))} autoComplete="address-line1" />
+                <input aria-label="Street and area" placeholder="Street and area *" className={INPUT} value={address.line1} onChange={(e) => { typed.current = true; setAddress((a) => ({ ...a, line1: e.target.value })); }} autoComplete="address-line1" />
                 <div className="flex gap-2">
-                  <input aria-label="City" placeholder="City" className={INPUT} value={address.city} onChange={(e) => setAddress((a) => ({ ...a, city: e.target.value }))} autoComplete="address-level2" />
-                  <input aria-label="Pincode" placeholder="Pincode" inputMode="numeric" maxLength={6} className={`${INPUT} ${state.pinBad ? "border-red-500" : ""}`} value={address.postalCode} onChange={(e) => setAddress((a) => ({ ...a, postalCode: e.target.value.replace(/\D/g, "").slice(0, 6) }))} autoComplete="postal-code" />
+                  <input aria-label="City" placeholder="City" className={INPUT} value={address.city} onChange={(e) => { typed.current = true; setAddress((a) => ({ ...a, city: e.target.value })); }} autoComplete="address-level2" />
+                  <input aria-label="Pincode" placeholder="Pincode" inputMode="numeric" maxLength={6} className={`${INPUT} ${state.pinBad ? "border-red-500" : ""}`} value={address.postalCode} onChange={(e) => { typed.current = true; setAddress((a) => ({ ...a, postalCode: e.target.value.replace(/\D/g, "").slice(0, 6) })); }} autoComplete="postal-code" />
                 </div>
                   </>
                 )}
