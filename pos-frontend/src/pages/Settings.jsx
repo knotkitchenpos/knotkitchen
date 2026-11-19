@@ -142,6 +142,7 @@ const Settings = () => {
             <h1 className="text-[22px] sm:text-[28px] font-extrabold text-[#0F172A] tracking-tight">
               {activeMeta ? activeMeta.title : "Settings"}
             </h1>
+            {activeMeta && <p className="text-[13.5px] text-[#94A3B8] mt-0.5">{activeMeta.desc}</p>}
           </div>
         </div>
 
@@ -223,7 +224,9 @@ const Settings = () => {
                         <span className="ml-2 align-middle px-1.5 py-0.5 rounded-md bg-[#FFF1E8] text-[#C2410C] text-[10.5px] font-extrabold">Shortcut</span>
                       )}
                     </p>
-                    {locked ? <p className="text-[12px] text-[#94A3B8] truncate mt-0.5">{lockedNote(item)}</p> : null}
+                    <p className="text-[12px] text-[#94A3B8] truncate mt-0.5">
+                      {locked ? lockedNote(item) : item.desc}
+                    </p>
                   </div>
                   <span className="text-[#94A3B8] shrink-0">{locked ? <I.lock /> : <I.chevron />}</span>
                 </button>

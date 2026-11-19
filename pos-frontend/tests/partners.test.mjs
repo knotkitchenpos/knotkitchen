@@ -53,7 +53,7 @@ test("the POS no longer has Billing: its route says where it moved and keeps ?de
   const moved = src("src/pages/BillingMoved.jsx");
   assert.match(moved, /const href = `\$\{PARTNERS_URL\}\/billing\$\{typeof window !== "undefined" \? window\.location\.search : ""\}`;/);
   assert.match(moved, /"https:\/\/knotkitchen\.com\/partners"/);
-  assert.match(src("src/constants/settingsMenu.js"), /\{ id: "billing", title: "12\. Billing & Subscription",[^\n]*path: "\/settings\/billing"/);
+  assert.match(src("src/constants/settingsMenu.js"), /desc: "Moved to the Partners dashboard at knotkitchen\.com\/partners\."/);
   assert.match(src("src/components/shared/AccountLock.jsx"), /recharges the wallet on the Partners dashboard/);
 });
 

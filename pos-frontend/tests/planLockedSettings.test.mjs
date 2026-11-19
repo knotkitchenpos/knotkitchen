@@ -35,8 +35,7 @@ test("the website tiles are locked without the Website add-on, and point to Bill
 
 test("locked tiles name the add-on, or the plan upgrade on the Billing plan", () => {
   const settings = SRC("src/pages/Settings.jsx");
-  // Tiles carry no description; a locked one still says why.
-  assert.match(settings, /\{locked \? <p className="[^"]*">\{lockedNote\(item\)\}<\/p> : null\}/);
+  assert.match(settings, /\{locked \? lockedNote\(item\) :/);
   assert.match(settings, /`Needs the \$\{ADDON_FOR\[item\.feature\] \|\| "Website"\} add-on\. The owner can add it on the Partners dashboard\.`/);
   // Billing moved to Partners: the tile says where the owner actually does it.
   assert.match(settings, /Not on the Billing plan\. The owner can upgrade on the Partners dashboard\./);
