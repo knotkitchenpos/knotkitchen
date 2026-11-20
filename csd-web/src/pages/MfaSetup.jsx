@@ -44,7 +44,7 @@ const MfaSetup = () => {
           </span>
           <div>
             <h1 className="text-xl font-extrabold text-navy-900">Set up two-factor sign-in</h1>
-            <p className="text-sm text-navy-500">{staff?.email}</p>
+            <p className="text-sm text-navy-500">{staff?.phone || staff?.email}</p>
           </div>
         </div>
         <ol className="mt-5 list-decimal space-y-1 pl-5 text-sm text-navy-700">
