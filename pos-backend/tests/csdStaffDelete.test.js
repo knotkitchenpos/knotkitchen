@@ -10,6 +10,7 @@ const CsdJob = require("../models/csdJobModel");
 const { WaConversation } = require("../models/waChatModel");
 const { CsdPushSubscription } = require("../models/csdPushModel");
 const AuditLog = require("../models/auditLogModel");
+const CsdPosSession = require("../models/csdPosSessionModel");
 const { deleteStaff } = require("../controllers/csdStaffController");
 
 const me = { _id: new mongoose.Types.ObjectId(), role: "admin", status: "active", staffId: "CSD001", fullName: "Admin" };
@@ -18,9 +19,10 @@ const me = { _id: new mongoose.Types.ObjectId(), role: "admin", status: "active"
 const run = async (target, { activeAdmins = 2 } = {}) => {
   const saved = {
     find: CsdStaff.findById, count: CsdStaff.countDocuments, del: CsdStaff.deleteOne,
-    jobs: CsdJob.updateMany, chats: WaConversation.updateMany, push: CsdPushSubscription.deleteMany, audit: AuditLog.create,
+    jobs: CsdJob.updateMany, chats: WaConversation.updateMany, push: CsdPushSubscription.deleteMany, audit: AuditLog.create, codes: CsdPosSession.updateMany,
   };
-  const log = { deleted: [], jobs: [], chats: [], push: [], audit: [] };
+  const log = { deleted: [], jobs: [], chats: [], push: [], audit: [], codes: [] };
+  CsdPosSession.updateMany = async (q, u) => { log.codes.push({ q, u }); return { modifiedCount: 1 }; };
   CsdStaff.findById = async () => target;
   CsdStaff.countDocuments = async () => activeAdmins;
   CsdStaff.deleteOne = async (q) => { log.deleted.push(q); return { deletedCount: 1 }; };
@@ -35,7 +37,7 @@ const run = async (target, { activeAdmins = 2 } = {}) => {
   } finally {
     Object.assign(CsdStaff, { findById: saved.find, countDocuments: saved.count, deleteOne: saved.del });
     CsdJob.updateMany = saved.jobs; WaConversation.updateMany = saved.chats;
-    CsdPushSubscription.deleteMany = saved.push; AuditLog.create = saved.audit;
+    CsdPushSubscription.deleteMany = saved.push; AuditLog.create = saved.audit; CsdPosSession.updateMany = saved.codes;
   }
   return out;
 };
@@ -53,6 +55,15 @@ test("deleting a staff member removes them and frees their open work", async () 
   assert.equal(log.jobs[0].u.$set.assignedToId, null);
   assert.equal(log.chats[0].u.$set.assignedToId, null);
   assert.equal(String(log.push[0].staffId), String(p._id));
+  // An unused POS support code they issued can no longer be redeemed.
+  assert.equal(String(log.codes[0].q.staffId), String(p._id));
+  assert.equal(log.codes[0].q.usedAt, null);
+  assert.ok(log.codes[0].u.$set.expiresAt instanceof Date);
+});
+
+test("disabling someone also expires their unused POS support codes", () => {
+  const ctl = fs.readFileSync(path.join(__dirname, "../controllers/csdStaffController.js"), "utf8");
+  assert.ok(ctl.includes('if (statusChanged && staff.status === "disabled") await expireSupportCodes(staff._id);'));
 });
 
 test("refused: your own account, the seeded super-admin, the last active admin, unknown ids", async () => {

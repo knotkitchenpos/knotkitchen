@@ -47,6 +47,17 @@ const assertSafeChange = async (target, actor, { role, status } = {}) => {
   }
 };
 
+/**
+ * A POS support code (csdRestaurantController) is redeemed without looking at
+ * who issued it, so a person who is disabled or deleted must not keep any
+ * unused one. Expired in place: these rows are an audit trail and never deleted.
+ */
+const expireSupportCodes = (staffId) => {
+  const CsdPosSession = require("../models/csdPosSessionModel");
+  const now = new Date();
+  return CsdPosSession.updateMany({ staffId, usedAt: null, expiresAt: { $gt: now } }, { $set: { expiresAt: now } });
+};
+
 /** GET /api/csd/staff — admin only. */
 const listStaff = async (req, res, next) => {
   try {
@@ -326,6 +337,7 @@ const updateStaff = async (req, res, next) => {
 
     const roleChanged = before.role !== staff.role;
     const statusChanged = before.status !== staff.status;
+    if (statusChanged && staff.status === "disabled") await expireSupportCodes(staff._id);
 
     await csdAudit({
       req,
@@ -361,8 +373,8 @@ const updateStaff = async (req, res, next) => {
  *
  * Removes the account for good, under the same guards as disabling: not your
  * own account, not the seeded super-admin, not the last active admin. Their
- * open jobs and WhatsApp chats go back to unassigned and their push devices
- * are dropped; history keeps the name it already stores. The sign-in check
+ * open jobs and WhatsApp chats go back to unassigned, their push devices
+ * are dropped and any unused POS support code expires; history keeps the name it already stores. The sign-in check
  * (middlewares/csdAuth.js) finds no account and signs them out at once.
  */
 const deleteStaff = async (req, res, next) => {
@@ -395,6 +407,7 @@ const deleteStaff = async (req, res, next) => {
         { $set: { assignedToId: null, assignedToName: "", assignedAt: null } }
       ),
       CsdPushSubscription.deleteMany({ staffId: staff._id }),
+      expireSupportCodes(staff._id),
     ]);
     await CsdStaff.deleteOne({ _id: staff._id });
 
