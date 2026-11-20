@@ -9,8 +9,6 @@ import { dtOrNever as dt } from "../lib/format";
 const EMPTY = {
   fullName: "",
   phone: "",
-  email: "",
-  password: "",
   personalEmail: "",
   officialEmail: "",
   role: "staff",
@@ -54,7 +52,6 @@ const StaffDialog = ({ member, onClose, onSaved }) => {
       ? {
           fullName: member.fullName,
           phone: member.phone || "",
-          email: member.email || "",
           // password is only set on create, or when the admin explicitly resets one on edit
           password: "",
           personalEmail: member.personalEmail || "",
@@ -91,16 +88,15 @@ const StaffDialog = ({ member, onClose, onSaved }) => {
     setErrors({});
     try {
       if (editing) {
-        // email is intentionally omitted — the server rejects changing it.
         // password is only sent if it was set in this session (a reset).
-        // eslint-disable-next-line no-unused-vars
-        const { email, password, ...rest } = form;
+        const { password, ...rest } = form;
         const payload = password ? { ...rest, password } : rest;
         await staffAdmin.update(member.id, payload);
+        onSaved();
       } else {
-        await staffAdmin.create(form);
+        // No password: they choose one at their first sign-in with this code.
+        onSaved(await staffAdmin.create(form));
       }
-      onSaved();
     } catch (err) {
       const fe = fieldErrors(err);
       setErrors(fe);
@@ -136,30 +132,21 @@ const StaffDialog = ({ member, onClose, onSaved }) => {
             required={!editing || !member?.phone}
             {...fieldProps}
           />
-          <Field
-            label="Account email"
-            name="email"
-            type="email"
-            autoComplete="email"
-            required
-            disabled={editing}
-            {...fieldProps}
-          />
-          {editing && (
-            <p className="-mt-2 flex items-start gap-1.5 text-xs text-navy-500">
+          {editing && member.needsSetup === false ? (
+            <Field
+              label="New password (leave blank to keep)"
+              name="password"
+              type="password"
+              autoComplete="new-password"
+              minLength={8}
+              {...fieldProps}
+            />
+          ) : !editing ? (
+            <p className="flex items-start gap-1.5 rounded-xl bg-navy-50 p-3 text-xs text-navy-600">
               <FiInfo className="mt-0.5 shrink-0" aria-hidden="true" />
-              The email can&apos;t be changed.
+              They choose their own password at their first sign-in, using a setup code you get after saving.
             </p>
-          )}
-          <Field
-            label={editing ? "New password (leave blank to keep)" : "Password"}
-            name="password"
-            type="password"
-            autoComplete={editing ? "new-password" : "new-password"}
-            minLength={8}
-            required={!editing}
-            {...fieldProps}
-          />
+          ) : null}
           <Field label="Official email" name="officialEmail" type="email" {...fieldProps} />
           <Field label="Personal email" name="personalEmail" type="email" {...fieldProps} />
 
@@ -224,12 +211,53 @@ const StaffDialog = ({ member, onClose, onSaved }) => {
   );
 };
 
+/**
+ * The one-time setup code, shown to the admin once (the server keeps only a
+ * hash). The staff member signs in with their phone and this code, then
+ * chooses their password.
+ */
+const SetupCodeDialog = ({ info, onClose }) => {
+  const [copied, setCopied] = useState(false);
+  const until = info.setupCodeExpiresAt ? dt(info.setupCodeExpiresAt) : "";
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(info.setupCode);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  };
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div role="dialog" aria-modal="true" aria-labelledby="setup-code-title" className="w-full max-w-sm rounded-2xl bg-white p-6 text-center shadow-2xl">
+        <h2 id="setup-code-title" className="text-lg font-bold text-navy-900">Setup code for {info.fullName}</h2>
+        <p className="mt-1 text-sm text-navy-500">{info.staffId} · {info.phone}</p>
+        <p className="mt-5 font-mono text-4xl font-bold tracking-[0.3em] text-navy-900" aria-label={`Setup code ${info.setupCode.split("").join(" ")}`}>
+          {info.setupCode}
+        </p>
+        <button type="button" onClick={copy} className="mt-3 text-sm font-semibold text-brand-600 hover:text-brand-700">
+          {copied ? "Copied" : "Copy code"}
+        </button>
+        <p className="mt-4 text-sm text-navy-600">
+          Give this code to them privately. At their first sign-in they choose <b>First time signing in?</b>, enter their phone number and this code, and set their own password.
+        </p>
+        {until && <p className="mt-2 text-xs text-navy-500">Valid until {until}. It is shown only now.</p>}
+        <button type="button" onClick={onClose}
+          className="mt-5 w-full rounded-xl bg-brand-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-brand-500">
+          Done
+        </button>
+      </div>
+    </div>
+  );
+};
+
 const StaffManagement = () => {
   const { staff: currentUser } = useAuth();
   const [rows, setRows] = useState([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(true);
   const [dialog, setDialog] = useState(null); // null | {} | member
+  const [codeInfo, setCodeInfo] = useState(null); // a setup code to show once
   const [q, setQ] = useState("");
 
   const load = useCallback(async () => {
@@ -273,6 +301,16 @@ They are signed out at once and can no longer sign in. Their open jobs and Whats
     }
   };
 
+  // Their code expired or was lost before they signed in: a fresh one, shown once.
+  const newSetupCode = async (m) => {
+    try {
+      setCodeInfo({ ...m, ...(await staffAdmin.newSetupCode(m.id)) });
+      load();
+    } catch (err) {
+      setError(errorMessage(err, "Could not create a new setup code."));
+    }
+  };
+
   // A lost or new phone: they set two-factor sign-in up again at their next sign-in.
   const resetMfa = async (m) => {
     if (!window.confirm(`Reset two-factor sign-in for ${m.fullName}?\n\nThey are signed out and set it up again with their phone at the next sign-in. Only do this once you know it is really them asking.`)) return;
@@ -297,7 +335,7 @@ They are signed out at once and can no longer sign in. Their open jobs and Whats
       </header>
 
       <input value={q} onChange={(e) => setQ(e.target.value)}
-        placeholder="Search name, Staff ID, phone or email…"
+        placeholder="Search name, Staff ID or phone…"
         aria-label="Search staff"
         className="w-full rounded-xl border border-navy-200 px-3.5 py-2.5 text-sm outline-none focus:border-brand-500" />
 
@@ -323,14 +361,20 @@ They are signed out at once and can no longer sign in. Their open jobs and Whats
                   </div>
                   <StatusBadge status={m.status} />
                 </div>
-                <p className="mt-2 break-all text-sm text-navy-700">{m.phone || "No phone yet"} · {m.email}</p>
+                <p className="mt-2 break-all text-sm text-navy-700">{m.phone || "No phone yet"}{m.email ? ` · ${m.email}` : ""}</p>
+                {m.needsSetup && <p className="mt-1 text-xs font-medium text-amber-700">Waiting for first sign-in</p>}
                 <p className="mt-1 inline-flex items-center gap-1.5 text-xs font-medium text-navy-600">
                   {m.role === "admin" && <FiShield size={12} className="text-brand-600" aria-hidden="true" />}
                   {m.role === "admin" ? "Administrator" : "CSD Staff"}
                   {locked && <FiLock size={11} className="text-navy-400" aria-hidden="true" />}
                   <span className="text-navy-400">· Last login {dt(m.lastLoginAt)}</span>
                 </p>
-                <div className="mt-3 flex justify-end gap-4 text-sm">
+                <div className="mt-3 flex flex-wrap justify-end gap-x-4 gap-y-2 text-sm">
+                  {m.needsSetup && m.status === "active" && (
+                    <button type="button" onClick={() => newSetupCode(m)} className="font-semibold text-navy-600">
+                      New setup code
+                    </button>
+                  )}
                   {m.mfaEnabled && !isMe && (
                     <button type="button" onClick={() => resetMfa(m)} className="font-semibold text-navy-600">
                       Reset 2FA
@@ -360,7 +404,7 @@ They are signed out at once and can no longer sign in. Their open jobs and Whats
               <tr>
                 <th scope="col" className="px-4 py-3">Staff ID</th>
                 <th scope="col" className="px-4 py-3">Name</th>
-                <th scope="col" className="px-4 py-3">Login phone · email</th>
+                <th scope="col" className="px-4 py-3">Login phone</th>
                 <th scope="col" className="px-4 py-3">Role</th>
                 <th scope="col" className="px-4 py-3">Last login</th>
                 <th scope="col" className="px-4 py-3">Status</th>
@@ -383,7 +427,8 @@ They are signed out at once and can no longer sign in. Their open jobs and Whats
                     </td>
                     <td className="px-4 py-3 text-navy-700">
                       <span className="block font-medium">{m.phone || <span className="text-amber-600">No phone yet</span>}</span>
-                      <span className="block text-xs text-navy-500">{m.email}</span>
+                      {m.email && <span className="block text-xs text-navy-500">{m.email}</span>}
+                      {m.needsSetup && <span className="block text-xs font-medium text-amber-700">Waiting for first sign-in</span>}
                     </td>
                     <td className="px-4 py-3">
                       <span className="inline-flex items-center gap-1.5 text-xs font-medium text-navy-700">
@@ -401,6 +446,12 @@ They are signed out at once and can no longer sign in. Their open jobs and Whats
                       </button>
                       {/* Hidden where the server would refuse anyway, so the
                           UI never offers an action that cannot succeed. */}
+                      {m.needsSetup && m.status === "active" && (
+                        <button type="button" onClick={() => newSetupCode(m)}
+                          className="ml-3 font-semibold text-navy-600 hover:text-navy-900">
+                          New setup code
+                        </button>
+                      )}
                       {m.mfaEnabled && !isMe && (
                         <button type="button" onClick={() => resetMfa(m)}
                           className="ml-3 font-semibold text-navy-600 hover:text-navy-900">
@@ -439,9 +490,14 @@ They are signed out at once and can no longer sign in. Their open jobs and Whats
         <StaffDialog
           member={dialog.id ? dialog : null}
           onClose={() => setDialog(null)}
-          onSaved={() => { setDialog(null); load(); }}
+          onSaved={(created) => {
+            setDialog(null);
+            if (created?.setupCode) setCodeInfo(created);
+            load();
+          }}
         />
       )}
+      {codeInfo && <SetupCodeDialog info={codeInfo} onClose={() => setCodeInfo(null)} />}
     </div>
   );
 };

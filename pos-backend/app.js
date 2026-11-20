@@ -34,6 +34,11 @@ mongoose.connection.once("connected", () => {
         });
     });
     if (!runSchedulers) return;
+    // Staff email is optional now: its unique index must skip rows without one.
+    require("./services/csdStaffIndexes")
+        .ensureStaffEmailIndex()
+        .then((r) => r.changed && console.log("[boot] CSD staff email index is now sparse"))
+        .catch((err) => console.error("[boot] CSD staff email index:", err?.message || err));
     require("./controllers/csdAuthController")
         .seedSuperAdmin()
         .catch((err) => console.error("[boot] CSD seed failed:", err?.message || err));

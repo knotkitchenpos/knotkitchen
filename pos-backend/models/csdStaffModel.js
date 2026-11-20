@@ -47,11 +47,14 @@ const csdStaffSchema = new mongoose.Schema(
 
     fullName: { type: String, required: true, trim: true },
 
-    // Login identity.
+    // Optional since 2026-11-20: staff sign in with their phone, and new
+    // accounts are created without an email. Sparse-unique like phone, with
+    // no default, so rows without one are left out of the index (the live
+    // index is swapped at boot: services/csdStaffIndexes.js).
     email: {
       type: String,
-      required: true,
       unique: true,
+      sparse: true,
       lowercase: true,
       trim: true,
       match: [/^[^\s@]+@[^\s@]+\.[^\s@]+$/, "Enter a valid email address"],
@@ -59,7 +62,13 @@ const csdStaffSchema = new mongoose.Schema(
 
     // Bcrypt hash. select:false keeps it out of every read by default; auth
     // paths that need it use `.select("+password")` explicitly.
-    password: { type: String, required: true, select: false },
+    // Empty until the staff member chooses one at their first sign-in, with
+    // the one-time setup code an admin gave them (owner, 2026-11-20).
+    password: { type: String, select: false },
+
+    // That setup code: bcrypt-hashed, hidden from reads, valid 24 hours, cleared once used.
+    setupCodeHash: { type: String, select: false },
+    setupCodeExpiresAt: { type: Date, default: null },
 
     // Optional legacy phone. Sparse-unique — deliberately no `default`, so a
     // staff record without a phone omits the field entirely and the sparse
@@ -141,11 +150,34 @@ csdStaffSchema.index({ fullName: 1 });
  * change hashing parameters.
  */
 csdStaffSchema.pre("save", async function hashPassword(next) {
-  if (!this.isModified("password")) return next();
+  if (!this.isModified("password") || !this.password) return next();
   const salt = await bcrypt.genSalt(12);
   this.password = await bcrypt.hash(this.password, salt);
   next();
 });
+
+const SETUP_CODE_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * A new one-time setup code (6 digits) for the first sign-in, replacing any
+ * earlier one. Returns the code in the clear: shown to the admin once, never
+ * stored. Call save() afterwards.
+ */
+csdStaffSchema.methods.issueSetupCode = async function issueSetupCode() {
+  const code = String(require("crypto").randomInt(0, 1000000)).padStart(6, "0");
+  this.setupCodeHash = await bcrypt.hash(code, 10);
+  this.setupCodeExpiresAt = new Date(Date.now() + SETUP_CODE_MS);
+  return code;
+};
+
+/** Whether `code` is this account's current, unexpired setup code. Needs .select("+setupCodeHash"). */
+csdStaffSchema.methods.checkSetupCode = function checkSetupCode(code) {
+  const given = String(code || "").replace(/\s/g, "");
+  if (!/^\d{6}$/.test(given) || !this.setupCodeHash || !this.setupCodeExpiresAt || this.setupCodeExpiresAt <= new Date()) {
+    return Promise.resolve(false);
+  }
+  return bcrypt.compare(given, this.setupCodeHash);
+};
 
 /** Constant-time compare via bcrypt. */
 csdStaffSchema.methods.comparePassword = function comparePassword(candidate) {
@@ -159,7 +191,7 @@ csdStaffSchema.methods.toSafeJSON = function () {
     id: String(this._id),
     staffId: this.staffId,
     fullName: this.fullName,
-    email: this.email,
+    email: this.email || "",
     phone: this.phone || "",
     personalEmail: this.personalEmail,
     officialEmail: this.officialEmail,

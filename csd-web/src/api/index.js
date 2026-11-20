@@ -50,6 +50,8 @@ api.interceptors.response.use(
 export const auth = {
   // `login` is the phone number (or an email for an account with no phone yet); the server tells them apart.
   login: (login, password, code) => api.post("/auth/login", { phone: login, password, ...(code ? { code } : {}) }).then((r) => r.data.data),
+  // A new account's first sign-in: the admin's setup code, then their own password.
+  firstLogin: (phone, setupCode, password) => api.post("/auth/first-login", { phone, setupCode, password }).then((r) => r.data.data),
   me: () => api.get("/auth/me").then((r) => r.data.data),
   logout: () => api.post("/auth/logout").then((r) => r.data),
   // Two-factor sign-in (security audit, 2026-11-03).
@@ -171,6 +173,8 @@ export const staffAdmin = {
   update: (id, payload) => api.patch(`/staff/${id}`, payload).then((r) => r.data.data),
   resetMfa: (id) => api.post(`/staff/${id}/reset-mfa`).then((r) => r.data.data),
   remove: (id) => api.delete(`/staff/${id}`).then((r) => r.data.data),
+  // A fresh one-time code for someone who has not chosen a password yet.
+  newSetupCode: (id) => api.post(`/staff/${id}/setup-code`).then((r) => r.data.data),
 };
 
 export const chat = {

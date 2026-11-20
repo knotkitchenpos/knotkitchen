@@ -198,6 +198,54 @@ const login = async (req, res, next) => {
   }
 };
 
+/**
+ * POST /api/csd/auth/first-login  { phone, setupCode, password }  (owner, 2026-11-20)
+ *
+ * A new account has no password. The staff member proves who they are with
+ * the one-time setup code an admin gave them, chooses a password, and is then
+ * signed in through login() above, so two-factor setup and sessions work as
+ * for anyone else. One generic error for every failure; wrong codes count
+ * towards the same lockout as wrong passwords.
+ */
+const BAD_SETUP = "That phone number and setup code do not match, or the code has expired. Ask your administrator for a new code.";
+const firstLogin = async (req, res, next) => {
+  try {
+    const phone = normalizePhone(String(req.body?.phone || "").trim());
+    const password = typeof req.body?.password === "string" ? req.body.password : "";
+    if (!/^\d{10}$/.test(phone)) return next(createHttpError(401, BAD_SETUP));
+    if (password.length < 8) {
+      return next(createHttpError(400, "Choose a password of at least 8 characters.", { fieldErrors: { password: "At least 8 characters." } }));
+    }
+    const staff = await CsdStaff.findOne({ phone }).select("+password +setupCodeHash");
+    if (!staff || staff.status !== "active" || staff.password) return next(createHttpError(401, BAD_SETUP));
+    if (staff.lockedUntil && staff.lockedUntil > new Date()) {
+      const mins = Math.ceil((staff.lockedUntil - Date.now()) / 60000);
+      return next(createHttpError(429, `Too many failed sign-ins. Try again in ${mins} minute${mins === 1 ? "" : "s"}.`));
+    }
+    if (!(await staff.checkSetupCode(req.body?.setupCode))) {
+      await failedSignIn(staff);
+      return next(createHttpError(401, BAD_SETUP));
+    }
+    staff.password = password; // pre-save hook hashes it
+    staff.setupCodeHash = undefined;
+    staff.setupCodeExpiresAt = null;
+    await staff.save();
+    await csdAudit({
+      req,
+      staff,
+      action: "CSD_STAFF_PASSWORD_SET",
+      resource: "CsdAuth",
+      entityType: "CsdStaff",
+      entityId: staff._id,
+      description: `${staff.staffId} set their password with a setup code`,
+    });
+    req.body = { phone, password };
+    return login(req, res, next);
+  } catch (error) {
+    next(error);
+  }
+};
+
 /** GET /api/csd/auth/me — used by the SPA to restore a session on load. */
 const me = async (req, res) => {
   res.status(200).json({ success: true, data: req.csdStaff.toSafeJSON() });
@@ -238,7 +286,7 @@ const mfaSetup = async (req, res, next) => {
     if (req.csdStaff.mfa?.enabled) return next(createHttpError(409, "Two-factor sign-in is already on."));
     const secret = newSecret();
     await CsdStaff.updateOne({ _id: req.csdStaff._id }, { $set: { "mfa.pendingSecret": seal(secret) } });
-    res.status(200).json({ success: true, data: { secret, otpauthUrl: otpauthUrl(secret, req.csdStaff.email) } });
+    res.status(200).json({ success: true, data: { secret, otpauthUrl: otpauthUrl(secret, req.csdStaff.email || req.csdStaff.phone || req.csdStaff.staffId) } });
   } catch (error) {
     next(error);
   }
@@ -354,4 +402,4 @@ const kkmdmReauth = async (req, res, next) => {
   }
 };
 
-module.exports = { login, me, logout, seedSuperAdmin, mfaSetup, mfaEnable, resetStaffMfa, kkmdmKey, kkmdmAssertion, kkmdmReauth };
+module.exports = { login, firstLogin, me, logout, seedSuperAdmin, mfaSetup, mfaEnable, resetStaffMfa, kkmdmKey, kkmdmAssertion, kkmdmReauth };

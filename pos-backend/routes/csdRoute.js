@@ -3,7 +3,7 @@ const router = express.Router();
 
 const { rateLimit, clientIp } = require("../middlewares/rateLimiter");
 const { requireCsdAuth, requireCsdAdmin, requireCsdSection } = require("../middlewares/csdAuth");
-const { login, me, logout, mfaSetup, mfaEnable, resetStaffMfa, kkmdmKey, kkmdmAssertion, kkmdmReauth } = require("../controllers/csdAuthController");
+const { login, firstLogin, me, logout, mfaSetup, mfaEnable, resetStaffMfa, kkmdmKey, kkmdmAssertion, kkmdmReauth } = require("../controllers/csdAuthController");
 const { searchStores, getStore, updateStoreStatus, eraseStoreRecord, issueOwnerResetCode } = require("../controllers/csdStoreController");
 const { getDashboard } = require("../controllers/csdDashboardController");
 const { createStore, getOptions } = require("../controllers/csdOnboardingController");
@@ -11,7 +11,7 @@ const { searchOrders, getOrder } = require("../controllers/csdSearchController")
 const {
   listJobs, getJob, createJob, updateJob, changeStatus, addComment, listAssignees,
 } = require("../controllers/csdJobController");
-const { listStaff, getStaff, createStaff, updateStaff, deleteStaff } = require("../controllers/csdStaffController");
+const { listStaff, getStaff, createStaff, updateStaff, deleteStaff, newSetupCode } = require("../controllers/csdStaffController");
 const {
   listConversations, createConversation, listMessages, postMessage, searchMessages,
 } = require("../controllers/csdChatController");
@@ -78,6 +78,8 @@ const loginLimiter = rateLimit({
 });
 
 router.post('/auth/login', loginLimiter, login);
+// A new account: the setup code an admin gave them, then their own password.
+router.post('/auth/first-login', loginLimiter, firstLogin);
 
 // The public key KKMDM checks CSD's single sign-on with (owner, 2026-11-03). Public by nature.
 router.get("/kkmdm/sso-key", kkmdmKey);
@@ -228,6 +230,8 @@ router.get("/staff/meta/sections", requireCsdAdmin, (_req, res) => res.status(20
 router.get("/staff", requireCsdAdmin, listStaff);
 // A lost or new phone: an admin clears that account's two-factor sign-in to set up again.
 router.post("/staff/:id/reset-mfa", requireCsdAdmin, resetStaffMfa);
+// A new one-time code for someone who has not set their password yet.
+router.post("/staff/:id/setup-code", requireCsdAdmin, newSetupCode);
 router.post("/staff", requireCsdAdmin, createStaff);
 router.get("/staff/:id", requireCsdAdmin, getStaff);
 router.patch("/staff/:id", requireCsdAdmin, updateStaff);

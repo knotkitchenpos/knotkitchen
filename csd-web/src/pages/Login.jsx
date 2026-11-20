@@ -30,13 +30,25 @@ const Login = () => {
   const [code, setCode] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // A new account has no password yet: phone + the admin's setup code, then their own password (owner, 2026-11-20).
+  const [firstTime, setFirstTime] = useState(false);
+  const [setupCode, setSetupCode] = useState("");
+  const switchMode = () => {
+    setFirstTime((v) => !v);
+    setError("");
+    setPassword("");
+    setSetupCode("");
+    setNeedCode(false);
+    setCode("");
+  };
 
   const submit = async (e) => {
     e.preventDefault();
     setError("");
     setBusy(true);
     try {
-      setStaff(await auth.login(login.trim(), password, needCode ? code : undefined));
+      if (firstTime) setStaff(await auth.firstLogin(login.trim(), setupCode, password));
+      else setStaff(await auth.login(login.trim(), password, needCode ? code : undefined));
     } catch (err) {
       if (err?.response?.data?.code === "MFA_REQUIRED") {
         // The first time this only asks for the code; after that the message says it was wrong.
@@ -44,7 +56,7 @@ const Login = () => {
         setNeedCode(true);
         setCode("");
       } else {
-        setError(errorMessage(err, "Invalid phone number or password."));
+        setError(errorMessage(err, firstTime ? "That phone number and setup code do not match." : "Invalid phone number or password."));
       }
     } finally {
       setBusy(false);
@@ -102,7 +114,10 @@ const Login = () => {
           <div className="mb-8 lg:hidden">
             <img src={markUrl} alt="KnotKitchen" className="mb-3 h-12 w-12" />
           </div>
-          <h1 className="text-3xl font-extrabold tracking-tight text-navy-900">Welcome back</h1>
+          <h1 className="text-3xl font-extrabold tracking-tight text-navy-900">{firstTime ? "Set up your account" : "Welcome back"}</h1>
+          {firstTime && (
+            <p className="mt-2 text-sm text-navy-500">Enter your phone number and the setup code your administrator gave you, then choose your password.</p>
+          )}
 
           <form onSubmit={submit} className="mt-8 space-y-5">
             {error && (
@@ -130,20 +145,41 @@ const Login = () => {
               </div>
             </label>
 
+            {firstTime && (
+              <label className="block">
+                <span className="text-sm font-semibold text-navy-800">Setup code</span>
+                <div className={field}>
+                  <FiShield className="mx-3 text-navy-400" aria-hidden="true" />
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    required
+                    maxLength={6}
+                    value={setupCode}
+                    onChange={(e) => setSetupCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                    disabled={busy}
+                    className="w-full border-0 bg-transparent py-3 pr-3 font-mono tracking-[0.3em] text-navy-900 placeholder-navy-300 !shadow-none focus:outline-none"
+                    placeholder="6-digit code"
+                  />
+                </div>
+              </label>
+            )}
+
             <label className="block">
-              <span className="text-sm font-semibold text-navy-800">Password</span>
+              <span className="text-sm font-semibold text-navy-800">{firstTime ? "Choose a password" : "Password"}</span>
               <div className={field}>
                 <FiLock className="mx-3 text-navy-400" aria-hidden="true" />
                 <input
                   type="password"
-                  autoComplete="current-password"
+                  autoComplete={firstTime ? "new-password" : "current-password"}
                   required
                   minLength={8}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   disabled={busy}
                   className="w-full border-0 bg-transparent py-3 pr-3 text-navy-900 placeholder-navy-300 !shadow-none focus:outline-none"
-                  placeholder="••••••••"
+                  placeholder={firstTime ? "At least 8 characters" : "••••••••"}
                 />
               </div>
             </label>
@@ -173,13 +209,17 @@ const Login = () => {
 
             <button
               type="submit"
-              disabled={busy || !login || !password || (needCode && code.length !== 6)}
+              disabled={busy || !login || !password || (needCode && code.length !== 6) || (firstTime && (setupCode.length !== 6 || password.length < 8))}
               className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-500 to-brand-600 py-3.5 font-semibold text-white shadow-glow hover:brightness-110 disabled:opacity-60 disabled:shadow-none"
             >
-              {busy ? "Signing in…" : "Sign in"}
+              {busy ? "Signing in…" : firstTime ? "Set password and sign in" : "Sign in"}
               {!busy && <FiArrowRight aria-hidden="true" />}
             </button>
 
+            <button type="button" onClick={switchMode} disabled={busy}
+              className="block w-full text-center text-sm font-semibold text-brand-600 hover:text-brand-700">
+              {firstTime ? "Back to sign in" : "First time signing in?"}
+            </button>
           </form>
         </div>
       </main>

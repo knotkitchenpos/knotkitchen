@@ -71,7 +71,8 @@ const listStaff = async (req, res, next) => {
       filters.$or = [{ fullName: rx }, { staffId: rx }, { phone: rx }, { email: rx }, { officialEmail: rx }];
     }
 
-    const staff = await CsdStaff.find(filters).sort({ staffId: 1 }).lean();
+    // +password only to tell whether one is set yet; it never leaves this function.
+    const staff = await CsdStaff.find(filters).select("+password").sort({ staffId: 1 }).lean();
 
     res.status(200).json({
       success: true,
@@ -79,7 +80,7 @@ const listStaff = async (req, res, next) => {
         id: String(s._id),
         staffId: s.staffId,
         fullName: s.fullName,
-        email: s.email,
+        email: s.email || "",
         phone: s.phone || "",
         personalEmail: s.personalEmail,
         officialEmail: s.officialEmail,
@@ -92,6 +93,9 @@ const listStaff = async (req, res, next) => {
         mfaEnabled: s.mfa?.enabled === true,
         // Surfaced so the UI can explain why this row's controls are locked.
         isPredefinedAdmin: s.isPredefined === true,
+        // No password yet: waiting for their first sign-in with a setup code.
+        needsSetup: !s.password,
+        setupCodeExpiresAt: s.password ? null : s.setupCodeExpiresAt || null,
       })),
     });
   } catch (error) {
@@ -114,7 +118,7 @@ const getStaff = async (req, res, next) => {
         id: String(s._id),
         staffId: s.staffId,
         fullName: s.fullName,
-        email: s.email,
+        email: s.email || "",
         phone: s.phone || "",
         personalEmail: s.personalEmail,
         officialEmail: s.officialEmail,
@@ -144,8 +148,9 @@ const createStaff = async (req, res, next) => {
   try {
     const b = req.body || {};
     const fullName = str(b.fullName);
+    // No email and no password (owner, 2026-11-20): they sign in with the
+    // phone and choose a password at the first sign-in, with a setup code.
     const email = str(b.email).toLowerCase();
-    const password = typeof b.password === "string" ? b.password : "";
     const phone = b.phone ? normalizePhone(b.phone) : "";
     const role = str(b.role) || "staff";
     const fieldErrors = {};
@@ -153,8 +158,7 @@ const createStaff = async (req, res, next) => {
     if (!phone) fieldErrors.phone = "Enter the 10-digit mobile number they will sign in with.";
 
     if (fullName.length < 2) fieldErrors.fullName = "Enter the staff member's full name.";
-    if (!EMAIL_RE.test(email)) fieldErrors.email = "Enter a valid email address.";
-    if (password.length < 8) fieldErrors.password = "Password must be at least 8 characters.";
+    if (email && !EMAIL_RE.test(email)) fieldErrors.email = "Enter a valid email address.";
     if (phone && !PHONE_RE.test(phone)) fieldErrors.phone = "Phone must be a 10-digit number.";
     if (!["admin", "staff"].includes(role)) fieldErrors.role = "Role must be admin or staff.";
     if (str(b.personalEmail) && !EMAIL_RE.test(str(b.personalEmail)))
@@ -166,7 +170,7 @@ const createStaff = async (req, res, next) => {
       return next(createHttpError(400, "Please correct the highlighted fields.", { fieldErrors }));
     }
 
-    if (await CsdStaff.exists({ email })) {
+    if (email && (await CsdStaff.exists({ email }))) {
       return next(
         createHttpError(409, "A staff member with that email already exists.", {
           fieldErrors: { email: "This email is already registered." },
@@ -182,6 +186,7 @@ const createStaff = async (req, res, next) => {
     }
 
     let staff = null;
+    let setupCode = "";
     for (let attempt = 0; attempt < 3 && !staff; attempt++) {
       try {
         // Do NOT set phone when the caller omitted it. A sparse unique index
@@ -191,8 +196,6 @@ const createStaff = async (req, res, next) => {
         const payload = {
           staffId: await CsdStaff.nextStaffId(),
           fullName,
-          email,
-          password,
           personalEmail: str(b.personalEmail).toLowerCase(),
           officialEmail: str(b.officialEmail).toLowerCase(),
           role,
@@ -202,14 +205,17 @@ const createStaff = async (req, res, next) => {
           createdBy: req.csdStaff._id,
         };
         if (phone) payload.phone = phone;
+        // Left out when empty: the email index is sparse, so "" would collide.
+        if (email) payload.email = email;
         const doc = new CsdStaff(payload);
+        setupCode = await doc.issueSetupCode();
         // .save() triggers the pre-save bcrypt hook. Retry loop is for the
         // (rare) staffId race; other duplicates are reported below.
         await doc.save();
         staff = doc;
       } catch (err) {
         if (err?.code !== 11000) throw err;
-        if (await CsdStaff.exists({ email })) {
+        if (email && (await CsdStaff.exists({ email }))) {
           return next(createHttpError(409, "A staff member with that email already exists."));
         }
         if (phone && (await CsdStaff.exists({ phone }))) {
@@ -231,7 +237,8 @@ const createStaff = async (req, res, next) => {
       severity: staff.role === "admin" ? "WARNING" : "INFO",
     });
 
-    res.status(201).json({ success: true, data: staff.toSafeJSON() });
+    // The code is shown to the admin this once; only its hash is kept.
+    res.status(201).json({ success: true, data: { ...staff.toSafeJSON(), setupCode, setupCodeExpiresAt: staff.setupCodeExpiresAt } });
   } catch (error) {
     next(error);
   }
@@ -439,4 +446,34 @@ const deleteStaff = async (req, res, next) => {
   }
 };
 
-module.exports = { listStaff, getStaff, createStaff, updateStaff, deleteStaff };
+/**
+ * POST /api/csd/staff/:id/setup-code — admin only. A fresh one-time code for
+ * someone who has not chosen a password yet (the first expired or was lost);
+ * the earlier code stops working. Shown to the admin once.
+ */
+const newSetupCode = async (req, res, next) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return next(createHttpError(404, "Staff member not found."));
+    const staff = await CsdStaff.findById(req.params.id).select("+password");
+    if (!staff) return next(createHttpError(404, "Staff member not found."));
+    if (staff.password) return next(createHttpError(409, "They have already set their password."));
+    if (staff.status !== "active") return next(createHttpError(409, "Reactivate this account first."));
+    const setupCode = await staff.issueSetupCode();
+    await staff.save();
+    await csdAudit({
+      req,
+      staff: req.csdStaff,
+      action: "CSD_STAFF_SETUP_CODE",
+      resource: "CsdStaff",
+      entityType: "CsdStaff",
+      entityId: staff._id,
+      description: `New setup code for ${staff.staffId} (${staff.fullName})`,
+      severity: "INFO",
+    });
+    res.status(200).json({ success: true, data: { setupCode, setupCodeExpiresAt: staff.setupCodeExpiresAt } });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { listStaff, getStaff, createStaff, updateStaff, deleteStaff, newSetupCode };
