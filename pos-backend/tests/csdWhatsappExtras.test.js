@@ -170,6 +170,12 @@ test("a rating is only asked for when an agent answered, inside 24 hours, once a
   assert.ok(set.ratingRequestedAt);
 }));
 
+test("closing a chat sends no automatic rating message (owner, 2026-11-20)", () => {
+  const ctl = require("fs").readFileSync(require("path").join(__dirname, "../controllers/csdWhatsappController.js"), "utf8");
+  assert.doesNotMatch(ctl, /requestRating/);
+  assert.doesNotMatch(ctl, /RATING_ASK/);
+});
+
 test("a job's transcript names who said what, includes files and notes, and stays within size", () => {
   const conv = { waId: "919876543210", customName: "Asha" };
   const at = new Date("2026-11-12T06:30:00Z");

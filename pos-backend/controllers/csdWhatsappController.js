@@ -4,7 +4,7 @@ const { WaConversation, WaMessage, WaRating } = require("../models/waChatModel")
 const CsdStaff = require("../models/csdStaffModel");
 const Store = require("../models/storeModel");
 const wa = require("../services/whatsapp");
-const { ingest, sendOutbound, requestRating } = require("../services/whatsappInbox");
+const { ingest, sendOutbound } = require("../services/whatsappInbox");
 const storage = require("../services/csdDocumentStorage");
 const CsdJob = require("../models/csdJobModel");
 const Order = require("../models/orderModel");
@@ -524,7 +524,6 @@ const updateConversation = async (req, res, next) => {
     const b = req.body || {};
     const mine = me(req);
     const events = [];
-    let closing = false;
 
     if (Object.prototype.hasOwnProperty.call(b, "assignedTo")) {
       if (b.assignedTo === null || b.assignedTo === "") {
@@ -550,7 +549,6 @@ const updateConversation = async (req, res, next) => {
     if (b.status !== undefined) {
       if (!["open", "closed"].includes(b.status)) return next(createHttpError(400, "Status is open or closed."));
       if (conv.status !== b.status) {
-        closing = b.status === "closed";
         events.push(b.status === "closed" ? `${mine.name} closed this chat` : `${mine.name} re-opened this chat`);
         conv.status = b.status;
         if (b.status === "closed") conv.unreadCount = 0;
@@ -572,7 +570,6 @@ const updateConversation = async (req, res, next) => {
 
     await conv.save();
     for (const text of events) await logEvent(conv, text, req);
-    if (closing) await requestRating(conv.toObject(), mine);
     res.status(200).json({ success: true, data: viewConversation(conv.toObject(), mine.id) });
   } catch (error) {
     next(error);
