@@ -14,11 +14,13 @@ globalThis.CustomEvent = class { constructor(type, init) { this.type = type; thi
 const { loadPhoneColumns, savePhoneColumns, gridLayout, PHONE_COLUMNS } = await import("../src/utils/phoneLayout.js");
 const src = (f) => fs.readFileSync(new URL(`../src/${f}`, import.meta.url), "utf8");
 
-test("phone columns: 2 by default, 2/3/4 kept on the device, anything else falls back", () => {
+test("phone columns: 2 by default, 2/3/4/5 kept on the device, anything else falls back", () => {
   assert.equal(loadPhoneColumns(), 2);
   assert.equal(savePhoneColumns(4), 4);
   assert.equal(loadPhoneColumns(), 4);
   assert.equal(events.at(-1).type, "kk:phone-layout");
+  assert.equal(savePhoneColumns(5), 5);
+  assert.equal(loadPhoneColumns(), 5);
   assert.equal(savePhoneColumns(7), 2);
   assert.equal(loadPhoneColumns(), 2);
 });
@@ -33,6 +35,8 @@ test("each layout sets the phone's columns and never fewer from sm up", () => {
   // Denser rows: square photos and smaller type on a phone, the usual from sm.
   assert.match(gridLayout(4).image, /aspect-square sm:aspect-\[4\/3\]/);
   assert.match(gridLayout(4).name, /sm:text-\[12\.5px\]/);
+  assert.deepEqual(PHONE_COLUMNS, [2, 3, 4, 5]);
+  assert.match(gridLayout(5).image, /aspect-square sm:aspect-\[4\/3\]/);
 });
 
 test("the POS grid and Device Configuration use the layout and the Popular Items settings", () => {

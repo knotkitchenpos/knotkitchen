@@ -3,7 +3,7 @@
  * row holds on a phone. Kept on this device, like its printer: two phones of
  * one store can differ. Tablets and computers keep their wider grid.
  */
-export const PHONE_COLUMNS = [2, 3, 4];
+export const PHONE_COLUMNS = [2, 3, 4, 5];
 const KEY = "kk.pos.phoneColumns";
 export const LAYOUT_EVENT = "kk:phone-layout";
 
@@ -62,6 +62,14 @@ export const GRID_LAYOUT = {
     name: "text-[10.5px] min-h-[26px] sm:text-[12.5px] sm:min-h-[32px]",
     price: "text-[11.5px] mt-0.5 sm:text-[14px] sm:mt-1",
     mark: "scale-75 origin-top-left sm:scale-100",
+  },
+  5: {
+    grid: "grid-cols-5 gap-1 sm:gap-2.5 sm:grid-cols-5 md:grid-cols-5 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7",
+    image: "aspect-square sm:aspect-[4/3]",
+    body: "px-1 py-1 sm:px-2.5 sm:py-2",
+    name: "text-[9.5px] min-h-[24px] sm:text-[12.5px] sm:min-h-[32px]",
+    price: "text-[10.5px] mt-0.5 sm:text-[14px] sm:mt-1",
+    mark: "scale-[0.65] origin-top-left sm:scale-100",
   },
 };
 

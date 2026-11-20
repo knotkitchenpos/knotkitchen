@@ -46,7 +46,7 @@ export const PhoneLayoutCard = () => {
       title="Phone Screen Layout"
       subtitle="Products in each row on this phone. Tablets and computers keep their wider grid."
     >
-      <div className="grid grid-cols-3 gap-2 sm:gap-3 max-w-[460px]" role="radiogroup" aria-label="Products per row on a phone">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 max-w-[620px]" role="radiogroup" aria-label="Products per row on a phone">
         {PHONE_COLUMNS.map((n) => {
           const on = cols === n;
           return (
@@ -67,7 +67,7 @@ export const PhoneLayoutCard = () => {
                 {n} per row
               </p>
               <p className="text-[10.5px] sm:text-[11px] text-[#94A3B8] leading-tight">
-                {n === 2 ? "Large photos" : n === 3 ? "Balanced" : "Most items"}
+                {n === 2 ? "Large photos" : n === 3 ? "Balanced" : n === 4 ? "Compact" : "Most items"}
               </p>
             </button>
           );
