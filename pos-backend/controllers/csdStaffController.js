@@ -356,4 +356,74 @@ const updateStaff = async (req, res, next) => {
   }
 };
 
-module.exports = { listStaff, getStaff, createStaff, updateStaff };
+/**
+ * DELETE /api/csd/staff/:id — admin only (owner, 2026-11-20).
+ *
+ * Removes the account for good, under the same guards as disabling: not your
+ * own account, not the seeded super-admin, not the last active admin. Their
+ * open jobs and WhatsApp chats go back to unassigned and their push devices
+ * are dropped; history keeps the name it already stores. The sign-in check
+ * (middlewares/csdAuth.js) finds no account and signs them out at once.
+ */
+const deleteStaff = async (req, res, next) => {
+  try {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) return next(createHttpError(404, "Staff member not found."));
+    const staff = await CsdStaff.findById(req.params.id);
+    if (!staff) return next(createHttpError(404, "Staff member not found."));
+
+    if (String(staff._id) === String(req.csdStaff._id)) {
+      return next(createHttpError(400, "You cannot delete your own account."));
+    }
+    if (staff.isPredefined) {
+      return next(createHttpError(400, "This is the seeded super-administrator account and cannot be deleted."));
+    }
+    if (staff.role === "admin" && staff.status === "active") {
+      const activeAdmins = await CsdStaff.countDocuments({ role: "admin", status: "active" });
+      if (activeAdmins <= 1) return next(createHttpError(400, "This is the last active administrator. Promote someone else first."));
+    }
+
+    const CsdJob = require("../models/csdJobModel");
+    const { WaConversation } = require("../models/waChatModel");
+    const { CsdPushSubscription } = require("../models/csdPushModel");
+    const [jobs, chats] = await Promise.all([
+      CsdJob.updateMany(
+        { assignedToId: staff._id, status: { $ne: "closed" } },
+        { $set: { assignedToId: null, assignedToStaffId: "", assignedToName: "" } }
+      ),
+      WaConversation.updateMany(
+        { assignedToId: staff._id },
+        { $set: { assignedToId: null, assignedToName: "", assignedAt: null } }
+      ),
+      CsdPushSubscription.deleteMany({ staffId: staff._id }),
+    ]);
+    await CsdStaff.deleteOne({ _id: staff._id });
+
+    await csdAudit({
+      req,
+      staff: req.csdStaff,
+      action: "CSD_STAFF_DELETED",
+      resource: "CsdStaff",
+      entityType: "CsdStaff",
+      entityId: staff._id,
+      description: `${staff.staffId} (${staff.fullName}) deleted`,
+      previousValue: {
+        staffId: staff.staffId,
+        fullName: staff.fullName,
+        email: staff.email,
+        phone: staff.phone || "",
+        role: staff.role,
+        status: staff.status,
+      },
+      severity: "WARNING",
+    });
+
+    res.status(200).json({
+      success: true,
+      data: { unassignedJobs: jobs.modifiedCount || 0, unassignedChats: chats.modifiedCount || 0 },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+module.exports = { listStaff, getStaff, createStaff, updateStaff, deleteStaff };

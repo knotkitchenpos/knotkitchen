@@ -11,7 +11,7 @@ const { searchOrders, getOrder } = require("../controllers/csdSearchController")
 const {
   listJobs, getJob, createJob, updateJob, changeStatus, addComment, listAssignees,
 } = require("../controllers/csdJobController");
-const { listStaff, getStaff, createStaff, updateStaff } = require("../controllers/csdStaffController");
+const { listStaff, getStaff, createStaff, updateStaff, deleteStaff } = require("../controllers/csdStaffController");
 const {
   listConversations, createConversation, listMessages, postMessage, searchMessages,
 } = require("../controllers/csdChatController");
@@ -231,6 +231,7 @@ router.post("/staff/:id/reset-mfa", requireCsdAdmin, resetStaffMfa);
 router.post("/staff", requireCsdAdmin, createStaff);
 router.get("/staff/:id", requireCsdAdmin, getStaff);
 router.patch("/staff/:id", requireCsdAdmin, updateStaff);
+router.delete("/staff/:id", requireCsdAdmin, deleteStaff);
 
 // §29/§34: only an admin may change commercial terms or the Google Business
 // listing. Staff can see both.

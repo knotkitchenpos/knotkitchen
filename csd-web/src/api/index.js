@@ -170,6 +170,7 @@ export const staffAdmin = {
   create: (payload) => api.post("/staff", payload).then((r) => r.data.data),
   update: (id, payload) => api.patch(`/staff/${id}`, payload).then((r) => r.data.data),
   resetMfa: (id) => api.post(`/staff/${id}/reset-mfa`).then((r) => r.data.data),
+  remove: (id) => api.delete(`/staff/${id}`).then((r) => r.data.data),
 };
 
 export const chat = {

@@ -260,6 +260,19 @@ const StaffManagement = () => {
     }
   };
 
+  // Gone for good: signed out at once, their open jobs and WhatsApp chats go back to unassigned.
+  const removeMember = async (m) => {
+    if (!window.confirm(`Delete ${m.fullName} (${m.staffId})?
+
+They are signed out at once and can no longer sign in. Their open jobs and WhatsApp chats go back to unassigned. This cannot be undone.`)) return;
+    try {
+      await staffAdmin.remove(m.id);
+      load();
+    } catch (err) {
+      setError(errorMessage(err, "Could not delete that staff member."));
+    }
+  };
+
   // A lost or new phone: they set two-factor sign-in up again at their next sign-in.
   const resetMfa = async (m) => {
     if (!window.confirm(`Reset two-factor sign-in for ${m.fullName}?\n\nThey are signed out and set it up again with their phone at the next sign-in. Only do this once you know it is really them asking.`)) return;
@@ -293,7 +306,7 @@ const StaffManagement = () => {
 
       {rows.length > 0 && (
         <>
-        {/* Phones: one card per person, so Edit and Disable are in reach without scrolling sideways. */}
+        {/* Phones: one card per person, so Edit, Disable and Delete are in reach without scrolling sideways. */}
         <ul className="mt-4 space-y-2.5 sm:hidden">
           {rows.map((m) => {
             const isMe = m.id === currentUser?.id;
@@ -326,6 +339,11 @@ const StaffManagement = () => {
                   {!locked && !isMe && (
                     <button type="button" onClick={() => toggleStatus(m)} className="font-semibold text-navy-600">
                       {m.status === "active" ? "Disable" : "Reactivate"}
+                    </button>
+                  )}
+                  {!locked && !isMe && (
+                    <button type="button" onClick={() => removeMember(m)} className="font-semibold text-red-600">
+                      Delete
                     </button>
                   )}
                   <button type="button" onClick={() => setDialog(m)} className="font-semibold text-brand-600">
@@ -395,6 +413,12 @@ const StaffManagement = () => {
                           {m.status === "active" ? "Disable" : "Reactivate"}
                         </button>
                       )}
+                      {!locked && !isMe && (
+                        <button type="button" onClick={() => removeMember(m)}
+                          className="ml-3 font-semibold text-red-600 hover:text-red-700">
+                          Delete
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );
@@ -408,7 +432,7 @@ const StaffManagement = () => {
       <p className="mt-4 flex items-start gap-1.5 text-xs text-navy-500">
         <FiLock className="mt-0.5 shrink-0" aria-hidden="true" />
         Numbers marked with a lock are predefined administrators from the server configuration.
-        They cannot be demoted or disabled — they are the recovery path if other admin accounts are lost.
+        They cannot be demoted, disabled or deleted — they are the recovery path if other admin accounts are lost.
       </p>
 
       {dialog && (
