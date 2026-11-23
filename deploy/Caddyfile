@@ -332,6 +332,24 @@ order.{$BASE_DOMAIN} {
 		file_server
 	}
 
+	# knotkitchen.com/sales-kit — the sales team's training video (Hindi, HLS
+	# 1080p/720p) with its player page, same layout and caching as /watch-demo,
+	# files in deploy/downloads/saleskit, built by reel-kit (renderDemo.cjs
+	# DEMO_NAME=train). Internal training, so search engines are asked not to
+	# index it.
+	redir /sales-kit /sales-kit/{?query} 308
+	handle_path /sales-kit/* {
+		root * /srv/downloads/saleskit
+		header X-Robots-Tag "noindex, nofollow"
+		@kitsegments path *.m4s *.mp4
+		header @kitsegments Cache-Control "public, max-age=31536000, immutable"
+		@kitassets path *.jpg *.png *.js
+		header @kitassets Cache-Control "public, max-age=86400"
+		@kitplaylists path *.m3u8 *.html /
+		header @kitplaylists Cache-Control "no-cache"
+		file_server
+	}
+
 	# Static marketing landing page + legal pages, served straight off disk
 	# from ./landing (bind-mounted into this container at /srv/landing).
 	root * /srv/landing

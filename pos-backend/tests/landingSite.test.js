@@ -100,7 +100,7 @@ test("wallet minimums: POS first recharge ₹5,000, then ₹1,000 (owner's price
   // Changed 2026-10-16 (was plain text): wrapped so home.js can put today's catalogue amount in.
   assert.match(INDEX, /<span data-price="plan:POS:firstRechargeMin">₹5,000<\/span> or more in one payment/);
   assert.match(INDEX, /each top-up is <span data-price="plan:POS:topUpMin">₹1,000<\/span> or more/);
-  assert.match(INDEX, /<b>Website<\/b><span>Your own ordering website and table booking\.<\/span>/);
+  assert.match(INDEX, /<b>Website<\/b><span>Your own online ordering website to accept direct orders from your customers\.<\/span>/);
 });
 
 test("2026-10-16: tablet rent ended, so no page describes rented tablets", () => {
@@ -275,9 +275,9 @@ test("the pricing HTML is the no-script fallback: every amount written in, each 
   assert.ok(js.indexOf("/api/public/pricing") < js.indexOf("if (still) return;"), "fetched before the reduced-motion return");
   const pricing = INDEX.slice(INDEX.indexOf('id="pricing"'), INDEX.indexOf('id="contact"'));
   for (const [key, text] of [
-    ["plan:POS", "₹599"], ["plan:BILLING", "₹199"], ["plan:POS:firstRechargeMin", "₹5,000"], ["plan:POS:topUpMin", "₹1,000"],
-    ["plan:BILLING:firstRechargeMin", "₹3,000"], ["plan:BILLING:topUpMin", "₹1,000"],
-    ["charge:website", "₹3"], ["charge:knotEats", "₹9"], ["charge:ebill", "₹0.25"],
+    ["plan:POS", "₹599"], ["plan:BILLING", "₹219"], ["plan:POS:firstRechargeMin", "₹5,000"], ["plan:POS:topUpMin", "₹1,000"],
+    ["plan:BILLING:firstRechargeMin", "₹3,000"], ["plan:BILLING:topUpMin", "₹500"],
+    ["charge:website", "₹3"], ["charge:knotEats", "₹7"], ["charge:ebill", "₹0.35"],
   ]) {
     assert.ok(pricing.includes(`data-price="${key}">${text}<`), key);
     if (key.startsWith("charge:")) assert.ok(pricing.includes(`data-price="${key}">${text}</span><span data-gst="${key}"> + GST</span>`), key);
