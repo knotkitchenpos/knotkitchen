@@ -368,3 +368,6 @@ footer .fc-links ul{display:flex;flex-wrap:wrap;gap:4px 16px}
 .hero-apk{display:inline-flex;align-items:center;gap:8px;margin:-6px 0 16px;color:#dbe4f7;font-weight:600;font-size:.94rem}
 .hero-apk:hover{color:#fff}
 .hero-apk svg{width:20px;height:20px;color:#3ddc84}
+.hero-broch{margin-left:22px}
+.hero-broch svg{color:#fd8a5c}
+@media (max-width:420px){.hero-broch{margin-left:0;margin-top:-8px}}
