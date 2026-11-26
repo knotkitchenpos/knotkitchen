@@ -153,6 +153,40 @@ csd.{$BASE_DOMAIN} {
 }
 
 # =============================================================================
+# books.knotkitchen.com — KnotKitchen Books (the partners' accounting app, books/)
+# =============================================================================
+# The web version of the same app as the Android APK. Its own /api/books calls
+# go to the API from this host, so the page and the API share one origin and
+# need no CORS entry. Nothing else of the API is reachable through this host.
+books.{$BASE_DOMAIN} {
+	import security_headers
+
+	encode zstd gzip
+
+	handle /api/books/* {
+		request_body {
+			max_size 12MB
+		}
+		reverse_proxy pos-api:8000 pos-api-2:8000 {
+			lb_policy ip_hash
+			lb_try_duration 5s
+			fail_duration 30s
+			header_up X-Real-IP           {remote_host}
+			header_up X-Forwarded-For     {remote_host}
+			header_up X-Forwarded-Proto   {scheme}
+			header_up X-Forwarded-Host    {host}
+			health_uri      /health
+			health_interval 15s
+			health_timeout  5s
+		}
+	}
+
+	handle {
+		reverse_proxy books-web:80
+	}
+}
+
+# =============================================================================
 # bill.knotkitchen — the customer's bill link
 # =============================================================================
 # A vanity host in front of a route that already existed. The e-bill URL is the

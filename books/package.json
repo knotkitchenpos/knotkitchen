@@ -1,0 +1,26 @@
+{
+  "name": "knotkitchen-books",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "test": "node --test test/*.test.js",
+    "cap:sync": "vite build && cap sync android"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.4.4",
+    "@capacitor/camera": "^7.0.0",
+    "@capacitor/core": "^7.4.4",
+    "@capacitor/filesystem": "^7.0.0",
+    "@capacitor/share": "^7.0.0",
+    "@capgo/capacitor-social-login": "^7.0.0",
+    "@fontsource-variable/manrope": "^5.3.0",
+    "jspdf": "^3.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.6.8",
+    "vite": "^6.0.5"
+  }
+}

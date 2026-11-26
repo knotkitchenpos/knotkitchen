@@ -334,6 +334,8 @@ app.use("/api/payment-link", require("./routes/paymentLinkRoute"));
 app.use("/api/receipts", require("./routes/receiptRoute"));
 app.use("/api/support", require("./routes/supportRoute"));
 app.use("/api/announcements", require("./routes/announcementRoute"));
+// KnotKitchen Books: the partners' own accounting app (books/), Google sign-in, its own access list.
+app.use("/api/books", require("./routes/booksRoute"));
 
 // Public, unauthenticated, and deliberately NOT under /api: this is the link a
 // customer taps in their e-bill, so it is kept short and human-sized. The

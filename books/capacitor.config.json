@@ -1,0 +1,11 @@
+{
+  "appId": "com.knotkitchen.books",
+  "appName": "KnotKitchen Books",
+  "webDir": "dist",
+  "android": { "allowMixedContent": false },
+  "plugins": {
+    "SocialLogin": {
+      "providers": { "google": true, "facebook": false, "apple": false, "twitter": false }
+    }
+  }
+}

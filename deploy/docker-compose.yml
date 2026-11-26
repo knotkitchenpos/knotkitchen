@@ -246,6 +246,12 @@ services:
       PUBLIC_API_URL: ${PUBLIC_API_URL:-https://api.${BASE_DOMAIN}}
       RECEIPT_LINK_SECRET: ${RECEIPT_LINK_SECRET:-}
 
+      # KnotKitchen Books (books/, /api/books): the partners' accounting app.
+      # Google OAuth client IDs whose sign-ins are accepted (web client first),
+      # and the emails allowed in on first use (later edited in the app).
+      BOOKS_GOOGLE_CLIENT_IDS: ${BOOKS_GOOGLE_CLIENT_IDS:-}
+      BOOKS_ALLOWED_EMAILS: ${BOOKS_ALLOWED_EMAILS:-}
+
       # Realtime
       SOCKET_ENABLED: "true"
 
@@ -342,6 +348,18 @@ services:
         # src/api/index.js appends "/csd" to this.
         VITE_API_BASE_URL: https://api.${BASE_DOMAIN}/api
     image: knotkitchen/csd-web:latest
+    restart: unless-stopped
+    networks: [knot]
+
+  # ---------------------------------------------------------------------------
+  # KnotKitchen Books (web)  →  books.${BASE_DOMAIN}
+  # The partners' accounting app; its API is pos-api's /api/books.
+  # ---------------------------------------------------------------------------
+  books-web:
+    build:
+      context: ../books
+      dockerfile: Dockerfile
+    image: knotkitchen/books-web:latest
     restart: unless-stopped
     networks: [knot]
 

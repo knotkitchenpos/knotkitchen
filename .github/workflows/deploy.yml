@@ -194,5 +194,6 @@ jobs:
           curl -fsSI https://knotkitchen.com/           > /dev/null && echo "customer  OK"
           curl -fsSI https://knotkitchen.com/partners/  > /dev/null && echo "partners  OK"
           curl -fsSI https://knotkitchen.com/rider/     > /dev/null && echo "rider     OK"
+          curl -fsS https://books.knotkitchen.com/api/books/auth/config > /dev/null && echo "books     OK" || echo "books     not up yet"
           # KKMDM (mdm.): reported, never fatal -- the POS must not fail a deploy over it.
           curl -fsS https://mdm.knotkitchen.com/healthz > /dev/null && echo "mdm       OK" || echo "mdm       not healthy yet"

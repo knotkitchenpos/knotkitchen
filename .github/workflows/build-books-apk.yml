@@ -1,0 +1,97 @@
+name: Build KnotKitchen Books APK
+
+# The partners' accounting app (books/). Every push to main that touches it
+# builds the APK and keeps it as a downloadable artifact of the run
+# (Actions > this workflow > the run > Artifacts). Not published anywhere.
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "books/**"
+      - ".github/workflows/build-books-apk.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      KK_VERSION_CODE: ${{ github.run_number }}
+      KK_VERSION_NAME: 1.0.${{ github.run_number }}
+      # Signed with the same release key as the POS app (same secrets as
+      # build-android-apk.yml). Without them a debug APK is still built.
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+      VITE_API_BASE: https://api.knotkitchen.com
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: books/package-lock.json
+
+      # capacitor-android compiles with Java 21.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: ""
+
+      - name: Install Android SDK packages
+        run: sdkmanager "platform-tools" "platforms;android-35" "build-tools;35.0.0"
+
+      - name: Install, test and build the web app
+        working-directory: books
+        run: |
+          npm ci
+          npm test
+          npm run cap:sync
+
+      - name: Build debug APK
+        if: env.HAS_KEYSTORE != 'true'
+        working-directory: books/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug
+
+      - name: Upload debug APK
+        if: env.HAS_KEYSTORE != 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: knotkitchen-books-debug
+          path: books/android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+
+      - name: Build signed release APK
+        if: env.HAS_KEYSTORE == 'true'
+        working-directory: books/android
+        env:
+          KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KK_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KK_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KK_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          chmod +x gradlew
+          export KK_KEYSTORE_PATH="$RUNNER_TEMP/knotkitchen-release.jks"
+          echo "$KEYSTORE_BASE64" | base64 --decode > "$KK_KEYSTORE_PATH"
+          ./gradlew assembleRelease
+          rm -f "$KK_KEYSTORE_PATH"
+          cp app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/KnotKitchen-Books-$KK_VERSION_NAME.apk"
+
+      - name: Upload signed APK
+        if: env.HAS_KEYSTORE == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: KnotKitchen-Books-${{ env.KK_VERSION_NAME }}
+          path: ${{ runner.temp }}/KnotKitchen-Books-${{ env.KK_VERSION_NAME }}.apk
+          if-no-files-found: error
