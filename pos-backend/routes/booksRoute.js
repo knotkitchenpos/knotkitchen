@@ -8,6 +8,7 @@ const config = require("../config/config");
 const { BooksRecord, BooksConfig } = require("../models/booksModel");
 const { sniffMime, ALLOWED_MIME, DOCUMENTS_DIR } = require("../services/csdDocumentStorage");
 const { rateLimit } = require("../middlewares/rateLimiter");
+const billScan = require("../services/billScan");
 
 // KnotKitchen Books (books/): the two partners' accounting app. Sign-in is
 // Google; only emails on the access list (books_config "access", first seeded
@@ -221,5 +222,23 @@ router.get("/files/:id", requireUser, async (req, res, next) => {
     next(err);
   }
 });
+
+// Scan bill: read an uploaded bill with AI and hand back the expense fields to
+// pre-fill. Nothing is saved here; the partner checks the form and saves.
+const scanLimit = rateLimit({ windowMs: 60 * 60_000, max: 60, keyGenerator: (req) => `books-scan:${req.booksUser}`, message: "Too many scans this hour. Try again later." });
+
+router.post("/scan", requireUser, scanLimit, async (req, res, next) => {
+  try {
+    const id = String(req.body?.fileId || "");
+    if (!FILE_RE.test(id)) return next(createHttpError(400, "Attach the bill first."));
+    const buf = await fs.promises.readFile(path.join(FILES_DIR, id)).catch(() => null);
+    if (!buf) return next(createHttpError(404, "That bill file was not found."));
+    res.json(await billScan.scanBill(buf, sniffMime(buf)));
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get("/scan/available", requireUser, (_req, res) => res.json({ available: billScan.isEnabled() }));
 
 module.exports = router;

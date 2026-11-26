@@ -109,6 +109,21 @@ gh secret set ANDROID_KEY_PASSWORD
 
 Keep the `.jks` file and its passwords safe and offline. An installed app only accepts updates signed with the same key. Never commit the keystore, `.env`, or `google-services.json`. This app doesn't use `google-services.json` at all.
 
+### 5. Scan bill (optional, needs a Claude API key)
+
+The **Scan bill** box at the top of a new expense reads a bill photo or PDF with Claude and fills in the vendor, GSTIN, date, amounts, GST and category. You check the form and save. Each scan sends only that bill to Anthropic and costs a fraction of a rupee.
+
+It needs an Anthropic API key on the server (the same key also turns on AI reply suggestions in the support desk):
+
+1. Create a key at <https://console.anthropic.com/> (Settings, then API keys) and add some credit.
+2. On the VPS, add it to `/srv/knot/deploy/.env`:
+   ```
+   ANTHROPIC_API_KEY=sk-ant-...
+   ```
+3. Restart the API: `cd /srv/knot && docker compose -f deploy/docker-compose.yml --env-file deploy/.env up -d pos-api pos-api-2`
+
+Without a key the app says scanning is not switched on and keeps the bill attached, so you fill the form by hand.
+
 ---
 
 ## Getting the APK onto a phone

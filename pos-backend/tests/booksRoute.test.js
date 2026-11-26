@@ -27,3 +27,27 @@ test("books: invoice numbers are unique among live invoices", () => {
   assert.equal(idx[1].unique, true);
   assert.deepEqual(idx[1].partialFilterExpression, { kind: "invoice", deleted: false });
 });
+
+test("scan bill: AI output is cleaned before it reaches the form", () => {
+  const { clean } = require("../services/billScan");
+  const c = clean({
+    isBill: true, vendor: " Hostinger ", vendorGstin: "27aaacx1234a1z5", billedTo: "KNOTKITCHEN", invoiceNo: "H-1",
+    date: "26/11/2026", description: "VPS", amountBeforeGst: "1000.456", gstRate: 17, taxType: "vat",
+    totalAmount: -5, category: "Servers", note: "",
+  });
+  assert.equal(c.vendor, "Hostinger");
+  assert.equal(c.vendorGstin, "27AAACX1234A1Z5");
+  assert.equal(c.date, "", "only YYYY-MM-DD dates");
+  assert.equal(c.amountBeforeGst, 1000.46);
+  assert.equal(c.gstRate, 0, "only real GST rates");
+  assert.equal(c.taxType, "none");
+  assert.equal(c.totalAmount, 0, "no negative amounts");
+  assert.equal(c.category, "Other", "only the app's categories");
+  assert.equal(clean({ vendorGstin: "not-a-gstin" }).vendorGstin, "");
+});
+
+test("scan bill: behind sign-in and a per-user hourly limit", () => {
+  const r = src("routes/booksRoute.js");
+  assert.match(r, /router\.post\("\/scan", requireUser, scanLimit,/);
+  assert.match(r, /keyGenerator: \(req\) => `books-scan:\$\{req\.booksUser\}`/);
+});

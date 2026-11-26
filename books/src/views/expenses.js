@@ -6,6 +6,7 @@ import { inFy, today, dateLabel } from "../lib/fy.js";
 import { inr, r2 } from "../lib/money.js";
 import { esc, uid, openSheet, confirmBox, field, select, check, val, checked, toast, shareFile } from "../lib/ui.js";
 import { takePhoto, fromFileInput, storeReceipt, receiptBlob } from "../lib/files.js";
+import { api } from "../lib/api.js";
 
 const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z][1-9A-Z]Z[0-9A-Z]$/;
 const TAX_TYPES = [["cgst_sgst", "CGST + SGST"], ["igst", "IGST"], ["none", "No GST"]];
@@ -107,6 +108,15 @@ export const expenseForm = (ctx, existing) => {
   openSheet({
     title: existing ? "Edit expense" : "New expense",
     body: `
+      <div class="card scan">
+        <b>Scan bill</b>
+        <div class="muted small">Photo or PDF of the bill: the form fills itself. Check it, then save.</div>
+        <div class="f2" style="margin-top:8px">
+          ${native ? `<button type="button" class="btn primary" id="scanCam">Take photo</button>` : ""}
+          <label class="btn ${native ? "" : "primary"}" style="text-align:center">Choose bill<input type="file" id="scanFile" accept="image/*,application/pdf" hidden></label>
+        </div>
+        <div id="scanNote" class="small" style="margin-top:8px"></div>
+      </div>
       <div class="f2">${field("Date", "date", e.date, 'type="date"')}${select("Category", "category", CATEGORIES, e.category)}</div>
       ${field("Vendor", "vendor", e.vendor || "")}
       ${field("Vendor GSTIN (from the bill)", "vendorGstin", e.vendorGstin || "", 'maxlength="15" style="text-transform:uppercase"')}
@@ -138,6 +148,65 @@ export const expenseForm = (ctx, existing) => {
           toast(err.message || "Could not attach");
         }
         showRcpt();
+      };
+      // Scan: attach the bill, then let the server read it and fill the form.
+      const note = (html) => (el.querySelector("#scanNote").innerHTML = html);
+      const setField = (name, v) => {
+        const input = el.querySelector(`[name="${name}"]`);
+        if (input.type === "checkbox") input.checked = !!v;
+        else input.value = v;
+      };
+      const scan = async (picked) => {
+        if (!picked) return;
+        note("Reading the bill…");
+        await attach(picked);
+        if (!receipt?.id) {
+          note(receipt?.pending ? "Scanning needs internet. The bill is attached; fill the form by hand." : "");
+          return;
+        }
+        try {
+          const b = await api("/scan", { method: "POST", body: { fileId: receipt.id } });
+          if (!b.isBill) {
+            note(`<span class="chip warn">This does not look like a bill</span> ${esc(b.note)}`);
+            return;
+          }
+          if (b.date) setField("date", b.date);
+          setField("vendor", b.vendor);
+          setField("vendorGstin", b.vendorGstin);
+          setField("description", [b.description, b.invoiceNo && `Inv ${b.invoiceNo}`].filter(Boolean).join(" · "));
+          setField("category", b.category);
+          setField("amount", b.amountBeforeGst || "");
+          setField("gstRate", b.gstRate);
+          setField("taxType", b.taxType);
+          // ITC needs the bill in the firm's name: only tick it when the bill says so.
+          const squash = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+          setField("inFirmName", !!b.billedTo && squash(b.billedTo).includes(squash(firm.name)));
+          showTotals();
+          const x = expenseTax(read(el), firm);
+          const off = b.totalAmount && Math.abs(x.amount + x.gst - b.totalAmount) > 1;
+          note([
+            `<span class="chip good">Filled from the bill</span> Check every field before saving.`,
+            b.billedTo ? `Billed to: ${esc(b.billedTo)}` : "No buyer name on the bill, so it is not in the firm's name.",
+            off ? `<b>The bill total is ${inr(b.totalAmount)}, but the form adds up to ${inr(x.amount + x.gst)}.</b> Check the amount and GST.` : "",
+            b.note ? `Note: ${esc(b.note)}` : "",
+          ].filter(Boolean).join("<br>"));
+        } catch (err) {
+          note(`<span class="chip bad">Could not read it</span> ${esc(err.status ? err.message : "No internet.")} The bill is attached; fill the form by hand.`);
+        }
+      };
+      el.querySelector("#scanCam")?.addEventListener("click", async () => {
+        try {
+          await scan(await takePhoto());
+        } catch (err) {
+          if (!/cancel/i.test(err.message || "")) toast(err.message || "Camera not available");
+        }
+      });
+      el.querySelector("#scanFile").onchange = async (ev) => {
+        try {
+          await scan(await fromFileInput(ev.target.files[0]));
+        } catch (err) {
+          toast(err.message);
+        }
       };
       el.querySelector("#cam")?.addEventListener("click", async () => {
         try {
