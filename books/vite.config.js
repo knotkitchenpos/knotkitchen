@@ -14,5 +14,10 @@ export default defineConfig({
       },
     },
   },
-  build: { outDir: "dist", target: "es2020" },
+  build: {
+    outDir: "dist",
+    target: "es2020",
+    // pdf.js's worker ships as .mjs; nginx (nosniff) and the APK's WebView may not serve .mjs as JavaScript.
+    rollupOptions: { output: { assetFileNames: (a) => (a.names?.[0] || a.name || "").endsWith(".mjs") ? "assets/[name]-[hash].js" : "assets/[name]-[hash][extname]" } },
+  },
 });

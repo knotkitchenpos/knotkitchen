@@ -48,6 +48,48 @@ export const renderExpenses = (el, ctx) => {
   el.querySelectorAll("[data-id]").forEach((b) => (b.onclick = () => expenseDetail(ctx, b.dataset.id)));
 };
 
+// Shows a PDF bill inside the app: pdf.js draws each page, since phones and the app's WebView can't show a PDF inline.
+const quickViewPdf = (title, blob) => {
+  let task;
+  let closed = false;
+  openSheet({
+    title,
+    body: `<div id="pv" class="muted small">Loading…</div>`,
+    // Stops the pdf.js worker when the viewer closes, even mid-render.
+    onClose: () => {
+      closed = true;
+      task?.destroy();
+    },
+    onMount: async (el) => {
+      const box = el.querySelector("#pv");
+      try {
+        const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+        pdfjs.GlobalWorkerOptions.workerSrc = (await import("pdfjs-dist/legacy/build/pdf.worker.min.mjs?url")).default;
+        if (closed) return;
+        // The site's CSP blocks eval, so pdf.js must not try it.
+        task = pdfjs.getDocument({ data: new Uint8Array(await blob.arrayBuffer()), isEvalSupported: false });
+        const doc = await task.promise;
+        box.textContent = "";
+        // Measured once: the scrollbar that appears after page 1 would shrink later pages.
+        const width = box.clientWidth * (window.devicePixelRatio || 1);
+        for (let n = 1; n <= doc.numPages; n++) {
+          const page = await doc.getPage(n);
+          const scale = width / page.getViewport({ scale: 1 }).width;
+          const viewport = page.getViewport({ scale });
+          const canvas = document.createElement("canvas");
+          canvas.className = "receipt-img";
+          canvas.width = Math.floor(viewport.width);
+          canvas.height = Math.floor(viewport.height);
+          box.append(canvas);
+          await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+        }
+      } catch {
+        if (!closed) box.textContent = "Could not show this PDF. Use Open PDF instead.";
+      }
+    },
+  });
+};
+
 const expenseDetail = (ctx, id) => {
   const e = get(id);
   if (!e) return;
@@ -79,8 +121,9 @@ const expenseDetail = (ctx, id) => {
           box.innerHTML = `<img class="receipt-img" alt="Bill">`;
           box.querySelector("img").src = URL.createObjectURL(blob);
         } else {
-          box.innerHTML = `<button class="btn" type="button">Open PDF</button>`;
-          box.querySelector("button").onclick = () => shareFile(e.receipt.name || "bill.pdf", blob, "Bill");
+          box.innerHTML = `<div class="f2" style="margin-top:8px"><button class="btn primary" type="button" data-view>Quick view</button><button class="btn" type="button" data-open>Open PDF</button></div>`;
+          box.querySelector("[data-view]").onclick = () => quickViewPdf(e.receipt.name || "Bill", blob);
+          box.querySelector("[data-open]").onclick = () => shareFile(e.receipt.name || "bill.pdf", blob, "Bill");
         }
       } catch (err) {
         box.textContent = err.status ? err.message : "Connect to the internet to see the bill.";
