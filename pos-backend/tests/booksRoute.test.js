@@ -51,3 +51,10 @@ test("scan bill: behind sign-in and a per-user hourly limit", () => {
   assert.match(r, /router\.post\("\/scan", requireUser, scanLimit,/);
   assert.match(r, /keyGenerator: \(req\) => `books-scan:\$\{req\.booksUser\}`/);
 });
+
+test("scan bill: categories match the app's list", () => {
+  const { CATEGORIES } = require("../services/billScan");
+  const app = fs.readFileSync(path.join(__dirname, "..", "..", "books", "src", "lib", "firm.js"), "utf8");
+  const list = app.slice(app.indexOf("export const CATEGORIES"), app.indexOf("];", app.indexOf("export const CATEGORIES")));
+  assert.deepEqual([...list.matchAll(/"([^"]+)"/g)].map((m) => m[1]), CATEGORIES);
+});
